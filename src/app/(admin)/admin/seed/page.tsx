@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirestore, useUser } from "@/firebase"
 import { doc, writeBatch } from "firebase/firestore"
-import { Loader2, Database, CheckCircle2, AlertTriangle, UserCircle } from "lucide-react"
+import { Loader2, Database, AlertTriangle, UserCircle, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
@@ -26,8 +26,8 @@ export default function SeedPage() {
   const handleSeed = async () => {
     if (!firestore || !user) {
       toast({
-        title: "خطأ",
-        description: "جاري التحقق من هويتك، يرجى الانتظار ثانية ثم المحاولة مرة أخرى.",
+        title: "خطأ في الاتصال",
+        description: "لا يزال النظام يحاول التعرف على هويتك. يرجى المحاولة بعد ثوانٍ قليلة.",
         variant: "destructive"
       })
       return
@@ -43,7 +43,7 @@ export default function SeedPage() {
         id: user.uid,
         role: "Admin",
         name: "مدير النظام التجريبي",
-        email: user.email || "admin@munaqasati.sa",
+        email: user.email || "guest@munaqasati.sa",
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString()
@@ -83,7 +83,6 @@ export default function SeedPage() {
         description: "تم تحديث صلاحياتك كمسؤول وإنشاء البيانات التجريبية.",
       })
     } catch (error: any) {
-      console.error(error)
       toast({
         title: "فشل التهيئة",
         description: error.message || "حدث خطأ أثناء محاولة تهيئة البيانات.",
@@ -109,29 +108,32 @@ export default function SeedPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             {isUserLoading ? (
-              <div className="flex items-center justify-center p-8 gap-3 text-muted-foreground">
+              <div className="flex items-center justify-center p-8 gap-3 text-muted-foreground bg-slate-50 rounded-lg">
                 <Loader2 className="animate-spin" />
-                <span>جاري التحقق من الاتصال بـ Firebase...</span>
+                <span>جاري الاتصال بـ Firebase...</span>
               </div>
             ) : user ? (
               <div className="p-4 bg-success/5 border border-success/20 rounded-lg flex items-center gap-3">
-                <UserCircle className="text-success" size={20} />
+                <CheckCircle className="text-success" size={20} />
                 <p className="text-sm text-success">
-                  أنت متصل الآن بمعرف: <span className="font-mono text-xs">{user.uid}</span>
+                  أنت متصل الآن وجاهز للتهيئة. معرفك: <span className="font-mono text-xs">{user.uid}</span>
                 </p>
               </div>
             ) : (
               <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg flex items-center gap-3">
                 <AlertTriangle className="text-destructive" size={20} />
-                <p className="text-sm text-destructive">لم يتم العثور على جلسة دخول. يرجى تحديث الصفحة.</p>
+                <p className="text-sm text-destructive">فشل التعرف على الجلسة. يرجى إعادة تحميل الصفحة.</p>
               </div>
             )}
 
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
               <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20} />
-              <p className="text-sm text-amber-700">
-                سيتم تعيين حسابك كـ "Admin" لتمكن من الوصول لجميع الأقسام، وسيتم إنشاء 5 فئات و3 مناقصات تجريبية.
-              </p>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-amber-700">تنبيه هام:</p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  هذه العملية ستقوم بتعريفك كمسؤول (Admin) في قاعدة البيانات. يرجى عدم الضغط على الزر إلا مرة واحدة.
+                </p>
+              </div>
             </div>
           </CardContent>
           <CardContent className="flex justify-center pb-8">
@@ -143,7 +145,7 @@ export default function SeedPage() {
             >
               {isSeeding ? (
                 <>
-                  <Loader2 className="animate-spin" />
+                  <Loader2 className="animate-spin" size={20} />
                   جاري التهيئة...
                 </>
               ) : (
