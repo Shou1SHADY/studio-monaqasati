@@ -1,6 +1,8 @@
+
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,15 +24,22 @@ import {
   FileText,
   MapPin,
   ClipboardCheck,
-  Zap
+  Zap,
+  Loader2
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
+import { useFirestore, useUser, addDocumentNonBlocking } from "@/firebase"
+import { collection, serverTimestamp } from "firebase/firestore"
 
 export default function NewRfqPage() {
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
+  const { firestore } = useFirestore()
+  const { user } = useUser()
   
   const [formData, setFormData] = useState({
     title: "",
@@ -87,6 +96,38 @@ export default function NewRfqPage() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleSubmit = async () => {
+    if (!firestore || !user) return
+
+    setIsSubmitting(true)
+    const rfqsRef = collection(firestore, "rfqs")
+    
+    const rfqData = {
+      contractorId: user.uid,
+      title: formData.title,
+      categoryId: formData.category,
+      quantity: Number(formData.quantity),
+      unitOfMeasure: formData.unit,
+      deadline: formData.deadline,
+      location: formData.location,
+      area: formData.area,
+      paymentTerms: formData.paymentTerms,
+      isQualityCertificateRequired: formData.certRequired,
+      notes: formData.notes,
+      status: "New",
+      createdAt: new Date().toISOString()
+    }
+
+    addDocumentNonBlocking(rfqsRef, rfqData)
+    
+    toast({
+      title: "تم النشر!",
+      description: "تم نشر المناقصة بنجاح وهي الآن متاحة للموردين.",
+    })
+    
+    router.push("/contractor/rfqs")
   }
 
   return (
@@ -248,13 +289,6 @@ export default function NewRfqPage() {
                     onCheckedChange={v => setFormData({...formData, certRequired: v})}
                   />
                 </div>
-                
-                <div className="p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-                  <CheckCircle2 className="text-primary mt-1 shrink-0" size={18} />
-                  <p className="text-sm text-blue-800">
-                    بمجرد النشر، سيصل إشعار لجميع الموردين المسجلين في فئة <span className="font-bold">"{formData.category || 'المختارة'}"</span> في منطقة <span className="font-bold">"{formData.location || 'المختارة'}"</span>.
-                  </p>
-                </div>
               </div>
             )}
           </CardContent>
@@ -263,7 +297,7 @@ export default function NewRfqPage() {
             <Button 
               variant="ghost" 
               onClick={prevStep} 
-              disabled={step === 1}
+              disabled={step === 1 || isSubmitting}
               className="gap-2"
             >
               <ChevronRight size={18} />
@@ -276,9 +310,13 @@ export default function NewRfqPage() {
                 <ChevronLeft size={18} />
               </Button>
             ) : (
-              <Button className="bg-success hover:bg-success/90 gap-2 px-10">
+              <Button 
+                onClick={handleSubmit} 
+                disabled={isSubmitting}
+                className="bg-success hover:bg-success/90 gap-2 px-10"
+              >
+                {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
                 نشر المناقصة الآن
-                <CheckCircle2 size={18} />
               </Button>
             )}
           </CardFooter>

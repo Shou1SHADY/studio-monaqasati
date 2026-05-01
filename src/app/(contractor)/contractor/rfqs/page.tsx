@@ -1,25 +1,36 @@
 
+"use client"
+
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, PlusCircle, MoreHorizontal, Calendar, Users } from "lucide-react"
+import { FileText, PlusCircle, MoreHorizontal, Calendar, Users, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where, orderBy } from "firebase/firestore"
 
 export default function ContractorRfqsPage() {
-  const rfqs = [
-    { id: "RFQ-201", title: "توريد حديد سابك - مشروع النرجس", category: "حديد ومعادن", status: "نشط", date: "2024-05-10", offers: 5 },
-    { id: "RFQ-202", title: "خرسانة جاهزة K350", category: "أسمنت وخرسانة", status: "مسودة", date: "2024-05-12", offers: 0 },
-    { id: "RFQ-198", title: "أدوات سباكة - مجمع سكني", category: "أدوات صحية", status: "مكتمل", date: "2024-04-25", offers: 12 },
-    { id: "RFQ-205", title: "دهانات داخلية - فيلا خاصة", category: "دهانات", status: "نشط", date: "2024-05-14", offers: 3 },
-  ]
+  const { firestore } = useFirestore()
+  const { user } = useUser()
+
+  const rfqsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return query(
+      collection(firestore, "rfqs"),
+      where("contractorId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, user?.uid])
+
+  const { data: rfqs, isLoading } = useCollection(rfqsQuery)
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "نشط": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
-      case "مسودة": return <Badge variant="secondary">مسودة</Badge>
-      case "مكتمل": return <Badge className="bg-blue-50 text-blue-600">مكتمل</Badge>
+      case "New": return <Badge className="bg-success/10 text-success border-success/20">جديد</Badge>
+      case "Awarded": return <Badge className="bg-blue-50 text-blue-600">تمت الترسية</Badge>
+      case "Completed": return <Badge className="bg-slate-50 text-slate-600">مكتمل</Badge>
       default: return <Badge variant="outline">{status}</Badge>
     }
   }
@@ -48,46 +59,55 @@ export default function ContractorRfqsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="text-right">المعرف</TableHead>
-                  <TableHead className="text-right">العنوان</TableHead>
-                  <TableHead className="text-right">الفئة</TableHead>
-                  <TableHead className="text-right">الحالة</TableHead>
-                  <TableHead className="text-right">التاريخ</TableHead>
-                  <TableHead className="text-right">العروض</TableHead>
-                  <TableHead className="text-left">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rfqs.map((rfq) => (
-                  <TableRow key={rfq.id} className="hover:bg-slate-50/50">
-                    <TableCell className="font-mono text-xs">{rfq.id}</TableCell>
-                    <TableCell className="font-bold">{rfq.title}</TableCell>
-                    <TableCell>{rfq.category}</TableCell>
-                    <TableCell>{getStatusBadge(rfq.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar size={14} />
-                        {rfq.date}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Users size={14} className="text-primary" />
-                        <span className="font-bold">{rfq.offers}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-left">
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal size={18} />
-                      </Button>
-                    </TableCell>
+            {isLoading ? (
+              <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                <Loader2 className="animate-spin" size={40} />
+                <p>جاري تحميل البيانات...</p>
+              </div>
+            ) : !rfqs || rfqs.length === 0 ? (
+              <div className="p-20 text-center space-y-4">
+                <p className="text-muted-foreground">لا توجد مناقصات حالية.</p>
+                <Link href="/contractor/rfqs/new">
+                  <Button variant="outline">اطرح أول مناقصة الآن</Button>
+                </Link>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead className="text-right">العنوان</TableHead>
+                    <TableHead className="text-right">الفئة</TableHead>
+                    <TableHead className="text-right">الحالة</TableHead>
+                    <TableHead className="text-right">التاريخ</TableHead>
+                    <TableHead className="text-right">الكمية</TableHead>
+                    <TableHead className="text-left">إجراءات</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {rfqs.map((rfq) => (
+                    <TableRow key={rfq.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold">{rfq.title}</TableCell>
+                      <TableCell>{rfq.categoryId}</TableCell>
+                      <TableCell>{getStatusBadge(rfq.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar size={14} />
+                          {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="font-bold">{rfq.quantity} {rfq.unitOfMeasure}</span>
+                      </TableCell>
+                      <TableCell className="text-left">
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal size={18} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
