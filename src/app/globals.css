@@ -40,3 +40,13 @@
 .rtl-flip {
   transform: scaleX(-1);
 }
+
+/* إخفاء شريط التمرير للقائمة الجانبية */
+[data-sidebar="content"]::-webkit-scrollbar {
+  display: none;
+}
+
+[data-sidebar="content"] {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
