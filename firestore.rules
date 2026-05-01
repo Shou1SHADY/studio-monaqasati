@@ -11,7 +11,7 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // التحقق الآمن من الرتبة: يتأكد من وجود المستند قبل محاولة قراءته لتجنب فشل التقييم
+    // التحقق الآمن: التأكد من وجود المستند قبل محاولة قراءته لتجنب فشل التقييم (Evaluation Error)
     function hasRole(role) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -43,7 +43,7 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
-      // السماح بالقراءة لجميع المسجلين لضمان استقرار الواجهة حتى قبل تحديد الرتبة
+      // القراءة متاحة لكل المسجلين (بما في ذلك المجهولين مؤقتاً) لضمان استقرار الواجهة
       allow read: if isSignedIn();
       allow create: if isContractor() || isAdmin();
       allow update: if isAdmin() || (isContractor() && resource.data.contractorId == request.auth.uid);

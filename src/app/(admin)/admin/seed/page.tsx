@@ -39,14 +39,15 @@ export default function SeedPage() {
       // 1. التأكد من تسجيل الدخول
       let currentUser = auth.currentUser;
       if (!currentUser) {
-        addLog("جاري محاولة تسجيل الدخول...")
+        addLog("جاري محاولة تسجيل الدخول مجهولاً...")
         const cred = await signInAnonymously(auth)
         currentUser = cred.user
         addLog(`تم تسجيل الدخول بنجاح: ${currentUser.uid}`)
       }
 
-      // 2. إنشاء ملف المشرف أولاً (بشكل منفصل لفتح الصلاحيات)
-      addLog("خطوة 1: إنشاء ملف Admin وفتح الصلاحيات...")
+      // 2. إنشاء ملف المشرف أولاً بشكل مستقل لفتح الصلاحيات
+      // هذا هو "الإصلاح" الجوهري: كتابة مستند المستخدم قبل أي عمليات قراءة أخرى
+      addLog("خطوة 1: إنشاء مستند المستخدم (Admin) لفتح الصلاحيات...")
       const userRef = doc(firestore, "users", currentUser.uid)
       await setDoc(userRef, {
         id: currentUser.uid,
@@ -60,8 +61,8 @@ export default function SeedPage() {
       })
       addLog("✅ تم إنشاء ملف Admin بنجاح.")
 
-      // انتظار بسيط لتحديث خوادم جوجل لصلاحياتك الجديدة
-      addLog("جاري انتظار تحديث الصلاحيات في النظام (3 ثوانٍ)...")
+      // انتظار بسيط لتحديث قواعد الأمان في الخادم
+      addLog("جاري انتظار تحديث الصلاحيات (3 ثوانٍ)...")
       await new Promise(r => setTimeout(r, 3000))
 
       // 3. إضافة بقية البيانات باستخدام Batch
@@ -115,7 +116,7 @@ export default function SeedPage() {
           <CardHeader className="text-center border-b pb-6">
             <Database size={60} className="mx-auto text-primary mb-4" />
             <CardTitle className="text-2xl font-bold">تهيئة بيانات منصة مناقصتي</CardTitle>
-            <CardDescription className="text-lg">سيتم إعداد حسابك كمسؤول وإضافة المناقصات التجريبية فوراً.</CardDescription>
+            <CardDescription className="text-lg">سيتم إعداد حسابك كمسؤول وإضافة البيانات التجريبية فوراً.</CardDescription>
           </CardHeader>
           <CardContent className="p-8 space-y-6">
             <div className="bg-slate-900 text-green-400 p-5 rounded-xl font-mono text-sm h-64 overflow-y-auto shadow-inner border-2 border-slate-800">
@@ -123,14 +124,10 @@ export default function SeedPage() {
               {debugLog.length === 0 && <div className="text-slate-500 italic">بانتظار الضغط على زر التأسيس...</div>}
             </div>
             
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-800 text-sm">
-              <strong>تنبيه:</strong> يرجى عدم إغلاق الصفحة أثناء عملية التأسيس لضمان اكتمال جميع الخطوات.
-            </div>
-
             <Button 
               onClick={handleSeed} 
               disabled={isSeeding} 
-              className="w-full h-14 text-xl font-bold bg-primary hover:bg-primary/90 shadow-lg transition-all"
+              className="w-full h-14 text-xl font-bold bg-primary hover:bg-primary/90 shadow-lg"
             >
               {isSeeding ? (
                 <>

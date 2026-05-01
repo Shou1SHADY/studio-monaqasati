@@ -24,7 +24,7 @@ export default function AvailableRfqsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
-  // تطبيق نمط الحماية (Guard Pattern): الانتظار حتى يكتمل التحميل ويوجد مستخدم
+  // تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     
