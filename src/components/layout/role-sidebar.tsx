@@ -15,7 +15,6 @@ import {
   Search,
   ClipboardList,
   History,
-  ShieldCheck,
   TrendingUp,
   LogOut
 } from "lucide-react"
@@ -29,9 +28,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar"
 
 interface NavItem {
@@ -90,7 +86,7 @@ export function RoleSidebar() {
   }
 
   return (
-    <Sidebar className="border-l bg-sidebar">
+    <Sidebar side="right" className="border-l bg-sidebar">
       <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex flex-col gap-2">
           <Link href="/" className="text-2xl font-bold text-white font-headline">مناقصتي</Link>
