@@ -5,8 +5,9 @@ import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useFirestore, useUser } from "@/firebase"
-import { doc, writeBatch, setDoc, getDoc } from "firebase/firestore"
+import { useFirestore, useUser, useAuth } from "@/firebase"
+import { doc, writeBatch, setDoc } from "firebase/firestore"
+import { signInAnonymously } from "firebase/auth"
 import { Loader2, Database, AlertTriangle, CheckCircle, RefreshCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -22,14 +23,32 @@ export default function SeedPage() {
   const [isSeeding, setIsSeeding] = useState(false)
   const [status, setStatus] = useState<"idle" | "promoting" | "seeding" | "success" | "error">("idle")
   const { firestore } = useFirestore()
+  const { auth } = useAuth()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
 
   const handleSeed = async () => {
-    if (!firestore || !user) {
+    let currentUser = user;
+
+    // محاولة تسجيل الدخول إذا لم يكن المستخدم موجوداً
+    if (!currentUser && auth) {
+      try {
+        const cred = await signInAnonymously(auth);
+        currentUser = cred.user;
+      } catch (e: any) {
+        toast({
+          title: "فشل تسجيل الدخول",
+          description: "تأكد من تفعيل Anonymous Auth في Firebase Console.",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+
+    if (!firestore || !currentUser) {
       toast({
         title: "خطأ في الاتصال",
-        description: "لا يوجد مستخدم نشط. يرجى التأكد من تفعيل Anonymous Auth.",
+        description: "لا يمكن الوصول إلى خدمات Firebase. تأكد من تفعيل Anonymous Auth.",
         variant: "destructive"
       })
       return
@@ -40,35 +59,32 @@ export default function SeedPage() {
     
     try {
       console.log("Step 1: Promoting user to Admin...");
-      const userRef = doc(firestore, "users", user.uid)
+      const userRef = doc(firestore, "users", currentUser.uid)
       
-      // نستخدم setDoc مع merge لضمان إنشاء الملف الشخصي برتبة Admin
       await setDoc(userRef, {
-        id: user.uid,
+        id: currentUser.uid,
         role: "Admin",
         name: "مدير النظام التجريبي",
-        email: user.email || `admin_${user.uid.slice(0, 5)}@munaqasati.sa`,
+        email: currentUser.email || `admin_${currentUser.uid.slice(0, 5)}@munaqasati.sa`,
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString(),
         isVerified: true
       }, { merge: true })
 
-      // ننتظر قليلاً لضمان تحديث القواعد في طرف Firebase
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // انتظار تحديث القواعد
+      await new Promise(resolve => setTimeout(resolve, 2000));
       
       console.log("Step 2: Seeding Categories and RFQs...");
       setStatus("seeding")
       
       const batch = writeBatch(firestore)
 
-      // إضافة الفئات
       SAMPLE_CATEGORIES.forEach((cat) => {
         const catRef = doc(firestore, "categories", cat.id)
         batch.set(catRef, cat)
       })
 
-      // إضافة مناقصات تجريبية مرتبطة بالفئات أعلاه
       const mockRfqs = [
         { id: "rfq-seed-1", title: "توريد حديد سابك - مشروع النرجس", catId: "cat-1", qty: 100, unit: "طن" },
         { id: "rfq-seed-2", title: "خرسانة جاهزة K350", catId: "cat-2", qty: 50, unit: "م3" },
@@ -81,9 +97,9 @@ export default function SeedPage() {
         const rfqRef = doc(firestore, "rfqs", rfq.id)
         batch.set(rfqRef, {
           id: rfq.id,
-          contractorId: user.uid,
+          contractorId: currentUser.uid,
           title: rfq.title,
-          categoryId: rfq.catId, // الآن نستخدم الـ ID الصحيح للفئة
+          categoryId: rfq.catId,
           quantity: rfq.qty,
           unitOfMeasure: rfq.unit,
           deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
@@ -146,7 +162,7 @@ export default function SeedPage() {
                 {isUserLoading ? <Loader2 className="animate-spin text-slate-400" size={20} /> : 
                  user ? <CheckCircle className="text-success" size={20} /> : <AlertTriangle className="text-amber-500" size={20} />}
                 <div className="flex-1">
-                  <p className="text-sm font-bold">{user ? "تم اكتشاف جلسة المستخدم" : "بانتظار تسجيل الدخول..."}</p>
+                  <p className="text-sm font-bold">{user ? "أنت متصل الآن وجاهز للتهيئة" : "جاري التحقق من هويتك..."}</p>
                   <p className="text-[10px] text-muted-foreground font-mono">{user?.uid || "Anonymous Authentication required"}</p>
                 </div>
               </div>
@@ -171,15 +187,18 @@ export default function SeedPage() {
             <Button 
               size="lg" 
               onClick={handleSeed} 
-              disabled={isSeeding || isUserLoading || !user}
+              disabled={isSeeding}
               className="px-16 py-8 text-xl font-bold gap-3 shadow-xl hover:scale-105 transition-transform"
             >
               {isSeeding ? <Loader2 className="animate-spin" size={24} /> : <RefreshCcw size={24} />}
               {status === 'success' ? "إعادة التهيئة" : "ابدأ التشغيل الآن"}
             </Button>
             
-            {status === 'error' && (
-              <p className="text-xs text-destructive font-medium">تأكد من تفعيل "Anonymous Auth" و "Firestore Test Mode" في Console.</p>
+            {!user && !isUserLoading && (
+              <p className="text-xs text-destructive font-medium text-center">
+                تنبيه: لم يتم اكتشاف جلسة مستخدم. <br/>
+                تأكد من تفعيل Anonymous Auth في Firebase Console ثم قم بتحديث الصفحة.
+              </p>
             )}
           </CardContent>
         </Card>

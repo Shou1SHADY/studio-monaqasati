@@ -4,35 +4,37 @@
 import React, { useMemo, useEffect, type ReactNode } from 'react';
 import { FirebaseProvider } from '@/firebase/provider';
 import { initializeFirebase } from '@/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 
 interface FirebaseClientProviderProps {
   children: ReactNode;
 }
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
-  // تهيئة الخدمات مرة واحدة فقط
   const services = useMemo(() => {
     return initializeFirebase();
   }, []);
 
   useEffect(() => {
-    // تفعيل تسجيل الدخول المجهول لضمان وجود UID للتعامل مع Firestore
-    const authenticate = async () => {
-      if (services.auth) {
+    if (!services.auth) return;
+
+    // اشتراك لمراقبة حالة المستخدم ومحاولة تسجيل الدخول إذا لم يوجد
+    const unsubscribe = onAuthStateChanged(services.auth, async (user) => {
+      if (!user) {
         try {
-          // إذا لم يكن هناك مستخدم حالي، نقوم بتسجيل الدخول
-          if (!services.auth.currentUser) {
-            await signInAnonymously(services.auth);
-            console.log("Firebase: Anonymous login successful.");
+          await signInAnonymously(services.auth);
+          console.log("Firebase: Anonymous login successful.");
+        } catch (error: any) {
+          if (error.code === 'auth/operation-not-allowed') {
+            console.error("Firebase: Anonymous Auth is not enabled in the Firebase Console.");
+          } else {
+            console.error("Firebase: Anonymous login failed:", error);
           }
-        } catch (error) {
-          console.error("Firebase: Anonymous login failed. Ensure it's enabled in Console.", error);
         }
       }
-    };
+    });
 
-    authenticate();
+    return () => unsubscribe();
   }, [services.auth]);
 
   return (
