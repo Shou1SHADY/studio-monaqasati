@@ -1,0 +1,458 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user profile within the 'مناقصتي' platform, storing details for Contractors, Suppliers, or Admins.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user within the platform (Supplier, Contractor, or Admin).",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the user or company."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "The primary phone number for the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "city": {
+          "type": "string",
+          "description": "The city where the user or company is located."
+        },
+        "commercialRegistrationNumber": {
+          "type": "string",
+          "description": "The Commercial Registration number (CR) for supplier entities. (Applies to role 'Supplier' only)."
+        },
+        "isVerified": {
+          "type": "boolean",
+          "description": "Indicates if the supplier profile has been verified by an admin. (Applies to role 'Supplier' only)."
+        },
+        "commitmentScore": {
+          "type": "number",
+          "description": "A score representing the contractor's reliability and commitment. (Applies to role 'Contractor' only)."
+        },
+        "specializationCategoryIds": {
+          "type": "array",
+          "description": "An array of IDs referencing the categories of specialization for the supplier. (Applies to role 'Supplier' only). (Relationship: Category N:N UserProfile)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "serviceAreas": {
+          "type": "array",
+          "description": "An array of strings listing the geographical service areas covered by the supplier. (Applies to role 'Supplier' only).",
+          "items": {
+            "type": "string"
+          }
+        },
+        "joinedAt": {
+          "type": "string",
+          "description": "The timestamp when the user joined the platform.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "role",
+        "name",
+        "phoneNumber",
+        "email",
+        "city",
+        "joinedAt"
+      ]
+    },
+    "Category": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Category",
+      "type": "object",
+      "description": "Represents a predefined category used for supplier specializations and RFQ classification.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Category entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the category (e.g., 'حديد ومعادن')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description of the category."
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "RequestForQuotation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RequestForQuotation",
+      "type": "object",
+      "description": "Represents a Request for Quotation (RFQ) created by a contractor.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RequestForQuotation entity."
+        },
+        "contractorId": {
+          "type": "string",
+          "description": "Reference to the UserProfile of the contractor who created this RFQ. (Relationship: UserProfile 1:N RequestForQuotation)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title or brief summary of the RFQ."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "Reference to the Category for this RFQ. (Relationship: Category 1:N RequestForQuotation)"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The requested quantity of the product or service."
+        },
+        "unitOfMeasure": {
+          "type": "string",
+          "description": "The unit of measurement for the requested quantity (e.g., 'طن', 'متر', 'قطعة')."
+        },
+        "deadline": {
+          "type": "string",
+          "description": "The deadline for submitting offers for this RFQ.",
+          "format": "date-time"
+        },
+        "location": {
+          "type": "string",
+          "description": "The general location relevant to the RFQ (e.g., 'Riyadh')."
+        },
+        "area": {
+          "type": "string",
+          "description": "The specific service area or district within the location."
+        },
+        "paymentTerms": {
+          "type": "string",
+          "description": "The specified payment terms for the RFQ (e.g., 'cash', 'net-30', 'net-60', 'LC').",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isQualityCertificateRequired": {
+          "type": "boolean",
+          "description": "Indicates whether a quality certificate is required for the offered products/services."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional notes or specifications provided by the contractor."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the RFQ (e.g., 'New', 'Awarded', 'InProgress', 'Completed', 'Cancelled').",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The timestamp when the RFQ was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "contractorId",
+        "title",
+        "categoryId",
+        "quantity",
+        "unitOfMeasure",
+        "deadline",
+        "location",
+        "area",
+        "paymentTerms",
+        "isQualityCertificateRequired",
+        "status",
+        "createdAt"
+      ]
+    },
+    "Offer": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Offer",
+      "type": "object",
+      "description": "Represents a price offer submitted by a supplier in response to an RFQ.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Offer entity."
+        },
+        "requestForQuotationId": {
+          "type": "string",
+          "description": "Reference to the RequestForQuotation this offer is for. (Relationship: RequestForQuotation 1:N Offer)"
+        },
+        "supplierId": {
+          "type": "string",
+          "description": "Reference to the UserProfile of the supplier who submitted this offer. (Relationship: UserProfile 1:N Offer)"
+        },
+        "pricePerUnit": {
+          "type": "number",
+          "description": "The price per unit offered by the supplier."
+        },
+        "estimatedDeliveryDays": {
+          "type": "number",
+          "description": "The estimated number of days for delivery proposed by the supplier."
+        },
+        "supplierNotes": {
+          "type": "string",
+          "description": "Additional notes or remarks from the supplier regarding their offer."
+        },
+        "canProvideQualityCertificate": {
+          "type": "boolean",
+          "description": "Indicates if the supplier can provide the required quality certificate, if applicable for the RFQ."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the offer (e.g., 'Pending', 'Accepted', 'Rejected').",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "submittedAt": {
+          "type": "string",
+          "description": "The timestamp when the offer was submitted.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "requestForQuotationId",
+        "supplierId",
+        "pricePerUnit",
+        "estimatedDeliveryDays",
+        "canProvideQualityCertificate",
+        "status",
+        "submittedAt"
+      ]
+    },
+    "InAppNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "InAppNotification",
+      "type": "object",
+      "description": "Represents an in-app notification for a specific user within the platform.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the InAppNotification entity."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the UserProfile who is the recipient of this notification. (Relationship: UserProfile 1:N InAppNotification)"
+        },
+        "message": {
+          "type": "string",
+          "description": "The content of the notification message."
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Indicates whether the user has read the notification."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of notification (e.g., 'NewRFQ', 'OfferSubmitted', 'OfferAccepted').",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sentAt": {
+          "type": "string",
+          "description": "The timestamp when the notification was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "message",
+        "isRead",
+        "type",
+        "sentAt"
+      ]
+    },
+    "NotificationQueueEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "NotificationQueueEntry",
+      "type": "object",
+      "description": "Represents an entry in the queue for external notifications (SMS or Email) to be sent.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the NotificationQueueEntry entity."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of external notification (SMS or Email).",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recipient": {
+          "type": "string",
+          "description": "The phone number or email address of the recipient."
+        },
+        "message": {
+          "type": "string",
+          "description": "The message content for the external notification."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the queued notification (e.g., 'Queued', 'Sent', 'Failed').",
+          "format": "enum",
+          "items": {
+            "type": "string"
+          }
+        },
+        "queuedAt": {
+          "type": "string",
+          "description": "The timestamp when the notification was added to the queue.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "recipient",
+        "message",
+        "status",
+        "queuedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user profile data, including role and specific attributes for Contractors, Suppliers, or Admins. Users own their profile. Admins can manage all profiles. Contractors can view verified Supplier profiles. Includes denormalized 'role' and 'isVerified' fields for authorization. The 'id' field is implicitly matched by the path parameter '{userId}'.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user, corresponding to their Firebase Authentication UID."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/categories/{categoryId}",
+        "definition": {
+          "entityName": "Category",
+          "schema": {
+            "$ref": "#/backend/entities/Category"
+          },
+          "description": "Stores predefined categories for RFQ classification and supplier specializations. This collection is publicly readable by all authenticated users and managed by administrators. The 'id' field is implicitly matched by the path parameter '{categoryId}'.",
+          "params": [
+            {
+              "name": "categoryId",
+              "description": "The unique ID of the category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/rfqs/{rfqId}",
+        "definition": {
+          "entityName": "RequestForQuotation",
+          "schema": {
+            "$ref": "#/backend/entities/RequestForQuotation"
+          },
+          "description": "Contains Request for Quotation documents created by contractors. Includes denormalized 'contractorId' for authorization independence. Suppliers can read RFQs with status 'New' that match their specializations/areas. Contractors own their RFQs. Admins can view/manage all RFQs. The 'id' field is implicitly matched by the path parameter '{rfqId}'.",
+          "params": [
+            {
+              "name": "rfqId",
+              "description": "The unique ID of the Request for Quotation."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/offers/{offerId}",
+        "definition": {
+          "entityName": "Offer",
+          "schema": {
+            "$ref": "#/backend/entities/Offer"
+          },
+          "description": "Stores offers submitted by suppliers in response to RFQs. Includes denormalized 'supplierId' for offer ownership and 'contractorId' (copied from the associated RFQ) for authorization independence, allowing RFQ owners to read offers without hierarchical lookups. Admins can view/manage all offers. The 'id' field is implicitly matched by the path parameter '{offerId}'.",
+          "params": [
+            {
+              "name": "offerId",
+              "description": "The unique ID of the Offer."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/notifications/{notificationId}",
+        "definition": {
+          "entityName": "InAppNotification",
+          "schema": {
+            "$ref": "#/backend/entities/InAppNotification"
+          },
+          "description": "Contains in-app notifications private to each user. The 'userId' in the path parameter directly identifies the recipient, ensuring authorization independence. Users can only read/manage their own notifications. The 'id' field is implicitly matched by the path parameter '{notificationId}'.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user who is the recipient of the notification, corresponding to their Firebase Authentication UID."
+            },
+            {
+              "name": "notificationId",
+              "description": "The unique ID of the in-app notification."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/notification_queue/{queueEntryId}",
+        "definition": {
+          "entityName": "NotificationQueueEntry",
+          "schema": {
+            "$ref": "#/backend/entities/NotificationQueueEntry"
+          },
+          "description": "Internal queue for external notifications (SMS/Email) to be processed by backend functions. This collection is primarily managed by backend services and accessible for read-only by administrators for monitoring purposes. The 'id' field is implicitly matched by the path parameter '{queueEntryId}'.",
+          "params": [
+            {
+              "name": "queueEntryId",
+              "description": "The unique ID of the notification queue entry."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure for the 'مناقصتي' platform is designed following core principles of authorization independence, structural segregation, and predictable data access to ensure security, scalability, and debuggability. \n\n**Authorization Independence via Denormalization:**\n\n1.  **User Profiles (`/users/{userId}`)**: Each user's profile document stores their `role` directly. This allows security rules to instantly determine a user's role (e.g., `request.resource.data.role` for their own profile or `get(/users/$(request.auth.uid)).data.role` for global role checks) without needing to fetch additional documents or rely on complex hierarchical dependencies. This directly supports Authorization Independence for user-specific data and role-based access.\n2.  **Request For Quotations (`/rfqs/{rfqId}`)**: Each RFQ document explicitly includes the `contractorId` of its creator. This is crucial for rules like `allow write: if request.auth.uid == resource.data.contractorId;`, eliminating the need for `get()` operations to parent entities to determine ownership.\n3.  **Offers (`/offers/{offerId}`)**: Each offer document contains `supplierId` (its creator), `requestForQuotationId` (the RFQ it responds to), and crucially, the `contractorId` denormalized from the associated RFQ. This denormalization means that a contractor can retrieve offers for their RFQs by querying `/offers` with `where('contractorId', '==', request.auth.uid)` and security rules can verify this with `resource.data.contractorId == request.auth.uid` without making a `get()` call to the `/rfqs` collection. This is a primary example of achieving Authorization Independence for nested data relationships.\n4.  **In-App Notifications (`/users/{userId}/notifications/{notificationId}`)**: By placing notifications within a user-specific subcollection, the `userId` is part of the path. Security rules can directly check `allow read, write: if request.auth.uid == userId;`, making authorization trivial and independent of other document attributes.\n\n**Querying for Access Patterns (QAPs) and Structural Segregation:**\n\n1.  **User Profiles (`/users`)**: This top-level collection holds all user profiles. Contractors can efficiently query for *verified* suppliers using `where('role', '==', 'Supplier').where('isVerified', '==', true)`. This segregation ensures that all documents in `/users` have a homogeneous security posture (user-owned, admin-managed, partially public for specific roles/states), simplifying rules and enabling QAP-compliant `list` operations.\n2.  **Categories (`/categories`)**: This collection holds all global categories. It is publicly readable for all authenticated users and admin-managed, ensuring a single security posture.\n3.  **RFQs (`/rfqs`)**: All RFQs reside in a top-level collection. This enables QAP-compliant queries for suppliers (e.g., `where('status', '==', 'New').where('categoryId', 'in', [...]).where('deadline', '>', timestamp.now())`) and contractors (e.g., `where('contractorId', '==', request.auth.uid)`).\n4.  **Offers (`/offers`)**: Similar to RFQs, all offers are in a top-level collection. This allows suppliers to list *their own* offers (`where('supplierId', '==', request.auth.uid)`) and contractors to list offers for *their RFQs* (`where('requestForQuotationId', '==', rfqId)`) with QAP-compliant queries. The denormalized `contractorId` on each offer significantly aids security rules for the latter case.\n5.  **In-App Notifications (`/users/{userId}/notifications`)**: This subcollection structure ensures that notifications are private to the `userId` in the path, providing strict data isolation and clear QAPs (a user can only list their own notifications).\n6.  **Notification Queue (`/notification_queue`)**: This collection is strictly for backend processes and admin monitoring, ensuring internal system data is segregated and not directly exposed to end-users, adhering to QAP as it's not a user-queryable list for regular users."
+  }
+}

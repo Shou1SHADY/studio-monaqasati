@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @philosophy
+     * This ruleset enforces a strict user-ownership model combined with role-based access control 
+     * (Contractor, Supplier, Admin). It prioritizes Authorization Independence by relying on 
+     * denormalized fields (like 'contractorId' on Offers) to perform security checks without 
+     * expensive document lookups.
+     * 
+     * @data_structure
+     * - /users/{userId}: Private profile data.
+     * - /categories: Publicly readable configuration.
+     * - /rfqs: Shared marketplace for contractors and suppliers.
+     * - /offers: Private responses to RFQs, accessible by the bidder and the RFQ creator.
+     * - /users/{userId}/notifications: User-specific private subcollection.
+     * 
+     * @decisions
+     * 1. Denormalization: The 'contractorId' is stored on 'Offer' documents to allow RFQ owners 
+     *    to read responses without rules needing to fetch the parent RFQ.
+     * 2. Prototyping Mode: Rules strictly enforce 'who' can access data, but do not enforce 
+     *    the exact 'shape' of non-relational data to allow for UI/UX iteration.
+     * 3. Role Retrieval: User roles are fetched from the /users/{userId} document via get().
+     */
+
+    // --- Helper Functions ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isExistingOwner(ownerIdField) {
+      return isSignedIn() && resource != null && resource.data[ownerIdField] == request.auth.uid;
+    }
+
+    // Fetches the role of the currently authenticated user
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('Admin');
+    }
+
+    // --- Collection Rules ---
+
+    /**
+     * @description Rules for User Profiles. Users manage their own data. Contractors can view verified suppliers.
+     * @path /users/{userId}
+     * @allow (get) If user is owner, admin, or a contractor viewing a verified supplier profile.
+     * @deny (create) If the authenticated UID does not match the document ID.
+     * @principle Ownership and Path-to-Data consistency.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow list: if isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow create: if isOwner(userId);
+      allow update: if (isOwner(userId) || isAdmin()) && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin();
+
+      /**
+       * @description Private in-app notifications.
+       * @path /users/{userId}/notifications/{notificationId}
+       * @allow (list) If the user is the owner of the parent user path.
+       * @deny (read) If the auth UID does not match the userId in the path.
+       * @principle Structural segregation via user-scoped subcollections.
+       */
+      match /notifications/{notificationId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isAdmin(); // Notifications are usually system-generated via Admin SDK
+        allow update: if isOwner(userId) && request.resource.data.userId == resource.data.userId;
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    /**
+     * @description Predefined categories for RFQs and Specializations.
+     * @path /categories/{categoryId}
+     * @allow (list) Any signed-in user.
+     * @deny (write) Any non-admin user.
+     * @principle Publicly readable, admin-managed reference data.
+     */
+    match /categories/{categoryId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Requests for Quotation created by Contractors.
+     * @path /rfqs/{rfqId}
+     * @allow (create) If contractorId in data matches auth UID.
+     * @deny (update) If user is not the original creator or an admin.
+     * @principle Owner-only writes with shared read access for Suppliers.
+     */
+    match /rfqs/{rfqId} {
+      // Suppliers can view 'New' RFQs to submit offers. Owners and Admins can see all.
+      allow get, list: if isAdmin() || isExistingOwner('contractorId') || (hasRole('Supplier') && resource.data.status == 'New');
+      
+      allow create: if hasRole('Contractor') && request.resource.data.contractorId == request.auth.uid;
+      allow update: if (isExistingOwner('contractorId') || isAdmin()) && request.resource.data.contractorId == resource.data.contractorId;
+      allow delete: if isExistingOwner('contractorId') || isAdmin();
+    }
+
+    /**
+     * @description Offers submitted by Suppliers.
+     * @path /offers/{offerId}
+     * @allow (get) If user is the supplier who bid, the contractor who owns the RFQ, or an admin.
+     * @deny (create) If supplierId in data does not match auth UID.
+     * @principle Shared access via denormalized relationship IDs (contractorId).
+     */
+    match /offers/{offerId} {
+      // Access allowed for the bidder (supplierId) or the RFQ owner (denormalized contractorId)
+      allow get, list: if isAdmin() || isExistingOwner('supplierId') || (resource != null && resource.data.contractorId == request.auth.uid);
+      
+      allow create: if hasRole('Supplier') && request.resource.data.supplierId == request.auth.uid;
+      allow update: if (isExistingOwner('supplierId') || isAdmin()) && request.resource.data.supplierId == resource.data.supplierId;
+      allow delete: if isExistingOwner('supplierId') || isAdmin();
+    }
+
+    /**
+     * @description Internal queue for SMS/Email notifications.
+     * @path /notification_queue/{queueEntryId}
+     * @allow (read) Admin only.
+     * @deny (write) All client-side requests.
+     * @principle Protection of system-level background processes.
+     */
+    match /notification_queue/{queueEntryId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false; // Managed exclusively by Backend/Admin SDK
+    }
+
+  }
+}
