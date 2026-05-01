@@ -1,22 +1,20 @@
-
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirebase } from "@/firebase"
-import { doc, writeBatch, setDoc, collection, getDocs } from "firebase/firestore"
+import { doc, setDoc, writeBatch } from "firebase/firestore"
 import { signInAnonymously } from "firebase/auth"
-import { Loader2, Database, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Database, RefreshCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
   { id: "cat-1", name: "حديد ومعادن", description: "جميع أنواع حديد التسليح والصلب" },
   { id: "cat-2", name: "أسمنت وخرسانة", description: "الأسمنت البورتلاندي والخرسانة الجاهزة" },
   { id: "cat-3", name: "دهانات", description: "الدهانات الداخلية والخارجية ومواد العزل" },
-  { id: "cat-4", name: "أدوات صحية", description: "مستلزمات السباكة والأدوات الصحية" },
-  { id: "cat-5", name: "كهرباء وإنارة", description: "الكابلات والمفاتيح وأنظمة الإنارة" }
+  { id: "cat-4", name: "أدوات صحية", description: "مستلزمات السباكة والأدوات الصحية" }
 ]
 
 export default function SeedPage() {
@@ -35,35 +33,39 @@ export default function SeedPage() {
 
     setIsSeeding(true)
     setDebugLog([])
-    addLog("بدء عملية التأسيس...")
+    addLog("بدء عملية التأسيس الشاملة...")
 
     try {
-      // 1. تسجيل الدخول
+      // 1. تسجيل الدخول القوي
       let currentUser = auth.currentUser;
       if (!currentUser) {
-        addLog("جاري تسجيل الدخول...")
+        addLog("جاري محاولة تسجيل الدخول...")
         const cred = await signInAnonymously(auth)
         currentUser = cred.user
         addLog(`تم تسجيل الدخول: ${currentUser.uid}`)
       }
 
-      // 2. إنشاء مستند المستخدم فوراً
-      addLog("إنشاء ملف Admin...")
+      // 2. إنشاء ملف المشرف أولاً (بدون Batch لضمان التنفيذ الفوري)
+      addLog("خطوة 1: إنشاء ملف Admin وفتح الصلاحيات...")
       const userRef = doc(firestore, "users", currentUser.uid)
       await setDoc(userRef, {
         id: currentUser.uid,
         role: "Admin",
-        name: "مدير النظام",
+        name: "مدير النظام الرئيسي",
         email: "admin@munaqasati.sa",
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString(),
         isVerified: true
       })
-      addLog("تم إنشاء ملف Admin بنجاح.")
+      addLog("✅ تم إنشاء ملف Admin بنجاح.")
 
-      // 3. إنشاء البيانات الأساسية
-      addLog("جاري إضافة الفئات والمناقصات...")
+      // انتظار بسيط لتحديث قواعد الأمان في خوادم جوجل
+      addLog("جاري انتظار تحديث الصلاحيات (3 ثوانٍ)...")
+      await new Promise(r => setTimeout(r, 3000))
+
+      // 3. إضافة البيانات باستخدام Batch
+      addLog("خطوة 2: إضافة الفئات والمناقصات...")
       const batch = writeBatch(firestore)
 
       SAMPLE_CATEGORIES.forEach((cat) => {
@@ -71,8 +73,9 @@ export default function SeedPage() {
       })
 
       const mockRfqs = [
-        { id: "rfq-1", title: "توريد حديد سابك - مشروع النرجس", catId: "cat-1" },
-        { id: "rfq-2", title: "خرسانة جاهزة K350", catId: "cat-2" }
+        { id: "rfq-demo-1", title: "توريد حديد سابك - مشروع نيوم", catId: "cat-1", area: "الرياض" },
+        { id: "rfq-demo-2", title: "خرسانة جاهزة K350", catId: "cat-2", area: "جدة" },
+        { id: "rfq-demo-3", title: "أدوات سباكة لمجمع سكني", catId: "cat-4", area: "الدمام" }
       ]
 
       mockRfqs.forEach((rfq) => {
@@ -84,8 +87,8 @@ export default function SeedPage() {
           quantity: 100,
           unitOfMeasure: "وحدة",
           deadline: new Date(Date.now() + 864000000).toISOString(),
-          location: "الرياض",
-          area: "حي الملقا",
+          location: rfq.area,
+          area: "الحي الرئيسي",
           paymentTerms: "كاش",
           isQualityCertificateRequired: false,
           status: "New",
@@ -94,11 +97,11 @@ export default function SeedPage() {
       })
 
       await batch.commit()
-      addLog("تمت عملية التأسيس بنجاح كامل!")
+      addLog("✅ تمت إضافة كافة البيانات بنجاح!")
       
-      toast({ title: "نجاح", description: "تمت تهيئة البيانات بنجاح." })
+      toast({ title: "نجاح باهر", description: "تم تأسيس النظام بالكامل." })
     } catch (error: any) {
-      addLog(`خطأ: ${error.message}`)
+      addLog(`❌ خطأ في التنفيذ: ${error.message}`)
       toast({ title: "فشل", description: error.message, variant: "destructive" })
     } finally {
       setIsSeeding(false)
@@ -108,20 +111,38 @@ export default function SeedPage() {
   return (
     <PortalLayout>
       <div className="max-w-2xl mx-auto py-10 text-right">
-        <Card className="border-none shadow-lg">
-          <CardHeader className="text-center">
-            <Database size={48} className="mx-auto text-primary mb-2" />
-            <CardTitle>تهيئة بيانات المنصة</CardTitle>
-            <CardDescription>سيتم إنشاء حسابك كمسؤول وإضافة بيانات تجريبية.</CardDescription>
+        <Card className="border-none shadow-xl bg-white">
+          <CardHeader className="text-center border-b pb-6">
+            <Database size={60} className="mx-auto text-primary mb-4" />
+            <CardTitle className="text-2xl font-bold">تهيئة بيانات منصة مناقصتي</CardTitle>
+            <CardDescription className="text-lg">سيتم إعداد حسابك كمسؤول وإضافة المناقصات التجريبية فوراً.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-slate-900 text-blue-400 p-4 rounded-lg font-mono text-xs h-48 overflow-y-auto">
-              {debugLog.map((log, i) => <div key={i}>➜ {log}</div>)}
-              {debugLog.length === 0 && <div className="text-slate-500 italic">بانتظار البدء...</div>}
+          <CardContent className="p-8 space-y-6">
+            <div className="bg-slate-900 text-green-400 p-5 rounded-xl font-mono text-sm h-64 overflow-y-auto shadow-inner border-2 border-slate-800">
+              {debugLog.map((log, i) => <div key={i} className="mb-1">➜ {log}</div>)}
+              {debugLog.length === 0 && <div className="text-slate-500 italic">بانتظار الضغط على زر التأسيس...</div>}
             </div>
-            <Button onClick={handleSeed} disabled={isSeeding} className="w-full h-12 text-lg">
-              {isSeeding ? <Loader2 className="animate-spin ml-2" /> : <RefreshCcw className="ml-2" />}
-              تأسيس البيانات الآن
+            
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 text-blue-800 text-sm">
+              <strong>تنبيه:</strong> يرجى عدم إغلاق الصفحة أثناء عملية التأسيس لضمان اكتمال جميع الخطوات.
+            </div>
+
+            <Button 
+              onClick={handleSeed} 
+              disabled={isSeeding} 
+              className="w-full h-14 text-xl font-bold bg-primary hover:bg-primary/90 shadow-lg transition-all"
+            >
+              {isSeeding ? (
+                <>
+                  <Loader2 className="animate-spin ml-3" size={24} />
+                  جاري التأسيس...
+                </>
+              ) : (
+                <>
+                  <RefreshCcw className="ml-3" size={24} />
+                  تأسيس البيانات الآن
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>
