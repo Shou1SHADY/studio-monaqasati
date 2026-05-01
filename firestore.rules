@@ -11,7 +11,7 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // الدالة الأكثر أماناً للتحقق من الرتبة
+    // الدالة الأكثر أماناً للتحقق من الرتبة: تتأكد من وجود المستند أولاً
     function hasRole(role) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -26,7 +26,7 @@ service cloud.firestore {
     // --- قواعد المجموعات ---
 
     match /users/{userId} {
-      // السماح للمستخدم بإنشاء ملفه الشخصي (الخطوة الأولى في التأسيس)
+      // السماح للمستخدم بإنشاء ملفه الشخصي (الخطوة الأولى الضرورية)
       allow create: if isOwner(userId);
       allow get: if isOwner(userId) || isSignedIn();
       allow list: if isAdmin();
@@ -44,6 +44,7 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
+      // السماح بالقراءة لجميع المسجلين لضمان عمل الواجهة
       allow read: if isSignedIn();
       // المقاول والمسؤول فقط يمكنهم طرح مناقصة
       allow create: if isContractor() || isAdmin();

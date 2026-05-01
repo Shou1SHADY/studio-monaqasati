@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,16 +36,16 @@ export default function SeedPage() {
     addLog("بدء عملية التأسيس الشاملة...")
 
     try {
-      // 1. تسجيل الدخول القوي
+      // 1. التأكد من تسجيل الدخول
       let currentUser = auth.currentUser;
       if (!currentUser) {
         addLog("جاري محاولة تسجيل الدخول...")
         const cred = await signInAnonymously(auth)
         currentUser = cred.user
-        addLog(`تم تسجيل الدخول: ${currentUser.uid}`)
+        addLog(`تم تسجيل الدخول بنجاح: ${currentUser.uid}`)
       }
 
-      // 2. إنشاء ملف المشرف أولاً (بدون Batch لضمان التنفيذ الفوري)
+      // 2. إنشاء ملف المشرف أولاً (بشكل منفصل لفتح الصلاحيات)
       addLog("خطوة 1: إنشاء ملف Admin وفتح الصلاحيات...")
       const userRef = doc(firestore, "users", currentUser.uid)
       await setDoc(userRef, {
@@ -60,11 +60,11 @@ export default function SeedPage() {
       })
       addLog("✅ تم إنشاء ملف Admin بنجاح.")
 
-      // انتظار بسيط لتحديث قواعد الأمان في خوادم جوجل
-      addLog("جاري انتظار تحديث الصلاحيات (3 ثوانٍ)...")
+      // انتظار بسيط لتحديث خوادم جوجل لصلاحياتك الجديدة
+      addLog("جاري انتظار تحديث الصلاحيات في النظام (3 ثوانٍ)...")
       await new Promise(r => setTimeout(r, 3000))
 
-      // 3. إضافة البيانات باستخدام Batch
+      // 3. إضافة بقية البيانات باستخدام Batch
       addLog("خطوة 2: إضافة الفئات والمناقصات...")
       const batch = writeBatch(firestore)
 
@@ -99,10 +99,10 @@ export default function SeedPage() {
       await batch.commit()
       addLog("✅ تمت إضافة كافة البيانات بنجاح!")
       
-      toast({ title: "نجاح باهر", description: "تم تأسيس النظام بالكامل." })
+      toast({ title: "نجاح باهر", description: "تم تأسيس النظام بالكامل وهو جاهز للعمل." })
     } catch (error: any) {
       addLog(`❌ خطأ في التنفيذ: ${error.message}`)
-      toast({ title: "فشل", description: error.message, variant: "destructive" })
+      toast({ title: "فشل في التأسيس", description: error.message, variant: "destructive" })
     } finally {
       setIsSeeding(false)
     }
