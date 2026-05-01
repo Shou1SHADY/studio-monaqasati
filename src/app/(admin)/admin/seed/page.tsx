@@ -6,8 +6,8 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirestore, useUser } from "@/firebase"
-import { doc, writeBatch, setDoc } from "firebase/firestore"
-import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react"
+import { doc, writeBatch, setDoc, getDoc } from "firebase/firestore"
+import { Loader2, Database, AlertTriangle, CheckCircle, RefreshCcw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
@@ -20,58 +20,61 @@ const SAMPLE_CATEGORIES = [
 
 export default function SeedPage() {
   const [isSeeding, setIsSeeding] = useState(false)
+  const [status, setStatus] = useState<"idle" | "promoting" | "seeding" | "success" | "error">("idle")
   const { firestore } = useFirestore()
-  const { user, isUserLoading, userError } = useUser()
+  const { user, isUserLoading } = useUser()
   const { toast } = useToast()
-
-  // تتبع حالة الاتصال في وحدة التحكم للمساعدة في التصحيح
-  useEffect(() => {
-    if (!isUserLoading) {
-      console.log("Firebase Auth State:", { user: user?.uid, error: userError });
-    }
-  }, [user, isUserLoading, userError]);
 
   const handleSeed = async () => {
     if (!firestore || !user) {
       toast({
         title: "خطأ في الاتصال",
-        description: "لا يوجد مستخدم نشط. يرجى التأكد من تفعيل Anonymous Auth في Firebase Console.",
+        description: "لا يوجد مستخدم نشط. يرجى التأكد من تفعيل Anonymous Auth.",
         variant: "destructive"
       })
       return
     }
 
     setIsSeeding(true)
+    setStatus("promoting")
+    
     try {
-      console.log("Starting seed process for user:", user.uid);
-
-      // 1. الترقية إلى Admin أولاً (عملية منفصلة لضمان تحديث القواعد)
+      console.log("Step 1: Promoting user to Admin...");
       const userRef = doc(firestore, "users", user.uid)
+      
+      // نستخدم setDoc مع merge لضمان إنشاء الملف الشخصي برتبة Admin
       await setDoc(userRef, {
         id: user.uid,
         role: "Admin",
         name: "مدير النظام التجريبي",
-        email: user.email || `guest_${user.uid.slice(0, 5)}@munaqasati.sa`,
+        email: user.email || `admin_${user.uid.slice(0, 5)}@munaqasati.sa`,
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString(),
         isVerified: true
       }, { merge: true })
 
-      console.log("User promoted to Admin successfully.");
-
-      // 2. إنشاء البيانات الأخرى في دفعة واحدة (Batch)
+      // ننتظر قليلاً لضمان تحديث القواعد في طرف Firebase
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      console.log("Step 2: Seeding Categories and RFQs...");
+      setStatus("seeding")
+      
       const batch = writeBatch(firestore)
 
+      // إضافة الفئات
       SAMPLE_CATEGORIES.forEach((cat) => {
         const catRef = doc(firestore, "categories", cat.id)
         batch.set(catRef, cat)
       })
 
+      // إضافة مناقصات تجريبية مرتبطة بالفئات أعلاه
       const mockRfqs = [
-        { id: "rfq-seed-1", title: "توريد حديد سابك - مشروع النرجس", cat: "حديد ومعادن", qty: 100, unit: "طن" },
-        { id: "rfq-seed-2", title: "خرسانة جاهزة K350", cat: "أسمنت وخرسانة", qty: 50, unit: "م3" },
-        { id: "rfq-seed-3", title: "أنابيب سباكة PPR", cat: "أدوات صحية", qty: 200, unit: "متر" }
+        { id: "rfq-seed-1", title: "توريد حديد سابك - مشروع النرجس", catId: "cat-1", qty: 100, unit: "طن" },
+        { id: "rfq-seed-2", title: "خرسانة جاهزة K350", catId: "cat-2", qty: 50, unit: "م3" },
+        { id: "rfq-seed-3", title: "أنابيب سباكة PPR", catId: "cat-4", qty: 200, unit: "متر" },
+        { id: "rfq-seed-4", title: "دهانات داخلية - فندق الرياض", catId: "cat-3", qty: 500, unit: "جالون" },
+        { id: "rfq-seed-5", title: "كابلات كهربائية 10 ملم", catId: "cat-5", qty: 1000, unit: "متر" }
       ]
 
       mockRfqs.forEach((rfq) => {
@@ -80,10 +83,10 @@ export default function SeedPage() {
           id: rfq.id,
           contractorId: user.uid,
           title: rfq.title,
-          categoryId: rfq.cat,
+          categoryId: rfq.catId, // الآن نستخدم الـ ID الصحيح للفئة
           quantity: rfq.qty,
           unitOfMeasure: rfq.unit,
-          deadline: new Date(Date.now() + 604800000).toISOString(),
+          deadline: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
           location: "الرياض",
           area: "حي الملقا",
           paymentTerms: "كاش",
@@ -94,14 +97,15 @@ export default function SeedPage() {
       })
 
       await batch.commit()
-      console.log("Categories and RFQs seeded successfully.");
-
+      
+      setStatus("success")
       toast({
         title: "تمت التهيئة بنجاح!",
-        description: "أنت الآن Admin وتم إنشاء البيانات التجريبية.",
+        description: "أنت الآن Admin والبيانات التجريبية جاهزة للاستخدام.",
       })
     } catch (error: any) {
       console.error("Critical Seed Error:", error)
+      setStatus("error")
       toast({
         title: "فشل في إنشاء البيانات",
         description: error.message || "تأكد من إعدادات الـ Firestore وقواعد الأمان.",
@@ -115,61 +119,68 @@ export default function SeedPage() {
   return (
     <PortalLayout>
       <div className="max-w-2xl mx-auto py-12 text-right">
-        <Card className="border-2 border-primary/10 shadow-xl">
-          <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 text-primary">
-              <Database size={32} />
+        <Card className="border-2 border-primary/10 shadow-xl overflow-hidden">
+          <div className="h-2 bg-slate-100 w-full">
+            <div 
+              className="h-full bg-primary transition-all duration-500" 
+              style={{ width: status === 'idle' ? '0%' : status === 'promoting' ? '40%' : status === 'seeding' ? '80%' : '100%' }}
+            />
+          </div>
+          <CardHeader className="text-center pt-10">
+            <div className={`mx-auto w-20 h-20 rounded-2xl flex items-center justify-center mb-6 transition-colors ${
+              status === 'success' ? 'bg-success/10 text-success' : 
+              status === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+            }`}>
+              {status === 'success' ? <CheckCircle size={40} /> : 
+               status === 'error' ? <AlertTriangle size={40} /> : <Database size={40} />}
             </div>
-            <CardTitle className="text-2xl font-bold">تهيئة قاعدة البيانات</CardTitle>
-            <CardDescription>
-              هذه الأداة ستقوم بتفعيل حسابك كمسؤول وإنشاء بيانات تجريبية فوراً.
+            <CardTitle className="text-3xl font-bold">تهيئة الميدان</CardTitle>
+            <CardDescription className="text-base mt-2">
+              هذا الإجراء سيقوم بتفعيل صلاحياتك الإدارية وتوليد بيانات حقيقية لتجربة المنصة.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {isUserLoading ? (
-              <div className="flex items-center justify-center p-8 gap-3 text-muted-foreground bg-slate-50 rounded-lg">
-                <Loader2 className="animate-spin" />
-                <span>جاري الاتصال بـ Firebase...</span>
-              </div>
-            ) : user ? (
-              <div className="p-4 bg-success/5 border border-success/20 rounded-lg flex items-center gap-3">
-                <CheckCircle className="text-success" size={20} />
+          
+          <CardContent className="space-y-6 px-10">
+            <div className="space-y-4">
+              <div className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${user ? 'bg-success/5 border-success/20' : 'bg-slate-50 border-slate-200'}`}>
+                {isUserLoading ? <Loader2 className="animate-spin text-slate-400" size={20} /> : 
+                 user ? <CheckCircle className="text-success" size={20} /> : <AlertTriangle className="text-amber-500" size={20} />}
                 <div className="flex-1">
-                  <p className="text-sm text-success font-bold">متصل بنجاح</p>
-                  <p className="text-[10px] text-success/70 font-mono">UID: {user.uid}</p>
+                  <p className="text-sm font-bold">{user ? "تم اكتشاف جلسة المستخدم" : "بانتظار تسجيل الدخول..."}</p>
+                  <p className="text-[10px] text-muted-foreground font-mono">{user?.uid || "Anonymous Authentication required"}</p>
                 </div>
               </div>
-            ) : (
-              <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg space-y-2">
-                <div className="flex items-center gap-3 text-destructive">
-                  <AlertTriangle size={20} />
-                  <p className="text-sm font-bold">خطأ في الجلسة</p>
+
+              {status !== 'idle' && (
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <span>حالة العملية:</span>
+                    <span className="text-primary">
+                      {status === 'promoting' && "جاري منح صلاحيات Admin..."}
+                      {status === 'seeding' && "جاري إنشاء الفئات والمناقصات..."}
+                      {status === 'success' && "اكتملت العملية بنجاح!"}
+                      {status === 'error' && "حدث خطأ أثناء التنفيذ"}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-xs text-muted-foreground pr-8">
-                  لم يتم اكتشاف مستخدم. يرجى تفعيل <strong>Anonymous Authentication</strong> في لوحة تحكم Firebase ثم تحديث الصفحة.
-                </p>
-              </div>
-            )}
+              )}
+            </div>
           </CardContent>
-          <CardContent className="flex justify-center pb-8">
+
+          <CardContent className="flex flex-col items-center pb-12 gap-4">
             <Button 
               size="lg" 
               onClick={handleSeed} 
               disabled={isSeeding || isUserLoading || !user}
-              className="px-12 py-6 text-lg font-bold gap-2 shadow-lg"
+              className="px-16 py-8 text-xl font-bold gap-3 shadow-xl hover:scale-105 transition-transform"
             >
-              {isSeeding ? (
-                <>
-                  <Loader2 className="animate-spin" size={20} />
-                  جاري التهيئة...
-                </>
-              ) : (
-                <>
-                  <Database size={20} />
-                  ابدأ التهيئة الآن
-                </>
-              )}
+              {isSeeding ? <Loader2 className="animate-spin" size={24} /> : <RefreshCcw size={24} />}
+              {status === 'success' ? "إعادة التهيئة" : "ابدأ التشغيل الآن"}
             </Button>
+            
+            {status === 'error' && (
+              <p className="text-xs text-destructive font-medium">تأكد من تفعيل "Anonymous Auth" و "Firestore Test Mode" في Console.</p>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -6,8 +7,7 @@ service cloud.firestore {
      * @philosophy
      * This ruleset enforces a strict user-ownership model combined with role-based access control 
      * (Contractor, Supplier, Admin). It prioritizes Authorization Independence by relying on 
-     * denormalized fields (like 'contractorId' on Offers) to perform security checks without 
-     * expensive document lookups.
+     * denormalized fields to perform security checks without expensive document lookups.
      */
 
     // --- Helper Functions ---
@@ -24,15 +24,17 @@ service cloud.firestore {
       return isSignedIn() && resource != null && resource.data[ownerIdField] == request.auth.uid;
     }
 
-    // Fetches the role of the currently authenticated user safely
+    // التحقق من وجود مستند المستخدم لتجنب أخطاء get() قبل التأسيس
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
     function getUserData() {
-      let path = /databases/$(database)/documents/users/$(request.auth.uid);
-      return exists(path) ? get(path).data : null;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function hasRole(role) {
-      let data = getUserData();
-      return isSignedIn() && data != null && data.role == role;
+      return isSignedIn() && userExists() && getUserData().role == role;
     }
 
     function isAdmin() {
@@ -44,8 +46,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
       allow list: if isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      
+      // السماح بإنشاء الملف الشخصي الأول للمالك (مهم جداً للتهيئة)
       allow create: if isOwner(userId);
-      allow update: if (isOwner(userId) || isAdmin());
+      
+      // السماح بالتحديث للمالك أو المشرف
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
@@ -58,7 +64,6 @@ service cloud.firestore {
 
     match /categories/{categoryId} {
       allow get, list: if isSignedIn();
-      // Allow creation if the user is an admin
       allow create, update, delete: if isAdmin();
     }
 
