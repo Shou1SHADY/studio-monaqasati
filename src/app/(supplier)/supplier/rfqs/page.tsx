@@ -24,7 +24,7 @@ export default function AvailableRfqsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
-  // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
+  // تطبيق نمط الحماية (Guard Pattern): الانتظار حتى يكتمل التحميل ويوجد مستخدم
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     
@@ -41,7 +41,7 @@ export default function AvailableRfqsPage() {
   const handleApply = (id: string) => {
     toast({
       title: "تقديم عرض سعر",
-      description: `سيتم نقلق لصفحة تقديم العرض للمناقصة ${id}`,
+      description: `سيتم نقلك لصفحة تقديم العرض للمناقصة ${id}`,
     })
   }
 
@@ -77,8 +77,8 @@ export default function AvailableRfqsPage() {
               <p>جاري تحميل المناقصات المتاحة...</p>
             </div>
           ) : !rfqs || rfqs.length === 0 ? (
-            <div className="p-20 text-center text-muted-foreground">
-              لا توجد مناقصات متاحة حالياً.
+            <div className="p-20 text-center text-muted-foreground bg-white rounded-lg shadow-sm border border-dashed">
+              لا توجد مناقصات متاحة حالياً. تأكد من تهيئة البيانات من صفحة الإدارة.
             </div>
           ) : (
             rfqs.map((rfq) => (
