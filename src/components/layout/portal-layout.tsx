@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search } from "lucide-react"
+import { Bell, User, Search, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { 
@@ -16,8 +16,20 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
+import { useUser, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { doc } from "firebase/firestore"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
+  const { user, isUserLoading } = useUser()
+  const { firestore } = useFirestore()
+  
+  const userDocRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user?.uid])
+  
+  const { data: profile } = useDoc(userDocRef)
+
   return (
     <SidebarProvider>
       <RoleSidebar />
@@ -43,24 +55,28 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             
             <div className="h-8 w-px bg-slate-200 mx-1" />
             
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-slate-100">
-                  <div className="flex flex-col items-end mr-2 hidden sm:flex">
-                    <span className="text-sm font-bold text-slate-700">أحمد محمد</span>
-                    <span className="text-xs text-muted-foreground">شركة المقاولات الحديثة</span>
-                  </div>
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <User size={18} />
-                  </div>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem>الملف الشخصي</DropdownMenuItem>
-                <DropdownMenuItem>الإعدادات</DropdownMenuItem>
-                <DropdownMenuItem className="text-destructive">تسجيل الخروج</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {isUserLoading ? (
+              <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-slate-100">
+                    <div className="flex flex-col items-end mr-2 hidden sm:flex">
+                      <span className="text-sm font-bold text-slate-700">{profile?.name || "مستخدم جديد"}</span>
+                      <span className="text-xs text-muted-foreground">{profile?.role || "جاري التحميل..."}</span>
+                    </div>
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                      <User size={18} />
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem>الملف الشخصي</DropdownMenuItem>
+                  <DropdownMenuItem>الإعدادات</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive">تسجيل الخروج</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </header>
         

@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from "react"
@@ -6,8 +5,8 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirestore, useUser } from "@/firebase"
-import { doc, setDoc, collection, writeBatch } from "firebase/firestore"
-import { Loader2, Database, CheckCircle2, AlertTriangle } from "lucide-react"
+import { doc, writeBatch } from "firebase/firestore"
+import { Loader2, Database, CheckCircle2, AlertTriangle, UserCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
@@ -21,14 +20,14 @@ const SAMPLE_CATEGORIES = [
 export default function SeedPage() {
   const [isSeeding, setIsSeeding] = useState(false)
   const { firestore } = useFirestore()
-  const { user } = useUser()
+  const { user, isUserLoading } = useUser()
   const { toast } = useToast()
 
   const handleSeed = async () => {
     if (!firestore || !user) {
       toast({
         title: "خطأ",
-        description: "يجب تسجيل الدخول أولاً للتمكن من تهيئة البيانات.",
+        description: "جاري التحقق من هويتك، يرجى الانتظار ثانية ثم المحاولة مرة أخرى.",
         variant: "destructive"
       })
       return
@@ -38,12 +37,12 @@ export default function SeedPage() {
     try {
       const batch = writeBatch(firestore)
 
-      // 1. First, make current user an Admin so they can manage categories
+      // 1. First, make current user an Admin
       const userRef = doc(firestore, "users", user.uid)
       batch.set(userRef, {
         id: user.uid,
         role: "Admin",
-        name: "مدير النظام (أنت)",
+        name: "مدير النظام التجريبي",
         email: user.email || "admin@munaqasati.sa",
         phoneNumber: "0500000000",
         city: "الرياض",
@@ -57,16 +56,16 @@ export default function SeedPage() {
       })
 
       // 3. Seed some mock RFQs
-      const rfqIds = ["rfq-mock-1", "rfq-mock-2"]
+      const rfqIds = ["rfq-mock-1", "rfq-mock-2", "rfq-mock-3"]
       rfqIds.forEach((id, index) => {
         const rfqRef = doc(firestore, "rfqs", id)
         batch.set(rfqRef, {
           id: id,
           contractorId: user.uid,
-          title: index === 0 ? "توريد حديد سابك - مشروع النرجس" : "خرسانة جاهزة K350",
-          categoryId: index === 0 ? "حديد ومعادن" : "أسمنت وخرسانة",
-          quantity: index === 0 ? 50 : 200,
-          unitOfMeasure: index === 0 ? "طن" : "م3",
+          title: index === 0 ? "توريد حديد سابك - مشروع النرجس" : index === 1 ? "خرسانة جاهزة K350" : "أنابيب سباكة PPR",
+          categoryId: index === 0 ? "حديد ومعادن" : index === 1 ? "أسمنت وخرسانة" : "أدوات صحية",
+          quantity: (index + 1) * 50,
+          unitOfMeasure: index === 0 ? "طن" : index === 1 ? "م3" : "متر",
           deadline: new Date(Date.now() + 86400000 * 7).toISOString(),
           location: "الرياض",
           area: "حي الملقا",
@@ -80,8 +79,8 @@ export default function SeedPage() {
       await batch.commit()
 
       toast({
-        title: "تمت التهيئة!",
-        description: "تم تحديث صلاحياتك كمسؤول وإنشاء الفئات والمناقصات التجريبية بنجاح.",
+        title: "تمت التهيئة بنجاح!",
+        description: "تم تحديث صلاحياتك كمسؤول وإنشاء البيانات التجريبية.",
       })
     } catch (error: any) {
       console.error(error)
@@ -105,34 +104,41 @@ export default function SeedPage() {
             </div>
             <CardTitle className="text-2xl font-bold">تهيئة قاعدة البيانات</CardTitle>
             <CardDescription>
-              استخدم هذه الأداة لإنشاء البيانات الأساسية (الفئات، المناقصات التجريبية) وتعيين حسابك كمسؤول للنظام.
+              استخدم هذه الأداة لإنشاء البيانات الأساسية وتعيين حسابك كمسؤول للنظام.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            {isUserLoading ? (
+              <div className="flex items-center justify-center p-8 gap-3 text-muted-foreground">
+                <Loader2 className="animate-spin" />
+                <span>جاري التحقق من الاتصال بـ Firebase...</span>
+              </div>
+            ) : user ? (
+              <div className="p-4 bg-success/5 border border-success/20 rounded-lg flex items-center gap-3">
+                <UserCircle className="text-success" size={20} />
+                <p className="text-sm text-success">
+                  أنت متصل الآن بمعرف: <span className="font-mono text-xs">{user.uid}</span>
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg flex items-center gap-3">
+                <AlertTriangle className="text-destructive" size={20} />
+                <p className="text-sm text-destructive">لم يتم العثور على جلسة دخول. يرجى تحديث الصفحة.</p>
+              </div>
+            )}
+
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
               <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20} />
               <p className="text-sm text-amber-700">
-                سيؤدي هذا الإجراء إلى تحديث صلاحيات حسابك الحالي لتصبح "Admin" في قاعدة البيانات، مما يسمح لك بإدارة كافة أقسام المنصة.
+                سيتم تعيين حسابك كـ "Admin" لتمكن من الوصول لجميع الأقسام، وسيتم إنشاء 5 فئات و3 مناقصات تجريبية.
               </p>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-bold flex items-center gap-2">
-                <CheckCircle2 size={18} className="text-success" />
-                ما سيتم إنشاؤه:
-              </h4>
-              <ul className="list-disc list-inside text-sm text-muted-foreground pr-4 space-y-1">
-                <li>ملف مستخدم (مسؤول) لحسابك الحالي.</li>
-                <li>5 فئات رئيسية للمناقصات.</li>
-                <li>مناقصات تجريبية لعرضها في لوحة التحكم.</li>
-              </ul>
             </div>
           </CardContent>
           <CardContent className="flex justify-center pb-8">
             <Button 
               size="lg" 
               onClick={handleSeed} 
-              disabled={isSeeding}
+              disabled={isSeeding || isUserLoading || !user}
               className="px-12 py-6 text-lg font-bold gap-2 shadow-lg"
             >
               {isSeeding ? (
