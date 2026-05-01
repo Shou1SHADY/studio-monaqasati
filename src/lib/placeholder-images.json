@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "supplier-1",
+      "description": "Supplier Logo 1",
+      "imageUrl": "https://picsum.photos/seed/sup1/200/200",
+      "imageHint": "company logo"
+    },
+    {
+      "id": "supplier-2",
+      "description": "Supplier Logo 2",
+      "imageUrl": "https://picsum.photos/seed/sup2/200/200",
+      "imageHint": "business office"
+    },
+    {
+      "id": "hero-construction",
+      "description": "Construction Site Hero",
+      "imageUrl": "https://picsum.photos/seed/const/1200/600",
+      "imageHint": "construction site"
+    }
+  ]
 }
