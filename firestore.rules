@@ -24,7 +24,7 @@ service cloud.firestore {
       return isSignedIn() && resource != null && resource.data[ownerIdField] == request.auth.uid;
     }
 
-    // التحقق من وجود مستند المستخدم لتجنب أخطاء get() قبل التأسيس
+    // التحقق من وجود مستند المستخدم بأمان
     function userExists() {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
@@ -44,8 +44,8 @@ service cloud.firestore {
     // --- Collection Rules ---
 
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
-      allow list: if isAdmin() || (hasRole('Contractor') && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow get: if isOwner(userId) || isAdmin() || (userExists() && getUserData().role == 'Contractor' && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow list: if isAdmin() || (userExists() && getUserData().role == 'Contractor' && resource.data.role == 'Supplier' && resource.data.isVerified == true);
       
       // السماح بإنشاء الملف الشخصي الأول للمالك (مهم جداً للتهيئة)
       allow create: if isOwner(userId);
@@ -69,14 +69,20 @@ service cloud.firestore {
 
     match /rfqs/{rfqId} {
       // السماح بالقراءة لجميع المسجلين إذا كانت المناقصة جديدة، أو للمالك والمشرف
-      allow get, list: if isSignedIn() && (isAdmin() || isExistingOwner('contractorId') || resource.data.status == 'New');
-      allow create: if hasRole('Contractor') || isAdmin();
+      // ملاحظة: تم فصل isAdmin() لتجنب فشل القاعدة إذا لم يكن للمستخدم ملف شخصي بعد
+      allow get, list: if isSignedIn() && (
+        (resource != null && resource.data.status == 'New') || 
+        (isExistingOwner('contractorId')) || 
+        isAdmin()
+      );
+      
+      allow create: if (isAdmin() || hasRole('Contractor'));
       allow update, delete: if isExistingOwner('contractorId') || isAdmin();
     }
 
     match /offers/{offerId} {
       allow get, list: if isAdmin() || isExistingOwner('supplierId') || (resource != null && resource.data.contractorId == request.auth.uid);
-      allow create: if hasRole('Supplier');
+      allow create: if isAdmin() || hasRole('Supplier');
       allow update, delete: if isExistingOwner('supplierId') || isAdmin();
     }
 
