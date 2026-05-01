@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from "react"
@@ -25,8 +24,8 @@ export default function AvailableRfqsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
+  // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
-    // الإصلاح: منع الاستعلام حتى اكتمال تحميل حالة المستخدم
     if (isUserLoading || !user || !firestore) return null
     
     return query(
@@ -42,7 +41,7 @@ export default function AvailableRfqsPage() {
   const handleApply = (id: string) => {
     toast({
       title: "تقديم عرض سعر",
-      description: `سيتم نقلك لصفحة تقديم العرض للمناقصة ${id}`,
+      description: `سيتم نقلق لصفحة تقديم العرض للمناقصة ${id}`,
     })
   }
 
@@ -106,7 +105,7 @@ export default function AvailableRfqsPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <Calendar size={16} className="text-muted-foreground" />
-                          الموعد النهائي: {rfq.deadline}
+                          الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}
                         </div>
                       </div>
                     </div>

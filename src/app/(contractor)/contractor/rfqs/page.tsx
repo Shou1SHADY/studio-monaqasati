@@ -1,4 +1,3 @@
-
 "use client"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -15,8 +14,8 @@ export default function ContractorRfqsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
+  // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
-    // الإصلاح: منع الاستعلام حتى اكتمال تحميل حالة المستخدم
     if (isUserLoading || !user || !firestore) return null
     
     return query(

@@ -1,4 +1,3 @@
-
 "use client"
 
 import * as React from "react"
@@ -24,8 +23,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
   
+  // الإصلاح: انتظار Auth قبل محاولة جلب مستند المستخدم
   const userDocRef = useMemoFirebase(() => {
-    // الإصلاح: منع جلب ملف المستخدم حتى اكتمال حالة Auth
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
@@ -57,15 +56,15 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             
             <div className="h-8 w-px bg-slate-200 mx-1" />
             
-            {isUserLoading || isDocLoading ? (
+            {isUserLoading ? (
               <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-slate-100">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
-                      <span className="text-sm font-bold text-slate-700">{profile?.name || "مستخدم جديد"}</span>
-                      <span className="text-xs text-muted-foreground">{profile?.role || "جاري التحميل..."}</span>
+                      <span className="text-sm font-bold text-slate-700">{profile?.name || (user ? "مستخدم جديد" : "ضيف")}</span>
+                      <span className="text-xs text-muted-foreground">{profile?.role || "بانتظار التهيئة..."}</span>
                     </div>
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                       <User size={18} />
