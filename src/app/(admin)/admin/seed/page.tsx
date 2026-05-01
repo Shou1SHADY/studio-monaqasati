@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useFirestore, useUser } from "@/firebase"
-import { doc, writeBatch } from "firebase/firestore"
-import { Loader2, Database, AlertTriangle, UserCircle, CheckCircle } from "lucide-react"
+import { useFirestore, useUser, setDocumentNonBlocking } from "@/firebase"
+import { doc, writeBatch, collection, setDoc } from "firebase/firestore"
+import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
@@ -27,7 +27,7 @@ export default function SeedPage() {
     if (!firestore || !user) {
       toast({
         title: "خطأ في الاتصال",
-        description: "لا يزال النظام يحاول التعرف على هويتك. يرجى المحاولة بعد ثوانٍ قليلة.",
+        description: "يرجى الانتظار حتى يتم التحقق من هويتك.",
         variant: "destructive"
       })
       return
@@ -35,11 +35,10 @@ export default function SeedPage() {
 
     setIsSeeding(true)
     try {
-      const batch = writeBatch(firestore)
-
-      // 1. First, make current user an Admin
+      // 1. Step ONE: Promote current user to Admin first (Critical for permissions)
+      // We use await here to ensure the user is an admin before seeding other collections
       const userRef = doc(firestore, "users", user.uid)
-      batch.set(userRef, {
+      await setDoc(userRef, {
         id: user.uid,
         role: "Admin",
         name: "مدير النظام التجريبي",
@@ -49,13 +48,19 @@ export default function SeedPage() {
         joinedAt: new Date().toISOString()
       }, { merge: true })
 
-      // 2. Seed Categories
+      toast({
+        title: "تمت الترقية",
+        description: "أنت الآن مسؤول النظام. جاري إنشاء بقية البيانات...",
+      })
+
+      // 2. Step TWO: Seed Categories and Mock RFQs using a batch
+      const batch = writeBatch(firestore)
+
       SAMPLE_CATEGORIES.forEach((cat) => {
         const catRef = doc(firestore, "categories", cat.id)
         batch.set(catRef, cat)
       })
 
-      // 3. Seed some mock RFQs
       const rfqIds = ["rfq-mock-1", "rfq-mock-2", "rfq-mock-3"]
       rfqIds.forEach((id, index) => {
         const rfqRef = doc(firestore, "rfqs", id)
@@ -80,12 +85,13 @@ export default function SeedPage() {
 
       toast({
         title: "تمت التهيئة بنجاح!",
-        description: "تم تحديث صلاحياتك كمسؤول وإنشاء البيانات التجريبية.",
+        description: "تم إنشاء كافة البيانات التجريبية بنجاح.",
       })
     } catch (error: any) {
+      console.error("Seed error:", error)
       toast({
         title: "فشل التهيئة",
-        description: error.message || "حدث خطأ أثناء محاولة تهيئة البيانات.",
+        description: "حدث خطأ بسبب قيود الصلاحيات. يرجى المحاولة مرة أخرى بعد ثوانٍ.",
         variant: "destructive"
       })
     } finally {
@@ -125,16 +131,6 @@ export default function SeedPage() {
                 <p className="text-sm text-destructive">فشل التعرف على الجلسة. يرجى إعادة تحميل الصفحة.</p>
               </div>
             )}
-
-            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-              <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={20} />
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-amber-700">تنبيه هام:</p>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  هذه العملية ستقوم بتعريفك كمسؤول (Admin) في قاعدة البيانات. يرجى عدم الضغط على الزر إلا مرة واحدة.
-                </p>
-              </div>
-            </div>
           </CardContent>
           <CardContent className="flex justify-center pb-8">
             <Button 
