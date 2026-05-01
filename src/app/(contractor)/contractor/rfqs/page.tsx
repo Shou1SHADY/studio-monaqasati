@@ -13,18 +13,21 @@ import { collection, query, where, orderBy } from "firebase/firestore"
 
 export default function ContractorRfqsPage() {
   const firestore = useFirestore()
-  const { user } = useUser()
+  const { user, isUserLoading } = useUser()
 
   const rfqsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null
+    // الإصلاح: منع الاستعلام حتى اكتمال تحميل حالة المستخدم
+    if (isUserLoading || !user || !firestore) return null
+    
     return query(
       collection(firestore, "rfqs"),
       where("contractorId", "==", user.uid),
       orderBy("createdAt", "desc")
     )
-  }, [firestore, user?.uid])
+  }, [firestore, user, isUserLoading])
 
-  const { data: rfqs, isLoading } = useCollection(rfqsQuery)
+  const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
+  const isLoading = isUserLoading || isCollectionLoading
 
   const getStatusBadge = (status: string) => {
     switch (status) {

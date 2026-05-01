@@ -16,24 +16,28 @@ import {
   Loader2
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
 
 export default function AvailableRfqsPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const firestore = useFirestore()
+  const { user, isUserLoading } = useUser()
 
   const rfqsQuery = useMemoFirebase(() => {
-    if (!firestore) return null
+    // الإصلاح: منع الاستعلام حتى اكتمال تحميل حالة المستخدم
+    if (isUserLoading || !user || !firestore) return null
+    
     return query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
       orderBy("createdAt", "desc")
     )
-  }, [firestore])
+  }, [firestore, user, isUserLoading])
 
-  const { data: rfqs, isLoading } = useCollection(rfqsQuery)
+  const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
+  const isLoading = isUserLoading || isCollectionLoading
 
   const handleApply = (id: string) => {
     toast({

@@ -25,11 +25,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const firestore = useFirestore()
   
   const userDocRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null
+    // الإصلاح: منع جلب ملف المستخدم حتى اكتمال حالة Auth
+    if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
-  }, [firestore, user?.uid])
+  }, [firestore, user, isUserLoading])
   
-  const { data: profile } = useDoc(userDocRef)
+  const { data: profile, isLoading: isDocLoading } = useDoc(userDocRef)
 
   return (
     <SidebarProvider>
@@ -56,7 +57,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             
             <div className="h-8 w-px bg-slate-200 mx-1" />
             
-            {isUserLoading ? (
+            {isUserLoading || isDocLoading ? (
               <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
             ) : (
               <DropdownMenu>
