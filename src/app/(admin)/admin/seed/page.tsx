@@ -6,9 +6,9 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirestore, useUser, useAuth } from "@/firebase"
-import { doc, writeBatch, setDoc } from "firebase/firestore"
+import { doc, writeBatch, setDoc, getDoc } from "firebase/firestore"
 import { signInAnonymously } from "firebase/auth"
-import { Loader2, Database, AlertTriangle, CheckCircle, RefreshCcw } from "lucide-react"
+import { Loader2, Database, AlertTriangle, CheckCircle, RefreshCcw, ShieldCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const SAMPLE_CATEGORIES = [
@@ -21,63 +21,63 @@ const SAMPLE_CATEGORIES = [
 
 export default function SeedPage() {
   const [isSeeding, setIsSeeding] = useState(false)
-  const [status, setStatus] = useState<"idle" | "promoting" | "seeding" | "success" | "error">("idle")
+  const [status, setStatus] = useState<"idle" | "auth" | "promoting" | "seeding" | "success" | "error">("idle")
+  const [debugLog, setDebugLog] = useState<string[]>([])
   const { firestore } = useFirestore()
   const { auth } = useAuth()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
 
+  const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
+
   const handleSeed = async () => {
-    let currentUser = user;
+    setIsSeeding(true)
+    setDebugLog([])
+    addLog("بدء عملية التهيئة...")
 
-    // محاولة تسجيل الدخول إذا لم يكن المستخدم موجوداً
-    if (!currentUser && auth) {
-      try {
-        const cred = await signInAnonymously(auth);
-        currentUser = cred.user;
-      } catch (e: any) {
-        toast({
-          title: "فشل تسجيل الدخول",
-          description: "تأكد من تفعيل Anonymous Auth في Firebase Console.",
-          variant: "destructive"
-        });
-        return;
-      }
-    }
-
-    if (!firestore || !currentUser) {
-      toast({
-        title: "خطأ في الاتصال",
-        description: "لا يمكن الوصول إلى خدمات Firebase. تأكد من تفعيل Anonymous Auth.",
-        variant: "destructive"
-      })
+    if (!auth || !firestore) {
+      addLog("خطأ: خدمات Firebase غير متوفرة.")
+      setStatus("error")
+      setIsSeeding(false)
       return
     }
 
-    setIsSeeding(true)
-    setStatus("promoting")
-    
     try {
-      console.log("Step 1: Promoting user to Admin...");
+      // 1. التأكد من تسجيل الدخول
+      let currentUser = auth.currentUser;
+      if (!currentUser) {
+        setStatus("auth")
+        addLog("جاري تسجيل الدخول المجهول...")
+        const cred = await signInAnonymously(auth)
+        currentUser = cred.user
+        addLog(`تم تسجيل الدخول بنجاح: ${currentUser.uid}`)
+      }
+
+      // 2. ترقية المستخدم إلى Admin
+      setStatus("promoting")
+      addLog("جاري ترقية حسابك إلى Admin...")
       const userRef = doc(firestore, "users", currentUser.uid)
       
       await setDoc(userRef, {
         id: currentUser.uid,
         role: "Admin",
-        name: "مدير النظام التجريبي",
+        name: "مدير النظام",
         email: currentUser.email || `admin_${currentUser.uid.slice(0, 5)}@munaqasati.sa`,
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString(),
         isVerified: true
       }, { merge: true })
+      
+      addLog("تم تحديث الصلاحيات بنجاح.")
 
-      // انتظار تحديث القواعد
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log("Step 2: Seeding Categories and RFQs...");
+      // انتظار بسيط لضمان تحديث قواعد الأمان في خوادم جوجل
+      addLog("انتظار تحديث قواعد الأمان (3 ثوانٍ)...")
+      await new Promise(resolve => setTimeout(resolve, 3000))
+
+      // 3. إنشاء البيانات
       setStatus("seeding")
-      
+      addLog("جاري إنشاء الفئات والمناقصات...")
       const batch = writeBatch(firestore)
 
       SAMPLE_CATEGORIES.forEach((cat) => {
@@ -97,7 +97,7 @@ export default function SeedPage() {
         const rfqRef = doc(firestore, "rfqs", rfq.id)
         batch.set(rfqRef, {
           id: rfq.id,
-          contractorId: currentUser.uid,
+          contractorId: currentUser!.uid,
           title: rfq.title,
           categoryId: rfq.catId,
           quantity: rfq.qty,
@@ -113,6 +113,7 @@ export default function SeedPage() {
       })
 
       await batch.commit()
+      addLog("تم إنشاء كافة البيانات بنجاح.")
       
       setStatus("success")
       toast({
@@ -120,7 +121,8 @@ export default function SeedPage() {
         description: "أنت الآن Admin والبيانات التجريبية جاهزة للاستخدام.",
       })
     } catch (error: any) {
-      console.error("Critical Seed Error:", error)
+      addLog(`خطأ فادح: ${error.message}`)
+      console.error(error)
       setStatus("error")
       toast({
         title: "فشل في إنشاء البيانات",
@@ -134,72 +136,75 @@ export default function SeedPage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-2xl mx-auto py-12 text-right">
-        <Card className="border-2 border-primary/10 shadow-xl overflow-hidden">
+      <div className="max-w-3xl mx-auto py-12 text-right">
+        <Card className="border-none shadow-2xl overflow-hidden bg-white">
           <div className="h-2 bg-slate-100 w-full">
             <div 
-              className="h-full bg-primary transition-all duration-500" 
-              style={{ width: status === 'idle' ? '0%' : status === 'promoting' ? '40%' : status === 'seeding' ? '80%' : '100%' }}
+              className="h-full bg-primary transition-all duration-700 ease-in-out" 
+              style={{ width: 
+                status === 'idle' ? '5%' : 
+                status === 'auth' ? '20%' : 
+                status === 'promoting' ? '50%' : 
+                status === 'seeding' ? '80%' : '100%' 
+              }}
             />
           </div>
+          
           <CardHeader className="text-center pt-10">
-            <div className={`mx-auto w-20 h-20 rounded-2xl flex items-center justify-center mb-6 transition-colors ${
-              status === 'success' ? 'bg-success/10 text-success' : 
-              status === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'
+            <div className={`mx-auto w-24 h-24 rounded-3xl flex items-center justify-center mb-6 transition-all transform ${
+              status === 'success' ? 'bg-success/10 text-success scale-110' : 
+              status === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary animate-pulse'
             }`}>
-              {status === 'success' ? <CheckCircle size={40} /> : 
-               status === 'error' ? <AlertTriangle size={40} /> : <Database size={40} />}
+              {status === 'success' ? <CheckCircle size={48} /> : 
+               status === 'error' ? <AlertTriangle size={48} /> : <Database size={48} />}
             </div>
-            <CardTitle className="text-3xl font-bold">تهيئة الميدان</CardTitle>
-            <CardDescription className="text-base mt-2">
-              هذا الإجراء سيقوم بتفعيل صلاحياتك الإدارية وتوليد بيانات حقيقية لتجربة المنصة.
+            <CardTitle className="text-3xl font-bold font-headline">مركز تهيئة النظام</CardTitle>
+            <CardDescription className="text-lg mt-2 px-12">
+              هذه الأداة ستقوم بإنشاء الهيكل الأساسي لمشروعك (Admin + الفئات + المناقصات) لتبدأ التجربة فوراً.
             </CardDescription>
           </CardHeader>
           
-          <CardContent className="space-y-6 px-10">
+          <CardContent className="px-10 py-6">
             <div className="space-y-4">
-              <div className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${user ? 'bg-success/5 border-success/20' : 'bg-slate-50 border-slate-200'}`}>
-                {isUserLoading ? <Loader2 className="animate-spin text-slate-400" size={20} /> : 
-                 user ? <CheckCircle className="text-success" size={20} /> : <AlertTriangle className="text-amber-500" size={20} />}
-                <div className="flex-1">
-                  <p className="text-sm font-bold">{user ? "أنت متصل الآن وجاهز للتهيئة" : "جاري التحقق من هويتك..."}</p>
-                  <p className="text-[10px] text-muted-foreground font-mono">{user?.uid || "Anonymous Authentication required"}</p>
-                </div>
+              <div className="bg-slate-900 rounded-xl p-4 font-mono text-xs text-slate-300 min-h-[150px] max-h-[250px] overflow-y-auto">
+                {debugLog.length === 0 && <p className="opacity-50 italic">بانتظار بدء العملية...</p>}
+                {debugLog.map((log, i) => (
+                  <div key={i} className="mb-1">
+                    <span className="text-success mr-2">➜</span>
+                    {log}
+                  </div>
+                ))}
+                {isSeeding && <Loader2 className="animate-spin mt-2 text-primary" size={16} />}
               </div>
 
-              {status !== 'idle' && (
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span>حالة العملية:</span>
-                    <span className="text-primary">
-                      {status === 'promoting' && "جاري منح صلاحيات Admin..."}
-                      {status === 'seeding' && "جاري إنشاء الفئات والمناقصات..."}
-                      {status === 'success' && "اكتملت العملية بنجاح!"}
-                      {status === 'error' && "حدث خطأ أثناء التنفيذ"}
-                    </span>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl border bg-slate-50 flex items-center gap-3">
+                  <div className={`h-3 w-3 rounded-full ${user ? 'bg-success' : 'bg-slate-300'}`} />
+                  <span className="text-sm font-medium">حالة الاتصال: {user ? 'متصل' : 'بانتظار الجلسة'}</span>
                 </div>
-              )}
+                <div className="p-4 rounded-xl border bg-slate-50 flex items-center gap-3">
+                  <ShieldCheck className={status === 'success' ? 'text-success' : 'text-slate-300'} size={20} />
+                  <span className="text-sm font-medium">صلاحيات الإدارة: {status === 'success' ? 'مفعلة' : 'قيد الطلب'}</span>
+                </div>
+              </div>
             </div>
           </CardContent>
 
-          <CardContent className="flex flex-col items-center pb-12 gap-4">
+          <CardContent className="flex flex-col items-center pb-12 gap-6">
             <Button 
               size="lg" 
               onClick={handleSeed} 
               disabled={isSeeding}
-              className="px-16 py-8 text-xl font-bold gap-3 shadow-xl hover:scale-105 transition-transform"
+              className="px-20 py-8 text-xl font-bold gap-3 shadow-2xl hover:scale-105 active:scale-95 transition-all w-full max-w-md bg-primary hover:bg-primary/90"
             >
               {isSeeding ? <Loader2 className="animate-spin" size={24} /> : <RefreshCcw size={24} />}
-              {status === 'success' ? "إعادة التهيئة" : "ابدأ التشغيل الآن"}
+              {status === 'success' ? "إعادة تشغيل التهيئة" : "ابدأ التأسيس الآن"}
             </Button>
             
-            {!user && !isUserLoading && (
-              <p className="text-xs text-destructive font-medium text-center">
-                تنبيه: لم يتم اكتشاف جلسة مستخدم. <br/>
-                تأكد من تفعيل Anonymous Auth في Firebase Console ثم قم بتحديث الصفحة.
-              </p>
-            )}
+            <p className="text-sm text-muted-foreground flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-500" />
+              تأكد من تفعيل Anonymous Auth في لوحة تحكم Firebase
+            </p>
           </CardContent>
         </Card>
       </div>
