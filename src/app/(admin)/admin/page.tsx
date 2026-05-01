@@ -1,12 +1,13 @@
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { 
   Users, 
   Package, 
   FileText, 
   Activity, 
-  UserCheck, 
   ShieldAlert,
   BarChart3,
   PieChart
@@ -137,8 +138,4 @@ export default function AdminDashboard() {
       </div>
     </PortalLayout>
   )
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ")
 }
