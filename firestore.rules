@@ -68,7 +68,8 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
-      allow get, list: if isAdmin() || isExistingOwner('contractorId') || (hasRole('Supplier') && resource.data.status == 'New');
+      // السماح بالقراءة لجميع المسجلين إذا كانت المناقصة جديدة، أو للمالك والمشرف
+      allow get, list: if isSignedIn() && (isAdmin() || isExistingOwner('contractorId') || resource.data.status == 'New');
       allow create: if hasRole('Contractor') || isAdmin();
       allow update, delete: if isExistingOwner('contractorId') || isAdmin();
     }
