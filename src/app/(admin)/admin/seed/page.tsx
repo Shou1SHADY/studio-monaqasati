@@ -1,12 +1,12 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useFirebase } from "@/firebase"
-import { doc, writeBatch, setDoc } from "firebase/firestore"
+import { doc, writeBatch, setDoc, collection, getDocs } from "firebase/firestore"
 import { signInAnonymously } from "firebase/auth"
 import { Loader2, Database, RefreshCcw, CheckCircle2, AlertCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -28,89 +28,78 @@ export default function SeedPage() {
   const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
 
   const handleSeed = async () => {
+    if (!auth || !firestore) {
+      addLog("خطأ: خدمات Firebase غير جاهزة بعد.")
+      return
+    }
+
     setIsSeeding(true)
     setDebugLog([])
-    addLog("بدء عملية التهيئة القوية...")
+    addLog("بدء عملية التأسيس...")
 
     try {
-      // 1. التأكد من تسجيل الدخول
+      // 1. تسجيل الدخول
       let currentUser = auth.currentUser;
       if (!currentUser) {
-        addLog("محاولة تسجيل دخول مجهول...")
+        addLog("جاري تسجيل الدخول...")
         const cred = await signInAnonymously(auth)
         currentUser = cred.user
-        addLog(`تم تسجيل الدخول بنجاح: ${currentUser.uid}`)
-      } else {
-        addLog(`المستخدم مسجل دخول بالفعل: ${currentUser.uid}`)
+        addLog(`تم تسجيل الدخول: ${currentUser.uid}`)
       }
 
-      // 2. ترقية المستخدم إلى Admin (بشكل منفصل لفتح الصلاحيات)
-      addLog("خطوة 1: ترقية الحساب إلى Admin...")
+      // 2. إنشاء مستند المستخدم فوراً
+      addLog("إنشاء ملف Admin...")
       const userRef = doc(firestore, "users", currentUser.uid)
       await setDoc(userRef, {
         id: currentUser.uid,
         role: "Admin",
-        name: "مدير النظام الأساسي",
-        email: currentUser.email || `admin-${currentUser.uid.slice(0,5)}@munaqasati.sa`,
+        name: "مدير النظام",
+        email: "admin@munaqasati.sa",
         phoneNumber: "0500000000",
         city: "الرياض",
         joinedAt: new Date().toISOString(),
         isVerified: true
-      }, { merge: true })
-      
-      addLog("تمت الترقية لـ Admin. انتظار تحديث قواعد Firestore (2 ثانية)...")
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      })
+      addLog("تم إنشاء ملف Admin بنجاح.")
 
-      // 3. إنشاء البيانات في دفعة واحدة (Batch)
-      addLog("خطوة 2: إنشاء الفئات والمناقصات...")
+      // 3. إنشاء البيانات الأساسية
+      addLog("جاري إضافة الفئات والمناقصات...")
       const batch = writeBatch(firestore)
 
       SAMPLE_CATEGORIES.forEach((cat) => {
-        const catRef = doc(firestore, "categories", cat.id)
-        batch.set(catRef, cat)
+        batch.set(doc(firestore, "categories", cat.id), cat)
       })
 
       const mockRfqs = [
-        { id: "rfq-seed-1", title: "توريد حديد سابك - مشروع النرجس", catId: "cat-1", qty: 100, unit: "طن" },
-        { id: "rfq-seed-2", title: "خرسانة جاهزة K350", catId: "cat-2", qty: 50, unit: "م3" },
-        { id: "rfq-seed-3", title: "أنابيب سباكة PPR", catId: "cat-4", qty: 200, unit: "متر" },
-        { id: "rfq-seed-4", title: "دهانات داخلية جوتن", catId: "cat-3", qty: 150, unit: "جالون" }
+        { id: "rfq-1", title: "توريد حديد سابك - مشروع النرجس", catId: "cat-1" },
+        { id: "rfq-2", title: "خرسانة جاهزة K350", catId: "cat-2" }
       ]
 
       mockRfqs.forEach((rfq) => {
-        const rfqRef = doc(firestore, "rfqs", rfq.id)
-        batch.set(rfqRef, {
+        batch.set(doc(firestore, "rfqs", rfq.id), {
           id: rfq.id,
           contractorId: currentUser!.uid,
           title: rfq.title,
           categoryId: rfq.catId,
-          quantity: rfq.qty,
-          unitOfMeasure: rfq.unit,
-          deadline: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
+          quantity: 100,
+          unitOfMeasure: "وحدة",
+          deadline: new Date(Date.now() + 864000000).toISOString(),
           location: "الرياض",
           area: "حي الملقا",
           paymentTerms: "كاش",
-          isQualityCertificateRequired: true,
+          isQualityCertificateRequired: false,
           status: "New",
           createdAt: new Date().toISOString()
         })
       })
 
       await batch.commit()
-      addLog("تم إنشاء جميع البيانات بنجاح!")
+      addLog("تمت عملية التأسيس بنجاح كامل!")
       
-      toast({ 
-        title: "تمت التهيئة بنجاح!", 
-        description: "أنت الآن Admin ويمكنك تصفح جميع الأقسام." 
-      })
+      toast({ title: "نجاح", description: "تمت تهيئة البيانات بنجاح." })
     } catch (error: any) {
-      addLog(`خطأ فادح: ${error.message}`)
-      console.error(error)
-      toast({ 
-        title: "فشلت العملية", 
-        description: error.message, 
-        variant: "destructive" 
-      })
+      addLog(`خطأ: ${error.message}`)
+      toast({ title: "فشل", description: error.message, variant: "destructive" })
     } finally {
       setIsSeeding(false)
     }
@@ -118,56 +107,22 @@ export default function SeedPage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-3xl mx-auto py-12 text-right">
-        <Card className="border-none shadow-xl overflow-hidden bg-white">
-          <CardHeader className="text-center bg-slate-50 border-b pb-8">
-            <Database size={56} className="mx-auto text-primary mb-4" />
-            <CardTitle className="text-2xl font-bold">تأسيس بيانات المنصة</CardTitle>
-            <CardDescription className="text-md">
-              هذه الأداة ستقوم بتفعيل حسابك كمسؤول وإضافة البيانات الأساسية لتشغيل التطبيق.
-            </CardDescription>
+      <div className="max-w-2xl mx-auto py-10 text-right">
+        <Card className="border-none shadow-lg">
+          <CardHeader className="text-center">
+            <Database size={48} className="mx-auto text-primary mb-2" />
+            <CardTitle>تهيئة بيانات المنصة</CardTitle>
+            <CardDescription>سيتم إنشاء حسابك كمسؤول وإضافة بيانات تجريبية.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6 pt-8">
-            <div className="bg-slate-900 rounded-xl p-5 font-mono text-sm text-blue-400 min-h-[200px] shadow-inner">
-              <div className="flex items-center gap-2 mb-3 text-slate-400 border-b border-slate-800 pb-2 text-xs">
-                <CheckCircle2 size={14} />
-                سجل العمليات (Debug Console)
-              </div>
-              {debugLog.map((log, i) => (
-                <div key={i} className="mb-1 animate-in fade-in slide-in-from-right-2 duration-300">
-                  <span className="text-slate-500 mr-2">➜</span> {log}
-                </div>
-              ))}
-              {debugLog.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-32 text-slate-600 gap-2">
-                  <AlertCircle size={32} className="opacity-20" />
-                  <p className="opacity-50 italic">اضغط على الزر أدناه لبدء التأسيس</p>
-                </div>
-              )}
+          <CardContent className="space-y-4">
+            <div className="bg-slate-900 text-blue-400 p-4 rounded-lg font-mono text-xs h-48 overflow-y-auto">
+              {debugLog.map((log, i) => <div key={i}>➜ {log}</div>)}
+              {debugLog.length === 0 && <div className="text-slate-500 italic">بانتظار البدء...</div>}
             </div>
-            
-            <Button 
-              size="lg" 
-              onClick={handleSeed} 
-              disabled={isSeeding}
-              className="w-full h-18 text-xl font-bold shadow-xl bg-primary hover:bg-primary/90 transition-all hover:scale-[1.01] active:scale-[0.99]"
-            >
-              {isSeeding ? (
-                <>
-                  <Loader2 className="animate-spin ml-3 h-6 w-6" />
-                  جاري معالجة البيانات...
-                </>
-              ) : (
-                <>
-                  <RefreshCcw className="ml-3 h-6 w-6" />
-                  ابدأ عملية التأسيس الآن
-                </>
-              )}
+            <Button onClick={handleSeed} disabled={isSeeding} className="w-full h-12 text-lg">
+              {isSeeding ? <Loader2 className="animate-spin ml-2" /> : <RefreshCcw className="ml-2" />}
+              تأسيس البيانات الآن
             </Button>
-            
-            <p className="text-center text-xs text-muted-foreground">
-              ملاحظة: تأكد من تفعيل "Anonymous Sign-in" في لوحة تحكم Firebase أولاً.
-            </p>
           </CardContent>
         </Card>
       </div>

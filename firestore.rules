@@ -8,17 +8,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // فحص آمن لوجود مستند المستخدم لمنع انهيار القواعد
-    function userExists() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
-    }
-
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
+    // فحص آمن لرتبة المسؤول - لا ينهار إذا كان المستند غير موجود
     function isAdmin() {
-      return userExists() && getUserData().role == 'Admin';
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
     }
 
     function isOwner(userId) {
@@ -28,11 +22,11 @@ service cloud.firestore {
     // --- قواعد المجموعات ---
 
     match /users/{userId} {
-      // السماح للمستخدم بإنشاء ملفه الشخصي لأول مرة
+      // السماح بإنشاء الملف الشخصي لأي مستخدم مسجل (مهم للتهيئة)
       allow create: if isOwner(userId);
       // القراءة للمالك أو المسؤول أو للمقاول لرؤية الموردين الموثقين
-      allow get: if isOwner(userId) || isAdmin() || (userExists() && getUserData().role == 'Contractor' && resource.data.role == 'Supplier' && resource.data.isVerified == true);
-      allow list: if isAdmin() || (userExists() && getUserData().role == 'Contractor' && resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow get: if isOwner(userId) || isAdmin() || (resource.data.role == 'Supplier' && resource.data.isVerified == true);
+      allow list: if isAdmin() || (resource.data.role == 'Supplier' && resource.data.isVerified == true);
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
 
@@ -47,13 +41,9 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
-      // السماح بالقراءة للمسؤول، أو صاحب المناقصة، أو أي مورد للمناقصات الجديدة
-      allow read: if isSignedIn() && (
-        isAdmin() || 
-        (resource != null && resource.data.contractorId == request.auth.uid) ||
-        (resource != null && resource.data.status == 'New') ||
-        (resource == null) // للسماح بالاستعلامات (Queries)
-      );
+      // السماح بالقراءة لجميع المسجلين (لأغراض العرض العام للمناقصات)
+      allow read: if isSignedIn();
+      // إنشاء المناقصة للمقاولين أو أثناء التهيئة
       allow create: if isSignedIn(); 
       allow update, delete: if isAdmin() || (resource != null && resource.data.contractorId == request.auth.uid);
     }
