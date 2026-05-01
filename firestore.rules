@@ -2,29 +2,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- دالات مساعدة ---
+    // --- دالات مساعدة أساسية ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // فحص بسيط للرتبة لتجنب مشاكل التقييم عند عدم وجود المستند
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // الدالة الأكثر أماناً للتحقق من الرتبة
     function hasRole(role) {
-      return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && getUserData().role == role;
     }
 
-    function isAdmin() {
-      return hasRole('Admin');
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
+    function isAdmin() { return hasRole('Admin'); }
+    function isSupplier() { return hasRole('Supplier'); }
+    function isContractor() { return hasRole('Contractor'); }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
 
     // --- قواعد المجموعات ---
 
     match /users/{userId} {
+      // السماح للمستخدم بإنشاء ملفه الشخصي (الخطوة الأولى في التأسيس)
       allow create: if isOwner(userId);
       allow get: if isOwner(userId) || isSignedIn();
       allow list: if isAdmin();
@@ -38,21 +40,23 @@ service cloud.firestore {
 
     match /categories/{categoryId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin() || isSignedIn(); // تسهيل التهيئة
+      allow write: if isAdmin();
     }
 
     match /rfqs/{rfqId} {
-      // السماح بالقراءة لجميع المسجلين لضمان عدم توقف الواجهة
       allow read: if isSignedIn();
-      // السماح بالإنشاء مؤقتاً لتسهيل التأسيس
-      allow create: if isSignedIn(); 
-      allow update, delete: if isAdmin() || (resource != null && resource.data.contractorId == request.auth.uid);
+      // المقاول والمسؤول فقط يمكنهم طرح مناقصة
+      allow create: if isContractor() || isAdmin();
+      allow update: if isAdmin() || (isContractor() && resource.data.contractorId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     match /offers/{offerId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if isAdmin() || (resource != null && resource.data.supplierId == request.auth.uid);
+      // المورد والمسؤول فقط يمكنهم تقديم عرض
+      allow create: if isSupplier() || isAdmin();
+      allow update: if isAdmin() || (isSupplier() && resource.data.supplierId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
     match /notification_queue/{queueEntryId} {
