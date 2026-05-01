@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -21,7 +22,7 @@ import { doc } from "firebase/firestore"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
-  const { firestore } = useFirestore()
+  const firestore = useFirestore()
   
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !user) return null

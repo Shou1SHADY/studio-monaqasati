@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,7 +22,7 @@ import { collection, query, where, orderBy } from "firebase/firestore"
 export default function AvailableRfqsPage() {
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
-  const { firestore } = useFirestore()
+  const firestore = useFirestore()
 
   const rfqsQuery = useMemoFirebase(() => {
     if (!firestore) return null

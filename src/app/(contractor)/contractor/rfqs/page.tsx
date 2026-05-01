@@ -6,13 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, PlusCircle, MoreHorizontal, Calendar, Users, Loader2 } from "lucide-react"
+import { FileText, PlusCircle, MoreHorizontal, Calendar, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
 
 export default function ContractorRfqsPage() {
-  const { firestore } = useFirestore()
+  const firestore = useFirestore()
   const { user } = useUser()
 
   const rfqsQuery = useMemoFirebase(() => {

@@ -30,7 +30,7 @@ import {
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, addDocumentNonBlocking } from "@/firebase"
-import { collection, serverTimestamp } from "firebase/firestore"
+import { collection } from "firebase/firestore"
 
 export default function NewRfqPage() {
   const [step, setStep] = useState(1)
@@ -38,7 +38,7 @@ export default function NewRfqPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
-  const { firestore } = useFirestore()
+  const firestore = useFirestore()
   const { user } = useUser()
   
   const [formData, setFormData] = useState({
