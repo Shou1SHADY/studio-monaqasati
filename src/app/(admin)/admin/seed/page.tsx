@@ -1,11 +1,12 @@
+
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useFirestore, useUser, setDocumentNonBlocking } from "@/firebase"
-import { doc, writeBatch, collection, setDoc } from "firebase/firestore"
+import { useFirestore, useUser } from "@/firebase"
+import { doc, writeBatch, setDoc } from "firebase/firestore"
 import { Loader2, Database, AlertTriangle, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -20,14 +21,21 @@ const SAMPLE_CATEGORIES = [
 export default function SeedPage() {
   const [isSeeding, setIsSeeding] = useState(false)
   const { firestore } = useFirestore()
-  const { user, isUserLoading } = useUser()
+  const { user, isUserLoading, userError } = useUser()
   const { toast } = useToast()
+
+  // تتبع حالة الاتصال في وحدة التحكم للمساعدة في التصحيح
+  useEffect(() => {
+    if (!isUserLoading) {
+      console.log("Firebase Auth State:", { user: user?.uid, error: userError });
+    }
+  }, [user, isUserLoading, userError]);
 
   const handleSeed = async () => {
     if (!firestore || !user) {
       toast({
         title: "خطأ في الاتصال",
-        description: "يرجى الانتظار حتى يتم التحقق من هويتك.",
+        description: "لا يوجد مستخدم نشط. يرجى التأكد من تفعيل Anonymous Auth في Firebase Console.",
         variant: "destructive"
       })
       return
@@ -35,25 +43,24 @@ export default function SeedPage() {
 
     setIsSeeding(true)
     try {
-      // 1. Step ONE: Promote current user to Admin first (Critical for permissions)
-      // We use await here to ensure the user is an admin before seeding other collections
+      console.log("Starting seed process for user:", user.uid);
+
+      // 1. الترقية إلى Admin أولاً (عملية منفصلة لضمان تحديث القواعد)
       const userRef = doc(firestore, "users", user.uid)
       await setDoc(userRef, {
         id: user.uid,
         role: "Admin",
         name: "مدير النظام التجريبي",
-        email: user.email || "guest@munaqasati.sa",
+        email: user.email || `guest_${user.uid.slice(0, 5)}@munaqasati.sa`,
         phoneNumber: "0500000000",
         city: "الرياض",
-        joinedAt: new Date().toISOString()
+        joinedAt: new Date().toISOString(),
+        isVerified: true
       }, { merge: true })
 
-      toast({
-        title: "تمت الترقية",
-        description: "أنت الآن مسؤول النظام. جاري إنشاء بقية البيانات...",
-      })
+      console.log("User promoted to Admin successfully.");
 
-      // 2. Step TWO: Seed Categories and Mock RFQs using a batch
+      // 2. إنشاء البيانات الأخرى في دفعة واحدة (Batch)
       const batch = writeBatch(firestore)
 
       SAMPLE_CATEGORIES.forEach((cat) => {
@@ -61,17 +68,22 @@ export default function SeedPage() {
         batch.set(catRef, cat)
       })
 
-      const rfqIds = ["rfq-mock-1", "rfq-mock-2", "rfq-mock-3"]
-      rfqIds.forEach((id, index) => {
-        const rfqRef = doc(firestore, "rfqs", id)
+      const mockRfqs = [
+        { id: "rfq-seed-1", title: "توريد حديد سابك - مشروع النرجس", cat: "حديد ومعادن", qty: 100, unit: "طن" },
+        { id: "rfq-seed-2", title: "خرسانة جاهزة K350", cat: "أسمنت وخرسانة", qty: 50, unit: "م3" },
+        { id: "rfq-seed-3", title: "أنابيب سباكة PPR", cat: "أدوات صحية", qty: 200, unit: "متر" }
+      ]
+
+      mockRfqs.forEach((rfq) => {
+        const rfqRef = doc(firestore, "rfqs", rfq.id)
         batch.set(rfqRef, {
-          id: id,
+          id: rfq.id,
           contractorId: user.uid,
-          title: index === 0 ? "توريد حديد سابك - مشروع النرجس" : index === 1 ? "خرسانة جاهزة K350" : "أنابيب سباكة PPR",
-          categoryId: index === 0 ? "حديد ومعادن" : index === 1 ? "أسمنت وخرسانة" : "أدوات صحية",
-          quantity: (index + 1) * 50,
-          unitOfMeasure: index === 0 ? "طن" : index === 1 ? "م3" : "متر",
-          deadline: new Date(Date.now() + 86400000 * 7).toISOString(),
+          title: rfq.title,
+          categoryId: rfq.cat,
+          quantity: rfq.qty,
+          unitOfMeasure: rfq.unit,
+          deadline: new Date(Date.now() + 604800000).toISOString(),
           location: "الرياض",
           area: "حي الملقا",
           paymentTerms: "كاش",
@@ -82,16 +94,17 @@ export default function SeedPage() {
       })
 
       await batch.commit()
+      console.log("Categories and RFQs seeded successfully.");
 
       toast({
         title: "تمت التهيئة بنجاح!",
-        description: "تم إنشاء كافة البيانات التجريبية بنجاح.",
+        description: "أنت الآن Admin وتم إنشاء البيانات التجريبية.",
       })
     } catch (error: any) {
-      console.error("Seed error:", error)
+      console.error("Critical Seed Error:", error)
       toast({
-        title: "فشل التهيئة",
-        description: "حدث خطأ بسبب قيود الصلاحيات. يرجى المحاولة مرة أخرى بعد ثوانٍ.",
+        title: "فشل في إنشاء البيانات",
+        description: error.message || "تأكد من إعدادات الـ Firestore وقواعد الأمان.",
         variant: "destructive"
       })
     } finally {
@@ -109,7 +122,7 @@ export default function SeedPage() {
             </div>
             <CardTitle className="text-2xl font-bold">تهيئة قاعدة البيانات</CardTitle>
             <CardDescription>
-              استخدم هذه الأداة لإنشاء البيانات الأساسية وتعيين حسابك كمسؤول للنظام.
+              هذه الأداة ستقوم بتفعيل حسابك كمسؤول وإنشاء بيانات تجريبية فوراً.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -121,14 +134,20 @@ export default function SeedPage() {
             ) : user ? (
               <div className="p-4 bg-success/5 border border-success/20 rounded-lg flex items-center gap-3">
                 <CheckCircle className="text-success" size={20} />
-                <p className="text-sm text-success">
-                  أنت متصل الآن وجاهز للتهيئة. معرفك: <span className="font-mono text-xs">{user.uid}</span>
-                </p>
+                <div className="flex-1">
+                  <p className="text-sm text-success font-bold">متصل بنجاح</p>
+                  <p className="text-[10px] text-success/70 font-mono">UID: {user.uid}</p>
+                </div>
               </div>
             ) : (
-              <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg flex items-center gap-3">
-                <AlertTriangle className="text-destructive" size={20} />
-                <p className="text-sm text-destructive">فشل التعرف على الجلسة. يرجى إعادة تحميل الصفحة.</p>
+              <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg space-y-2">
+                <div className="flex items-center gap-3 text-destructive">
+                  <AlertTriangle size={20} />
+                  <p className="text-sm font-bold">خطأ في الجلسة</p>
+                </div>
+                <p className="text-xs text-muted-foreground pr-8">
+                  لم يتم اكتشاف مستخدم. يرجى تفعيل <strong>Anonymous Authentication</strong> في لوحة تحكم Firebase ثم تحديث الصفحة.
+                </p>
               </div>
             )}
           </CardContent>
@@ -147,7 +166,7 @@ export default function SeedPage() {
               ) : (
                 <>
                   <Database size={20} />
-                  ابدأ تهيئة البيانات الآن
+                  ابدأ التهيئة الآن
                 </>
               )}
             </Button>

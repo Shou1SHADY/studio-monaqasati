@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useMemo, useEffect, type ReactNode } from 'react';
@@ -10,17 +11,28 @@ interface FirebaseClientProviderProps {
 }
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
+  // تهيئة الخدمات مرة واحدة فقط
   const services = useMemo(() => {
     return initializeFirebase();
   }, []);
 
   useEffect(() => {
-    // تفعيل تسجيل الدخول المجهول تلقائياً لضمان وجود UID للتعامل مع Firestore
-    if (services.auth) {
-      signInAnonymously(services.auth).catch((error) => {
-        console.error("Auth initialization error:", error);
-      });
-    }
+    // تفعيل تسجيل الدخول المجهول لضمان وجود UID للتعامل مع Firestore
+    const authenticate = async () => {
+      if (services.auth) {
+        try {
+          // إذا لم يكن هناك مستخدم حالي، نقوم بتسجيل الدخول
+          if (!services.auth.currentUser) {
+            await signInAnonymously(services.auth);
+            console.log("Firebase: Anonymous login successful.");
+          }
+        } catch (error) {
+          console.error("Firebase: Anonymous login failed. Ensure it's enabled in Console.", error);
+        }
+      }
+    };
+
+    authenticate();
   }, [services.auth]);
 
   return (
