@@ -100,10 +100,10 @@ export default function AdminSuppliersPage() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="text-right">المعرف</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
                   <TableHead className="text-right">اسم المورد</TableHead>
-                  <TableHead className="text-right">الفئة الرئيسية</TableHead>
-                  <TableHead className="text-right">التوثيق</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">الفئة الرئيسية</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">التوثيق</TableHead>
                   <TableHead className="text-right">الحالة</TableHead>
                   <TableHead className="text-left">إجراءات</TableHead>
                 </TableRow>
@@ -111,15 +111,15 @@ export default function AdminSuppliersPage() {
               <TableBody>
                 {suppliers.map((s) => (
                   <TableRow key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                    <TableCell className="font-mono text-xs">{s.id}</TableCell>
+                    <TableCell className="font-mono text-xs hidden md:table-cell">{s.id}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-bold">{s.name}</span>
                         <span className="text-xs text-muted-foreground">{s.contact}</span>
                       </div>
                     </TableCell>
-                    <TableCell>{s.category}</TableCell>
-                    <TableCell>
+                    <TableCell className="hidden sm:table-cell">{s.category}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
                       {s.verified ? (
                         <div className="flex items-center gap-1 text-success text-xs font-medium">
                           <CheckCircle2 size={14} />

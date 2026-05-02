@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,10 +10,17 @@ import { FileText, PlusCircle, MoreHorizontal, Calendar, Loader2 } from "lucide-
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
+import { useSearchParams } from "next/navigation"
 
 export default function ContractorRfqsPage() {
+  const searchParams = useSearchParams()
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get("search") || "")
+  }, [searchParams])
 
   // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
@@ -27,6 +35,16 @@ export default function ContractorRfqsPage() {
 
   const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
+
+  const filteredRfqs = rfqs?.filter((rfq: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      rfq.title?.toLowerCase().includes(q) ||
+      rfq.categoryId?.toLowerCase().includes(q) ||
+      rfq.id?.toLowerCase().includes(q)
+    );
+  }) || [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -66,12 +84,16 @@ export default function ContractorRfqsPage() {
                 <Loader2 className="animate-spin" size={40} />
                 <p>جاري تحميل البيانات...</p>
               </div>
-            ) : !rfqs || rfqs.length === 0 ? (
+            ) : filteredRfqs.length === 0 ? (
               <div className="p-20 text-center space-y-4">
-                <p className="text-muted-foreground">لا توجد مناقصات حالية.</p>
-                <Link href="/contractor/rfqs/new">
-                  <Button variant="outline">اطرح أول مناقصة الآن</Button>
-                </Link>
+                <p className="text-muted-foreground">
+                  {searchQuery ? "لا توجد مناقصات مطابقة لبحثك." : "لا توجد مناقصات حالية."}
+                </p>
+                {!searchQuery && (
+                  <Link href="/contractor/rfqs/new">
+                    <Button variant="outline">اطرح أول مناقصة الآن</Button>
+                  </Link>
+                )}
               </div>
             ) : (
               <Table>
@@ -86,13 +108,13 @@ export default function ContractorRfqsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rfqs.map((rfq) => (
+                  {filteredRfqs.map((rfq: any) => (
                     <TableRow key={rfq.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold">{rfq.title}</TableCell>
                       <TableCell>{rfq.categoryId}</TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
                           {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
                         </div>

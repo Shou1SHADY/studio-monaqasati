@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useEffect } from "react"
+
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -19,10 +21,17 @@ import {
 } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, orderBy } from "firebase/firestore"
+import { useSearchParams } from "next/navigation"
 
 export default function AdminRfqsPage() {
+  const searchParams = useSearchParams()
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get("search") || "")
+  }, [searchParams])
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -31,6 +40,16 @@ export default function AdminRfqsPage() {
 
   const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
+
+  const filteredRfqs = rfqs?.filter((rfq: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      rfq.title?.toLowerCase().includes(q) ||
+      rfq.categoryId?.toLowerCase().includes(q) ||
+      rfq.id?.toLowerCase().includes(q)
+    );
+  }) || [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -52,7 +71,12 @@ export default function AdminRfqsPage() {
           <div className="flex gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="بحث في المناقصات..." className="pr-10" />
+              <Input 
+                placeholder="بحث في المناقصات..." 
+                className="pr-10" 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
             <Button variant="outline" className="gap-2">
               <Filter size={18} />
@@ -74,31 +98,31 @@ export default function AdminRfqsPage() {
                 <Loader2 className="animate-spin" size={40} />
                 <p>جاري تحميل البيانات...</p>
               </div>
-            ) : !rfqs || rfqs.length === 0 ? (
+            ) : filteredRfqs.length === 0 ? (
               <div className="p-20 text-center text-muted-foreground">لا توجد مناقصات حالياً.</div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right">المعرف</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
                     <TableHead className="text-right">المناقصة</TableHead>
-                    <TableHead className="text-right">الفئة</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">الفئة</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-right">التاريخ</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
                     <TableHead className="text-left">إجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rfqs.map((rfq) => (
+                  {filteredRfqs.map((rfq: any) => (
                     <TableRow key={rfq.id}>
-                      <TableCell className="font-mono text-xs">{rfq.id}</TableCell>
+                      <TableCell className="font-mono text-xs hidden md:table-cell">{rfq.id}</TableCell>
                       <TableCell className="font-bold">{rfq.title}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <Badge variant="outline" className="text-[10px] font-normal">{rfq.categoryId}</Badge>
                       </TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <TableCell className="hidden sm:table-cell">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
                           {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
                         </div>

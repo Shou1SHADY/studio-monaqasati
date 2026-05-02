@@ -8,13 +8,31 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical } from "lucide-react"
 
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where, orderBy } from "firebase/firestore"
+
 export default function SupplierOffersPage() {
-  const offers = [
-    { id: "OFF-101", rfqTitle: "توريد حديد سابك - مشروع النرجس", price: "45,000 ر.س", status: "قيد المراجعة", date: "2024-05-18" },
-    { id: "OFF-098", rfqTitle: "خرسانة جاهزة K350", price: "12,500 ر.س", status: "مقبول", date: "2024-05-15" },
-    { id: "OFF-095", rfqTitle: "أدوات سباكة - مجمع سكني", price: "8,200 ر.س", status: "مرفوض", date: "2024-05-10" },
-    { id: "OFF-105", rfqTitle: "دهانات خارجية - فندق", price: "22,000 ر.س", status: "قيد المراجعة", date: "2024-05-20" },
-  ]
+  const firestore = useFirestore()
+  const { user, isUserLoading } = useUser()
+
+  const offersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "offers"),
+      where("supplierId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, user, isUserLoading])
+
+  const { data: offersData, isLoading: isCollectionLoading } = useCollection(offersQuery)
+  const isLoading = isUserLoading || isCollectionLoading
+
+  const offers = offersData || []
+
+  // Calculate stats
+  const pendingCount = offers.filter(o => o.status === "قيد المراجعة" || o.status === "New").length
+  const acceptedCount = offers.filter(o => o.status === "مقبول" || o.status === "Accepted").length
+  const rejectedCount = offers.filter(o => o.status === "مرفوض" || o.status === "Rejected").length
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -41,7 +59,7 @@ export default function SupplierOffersPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">عروض معلقة</p>
-                <p className="text-xl font-bold text-slate-800">5</p>
+                <p className="text-xl font-bold text-slate-800">{pendingCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -52,7 +70,7 @@ export default function SupplierOffersPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">عروض مقبولة</p>
-                <p className="text-xl font-bold text-slate-800">38</p>
+                <p className="text-xl font-bold text-slate-800">{acceptedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -63,7 +81,7 @@ export default function SupplierOffersPage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">عروض مرفوضة</p>
-                <p className="text-xl font-bold text-slate-800">12</p>
+                <p className="text-xl font-bold text-slate-800">{rejectedCount}</p>
               </div>
             </CardContent>
           </Card>
@@ -77,39 +95,51 @@ export default function SupplierOffersPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="text-right">المعرف</TableHead>
-                  <TableHead className="text-right">المناقصة</TableHead>
-                  <TableHead className="text-right">السعر المقدم</TableHead>
-                  <TableHead className="text-right">تاريخ التقديم</TableHead>
-                  <TableHead className="text-right">الحالة</TableHead>
-                  <TableHead className="text-left">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {offers.map((offer) => (
-                  <TableRow key={offer.id} className="hover:bg-slate-50/50">
-                    <TableCell className="font-mono text-xs">{offer.id}</TableCell>
-                    <TableCell className="font-bold">{offer.rfqTitle}</TableCell>
-                    <TableCell className="text-primary font-bold">{offer.price}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{offer.date}</TableCell>
-                    <TableCell>{getStatusBadge(offer.status)}</TableCell>
-                    <TableCell className="text-left">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon">
-                          <Eye size={16} />
-                        </Button>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical size={16} />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {isLoading ? (
+              <div className="p-10 flex justify-center text-muted-foreground">جاري تحميل العروض...</div>
+            ) : offers.length === 0 ? (
+              <div className="p-10 flex flex-col items-center text-center text-muted-foreground space-y-2">
+                <History size={48} className="opacity-20 mb-2" />
+                <p>لا توجد عروض مقدمة حتى الآن.</p>
+                <p className="text-sm">تصفح المناقصات المتاحة وقدم عرضك الأول!</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
+                    <TableHead className="text-right">المناقصة</TableHead>
+                    <TableHead className="text-right">السعر</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
+                    <TableHead className="text-right">الحالة</TableHead>
+                    <TableHead className="text-left">إجراءات</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {offers.map((offer: any) => (
+                    <TableRow key={offer.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-mono text-xs hidden md:table-cell">{offer.id.substring(0, 8)}</TableCell>
+                      <TableCell className="font-bold">{offer.rfqTitle || "مناقصة غير محددة"}</TableCell>
+                      <TableCell className="text-primary font-bold">{offer.price || "غير متوفر"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground hidden sm:table-cell" suppressHydrationWarning>
+                        {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(offer.status || "قيد المراجعة")}</TableCell>
+                      <TableCell className="text-left">
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon">
+                            <Eye size={16} />
+                          </Button>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical size={16} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

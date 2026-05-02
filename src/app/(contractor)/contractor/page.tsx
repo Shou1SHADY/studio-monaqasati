@@ -1,3 +1,5 @@
+"use client"
+
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,19 +15,45 @@ import {
   History
 } from "lucide-react"
 import Link from "next/link"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where } from "firebase/firestore"
 
 export default function ContractorDashboard() {
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
+
+  const rfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "rfqs"), where("contractorId", "==", user.uid))
+  }, [firestore, user, isUserLoading])
+
+  const usersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "users"), where("role", "==", "Supplier"))
+  }, [firestore, user, isUserLoading])
+
+  const { data: rfqs } = useCollection(rfqsQuery)
+  const { data: suppliers } = useCollection(usersQuery)
+
+  const activeRfqsCount = rfqs?.filter((r: any) => r.status === "New").length || 0;
+  const awardedCount = rfqs?.filter((r: any) => r.status === "Awarded").length || 0;
+  const suppliersCount = suppliers?.length || 0;
+
   const stats = [
-    { title: "المناقصات المفتوحة", value: "8", icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: "عقود تم ترسيتها", value: "24", icon: Trophy, color: "text-success", bg: "bg-success/10" },
+    { title: "المناقصات المفتوحة", value: activeRfqsCount.toString(), icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
+    { title: "عقود تم ترسيتها", value: awardedCount.toString(), icon: Trophy, color: "text-success", bg: "bg-success/10" },
     { title: "نسبة الالتزام", value: "98%", icon: Activity, color: "text-amber-600", bg: "bg-amber-50" },
-    { title: "الموردين في المنصة", value: "142", icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
+    { title: "الموردين في المنصة", value: suppliersCount.toString(), icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
   ]
 
   const recentActivity = [
-    { id: 1, type: "offer", text: "تلقيت عرض سعر جديد لمناقصة 'حديد تسليح'", time: "منذ ساعتين", status: "جديد" },
-    { id: 2, type: "rfq", text: "تم نشر مناقصة 'أدوات سباكة لمشروع الرياض'", time: "منذ 5 ساعات", status: "منشور" },
-    { id: 3, type: "award", text: "تم قبول عرض 'المورد المتكامل' لمناقصة الخرسانة", time: "يوم أمس", status: "مكتمل" },
+    ...(rfqs?.slice(0, 3).map((r: any) => ({
+      id: r.id, 
+      type: "rfq", 
+      text: `مناقصة '${r.title || 'غير محدد'}'`, 
+      time: r.createdAt ? new Date(r.createdAt).toLocaleDateString('ar-SA') : 'الآن', 
+      status: r.status || "جديد"
+    })) || [])
   ]
 
   return (
@@ -76,7 +104,7 @@ export default function ContractorDashboard() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y">
-                {recentActivity.map((activity) => (
+                {recentActivity.length > 0 ? recentActivity.map((activity) => (
                   <div key={activity.id} className="p-4 hover:bg-slate-50 transition-colors flex items-start justify-between">
                     <div className="flex items-start gap-3">
                       <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
@@ -86,14 +114,16 @@ export default function ContractorDashboard() {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-slate-800">{activity.text}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{activity.time}</p>
+                        <p className="text-xs text-muted-foreground mt-1" suppressHydrationWarning>{activity.time}</p>
                       </div>
                     </div>
                     <Badge variant="secondary" className="bg-slate-100 text-slate-600 font-medium">
                       {activity.status}
                     </Badge>
                   </div>
-                ))}
+                )) : (
+                  <div className="p-10 text-center text-muted-foreground">لا توجد نشاطات حالياً.</div>
+                )}
               </div>
             </CardContent>
           </Card>

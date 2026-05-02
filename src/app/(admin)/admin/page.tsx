@@ -1,3 +1,5 @@
+"use client"
+
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -9,17 +11,72 @@ import {
   FileText, 
   Activity, 
   ShieldAlert,
-  BarChart3,
-  PieChart
+  PieChart as PieChartIcon
 } from "lucide-react"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query } from "firebase/firestore"
 
 export default function AdminDashboard() {
+  const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
+
+  const rfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "rfqs"))
+  }, [firestore, user, isUserLoading])
+
+  const usersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "users"))
+  }, [firestore, user, isUserLoading])
+
+  const offersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "offers"))
+  }, [firestore, user, isUserLoading])
+
+  const { data: rfqs } = useCollection(rfqsQuery)
+  const { data: users } = useCollection(usersQuery)
+  const { data: offers } = useCollection(offersQuery)
+
+  const suppliersCount = users?.filter((u: any) => u.role === "Supplier").length || 0;
+  const contractorsCount = users?.filter((u: any) => u.role === "Contractor").length || 0;
+  const activeRfqsCount = rfqs?.filter((r: any) => r.status === "New").length || 0;
+  const offersCount = offers?.length || 0;
+
   const stats = [
-    { title: "إجمالي الموردين", value: "2,450", icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
-    { title: "إجمالي المقاولين", value: "890", icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: "مناقصات نشطة", value: "312", icon: Package, color: "text-success", bg: "bg-success/10" },
-    { title: "عروض السعر اليوم", value: "124", icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
+    { title: "إجمالي الموردين", value: suppliersCount.toString(), icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
+    { title: "إجمالي المقاولين", value: contractorsCount.toString(), icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
+    { title: "مناقصات نشطة", value: activeRfqsCount.toString(), icon: Package, color: "text-success", bg: "bg-success/10" },
+    { title: "عروض السعر", value: offersCount.toString(), icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
   ]
+
+  const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const dayCounts = [0, 0, 0, 0, 0, 0, 0];
+  rfqs?.forEach((rfq: any) => {
+    if (rfq.createdAt) {
+      const date = new Date(rfq.createdAt);
+      dayCounts[date.getDay()]++;
+    }
+  });
+  
+  const barData = days.map((name, i) => ({ name, rfqs: dayCounts[i] }));
+
+  const categoryCounts = rfqs?.reduce((acc: any, rfq: any) => {
+    const cat = rfq.categoryId || "أخرى"
+    acc[cat] = (acc[cat] || 0) + 1;
+    return acc;
+  }, {}) || {};
+
+  const colors = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#ef4444"];
+  const dynamicPieData = Object.entries(categoryCounts).map(([name, value], i) => ({
+    name,
+    value,
+    color: colors[i % colors.length]
+  }));
+  
+  const pieData = dynamicPieData.length > 0 ? dynamicPieData : [{ name: "لا توجد بيانات", value: 1, color: "#cbd5e1" }];
 
   return (
     <PortalLayout>
@@ -58,11 +115,15 @@ export default function AdminDashboard() {
               </CardTitle>
               <Badge variant="secondary">آخر 30 يوم</Badge>
             </CardHeader>
-            <CardContent className="p-10 flex items-center justify-center min-h-[300px]">
-              <div className="flex flex-col items-center gap-4 opacity-40">
-                <BarChart3 size={64} />
-                <p className="text-sm font-medium">سيتم عرض الرسم البياني للمناقصات هنا</p>
-              </div>
+            <CardContent className="p-6 h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={barData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }} style={{ direction: 'ltr' }}>
+                  <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Bar dataKey="rfqs" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
 
@@ -70,15 +131,29 @@ export default function AdminDashboard() {
           <Card className="shadow-sm border-slate-100">
             <CardHeader className="flex flex-row items-center justify-between border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <PieChart className="h-5 w-5 text-accent" />
+                <PieChartIcon className="h-5 w-5 text-accent" />
                 توزيع العروض حسب الفئة
               </CardTitle>
             </CardHeader>
-            <CardContent className="p-10 flex items-center justify-center min-h-[300px]">
-              <div className="flex flex-col items-center gap-4 opacity-40">
-                <PieChart size={64} />
-                <p className="text-sm font-medium">سيتم عرض توزيع الفئات هنا</p>
-              </div>
+            <CardContent className="p-6 h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart style={{ direction: 'ltr' }}>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                </PieChart>
+              </ResponsiveContainer>
             </CardContent>
           </Card>
         </div>

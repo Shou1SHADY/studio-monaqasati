@@ -101,22 +101,22 @@ export default function AdminContractorsPage() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="text-right">المعرف</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
                   <TableHead className="text-right">اسم الشركة</TableHead>
-                  <TableHead className="text-right">رقم السجل</TableHead>
-                  <TableHead className="text-right">المناقصات</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">رقم السجل</TableHead>
+                  <TableHead className="text-right hidden md:table-cell">المناقصات</TableHead>
                   <TableHead className="text-right">التوثيق</TableHead>
-                  <TableHead className="text-right">الحالة</TableHead>
+                  <TableHead className="text-right hidden sm:table-cell">الحالة</TableHead>
                   <TableHead className="text-left">إجراءات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contractors.map((c) => (
                   <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                    <TableCell className="font-mono text-xs">{c.id}</TableCell>
+                    <TableCell className="font-mono text-xs hidden md:table-cell">{c.id}</TableCell>
                     <TableCell className="font-bold">{c.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{c.cr}</TableCell>
-                    <TableCell>
+                    <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">{c.cr}</TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Badge variant="secondary" className="font-bold">{c.rfqs}</Badge>
                     </TableCell>
                     <TableCell>
@@ -132,7 +132,7 @@ export default function AdminContractorsPage() {
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>{getStatusBadge(c.status)}</TableCell>
+                    <TableCell className="hidden sm:table-cell">{getStatusBadge(c.status)}</TableCell>
                     <TableCell className="text-left">
                       <Button variant="ghost" size="icon">
                         <MoreVertical size={18} />

@@ -1,11 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { 
   Search, 
   MapPin, 
@@ -17,12 +19,21 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function AvailableRfqsPage() {
   const { toast } = useToast()
-  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string} | null>(null)
+  const [offerPrice, setOfferPrice] = useState("")
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+
+  useEffect(() => {
+    setSearchQuery(searchParams.get("search") || "")
+  }, [searchParams])
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
@@ -38,11 +49,53 @@ export default function AvailableRfqsPage() {
   const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
 
-  const handleApply = (id: string) => {
-    toast({
-      title: "تقديم عرض سعر",
-      description: `سيتم نقلك لصفحة تقديم العرض للمناقصة ${id}`,
-    })
+  const filteredRfqs = rfqs?.filter((rfq: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      rfq.title?.toLowerCase().includes(q) ||
+      rfq.categoryId?.toLowerCase().includes(q) ||
+      rfq.location?.toLowerCase().includes(q) ||
+      rfq.area?.toLowerCase().includes(q)
+    );
+  }) || [];
+
+  const submitOffer = async () => {
+    if (!user || !firestore) {
+      toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
+      return;
+    }
+
+    if (!selectedRfq || !offerPrice) return;
+
+    try {
+      const { addDoc } = await import("firebase/firestore");
+      await addDoc(collection(firestore, "offers"), {
+        supplierId: user.uid,
+        rfqId: selectedRfq.id,
+        rfqTitle: selectedRfq.title,
+        price: offerPrice,
+        status: "قيد المراجعة",
+        createdAt: new Date().toISOString()
+      });
+
+      toast({
+        title: "تم تقديم العرض بنجاح!",
+        description: `تم إرسال عرضك بنجاح بمبلغ ${offerPrice} ر.س.`,
+      })
+      setSelectedRfq(null);
+      setOfferPrice("");
+      setTimeout(() => {
+        router.push("/supplier/offers")
+      }, 1000)
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "خطأ",
+        description: "حدث خطأ أثناء تقديم العرض",
+        variant: "destructive"
+      })
+    }
   }
 
   return (
@@ -76,12 +129,12 @@ export default function AvailableRfqsPage() {
               <Loader2 className="animate-spin" size={40} />
               <p>جاري تحميل المناقصات المتاحة...</p>
             </div>
-          ) : !rfqs || rfqs.length === 0 ? (
+          ) : filteredRfqs.length === 0 ? (
             <div className="p-20 text-center text-muted-foreground bg-white rounded-lg shadow-sm border border-dashed">
-              لا توجد مناقصات متاحة حالياً. تأكد من تهيئة البيانات من صفحة الإدارة.
+              لا توجد مناقصات مطابقة لبحثك.
             </div>
           ) : (
-            rfqs.map((rfq) => (
+            filteredRfqs.map((rfq: any) => (
               <Card key={rfq.id} className="hover:shadow-md transition-all border-slate-100 overflow-hidden group">
                 <CardContent className="p-0">
                   <div className="flex flex-col md:flex-row">
@@ -103,7 +156,7 @@ export default function AvailableRfqsPage() {
                           <MapPin size={16} className="text-muted-foreground" />
                           {rfq.location} - {rfq.area}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <div className="flex items-center gap-2 text-sm text-slate-600" suppressHydrationWarning>
                           <Calendar size={16} className="text-muted-foreground" />
                           الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}
                         </div>
@@ -112,7 +165,7 @@ export default function AvailableRfqsPage() {
                     
                     <div className="bg-slate-50/50 p-6 flex items-center justify-center md:border-r border-t md:border-t-0 min-w-[200px]">
                       <Button 
-                        onClick={() => handleApply(rfq.id)}
+                        onClick={() => setSelectedRfq({id: rfq.id, title: rfq.title})}
                         className="w-full md:w-auto gap-2 bg-primary hover:bg-primary/90 rounded-full h-11 px-8 shadow-sm"
                       >
                         تقديم عرض سعر
@@ -126,6 +179,36 @@ export default function AvailableRfqsPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={!!selectedRfq} onOpenChange={(open) => !open && setSelectedRfq(null)}>
+        <DialogContent className="sm:max-w-[425px] text-right" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تقديم عرض سعر</DialogTitle>
+            <DialogDescription className="mt-2">
+              أدخل السعر المقترح لمناقصة: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
+              <Label htmlFor="price" className="text-right sm:col-span-1 font-bold">
+                السعر (ر.س)
+              </Label>
+              <Input
+                id="price"
+                type="number"
+                value={offerPrice}
+                onChange={(e) => setOfferPrice(e.target.value)}
+                className="sm:col-span-3 w-full"
+                placeholder="مثال: 50000"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
+            <Button variant="outline" onClick={() => setSelectedRfq(null)}>إلغاء</Button>
+            <Button onClick={submitOffer} disabled={!offerPrice}>تأكيد وإرسال</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PortalLayout>
   )
 }
