@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, PlusCircle, MoreHorizontal, Calendar, Loader2 } from "lucide-react"
+import { FileText, PlusCircle, Eye, Calendar, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
@@ -102,9 +102,9 @@ export default function ContractorRfqsPage() {
                     <TableHead className="text-right">العنوان</TableHead>
                     <TableHead className="text-right">الفئة</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-right">التاريخ</TableHead>
-                    <TableHead className="text-right">الكمية</TableHead>
-                    <TableHead className="text-left">إجراءات</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">الكمية</TableHead>
+                    <TableHead className="text-left">عروض / إجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -113,19 +113,22 @@ export default function ContractorRfqsPage() {
                       <TableCell className="font-bold">{rfq.title}</TableCell>
                       <TableCell>{rfq.categoryId}</TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
                           {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <span className="font-bold">{rfq.quantity} {rfq.unitOfMeasure}</span>
                       </TableCell>
                       <TableCell className="text-left">
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal size={18} />
-                        </Button>
+                        <Link href={`/contractor/rfqs/${rfq.id}/offers`}>
+                          <Button variant="outline" size="sm" className="gap-1 text-primary border-primary/30 hover:bg-primary/5">
+                            <Eye size={14} />
+                            عروض
+                          </Button>
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}

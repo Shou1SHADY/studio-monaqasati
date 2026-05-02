@@ -43,22 +43,51 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
-      // القراءة متاحة لكل المسجلين (بما في ذلك المجهولين مؤقتاً) لضمان استقرار الواجهة
+      // القراءة متاحة لكل المسجلين
       allow read: if isSignedIn();
-      allow create: if isContractor() || isAdmin();
-      allow update: if isAdmin() || (isContractor() && resource.data.contractorId == request.auth.uid);
+      // السماح بالإنشاء إذا كان المستخدم مقاولاً (حسب الدور) أو إذا كان المعرف في الوثيقة يطابق المستخدم الحالي
+      allow create: if isAdmin()
+        || isContractor()
+        || (isSignedIn() && request.resource.data.contractorId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /offers/{offerId} {
       allow read: if isSignedIn();
-      allow create: if isSupplier() || isAdmin();
-      allow update: if isAdmin() || (isSupplier() && resource.data.supplierId == request.auth.uid);
+      allow create: if isAdmin()
+        || isSupplier()
+        || (isSignedIn() && request.resource.data.supplierId == request.auth.uid);
+      // المورد يمكنه التحديث، والمقاول يمكنه تغيير الحالة (قبول/رفض) إذا كان يملك المناقصة الأصلية
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.supplierId == request.auth.uid)
+        || (isSignedIn() && resource.data.rfqId != null
+            && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
     match /notification_queue/{queueEntryId} {
       allow read, write: if isAdmin();
+    }
+
+    match /chats/{chatId} {
+      // أي مستخدم مسجل يمكنه إنشاء محادثة (التحكم يتم من الكود)
+      allow create: if isSignedIn();
+      // القراءة والتحديث للمقاول أو المورد فقط (resource == null يعني المستند غير موجود)
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid
+      );
+
+      match /messages/{messageId} {
+        allow read, create: if isSignedIn();
+      }
     }
   }
 }

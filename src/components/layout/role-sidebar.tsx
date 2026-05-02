@@ -16,6 +16,7 @@ import {
   ClipboardList,
   History,
   TrendingUp,
+  MessageSquare,
   LogOut
 } from "lucide-react"
 
@@ -41,6 +42,7 @@ const supplierItems: NavItem[] = [
   { title: "طلباتي", href: "/supplier/orders", icon: ClipboardList },
   { title: "المناقصات المتاحة", href: "/supplier/rfqs", icon: Search },
   { title: "عروضي المقدمة", href: "/supplier/offers", icon: History },
+  { title: "محادثاتي", href: "/supplier/chats", icon: MessageSquare },
   { title: "التنبيهات", href: "/supplier/notifications", icon: Bell },
   { title: "الملف الشخصي", href: "/supplier/profile", icon: UserCircle },
 ]
@@ -50,6 +52,7 @@ const contractorItems: NavItem[] = [
   { title: "مناقصاتي", href: "/contractor/rfqs", icon: FileText },
   { title: "طرح مناقصة جديدة", href: "/contractor/rfqs/new", icon: PlusCircle },
   { title: "دليل الموردين", href: "/contractor/suppliers", icon: Users },
+  { title: "محادثاتي", href: "/contractor/chats", icon: MessageSquare },
   { title: "التنبيهات", href: "/contractor/notifications", icon: Bell },
   { title: "الملف الشخصي", href: "/contractor/profile", icon: UserCircle },
 ]
