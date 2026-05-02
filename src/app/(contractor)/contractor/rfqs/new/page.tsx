@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select"
 import {
   Dialog,
@@ -24,10 +24,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { MapPicker } from "@/components/ui/map-picker"
-import { 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   FileText,
   MapPin,
@@ -54,10 +55,29 @@ const CATEGORIES_DATA = {
 }
 
 const SAUDI_CITIES = [
-  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران", 
-  "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط", 
+  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
+  "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط",
   "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
 ]
+
+const CITIES_DISTRICTS: Record<string, string[]> = {
+  "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],
+  "جدة": ["شمال جدة", "جنوب جدة", "وسط جدة", "أبحر", "جميع جدة"],
+  "مكة المكرمة": ["العزيزية", "الشوقية", "العوالي", "بطحاء قريش", "جميع مكة"],
+  "المدينة المنورة": ["العزيزية", "الخالدية", "الحرة الشرقية", "جميع المدينة"],
+  "الدمام": ["شرق الدمام", "غرب الدمام", "وسط الدمام", "جميع الدمام"],
+  "الخبر": ["شمال الخبر", "الخبر الجنوبية", "العقربية", "جميع الخبر"],
+  "الظهران": ["حي الدانة", "حي الدوحة", "حي القصور", "جميع الظهران"],
+  "الأحساء": ["الهفوف", "المبرز", "العيون", "العمران", "جميع الأحساء"],
+  "الجبيل": ["الجبيل الصناعية", "الجبيل البلد", "جميع الجبيل"],
+  "تبوك": ["المروج", "الروضة", "السليمانية", "جميع تبوك"],
+  "حائل": ["صديان", "أجا", "النقرة", "جميع حائل"],
+  "القصيم": ["بريدة", "عنيزة", "الرس", "البدائع", "جميع القصيم"],
+  "أبها": ["حي المنسك", "حي الموظفين", "حي الخالدية", "جميع أبها"],
+  "خميس مشيط": ["الرصراص", "الشباعة", "شكر", "جميع خميس مشيط"],
+  "جازان": ["حي السويس", "حي الروضة", "حي الشاطئ", "جميع جازان"],
+  "نجران": ["الفيصلية", "الخالدية", "الفهد", "جميع نجران"],
+}
 
 export default function NewRfqPage() {
   const [step, setStep] = useState(1)
@@ -69,7 +89,7 @@ export default function NewRfqPage() {
   const router = useRouter()
   const firestore = useFirestore()
   const { user } = useUser()
-  
+
   const [formData, setFormData] = useState({
     title: "",
     category: "",
@@ -82,6 +102,7 @@ export default function NewRfqPage() {
     paymentTerms: "",
     notes: "",
     certRequired: false,
+    visibility: "public" as "public" | "favorites",
     locationCoords: null as { lat: number, lng: number } | null
   })
 
@@ -107,13 +128,13 @@ export default function NewRfqPage() {
         unit: formData.unit || "عدد",
         notes: formData.notes
       })
-      
+
       setFormData(prev => ({
         ...prev,
         title: result.title,
         notes: result.description
       }))
-      
+
       toast({
         title: "تم التحسين!",
         description: "قام الذكاء الاصطناعي بصياغة طلب احترافي لك.",
@@ -134,7 +155,7 @@ export default function NewRfqPage() {
 
     setIsSubmitting(true)
     const rfqsRef = collection(firestore, "rfqs")
-    
+
     const rfqData = {
       contractorId: user.uid,
       title: formData.title,
@@ -148,18 +169,19 @@ export default function NewRfqPage() {
       locationCoords: formData.locationCoords ? { lat: formData.locationCoords.lat, lng: formData.locationCoords.lng } : null,
       paymentTerms: formData.paymentTerms,
       isQualityCertificateRequired: formData.certRequired,
+      visibility: formData.visibility,
       notes: formData.notes,
       status: "New",
       createdAt: new Date().toISOString()
     }
 
     addDocumentNonBlocking(rfqsRef, rfqData)
-    
+
     toast({
       title: "تم النشر!",
       description: "تم نشر المناقصة بنجاح وهي الآن متاحة للموردين.",
     })
-    
+
     router.push("/contractor/rfqs")
   }
 
@@ -173,11 +195,10 @@ export default function NewRfqPage() {
           </div>
           <div className="flex gap-2">
             {[1, 2, 3].map(i => (
-              <div 
-                key={i} 
-                className={`h-2 w-12 rounded-full transition-all duration-300 ${
-                  step >= i ? "bg-primary" : "bg-slate-200"
-                }`} 
+              <div
+                key={i}
+                className={`h-2 w-12 rounded-full transition-all duration-300 ${step >= i ? "bg-primary" : "bg-slate-200"
+                  }`}
               />
             ))}
           </div>
@@ -199,9 +220,9 @@ export default function NewRfqPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="title">عنوان المناقصة</Label>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={handleAiDraft}
                       disabled={isGenerating}
                       className="text-xs h-7 gap-1 border-primary/20 hover:bg-primary/5 text-primary"
@@ -210,17 +231,17 @@ export default function NewRfqPage() {
                       تحسين بالذكاء الاصطناعي
                     </Button>
                   </div>
-                  <Input 
-                    id="title" 
-                    placeholder="مثال: توريد حديد سابك مشروع الرياض" 
+                  <Input
+                    id="title"
+                    placeholder="مثال: توريد حديد سابك مشروع الرياض"
                     value={formData.title}
-                    onChange={e => setFormData({...formData, title: e.target.value})}
+                    onChange={e => setFormData({ ...formData, title: e.target.value })}
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>الفئة</Label>
-                    <Select onValueChange={v => setFormData({...formData, category: v, subCategory: ""})}>
+                    <Select onValueChange={v => setFormData({ ...formData, category: v, subCategory: "" })}>
                       <SelectTrigger>
                         <SelectValue placeholder="اختر الفئة" />
                       </SelectTrigger>
@@ -233,9 +254,9 @@ export default function NewRfqPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>النوع (التصنيف الفرعي)</Label>
-                    <Select 
+                    <Select
                       disabled={!formData.category}
-                      onValueChange={v => setFormData({...formData, subCategory: v})}
+                      onValueChange={v => setFormData({ ...formData, subCategory: v })}
                       value={formData.subCategory}
                     >
                       <SelectTrigger>
@@ -252,19 +273,19 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>الكمية</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="0" 
+                    <Input
+                      type="number"
+                      placeholder="0"
                       value={formData.quantity}
-                      onChange={e => setFormData({...formData, quantity: e.target.value})}
+                      onChange={e => setFormData({ ...formData, quantity: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>الوحدة</Label>
-                    <Input 
-                      placeholder="طن أو متر" 
+                    <Input
+                      placeholder="طن أو متر"
                       value={formData.unit}
-                      onChange={e => setFormData({...formData, unit: e.target.value})}
+                      onChange={e => setFormData({ ...formData, unit: e.target.value })}
                     />
                   </div>
                 </div>
@@ -276,7 +297,7 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>المدينة</Label>
-                    <Select onValueChange={v => setFormData({...formData, city: v})}>
+                    <Select onValueChange={v => setFormData({ ...formData, city: v, district: "" })}>
                       <SelectTrigger>
                         <SelectValue placeholder="اختر المدينة" />
                       </SelectTrigger>
@@ -289,107 +310,116 @@ export default function NewRfqPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>الحي أو المنطقة</Label>
-                    <Input 
-                      placeholder="مثال: حي النرجس" 
+                    <Select
+                      disabled={!formData.city}
+                      onValueChange={v => setFormData({ ...formData, district: v })}
                       value={formData.district}
-                      onChange={e => setFormData({...formData, district: e.target.value})}
-                    />
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={formData.city ? "اختر الحي" : "اختر المدينة أولاً"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formData.city && (CITIES_DISTRICTS[formData.city] || ["الشمال", "الجنوب", "الشرق", "الغرب", "المركز", "جميع المناطق"]).map(dist => (
+                          <SelectItem key={dist} value={dist}>{dist}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                  <div className="space-y-2">
-                    <Label>موقع التوريد الدقيق على الخريطة</Label>
-                    
-                    {formData.locationCoords ? (
-                      <div className="relative h-48 rounded-xl border border-success/30 bg-success/5 flex flex-col items-center justify-center text-center p-4">
-                        <MapPin className="text-success mb-2" size={32} />
-                        <p className="text-success font-bold">تم تحديد الموقع بنجاح</p>
-                        <p className="text-xs text-success/80 mt-1 font-mono">
-                          {formData.locationCoords.lat.toFixed(4)}, {formData.locationCoords.lng.toFixed(4)}
-                        </p>
-                        <div className="flex gap-2 mt-4">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs"
-                            onClick={() => {
-                              setTempCoords(formData.locationCoords)
-                              setIsMapModalOpen(true)
-                            }}
-                          >
-                            تعديل الموقع
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => setFormData({...formData, locationCoords: null})}
-                          >
-                            إلغاء التحديد
+                <div className="space-y-2">
+                  <Label>موقع التوريد الدقيق على الخريطة</Label>
+
+                  {formData.locationCoords ? (
+                    <div className="relative h-48 rounded-xl border border-success/30 bg-success/5 flex flex-col items-center justify-center text-center p-4">
+                      <MapPin className="text-success mb-2" size={32} />
+                      <p className="text-success font-bold">تم تحديد الموقع بنجاح</p>
+                      <p className="text-xs text-success/80 mt-1 font-mono">
+                        {formData.locationCoords.lat.toFixed(4)}, {formData.locationCoords.lng.toFixed(4)}
+                      </p>
+                      <div className="flex gap-2 mt-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => {
+                            setTempCoords(formData.locationCoords)
+                            setIsMapModalOpen(true)
+                          }}
+                        >
+                          تعديل الموقع
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => setFormData({ ...formData, locationCoords: null })}
+                        >
+                          إلغاء التحديد
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
+                      <DialogTrigger asChild>
+                        <div className="relative h-48 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-center p-4 group hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
+                          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
+                            <MapPin size={24} />
+                          </div>
+                          <h3 className="font-bold text-slate-800">تحديد الموقع على الخريطة</h3>
+                          <p className="text-xs text-muted-foreground max-w-[200px] mt-1">انقر لفتح الخريطة واختيار موقع المشروع بدقة لتسهيل التوصيل</p>
+                          <Button variant="secondary" size="sm" className="mt-4 rounded-full pointer-events-none">
+                            فتح الخريطة
                           </Button>
                         </div>
-                      </div>
-                    ) : (
-                      <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
-                        <DialogTrigger asChild>
-                          <div className="relative h-48 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-center p-4 group hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
-                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
-                              <MapPin size={24} />
-                            </div>
-                            <h3 className="font-bold text-slate-800">تحديد الموقع على الخريطة</h3>
-                            <p className="text-xs text-muted-foreground max-w-[200px] mt-1">انقر لفتح الخريطة واختيار موقع المشروع بدقة لتسهيل التوصيل</p>
-                            <Button variant="secondary" size="sm" className="mt-4 rounded-full pointer-events-none">
-                              فتح الخريطة
-                            </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[600px] w-[95vw] h-[80vh] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle className="text-right">تحديد الموقع الدقيق</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200 min-h-0 my-4">
+                          <MapPicker
+                            className="w-full h-full"
+                            initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
+                            onLocationSelect={(loc) => setTempCoords(loc)}
+                          />
+                          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur text-xs font-bold px-4 py-2 rounded-full shadow-lg z-[400] pointer-events-none border border-slate-200">
+                            انقر على الخريطة لتحديد الموقع
                           </div>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[600px] w-[95vw] h-[80vh] flex flex-col">
-                          <DialogHeader>
-                            <DialogTitle className="text-right">تحديد الموقع الدقيق</DialogTitle>
-                          </DialogHeader>
-                          <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200 min-h-0 my-4">
-                            <MapPicker 
-                              className="w-full h-full"
-                              initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
-                              onLocationSelect={(loc) => setTempCoords(loc)}
-                            />
-                            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur text-xs font-bold px-4 py-2 rounded-full shadow-lg z-[400] pointer-events-none border border-slate-200">
-                              انقر على الخريطة لتحديد الموقع
-                            </div>
-                          </div>
-                          <div className="flex justify-end gap-2 pt-2 border-t mt-auto">
-                            <Button variant="outline" onClick={() => setIsMapModalOpen(false)}>
-                              إلغاء
-                            </Button>
-                            <Button 
-                              disabled={!tempCoords} 
-                              onClick={() => {
-                                if (tempCoords) {
-                                  setFormData({...formData, locationCoords: tempCoords})
-                                  toast({ title: "تم تأكيد الموقع", description: "تم حفظ الإحداثيات بنجاح" })
-                                  setIsMapModalOpen(false)
-                                }
-                              }}
-                            >
-                              تأكيد الموقع
-                            </Button>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    )}
-                  </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2 border-t mt-auto">
+                          <Button variant="outline" onClick={() => setIsMapModalOpen(false)}>
+                            إلغاء
+                          </Button>
+                          <Button
+                            disabled={!tempCoords}
+                            onClick={() => {
+                              if (tempCoords) {
+                                setFormData({ ...formData, locationCoords: tempCoords })
+                                toast({ title: "تم تأكيد الموقع", description: "تم حفظ الإحداثيات بنجاح" })
+                                setIsMapModalOpen(false)
+                              }
+                            }}
+                          >
+                            تأكيد الموقع
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>الموعد النهائي للعروض</Label>
-                    <Input 
-                      type="date" 
+                    <Input
+                      type="date"
                       value={formData.deadline}
-                      onChange={e => setFormData({...formData, deadline: e.target.value})}
+                      onChange={e => setFormData({ ...formData, deadline: e.target.value })}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>شروط الدفع</Label>
-                    <Select onValueChange={v => setFormData({...formData, paymentTerms: v})}>
+                    <Select onValueChange={v => setFormData({ ...formData, paymentTerms: v })}>
                       <SelectTrigger>
                         <SelectValue placeholder="اختر الشروط" />
                       </SelectTrigger>
@@ -397,6 +427,8 @@ export default function NewRfqPage() {
                         <SelectItem value="كاش">كاش (نقداً)</SelectItem>
                         <SelectItem value="آجل 30 يوم">آجل 30 يوم</SelectItem>
                         <SelectItem value="آجل 60 يوم">آجل 60 يوم</SelectItem>
+                        <SelectItem value="أخرى">أخرى</SelectItem>
+
                       </SelectContent>
                     </Select>
                   </div>
@@ -406,13 +438,37 @@ export default function NewRfqPage() {
 
             {step === 3 && (
               <div className="space-y-6">
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <Label className="text-base">نطاق نشر المناقصة</Label>
+                  <RadioGroup 
+                    defaultValue={formData.visibility} 
+                    onValueChange={(v) => setFormData({...formData, visibility: v as "public" | "favorites"})}
+                    className="flex flex-col space-y-2 mt-2"
+                  >
+                    <div className="flex items-center space-x-3 space-x-reverse rounded-lg border p-4 cursor-pointer hover:bg-slate-50 transition-colors">
+                      <RadioGroupItem value="public" id="r-public" />
+                      <div className="flex-1">
+                        <Label htmlFor="r-public" className="font-bold cursor-pointer block">عام (جميع الموردين المتاحين)</Label>
+                        <p className="text-xs text-muted-foreground mt-1">تظهر المناقصة لجميع الموردين المتخصصين في نفس الفئة (مثال: جميع موردي الحديد والمعادن).</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 space-x-reverse rounded-lg border p-4 cursor-pointer hover:bg-slate-50 transition-colors">
+                      <RadioGroupItem value="favorites" id="r-favorites" />
+                      <div className="flex-1">
+                        <Label htmlFor="r-favorites" className="font-bold cursor-pointer block">خاص (الموردون المفضلون فقط)</Label>
+                        <p className="text-xs text-muted-foreground mt-1">تظهر المناقصة حصرياً للموردين الذين سبق لك التعامل معهم وأضفتهم إلى مفضلتك.</p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                <div className="space-y-2 border-t pt-6">
                   <Label>ملاحظات إضافية</Label>
-                  <Textarea 
-                    rows={4} 
-                    placeholder="اكتب أي مواصفات فنية إضافية هنا..." 
+                  <Textarea
+                    rows={4}
+                    placeholder="اكتب أي مواصفات فنية إضافية هنا..."
                     value={formData.notes}
-                    onChange={e => setFormData({...formData, notes: e.target.value})}
+                    onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   />
                 </div>
                 <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-dashed">
@@ -420,9 +476,9 @@ export default function NewRfqPage() {
                     <Label className="text-base">شهادة جودة مطلوبة</Label>
                     <p className="text-xs text-muted-foreground">تفعيل هذا الخيار يحصر المناقصة للموردين الحاصلين على شهادات معتمدة</p>
                   </div>
-                  <Switch 
+                  <Switch
                     checked={formData.certRequired}
-                    onCheckedChange={v => setFormData({...formData, certRequired: v})}
+                    onCheckedChange={v => setFormData({ ...formData, certRequired: v })}
                   />
                 </div>
               </div>
@@ -430,24 +486,24 @@ export default function NewRfqPage() {
           </CardContent>
 
           <CardFooter className="flex items-center justify-between border-t bg-slate-50/30 p-6">
-            <Button 
-              variant="ghost" 
-              onClick={prevStep} 
+            <Button
+              variant="ghost"
+              onClick={prevStep}
               disabled={step === 1 || isSubmitting}
               className="gap-2"
             >
               <ChevronRight size={18} />
               السابق
             </Button>
-            
+
             {step < 3 ? (
               <Button onClick={nextStep} className="gap-2 px-8">
                 التالي
                 <ChevronLeft size={18} />
               </Button>
             ) : (
-              <Button 
-                onClick={handleSubmit} 
+              <Button
+                onClick={handleSubmit}
                 disabled={isSubmitting}
                 className="bg-success hover:bg-success/90 gap-2 px-10"
               >

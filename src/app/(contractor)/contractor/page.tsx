@@ -12,7 +12,9 @@ import {
   PlusCircle,
   ArrowUpRight,
   TrendingUp,
-  History
+  History,
+  Star,
+  Award
 } from "lucide-react"
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
@@ -37,7 +39,24 @@ export default function ContractorDashboard() {
 
   const activeRfqsCount = rfqs?.filter((r: any) => r.status === "New").length || 0;
   const awardedCount = rfqs?.filter((r: any) => r.status === "Awarded").length || 0;
-  const suppliersCount = suppliers?.length || 0;
+
+  // Extract RFQ IDs to find accepted offers
+  const myRfqIds = rfqs?.map((r: any) => r.id) || [];
+  const acceptedOffersQuery = useMemoFirebase(() => {
+    if (!firestore || myRfqIds.length === 0) return null
+    return query(collection(firestore, "offers"), where("rfqId", "in", myRfqIds.slice(0, 30)))
+  }, [firestore, myRfqIds.join(",")])
+  
+  const { data: offersData } = useCollection(acceptedOffersQuery)
+  
+  const favoriteSupplierIds = new Set(
+    offersData
+      ?.filter((o: any) => o.status === "مقبول")
+      .map((o: any) => o.supplierId) || []
+  )
+
+  const favoriteSuppliers = suppliers?.filter((s: any) => favoriteSupplierIds.has(s.id)) || [];
+  const suppliersCount = favoriteSuppliers.length || 0;
 
   const stats = [
     { title: "المناقصات المفتوحة", value: activeRfqsCount.toString(), icon: FileText, color: "text-blue-600", bg: "bg-blue-50" },
@@ -176,6 +195,45 @@ export default function ContractorDashboard() {
               </Button>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Favorite Suppliers Section */}
+        <div className="space-y-4 pt-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500 fill-amber-500" />
+              الموردون المفضلون (تعاملات سابقة)
+            </h2>
+            <Button variant="outline" size="sm">إدارة المفضلة</Button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {favoriteSuppliers && favoriteSuppliers.length > 0 ? favoriteSuppliers.slice(0, 3).map((supplier: any) => (
+              <Card key={supplier.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
+                <CardContent className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="h-12 w-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shrink-0 border-2 border-white shadow-sm">
+                      <Users size={20} />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-bold text-slate-800 text-sm truncate">{supplier.companyName || supplier.name || "مورد معتمد"}</h3>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Award size={12} className="text-success" />
+                        <span>سبق التعامل معه</span>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <Badge variant="outline" className="text-[10px] bg-slate-50">حديد</Badge>
+                        <Badge variant="outline" className="text-[10px] bg-slate-50">أسمنت</Badge>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )) : (
+              <div className="col-span-3 p-8 text-center text-muted-foreground bg-slate-50 rounded-xl border border-dashed">
+                لا يوجد موردين مفضلين حتى الآن. ستظهر هنا الشركات التي أتممت معها صفقات.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </PortalLayout>

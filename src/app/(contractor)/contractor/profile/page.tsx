@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,27 +9,99 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Building2, 
-  MapPin, 
-  Phone, 
-  Mail, 
-  Globe, 
-  FileCheck,
-  CheckCircle2,
-  ShieldCheck
-} from "lucide-react"
+import { useUser, useFirestore, useCollection } from "@/firebase"
+import { doc, updateDoc } from "firebase/firestore"
+import { useToast } from "@/hooks/use-toast"
+import { Loader2, Building2, MapPin, Phone, Mail, Globe, FileCheck, CheckCircle2, ShieldCheck, Upload, Trash2, Link as LinkIcon } from "lucide-react"
 
 export default function ContractorProfilePage() {
+  const { user, isUserLoading } = useUser()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+
+  const [isLoading, setIsLoading] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [profile, setProfile] = useState({
-    name: "شركة المقاولات الحديثة",
-    crNumber: "1010123456",
-    description: "شركة مقاولات سعودية رائدة متخصصة في المشاريع السكنية والتجارية الكبرى. نلتزم بأعلى معايير الجودة والسرعة في التنفيذ.",
-    location: "الرياض، المملكة العربية السعودية",
-    phone: "011-222-3344",
-    email: "info@modern-contracting.sa",
-    website: "www.modern-contracting.sa"
+    name: "",
+    crNumber: "",
+    description: "",
+    location: "",
+    phone: "",
+    email: "",
+    website: "",
+    certificates: [] as {name: string, date: string}[]
   })
+
+  // Sync with user data
+  useEffect(() => {
+    if (user) {
+      setProfile(prev => ({
+        ...prev,
+        name: user.name || user.companyName || "",
+        crNumber: user.crNumber || "",
+        location: user.city || user.location || "",
+        phone: user.phone || user.phoneNumber || "",
+        email: user.email || "",
+        description: user.description || "",
+        website: user.website || "",
+        certificates: user.certificates || []
+      }))
+    }
+  }, [user])
+
+  const handleSave = async () => {
+    if (!user || !firestore) return
+    setIsLoading(true)
+    try {
+      await updateDoc(doc(firestore, "users", user.uid), {
+        name: profile.name,
+        companyName: profile.name,
+        crNumber: profile.crNumber,
+        city: profile.location,
+        location: profile.location,
+        phone: profile.phone,
+        phoneNumber: profile.phone,
+        description: profile.description,
+        website: profile.website,
+        certificates: profile.certificates,
+        profileCompleted: true
+      })
+      toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e.message, variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setIsUploading(true)
+    // Simulate upload delay
+    setTimeout(() => {
+      const newCert = {
+        name: file.name,
+        date: new Date().toLocaleDateString('ar-SA')
+      }
+      setProfile(prev => ({
+        ...prev,
+        certificates: [...prev.certificates, newCert]
+      }))
+      setIsUploading(false)
+      toast({ title: "تم الرفع", description: "تمت إضافة المستند بنجاح. لا تنسَ حفظ التغييرات." })
+    }, 1500)
+  }
+
+  const removeCertificate = (index: number) => {
+    setProfile(prev => ({
+      ...prev,
+      certificates: prev.certificates.filter((_, i) => i !== index)
+    }))
+  }
+
+  if (isUserLoading) return <div className="p-20 text-center"><Loader2 className="animate-spin mx-auto" /></div>
 
   return (
     <PortalLayout>
@@ -88,9 +160,9 @@ export default function ContractorProfilePage() {
                 </div>
               </CardContent>
               <CardFooter className="border-t bg-slate-50/50 justify-end p-4">
-                <Button className="gap-2">
+                <Button className="gap-2" onClick={handleSave} disabled={isLoading}>
+                  {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : <CheckCircle2 size={18} />}
                   حفظ التغييرات
-                  <CheckCircle2 size={18} />
                 </Button>
               </CardFooter>
             </Card>
@@ -114,9 +186,44 @@ export default function ContractorProfilePage() {
                   <Badge className="bg-success text-white">نشط</Badge>
                 </div>
                 
-                <div className="p-4 border border-dashed rounded-lg flex flex-col items-center justify-center py-8 text-center gap-2">
-                  <p className="text-sm text-muted-foreground">هل لديك شهادات جودة (ISO) أو تصنيفات أخرى؟</p>
-                  <Button variant="outline" size="sm">إضافة مستند جديد</Button>
+                {profile.certificates.length > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {profile.certificates.map((cert, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 border rounded-lg bg-slate-50 group">
+                        <div className="flex items-center gap-3">
+                          <FileCheck className="text-primary" size={20} />
+                          <div>
+                            <p className="font-bold text-sm text-slate-800">{cert.name}</p>
+                            <p className="text-xs text-muted-foreground">تاريخ الرفع: {cert.date}</p>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeCertificate(idx)} className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="p-4 border border-dashed rounded-lg flex flex-col items-center justify-center py-8 text-center gap-2 relative hover:bg-slate-50 transition-colors">
+                  <input 
+                    type="file" 
+                    accept=".pdf,.png,.jpg,.jpeg" 
+                    onChange={handleFileUpload}
+                    disabled={isUploading}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
+                  />
+                  {isUploading ? (
+                    <Loader2 className="animate-spin text-primary" size={24} />
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-2">هل لديك شهادات جودة (ISO) أو تصنيفات أخرى؟</p>
+                      <Button variant="outline" size="sm" className="pointer-events-none gap-2">
+                        <Upload size={16} />
+                        إضافة مستند جديد
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardContent>
             </Card>

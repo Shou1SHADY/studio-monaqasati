@@ -19,8 +19,8 @@ import {
   Calendar
 } from "lucide-react"
 import Link from "next/link"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, addDoc } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { collection, query, where, addDoc, doc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
@@ -29,7 +29,7 @@ export default function SupplierDashboard() {
   const { toast } = useToast()
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, contractorId: string} | null>(null)
   const [offerPrice, setOfferPrice] = useState("")
 
   const rfqsQuery = useMemoFirebase(() => {
@@ -164,7 +164,7 @@ export default function SupplierDashboard() {
                           <span>الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : "-"}</span>
                         </div>
                         <Button 
-                          onClick={() => setSelectedRfq({id: rfq.id, title: rfq.title})}
+                          onClick={() => setSelectedRfq({id: rfq.id, title: rfq.title, contractorId: rfq.contractorId})}
                           className="w-full md:w-auto bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-sm"
                         >
                           تقديم عرض سعر
@@ -222,6 +222,9 @@ export default function SupplierDashboard() {
               أدخل السعر المقترح لمناقصة: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
             </DialogDescription>
           </DialogHeader>
+          
+          {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
+
           <div className="grid gap-4 py-4">
             <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
               <Label htmlFor="price-dashboard" className="text-right sm:col-span-1 font-bold">
@@ -244,6 +247,42 @@ export default function SupplierDashboard() {
         </DialogContent>
       </Dialog>
     </PortalLayout>
+  )
+}
+
+function ContractorInfo({ contractorId }: { contractorId: string }) {
+  const firestore = useFirestore()
+  const docRef = useMemoFirebase(() => {
+    if (!firestore || !contractorId) return null
+    return doc(firestore, "users", contractorId)
+  }, [firestore, contractorId])
+  
+  const { data: contractor } = useDoc(docRef)
+  
+  if (!contractor) return null
+  
+  return (
+    <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-lg flex flex-col gap-2">
+      <div className="flex justify-between items-center">
+        <span className="text-xs text-muted-foreground">صاحب المناقصة:</span>
+        <span className="text-sm font-bold text-slate-800">{contractor.name || contractor.companyName || "مقاول"}</span>
+      </div>
+      
+      {(contractor.certificates?.length > 0 || contractor.profileCompleted) && (
+        <div className="flex gap-2 flex-wrap mt-1">
+          {contractor.profileCompleted && (
+            <Badge variant="outline" className="bg-success/5 text-success border-success/20 text-[10px]">
+              حساب موثق
+            </Badge>
+          )}
+          {contractor.certificates?.map((cert: any, idx: number) => (
+            <Badge key={idx} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
+              {cert.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

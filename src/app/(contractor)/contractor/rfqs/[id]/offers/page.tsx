@@ -6,6 +6,8 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { 
   CheckCircle2, 
   XCircle, 
@@ -137,6 +139,9 @@ export default function RfqOffersPage() {
     }
   }
 
+  const sortedOffers = offers ? [...offers].sort((a: any, b: any) => a.price - b.price) : []
+  const bestOffer = sortedOffers.length > 0 ? sortedOffers[0] : null
+
   return (
     <PortalLayout>
       <div className="space-y-6 text-right">
@@ -251,8 +256,17 @@ export default function RfqOffersPage() {
           </Card>
         </div>
 
-        {/* Offers List */}
-        <div className="space-y-4">
+        {/* Offers and Compare Tabs */}
+        <Tabs defaultValue="list" className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-lg text-slate-800">العروض المقدمة</h3>
+            <TabsList className="bg-slate-100/50 border border-slate-200">
+              <TabsTrigger value="list" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">قائمة العروض</TabsTrigger>
+              <TabsTrigger value="compare" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">مقارنة العروض</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="list" className="space-y-4 m-0 mt-6">
           {isLoading ? (
             <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
               <Loader2 className="animate-spin" size={40} />
@@ -345,7 +359,101 @@ export default function RfqOffersPage() {
               </Card>
             ))
           )}
-        </div>
+          </TabsContent>
+
+          <TabsContent value="compare" className="m-0 mt-6">
+            {!sortedOffers || sortedOffers.length < 2 ? (
+              <Card className="border-dashed border-2 border-slate-200 shadow-none">
+                <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
+                  <TrendingUp size={48} className="opacity-20" />
+                  <p className="font-bold text-lg">نحتاج عرضين على الأقل للمقارنة</p>
+                  <p className="text-sm">لا يوجد عدد كافٍ من العروض لإجراء مقارنة بينها.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card className="border-none shadow-sm overflow-hidden bg-white">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-slate-50">
+                      <TableRow>
+                        <TableHead className="text-right whitespace-nowrap w-32">المعيار</TableHead>
+                        {sortedOffers.map((o: any, i: number) => (
+                          <TableHead key={o.id} className={`text-center min-w-[140px] ${o.id === bestOffer?.id ? 'bg-amber-50/50' : ''}`}>
+                            مورد {i + 1}
+                            {o.id === bestOffer?.id && (
+                              <div className="text-[10px] text-amber-600 font-bold mt-1">أفضل سعر ⭐</div>
+                            )}
+                          </TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر / الوحدة</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className={`text-center font-bold ${o.id === bestOffer?.id ? 'text-success' : 'text-slate-800'}`}>
+                            {o.price} ر.س
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر الإجمالي</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className={`text-center text-sm ${o.id === bestOffer?.id ? 'text-success/80 font-bold' : 'text-slate-600'}`}>
+                            {rfq?.quantity ? (o.price * rfq.quantity).toLocaleString('en-US') : '-'} ر.س
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">التسليم</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
+                            {o.deliveryTime || 3} أيام
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">شهادة الجودة</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
+                            {o.qualityCert ? <span className="text-success">✓</span> : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">ملاحظات</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-xs text-slate-500 max-w-[150px] truncate">
+                            {o.note || "—"}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow>
+                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">القرار</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center">
+                            <div className="flex justify-center">{getStatusBadge(o.status || "قيد المراجعة")}</div>
+                            {o.status !== "مقبول" && o.status !== "مرفوض" && (
+                              <Button
+                                onClick={() => handleDecision(o.id, "مقبول")}
+                                disabled={processingId === o.id}
+                                className="mt-3 w-full bg-success hover:bg-success/90 gap-2 rounded-full text-xs h-8"
+                                size="sm"
+                              >
+                                {processingId === o.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                                قبول
+                              </Button>
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
     </PortalLayout>
   )

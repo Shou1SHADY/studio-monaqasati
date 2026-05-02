@@ -41,6 +41,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = React.useState(searchParams.get("search") || "")
   
+  React.useEffect(() => {
+    if (!isUserLoading && !user && pathname !== "/admin/seed") {
+      router.push("/login")
+    }
+  }, [user, isUserLoading, router, pathname])
+  
   const basePath = pathname.split("/")[1] || "admin"
   const isSupplier = basePath === "supplier"
   const isContractor = basePath === "contractor"

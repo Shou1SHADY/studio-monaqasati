@@ -26,9 +26,9 @@ service cloud.firestore {
     // --- قواعد المجموعات ---
 
     match /users/{userId} {
-      allow create: if isOwner(userId);
+      allow create: if isOwner(userId) || isAdmin();
       allow get: if isOwner(userId) || isSignedIn();
-      allow list: if isAdmin();
+      allow list: if isAdmin() || isSignedIn();
       allow update: if isOwner(userId) || isAdmin();
       allow delete: if isAdmin();
 

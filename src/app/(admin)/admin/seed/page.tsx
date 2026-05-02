@@ -97,6 +97,17 @@ export default function SeedPage() {
         })
       })
 
+      addLog("خطوة 3: إضافة موردين تجريبيين...")
+      const mockSuppliers = [
+        { id: "sup-1", name: "شركة مصنع الرياض للحديد", role: "Supplier", email: "riyadh.steel@example.com", joinedAt: new Date().toISOString() },
+        { id: "sup-2", name: "أسمنت اليمامة", role: "Supplier", email: "yamama.cement@example.com", joinedAt: new Date().toISOString() },
+        { id: "sup-3", name: "الشركة الوطنية للدهانات", role: "Supplier", email: "national.paints@example.com", joinedAt: new Date().toISOString() },
+      ]
+
+      mockSuppliers.forEach((sup) => {
+        batch.set(doc(firestore, "users", sup.id), sup)
+      })
+
       await batch.commit()
       addLog("✅ تمت إضافة كافة البيانات بنجاح!")
       
