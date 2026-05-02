@@ -16,7 +16,15 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
+import { MapPicker } from "@/components/ui/map-picker"
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -32,10 +40,31 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, addDocumentNonBlocking } from "@/firebase"
 import { collection } from "firebase/firestore"
 
+const CATEGORIES_DATA = {
+  "حديد ومعادن": ["حديد تسليح", "حديد صناعي", "ألواح صاج", "شبك حديد", "ألمنيوم"],
+  "أسمنت وخرسانة": ["أسمنت بورتلاندي", "أسمنت أبيض", "أسمنت مقاوم", "خرسانة جاهزة", "بلوك أسمنتي"],
+  "أرضيات وتشطيبات": ["سيراميك", "بورسلان", "رخام", "جرانيت", "باركيه"],
+  "كهرباء وإنارة": ["كابلات وأسلاك", "لوحات توزيع", "أفياش ومفاتيح", "إضاءة داخلية", "إضاءة خارجية"],
+  "أدوات صحية وسباكة": ["مواسير حرارية", "مواسير صرف", "أطقم حمامات", "محابس وعوامات", "مضخات مياه", "خزانات مياه"],
+  "عزل وأسقف": ["عزل مائي", "عزل حراري", "رولات عزل", "ألواح عزل", "أسقف مستعارة", "جبس بورد"],
+  "أبواب ونوافذ": ["أبواب خشبية", "أبواب حديد", "نوافذ ألمنيوم", "زجاج سيكوريت", "أبواب مقاومة للحريق"],
+  "دهانات": ["دهانات داخلية", "دهانات خارجية", "عوازل دهانات", "معجون", "أدوات طلاء"],
+  "خرسانة جاهزة": ["خرسانة عادية", "خرسانة مقاومة", "مضخات خرسانة", "خرسانة مسبقة الصنع"],
+  "معدات وآليات": ["رافعات شوكية", "مولدات كهربائية", "معدات حفر", "سقالات", "معدات خلط"],
+}
+
+const SAUDI_CITIES = [
+  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران", 
+  "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط", 
+  "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
+]
+
 export default function NewRfqPage() {
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false)
+  const [tempCoords, setTempCoords] = useState<{ lat: number, lng: number } | null>(null)
   const { toast } = useToast()
   const router = useRouter()
   const firestore = useFirestore()
@@ -44,14 +73,16 @@ export default function NewRfqPage() {
   const [formData, setFormData] = useState({
     title: "",
     category: "",
+    subCategory: "",
     quantity: "",
     unit: "",
-    location: "",
-    area: "",
+    city: "",
+    district: "",
     deadline: "",
     paymentTerms: "",
     notes: "",
-    certRequired: false
+    certRequired: false,
+    locationCoords: null as { lat: number, lng: number } | null
   })
 
   const nextStep = () => setStep(s => s + 1)
@@ -107,12 +138,14 @@ export default function NewRfqPage() {
     const rfqData = {
       contractorId: user.uid,
       title: formData.title,
-      categoryId: formData.category,
+      category: formData.category,
+      subCategory: formData.subCategory,
       quantity: Number(formData.quantity),
       unitOfMeasure: formData.unit,
       deadline: formData.deadline,
-      location: formData.location,
-      area: formData.area,
+      city: formData.city,
+      district: formData.district,
+      locationCoords: formData.locationCoords ? { lat: formData.locationCoords.lat, lng: formData.locationCoords.lng } : null,
       paymentTerms: formData.paymentTerms,
       isQualityCertificateRequired: formData.certRequired,
       notes: formData.notes,
@@ -187,36 +220,52 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>الفئة</Label>
-                    <Select onValueChange={v => setFormData({...formData, category: v})}>
+                    <Select onValueChange={v => setFormData({...formData, category: v, subCategory: ""})}>
                       <SelectTrigger>
                         <SelectValue placeholder="اختر الفئة" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="حديد ومعادن">حديد ومعادن</SelectItem>
-                        <SelectItem value="أسمنت وخرسانة">أسمنت وخرسانة</SelectItem>
-                        <SelectItem value="دهانات">دهانات</SelectItem>
-                        <SelectItem value="أدوات صحية">أدوات صحية</SelectItem>
+                        {Object.keys(CATEGORIES_DATA).map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>الكمية</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="0" 
-                        value={formData.quantity}
-                        onChange={e => setFormData({...formData, quantity: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>الوحدة</Label>
-                      <Input 
-                        placeholder="طن / متر" 
-                        value={formData.unit}
-                        onChange={e => setFormData({...formData, unit: e.target.value})}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label>النوع (التصنيف الفرعي)</Label>
+                    <Select 
+                      disabled={!formData.category}
+                      onValueChange={v => setFormData({...formData, subCategory: v})}
+                      value={formData.subCategory}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={formData.category ? "اختر النوع" : "اختر الفئة أولاً"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {formData.category && CATEGORIES_DATA[formData.category as keyof typeof CATEGORIES_DATA].map(sub => (
+                          <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>الكمية</Label>
+                    <Input 
+                      type="number" 
+                      placeholder="0" 
+                      value={formData.quantity}
+                      onChange={e => setFormData({...formData, quantity: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>الوحدة</Label>
+                    <Input 
+                      placeholder="طن أو متر" 
+                      value={formData.unit}
+                      onChange={e => setFormData({...formData, unit: e.target.value})}
+                    />
                   </div>
                 </div>
               </div>
@@ -227,21 +276,108 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>المدينة</Label>
-                    <Input 
-                      placeholder="الرياض، جدة، الخ..." 
-                      value={formData.location}
-                      onChange={e => setFormData({...formData, location: e.target.value})}
-                    />
+                    <Select onValueChange={v => setFormData({...formData, city: v})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="اختر المدينة" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SAUDI_CITIES.map(city => (
+                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>منطقة الخدمة (الحي)</Label>
+                    <Label>الحي أو المنطقة</Label>
                     <Input 
                       placeholder="مثال: حي النرجس" 
-                      value={formData.area}
-                      onChange={e => setFormData({...formData, area: e.target.value})}
+                      value={formData.district}
+                      onChange={e => setFormData({...formData, district: e.target.value})}
                     />
                   </div>
                 </div>
+
+                  <div className="space-y-2">
+                    <Label>موقع التوريد الدقيق على الخريطة</Label>
+                    
+                    {formData.locationCoords ? (
+                      <div className="relative h-48 rounded-xl border border-success/30 bg-success/5 flex flex-col items-center justify-center text-center p-4">
+                        <MapPin className="text-success mb-2" size={32} />
+                        <p className="text-success font-bold">تم تحديد الموقع بنجاح</p>
+                        <p className="text-xs text-success/80 mt-1 font-mono">
+                          {formData.locationCoords.lat.toFixed(4)}, {formData.locationCoords.lng.toFixed(4)}
+                        </p>
+                        <div className="flex gap-2 mt-4">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs"
+                            onClick={() => {
+                              setTempCoords(formData.locationCoords)
+                              setIsMapModalOpen(true)
+                            }}
+                          >
+                            تعديل الموقع
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-xs text-destructive hover:bg-destructive/10"
+                            onClick={() => setFormData({...formData, locationCoords: null})}
+                          >
+                            إلغاء التحديد
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
+                        <DialogTrigger asChild>
+                          <div className="relative h-48 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-center p-4 group hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
+                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3 group-hover:scale-110 transition-transform">
+                              <MapPin size={24} />
+                            </div>
+                            <h3 className="font-bold text-slate-800">تحديد الموقع على الخريطة</h3>
+                            <p className="text-xs text-muted-foreground max-w-[200px] mt-1">انقر لفتح الخريطة واختيار موقع المشروع بدقة لتسهيل التوصيل</p>
+                            <Button variant="secondary" size="sm" className="mt-4 rounded-full pointer-events-none">
+                              فتح الخريطة
+                            </Button>
+                          </div>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[600px] w-[95vw] h-[80vh] flex flex-col">
+                          <DialogHeader>
+                            <DialogTitle className="text-right">تحديد الموقع الدقيق</DialogTitle>
+                          </DialogHeader>
+                          <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200 min-h-0 my-4">
+                            <MapPicker 
+                              className="w-full h-full"
+                              initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
+                              onLocationSelect={(loc) => setTempCoords(loc)}
+                            />
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur text-xs font-bold px-4 py-2 rounded-full shadow-lg z-[400] pointer-events-none border border-slate-200">
+                              انقر على الخريطة لتحديد الموقع
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-2 border-t mt-auto">
+                            <Button variant="outline" onClick={() => setIsMapModalOpen(false)}>
+                              إلغاء
+                            </Button>
+                            <Button 
+                              disabled={!tempCoords} 
+                              onClick={() => {
+                                if (tempCoords) {
+                                  setFormData({...formData, locationCoords: tempCoords})
+                                  toast({ title: "تم تأكيد الموقع", description: "تم حفظ الإحداثيات بنجاح" })
+                                  setIsMapModalOpen(false)
+                                }
+                              }}
+                            >
+                              تأكيد الموقع
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label>الموعد النهائي للعروض</Label>

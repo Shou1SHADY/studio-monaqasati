@@ -150,8 +150,12 @@ export default function SupplierDashboard() {
                       <div className="space-y-3">
                         <h3 className="font-bold text-lg text-slate-800">{rfq.title}</h3>
                         <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-600 border-none px-3">{rfq.categoryId || rfq.category}</Badge>
-                          <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none px-3">{rfq.area}</Badge>
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-600 border-none px-3">
+                            {rfq.category || rfq.categoryId}
+                          </Badge>
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none px-3">
+                            {rfq.city} - {rfq.district}
+                          </Badge>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-3 shrink-0">

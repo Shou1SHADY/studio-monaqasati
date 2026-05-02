@@ -54,9 +54,10 @@ export default function AvailableRfqsPage() {
     const q = searchQuery.toLowerCase();
     return (
       rfq.title?.toLowerCase().includes(q) ||
-      rfq.categoryId?.toLowerCase().includes(q) ||
-      rfq.location?.toLowerCase().includes(q) ||
-      rfq.area?.toLowerCase().includes(q)
+      rfq.category?.toLowerCase().includes(q) ||
+      rfq.subCategory?.toLowerCase().includes(q) ||
+      rfq.city?.toLowerCase().includes(q) ||
+      rfq.district?.toLowerCase().includes(q)
     );
   }) || [];
 
@@ -140,8 +141,15 @@ export default function AvailableRfqsPage() {
                   <div className="flex flex-col md:flex-row">
                     <div className="p-6 flex-1 space-y-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="bg-primary/5 text-primary border-none">{rfq.categoryId}</Badge>
-                        <span className="text-xs text-muted-foreground font-mono">{rfq.id}</span>
+                        <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
+                          {rfq.category}
+                        </Badge>
+                        {rfq.subCategory && (
+                          <Badge variant="outline" className="text-muted-foreground border-slate-200">
+                            {rfq.subCategory}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground font-mono mr-auto">{rfq.id.substring(0, 8)}</span>
                       </div>
                       
                       <div className="space-y-1">
@@ -153,8 +161,19 @@ export default function AvailableRfqsPage() {
 
                       <div className="flex flex-wrap items-center gap-6 pt-2">
                         <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <MapPin size={16} className="text-muted-foreground" />
-                          {rfq.location} - {rfq.area}
+                          <MapPin size={16} className="text-primary" />
+                          {rfq.city} - {rfq.district}
+                          {rfq.locationCoords && (
+                            <a 
+                              href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary underline mr-2 hover:text-primary/70 transition-colors"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              عرض الخريطة
+                            </a>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-slate-600" suppressHydrationWarning>
                           <Calendar size={16} className="text-muted-foreground" />

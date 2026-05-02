@@ -46,7 +46,8 @@ export default function AdminRfqsPage() {
     const q = searchQuery.toLowerCase();
     return (
       rfq.title?.toLowerCase().includes(q) ||
-      rfq.categoryId?.toLowerCase().includes(q) ||
+      rfq.category?.toLowerCase().includes(q) ||
+      rfq.subCategory?.toLowerCase().includes(q) ||
       rfq.id?.toLowerCase().includes(q)
     );
   }) || [];
@@ -118,7 +119,10 @@ export default function AdminRfqsPage() {
                       <TableCell className="font-mono text-xs hidden md:table-cell">{rfq.id}</TableCell>
                       <TableCell className="font-bold">{rfq.title}</TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <Badge variant="outline" className="text-[10px] font-normal">{rfq.categoryId}</Badge>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-bold">{rfq.category}</span>
+                          <span className="text-[10px] text-muted-foreground">{rfq.subCategory}</span>
+                        </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
                       <TableCell className="hidden sm:table-cell">

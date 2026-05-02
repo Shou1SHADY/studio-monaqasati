@@ -41,7 +41,8 @@ export default function ContractorRfqsPage() {
     const q = searchQuery.toLowerCase();
     return (
       rfq.title?.toLowerCase().includes(q) ||
-      rfq.categoryId?.toLowerCase().includes(q) ||
+      rfq.category?.toLowerCase().includes(q) ||
+      rfq.subCategory?.toLowerCase().includes(q) ||
       rfq.id?.toLowerCase().includes(q)
     );
   }) || [];
@@ -111,7 +112,12 @@ export default function ContractorRfqsPage() {
                   {filteredRfqs.map((rfq: any) => (
                     <TableRow key={rfq.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-bold">{rfq.title}</TableCell>
-                      <TableCell>{rfq.categoryId}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-sm">{rfq.category}</span>
+                          <span className="text-xs text-muted-foreground">{rfq.subCategory}</span>
+                        </div>
+                      </TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>

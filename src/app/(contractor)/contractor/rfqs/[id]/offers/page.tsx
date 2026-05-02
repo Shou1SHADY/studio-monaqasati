@@ -14,9 +14,11 @@ import {
   TrendingUp,
   User,
   Calendar,
-  MessageSquare
+  MessageSquare,
+  MapPin,
+  Tag
 } from "lucide-react"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
@@ -65,7 +67,15 @@ export default function RfqOffersPage() {
     )
   }, [firestore, user, isUserLoading, rfqId])
 
-  const { data: offers, isLoading } = useCollection(offersQuery)
+  const rfqDocRef = useMemoFirebase(() => {
+    if (!firestore || !rfqId) return null
+    return doc(firestore, "rfqs", rfqId)
+  }, [firestore, rfqId])
+
+  const { data: rfq, isLoading: isRfqLoading } = useDoc(rfqDocRef)
+
+  const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
+  const isLoading = isOffersLoading || isRfqLoading
 
   const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض") => {
     if (!firestore || !user) return
@@ -140,11 +150,69 @@ export default function RfqOffersPage() {
             <h1 className="text-3xl font-bold text-secondary font-headline">عروض المناقصة</h1>
             <p className="text-muted-foreground mt-1">راجع عروض الأسعار المقدمة من الموردين واتخذ قرارك</p>
           </div>
-          <div className="bg-primary/5 border border-primary/20 rounded-xl px-4 py-3 text-right">
-            <p className="text-xs text-muted-foreground">رقم المناقصة</p>
-            <p className="font-mono text-sm font-bold text-primary">{rfqId.substring(0, 12)}...</p>
-          </div>
         </div>
+        {rfq && (
+          <Card className="border-none shadow-sm bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row justify-between gap-6">
+                <div className="space-y-4 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
+                      {rfq.category}
+                    </Badge>
+                    {rfq.subCategory && (
+                      <Badge variant="outline" className="text-muted-foreground border-slate-200">
+                        {rfq.subCategory}
+                      </Badge>
+                    )}
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground mr-auto bg-slate-50 px-2 py-1 rounded">
+                      <Calendar size={12} />
+                      تاريخ الطرح: {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
+                    </div>
+                  </div>
+                  
+                  <h2 className="text-2xl font-bold text-slate-800">{rfq.title}</h2>
+                  
+                  <div className="flex flex-wrap items-center gap-6 text-sm text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <MapPin size={16} className="text-primary" />
+                      {rfq.city} - {rfq.district}
+                      {rfq.locationCoords && (
+                        <a 
+                          href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary underline mr-2 hover:text-primary/70 transition-colors"
+                        >
+                          عرض الموقع
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Tag size={16} className="text-muted-foreground" />
+                      الكمية: {rfq.quantity} {rfq.unitOfMeasure}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="md:w-px md:h-24 bg-slate-100 hidden md:block" />
+
+                <div className="space-y-2 min-w-[200px]">
+                  <p className="text-xs text-muted-foreground">رقم المناقصة</p>
+                  <p className="font-mono text-sm font-bold text-primary bg-primary/5 px-3 py-2 rounded-lg border border-primary/10">
+                    {rfqId}
+                  </p>
+                  {rfq.deadline && (
+                    <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/5 px-3 py-2 rounded-lg border border-destructive/10">
+                      <Calendar size={14} />
+                      الموعد النهائي: {new Date(rfq.deadline).toLocaleDateString('ar-SA')}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
