@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { 
@@ -14,20 +15,36 @@ import {
   Calendar, 
   ChevronLeft, 
   Filter,
-  Loader2
+  Loader2,
+  Plus,
+  Trash2,
+  Truck
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, where, orderBy } from "firebase/firestore"
 import { useRouter, useSearchParams } from "next/navigation"
 
+interface DeliveryBatch {
+  id: string
+  quantity: string
+  deliveryDate: string
+  price: string
+}
+
 export default function AvailableRfqsPage() {
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
   const [offerPrice, setOfferPrice] = useState("")
+  const [deliveryLocation, setDeliveryLocation] = useState("")
+  const [deliveryMethod, setDeliveryMethod] = useState("")
+  const [deliveryFrequency, setDeliveryFrequency] = useState("")
+  const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
+    { id: "1", quantity: "", deliveryDate: "", price: "" }
+  ])
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
@@ -61,21 +78,64 @@ export default function AvailableRfqsPage() {
     );
   }) || [];
 
+  const resetForm = () => {
+    setOfferPrice("")
+    setDeliveryLocation("")
+    setDeliveryMethod("")
+    setDeliveryFrequency("")
+    setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "" }])
+  }
+
+  const addBatch = () => {
+    setDeliveryBatches([...deliveryBatches, { id: Date.now().toString(), quantity: "", deliveryDate: "", price: "" }])
+  }
+
+  const removeBatch = (id: string) => {
+    if (deliveryBatches.length > 1) {
+      setDeliveryBatches(deliveryBatches.filter(b => b.id !== id))
+    }
+  }
+
+  const updateBatch = (id: string, field: keyof DeliveryBatch, value: string) => {
+    setDeliveryBatches(deliveryBatches.map(b => b.id === id ? { ...b, [field]: value } : b))
+  }
+
   const submitOffer = async () => {
     if (!user || !firestore) {
       toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
       return;
     }
 
-    if (!selectedRfq || !offerPrice) return;
+    if (!selectedRfq || !offerPrice || !deliveryLocation || !deliveryMethod) {
+      toast({ title: "بيانات ناقصة", description: "يرجى填写 جميع الحقول المطلوبة", variant: "destructive" });
+      return;
+    }
+
+    const validBatches = deliveryBatches.filter(b => b.quantity && b.deliveryDate && b.price)
+    if (validBatches.length === 0) {
+      toast({ title: "بيانات ناقصة", description: "يرجى إضافة دفعة تسليم واحدة على الأقل", variant: "destructive" });
+      return;
+    }
 
     try {
       const { addDoc } = await import("firebase/firestore");
+      
+      const totalBatchesPrice = validBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
+
       await addDoc(collection(firestore, "offers"), {
         supplierId: user.uid,
         rfqId: selectedRfq.id,
         rfqTitle: selectedRfq.title,
         price: offerPrice,
+        deliveryLocation: deliveryLocation,
+        deliveryMethod: deliveryMethod,
+        deliveryFrequency: deliveryFrequency,
+        deliveryBatches: validBatches.map(b => ({
+          quantity: b.quantity,
+          deliveryDate: b.deliveryDate,
+          price: b.price
+        })),
+        totalBatchesPrice: totalBatchesPrice,
         status: "قيد المراجعة",
         createdAt: new Date().toISOString()
       });
@@ -85,7 +145,7 @@ export default function AvailableRfqsPage() {
         description: `تم إرسال عرضك بنجاح بمبلغ ${offerPrice} ر.س.`,
       })
       setSelectedRfq(null);
-      setOfferPrice("");
+      resetForm();
       setTimeout(() => {
         router.push("/supplier/offers")
       }, 1000)
@@ -184,7 +244,12 @@ export default function AvailableRfqsPage() {
                     
                     <div className="bg-slate-50/50 p-6 flex items-center justify-center md:border-r border-t md:border-t-0 min-w-[200px]">
                       <Button 
-                        onClick={() => setSelectedRfq({id: rfq.id, title: rfq.title})}
+                        onClick={() => setSelectedRfq({
+                          id: rfq.id, 
+                          title: rfq.title,
+                          quantity: rfq.quantity,
+                          unitOfMeasure: rfq.unitOfMeasure
+                        })}
                         className="w-full md:w-auto gap-2 bg-primary hover:bg-primary/90 rounded-full h-11 px-8 shadow-sm"
                       >
                         تقديم عرض سعر
@@ -199,32 +264,162 @@ export default function AvailableRfqsPage() {
         </div>
       </div>
 
-      <Dialog open={!!selectedRfq} onOpenChange={(open) => !open && setSelectedRfq(null)}>
-        <DialogContent className="sm:max-w-[425px] text-right" dir="rtl">
+      <Dialog open={!!selectedRfq} onOpenChange={(open) => { if (!open) { setSelectedRfq(null); resetForm() } }}>
+        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>تقديم عرض سعر</DialogTitle>
             <DialogDescription className="mt-2">
-              أدخل السعر المقترح لمناقصة: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
+              أدخل التفاصيل الكاملة لعرضك على: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
-              <Label htmlFor="price" className="text-right sm:col-span-1 font-bold">
-                السعر (ر.س)
-              </Label>
-              <Input
-                id="price"
-                type="number"
-                value={offerPrice}
-                onChange={(e) => setOfferPrice(e.target.value)}
-                className="sm:col-span-3 w-full"
-                placeholder="مثال: 50000"
-              />
+          <div className="grid gap-5 py-4">
+            <div className="space-y-3">
+              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
+                <Truck size={16} />
+                معلومات التسليم
+              </h3>
+              
+              <div className="grid gap-3">
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryLocation" className="text-right sm:col-span-1 font-medium">
+                    موقع التسليم <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="deliveryLocation"
+                    value={deliveryLocation}
+                    onChange={(e) => setDeliveryLocation(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: الرياض - حي النرجس"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryMethod" className="text-right sm:col-span-1 font-medium">
+                    طريقة التسليم <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="deliveryMethod"
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: شاحنات متخصصة / تسليم يدوي"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryFrequency" className="text-right sm:col-span-1 font-medium">
+                    وتيرة التسليم
+                  </Label>
+                  <Input
+                    id="deliveryFrequency"
+                    value={deliveryFrequency}
+                    onChange={(e) => setDeliveryFrequency(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: أسبوعية / شهرية / دفعة واحدة"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
+                <Calendar size={16} />
+                جدول الشحنات والتسعير
+              </h3>
+              
+              <div className="space-y-3">
+                {deliveryBatches.map((batch, index) => (
+                  <div key={batch.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-600">الشحنة {index + 1}</span>
+                      {deliveryBatches.length > 1 && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => removeBatch(batch.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          الكمية <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="number"
+                          value={batch.quantity}
+                          onChange={(e) => updateBatch(batch.id, "quantity", e.target.value)}
+                          placeholder={selectedRfq?.unitOfMeasure ? `مثال: 50 ${selectedRfq.unitOfMeasure}` : "الكمية"}
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          تاريخ التسليم <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="date"
+                          value={batch.deliveryDate}
+                          onChange={(e) => updateBatch(batch.id, "deliveryDate", e.target.value)}
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          السعر (ر.س) <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="number"
+                          value={batch.price}
+                          onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
+                          placeholder="سعر الشحنة"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={addBatch}
+              >
+                <Plus size={16} />
+                إضافة شحنة أخرى
+              </Button>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t">
+              <h3 className="font-bold text-sm text-primary">السعر الإجمالي</h3>
+              <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                <Label htmlFor="price" className="text-right sm:col-span-1 font-bold">
+                  السعر الكلي (ر.س) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="price"
+                  type="number"
+                  value={offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  className="sm:col-span-3 w-full"
+                  placeholder="مثال: 50000"
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => setSelectedRfq(null)}>إلغاء</Button>
-            <Button onClick={submitOffer} disabled={!offerPrice}>تأكيد وإرسال</Button>
+            <Button variant="outline" onClick={() => { setSelectedRfq(null); resetForm() }}>إلغاء</Button>
+            <Button 
+              onClick={submitOffer} 
+              disabled={!offerPrice || !deliveryLocation || !deliveryMethod}
+            >
+              تأكيد وإرسال العرض
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

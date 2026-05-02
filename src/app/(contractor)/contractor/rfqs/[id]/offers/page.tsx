@@ -18,7 +18,9 @@ import {
   Calendar,
   MessageSquare,
   MapPin,
-  Tag
+  Tag,
+  Truck,
+  Package
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
@@ -313,6 +315,67 @@ export default function RfqOffersPage() {
                           <span>{offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}</span>
                         </div>
                       </div>
+
+                      {offer.deliveryLocation && (
+                        <div className="mt-4 p-4 bg-slate-50 rounded-lg space-y-3 border border-slate-100">
+                          <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <Truck size={16} className="text-primary" />
+                            تفاصيل التسليم
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                            <div className="flex items-center gap-2">
+                              <MapPin size={14} className="text-muted-foreground" />
+                              <span className="text-slate-600">موقع التسليم:</span>
+                              <span className="font-medium">{offer.deliveryLocation}</span>
+                            </div>
+                            {offer.deliveryMethod && (
+                              <div className="flex items-center gap-2">
+                                <Package size={14} className="text-muted-foreground" />
+                                <span className="text-slate-600">الطريقة:</span>
+                                <span className="font-medium">{offer.deliveryMethod}</span>
+                              </div>
+                            )}
+                            {offer.deliveryFrequency && (
+                              <div className="flex items-center gap-2 sm:col-span-2">
+                                <Calendar size={14} className="text-muted-foreground" />
+                                <span className="text-slate-600">وتيرة التسليم:</span>
+                                <span className="font-medium">{offer.deliveryFrequency}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <p className="text-xs font-bold text-slate-600 mb-2">جدول الشحنات:</p>
+                              <div className="space-y-2">
+                                {offer.deliveryBatches.map((batch: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
+                                        شحنة {idx + 1}
+                                      </span>
+                                      <span className="text-slate-600">{batch.quantity}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar size={12} className="text-muted-foreground" />
+                                      <span className="text-slate-600">{batch.deliveryDate}</span>
+                                      <span className="font-bold text-success">{batch.price} ر.س</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              {offer.totalBatchesPrice && (
+                                <div className="mt-2 flex justify-end">
+                                  <span className="text-xs text-muted-foreground">
+                                    إجمالي أسعار الشحنات: <span className="font-bold text-success">{offer.totalBatchesPrice} ر.س</span>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Action Buttons - Pending */}

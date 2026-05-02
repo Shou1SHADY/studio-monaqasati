@@ -16,11 +16,14 @@ import {
   DollarSign, 
   Search,
   ChevronLeft,
-  Calendar
+  Calendar,
+  Truck,
+  Plus,
+  Trash2
 } from "lucide-react"
 import Link from "next/link"
-import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, addDoc, doc } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where, addDoc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
@@ -29,8 +32,14 @@ export default function SupplierDashboard() {
   const { toast } = useToast()
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, contractorId: string} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
   const [offerPrice, setOfferPrice] = useState("")
+  const [deliveryLocation, setDeliveryLocation] = useState("")
+  const [deliveryMethod, setDeliveryMethod] = useState("")
+  const [deliveryFrequency, setDeliveryFrequency] = useState("")
+  const [deliveryBatches, setDeliveryBatches] = useState<{id: string, quantity: string, deliveryDate: string, price: string}[]>([
+    { id: "1", quantity: "", deliveryDate: "", price: "" }
+  ])
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -61,20 +70,62 @@ export default function SupplierDashboard() {
 
   const recommendedRfqs = rfqs?.slice(0, 3) || []
 
+  const resetForm = () => {
+    setOfferPrice("")
+    setDeliveryLocation("")
+    setDeliveryMethod("")
+    setDeliveryFrequency("")
+    setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "" }])
+  }
+
+  const addBatch = () => {
+    setDeliveryBatches([...deliveryBatches, { id: Date.now().toString(), quantity: "", deliveryDate: "", price: "" }])
+  }
+
+  const removeBatch = (id: string) => {
+    if (deliveryBatches.length > 1) {
+      setDeliveryBatches(deliveryBatches.filter(b => b.id !== id))
+    }
+  }
+
+  const updateBatch = (id: string, field: string, value: string) => {
+    setDeliveryBatches(deliveryBatches.map(b => b.id === id ? { ...b, [field]: value } : b))
+  }
+
   const submitOffer = async () => {
     if (!user || !firestore) {
       toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
       return;
     }
 
-    if (!selectedRfq || !offerPrice) return;
+    if (!selectedRfq || !offerPrice || !deliveryLocation || !deliveryMethod) {
+      toast({ title: "بيانات ناقصة", description: "يرجى ملء جميع الحقول المطلوبة", variant: "destructive" });
+      return;
+    }
+
+    const validBatches = deliveryBatches.filter(b => b.quantity && b.deliveryDate && b.price)
+    if (validBatches.length === 0) {
+      toast({ title: "بيانات ناقصة", description: "يرجى إضافة دفعة تسليم واحدة على الأقل", variant: "destructive" });
+      return;
+    }
 
     try {
+      const totalBatchesPrice = validBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
+
       await addDoc(collection(firestore, "offers"), {
         supplierId: user.uid,
         rfqId: selectedRfq.id,
         rfqTitle: selectedRfq.title,
         price: offerPrice,
+        deliveryLocation: deliveryLocation,
+        deliveryMethod: deliveryMethod,
+        deliveryFrequency: deliveryFrequency,
+        deliveryBatches: validBatches.map(b => ({
+          quantity: b.quantity,
+          deliveryDate: b.deliveryDate,
+          price: b.price
+        })),
+        totalBatchesPrice: totalBatchesPrice,
         status: "قيد المراجعة",
         createdAt: new Date().toISOString()
       });
@@ -84,7 +135,7 @@ export default function SupplierDashboard() {
         description: `تم إرسال عرضك بنجاح بمبلغ ${offerPrice} ر.س.`,
       })
       setSelectedRfq(null);
-      setOfferPrice("");
+      resetForm();
       setTimeout(() => {
         router.push("/supplier/offers")
       }, 1000)
@@ -164,7 +215,12 @@ export default function SupplierDashboard() {
                           <span>الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : "-"}</span>
                         </div>
                         <Button 
-                          onClick={() => setSelectedRfq({id: rfq.id, title: rfq.title, contractorId: rfq.contractorId})}
+                          onClick={() => setSelectedRfq({
+                            id: rfq.id, 
+                            title: rfq.title,
+                            quantity: rfq.quantity,
+                            unitOfMeasure: rfq.unitOfMeasure
+                          })}
                           className="w-full md:w-auto bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-sm"
                         >
                           تقديم عرض سعر
@@ -214,75 +270,166 @@ export default function SupplierDashboard() {
         </div>
       </div>
 
-      <Dialog open={!!selectedRfq} onOpenChange={(open) => !open && setSelectedRfq(null)}>
-        <DialogContent className="sm:max-w-[425px] text-right" dir="rtl">
+      <Dialog open={!!selectedRfq} onOpenChange={(open) => { if (!open) { setSelectedRfq(null); resetForm() } }}>
+        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle>تقديم عرض سعر</DialogTitle>
             <DialogDescription className="mt-2">
-              أدخل السعر المقترح لمناقصة: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
+              أدخل التفاصيل الكاملة لعرضك على: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
             </DialogDescription>
           </DialogHeader>
-          
-          {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
+          <div className="grid gap-5 py-4">
+            <div className="space-y-3">
+              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
+                <Truck size={16} />
+                معلومات التسليم
+              </h3>
+              
+              <div className="grid gap-3">
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryLocation" className="text-right sm:col-span-1 font-medium">
+                    موقع التسليم <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="deliveryLocation"
+                    value={deliveryLocation}
+                    onChange={(e) => setDeliveryLocation(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: الرياض - حي النرجس"
+                  />
+                </div>
 
-          <div className="grid gap-4 py-4">
-            <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2 sm:gap-4">
-              <Label htmlFor="price-dashboard" className="text-right sm:col-span-1 font-bold">
-                السعر (ر.س)
-              </Label>
-              <Input
-                id="price-dashboard"
-                type="number"
-                value={offerPrice}
-                onChange={(e) => setOfferPrice(e.target.value)}
-                className="sm:col-span-3 w-full"
-                placeholder="مثال: 50000"
-              />
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryMethod" className="text-right sm:col-span-1 font-medium">
+                    طريقة التسليم <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="deliveryMethod"
+                    value={deliveryMethod}
+                    onChange={(e) => setDeliveryMethod(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: شاحنات متخصصة / تسليم يدوي"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                  <Label htmlFor="deliveryFrequency" className="text-right sm:col-span-1 font-medium">
+                    وتيرة التسليم
+                  </Label>
+                  <Input
+                    id="deliveryFrequency"
+                    value={deliveryFrequency}
+                    onChange={(e) => setDeliveryFrequency(e.target.value)}
+                    className="sm:col-span-3 w-full"
+                    placeholder="مثال: أسبوعية / شهرية / دفعة واحدة"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
+                <Calendar size={16} />
+                جدول الشحنات والتسعير
+              </h3>
+              
+              <div className="space-y-3">
+                {deliveryBatches.map((batch, index) => (
+                  <div key={batch.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-slate-600">الشحنة {index + 1}</span>
+                      {deliveryBatches.length > 1 && (
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => removeBatch(batch.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          الكمية <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="number"
+                          value={batch.quantity}
+                          onChange={(e) => updateBatch(batch.id, "quantity", e.target.value)}
+                          placeholder={selectedRfq?.unitOfMeasure ? `مثال: 50 ${selectedRfq.unitOfMeasure}` : "الكمية"}
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          تاريخ التسليم <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="date"
+                          value={batch.deliveryDate}
+                          onChange={(e) => updateBatch(batch.id, "deliveryDate", e.target.value)}
+                        />
+                      </div>
+                      
+                      <div className="flex flex-col gap-1">
+                        <Label className="text-xs font-medium text-slate-600">
+                          السعر (ر.س) <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          type="number"
+                          value={batch.price}
+                          onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
+                          placeholder="سعر الشحنة"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={addBatch}
+              >
+                <Plus size={16} />
+                إضافة شحنة أخرى
+              </Button>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t">
+              <h3 className="font-bold text-sm text-primary">السعر الإجمالي</h3>
+              <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
+                <Label htmlFor="price-dashboard" className="text-right sm:col-span-1 font-bold">
+                  السعر الكلي (ر.س) <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="price-dashboard"
+                  type="number"
+                  value={offerPrice}
+                  onChange={(e) => setOfferPrice(e.target.value)}
+                  className="sm:col-span-3 w-full"
+                  placeholder="مثال: 50000"
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => setSelectedRfq(null)}>إلغاء</Button>
-            <Button onClick={submitOffer} disabled={!offerPrice}>تأكيد وإرسال</Button>
+            <Button variant="outline" onClick={() => { setSelectedRfq(null); resetForm() }}>إلغاء</Button>
+            <Button 
+              onClick={submitOffer} 
+              disabled={!offerPrice || !deliveryLocation || !deliveryMethod}
+            >
+              تأكيد وإرسال العرض
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </PortalLayout>
-  )
-}
-
-function ContractorInfo({ contractorId }: { contractorId: string }) {
-  const firestore = useFirestore()
-  const docRef = useMemoFirebase(() => {
-    if (!firestore || !contractorId) return null
-    return doc(firestore, "users", contractorId)
-  }, [firestore, contractorId])
-  
-  const { data: contractor } = useDoc(docRef)
-  
-  if (!contractor) return null
-  
-  return (
-    <div className="mt-2 p-3 bg-slate-50 border border-slate-100 rounded-lg flex flex-col gap-2">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">صاحب المناقصة:</span>
-        <span className="text-sm font-bold text-slate-800">{contractor.name || contractor.companyName || "مقاول"}</span>
-      </div>
-      
-      {(contractor.certificates?.length > 0 || contractor.profileCompleted) && (
-        <div className="flex gap-2 flex-wrap mt-1">
-          {contractor.profileCompleted && (
-            <Badge variant="outline" className="bg-success/5 text-success border-success/20 text-[10px]">
-              حساب موثق
-            </Badge>
-          )}
-          {contractor.certificates?.map((cert: any, idx: number) => (
-            <Badge key={idx} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
-              {cert.name}
-            </Badge>
-          ))}
-        </div>
-      )}
-    </div>
   )
 }
 
