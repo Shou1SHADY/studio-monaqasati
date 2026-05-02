@@ -2,16 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- دالات مساعدة أساسية ---
+    // --- دالات مساعدة آمنة ---
     function isSignedIn() {
       return request.auth != null;
     }
 
     function getUserData() {
+      // استخدام get() بشكل آمن فقط إذا كان المستند موجوداً
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // التحقق الآمن: التأكد من وجود المستند قبل محاولة قراءته لتجنب فشل التقييم (Evaluation Error)
     function hasRole(role) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))

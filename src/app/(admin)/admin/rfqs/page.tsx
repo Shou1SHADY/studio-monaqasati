@@ -1,4 +1,3 @@
-
 "use client"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -15,21 +14,29 @@ import {
   MoreVertical,
   Activity,
   CheckCircle,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { collection, query, orderBy } from "firebase/firestore"
 
 export default function AdminRfqsPage() {
-  const rfqs = [
-    { id: "RFQ-701", title: "توريد أنابيب - مشروع نيوم", contractor: "شركة نيوم العالمية", status: "نشط", date: "2024-05-15", category: "أدوات صحية" },
-    { id: "RFQ-702", title: "حديد تسليح - مول تجاري", contractor: "مقاولات الشرق", status: "نشط", date: "2024-05-16", category: "حديد ومعادن" },
-    { id: "RFQ-685", title: "خرسانة جاهزة - فيلا سكنية", contractor: "إعمار نجد", status: "مكتمل", date: "2024-05-01", category: "أسمنت وخرسانة" },
-    { id: "RFQ-705", title: "دهانات خارجية - مجمع مدارس", contractor: "شركة صيانة المدارس", status: "نشط", date: "2024-05-18", category: "دهانات" },
-  ]
+  const firestore = useFirestore()
+  const { user, isUserLoading } = useUser()
+
+  const rfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "rfqs"), orderBy("createdAt", "desc"))
+  }, [firestore, user, isUserLoading])
+
+  const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
+  const isLoading = isUserLoading || isCollectionLoading
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "نشط": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
-      case "مكتمل": return <Badge className="bg-blue-50 text-blue-600">مكتمل</Badge>
+      case "New": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
+      case "Awarded": return <Badge className="bg-blue-50 text-blue-600">تمت الترسية</Badge>
+      case "Completed": return <Badge className="bg-slate-50 text-slate-600">مكتمل</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
     }
   }
@@ -54,42 +61,6 @@ export default function AdminRfqsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
-                <Activity size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">نشطة حالياً</p>
-                <p className="text-2xl font-bold">124</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center text-success">
-                <CheckCircle size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">تمت ترسيتها</p>
-                <p className="text-2xl font-bold">856</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-6 flex items-center gap-4">
-              <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500">
-                <Clock size={24} />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">طلبات اليوم</p>
-                <p className="text-2xl font-bold">18</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
         <Card className="border-none shadow-sm overflow-hidden">
           <CardHeader className="border-b bg-white">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -98,43 +69,50 @@ export default function AdminRfqsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
-                  <TableHead className="text-right">المعرف</TableHead>
-                  <TableHead className="text-right">المناقصة</TableHead>
-                  <TableHead className="text-right">المقاول</TableHead>
-                  <TableHead className="text-right">الفئة</TableHead>
-                  <TableHead className="text-right">الحالة</TableHead>
-                  <TableHead className="text-right">التاريخ</TableHead>
-                  <TableHead className="text-left">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rfqs.map((rfq) => (
-                  <TableRow key={rfq.id}>
-                    <TableCell className="font-mono text-xs">{rfq.id}</TableCell>
-                    <TableCell className="font-bold">{rfq.title}</TableCell>
-                    <TableCell className="text-sm">{rfq.contractor}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px] font-normal">{rfq.category}</Badge>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(rfq.status)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Calendar size={14} />
-                        {rfq.date}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-left">
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical size={18} />
-                      </Button>
-                    </TableCell>
+            {isLoading ? (
+              <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                <Loader2 className="animate-spin" size={40} />
+                <p>جاري تحميل البيانات...</p>
+              </div>
+            ) : !rfqs || rfqs.length === 0 ? (
+              <div className="p-20 text-center text-muted-foreground">لا توجد مناقصات حالياً.</div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-slate-50">
+                  <TableRow>
+                    <TableHead className="text-right">المعرف</TableHead>
+                    <TableHead className="text-right">المناقصة</TableHead>
+                    <TableHead className="text-right">الفئة</TableHead>
+                    <TableHead className="text-right">الحالة</TableHead>
+                    <TableHead className="text-right">التاريخ</TableHead>
+                    <TableHead className="text-left">إجراءات</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {rfqs.map((rfq) => (
+                    <TableRow key={rfq.id}>
+                      <TableCell className="font-mono text-xs">{rfq.id}</TableCell>
+                      <TableCell className="font-bold">{rfq.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px] font-normal">{rfq.categoryId}</Badge>
+                      </TableCell>
+                      <TableCell>{getStatusBadge(rfq.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Calendar size={14} />
+                          {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-left">
+                        <Button variant="ghost" size="icon">
+                          <MoreVertical size={18} />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
