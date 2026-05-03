@@ -436,7 +436,7 @@ export default function RfqOffersPage() {
 
                     {/* Action Buttons - Pending */}
                     {offer.status === "قيد المراجعة" && (
-                      <div className="bg-slate-50/70 p-6 flex flex-row md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                      <div className="bg-slate-50/70 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
                         <Button
                           onClick={() => handleDecision(offer.id, "مقبول")}
                           disabled={processingId === offer.id}
@@ -495,7 +495,7 @@ export default function RfqOffersPage() {
 
                     {/* Action Buttons - Accepted */}
                     {offer.status === "مقبول" && (
-                      <div className="bg-success/5 p-6 flex flex-col items-center justify-center gap-2 md:border-r border-t md:border-t-0 min-w-[180px]">
+                      <div className="bg-success/5 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
                         <Button
                           onClick={() => openChat(offer)}
                           disabled={openingChat === offer.id}
