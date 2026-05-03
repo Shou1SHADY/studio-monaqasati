@@ -17,8 +17,8 @@ import {
   Award
 } from "lucide-react"
 import Link from "next/link"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { collection, query, where, doc } from "firebase/firestore"
 
 export default function ContractorDashboard() {
   const firestore = useFirestore();
@@ -28,6 +28,13 @@ export default function ContractorDashboard() {
     if (isUserLoading || !user || !firestore) return null
     return query(collection(firestore, "rfqs"), where("contractorId", "==", user.uid))
   }, [firestore, user, isUserLoading])
+
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  
+  const { data: profile } = useDoc(userDocRef)
 
   const usersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -85,10 +92,10 @@ export default function ContractorDashboard() {
           
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white/90">
-                أهلاً بك، <span className="text-transparent bg-clip-text bg-gradient-to-l from-primary to-blue-400">شركة المقاولات الحديثة</span> ✨
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                أهلاً بك، <span className="text-transparent bg-clip-text bg-gradient-to-l from-primary to-blue-400">{profile?.companyName || profile?.name || "شريكنا العزيز"}</span> ✨
               </h1>
-              <p className="text-white/70 text-lg font-medium max-w-xl leading-relaxed">
+              <p className="text-slate-200 text-lg font-medium max-w-xl leading-relaxed">
                 لوحة التحكم الذكية الخاصة بك. تابع مناقصاتك، راقب أداءك، وقم بإدارة عروض الموردين بكل سهولة واحترافية.
               </p>
             </div>
