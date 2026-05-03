@@ -21,7 +21,9 @@ import {
   Tag,
   Truck,
   Package,
-  Phone
+  Phone,
+  ArrowDown,
+  Box
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
@@ -82,7 +84,7 @@ export default function RfqOffersPage() {
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
 
-  const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض") => {
+  const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض" | "مطلوب تخفيض") => {
     if (!firestore || !user) return
     setProcessingId(offerId)
 
@@ -92,7 +94,8 @@ export default function RfqOffersPage() {
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         status: decision,
-        decidedAt: new Date().toISOString()
+        decidedAt: new Date().toISOString(),
+        readAt: null // reset read status for supplier
       })
     } catch (error: any) {
       console.error("❌ updateDoc offer failed:", error?.code, error?.message)
@@ -126,24 +129,47 @@ export default function RfqOffersPage() {
     }
 
     toast({
-      title: decision === "مقبول" ? "✅ تم قبول العرض!" : "❌ تم رفض العرض",
+      title: decision === "مقبول" ? "✅ تم قبول العرض!" : decision === "مرفوض" ? "❌ تم رفض العرض" : "📉 تم طلب التخفيض",
       description: decision === "مقبول"
         ? "سيتم إشعار المورد. يمكنك التواصل معه من صفحة محادثاتي."
-        : "تم رفض العرض وسيتم إشعار المورد.",
+        : decision === "مرفوض"
+        ? "تم رفض العرض وسيتم إشعار المورد."
+        : "تم إرسال طلب للمورد لتخفيض السعر المقدم.",
     })
     setProcessingId(null)
+  }
+
+  const handleSampleAction = async (offerId: string, action: "مطلوبة" | "تم الاستلام") => {
+    if (!firestore || !user) return;
+    setProcessingId(offerId);
+    try {
+      await updateDoc(doc(firestore, "offers", offerId), {
+        sampleStatus: action,
+        sampleUpdatedAt: new Date().toISOString(),
+        readAt: null // reset read status for supplier
+      });
+      toast({ 
+        title: action === "مطلوبة" ? "تم طلب العينة" : "تم استلام العينة", 
+        description: action === "مطلوبة" ? "تم إرسال طلب للمورد لتوفير عينة." : "تم تأكيد استلام العينة بنجاح." 
+      });
+    } catch (error) {
+      toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
+    } finally {
+      setProcessingId(null);
+    }
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "مقبول": return <Badge className="bg-success/10 text-success border-success/20">مقبول ✅</Badge>
       case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">مرفوض ❌</Badge>
+      case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">مطلوب تخفيض السعر 📉</Badge>
       default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة 🕐</Badge>
     }
   }
 
   const sortedOffers = offers ? [...offers].sort((a: any, b: any) => a.price - b.price) : []
-  const bestOffer = sortedOffers.length > 0 ? sortedOffers[0] : null
+  const lowestPrice = sortedOffers.length > 0 ? sortedOffers[0].price : null
 
   return (
     <PortalLayout>
@@ -284,14 +310,23 @@ export default function RfqOffersPage() {
               </CardContent>
             </Card>
           ) : (
-            offers.map((offer: any) => (
-              <Card key={offer.id} className={`border-none shadow-sm hover:shadow-md transition-all overflow-hidden ${
-                offer.status === "مقبول" ? "ring-1 ring-success/30 bg-success/5" : 
-                offer.status === "مرفوض" ? "opacity-60" : "bg-white"
-              }`}>
-                <CardContent className="p-0">
-                  <div className="flex flex-col md:flex-row">
-                    {/* Offer Details */}
+            offers.map((offer: any) => {
+              const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
+              
+              return (
+                <Card key={offer.id} className={`border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative ${
+                  offer.status === "مقبول" ? "border-success/30 bg-success/5" : 
+                  offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" : 
+                  isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
+                }`}>
+                  {isBestOffer && offer.status === "قيد المراجعة" && (
+                    <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
+                      <TrendingUp size={12} /> أفضل سعر
+                    </div>
+                  )}
+                  <CardContent className="p-0">
+                    <div className="flex flex-col md:flex-row">
+                      {/* Offer Details */}
                     <div className="p-6 flex-1 space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -306,14 +341,34 @@ export default function RfqOffersPage() {
                         {getStatusBadge(offer.status || "قيد المراجعة")}
                       </div>
 
-                      <div className="flex flex-wrap gap-4 text-sm">
-                        <div className="flex items-center gap-2 bg-primary/5 px-4 py-2 rounded-lg">
-                          <span className="text-muted-foreground">السعر المقترح:</span>
-                          <span className="font-bold text-xl text-primary">{offer.price} <span className="text-sm font-normal">ر.س</span></span>
+                      <div className="flex flex-wrap gap-4 text-sm mt-2">
+                        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
+                          <span className="text-muted-foreground font-medium">السعر المقترح:</span>
+                          <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
+                            {offer.price} <span className="text-sm font-normal">ر.س</span>
+                          </span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
                           <span>{offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}</span>
+                        </div>
+                        {/* Extra options */}
+                        <div className="flex flex-wrap items-center gap-3 mt-4">
+                          {offer.isFreeShipping && (
+                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none">
+                              توصيل مجاني
+                            </Badge>
+                          )}
+                          {offer.includesSample && (
+                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none">
+                              يتضمن عينة (Sample)
+                            </Badge>
+                          )}
+                          {offer.sampleStatus && (
+                            <Badge variant="outline" className={`border border-amber-300 bg-amber-50 text-amber-700 ${offer.sampleStatus === "تم الاستلام" ? "bg-success/10 text-success border-success/30" : ""}`}>
+                              العينة: {offer.sampleStatus}
+                            </Badge>
+                          )}
                         </div>
                       </div>
 
@@ -392,15 +447,49 @@ export default function RfqOffersPage() {
                           قبول العرض
                         </Button>
                         <Button
-                          onClick={() => handleDecision(offer.id, "مرفوض")}
+                          onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
                           disabled={processingId === offer.id}
                           variant="outline"
-                          className="w-full gap-2 rounded-full text-destructive border-destructive/30 hover:bg-destructive/5"
+                          className="w-full gap-2 rounded-full border-primary/20 text-primary hover:bg-primary/5"
+                          size="sm"
+                        >
+                          <ArrowDown size={14} />
+                          طلب تخفيض
+                        </Button>
+                        <Button
+                          onClick={() => handleDecision(offer.id, "مرفوض")}
+                          disabled={processingId === offer.id}
+                          variant="ghost"
+                          className="w-full gap-2 rounded-full text-destructive hover:text-destructive hover:bg-destructive/5"
                           size="sm"
                         >
                           <XCircle size={14} />
                           رفض
                         </Button>
+                        {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
+                          <Button
+                            onClick={() => handleSampleAction(offer.id, "مطلوبة")}
+                            disabled={processingId === offer.id}
+                            variant="outline"
+                            className="w-full gap-2 rounded-full border-blue-200 text-blue-600 hover:bg-blue-50 mt-1"
+                            size="sm"
+                          >
+                            <Box size={14} />
+                            {offer.sampleStatus ? "طلب عينة أخرى" : "طلب عينة"}
+                          </Button>
+                        )}
+                        {offer.sampleStatus === "تم الإرسال" && (
+                          <Button
+                            onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
+                            disabled={processingId === offer.id}
+                            variant="outline"
+                            className="w-full gap-2 rounded-full border-success/30 text-success hover:bg-success/10 mt-1"
+                            size="sm"
+                          >
+                            <CheckCircle2 size={14} />
+                            تأكيد استلام العينة
+                          </Button>
+                        )}
                       </div>
                     )}
 
@@ -422,7 +511,7 @@ export default function RfqOffersPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))
+            )})
           )}
           </TabsContent>
 
@@ -443,9 +532,9 @@ export default function RfqOffersPage() {
                       <TableRow>
                         <TableHead className="text-right whitespace-nowrap w-32">المعيار</TableHead>
                         {sortedOffers.map((o: any, i: number) => (
-                          <TableHead key={o.id} className={`text-center min-w-[140px] ${o.id === bestOffer?.id ? 'bg-amber-50/50' : ''}`}>
+                          <TableHead key={o.id} className={`text-center min-w-[140px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
                             مورد {i + 1}
-                            {o.id === bestOffer?.id && (
+                            {o.price === lowestPrice && (
                               <div className="text-[10px] text-amber-600 font-bold mt-1">أفضل سعر ⭐</div>
                             )}
                           </TableHead>
@@ -456,7 +545,7 @@ export default function RfqOffersPage() {
                       <TableRow>
                         <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر / الوحدة</TableCell>
                         {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className={`text-center font-bold ${o.id === bestOffer?.id ? 'text-success' : 'text-slate-800'}`}>
+                          <TableCell key={o.id} className={`text-center font-bold ${o.price === lowestPrice ? 'text-success' : 'text-slate-800'}`}>
                             {o.price} ر.س
                           </TableCell>
                         ))}
@@ -464,7 +553,7 @@ export default function RfqOffersPage() {
                       <TableRow>
                         <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر الإجمالي</TableCell>
                         {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className={`text-center text-sm ${o.id === bestOffer?.id ? 'text-success/80 font-bold' : 'text-slate-600'}`}>
+                          <TableCell key={o.id} className={`text-center text-sm ${o.price === lowestPrice ? 'text-success/80 font-bold' : 'text-slate-600'}`}>
                             {rfq?.quantity ? (o.price * rfq.quantity).toLocaleString('en-US') : '-'} ر.س
                           </TableCell>
                         ))}

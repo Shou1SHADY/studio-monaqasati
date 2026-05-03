@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
-import { doc, collection, query, where, orderBy, limit } from "firebase/firestore"
+import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
 import { getAuth, signOut } from "firebase/auth"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -117,17 +117,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   // Merge and sort notifications
   const mergedSupplierNotifs = React.useMemo(() => {
     const offers = (supplierOffers || []).map((o: any) => ({ ...o, type: "offer_update" }))
-    // For RFQs, filter them by category client-side, sort them by createdAt client-side
-    const rfqs = (supplierRfqs || [])
-      .filter((r: any) => profile?.specializations?.includes(r.category))
-      .sort((a: any, b: any) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      ).slice(0, 5).map((r: any) => ({ ...r, type: "new_rfq" }))
     
-    return [...offers, ...rfqs].sort((a: any, b: any) => 
+    return [...offers].sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ).slice(0, 5)
-  }, [supplierOffers, supplierRfqs])
+  }, [supplierOffers])
 
   // Determine which notifications list to show
   const notifications: any[] = isSupplier
@@ -139,7 +133,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   // Unread count
   const unreadCount = isSupplier
     ? notifications.filter((n: any) =>
-        (n.type === "new_rfq" && !n.readAt) || ((n.status === "مقبول" || n.status === "مرفوض") && !n.readAt)
+        (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
       ).length
     : notifications.filter((n: any) => n.status === "قيد المراجعة").length
 
@@ -170,6 +164,23 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     const auth = getAuth()
     await signOut(auth)
     router.push("/")
+  }
+
+  const handleNotificationClick = async (notif: any) => {
+    // 1. Mark as read
+    if (isSupplier && !notif.readAt && firestore) {
+      try {
+        await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
+      } catch (e) {
+        // ignore errors
+      }
+    }
+    // 2. Navigate
+    if (isSupplier) {
+      router.push(`/supplier/offers`)
+    } else if (isContractor) {
+      router.push(`/contractor/rfqs/${notif.rfqId}/offers`)
+    }
   }
 
   return (
@@ -235,27 +246,37 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isNewRfq = notif.type === "new_rfq"
                       const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq"
                       const isAccepted = notif.status === "مقبول" && notif.type !== "new_rfq"
+                      const isPriceReduction = notif.status === "مطلوب تخفيض" && notif.type !== "new_rfq"
+                      const isSampleRequest = notif.sampleStatus === "مطلوبة" && notif.type !== "new_rfq"
+                      const isSampleReceived = notif.sampleStatus === "تم الاستلام" && notif.type !== "new_rfq"
                       
                       return (
                         <div
                           key={notif.id}
-                          className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${
-                            (isPending || isNewRfq) ? "bg-amber-50/40" : ""
+                          onClick={() => handleNotificationClick(notif)}
+                          className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer select-none ${
+                            (isPending || isNewRfq || isPriceReduction || isSampleRequest) ? "bg-amber-50/40" : ""
                           }`}
                         >
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                            isSampleReceived ? "bg-success/10 text-success" :
+                            isSampleRequest ? "bg-blue-100 text-blue-600" :
                             isPending ? "bg-amber-100 text-amber-600" :
+                            isPriceReduction ? "bg-amber-100 text-amber-700" :
                             isNewRfq ? "bg-blue-100 text-blue-600" :
                             isAccepted ? "bg-success/10 text-success" :
                             "bg-slate-100 text-slate-400"
                           }`}>
-                            {isNewRfq ? <Bell size={14} /> : isPending ? <Clock size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-slate-800 truncate">
                               {isSupplier
                                 ? isNewRfq ? "🆕 مناقصة جديدة متطابقة!"
+                                  : isSampleReceived ? "✅ تم استلام العينة!"
+                                  : isSampleRequest ? "📦 مطلوب عينة للعرض"
                                   : isPending ? "⏳ عرض قيد المراجعة"
+                                  : isPriceReduction ? "📉 مطلوب تخفيض السعر"
                                   : isAccepted ? "✅ تم قبول عرضك!"
                                   : "❌ تم رفض العرض"
                                 : "🔔 عرض سعر جديد"}

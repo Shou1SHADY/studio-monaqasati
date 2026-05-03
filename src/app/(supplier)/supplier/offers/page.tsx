@@ -8,14 +8,26 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -28,6 +40,10 @@ export default function SupplierOffersPage() {
   const [viewOffer, setViewOffer] = useState<any | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
+  const [updatePriceOffer, setUpdatePriceOffer] = useState<any | null>(null)
+  const [newPrice, setNewPrice] = useState("")
+  const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
+  const [confirmSampleOffer, setConfirmSampleOffer] = useState<any | null>(null)
 
   const openChat = async (offer: any) => {
     if (!user) return
@@ -58,6 +74,7 @@ export default function SupplierOffersPage() {
     switch (status) {
       case "مقبول":   return <Badge className="bg-success/10 text-success border-success/20">مقبول ✅</Badge>
       case "مرفوض":  return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">مرفوض ❌</Badge>
+      case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">مطلوب تخفيض السعر 📉</Badge>
       default:        return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة ⏳</Badge>
     }
   }
@@ -72,6 +89,42 @@ export default function SupplierOffersPage() {
       toast({ title: "خطأ", description: "فشل سحب العرض، حاول مجدداً.", variant: "destructive" })
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleUpdatePrice = async () => {
+    if (!firestore || !updatePriceOffer || !newPrice) return;
+    setIsUpdatingPrice(true);
+    try {
+      await updateDoc(doc(firestore, "offers", updatePriceOffer.id), {
+        price: newPrice,
+        status: "قيد المراجعة",
+        updatedAt: new Date().toISOString()
+      });
+      toast({ title: "تم التحديث", description: "تم تحديث السعر وإعادة إرسال العرض للمقاول." });
+      setUpdatePriceOffer(null);
+      setNewPrice("");
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل تحديث السعر، يرجى المحاولة مجدداً.", variant: "destructive" });
+    } finally {
+      setIsUpdatingPrice(false);
+    }
+  }
+
+  const handleSampleAction = async (offerId: string, action: "تم الإرسال") => {
+    if (!firestore || !user) return;
+    setDeletingId(offerId); // Reusing deletingId as a loading state for this quick action
+    try {
+      await updateDoc(doc(firestore, "offers", offerId), {
+        sampleStatus: action,
+        sampleUpdatedAt: new Date().toISOString()
+      });
+      toast({ title: "تم تأكيد الإرسال", description: "تم إشعار المقاول بأنه تم إرسال العينة." });
+      setConfirmSampleOffer(null);
+    } catch (error) {
+      toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -165,7 +218,20 @@ export default function SupplierOffersPage() {
                       <TableCell className="text-xs text-muted-foreground hidden sm:table-cell" suppressHydrationWarning>
                         {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString("ar-SA") : "-"}
                       </TableCell>
-                      <TableCell>{getStatusBadge(offer.status || "قيد المراجعة")}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 items-start">
+                          {getStatusBadge(offer.status || "قيد المراجعة")}
+                          {offer.sampleStatus && (
+                            <Badge variant="outline" className={`text-[10px] ${
+                              offer.sampleStatus === "مطلوبة" ? "border-blue-200 bg-blue-50 text-blue-700" :
+                              offer.sampleStatus === "تم الإرسال" ? "border-amber-200 bg-amber-50 text-amber-700" :
+                              "border-success/30 bg-success/10 text-success"
+                            }`}>
+                              العينة: {offer.sampleStatus}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-left">
                         <div className="flex items-center gap-1">
                           {/* View Details */}
@@ -195,6 +261,33 @@ export default function SupplierOffersPage() {
                               </Button>
                               <ContractorWhatsAppButton contractorId={offer.contractorId} />
                             </>
+                          )}
+
+                          {/* Action for Price Reduction */}
+                          {offer.status === "مطلوب تخفيض" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="تحديث السعر"
+                              onClick={() => { setUpdatePriceOffer(offer); setNewPrice(offer.price || ""); }}
+                              className="text-amber-600 bg-amber-50 hover:bg-amber-100"
+                            >
+                              <ArrowDown size={16} />
+                            </Button>
+                          )}
+
+                          {/* Action for Sample Request */}
+                          {offer.sampleStatus === "مطلوبة" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="تأكيد إرسال العينة"
+                              onClick={() => setConfirmSampleOffer(offer)}
+                              disabled={deletingId === offer.id}
+                              className="text-blue-600 bg-blue-50 hover:bg-blue-100"
+                            >
+                              {deletingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <Box size={16} />}
+                            </Button>
                           )}
 
                           {/* More Actions */}
@@ -278,6 +371,70 @@ export default function SupplierOffersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Update Price Dialog */}
+      <Dialog open={!!updatePriceOffer} onOpenChange={(open) => !open && setUpdatePriceOffer(null)}>
+        <DialogContent className="sm:max-w-md text-right" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تحديث سعر العرض</DialogTitle>
+            <DialogDescription>
+              طلب المقاول تخفيض السعر لهذا العرض. يرجى إدخال السعر الجديد أدناه لإعادة تقديمه.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>السعر السابق</Label>
+              <div className="p-3 bg-slate-50 text-slate-500 rounded-md font-bold">
+                {updatePriceOffer?.price} ر.س
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>السعر الجديد (ر.س)</Label>
+              <Input 
+                type="number" 
+                value={newPrice} 
+                onChange={(e) => setNewPrice(e.target.value)} 
+                placeholder="أدخل السعر المخفض"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>إلغاء</Button>
+            <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || !newPrice || newPrice === updatePriceOffer?.price}>
+              {isUpdatingPrice ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+              تأكيد السعر الجديد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm Sample Sending Alert */}
+      <AlertDialog open={!!confirmSampleOffer} onOpenChange={(open) => !open && setConfirmSampleOffer(null)}>
+        <AlertDialogContent className="text-right" dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد إرسال العينة</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل أنت متأكد أنك قمت بإرسال العينة المطلوبة للمقاول للمناقصة "{confirmSampleOffer?.rfqTitle}"؟ 
+              سيتم إشعار المقاول بذلك ليتمكن من تأكيد الاستلام.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse sm:justify-start">
+            <AlertDialogCancel className="mt-0 sm:mt-0">إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-primary text-white hover:bg-primary/90"
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmSampleOffer) {
+                  handleSampleAction(confirmSampleOffer.id, "تم الإرسال");
+                }
+              }}
+            >
+              {deletingId === confirmSampleOffer?.id ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
+              نعم، تم الإرسال
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PortalLayout>
   )
 }

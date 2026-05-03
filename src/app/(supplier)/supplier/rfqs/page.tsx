@@ -69,6 +69,10 @@ export default function AvailableRfqsPage() {
     { id: "1", quantity: "", deliveryDate: "", price: "", location: "", coords: null }
   ])
   const [mapBatchId, setMapBatchId] = useState<string | null>(null)
+  const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null)
+  const [isFreeShipping, setIsFreeShipping] = useState(false)
+  const [includesSample, setIncludesSample] = useState(false)
+  
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
@@ -123,6 +127,8 @@ export default function AvailableRfqsPage() {
     setDeliveryFrequency("")
     setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "", location: "", coords: null }])
     setMapBatchId(null)
+    setIsFreeShipping(false)
+    setIncludesSample(false)
   }
 
   const addBatch = () => {
@@ -175,6 +181,8 @@ export default function AvailableRfqsPage() {
         price: finalPrice,
         deliveryMethod,
         deliveryFrequency,
+        isFreeShipping,
+        includesSample,
         deliveryBatches: deliveryBatches.map(b => ({
           location: b.location,
           deliveryDate: b.deliveryDate,
@@ -478,6 +486,28 @@ export default function AvailableRfqsPage() {
               )}
             </div>
 
+            {/* Extra Options */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <label className="flex-1 flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={isFreeShipping}
+                  onChange={(e) => setIsFreeShipping(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                />
+                <span className="text-sm font-semibold text-slate-700">توصيل مجاني</span>
+              </label>
+              <label className="flex-1 flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer hover:bg-slate-100 transition-colors">
+                <input 
+                  type="checkbox" 
+                  checked={includesSample}
+                  onChange={(e) => setIncludesSample(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                />
+                <span className="text-sm font-semibold text-slate-700">توفير عينة (Sample)</span>
+              </label>
+            </div>
+
             {/* Grand Total */}
             <div className="space-y-1.5">
               <Label className="text-sm font-semibold">السعر الإجمالي (ر.س) <span className="text-red-500">*</span></Label>
@@ -522,7 +552,12 @@ export default function AvailableRfqsPage() {
 
 
       {/* Shared Map Dialog — only ONE Leaflet instance, only mounted when open */}
-      <Dialog open={!!mapBatchId} onOpenChange={(open) => { if (!open) setMapBatchId(null) }}>
+      <Dialog open={!!mapBatchId} onOpenChange={(open) => { 
+        if (!open) {
+          setMapBatchId(null);
+          setTempLocation(null);
+        }
+      }}>
         <DialogContent className="sm:max-w-[600px]" dir="rtl">
           <DialogHeader>
             <DialogTitle>تحديد موقع التسليم</DialogTitle>
@@ -531,24 +566,35 @@ export default function AvailableRfqsPage() {
           {mapBatchId && (
             <MapPicker
               key={mapBatchId}
-              initialPosition={null}
-              onLocationSelect={async (loc) => {
-                try {
-                  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`)
-                  const data = await res.json()
-                  const address = data.display_name || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`
-                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: address, coords: loc } : b))
-                  setMapBatchId(null)
-                } catch {
-                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`, coords: loc } : b))
-                  setMapBatchId(null)
-                }
+              initialPosition={tempLocation}
+              onLocationSelect={(loc) => {
+                setTempLocation(loc)
               }}
               className="h-72 w-full rounded-xl overflow-hidden border"
             />
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMapBatchId(null)}>إغلاق</Button>
+          <DialogFooter className="flex gap-2 sm:justify-start">
+            <Button variant="outline" onClick={() => { setMapBatchId(null); setTempLocation(null); }}>إلغاء</Button>
+            <Button 
+              disabled={!tempLocation} 
+              onClick={async () => {
+                if (!tempLocation || !mapBatchId) return;
+                try {
+                  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${tempLocation.lat}&lon=${tempLocation.lng}&format=json`)
+                  const data = await res.json()
+                  const address = data.display_name || `${tempLocation.lat.toFixed(4)}, ${tempLocation.lng.toFixed(4)}`
+                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: address, coords: tempLocation } : b))
+                  setMapBatchId(null)
+                  setTempLocation(null)
+                } catch {
+                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: `${tempLocation.lat.toFixed(4)}, ${tempLocation.lng.toFixed(4)}`, coords: tempLocation } : b))
+                  setMapBatchId(null)
+                  setTempLocation(null)
+                }
+              }}
+            >
+              تأكيد الموقع
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

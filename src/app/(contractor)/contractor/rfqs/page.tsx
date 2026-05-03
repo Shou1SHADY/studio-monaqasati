@@ -47,13 +47,21 @@ export default function ContractorRfqsPage() {
     );
   }) || [];
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "New": return <Badge className="bg-success/10 text-success border-success/20">جديد</Badge>
-      case "Awarded": return <Badge className="bg-blue-50 text-blue-600">تمت الترسية</Badge>
-      case "Completed": return <Badge className="bg-slate-50 text-slate-600">مكتمل</Badge>
-      default: return <Badge variant="outline">{status}</Badge>
+  const getStatusBadge = (rfq: any) => {
+    if (rfq.status === "Awarded") {
+      return <Badge className="bg-success/10 text-success border-success/20 font-bold">تمت الترسية 🏆</Badge>;
     }
+    
+    if (rfq.deadline) {
+      const deadlineDate = new Date(rfq.deadline);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Normalize to start of day for accurate comparison
+      if (deadlineDate < today) {
+        return <Badge className="bg-destructive/10 text-destructive border-none font-bold">منتهية الصلاحية ⏱️</Badge>;
+      }
+    }
+    
+    return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">مفتوحة للتقديم 🟢</Badge>;
   }
 
   return (
@@ -118,7 +126,7 @@ export default function ContractorRfqsPage() {
                           <span className="text-xs text-muted-foreground">{rfq.subCategory}</span>
                         </div>
                       </TableCell>
-                      <TableCell>{getStatusBadge(rfq.status)}</TableCell>
+                      <TableCell>{getStatusBadge(rfq)}</TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
