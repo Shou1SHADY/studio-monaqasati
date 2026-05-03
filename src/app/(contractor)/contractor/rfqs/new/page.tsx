@@ -378,11 +378,14 @@ export default function NewRfqPage() {
                           <DialogTitle className="text-right">تحديد الموقع الدقيق</DialogTitle>
                         </DialogHeader>
                         <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200 min-h-0 my-4">
-                          <MapPicker
-                            className="w-full h-full"
-                            initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
-                            onLocationSelect={(loc) => setTempCoords(loc)}
-                          />
+                          {isMapModalOpen && (
+                            <MapPicker
+                              key={isMapModalOpen ? 'open' : 'closed'}
+                              className="w-full h-full"
+                              initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
+                              onLocationSelect={(loc) => setTempCoords(loc)}
+                            />
+                          )}
                           <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur text-xs font-bold px-4 py-2 rounded-full shadow-lg z-[400] pointer-events-none border border-slate-200">
                             انقر على الخريطة لتحديد الموقع
                           </div>

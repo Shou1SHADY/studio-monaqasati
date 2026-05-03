@@ -19,11 +19,23 @@ import {
   Plus,
   Award,
   FolderOpen,
-  Calendar,
-  Trash2
+  Trash2,
+  Image as ImageIcon,
+  FileText,
+  ChevronDown,
+  Loader2
 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
+import { useUser, useFirestore, useDoc, useMemoFirebase } from "@/firebase"
+import { doc, updateDoc } from "firebase/firestore"
+import { useEffect } from "react"
 
 interface Certificate {
   id: string
@@ -31,27 +43,34 @@ interface Certificate {
   issuer: string
   issueDate: string
   expiryDate: string
+  documentUrl?: string
 }
 
 interface Project {
   id: string
   name: string
-  client: string
   description: string
-  value: string
-  startDate: string
-  endDate: string
+  images: string[]
+}
+
+interface CompanyFile {
+  id: string
+  name: string
+  type: 'image' | 'document'
+  url: string
 }
 
 const PREDEFINED_CATEGORIES = [
   "حديد ومعادن",
   "أسمنت وخرسانة",
-  "دهانات",
-  "أدوات صحية",
+  "أرضيات وتشطيبات",
   "كهرباء وإنارة",
-  "أرضيات وتشطبيات",
+  "أدوات صحية وسباكة",
   "عزل وأسقف",
-  "نجارة وأبواب"
+  "أبواب ونوافذ",
+  "دهانات",
+  "خرسانة جاهزة",
+  "معدات وآليات"
 ]
 
 export default function SupplierProfilePage() {
@@ -59,22 +78,78 @@ export default function SupplierProfilePage() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [showCertForm, setShowCertForm] = useState(false)
   const [showProjectForm, setShowProjectForm] = useState(false)
-  const [newCert, setNewCert] = useState({ name: "", issuer: "", issueDate: "", expiryDate: "" })
-  const [newProject, setNewProject] = useState({ name: "", client: "", description: "", value: "", startDate: "", endDate: "" })
+  const [isUploadingFile, setIsUploadingFile] = useState(false)
+  const [isUploadingProjImg, setIsUploadingProjImg] = useState(false)
+  const [isUploadingCert, setIsUploadingCert] = useState(false)
+  const [newCert, setNewCert] = useState({ name: "", issuer: "", issueDate: "", expiryDate: "", documentUrl: "" })
+  const [newProject, setNewProject] = useState({ name: "", description: "", images: [] as string[] })
+  const { user, isUserLoading } = useUser()
+  const firestore = useFirestore()
+  const [isLoading, setIsLoading] = useState(false)
   const [profile, setProfile] = useState({
-    name: "المورد المتكامل",
-    description: "نحن شركة رائدة في توريد مواد البناء الأساسية، نركز بشكل أساسي على الحديد والصلب عالي الجودة من سابك، بالإضافة إلى توريد الخرسانة الجاهزة ومواد العزل.",
-    location: "الرياض، المملكة العربية السعودية",
-    specializations: ["حديد ومعادن", "أسمنت وخرسانة"],
-    certificates: [
-      { id: "1", name: "شهادة ISO 9001", issuer: "منظمة الجودة العالمية", issueDate: "2024-01-15", expiryDate: "2026-01-15" },
-      { id: "2", name: "شهادة اعتماد سابك", issuer: "شركة سابك", issueDate: "2023-06-01", expiryDate: "2025-06-01" }
-    ] as Certificate[],
-    projects: [
-      { id: "1", name: "مشروع تطوير حي النرجس", client: "شركة الأهلي للتطوير العقاري", description: "توريد حديد التسليح لبناء 50 فيلا", value: "2,500,000", startDate: "2024-03-01", endDate: "2024-08-30" },
-      { id: "2", name: "مجمع التجارية الشرقية", client: "مجموعة المتحدة العقارية", description: "توريد الخرسانة الجاهزة والأ cement", value: "4,200,000", startDate: "2023-09-15", endDate: "2024-02-28" }
-    ] as Project[]
+    name: "",
+    email: "",
+    phone: "",
+    crNumber: "",
+    description: "",
+    location: "",
+    specializations: [] as string[],
+    certificates: [] as Certificate[],
+    projects: [] as Project[],
+    companyFiles: [] as CompanyFile[]
   })
+
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  
+  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+
+  // Sync with user data
+  useEffect(() => {
+    if (userData) {
+      setProfile(prev => ({
+        ...prev,
+        name: userData.name || userData.companyName || user?.displayName || "",
+        email: userData.email || user?.email || "",
+        phone: userData.phone || "",
+        crNumber: userData.crNumber || "",
+        location: userData.city || userData.location || "",
+        description: userData.description || "",
+        specializations: userData.specializations || [],
+        certificates: userData.certificates || [],
+        projects: userData.projects || [],
+        companyFiles: userData.companyFiles || []
+      }))
+    }
+  }, [userData, user])
+
+  const handleSave = async () => {
+    if (!user || !firestore) return
+    setIsLoading(true)
+    try {
+      await updateDoc(doc(firestore, "users", user.uid), {
+        name: profile.name,
+        companyName: profile.name,
+        phone: profile.phone,
+        crNumber: profile.crNumber,
+        city: profile.location,
+        location: profile.location,
+        description: profile.description,
+        specializations: profile.specializations,
+        certificates: profile.certificates,
+        projects: profile.projects,
+        companyFiles: profile.companyFiles,
+        profileCompleted: true
+      })
+      toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e.message, variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const handleAiSuggest = async () => {
     if (!profile.description) {
@@ -118,18 +193,41 @@ export default function SupplierProfilePage() {
     }))
   }
 
+  const addSpec = (spec: string) => {
+    if (!profile.specializations.includes(spec)) {
+      setProfile(prev => ({
+        ...prev,
+        specializations: [...prev.specializations, spec]
+      }))
+    }
+  }
+
   const addCertificate = () => {
     if (!newCert.name || !newCert.issuer) {
-      toast({ title: "خطأ", description: "يرجى填写 название и издатель الشهادة", variant: "destructive" })
+      toast({ title: "خطأ", description: "يرجى تعبئة الحقول المطلوبة", variant: "destructive" })
       return
     }
     setProfile(prev => ({
       ...prev,
       certificates: [...prev.certificates, { ...newCert, id: Date.now().toString() }]
     }))
-    setNewCert({ name: "", issuer: "", issueDate: "", expiryDate: "" })
+    setNewCert({ name: "", issuer: "", issueDate: "", expiryDate: "", documentUrl: "" })
     setShowCertForm(false)
     toast({ title: "تم", description: "تمت إضافة الشهادة بنجاح" })
+  }
+
+  const handleCertUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploadingCert(true)
+    setTimeout(() => {
+      setNewCert(prev => ({
+        ...prev,
+        documentUrl: URL.createObjectURL(file) // Mock URL
+      }))
+      setIsUploadingCert(false)
+      toast({ title: "تم الرفع", description: "تم إرفاق مستند الشهادة بنجاح" })
+    }, 1500)
   }
 
   const removeCertificate = (id: string) => {
@@ -140,17 +238,37 @@ export default function SupplierProfilePage() {
   }
 
   const addProject = () => {
-    if (!newProject.name || !newProject.client) {
-      toast({ title: "خطأ", description: "يرجى填写 название и العميل للمشروع", variant: "destructive" })
+    if (!newProject.name) {
+      toast({ title: "خطأ", description: "يرجى كتابة اسم المشروع", variant: "destructive" })
       return
     }
     setProfile(prev => ({
       ...prev,
       projects: [...prev.projects, { ...newProject, id: Date.now().toString() }]
     }))
-    setNewProject({ name: "", client: "", description: "", value: "", startDate: "", endDate: "" })
+    setNewProject({ name: "", description: "", images: [] })
     setShowProjectForm(false)
     toast({ title: "تم", description: "تمت إضافة المشروع بنجاح" })
+  }
+
+  const handleProjectImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsUploadingProjImg(true)
+    setTimeout(() => {
+      setNewProject(prev => ({
+        ...prev,
+        images: [...prev.images, URL.createObjectURL(file)]
+      }))
+      setIsUploadingProjImg(false)
+    }, 1000)
+  }
+
+  const removeProjectImage = (index: number) => {
+    setNewProject(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }))
   }
 
   const removeProject = (id: string) => {
@@ -160,33 +278,122 @@ export default function SupplierProfilePage() {
     }))
   }
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setIsUploadingFile(true)
+    setTimeout(() => {
+      const isImage = file.type.startsWith('image/')
+      const newFile: CompanyFile = {
+        id: Date.now().toString(),
+        name: file.name,
+        type: isImage ? 'image' : 'document',
+        url: URL.createObjectURL(file) // Mock URL
+      }
+      setProfile(prev => ({
+        ...prev,
+        companyFiles: [...prev.companyFiles, newFile]
+      }))
+      setIsUploadingFile(false)
+      toast({ title: "تم الرفع", description: "تم رفع الملف بنجاح." })
+    }, 1500)
+  }
+
+  const removeFile = (id: string) => {
+    setProfile(prev => ({
+      ...prev,
+      companyFiles: prev.companyFiles.filter(f => f.id !== id)
+    }))
+  }
+
+  if (isUserLoading || isUserDataLoading) {
+    return (
+      <PortalLayout>
+        <div className="flex justify-center items-center h-[60vh]">
+          <Loader2 className="animate-spin text-primary" size={32} />
+        </div>
+      </PortalLayout>
+    )
+  }
+
   return (
     <PortalLayout>
-      <div className="max-w-4xl mx-auto py-8 text-right space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">الملف الشخصي للمورد</h1>
-          <p className="text-muted-foreground mt-1">إدارة معلومات شركتك وتخصصاتك التجارية</p>
+      <div className="max-w-6xl mx-auto py-8 text-right space-y-8">
+        <div className="bg-gradient-to-l from-primary/10 via-primary/5 to-transparent p-8 rounded-3xl border border-primary/10 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-secondary font-headline">الملف الشخصي للشركة</h1>
+            <p className="text-muted-foreground mt-2 text-lg">أكمل ملفك لتعزيز فرصك في الحصول على مناقصات متميزة</p>
+          </div>
+          <div className="hidden md:block h-24 w-24 bg-white rounded-full shadow-sm flex items-center justify-center p-2 border">
+            <div className="w-full h-full rounded-full bg-slate-50 flex items-center justify-center text-primary/50">
+              <Briefcase size={40} />
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="shadow-sm border-none">
-              <CardHeader className="border-b">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Briefcase size={20} className="text-primary" />
-                  بيانات الشركة
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 space-y-8">
+            <Card className="shadow-md border-slate-100 overflow-hidden">
+              <CardHeader className="bg-slate-50/50 border-b pb-4">
+                <CardTitle className="text-xl flex items-center gap-2 text-slate-800">
+                  <Briefcase size={22} className="text-primary" />
+                  البيانات الأساسية والتخصصات
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="name">اسم الشركة</Label>
-                  <Input 
-                    id="name" 
-                    value={profile.name}
-                    onChange={e => setProfile({...profile, name: e.target.value})}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">اسم الشركة</Label>
+                    <Input 
+                      id="name" 
+                      value={profile.name}
+                      onChange={e => setProfile({...profile, name: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">البريد الإلكتروني</Label>
+                    <Input 
+                      id="email" 
+                      value={profile.email}
+                      disabled
+                      className="bg-slate-50 text-slate-500 dir-ltr text-left"
+                    />
+                    <p className="text-[10px] text-muted-foreground">لا يمكن تغيير البريد الإلكتروني الخاص بالحساب</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">رقم الجوال</Label>
+                    <Input 
+                      id="phone" 
+                      value={profile.phone}
+                      onChange={e => setProfile({...profile, phone: e.target.value})}
+                      className="dir-ltr text-left"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="crNumber">رقم السجل التجاري</Label>
+                    <Input 
+                      id="crNumber" 
+                      value={profile.crNumber}
+                      onChange={e => setProfile({...profile, crNumber: e.target.value})}
+                      className="dir-ltr text-left"
+                    />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="loc">المقر الرئيسي / المدينة</Label>
+                    <div className="relative">
+                      <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        id="loc" 
+                        className="pr-10"
+                        value={profile.location}
+                        onChange={e => setProfile({...profile, location: e.target.value})}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
+
+                <div className="space-y-2 pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="desc">وصف العمل</Label>
                     <Button 
@@ -202,57 +409,64 @@ export default function SupplierProfilePage() {
                   </div>
                   <Textarea 
                     id="desc" 
-                    rows={5}
+                    rows={4}
                     placeholder="اشرح طبيعة عملك والمنتجات التي توفرها..."
                     value={profile.description}
                     onChange={e => setProfile({...profile, description: e.target.value})}
+                    className="bg-white"
                   />
-                  <p className="text-[10px] text-muted-foreground">يساعد وصف العمل المفصل الذكاء الاصطناعي في مطابقتك مع المناقصات المناسبة.</p>
+                  <p className="text-[11px] text-muted-foreground">يساعد وصف العمل المفصل الذكاء الاصطناعي في مطابقتك مع المناقصات المناسبة.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="loc">المقر الرئيسي</Label>
-                  <div className="relative">
-                    <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      id="loc" 
-                      className="pr-10"
-                      value={profile.location}
-                      onChange={e => setProfile({...profile, location: e.target.value})}
-                    />
+                
+                <div className="pt-4 border-t border-slate-100 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-bold text-slate-700">تخصصات العمل <span className="text-destructive">*</span></Label>
+                    <span className="text-xs text-muted-foreground">التخصصات تحدد المناقصات التي تظهر لك</span>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 min-h-[80px]">
+                    {profile.specializations.length > 0 ? profile.specializations.map(spec => (
+                      <Badge key={spec} className="bg-primary/10 text-primary border-primary/20 px-3 py-1.5 flex items-center gap-2 hover:bg-primary/20 transition-colors text-sm">
+                        {spec}
+                        <button onClick={() => removeSpec(spec)} className="hover:text-destructive hover:bg-white/50 rounded-full p-0.5 transition-colors">
+                          <X size={14} />
+                        </button>
+                      </Badge>
+                    )) : (
+                      <div className="w-full h-full flex items-center justify-center text-sm text-slate-400">
+                        لم تقم بإضافة أي تخصصات بعد
+                      </div>
+                    )}
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="rounded-full h-8 border-dashed bg-white">
+                          <Plus size={14} className="ml-1" />
+                          إضافة تخصص
+                          <ChevronDown size={14} className="mr-1 opacity-50" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-48 text-right" dir="rtl">
+                        {PREDEFINED_CATEGORIES.filter(c => !profile.specializations.includes(c)).map(cat => (
+                          <DropdownMenuItem key={cat} onClick={() => addSpec(cat)} className="cursor-pointer">
+                            {cat}
+                          </DropdownMenuItem>
+                        ))}
+                        {PREDEFINED_CATEGORIES.filter(c => !profile.specializations.includes(c)).length === 0 && (
+                          <div className="p-2 text-xs text-muted-foreground text-center">تمت إضافة جميع التخصصات المتاحة</div>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="border-t bg-slate-50/50 justify-end p-4">
-                <Button className="gap-2">
-                  حفظ التغييرات
-                  <CheckCircle2 size={18} />
+              <CardFooter className="border-t bg-slate-50/80 justify-end p-5">
+                <Button className="gap-2 h-11 px-8 text-md shadow-md shadow-primary/20" onClick={handleSave} disabled={isLoading}>
+                  حفظ البيانات الأساسية
+                  {isLoading ? <Zap className="animate-pulse" size={18} /> : <CheckCircle2 size={18} />}
                 </Button>
               </CardFooter>
             </Card>
-
-            <Card className="shadow-sm border-none">
-              <CardHeader className="border-b">
-                <CardTitle className="text-lg">تخصصات العمل</CardTitle>
-                <CardDescription>هذه التخصصات تحدد المناقصات التي ستظهر لك في المقترحات</CardDescription>
-              </CardHeader>
-              <CardContent className="p-6">
-                <div className="flex flex-wrap gap-2">
-                  {profile.specializations.map(spec => (
-                    <Badge key={spec} className="bg-primary/10 text-primary border-none px-3 py-1 flex items-center gap-1">
-                      {spec}
-                      <button onClick={() => removeSpec(spec)} className="hover:text-destructive">
-                        <X size={14} />
-                      </button>
-                    </Badge>
-                  ))}
-                  <Button variant="outline" size="sm" className="rounded-full h-8 border-dashed">
-                    <Plus size={14} className="ml-1" />
-                    إضافة تخصص
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
             <Card className="shadow-sm border-none">
               <CardHeader className="border-b">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -263,13 +477,24 @@ export default function SupplierProfilePage() {
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 {profile.certificates.map(cert => (
-                  <div key={cert.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100">
-                    <div className="space-y-1">
-                      <p className="font-bold text-slate-800">{cert.name}</p>
-                      <p className="text-sm text-muted-foreground">{cert.issuer}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Calendar size={12} />
-                        <span>تاريخ الإصدار: {cert.issueDate} - الانتهاء: {cert.expiryDate}</span>
+                  <div key={cert.id} className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex items-start justify-between">
+                    <div className="flex gap-4">
+                      <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                        <Award size={24} />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-bold text-slate-800">{cert.name}</p>
+                        <p className="text-sm text-muted-foreground">{cert.issuer}</p>
+                        <p className="text-xs text-slate-500">
+                          {cert.issueDate && `تاريخ الإصدار: ${cert.issueDate}`}
+                          {cert.expiryDate && ` | صالح حتى: ${cert.expiryDate}`}
+                        </p>
+                        {cert.documentUrl && (
+                          <a href={cert.documentUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary flex items-center gap-1 hover:underline mt-2">
+                            <FileText size={12} />
+                            عرض المستند المرفق
+                          </a>
+                        )}
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50" onClick={() => removeCertificate(cert.id)}>
@@ -282,7 +507,7 @@ export default function SupplierProfilePage() {
                   <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>اسم الشهادة</Label>
+                        <Label>اسم الشهادة <span className="text-destructive">*</span></Label>
                         <Input 
                           value={newCert.name}
                           onChange={e => setNewCert({...newCert, name: e.target.value})}
@@ -290,11 +515,11 @@ export default function SupplierProfilePage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>الجهة المُصدِرة</Label>
+                        <Label>جهة الإصدار <span className="text-destructive">*</span></Label>
                         <Input 
                           value={newCert.issuer}
                           onChange={e => setNewCert({...newCert, issuer: e.target.value})}
-                          placeholder="مثال: منظمة الجودة العالمية"
+                          placeholder="مثال: هيئة المواصفات"
                         />
                       </div>
                       <div className="space-y-2">
@@ -313,6 +538,22 @@ export default function SupplierProfilePage() {
                           onChange={e => setNewCert({...newCert, expiryDate: e.target.value})}
                         />
                       </div>
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>مستند الشهادة (اختياري)</Label>
+                        <div className="flex items-center gap-3">
+                          <Button variant="outline" className="relative overflow-hidden w-full sm:w-auto">
+                            <input 
+                              type="file" 
+                              accept=".pdf,.jpg,.png" 
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              onChange={handleCertUpload}
+                              disabled={isUploadingCert}
+                            />
+                            {isUploadingCert ? <Zap className="animate-pulse ml-2" size={16} /> : <FileText size={16} className="ml-2" />}
+                            {newCert.documentUrl ? "تم إرفاق الملف ✓" : "اختر ملف (PDF, JPG)..."}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                     <div className="flex gap-2 justify-end">
                       <Button variant="outline" size="sm" onClick={() => setShowCertForm(false)}>إلغاء</Button>
@@ -328,141 +569,222 @@ export default function SupplierProfilePage() {
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-none">
-              <CardHeader className="border-b">
+            <Card className="shadow-sm border-none overflow-hidden">
+              <CardHeader className="border-b bg-slate-50/50">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FolderOpen size={20} className="text-primary" />
-                  المشاريع السابقة
+                  المشاريع السابقة المميزة
                 </CardTitle>
-                <CardDescription>أعرض أعمالك ومشاريعك المنجزة لزيادة مصداقيتك</CardDescription>
+                <CardDescription>أبرز مشاريعك وأعمالك لزيادة الثقة وبناء سجل أعمال قوي</CardDescription>
               </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                {profile.projects.map(project => (
-                  <div key={project.id} className="p-4 bg-slate-50 rounded-lg border border-slate-100">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-2 flex-1">
-                        <p className="font-bold text-slate-800">{project.name}</p>
-                        <p className="text-sm text-muted-foreground">العميل: {project.client}</p>
-                        <p className="text-sm text-slate-600">{project.description}</p>
-                        <div className="flex items-center gap-4 pt-2">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Calendar size={12} />
-                            <span>{project.startDate} - {project.endDate}</span>
+              <CardContent className="p-6 space-y-6">
+                {profile.projects.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {profile.projects.map(project => (
+                      <div key={project.id} className="group relative bg-white rounded-xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+                        {project.images && project.images.length > 0 ? (
+                          <div className="h-40 w-full bg-cover bg-center" style={{ backgroundImage: `url(${project.images[0]})` }} />
+                        ) : (
+                          <div className="h-40 w-full bg-slate-100 flex items-center justify-center text-slate-300">
+                            <ImageIcon size={48} />
                           </div>
-                          <Badge className="bg-success/10 text-success border-success/20">
-                            {project.value} ر.س
-                          </Badge>
+                        )}
+                        <div className="p-4 flex-1 flex flex-col">
+                          <h4 className="font-bold text-slate-800 line-clamp-1">{project.name}</h4>
+                          <p className="text-sm text-slate-600 line-clamp-2 mt-1 flex-1">{project.description}</p>
+                          {project.images && project.images.length > 1 && (
+                            <div className="flex gap-1 mt-3">
+                              {project.images.slice(1, 4).map((img, idx) => (
+                                <div key={idx} className="h-10 w-10 rounded border bg-cover bg-center" style={{ backgroundImage: `url(${img})` }} />
+                              ))}
+                              {project.images.length > 4 && (
+                                <div className="h-10 w-10 rounded border bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                                  +{project.images.length - 4}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
+                        <Button 
+                          variant="destructive" 
+                          size="icon" 
+                          className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 rounded-full shadow-md" 
+                          onClick={() => removeProject(project.id)}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
                       </div>
-                      <Button variant="ghost" size="icon" className="text-red-500 hover:bg-red-50" onClick={() => removeProject(project.id)}>
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
+                    ))}
                   </div>
-                ))}
+                )}
                 
                 {showProjectForm ? (
-                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-100 space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-5 bg-slate-50 rounded-xl border border-slate-200 space-y-5 shadow-inner">
+                    <h4 className="font-bold text-slate-800 border-b pb-2">إضافة مشروع جديد</h4>
+                    <div className="space-y-4">
                       <div className="space-y-2">
-                        <Label>اسم المشروع</Label>
+                        <Label className="font-bold text-slate-700">اسم المشروع <span className="text-destructive">*</span></Label>
                         <Input 
                           value={newProject.name}
                           onChange={e => setNewProject({...newProject, name: e.target.value})}
-                          placeholder="مثال: تطوير حي النرجس"
+                          placeholder="مثال: توريد مواد بناء لمشروع الفيلات"
+                          className="bg-white"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>اسم العميل</Label>
-                        <Input 
-                          value={newProject.client}
-                          onChange={e => setNewProject({...newProject, client: e.target.value})}
-                          placeholder="مثال: شركة الأهلي للتطوير"
-                        />
-                      </div>
-                      <div className="space-y-2 sm:col-span-2">
-                        <Label>وصف المشروع</Label>
+                        <Label className="font-bold text-slate-700">تفاصيل المشروع (اختياري)</Label>
                         <Textarea 
                           value={newProject.description}
                           onChange={e => setNewProject({...newProject, description: e.target.value})}
-                          placeholder="اشرح طبيعة العمل الذي أنجزته..."
-                          rows={2}
+                          placeholder="أبرز ما تم إنجازه، نوع المواد، والكميات..."
+                          rows={3}
+                          className="bg-white"
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label>قيمة المشروع (ر.س)</Label>
-                        <Input 
-                          type="number"
-                          value={newProject.value}
-                          onChange={e => setNewProject({...newProject, value: e.target.value})}
-                          placeholder="مثال: 500000"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>الفترة</Label>
-                        <div className="flex gap-2">
-                          <Input 
-                            type="date"
-                            value={newProject.startDate}
-                            onChange={e => setNewProject({...newProject, startDate: e.target.value})}
-                            placeholder="من"
+                      
+                      <div className="space-y-2 pt-2 border-t">
+                        <Label className="font-bold text-slate-700">صور المشروع (اختياري)</Label>
+                        {newProject.images.length > 0 && (
+                          <div className="flex gap-2 flex-wrap mb-3">
+                            {newProject.images.map((img, idx) => (
+                              <div key={idx} className="relative h-20 w-20 rounded-lg border shadow-sm group overflow-hidden">
+                                <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${img})` }} />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <button onClick={() => removeProjectImage(idx)} className="text-white hover:text-red-400">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="relative border-2 border-dashed border-slate-300 rounded-lg p-6 flex flex-col items-center justify-center text-center hover:bg-slate-100 transition-colors bg-white">
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            onChange={handleProjectImageUpload}
+                            disabled={isUploadingProjImg}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
                           />
-                          <Input 
-                            type="date"
-                            value={newProject.endDate}
-                            onChange={e => setNewProject({...newProject, endDate: e.target.value})}
-                            placeholder="إلى"
-                          />
+                          {isUploadingProjImg ? (
+                            <Zap className="animate-pulse text-primary" size={24} />
+                          ) : (
+                            <>
+                              <ImageIcon size={24} className="text-slate-400 mb-2" />
+                              <p className="text-sm font-bold text-slate-600">انقر هنا لإضافة صورة للمشروع</p>
+                              <p className="text-xs text-muted-foreground mt-1">يُفضل رفع صور واضحة للمنتجات أو موقع العمل</p>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
-                    <div className="flex gap-2 justify-end">
-                      <Button variant="outline" size="sm" onClick={() => setShowProjectForm(false)}>إلغاء</Button>
-                      <Button size="sm" onClick={addProject}>حفظ المشروع</Button>
+                    <div className="flex gap-2 justify-end pt-2">
+                      <Button variant="ghost" onClick={() => setShowProjectForm(false)}>إلغاء</Button>
+                      <Button onClick={addProject} className="gap-2">
+                        <CheckCircle2 size={16} />
+                        حفظ المشروع
+                      </Button>
                     </div>
                   </div>
                 ) : (
-                  <Button variant="outline" className="w-full border-dashed" onClick={() => setShowProjectForm(true)}>
-                    <Plus size={16} className="ml-2" />
+                  <Button variant="outline" className="w-full h-14 border-dashed border-2 text-slate-500 hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-colors text-md font-bold" onClick={() => setShowProjectForm(true)}>
+                    <Plus size={18} className="ml-2" />
                     إضافة مشروع جديد
                   </Button>
                 )}
               </CardContent>
             </Card>
+
+            <Card className="shadow-sm border-none">
+              <CardHeader className="border-b">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ImageIcon size={20} className="text-primary" />
+                  معرض الصور وملفات الشركة
+                </CardTitle>
+                <CardDescription>أضف صور لمصانعك، منتجاتك، أو أي ملفات تعريفية</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {profile.companyFiles.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-4">
+                    {profile.companyFiles.map(file => (
+                      <div key={file.id} className="relative group border rounded-lg overflow-hidden aspect-square bg-slate-50 flex flex-col items-center justify-center text-center p-2">
+                        {file.type === 'image' ? (
+                          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${file.url})` }} />
+                        ) : (
+                          <FileText size={32} className="text-slate-400 mb-2" />
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-2">
+                          <p className="text-white text-xs truncate w-full">{file.name}</p>
+                          <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 mt-2" onClick={() => removeFile(file.id)}>
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="p-4 border border-dashed rounded-lg flex flex-col items-center justify-center py-8 text-center gap-2 relative hover:bg-slate-50 transition-colors">
+                  <input 
+                    type="file" 
+                    accept=".pdf,.png,.jpg,.jpeg" 
+                    onChange={handleFileUpload}
+                    disabled={isUploadingFile}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
+                  />
+                  {isUploadingFile ? (
+                    <Zap className="animate-pulse text-primary" size={24} />
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground mb-2">اسحب وأفلت الملفات هنا، أو انقر للاختيار</p>
+                      <Button variant="outline" size="sm" className="pointer-events-none gap-2">
+                        <Plus size={16} />
+                        إضافة ملف أو صورة
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="space-y-6">
-            <Card className="shadow-sm border-none bg-secondary text-white">
-              <CardContent className="p-6 space-y-4">
-                <div className="h-20 w-20 rounded-2xl bg-white/10 flex items-center justify-center mx-auto">
-                  <User size={40} className="text-primary" />
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="shadow-lg border-none bg-gradient-to-br from-secondary to-slate-800 text-white overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-16 translate-x-16 blur-2xl" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-primary/20 rounded-full translate-y-12 -translate-x-12 blur-xl" />
+              
+              <CardContent className="p-8 space-y-6 relative z-10">
+                <div className="h-24 w-24 rounded-full bg-white/10 flex items-center justify-center mx-auto border-4 border-white/5 shadow-inner">
+                  <User size={48} className="text-white/80" />
                 </div>
                 <div className="text-center">
-                  <h3 className="font-bold text-lg">{profile.name}</h3>
-                  <p className="text-sm text-white/60">مورد معتمد منذ 2023</p>
+                  <h3 className="font-bold text-2xl tracking-tight">{profile.name || "الشركة"}</h3>
+                  <p className="text-sm text-white/60 mt-1">شريك مورد عبر منصة مناقصتي</p>
                 </div>
-                <div className="pt-4 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/60">حالة التحقق</span>
-                    <Badge className="bg-success text-white border-none">موثوق</Badge>
+                <div className="pt-6 space-y-4 border-t border-white/10">
+                  <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                    <span className="text-white/80 flex items-center gap-2"><CheckCircle2 size={16} className="text-success" /> حالة التحقق</span>
+                    <Badge className="bg-success text-white border-none shadow-sm">موثوق</Badge>
                   </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-white/60">التقييم</span>
-                    <span className="font-bold">4.8 / 5.0</span>
+                  <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                    <span className="text-white/80 flex items-center gap-2"><Award size={16} className="text-amber-400" /> التقييم العام</span>
+                    <span className="font-bold text-amber-400">4.8 / 5.0</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-sm border-slate-100">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-md font-bold">قوة الملف الشخصي</CardTitle>
+            <Card className="shadow-md border-slate-100">
+              <CardHeader className="bg-slate-50/50 border-b pb-4">
+                <CardTitle className="text-md font-bold text-slate-800">مؤشر اكتمال الملف</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary w-[85%]" />
+              <CardContent className="p-5 space-y-4">
+                <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                  <div className="h-full bg-gradient-to-r from-primary to-blue-400 w-[85%]" />
                 </div>
-                <p className="text-xs text-muted-foreground">ملفك الشخصي مكتمل بنسبة 85%، أضف شهادات الجودة للوصول إلى 100%.</p>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  ملفك الشخصي مكتمل بنسبة <span className="font-bold text-primary">85%</span>. ننصح بإضافة المزيد من المشاريع السابقة وصور المنتجات للوصول لنسبة 100% وزيادة موثوقيتك لدى المقاولين.
+                </p>
               </CardContent>
             </Card>
           </div>

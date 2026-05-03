@@ -43,6 +43,16 @@ export default function SupplierDashboard() {
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
+    
+    // If supplier has specializations, filter RFQs by those categories
+    if (user.specializations && user.specializations.length > 0) {
+      return query(
+        collection(firestore, "rfqs"), 
+        where("status", "==", "New"),
+        where("category", "in", user.specializations.slice(0, 30))
+      )
+    }
+    
     return query(collection(firestore, "rfqs"), where("status", "==", "New"))
   }, [firestore, user, isUserLoading])
 
@@ -185,7 +195,7 @@ export default function SupplierDashboard() {
                   <Search size={20} />
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-bold">مناقصات مقترحة لك</CardTitle>
+                  <CardTitle className="text-lg font-bold">مناقصات في تخصصك</CardTitle>
                   <p className="text-xs text-muted-foreground">بناءً على تخصصاتك ومناطق الخدمة</p>
                 </div>
               </div>
@@ -242,11 +252,13 @@ export default function SupplierDashboard() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-wrap gap-2">
-                {['حديد ومعادن', 'أسمنت وخرسانة', 'خرسانة جاهزة'].map((spec) => (
+                {user?.specializations?.length > 0 ? user.specializations.map((spec: string) => (
                   <Badge key={spec} className="bg-success/10 text-success border-success/20 hover:bg-success/20 px-3 py-1">
                     {spec}
                   </Badge>
-                ))}
+                )) : (
+                  <p className="text-sm text-muted-foreground">لم تقم بإضافة تخصصات بعد.</p>
+                )}
               </div>
               <div className="h-px bg-slate-100" />
               <div className="space-y-3">

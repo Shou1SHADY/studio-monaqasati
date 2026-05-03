@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { useUser, useFirestore, useCollection } from "@/firebase"
+import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Building2, MapPin, Phone, Mail, Globe, FileCheck, CheckCircle2, ShieldCheck, Upload, Trash2, Link as LinkIcon } from "lucide-react"
@@ -32,22 +32,29 @@ export default function ContractorProfilePage() {
     certificates: [] as {name: string, date: string}[]
   })
 
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  
+  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+
   // Sync with user data
   useEffect(() => {
-    if (user) {
+    if (userData) {
       setProfile(prev => ({
         ...prev,
-        name: user.name || user.companyName || "",
-        crNumber: user.crNumber || "",
-        location: user.city || user.location || "",
-        phone: user.phone || user.phoneNumber || "",
-        email: user.email || "",
-        description: user.description || "",
-        website: user.website || "",
-        certificates: user.certificates || []
+        name: userData.name || userData.companyName || user?.displayName || "",
+        crNumber: userData.crNumber || "",
+        location: userData.city || userData.location || "",
+        phone: userData.phone || userData.phoneNumber || "",
+        email: userData.email || user?.email || "",
+        description: userData.description || "",
+        website: userData.website || "",
+        certificates: userData.certificates || []
       }))
     }
-  }, [user])
+  }, [userData, user])
 
   const handleSave = async () => {
     if (!user || !firestore) return
@@ -101,7 +108,7 @@ export default function ContractorProfilePage() {
     }))
   }
 
-  if (isUserLoading) return <div className="p-20 text-center"><Loader2 className="animate-spin mx-auto" /></div>
+  if (isUserLoading || isUserDataLoading) return <div className="p-20 text-center"><Loader2 className="animate-spin mx-auto" /></div>
 
   return (
     <PortalLayout>
@@ -128,7 +135,7 @@ export default function ContractorProfilePage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cr">رقم السجل التجاري</Label>
-                    <Input id="cr" value={profile.crNumber} readOnly className="bg-slate-50" />
+                    <Input id="cr" value={profile.crNumber} onChange={e => setProfile({...profile, crNumber: e.target.value})} className="dir-ltr text-left" />
                   </div>
                 </div>
                 
@@ -147,14 +154,27 @@ export default function ContractorProfilePage() {
                     <Label htmlFor="phone">رقم الهاتف</Label>
                     <div className="relative">
                       <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input id="phone" className="pr-10" value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} />
+                      <Input id="phone" className="pr-10 dir-ltr text-left" value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">البريد الإلكتروني</Label>
                     <div className="relative">
                       <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input id="email" className="pr-10" value={profile.email} onChange={e => setProfile({...profile, email: e.target.value})} />
+                      <Input id="email" className="pr-10 bg-slate-50 text-slate-500 dir-ltr text-left" disabled value={profile.email} />
+                    </div>
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label htmlFor="loc">المدينة / المقر</Label>
+                    <div className="relative">
+                      <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        id="loc" 
+                        className="pr-10" 
+                        value={profile.location} 
+                        onChange={e => setProfile({...profile, location: e.target.value})} 
+                        placeholder="الرياض، جدة..."
+                      />
                     </div>
                   </div>
                 </div>

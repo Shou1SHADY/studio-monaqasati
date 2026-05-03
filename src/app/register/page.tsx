@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useFirebase } from "@/firebase"
@@ -26,8 +26,41 @@ export default function RegisterPage() {
     phone: "",
     crNumber: "",
     city: "",
-    role: "Contractor" as "Contractor" | "Supplier"
+    role: "Contractor" as "Contractor" | "Supplier",
+    specializations: [] as string[]
   })
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const roleParam = params.get("role")
+      if (roleParam === "Supplier" || roleParam === "Contractor") {
+        setFormData(prev => ({ ...prev, role: roleParam }))
+      }
+    }
+  }, [])
+
+  const CATEGORIES = [
+    "حديد ومعادن",
+    "أسمنت وخرسانة",
+    "أرضيات وتشطيبات",
+    "كهرباء وإنارة",
+    "أدوات صحية وسباكة",
+    "عزل وأسقف",
+    "أبواب ونوافذ",
+    "دهانات",
+    "خرسانة جاهزة",
+    "معدات وآليات"
+  ]
+
+  const toggleSpec = (spec: string) => {
+    setFormData(prev => ({
+      ...prev,
+      specializations: prev.specializations.includes(spec)
+        ? prev.specializations.filter(s => s !== spec)
+        : [...prev.specializations, spec]
+    }))
+  }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,6 +81,7 @@ export default function RegisterPage() {
         crNumber: formData.crNumber,
         city: formData.city,
         role: formData.role,
+        specializations: formData.role === "Supplier" ? formData.specializations : [],
         isVerified: false,
         profileCompleted: false, // flag indicating they should complete extra info later
         joinedAt: new Date().toISOString()
@@ -80,11 +114,11 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex" dir="rtl">
+    <div className="h-screen bg-white flex" dir="rtl">
       {/* Right Side - Form */}
-      <div className="flex-1 flex flex-col px-6 md:px-16 lg:px-24 xl:px-32 relative">
+      <div className="flex-1 flex flex-col px-6 md:px-16 lg:px-24 xl:px-32 relative overflow-y-auto py-6">
         {/* Navbar inside form area */}
-        <div className="h-24 flex items-center justify-between w-full">
+        <div className="flex items-center justify-between w-full mb-8 shrink-0">
           <Link href="/" className="flex items-center gap-2 group text-slate-500 hover:text-slate-900 transition-colors">
             <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform" />
             <span className="font-bold text-sm">العودة للرئيسية</span>
@@ -106,7 +140,7 @@ export default function RegisterPage() {
             <div className="space-y-3">
               <Label className="text-slate-700 font-bold">طبيعة نشاطك</Label>
               <RadioGroup 
-                defaultValue={formData.role} 
+                value={formData.role} 
                 onValueChange={(v) => setFormData({...formData, role: v as "Contractor" | "Supplier"})}
                 className="grid grid-cols-2 gap-3"
               >
@@ -154,7 +188,10 @@ export default function RegisterPage() {
                   placeholder="مثال: 1010XXXXXX"
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.crNumber}
-                  onChange={e => setFormData({...formData, crNumber: e.target.value})}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '')
+                    setFormData({...formData, crNumber: val})
+                  }}
                 />
               </div>
 
@@ -180,9 +217,34 @@ export default function RegisterPage() {
                 placeholder="05XXXXXXXX"
                 className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.phone}
-                onChange={e => setFormData({...formData, phone: e.target.value})}
+                onChange={e => {
+                  const val = e.target.value.replace(/\D/g, '')
+                  setFormData({...formData, phone: val})
+                }}
               />
             </div>
+
+            {formData.role === "Supplier" && (
+              <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                <Label className="text-slate-700 font-bold">تخصصات التوريد (اختر تخصصاً واحداً على الأقل)</Label>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {CATEGORIES.map(cat => (
+                    <Label key={cat} className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer hover:bg-primary/5 transition-colors">
+                      <input 
+                        type="checkbox" 
+                        className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
+                        checked={formData.specializations.includes(cat)}
+                        onChange={() => toggleSpec(cat)}
+                      />
+                      <span className="text-sm">{cat}</span>
+                    </Label>
+                  ))}
+                </div>
+                {formData.role === "Supplier" && formData.specializations.length === 0 && (
+                  <p className="text-xs text-destructive font-bold">يجب اختيار تخصص واحد على الأقل لتتمكن من استقبال المناقصات.</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-bold">البريد الإلكتروني</Label>
@@ -210,7 +272,11 @@ export default function RegisterPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 mt-4" disabled={isLoading}>
+            <Button 
+              type="submit" 
+              className="w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 mt-4" 
+              disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
+            >
               {isLoading ? <Loader2 className="animate-spin" /> : "تأكيد التسجيل"}
             </Button>
           </form>

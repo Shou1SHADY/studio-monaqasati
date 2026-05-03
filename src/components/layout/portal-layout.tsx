@@ -48,16 +48,38 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   }, [user, isUserLoading, router, pathname])
   
   const basePath = pathname.split("/")[1] || "admin"
+
+  React.useEffect(() => {
+    if (profile && profile.role) {
+      if (profile.role === "Supplier" && basePath !== "supplier") {
+        router.push("/supplier")
+      } else if (profile.role === "Contractor" && basePath !== "contractor") {
+        router.push("/contractor")
+      } else if (profile.role === "Admin" && basePath !== "admin") {
+        router.push("/admin")
+      }
+    }
+  }, [profile, basePath, router])
   const isSupplier = basePath === "supplier"
   const isContractor = basePath === "contractor"
 
-  // --- Notifications: fetch recent offers relevant to current role ---
-  // Supplier: their own submitted offers (status changes = notifications)
+  // --- Notifications: fetch recent offers and RFQs relevant to current role ---
+  // Supplier: their own submitted offers + NEW RFQs matching their specializations
   const supplierOffersQuery = useMemoFirebase(() => {
     if (!isSupplier || isUserLoading || !user || !firestore) return null
     return query(
       collection(firestore, "offers"),
       where("supplierId", "==", user.uid),
+      orderBy("createdAt", "desc"),
+      limit(5)
+    )
+  }, [firestore, user, isUserLoading, isSupplier])
+
+  const supplierMatchingRfqsQuery = useMemoFirebase(() => {
+    if (!isSupplier || isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "rfqs"),
+      where("status", "==", "New"),
       orderBy("createdAt", "desc"),
       limit(5)
     )
@@ -75,6 +97,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   }, [firestore, user, isUserLoading, isContractor])
 
   const { data: supplierOffers } = useCollection(supplierOffersQuery)
+  const { data: supplierRfqs } = useCollection(supplierMatchingRfqsQuery)
   const { data: contractorRfqs } = useCollection(contractorRfqsQuery)
 
   const contractorRfqIds = contractorRfqs?.slice(0, 10).map((r: any) => r.id) || []
@@ -91,19 +114,34 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const { data: contractorOffers } = useCollection(contractorOffersQuery)
 
+  // Merge and sort notifications
+  const mergedSupplierNotifs = React.useMemo(() => {
+    const offers = (supplierOffers || []).map((o: any) => ({ ...o, type: "offer_update" }))
+    // For RFQs, filter them by category client-side, sort them by createdAt client-side
+    const rfqs = (supplierRfqs || [])
+      .filter((r: any) => profile?.specializations?.includes(r.category))
+      .sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ).slice(0, 5).map((r: any) => ({ ...r, type: "new_rfq" }))
+    
+    return [...offers, ...rfqs].sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    ).slice(0, 5)
+  }, [supplierOffers, supplierRfqs])
+
   // Determine which notifications list to show
   const notifications: any[] = isSupplier
-    ? (supplierOffers || [])
+    ? mergedSupplierNotifs
     : isContractor
-    ? (contractorOffers || [])
+    ? (contractorOffers || []).map((o: any) => ({ ...o, type: "new_offer" }))
     : []
 
-  // Unread count: decided offers (accepted/rejected) that supplier hasn't read yet
+  // Unread count
   const unreadCount = isSupplier
-    ? notifications.filter((o: any) =>
-        (o.status === "مقبول" || o.status === "مرفوض") && !o.readAt
+    ? notifications.filter((n: any) =>
+        (n.type === "new_rfq" && !n.readAt) || ((n.status === "مقبول" || n.status === "مرفوض") && !n.readAt)
       ).length
-    : notifications.filter((o: any) => o.status === "قيد المراجعة").length
+    : notifications.filter((n: any) => n.status === "قيد المراجعة").length
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -194,39 +232,44 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 ) : (
                   <div className="divide-y max-h-72 overflow-y-auto">
                     {notifications.map((notif: any) => {
-                      const isPending = notif.status === "قيد المراجعة"
-                      const isAccepted = notif.status === "مقبول"
+                      const isNewRfq = notif.type === "new_rfq"
+                      const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq"
+                      const isAccepted = notif.status === "مقبول" && notif.type !== "new_rfq"
+                      
                       return (
                         <div
                           key={notif.id}
                           className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors ${
-                            isPending ? "bg-amber-50/40" : ""
+                            (isPending || isNewRfq) ? "bg-amber-50/40" : ""
                           }`}
                         >
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
                             isPending ? "bg-amber-100 text-amber-600" :
+                            isNewRfq ? "bg-blue-100 text-blue-600" :
                             isAccepted ? "bg-success/10 text-success" :
                             "bg-slate-100 text-slate-400"
                           }`}>
-                            {isPending && <Clock size={14} />}
-                            {isAccepted && <CheckCircle2 size={14} />}
-                            {!isPending && !isAccepted && <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isPending ? <Clock size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-slate-800 truncate">
                               {isSupplier
-                                ? isPending ? "⏳ عرض قيد المراجعة"
+                                ? isNewRfq ? "🆕 مناقصة جديدة متطابقة!"
+                                  : isPending ? "⏳ عرض قيد المراجعة"
                                   : isAccepted ? "✅ تم قبول عرضك!"
                                   : "❌ تم رفض العرض"
                                 : "🔔 عرض سعر جديد"}
                             </p>
                             <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                              {isSupplier
-                                ? `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
-                                : `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`}
+                              {isNewRfq 
+                                ? `تم طرح مناقصة في قسم ${notif.category}`
+                                : isSupplier
+                                  ? `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
+                                  : `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
+                              }
                             </p>
                           </div>
-                          {isPending && <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
+                          {(isPending || isNewRfq) && <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
                         </div>
                       )
                     })}
@@ -255,7 +298,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                   <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-slate-100">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
                       <span className="text-sm font-bold text-slate-700">{profile?.name || (user ? "مستخدم جديد" : "ضيف")}</span>
-                      <span className="text-xs text-muted-foreground">{profile?.role || "بانتظار التهيئة..."}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {profile?.role === "Contractor" ? "مقاول" : profile?.role === "Supplier" ? "مورد" : profile?.role || "بانتظار التهيئة..."}
+                      </span>
                     </div>
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                       <User size={18} />

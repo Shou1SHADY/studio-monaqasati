@@ -13,8 +13,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare } from "lucide-react"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone } from "lucide-react"
+import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
@@ -178,20 +178,23 @@ export default function SupplierOffersPage() {
                             <Eye size={16} />
                           </Button>
 
-                          {/* Open Chat for accepted offers */}
+                          {/* Open Chat + WhatsApp for accepted offers */}
                           {offer.status === "مقبول" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="فتح المحادثة مع المقاول"
-                              onClick={() => openChat(offer)}
-                              disabled={openingChat === offer.id}
-                              className="text-primary"
-                            >
-                              {openingChat === offer.id
-                                ? <Loader2 size={16} className="animate-spin" />
-                                : <MessageSquare size={16} />}
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="فتح المحادثة مع المقاول"
+                                onClick={() => openChat(offer)}
+                                disabled={openingChat === offer.id}
+                                className="text-primary"
+                              >
+                                {openingChat === offer.id
+                                  ? <Loader2 size={16} className="animate-spin" />
+                                  : <MessageSquare size={16} />}
+                              </Button>
+                              <ContractorWhatsAppButton contractorId={offer.contractorId} />
+                            </>
                           )}
 
                           {/* More Actions */}
@@ -276,5 +279,32 @@ export default function SupplierOffersPage() {
         </DialogContent>
       </Dialog>
     </PortalLayout>
+  )
+}
+
+function ContractorWhatsAppButton({ contractorId }: { contractorId?: string }) {
+  const firestore = useFirestore()
+  const docRef = useMemoFirebase(() => {
+    if (!firestore || !contractorId) return null
+    return doc(firestore, "users", contractorId)
+  }, [firestore, contractorId])
+  const { data: contractor } = useDoc(docRef)
+
+  const phone = contractor?.phone || contractor?.mobile || contractor?.whatsapp
+  if (!phone) return null
+
+  const cleaned = phone.replace(/\D/g, "")
+  const waNumber = cleaned.startsWith("0") ? "966" + cleaned.slice(1) : cleaned
+
+  return (
+    <a
+      href={`https://wa.me/${waNumber}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="واتسآب المقاول"
+      className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-[#25D366]/10 text-[#25D366] transition-colors"
+    >
+      <Phone size={16} />
+    </a>
   )
 }

@@ -6,23 +6,24 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { MapPicker } from "@/components/ui/map-picker"
 import { 
   Search, 
   MapPin, 
-  Calendar, 
+  Calendar,
   ChevronLeft, 
   Filter,
   Loader2,
   Plus,
   Trash2,
-  Truck
+  Package
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { collection, query, where, orderBy } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
+import { collection, query, where, orderBy, doc } from "firebase/firestore"
 import { useRouter, useSearchParams } from "next/navigation"
 
 interface DeliveryBatch {
@@ -30,6 +31,27 @@ interface DeliveryBatch {
   quantity: string
   deliveryDate: string
   price: string
+  location: string
+  coords: { lat: number; lng: number } | null
+}
+
+const getRemainingTime = (dateString: string) => {
+  if (!dateString) return "";
+  const deadline = new Date(dateString);
+  // Set to end of day
+  deadline.setHours(23, 59, 59, 999);
+  
+  const now = new Date();
+  const diff = deadline.getTime() - now.getTime();
+  
+  if (diff < 0) return "انتهى الموعد";
+  
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "ينتهي اليوم";
+  if (days === 1) return "ينتهي غداً";
+  if (days === 2) return "ينتهي بعد يومين";
+  if (days <= 10) return `متبقي ${days} أيام`;
+  return `متبقي ${days} يوماً`;
 }
 
 export default function AvailableRfqsPage() {
@@ -37,20 +59,29 @@ export default function AvailableRfqsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string} | null>(null)
   const [offerPrice, setOfferPrice] = useState("")
   const [deliveryLocation, setDeliveryLocation] = useState("")
+  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [deliveryMethod, setDeliveryMethod] = useState("")
   const [deliveryFrequency, setDeliveryFrequency] = useState("")
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
-    { id: "1", quantity: "", deliveryDate: "", price: "" }
+    { id: "1", quantity: "", deliveryDate: "", price: "", location: "", coords: null }
   ])
+  const [mapBatchId, setMapBatchId] = useState<string | null>(null)
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
   useEffect(() => {
     setSearchQuery(searchParams.get("search") || "")
   }, [searchParams])
+
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  
+  const { data: profile } = useDoc(userDocRef)
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
@@ -63,10 +94,16 @@ export default function AvailableRfqsPage() {
     )
   }, [firestore, user, isUserLoading])
 
-  const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
+  const { data: allRfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
 
-  const filteredRfqs = rfqs?.filter((rfq: any) => {
+  // Client-side filtering by specializations
+  const rfqs = allRfqs?.filter((rfq: any) => {
+    if (!profile?.specializations?.length) return false;
+    return profile.specializations.includes(rfq.category);
+  }) || [];
+
+  const filteredRfqs = rfqs.filter((rfq: any) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -81,13 +118,15 @@ export default function AvailableRfqsPage() {
   const resetForm = () => {
     setOfferPrice("")
     setDeliveryLocation("")
+    setDeliveryCoords(null)
     setDeliveryMethod("")
     setDeliveryFrequency("")
-    setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "" }])
+    setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "", location: "", coords: null }])
+    setMapBatchId(null)
   }
 
   const addBatch = () => {
-    setDeliveryBatches([...deliveryBatches, { id: Date.now().toString(), quantity: "", deliveryDate: "", price: "" }])
+    setDeliveryBatches(prev => [...prev, { id: Date.now().toString(), quantity: "", deliveryDate: "", price: "", location: "", coords: null }])
   }
 
   const removeBatch = (id: string) => {
@@ -106,56 +145,56 @@ export default function AvailableRfqsPage() {
       return;
     }
 
-    if (!selectedRfq || !offerPrice || !deliveryLocation || !deliveryMethod) {
-      toast({ title: "بيانات ناقصة", description: "يرجى填写 جميع الحقول المطلوبة", variant: "destructive" });
+    if (!selectedRfq || !deliveryMethod || !deliveryFrequency) {
+      toast({ title: "بيانات ناقصة", description: "يرجى اختيار طريقة ووتيرة التسليم", variant: "destructive" });
       return;
     }
 
-    const validBatches = deliveryBatches.filter(b => b.quantity && b.deliveryDate && b.price)
-    if (validBatches.length === 0) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إضافة دفعة تسليم واحدة على الأقل", variant: "destructive" });
+    const invalidBatch = deliveryBatches.find(b => !b.location || !b.deliveryDate || !b.price)
+    if (invalidBatch) {
+      toast({ title: "بيانات ناقصة", description: "يرجى إكمال بيانات جميع الشحنات (الموقع، التاريخ، السعر)", variant: "destructive" });
+      return;
+    }
+
+    const totalFromBatches = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
+    const finalPrice = offerPrice || String(totalFromBatches)
+
+    if (!finalPrice || parseFloat(finalPrice) <= 0) {
+      toast({ title: "بيانات ناقصة", description: "يرجى إدخال السعر الإجمالي", variant: "destructive" });
       return;
     }
 
     try {
       const { addDoc } = await import("firebase/firestore");
-      
-      const totalBatchesPrice = validBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
 
       await addDoc(collection(firestore, "offers"), {
         supplierId: user.uid,
         rfqId: selectedRfq.id,
         rfqTitle: selectedRfq.title,
-        price: offerPrice,
-        deliveryLocation: deliveryLocation,
-        deliveryMethod: deliveryMethod,
-        deliveryFrequency: deliveryFrequency,
-        deliveryBatches: validBatches.map(b => ({
-          quantity: b.quantity,
+        contractorId: selectedRfq.contractorId || null,
+        price: finalPrice,
+        deliveryMethod,
+        deliveryFrequency,
+        deliveryBatches: deliveryBatches.map(b => ({
+          location: b.location,
           deliveryDate: b.deliveryDate,
-          price: b.price
+          price: b.price,
         })),
-        totalBatchesPrice: totalBatchesPrice,
+        totalBatchesPrice: totalFromBatches,
         status: "قيد المراجعة",
         createdAt: new Date().toISOString()
       });
 
       toast({
         title: "تم تقديم العرض بنجاح!",
-        description: `تم إرسال عرضك بنجاح بمبلغ ${offerPrice} ر.س.`,
+        description: `تم إرسال عرضك بمبلغ ${Number(finalPrice).toLocaleString('ar-SA')} ر.س.`,
       })
       setSelectedRfq(null);
       resetForm();
-      setTimeout(() => {
-        router.push("/supplier/offers")
-      }, 1000)
+      setTimeout(() => { router.push("/supplier/offers") }, 1000)
     } catch (error) {
       console.error(error);
-      toast({
-        title: "خطأ",
-        description: "حدث خطأ أثناء تقديم العرض",
-        variant: "destructive"
-      })
+      toast({ title: "خطأ", description: "حدث خطأ أثناء تقديم العرض", variant: "destructive" })
     }
   }
 
@@ -184,79 +223,94 @@ export default function AvailableRfqsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {isLoading ? (
-            <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-              <Loader2 className="animate-spin" size={40} />
-              <p>جاري تحميل المناقصات المتاحة...</p>
+            <div className="col-span-full p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+              <Loader2 className="animate-spin text-primary" size={40} />
+              <p className="font-medium animate-pulse">جاري تحميل المناقصات المتاحة...</p>
             </div>
           ) : filteredRfqs.length === 0 ? (
-            <div className="p-20 text-center text-muted-foreground bg-white rounded-lg shadow-sm border border-dashed">
-              لا توجد مناقصات مطابقة لبحثك.
+            <div className="col-span-full p-20 text-center flex flex-col items-center gap-3 text-muted-foreground bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
+              <Search size={48} className="opacity-20" />
+              <p className="text-lg font-bold text-slate-600">لا توجد مناقصات مطابقة لبحثك</p>
+              <p className="text-sm">حاول تغيير كلمات البحث أو تصفية التخصصات</p>
             </div>
           ) : (
             filteredRfqs.map((rfq: any) => (
-              <Card key={rfq.id} className="hover:shadow-md transition-all border-slate-100 overflow-hidden group">
-                <CardContent className="p-0">
-                  <div className="flex flex-col md:flex-row">
-                    <div className="p-6 flex-1 space-y-4">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
-                          {rfq.category}
+              <Card key={rfq.id} className="group relative overflow-hidden border-slate-200/60 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 bg-white/60 backdrop-blur-xl flex flex-col">
+                <CardContent className="p-5 flex flex-col flex-1">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
+                        {rfq.category}
+                      </Badge>
+                      {rfq.subCategory && (
+                        <Badge variant="outline" className="text-slate-600 border-slate-200 bg-white/50 px-2.5 py-1">
+                          {rfq.subCategory}
                         </Badge>
-                        {rfq.subCategory && (
-                          <Badge variant="outline" className="text-muted-foreground border-slate-200">
-                            {rfq.subCategory}
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground font-mono mr-auto">{rfq.id.substring(0, 8)}</span>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-bold text-slate-800 group-hover:text-primary transition-colors">
-                          {rfq.title}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">الكمية: {rfq.quantity} {rfq.unitOfMeasure}</p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-6 pt-2">
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <MapPin size={16} className="text-primary" />
-                          {rfq.city} - {rfq.district}
-                          {rfq.locationCoords && (
-                            <a 
-                              href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-xs text-primary underline mr-2 hover:text-primary/70 transition-colors"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              عرض الخريطة
-                            </a>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-600" suppressHydrationWarning>
-                          <Calendar size={16} className="text-muted-foreground" />
-                          الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                    
-                    <div className="bg-slate-50/50 p-6 flex items-center justify-center md:border-r border-t md:border-t-0 min-w-[200px]">
-                      <Button 
-                        onClick={() => setSelectedRfq({
-                          id: rfq.id, 
-                          title: rfq.title,
-                          quantity: rfq.quantity,
-                          unitOfMeasure: rfq.unitOfMeasure
-                        })}
-                        className="w-full md:w-auto gap-2 bg-primary hover:bg-primary/90 rounded-full h-11 px-8 shadow-sm"
-                      >
-                        تقديم عرض سعر
-                        <ChevronLeft size={18} />
-                      </Button>
+                    <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
+                  </div>
+                  
+                  <div className="space-y-1 mb-5 flex-1">
+                    <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
+                      {rfq.title}
+                    </h3>
+                    <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md mt-2">
+                      <Package size={14} className="text-primary" />
+                      الكمية: {rfq.quantity} {rfq.unitOfMeasure}
                     </div>
                   </div>
+
+                  <div className="space-y-3 pt-4 border-t border-slate-100/80 mb-5">
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                        <MapPin size={12} className="text-blue-600" />
+                      </div>
+                      <span className="truncate">{rfq.city} - {rfq.district}</span>
+                      {rfq.locationCoords && (
+                        <a 
+                          href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] bg-blue-100/50 text-blue-700 px-2 py-0.5 rounded-full hover:bg-blue-200 transition-colors mr-auto shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          خريطة
+                        </a>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600" suppressHydrationWarning>
+                      <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+                        <Calendar size={12} className="text-amber-600" />
+                      </div>
+                      الموعد: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+                      {rfq.deadline && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold mr-1 ${
+                          new Date(rfq.deadline).getTime() < new Date().getTime() 
+                            ? 'bg-red-100 text-red-600' 
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {getRemainingTime(rfq.deadline)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    onClick={() => setSelectedRfq({
+                      id: rfq.id, 
+                      title: rfq.title,
+                      quantity: rfq.quantity,
+                      unitOfMeasure: rfq.unitOfMeasure,
+                      contractorId: rfq.contractorId
+                    })}
+                    className="w-full gap-2 bg-slate-900 hover:bg-primary text-white rounded-xl h-11 transition-all group-hover:shadow-md"
+                  >
+                    تقديم عرض سعر
+                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                  </Button>
                 </CardContent>
               </Card>
             ))
@@ -265,164 +319,276 @@ export default function AvailableRfqsPage() {
       </div>
 
       <Dialog open={!!selectedRfq} onOpenChange={(open) => { if (!open) { setSelectedRfq(null); resetForm() } }}>
-        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>تقديم عرض سعر</DialogTitle>
-            <DialogDescription className="mt-2">
-              أدخل التفاصيل الكاملة لعرضك على: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-5 py-4">
-            <div className="space-y-3">
-              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
-                <Truck size={16} />
-                معلومات التسليم
-              </h3>
-              
-              <div className="grid gap-3">
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryLocation" className="text-right sm:col-span-1 font-medium">
-                    موقع التسليم <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="deliveryLocation"
-                    value={deliveryLocation}
-                    onChange={(e) => setDeliveryLocation(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="مثال: الرياض - حي النرجس"
-                  />
-                </div>
+        <DialogContent
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          dir="rtl"
+        >
+          {/* Hidden DialogTitle for accessibility */}
+          <DialogTitle className="sr-only">تقديم عرض سعر</DialogTitle>
 
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryMethod" className="text-right sm:col-span-1 font-medium">
-                    طريقة التسليم <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="deliveryMethod"
-                    value={deliveryMethod}
-                    onChange={(e) => setDeliveryMethod(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="مثال: شاحنات متخصصة / تسليم يدوي"
-                  />
-                </div>
+          {/* Sticky Header */}
+          <div className="px-5 pl-12 pt-5 pb-4 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
+            <h2 className="text-lg font-bold text-slate-800">تقديم عرض سعر</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              طلب: <span className="font-semibold text-slate-700">{selectedRfq?.title}</span>
+            </p>
+            {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
+          </div>
 
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryFrequency" className="text-right sm:col-span-1 font-medium">
-                    وتيرة التسليم
-                  </Label>
-                  <Input
-                    id="deliveryFrequency"
-                    value={deliveryFrequency}
-                    onChange={(e) => setDeliveryFrequency(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="مثال: أسبوعية / شهرية / دفعة واحدة"
-                  />
-                </div>
+          {/* Scrollable Body */}
+          <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
+
+            {/* Method + Frequency */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">طريقة التسليم <span className="text-red-500">*</span></Label>
+                <Select value={deliveryMethod} onValueChange={setDeliveryMethod}>
+                  <SelectTrigger className="w-full h-10 text-sm">
+                    <SelectValue placeholder="اختر..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="شاحنات خاصة">شاحنات خاصة</SelectItem>
+                    <SelectItem value="تسليم مباشر">تسليم مباشر</SelectItem>
+                    <SelectItem value="نقل بالرافعة">نقل بالرافعة</SelectItem>
+                    <SelectItem value="شحن دولي">شحن دولي</SelectItem>
+                    <SelectItem value="خدمة التوصيل">خدمة التوصيل</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">وتيرة التسليم <span className="text-red-500">*</span></Label>
+                <Select value={deliveryFrequency} onValueChange={setDeliveryFrequency}>
+                  <SelectTrigger className="w-full h-10 text-sm">
+                    <SelectValue placeholder="اختر..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="دفعة واحدة">دفعة واحدة</SelectItem>
+                    <SelectItem value="أسبوعية">أسبوعية</SelectItem>
+                    <SelectItem value="نصف شهرية">نصف شهرية</SelectItem>
+                    <SelectItem value="شهرية">شهرية</SelectItem>
+                    <SelectItem value="حسب الطلب">حسب الطلب</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
+            {/* Section Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-200" />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">الشحنات</span>
+              <div className="flex-1 h-px bg-slate-200" />
+            </div>
+
+            {/* Batches */}
             <div className="space-y-3">
-              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
-                <Calendar size={16} />
-                جدول الشحنات والتسعير
-              </h3>
-              
-              <div className="space-y-3">
-                {deliveryBatches.map((batch, index) => (
-                  <div key={batch.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-600">الشحنة {index + 1}</span>
-                      {deliveryBatches.length > 1 && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => removeBatch(batch.id)}
+              {deliveryBatches.map((batch, index) => (
+                <div key={batch.id} className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 border-b border-slate-200">
+                    <span className="text-sm font-bold text-primary flex items-center gap-1.5">
+                      <Package size={14} />
+                      الشحنة {index + 1}
+                    </span>
+                    {deliveryBatches.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeBatch(batch.id)}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
+                      >
+                        <Trash2 size={12} />
+                        حذف
+                      </button>
+                    )}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {/* Location picker */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-600">موقع التسليم <span className="text-red-500">*</span></Label>
+                      {batch.location ? (
+                        <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <MapPin size={14} className="text-green-600 shrink-0 mt-0.5" />
+                          <span className="text-green-800 text-xs font-medium flex-1 leading-relaxed break-words min-w-0">{batch.location}</span>
+                          <button
+                            type="button"
+                            onClick={() => setDeliveryBatches(prev => prev.map(b => b.id === batch.id ? { ...b, location: "", coords: null } : b))}
+                            className="text-[10px] text-red-500 hover:underline shrink-0 font-medium"
+                          >تغيير</button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setMapBatchId(batch.id)}
+                          className="w-full flex items-center justify-center gap-2 h-11 rounded-lg border-2 border-dashed border-slate-300 text-sm text-slate-500 hover:border-primary hover:text-primary transition-colors font-medium"
                         >
-                          <Trash2 size={14} />
-                        </Button>
+                          <MapPin size={15} />
+                          تحديد الموقع على الخريطة
+                        </button>
                       )}
                     </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          الكمية <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          value={batch.quantity}
-                          onChange={(e) => updateBatch(batch.id, "quantity", e.target.value)}
-                          placeholder={selectedRfq?.unitOfMeasure ? `مثال: 50 ${selectedRfq.unitOfMeasure}` : "الكمية"}
-                        />
-                      </div>
-                      
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          تاريخ التسليم <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
+
+                    {/* Date + Price — stack on mobile */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-600">تاريخ التسليم <span className="text-red-500">*</span></Label>
+                        <input
                           type="date"
                           value={batch.deliveryDate}
                           onChange={(e) => updateBatch(batch.id, "deliveryDate", e.target.value)}
+                          className="w-full h-10 px-3 rounded-lg border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          min={new Date().toISOString().split('T')[0]}
                         />
                       </div>
-                      
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          السعر (ر.س) <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          value={batch.price}
-                          onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
-                          placeholder="سعر الشحنة"
-                        />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-slate-600">سعر الشحنة (ر.س) <span className="text-red-500">*</span></Label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={batch.price}
+                            onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
+                            className="w-full h-10 px-3 pl-14 rounded-lg border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            placeholder="0"
+                            min="0"
+                          />
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ر.س</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
+              {/* Add Batch */}
+              <button
+                type="button"
                 onClick={addBatch}
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-primary hover:text-primary transition-colors"
               >
-                <Plus size={16} />
+                <Plus size={14} />
                 إضافة شحنة أخرى
-              </Button>
+              </button>
+
+              {/* Auto total badge */}
+              {deliveryBatches.length > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border border-primary/15 rounded-xl">
+                  <span className="text-sm font-semibold text-slate-600">إجمالي الشحنات</span>
+                  <span className="text-xl font-black text-primary">
+                    {deliveryBatches.reduce((s, b) => s + (parseFloat(b.price) || 0), 0).toLocaleString('ar-SA')}
+                    <span className="text-sm font-semibold mr-1">ر.س</span>
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-3 pt-2 border-t">
-              <h3 className="font-bold text-sm text-primary">السعر الإجمالي</h3>
-              <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                <Label htmlFor="price" className="text-right sm:col-span-1 font-bold">
-                  السعر الكلي (ر.س) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="price"
+            {/* Grand Total */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold">السعر الإجمالي (ر.س) <span className="text-red-500">*</span></Label>
+              <div className="relative">
+                <input
                   type="number"
                   value={offerPrice}
                   onChange={(e) => setOfferPrice(e.target.value)}
-                  className="sm:col-span-3 w-full"
-                  placeholder="مثال: 50000"
+                  className="w-full h-12 px-4 pl-16 rounded-xl border-2 border-input bg-white text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  placeholder={deliveryBatches.length > 1 ? String(deliveryBatches.reduce((s, b) => s + (parseFloat(b.price) || 0), 0)) : "0"}
+                  min="0"
                 />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">ر.س</span>
               </div>
+              {deliveryBatches.length > 1 && (
+                <p className="text-xs text-muted-foreground">اتركه فارغاً ليُحسب تلقائياً من مجموع الشحنات، أو أدخل قيمة مخصصة</p>
+              )}
             </div>
+
           </div>
-          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => { setSelectedRfq(null); resetForm() }}>إلغاء</Button>
-            <Button 
-              onClick={submitOffer} 
-              disabled={!offerPrice || !deliveryLocation || !deliveryMethod}
+
+          {/* Sticky Footer */}
+          <div className="px-5 py-4 border-t bg-white shrink-0 flex flex-col sm:flex-row gap-3">
+            <Button variant="outline" className="flex-1 order-2 sm:order-1" onClick={() => { setSelectedRfq(null); resetForm() }}>
+              إلغاء
+            </Button>
+            <Button
+              onClick={submitOffer}
+              disabled={
+                !deliveryMethod ||
+                !deliveryFrequency ||
+                deliveryBatches.some(b => !b.location || !b.deliveryDate || !b.price) ||
+                (!offerPrice && deliveryBatches.every(b => !b.price))
+              }
+              className="flex-[2] order-1 sm:order-2"
             >
               تأكيد وإرسال العرض
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Shared Map Dialog — only ONE Leaflet instance, only mounted when open */}
+      <Dialog open={!!mapBatchId} onOpenChange={(open) => { if (!open) setMapBatchId(null) }}>
+        <DialogContent className="sm:max-w-[600px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تحديد موقع التسليم</DialogTitle>
+            <DialogDescription>اضغط على الخريطة لتحديد الموقع، ثم اضغط تأكيد</DialogDescription>
+          </DialogHeader>
+          {mapBatchId && (
+            <MapPicker
+              key={mapBatchId}
+              initialPosition={null}
+              onLocationSelect={async (loc) => {
+                try {
+                  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${loc.lat}&lon=${loc.lng}&format=json`)
+                  const data = await res.json()
+                  const address = data.display_name || `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`
+                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: address, coords: loc } : b))
+                  setMapBatchId(null)
+                } catch {
+                  setDeliveryBatches(prev => prev.map(b => b.id === mapBatchId ? { ...b, location: `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`, coords: loc } : b))
+                  setMapBatchId(null)
+                }
+              }}
+              className="h-72 w-full rounded-xl overflow-hidden border"
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMapBatchId(null)}>إغلاق</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </PortalLayout>
+  )
+}
+
+function ContractorInfo({ contractorId }: { contractorId: string }) {
+  const firestore = useFirestore()
+  const docRef = useMemoFirebase(() => {
+    if (!firestore || !contractorId) return null
+    return doc(firestore, "users", contractorId)
+  }, [firestore, contractorId])
+  
+  const { data: contractor } = useDoc(docRef)
+  
+  if (!contractor) return null
+  
+  return (
+    <div className="mt-2 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-3 shadow-inner">
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-bold text-slate-500">صاحب المناقصة:</span>
+        <span className="text-md font-bold text-slate-800">{contractor.name || contractor.companyName || "مقاول"}</span>
+      </div>
+      
+      {(contractor.certificates?.length > 0 || contractor.profileCompleted) && (
+        <div className="flex gap-2 flex-wrap">
+          {contractor.profileCompleted && (
+            <Badge variant="outline" className="bg-success/10 text-success border-success/30 px-3 py-1">
+              السجل التجاري موثق ✓
+            </Badge>
+          )}
+          {contractor.certificates?.map((cert: any, idx: number) => (
+            <Badge key={idx} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
+              {cert.name}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

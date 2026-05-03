@@ -20,7 +20,8 @@ import {
   MapPin,
   Tag,
   Truck,
-  Package
+  Package,
+  Phone
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
@@ -403,9 +404,9 @@ export default function RfqOffersPage() {
                       </div>
                     )}
 
-                    {/* Chat Button - Accepted */}
+                    {/* Action Buttons - Accepted */}
                     {offer.status === "مقبول" && (
-                      <div className="bg-success/5 p-6 flex items-center justify-center md:border-r border-t md:border-t-0 min-w-[180px]">
+                      <div className="bg-success/5 p-6 flex flex-col items-center justify-center gap-2 md:border-r border-t md:border-t-0 min-w-[180px]">
                         <Button
                           onClick={() => openChat(offer)}
                           disabled={openingChat === offer.id}
@@ -415,6 +416,7 @@ export default function RfqOffersPage() {
                           {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
                           فتح المحادثة
                         </Button>
+                        <SupplierWhatsAppButton supplierId={offer.supplierId} />
                       </div>
                     )}
                   </div>
@@ -519,5 +521,32 @@ export default function RfqOffersPage() {
         </Tabs>
       </div>
     </PortalLayout>
+  )
+}
+
+function SupplierWhatsAppButton({ supplierId }: { supplierId: string }) {
+  const firestore = useFirestore()
+  const docRef = useMemoFirebase(() => {
+    if (!firestore || !supplierId) return null
+    return doc(firestore, "users", supplierId)
+  }, [firestore, supplierId])
+  const { data: supplier } = useDoc(docRef)
+
+  const phone = supplier?.phone || supplier?.mobile || supplier?.whatsapp
+  if (!phone) return null
+
+  const cleaned = phone.replace(/\D/g, "")
+  const waNumber = cleaned.startsWith("0") ? "966" + cleaned.slice(1) : cleaned
+
+  return (
+    <a
+      href={`https://wa.me/${waNumber}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-full flex items-center justify-center gap-2 h-8 rounded-full bg-[#25D366] hover:bg-[#20ba5a] text-white text-xs font-bold transition-colors"
+    >
+      <Phone size={13} />
+      واتسآب المورد
+    </a>
   )
 }

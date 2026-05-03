@@ -15,12 +15,21 @@ import {
   Briefcase,
   Loader2
 } from "lucide-react"
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription 
+} from "@/components/ui/dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
+import { useState } from "react"
 
 export default function SuppliersDirectory() {
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
+  const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
     return query(collection(firestore, "users"), where("role", "==", "Supplier"))
@@ -58,15 +67,13 @@ export default function SuppliersDirectory() {
   
   const isLoading = suppliersLoading || isUserLoading;
 
-  // دمج الموردين من قاعدة البيانات مع تقييماتهم
-  const displaySuppliers = fbSuppliers?.length ? fbSuppliers.map((s: any, index: number) => ({
+  const displaySuppliers = fbSuppliers?.length ? fbSuppliers.map((s: any) => ({
+    ...s,
     id: s.id,
     name: s.name || s.companyName || "مورد",
-    verified: true,
-    rating: 4.5 + (index % 5) / 10,
-    deals: 20 + (index * 15),
     city: s.city || "الرياض",
-    specs: ["مواد بناء", "حديد", "أسمنت"].slice(0, 1 + index % 3),
+    specializations: s.specializations || [],
+    certificates: s.certificates || [],
     isFavorite: favoriteSupplierIds.has(s.id)
   })) : []
 
@@ -109,10 +116,10 @@ export default function SuppliersDirectory() {
                       <Briefcase size={28} />
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      {supplier.verified && (
+                      {supplier.certificates?.length > 0 && (
                         <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
                           <ShieldCheck size={14} className="ml-1" />
-                          موثوق
+                          {supplier.certificates.length} شهادة
                         </Badge>
                       )}
                       {supplier.isFavorite && (
@@ -132,26 +139,42 @@ export default function SuppliersDirectory() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 py-2 border-y border-slate-50">
-                    <div className="flex items-center gap-1">
-                      <Star className="fill-amber-400 text-amber-400" size={16} />
-                      <span className="font-bold text-slate-700">{supplier.rating}</span>
+                  {/* Certificates badges */}
+                  {supplier.certificates?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {supplier.certificates.slice(0, 3).map((cert: any) => (
+                        <Badge key={cert.id} className="bg-green-50 text-green-700 border-green-100 text-[10px] px-2 font-normal gap-1">
+                          <ShieldCheck size={10} />
+                          {cert.name}
+                        </Badge>
+                      ))}
+                      {supplier.certificates.length > 3 && (
+                        <Badge variant="outline" className="text-[10px] px-2 text-slate-500">
+                          +{supplier.certificates.length - 3}
+                        </Badge>
+                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-bold text-slate-700">{supplier.deals}</span> صفقة ناجحة
-                    </div>
-                  </div>
+                  )}
 
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {supplier.specs.map((spec: string) => (
-                      <Badge key={spec} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 px-2 font-normal">
-                        {spec}
-                      </Badge>
-                    ))}
+                  {/* Specializations */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {supplier.specializations?.length > 0 ? (
+                      supplier.specializations.slice(0, 3).map((spec: string) => (
+                        <Badge key={spec} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 px-2 font-normal">
+                          {spec}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-400">لا توجد تخصصات</span>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter className="p-0 border-t">
-                  <Button variant="ghost" className="w-full h-12 rounded-none hover:bg-primary hover:text-white transition-colors gap-2">
+                  <Button 
+                    variant="ghost" 
+                    className="w-full h-12 rounded-none hover:bg-primary hover:text-white transition-colors gap-2"
+                    onClick={() => setSelectedSupplier(supplier)}
+                  >
                     عرض الملف الشخصي
                     <ChevronLeft size={16} />
                   </Button>
@@ -161,6 +184,80 @@ export default function SuppliersDirectory() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!selectedSupplier} onOpenChange={(open) => !open && setSelectedSupplier(null)}>
+        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Briefcase className="text-primary" />
+              ملف المورد: {selectedSupplier?.name}
+            </DialogTitle>
+            <DialogDescription>
+              التفاصيل، الشهادات، ومعلومات العمل الخاصة بالمورد
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedSupplier && (
+            <div className="space-y-6 py-4">
+              <div className="flex flex-col gap-2">
+                <h4 className="font-bold text-slate-800">التخصصات</h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedSupplier.specializations?.length ? selectedSupplier.specializations.map((spec: string) => (
+                    <Badge key={spec} className="bg-primary/10 text-primary border-none">{spec}</Badge>
+                  )) : (
+                    <span className="text-sm text-slate-500">لا توجد تخصصات مسجلة</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <h4 className="font-bold text-slate-800">نبذة عن المورد</h4>
+                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  {selectedSupplier.description || "لم يقم المورد بإضافة نبذة تعريفية بعد."}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-success" />
+                  الشهادات والاعتمادات
+                </h4>
+                {selectedSupplier.certificates?.length > 0 ? (
+                  <div className="grid gap-3">
+                    {selectedSupplier.certificates.map((cert: any) => (
+                      <div key={cert.id} className="p-3 bg-white border border-slate-200 rounded-lg flex items-start justify-between shadow-sm">
+                        <div>
+                          <p className="font-bold text-sm text-slate-800">{cert.name}</p>
+                          <p className="text-xs text-slate-500 mt-1">جهة الإصدار: {cert.issuer}</p>
+                          {(cert.issueDate || cert.expiryDate) && (
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              صالح لغاية: {cert.expiryDate || "غير محدد"}
+                            </p>
+                          )}
+                        </div>
+                        {cert.documentUrl && (
+                          <a 
+                            href={cert.documentUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-full font-medium transition-colors"
+                          >
+                            عرض المستند
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
+                    لا توجد شهادات مسجلة لهذا المورد.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </PortalLayout>
   )
 }

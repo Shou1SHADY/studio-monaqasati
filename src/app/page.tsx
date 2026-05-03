@@ -17,8 +17,8 @@ export default function Home() {
 
           <div className="hidden md:flex items-center gap-8 text-slate-600 font-medium">
             <Link href="#features" className="hover:text-primary transition-colors">المميزات</Link>
-            <Link href="/register" className="hover:text-primary transition-colors">انضم كمورد</Link>
-            <Link href="/register" className="hover:text-primary transition-colors">انضم كمقاول</Link>
+            <Link href="/register?role=Supplier" className="hover:text-primary transition-colors">انضم كمورد</Link>
+            <Link href="/register?role=Contractor" className="hover:text-primary transition-colors">انضم كمقاول</Link>
           </div>
 
           <div className="flex items-center gap-3">
