@@ -10,6 +10,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { getCachedAIResponse, setCachedAIResponse, generatePromptHash } from '@/ai/cache';
 
 const DraftRfqDescriptionInputSchema = z.object({
   keywords: z.string().describe('Keywords or main points for the RFQ. (e.g., مواد بناء للمشروع السكني الجديد)'),
@@ -56,10 +57,21 @@ const draftRfqDescriptionFlow = ai.defineFlow(
     outputSchema: DraftRfqDescriptionOutputSchema,
   },
   async (input) => {
+    // Check cache first
+    const promptHash = generatePromptHash(input);
+    const cached = getCachedAIResponse(promptHash);
+    if (cached) {
+      console.log('AI Cache hit for draftRfqDescription');
+      return cached;
+    }
+    
     const {output} = await draftRfqDescriptionPrompt(input);
     if (!output) {
       throw new Error('Failed to generate RFQ description and title.');
     }
+    
+    // Cache the response
+    setCachedAIResponse(promptHash, output);
     return output;
   }
 );

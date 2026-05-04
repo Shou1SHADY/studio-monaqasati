@@ -9,6 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { getCachedAIResponse, setCachedAIResponse, generatePromptHash } from '@/ai/cache';
 
 /**
  * Represents the input required for recommending suppliers for an RFQ.
@@ -86,6 +87,14 @@ const recommendSuppliersForRfqFlow = ai.defineFlow(
     outputSchema: RecommendedSuppliersOutputSchema,
   },
   async (input) => {
+    // Check cache first
+    const promptHash = generatePromptHash(input);
+    const cached = getCachedAIResponse(promptHash);
+    if (cached) {
+      console.log('AI Cache hit for recommendSuppliersForRfq');
+      return cached;
+    }
+    
     // In a real application, this would involve fetching data from Firestore.
     // For this example, we use mock supplier data.
     const allSuppliers = [
@@ -105,7 +114,9 @@ const recommendSuppliersForRfqFlow = ai.defineFlow(
     };
 
     const { output } = await recommendSuppliersPrompt(promptInput);
-
+    
+    // Cache the response
+    setCachedAIResponse(promptHash, output!);
     return output!;
   }
 );
