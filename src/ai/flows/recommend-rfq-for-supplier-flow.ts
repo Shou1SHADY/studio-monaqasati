@@ -9,6 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { getCachedAIResponse, setCachedAIResponse, generatePromptHash } from '@/ai/cache';
 
 // Input Schema
 const RecommendRfqForSupplierInputSchema = z.object({
@@ -52,10 +53,21 @@ const recommendRfqForSupplierFlow = ai.defineFlow(
     outputSchema: RecommendRfqForSupplierOutputSchema,
   },
   async (input) => {
+    // Check cache first
+    const promptHash = generatePromptHash(input);
+    const cached = getCachedAIResponse(promptHash);
+    if (cached) {
+      console.log('AI Cache hit for recommendRfqForSupplier');
+      return cached;
+    }
+    
     const { output } = await recommendRfqPrompt(input);
     if (!output) {
       throw new Error('Failed to get a recommendation from the AI model.');
     }
+    
+    // Cache the response
+    setCachedAIResponse(promptHash, output);
     return output;
   }
 );

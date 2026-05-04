@@ -9,7 +9,26 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "runner": "node scripts/runner.js",
+    "check": "node scripts/check-all.js",
+    "check:quick": "powershell -ExecutionPolicy Bypass -File scripts/quick-check.ps1",
+    "check:code": "powershell -ExecutionPolicy Bypass -File scripts/checks/code-quality.ps1",
+    "check:tests": "powershell -ExecutionPolicy Bypass -File scripts/checks/tests.ps1",
+    "check:security": "powershell -ExecutionPolicy Bypass -File scripts/checks/security.ps1",
+    "check:ui": "powershell -ExecutionPolicy Bypass -File scripts/checks/ui-ux.ps1",
+    "check:arch": "powershell -ExecutionPolicy Bypass -File scripts/checks/architecture.ps1",
+    "check:all": "powershell -ExecutionPolicy Bypass -File scripts/check-all.ps1",
+    "validate": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1",
+    "validate:quick": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Quick",
+    "validate:full": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Full",
+    "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
+    "prepare": "node scripts/prepare.js"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",
@@ -58,12 +77,20 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19.2.1",
     "@types/react-dom": "^19.2.1",
     "genkit-cli": "^1.28.0",
+    "jest": "^30.3.0",
+    "jest-environment-jsdom": "^30.3.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

@@ -1,10 +1,11 @@
 "use client"
 
+import * as React from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box } from "lucide-react"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import Link from "next/link"
 
@@ -22,6 +23,54 @@ export default function SupplierNotificationsPage() {
   }, [firestore, user, isUserLoading])
 
   const { data: offers, isLoading } = useCollection(offersQuery)
+
+  // Fetch supplier's profile to get specializations for RFQ filtering
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+
+  const { data: profile } = useDoc(userDocRef)
+
+  // Fetch new RFQs matching supplier's specializations
+  const matchingRfqsQuery = useMemoFirebase(() => {
+    if (!profile?.specializations || !firestore) return null
+    return query(
+      collection(firestore, "rfqs"),
+      where("status", "==", "New"),
+      where("visibility", "==", "public"),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, profile])
+
+  const { data: rfqs } = useCollection(matchingRfqsQuery)
+
+  // Track read RFQ IDs from localStorage
+  const [readRfqIds, setReadRfqIds] = React.useState<string[]>([])
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem("readRfqIds")
+      if (stored) setReadRfqIds(JSON.parse(stored))
+    } catch (e) {}
+  }, [])
+
+  const markRfqAsRead = (rfqId: string) => {
+    const updated = [...new Set([...readRfqIds, rfqId])]
+    setReadRfqIds(updated)
+    localStorage.setItem("readRfqIds", JSON.stringify(updated))
+  }
+
+  // Build merged notifications list
+  const notifications = React.useMemo(() => {
+    const offersList = (offers || []).map((o: any) => ({ ...o, type: "offer" }))
+    const rfqsList = (rfqs || [])
+      .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
+      .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
+    
+    return [...offersList, ...rfqsList].sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  }, [offers, rfqs, profile])
 
   // Mark a notification as read by stamping readAt on the offer doc
   const markAsRead = async (offerId: string) => {
@@ -112,7 +161,9 @@ export default function SupplierNotificationsPage() {
     }
   }
 
-  const unreadCount = offers?.filter(isUnread).length || 0
+  const unreadCount = notifications?.filter((n: any) => 
+    n.type === "new_rfq" ? !readRfqIds.includes(n.id) : isUnread(n)
+  ).length || 0
 
   return (
     <PortalLayout>
@@ -140,7 +191,7 @@ export default function SupplierNotificationsPage() {
               <Loader2 className="animate-spin" size={40} />
               <p>جاري تحميل الإشعارات...</p>
             </div>
-          ) : !offers || offers.length === 0 ? (
+          ) : !notifications || notifications.length === 0 ? (
             <Card className="border-dashed border-2 border-slate-200 shadow-none">
               <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                 <Bell size={48} className="opacity-20" />
@@ -152,22 +203,69 @@ export default function SupplierNotificationsPage() {
               </CardContent>
             </Card>
           ) : (
-            offers.map((offer: any) => {
-              const msg = getMessage(offer)
-              const unread = isUnread(offer)
-              const isPending = offer.status === "قيد المراجعة"
+            notifications.map((notif: any) => {
+              const isNewRfq = notif.type === "new_rfq"
+              
+              if (isNewRfq) {
+                const isRfqUnread = !readRfqIds.includes(notif.id)
+                return (
+                  <Card
+                    key={notif.id}
+                    onClick={() => isRfqUnread && markRfqAsRead(notif.id)}
+                    className={`border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden ${
+                      isRfqUnread 
+                        ? "bg-blue-50/80 ring-2 ring-blue-400 hover:shadow-md"
+                        : "bg-slate-50/70 opacity-60 hover:opacity-80"
+                    }`}
+                  >
+                    <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      <div className="h-11 w-11 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                        <Bell size={22} />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                          <h3 className={`font-bold ${isRfqUnread ? "text-slate-900" : "text-slate-500"}`}>
+                            🆕 مناقصة جديدة متطابقة!
+                          </h3>
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
+                            <Clock size={11} />
+                            {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString("ar-SA") : ""}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          تم طرح مناقصة جديدة في قسم {notif.category}
+                        </p>
+                        {isRfqUnread && (
+                          <Link href="/supplier/rfqs" className="inline-flex pt-2">
+                            <Button size="sm" variant="outline" className="h-8 text-xs border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100">
+                              عرض المناقصة
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                      {isRfqUnread && (
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              }
+
+              const msg = getMessage(notif)
+              const unread = isUnread(notif)
+              const isPending = notif.status === "قيد المراجعة"
 
               return (
                 <Card
-                  key={offer.id}
-                  onClick={() => unread && markAsRead(offer.id)}
+                  key={notif.id}
+                  onClick={() => unread && markAsRead(notif.id)}
                   className={`border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden ${
                     unread
-                      ? offer.sampleStatus === "مطلوبة"
+                      ? notif.sampleStatus === "مطلوبة"
                         ? "bg-blue-50/80 ring-2 ring-blue-400 hover:shadow-md"
-                        : offer.status === "مطلوب تخفيض"
+                        : notif.status === "مطلوب تخفيض"
                           ? "bg-amber-50/80 ring-2 ring-amber-400 hover:shadow-md"
-                          : offer.status === "مقبول"
+                          : notif.status === "مقبول"
                             ? "bg-success/5 ring-2 ring-success/30 hover:shadow-md"
                             : "bg-destructive/5 ring-2 ring-destructive/20 hover:shadow-md"
 
@@ -177,57 +275,57 @@ export default function SupplierNotificationsPage() {
                   }`}
                 >
                   <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    {getIcon(offer)}
+                    {getIcon(notif)}
                     <div className="flex-1 space-y-1">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <h3 className={`font-bold ${unread ? "text-slate-900" : "text-slate-500"}`}>
                           {msg.title}
                         </h3>
                         <div className="flex items-center gap-3">
-                          {(offer.sampleStatus === "مطلوبة" || offer.status === "مطلوب تخفيض") && unread && (
+                          {(notif.sampleStatus === "مطلوبة" || notif.status === "مطلوب تخفيض") && unread && (
                             <span className="bg-red-100 text-red-600 text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse">
                               إجراء مطلوب!
                             </span>
                           )}
                           <span className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                             <Clock size={11} />
-                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString("ar-SA") : ""}
+                            {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString("ar-SA") : ""}
                           </span>
                         </div>
                       </div>
                       <p className="text-sm text-slate-600 leading-relaxed">{msg.desc}</p>
                       
                       {/* Action Links */}
-                      {(offer.sampleStatus === "مطلوبة" || offer.status === "مطلوب تخفيض") && (
+                      {(notif.sampleStatus === "مطلوبة" || notif.status === "مطلوب تخفيض") && (
                         <div className="pt-2">
                           <Link href="/supplier/offers" className="inline-flex">
-                            <Button size="sm" variant="outline" className={`h-8 text-xs ${offer.sampleStatus === "مطلوبة" ? "border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100" : "border-amber-200 text-amber-700 bg-amber-50/50 hover:bg-amber-100"}`}>
+                            <Button size="sm" variant="outline" className={`h-8 text-xs ${notif.sampleStatus === "مطلوبة" ? "border-blue-200 text-blue-700 bg-blue-50/50 hover:bg-blue-100" : "border-amber-200 text-amber-700 bg-amber-50/50 hover:bg-amber-100"}`}>
                               الانتقال للعروض للرد
                             </Button>
                           </Link>
                         </div>
                       )}
 
-                      {unread && !(offer.sampleStatus === "مطلوبة" || offer.status === "مطلوب تخفيض") && (
+                      {unread && !(notif.sampleStatus === "مطلوبة" || notif.status === "مطلوب تخفيض") && (
                         <p className="text-[11px] text-muted-foreground mt-1 italic">
                           انقر لتحديد كمقروء ✓
                         </p>
                       )}
                     </div>
                     {/* Unread indicator dot */}
-                    {unread && offer.sampleStatus === "تم الاستلام" && (
+                    {unread && notif.sampleStatus === "تم الاستلام" && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-success shrink-0 animate-pulse" />
                     )}
-                    {unread && offer.sampleStatus === "مطلوبة" && (
+                    {unread && notif.sampleStatus === "مطلوبة" && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 shrink-0 animate-pulse" />
                     )}
-                    {unread && offer.status === "مطلوب تخفيض" && (
+                    {unread && notif.status === "مطلوب تخفيض" && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-amber-500 shrink-0 animate-pulse" />
                     )}
-                    {unread && offer.status === "مقبول" && (
+                    {unread && notif.status === "مقبول" && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-success shrink-0 animate-pulse" />
                     )}
-                    {unread && offer.status === "مرفوض" && (
+                    {unread && notif.status === "مرفوض" && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-destructive shrink-0 animate-pulse" />
                     )}
                   </CardContent>

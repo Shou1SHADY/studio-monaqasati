@@ -10,27 +10,27 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['"IBM Plex Sans Arabic"', 'sans-serif'],
-        headline: ['"IBM Plex Sans Arabic"', 'sans-serif'],
+        body: ['var(--font-body)', 'sans-serif'],
+        headline: ['var(--font-headline)', 'sans-serif'],
         code: ['monospace'],
       },
       colors: {
-        background: '#ECF2F9',
-        foreground: '#1e293b',
+        background: '#F8FAFC',
+        foreground: '#020617',
         card: {
           DEFAULT: '#FFFFFF',
-          foreground: '#1e293b',
+          foreground: '#020617',
         },
         popover: {
           DEFAULT: '#FFFFFF',
-          foreground: '#1e293b',
+          foreground: '#020617',
         },
         primary: {
-          DEFAULT: '#2874D4',
+          DEFAULT: '#0F172A',
           foreground: '#FFFFFF',
         },
         secondary: {
-          DEFAULT: '#0B1F3A',
+          DEFAULT: '#334155',
           foreground: '#FFFFFF',
         },
         muted: {
@@ -45,29 +45,33 @@ export default {
           DEFAULT: '#12A063',
           foreground: '#FFFFFF',
         },
+        cta: {
+          DEFAULT: '#0369A1',
+          foreground: '#FFFFFF',
+        },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
         },
         border: '#E2E8F0',
         input: '#E2E8F0',
-        ring: '#2874D4',
+        ring: '#0F172A',
         chart: {
-          '1': '#2874D4',
-          '2': '#20CBD5',
+          '1': '#0F172A',
+          '2': '#0369A1',
           '3': '#12A063',
-          '4': '#0B1F3A',
+          '4': '#334155',
           '5': '#64748b',
         },
         sidebar: {
-          DEFAULT: '#0B1F3A',
+          DEFAULT: '#0F172A',
           foreground: '#f8fafc',
-          primary: '#2874D4',
+          primary: '#0369A1',
           'primary-foreground': '#FFFFFF',
           accent: '#1e293b',
           'accent-foreground': '#f8fafc',
           border: '#1e293b',
-          ring: '#2874D4',
+          ring: '#0F172A',
         },
       },
       borderRadius: {

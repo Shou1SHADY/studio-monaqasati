@@ -71,7 +71,8 @@ export default function SuppliersDirectory() {
     ...s,
     id: s.id,
     name: s.name || s.companyName || "مورد",
-    city: s.city || "الرياض",
+    city: s.city || s.location || "غير محدد",
+    coverageCities: s.coverageCities || [],
     specializations: s.specializations || [],
     certificates: s.certificates || [],
     isFavorite: favoriteSupplierIds.has(s.id)
@@ -133,15 +134,31 @@ export default function SuppliersDirectory() {
                   
                   <div className="space-y-1">
                     <h3 className="font-bold text-lg text-slate-800">{supplier.name}</h3>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <MapPin size={14} />
-                      <span>{supplier.city}</span>
+                    <div className="flex flex-col gap-1 mt-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin size={14} className="text-primary" />
+                        <span className="font-medium">{supplier.city}</span>
+                        <span className="text-[10px] bg-slate-100 px-1.5 rounded-sm">المقر</span>
+                      </div>
+                      {supplier.coverageCities?.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                          <MapPin size={12} className="text-accent" />
+                          <div className="flex flex-wrap gap-1">
+                            {supplier.coverageCities.slice(0, 2).map((city: string) => (
+                              <span key={city} className="bg-accent/10 text-accent px-1.5 py-0.5 rounded text-[10px]">{city}</span>
+                            ))}
+                            {supplier.coverageCities.length > 2 && (
+                              <span className="text-accent">+{supplier.coverageCities.length - 2}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
                   {/* Certificates badges */}
                   {supplier.certificates?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 pt-2">
                       {supplier.certificates.slice(0, 3).map((cert: any) => (
                         <Badge key={cert.id} className="bg-green-50 text-green-700 border-green-100 text-[10px] px-2 font-normal gap-1">
                           <ShieldCheck size={10} />
@@ -199,6 +216,22 @@ export default function SuppliersDirectory() {
           
           {selectedSupplier && (
             <div className="space-y-6 py-4">
+              <div className="flex flex-col gap-2">
+                <h4 className="font-bold text-slate-800">مناطق التغطية</h4>
+                <div className="flex flex-wrap gap-2">
+                  <Badge className="bg-accent text-white flex items-center gap-1.5 px-3 py-1">
+                    <MapPin size={14} />
+                    المقر: {selectedSupplier.city}
+                  </Badge>
+                  {selectedSupplier.coverageCities?.map((city: string) => (
+                    <Badge key={city} variant="outline" className="border-accent/30 text-accent bg-accent/5 flex items-center gap-1.5 px-3 py-1">
+                      <MapPin size={14} />
+                      {city}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2">
                 <h4 className="font-bold text-slate-800">التخصصات</h4>
                 <div className="flex flex-wrap gap-2">

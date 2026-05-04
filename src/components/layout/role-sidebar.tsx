@@ -81,7 +81,7 @@ export function RoleSidebar() {
   } else if (pathname.startsWith("/contractor")) {
     items = contractorItems
     portalTitle = "بوابة المقاولين"
-    roleColor = "text-primary"
+    roleColor = "text-accent"
   } else if (pathname.startsWith("/admin")) {
     items = adminItems
     portalTitle = "بوابة الإدارة"

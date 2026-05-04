@@ -22,39 +22,47 @@ import {
   Trash2
 } from "lucide-react"
 import Link from "next/link"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, addDoc } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { collection, query, where, addDoc, doc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
 export default function SupplierDashboard() {
-  const router = useRouter()
-  const { toast } = useToast()
-  const firestore = useFirestore();
-  const { user, isUserLoading } = useUser();
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
-  const [offerPrice, setOfferPrice] = useState("")
-  const [deliveryLocation, setDeliveryLocation] = useState("")
-  const [deliveryMethod, setDeliveryMethod] = useState("")
-  const [deliveryFrequency, setDeliveryFrequency] = useState("")
-  const [deliveryBatches, setDeliveryBatches] = useState<{id: string, quantity: string, deliveryDate: string, price: string}[]>([
-    { id: "1", quantity: "", deliveryDate: "", price: "" }
-  ])
+   const router = useRouter()
+   const { toast } = useToast()
+   const firestore = useFirestore();
+   const { user, isUserLoading } = useUser();
+   const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
+   const [offerPrice, setOfferPrice] = useState("")
+   const [deliveryLocation, setDeliveryLocation] = useState("")
+   const [deliveryMethod, setDeliveryMethod] = useState("")
+   const [deliveryFrequency, setDeliveryFrequency] = useState("")
+   const [deliveryBatches, setDeliveryBatches] = useState<{id: string, quantity: string, deliveryDate: string, price: string}[]>([
+     { id: "1", quantity: "", deliveryDate: "", price: "" }
+   ])
 
-  const rfqsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    
-    // If supplier has specializations, filter RFQs by those categories
-    if (user.specializations && user.specializations.length > 0) {
-      return query(
-        collection(firestore, "rfqs"), 
-        where("status", "==", "New"),
-        where("category", "in", user.specializations.slice(0, 30))
-      )
-    }
-    
-    return query(collection(firestore, "rfqs"), where("status", "==", "New"))
-  }, [firestore, user, isUserLoading])
+   // Fetch supplier profile from Firestore
+   const userDocRef = useMemoFirebase(() => {
+     if (isUserLoading || !user || !firestore) return null
+     return doc(firestore, "users", user.uid)
+   }, [firestore, user, isUserLoading])
+   const { data: userData } = useDoc(userDocRef)
+
+   const rfqsQuery = useMemoFirebase(() => {
+     if (isUserLoading || !user || !firestore) return null
+     
+     // If supplier has specializations, filter RFQs by those categories
+     const specializations = userData?.specializations || []
+     if (specializations.length > 0) {
+       return query(
+         collection(firestore, "rfqs"), 
+         where("status", "==", "New"),
+         where("category", "in", specializations.slice(0, 30))
+       )
+     }
+     
+     return query(collection(firestore, "rfqs"), where("status", "==", "New"))
+   }, [firestore, user, isUserLoading, userData])
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -252,7 +260,7 @@ export default function SupplierDashboard() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-wrap gap-2">
-                {user?.specializations?.length > 0 ? user.specializations.map((spec: string) => (
+                 {userData?.specializations?.length > 0 ? userData.specializations.map((spec: string) => (
                   <Badge key={spec} className="bg-success/10 text-success border-success/20 hover:bg-success/20 px-3 py-1">
                     {spec}
                   </Badge>

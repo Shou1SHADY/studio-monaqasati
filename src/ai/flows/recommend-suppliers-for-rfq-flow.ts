@@ -9,6 +9,7 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import { getCachedAIResponse, setCachedAIResponse, generatePromptHash } from '@/ai/cache';
 
 /**
  * Represents the input required for recommending suppliers for an RFQ.
@@ -60,9 +61,9 @@ const recommendSuppliersPrompt = ai.definePrompt({
   prompt: `You are an AI assistant specialized in matching construction RFQs with suitable suppliers. Your task is to recommend suppliers based on the RFQ's category, required service area, and whether a quality certificate is needed.
 
 **Matching Criteria:**
-1.  **Specialization:** The supplier's `specializationCategories` must include the `rfqCategory`.
-2.  **Service Area:** The supplier's `serviceAreas` must include the `rfqArea`.
-3.  **Verification:** Always prioritize `verified` suppliers. If `rfqQualityCertificateRequired` is true, *strictly* recommend only `verified` suppliers.
+1.  **Specialization:** The supplier's \`specializationCategories\` must include the \`rfqCategory\`.
+2.  **Service Area:** The supplier's \`serviceAreas\` must include the \`rfqArea\`.
+3.  **Verification:** Always prioritize \`verified\` suppliers. If \`rfqQualityCertificateRequired\` is true, *strictly* recommend only \`verified\` suppliers.
 
 **RFQ Details:**
 - Category: {{{rfqCategory}}}
@@ -70,7 +71,7 @@ const recommendSuppliersPrompt = ai.definePrompt({
 - Quality Certificate Required: {{{rfqQualityCertificateRequired}}}
 
 **Available Suppliers (JSON Array):**
-{{{json allSuppliers}}}
+{{{json allSuppliers}}
 
 Please provide only the JSON output, with no additional text or explanations.`,
 });
@@ -86,6 +87,14 @@ const recommendSuppliersForRfqFlow = ai.defineFlow(
     outputSchema: RecommendedSuppliersOutputSchema,
   },
   async (input) => {
+    // Check cache first
+    const promptHash = generatePromptHash(input);
+    const cached = getCachedAIResponse(promptHash);
+    if (cached) {
+      console.log('AI Cache hit for recommendSuppliersForRfq');
+      return cached;
+    }
+    
     // In a real application, this would involve fetching data from Firestore.
     // For this example, we use mock supplier data.
     const allSuppliers = [
@@ -105,7 +114,9 @@ const recommendSuppliersForRfqFlow = ai.defineFlow(
     };
 
     const { output } = await recommendSuppliersPrompt(promptInput);
-
+    
+    // Cache the response
+    setCachedAIResponse(promptHash, output!);
     return output!;
   }
 );

@@ -9,6 +9,7 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import { getCachedAIResponse, setCachedAIResponse, generatePromptHash } from '@/ai/cache';
 
 const SuggestSupplierSpecializationsInputSchema = z.object({
   businessDescription: z.string().describe('A free-text description of the supplier\'s business.'),
@@ -48,7 +49,18 @@ const suggestSupplierSpecializationsFlow = ai.defineFlow(
     outputSchema: SuggestSupplierSpecializationsOutputSchema,
   },
   async input => {
+    // Check cache first
+    const promptHash = generatePromptHash(input);
+    const cached = getCachedAIResponse(promptHash);
+    if (cached) {
+      console.log('AI Cache hit for suggestSupplierSpecializations');
+      return cached;
+    }
+    
     const {output} = await prompt(input);
+    
+    // Cache the response
+    setCachedAIResponse(promptHash, output!);
     return output!;
   }
 );
