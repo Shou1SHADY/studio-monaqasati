@@ -20,6 +20,11 @@ const notoNaskhArabic = Noto_Naskh_Arabic({
 export const metadata: Metadata = {
   title: 'مناقصتي - منصة ربط المقاولين بالموردين',
   description: 'منصة B2B متكاملة لربط المقاولين بالموردين في قطاع الإنشاءات',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export default function RootLayout({

@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, ArrowRight, Building2, ShoppingCart } from "lucide-react"
+import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check } from "lucide-react"
+import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -40,18 +41,7 @@ export default function RegisterPage() {
     }
   }, [])
 
-  const CATEGORIES = [
-    "حديد ومعادن",
-    "أسمنت وخرسانة",
-    "أرضيات وتشطيبات",
-    "كهرباء وإنارة",
-    "أدوات صحية وسباكة",
-    "عزل وأسقف",
-    "أبواب ونوافذ",
-    "دهانات",
-    "خرسانة جاهزة",
-    "معدات وآليات"
-  ]
+  const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
 
   const toggleSpec = (spec: string) => {
     setFormData(prev => ({
@@ -223,22 +213,76 @@ export default function RegisterPage() {
             </div>
 
             {formData.role === "Supplier" && (
-              <div className="space-y-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="space-y-2">
                 <Label className="text-slate-700 font-bold">تخصصات التوريد (اختر تخصصاً واحداً على الأقل)</Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {CATEGORIES.map(cat => (
-                    <Label key={cat} className="flex items-center gap-2 p-2 border rounded-lg bg-white cursor-pointer hover:bg-primary/5 transition-colors">
-                      <input 
-                        type="checkbox" 
-                        className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
-                        checked={formData.specializations.includes(cat)}
-                        onChange={() => toggleSpec(cat)}
-                      />
-                      <span className="text-sm">{cat}</span>
-                    </Label>
-                  ))}
+
+                {/* Multiselect Dropdown */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setSpecDropdownOpen(prev => !prev)}
+                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-right transition-colors ${
+                      formData.specializations.length === 0
+                        ? "border-slate-200 text-slate-400"
+                        : "border-primary/40 text-slate-800"
+                    } hover:border-primary/60`}
+                  >
+                    <span className="text-sm truncate">
+                      {formData.specializations.length === 0
+                        ? "اختر التخصصات..."
+                        : `${formData.specializations.length} تخصص مختار`}
+                    </span>
+                    <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${specDropdownOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {specDropdownOpen && (
+                    <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+                        {PREDEFINED_CATEGORIES.map(cat => {
+                          const isSelected = formData.specializations.includes(cat)
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => toggleSpec(cat)}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right hover:bg-primary/5 transition-colors ${
+                                isSelected ? "bg-primary/5" : ""
+                              }`}
+                            >
+                              <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
+                                isSelected
+                                  ? "bg-primary border-primary"
+                                  : "border-slate-300 bg-white"
+                              }`}>
+                                {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
+                              </div>
+                              <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{cat}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {formData.role === "Supplier" && formData.specializations.length === 0 && (
+
+                {/* Selected tags */}
+                {formData.specializations.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {formData.specializations.map(spec => (
+                      <span
+                        key={spec}
+                        className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full"
+                      >
+                        {spec}
+                        <button type="button" onClick={() => toggleSpec(spec)} className="hover:text-destructive transition-colors">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {formData.specializations.length === 0 && (
                   <p className="text-xs text-destructive font-bold">يجب اختيار تخصص واحد على الأقل لتتمكن من استقبال المناقصات.</p>
                 )}
               </div>

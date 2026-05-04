@@ -40,19 +40,7 @@ import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, addDocumentNonBlocking } from "@/firebase"
 import { collection } from "firebase/firestore"
-
-const CATEGORIES_DATA = {
-  "حديد ومعادن": ["حديد تسليح", "حديد صناعي", "ألواح صاج", "شبك حديد", "ألمنيوم"],
-  "أسمنت وخرسانة": ["أسمنت بورتلاندي", "أسمنت أبيض", "أسمنت مقاوم", "خرسانة جاهزة", "بلوك أسمنتي"],
-  "أرضيات وتشطيبات": ["سيراميك", "بورسلان", "رخام", "جرانيت", "باركيه"],
-  "كهرباء وإنارة": ["كابلات وأسلاك", "لوحات توزيع", "أفياش ومفاتيح", "إضاءة داخلية", "إضاءة خارجية"],
-  "أدوات صحية وسباكة": ["مواسير حرارية", "مواسير صرف", "أطقم حمامات", "محابس وعوامات", "مضخات مياه", "خزانات مياه"],
-  "عزل وأسقف": ["عزل مائي", "عزل حراري", "رولات عزل", "ألواح عزل", "أسقف مستعارة", "جبس بورد"],
-  "أبواب ونوافذ": ["أبواب خشبية", "أبواب حديد", "نوافذ ألمنيوم", "زجاج سيكوريت", "أبواب مقاومة للحريق"],
-  "دهانات": ["دهانات داخلية", "دهانات خارجية", "عوازل دهانات", "معجون", "أدوات طلاء"],
-  "خرسانة جاهزة": ["خرسانة عادية", "خرسانة مقاومة", "مضخات خرسانة", "خرسانة مسبقة الصنع"],
-  "معدات وآليات": ["رافعات شوكية", "مولدات كهربائية", "معدات حفر", "سقالات", "معدات خلط"],
-}
+import { CATEGORIES_DATA } from "@/lib/constants"
 
 const SAUDI_CITIES = [
   "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
@@ -263,7 +251,7 @@ export default function NewRfqPage() {
                         <SelectValue placeholder={formData.category ? "اختر النوع" : "اختر الفئة أولاً"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {formData.category && CATEGORIES_DATA[formData.category as keyof typeof CATEGORIES_DATA].map(sub => (
+                        {formData.category && (CATEGORIES_DATA[formData.category] || []).map(sub => (
                           <SelectItem key={sub} value={sub}>{sub}</SelectItem>
                         ))}
                       </SelectContent>

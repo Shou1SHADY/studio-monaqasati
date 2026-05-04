@@ -99,6 +99,7 @@ export default function AvailableRfqsPage() {
     let q = query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
+      where("visibility", "==", "public"),
       orderBy("createdAt", "desc")
     )
     

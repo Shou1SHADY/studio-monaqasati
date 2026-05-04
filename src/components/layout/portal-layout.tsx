@@ -80,8 +80,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     return query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
+      where("visibility", "==", "public"),
       orderBy("createdAt", "desc"),
-      limit(5)
+      limit(20)
     )
   }, [firestore, user, isUserLoading, isSupplier])
 
@@ -118,10 +119,15 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const mergedSupplierNotifs = React.useMemo(() => {
     const offers = (supplierOffers || []).map((o: any) => ({ ...o, type: "offer_update" }))
     
-    return [...offers].sort((a: any, b: any) => 
+    // Filter RFQs by supplier's specializations and map to notification format
+    const newRfqs = (supplierRfqs || [])
+      .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
+      .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
+    
+    return [...offers, ...newRfqs].sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     ).slice(0, 5)
-  }, [supplierOffers])
+  }, [supplierOffers, supplierRfqs, profile])
 
   // Determine which notifications list to show
   const notifications: any[] = isSupplier
@@ -130,10 +136,27 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     ? (contractorOffers || []).map((o: any) => ({ ...o, type: "new_offer" }))
     : []
 
+  // Use localStorage to track read RFQs since they are shared documents
+  const [readRfqIds, setReadRfqIds] = React.useState<string[]>([])
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem("readRfqIds")
+      if (stored) setReadRfqIds(JSON.parse(stored))
+    } catch (e) {}
+  }, [])
+
+  const markRfqAsRead = (rfqId: string) => {
+    const updated = [...new Set([...readRfqIds, rfqId])]
+    setReadRfqIds(updated)
+    localStorage.setItem("readRfqIds", JSON.stringify(updated))
+  }
+
   // Unread count
   const unreadCount = isSupplier
     ? notifications.filter((n: any) =>
-        (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
+        n.type === "new_rfq" 
+          ? !readRfqIds.includes(n.id)
+          : (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
       ).length
     : notifications.filter((n: any) => n.status === "قيد المراجعة").length
 
@@ -168,16 +191,24 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const handleNotificationClick = async (notif: any) => {
     // 1. Mark as read
-    if (isSupplier && !notif.readAt && firestore) {
-      try {
-        await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
-      } catch (e) {
-        // ignore errors
+    if (isSupplier) {
+      if (notif.type === "new_rfq") {
+        markRfqAsRead(notif.id)
+      } else if (!notif.readAt && firestore) {
+        try {
+          await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
+        } catch (e) {
+          // ignore errors
+        }
       }
     }
     // 2. Navigate
     if (isSupplier) {
-      router.push(`/supplier/offers`)
+      if (notif.type === "new_rfq") {
+        router.push(`/supplier/rfqs`)
+      } else {
+        router.push(`/supplier/offers`)
+      }
     } else if (isContractor) {
       router.push(`/contractor/rfqs/${notif.rfqId}/offers`)
     }
@@ -249,13 +280,18 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isPriceReduction = notif.status === "مطلوب تخفيض" && notif.type !== "new_rfq"
                       const isSampleRequest = notif.sampleStatus === "مطلوبة" && notif.type !== "new_rfq"
                       const isSampleReceived = notif.sampleStatus === "تم الاستلام" && notif.type !== "new_rfq"
+                      const isUnread = isNewRfq 
+                        ? !readRfqIds.includes(notif.id)
+                        : isSupplier 
+                          ? !notif.readAt && (isAccepted || notif.status === "مرفوض" || isPriceReduction || isSampleRequest || isSampleReceived)
+                          : isPending;
                       
                       return (
                         <div
                           key={notif.id}
                           onClick={() => handleNotificationClick(notif)}
                           className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors cursor-pointer select-none ${
-                            (isPending || isNewRfq || isPriceReduction || isSampleRequest) ? "bg-amber-50/40" : ""
+                            isUnread ? "bg-amber-50/40" : ""
                           }`}
                         >
                           <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
@@ -290,7 +326,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                               }
                             </p>
                           </div>
-                          {(isPending || isNewRfq) && <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
+                          {isUnread && <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
                         </div>
                       )
                     })}

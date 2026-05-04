@@ -23,7 +23,8 @@ import {
   Image as ImageIcon,
   FileText,
   ChevronDown,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from "lucide-react"
 import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 import {
@@ -393,7 +394,7 @@ export default function SupplierProfilePage() {
                   <div className="space-y-2">
                     <Label htmlFor="crNumber">رقم السجل التجاري</Label>
                     <Input 
-                      id="crNumber" 
+                      id="crNumber-input" 
                       value={profile.crNumber}
                       onChange={e => setProfile({...profile, crNumber: e.target.value})}
                       className="dir-ltr text-left"
@@ -411,20 +412,20 @@ export default function SupplierProfilePage() {
                       />
                     </div>
                   </div>
-                  <div className="space-y-2 md:col-span-2">
+<div className="space-y-2 md:col-span-2">
                     <Label>مدن التغطية الإضافية</Label>
-                    <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 min-h-[80px]">
+                    <div className="flex flex-wrap gap-2 p-4 bg-accent/5 rounded-xl border border-accent/20 min-h-[80px]">
                       {profile.coverageCities.map(city => (
-                        <Badge key={city} className="bg-blue-100 text-blue-800 border-blue-200 px-3 py-1.5 flex items-center gap-2 hover:bg-blue-200 transition-colors text-sm">
+                        <Badge key={city} className="bg-accent text-white px-3 py-1.5 flex items-center gap-2 hover:bg-accent/80 transition-colors text-sm shadow-sm">
                           {city}
-                          <button onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} className="hover:text-destructive hover:bg-white/50 rounded-full p-0.5 transition-colors">
+                          <button onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} className="hover:text-white hover:bg-white/20 rounded-full p-0.5 transition-colors">
                             <X size={14} />
                           </button>
                         </Badge>
                       ))}
                       <Input 
-                        placeholder="أضف مدينة واضغط Enter"
-                        className="h-8 w-40 bg-white"
+                        placeholder="أضف مدينةواضغط Enter"
+                        className="h-9 w-40 bg-white border-accent/20 focus:border-accent"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault()
@@ -436,13 +437,12 @@ export default function SupplierProfilePage() {
                             }
                           }
                         }}
-                      />
+/>
                     </div>
                     <p className="text-xs text-muted-foreground">اضغط Enter لإضافة مدينة جديدة للتغطية</p>
                   </div>
-                </div>
 
-                <div className="space-y-2 pt-4 border-t border-slate-100">
+                  <div className="space-y-2 pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="desc">وصف العمل</Label>
                     <Button 
@@ -506,9 +506,10 @@ export default function SupplierProfilePage() {
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
-                  </div>
-                </div>
-              </CardContent>
+                     </div>
+                   </div>
+                 </div>
+               </CardContent>
               <CardFooter className="border-t bg-slate-50/80 justify-end p-5">
                 <Button className="gap-2 h-11 px-8 text-md shadow-md shadow-primary/20" onClick={handleSave} disabled={isLoading}>
                   حفظ البيانات الأساسية
@@ -516,7 +517,7 @@ export default function SupplierProfilePage() {
                 </Button>
               </CardFooter>
             </Card>
-            <Card className="shadow-sm border-none">
+            <Card className="shadow-sm border-none" id="certificates-section">
               <CardHeader className="border-b">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Award size={20} className="text-primary" />
@@ -823,19 +824,19 @@ export default function SupplierProfilePage() {
                      )}
                    </div>
                    <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
-                     <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-blue-400" /> المقر الرئيسي</span>
+                     <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-accent" /> المقر الرئيسي</span>
                      <span className="font-bold text-white/90">{profile.location || "غير محدد"}</span>
                    </div>
-                   {profile.coverageCities.length > 0 && (
-                     <div className="text-sm bg-white/5 p-3 rounded-lg space-y-2">
-                       <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-green-400" /> مدن التغطية</span>
-                       <div className="flex flex-wrap gap-1">
-                         {profile.coverageCities.map(city => (
-                           <Badge key={city} className="bg-white/10 text-white/90 border-white/20 text-xs">{city}</Badge>
-                         ))}
-                       </div>
-                     </div>
-                   )}
+{profile.coverageCities.length > 0 && (
+                      <div className="text-sm bg-white/5 p-3 rounded-lg space-y-2">
+                        <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-accent" /> مدن التغطية</span>
+                        <div className="flex flex-wrap gap-2">
+                          {profile.coverageCities.map(city => (
+                            <Badge key={city} className="bg-accent/20 text-accent border border-accent/30 text-xs">{city}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                    <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
                      <span className="text-white/80 flex items-center gap-2"><Award size={16} className="text-amber-400" /> التقييم العام</span>
                      <span className="font-bold text-amber-400">4.8 / 5.0</span>
@@ -850,30 +851,177 @@ export default function SupplierProfilePage() {
               </CardContent>
             </Card>
 
+            {/* Verification Guide */}
+            {!profile.isVerified && (
+              <Card className="shadow-md border-primary/20 bg-gradient-to-br from-primary/5 to-blue-50/50">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-bold text-primary flex items-center gap-2">
+                    <ShieldCheck size={22} className="text-primary" />
+                    كيف تصبح موثقاً؟ 📋
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    اتبع هذه الخطوات الثلاث لتصبح مورداً موثقاً والحصول على شارة التوثيق ✓
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Step 1 */}
+                  <div 
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${profile.crNumber ? 'border-success bg-success/5' : 'border-dashed border-slate-200 bg-white'}`}
+                    onClick={() => {
+                      const el = document.getElementById('crNumber-input')
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold ${profile.crNumber ? 'bg-success' : 'bg-slate-300'}`}>
+                        {profile.crNumber ? <CheckCircle2 size={16} /> : "1"}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800">إضافة رقم السجل التجاري</h4>
+                        <p className="text-sm text-slate-600">أضف رقم السجل التجاري الخاص بشركتك في الحقل أعلى الصفحة</p>
+                        {!profile.crNumber && (
+                          <p className="text-xs text-primary mt-2 bg-primary/5 px-2 py-1 rounded inline-block">
+                            ⬇️ اضغط هنا وانتقل للحقل المطلوب
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div 
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${profile.certificates.length > 0 ? 'border-success bg-success/5' : 'border-dashed border-slate-200 bg-white'}`}
+                    onClick={() => {
+                      const el = document.getElementById('certificates-section')
+                      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold ${profile.certificates.length > 0 ? 'bg-success' : 'bg-slate-300'}`}>
+                        {profile.certificates.length > 0 ? <CheckCircle2 size={16} /> : "2"}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800">إضافة الشهادات المهنية</h4>
+                        <p className="text-sm text-slate-600">أضف شهادة مهنية واحدة على الأقل (مثل: ISO، شهادات الجودة، وغيرها)</p>
+                        {!profile.certificates.length && (
+                          <p className="text-xs text-primary mt-2 bg-primary/5 px-2 py-1 rounded inline-block">
+                            ⬇️ اضغط هنا وانتقل لقسم الشهادات
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div 
+                    className={`p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${profile.verificationRequested ? 'border-amber-300 bg-amber-50' : 'border-dashed border-slate-200 bg-white'}`}
+                    onClick={() => {
+                      if (profile.crNumber && profile.certificates.length > 0) {
+                        const el = document.getElementById('request-verification-btn')
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      }
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-white font-bold ${profile.verificationRequested ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                        {profile.verificationRequested ? <CheckCircle2 size={16} /> : "3"}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800">طلب التوثيق</h4>
+                        <p className="text-sm text-slate-600">بعد إكمال الخطوتين السابقتين، اضغط زر "طلب التوثيق"</p>
+                        {!profile.verificationRequested && (
+                          <p className="text-xs text-amber-600 mt-2 bg-amber-50 px-2 py-1 rounded inline-block">
+                            ⚠️ أكمل الخطوتين 1 و 2 أولاً
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status Message */}
+                  {profile.verificationRequested && (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-amber-100 flex items-center justify-center">
+                        <Loader2 size={20} className="text-amber-600 animate-spin" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-amber-800">طلبك قيد المراجعة!</p>
+                        <p className="text-sm text-amber-700">سيقوم فريق الإدارة بمراجعة وثائقك خلال 24-48 ساعة</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="shadow-md border-slate-100">
               <CardHeader className="bg-slate-50/50 border-b pb-4">
                 <CardTitle className="text-md font-bold text-slate-800">مؤشر اكتمال الملف</CardTitle>
               </CardHeader>
               <CardContent className="p-5 space-y-4">
-                <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
-                  <div className="h-full bg-gradient-to-r from-primary to-blue-400 w-[85%]" />
-                </div>
-                <p className="text-sm text-slate-600 leading-relaxed">
-                  ملفك الشخصي مكتمل بنسبة <span className="font-bold text-primary">85%</span>. ننصح بإضافة المزيد من المشاريع السابقة وصور المنتجات للوصول لنسبة 100% وزيادة موثوقيتك لدى المقاولين.
-                </p>
+                {(() => {
+                  const verifProgress = (profile.crNumber ? 50 : 0) + (profile.certificates.length > 0 ? 50 : 0)
+                  return (
+                    <>
+                      <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                        <div 
+                          className={`h-full transition-all duration-500 ${
+                            profile.isVerified 
+                              ? "bg-gradient-to-r from-success to-green-400" 
+                              : verifProgress === 100 
+                                ? "bg-gradient-to-r from-amber-400 to-orange-500"
+                                : "bg-gradient-to-r from-primary to-blue-400"
+                          }`} 
+                          style={{ width: `${profile.isVerified ? 100 : verifProgress}%` }} 
+                        />
+                      </div>
+                      {profile.isVerified ? (
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          🎉 <span className="font-bold text-success">مبارك!</span> أنت مورد موثق الآن. تمت مراجعة وتوثيق ملفك بنجاح.
+                        </p>
+                      ) : verifProgress === 100 ? (
+                        <p className="text-sm text-slate-600 leading-relaxed">
+                          ملفك جاهز للتوثيق! ✓ اضغط الزر أدناه لإرسال طلب التوثيق.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm text-slate-600 leading-relaxed">
+                            ملفك مكتمل بنسبة <span className="font-bold text-primary">{verifProgress}%</span> للتوثيق.
+                          </p>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {!profile.crNumber && (
+                              <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                                📄 أضف السجل التجاري
+                              </Badge>
+                            )}
+                            {profile.certificates.length === 0 && (
+                              <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                                🏆 أضف شهادة واحدة
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
                 {profile.isVerified ? (
                   <Badge className="w-full justify-center bg-success/10 text-success border-success/20 text-sm py-2">موثق ✓</Badge>
                 ) : profile.verificationRequested ? (
-                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg text-center">طلب التوثيق قيد المراجعة</p>
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
+                    <p className="text-sm text-amber-700 font-medium">📩 طلب التوثيق قيد المراجعة</p>
+                    <p className="text-xs text-amber-600 mt-1">سيتم إشعارك عند انتهاء المراجعة</p>
+                  </div>
                 ) : profile.crNumber && profile.certificates.length > 0 ? (
-                  <Button className="w-full gap-2" onClick={requestVerification}>
+                  <Button id="request-verification-btn" className="w-full gap-2" onClick={requestVerification}>
                     <CheckCircle2 size={16} />
                     طلب التوثيق
                   </Button>
                 ) : (
-                  <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg">
-                    لطلب التوثيق، يجب رفع السجل التجاري وشهادة واحدة على الأقل
-                  </p>
+                  <Button variant="outline" className="w-full gap-2 text-amber-700 border-amber-300 hover:bg-amber-50" disabled>
+                    <X size={16} />
+                    لطلب التوثيق، أكمل الخطوات أعلاه
+                  </Button>
                 )}
               </CardContent>
             </Card>
