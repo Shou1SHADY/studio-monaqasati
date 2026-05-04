@@ -76,11 +76,11 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
                 className="border-none shadow-sm hover:shadow-md transition-all cursor-pointer group"
               >
                 <CardContent className="p-5 flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
+                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
                     <MessageSquare size={22} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-800 truncate">
+                    <p className="font-bold text-foreground truncate">
                       {chat.rfqTitle || "محادثة عقد"}
                     </p>
                     <div className="flex items-center gap-2 mt-1">

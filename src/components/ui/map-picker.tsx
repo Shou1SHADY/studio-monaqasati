@@ -9,7 +9,7 @@ const DynamicMap = dynamic(
   { 
     ssr: false,
     loading: () => (
-      <div className="w-full h-full flex items-center justify-center bg-slate-50 text-muted-foreground">
+      <div className="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">
         <Loader2 className="animate-spin mr-2" size={24} />
         <p>جاري تحميل الخريطة...</p>
       </div>

@@ -187,7 +187,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-white px-6 shadow-sm">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
           <SidebarTrigger />
           
           <div className="flex-1 max-w-md flex">
@@ -198,13 +198,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input 
                       placeholder="بحث سريع..." 
-                      className="pr-10 bg-slate-50 border-none focus-visible:ring-1"
+                      className="pr-10 bg-muted border-none focus-visible:ring-1"
                       value={searchQuery}
                       onChange={handleSearchChange}
                     />
                   </form>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="start" className="bg-slate-800 text-white border-none">
+                <TooltipContent side="bottom" align="start" className="bg-primary text-primary-foreground border-none">
                   <p className="text-xs font-medium">اكتب كلمة البحث (اسم، فئة، أو مكان) واضغط Enter للبحث ↵</p>
                 </TooltipContent>
               </Tooltip>
@@ -214,7 +214,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 mr-auto">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-slate-500">
+                <Button variant="ghost" size="icon" className="relative text-muted-foreground">
                   <Bell size={20} />
                   {unreadCount > 0 && (
                     <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center">
@@ -254,7 +254,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                         <div
                           key={notif.id}
                           onClick={() => handleNotificationClick(notif)}
-                          className={`flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer select-none ${
+                          className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors cursor-pointer select-none ${
                             (isPending || isNewRfq || isPriceReduction || isSampleRequest) ? "bg-amber-50/40" : ""
                           }`}
                         >
@@ -265,12 +265,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             isPriceReduction ? "bg-amber-100 text-amber-700" :
                             isNewRfq ? "bg-blue-100 text-blue-600" :
                             isAccepted ? "bg-success/10 text-success" :
-                            "bg-slate-100 text-slate-400"
+                            "bg-muted text-muted-foreground"
                           }`}>
                             {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-800 truncate">
+                            <p className="text-xs font-bold text-foreground truncate">
                               {isSupplier
                                 ? isNewRfq ? "🆕 مناقصة جديدة متطابقة!"
                                   : isSampleReceived ? "✅ تم استلام العينة!"
@@ -309,16 +309,16 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
               </DropdownMenuContent>
             </DropdownMenu>
             
-            <div className="h-8 w-px bg-slate-200 mx-1" />
+            <div className="h-8 w-px bg-border mx-1" />
             
             {isUserLoading ? (
               <Loader2 className="animate-spin h-5 w-5 text-muted-foreground" />
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-slate-100">
+                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
-                      <span className="text-sm font-bold text-slate-700">{profile?.name || (user ? "مستخدم جديد" : "ضيف")}</span>
+                      <span className="text-sm font-bold text-foreground">{profile?.name || (user ? "مستخدم جديد" : "ضيف")}</span>
                       <span className="text-xs text-muted-foreground">
                         {profile?.role === "Contractor" ? "مقاول" : profile?.role === "Supplier" ? "مورد" : profile?.role || "بانتظار التهيئة..."}
                       </span>
