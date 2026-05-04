@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Query,
   onSnapshot,
@@ -8,10 +8,8 @@ import {
   FirestoreError,
   QuerySnapshot,
   CollectionReference,
-  startAfter,
   limit,
   query,
-  DocumentSnapshot,
 } from 'firebase/firestore';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -54,18 +52,32 @@ export function useCollectionPaginated<T = any>(
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const lastDocRef = useRef<DocumentSnapshot | null>(null);
-  const allDataRef = useRef<WithId<T>[]>([]);
+  
+  const [queryState, setQueryState] = useState({ 
+    target: targetRefOrQuery, 
+    limitCount: pageSize 
+  });
 
-  const loadMore = useCallback(() => {
-    if (!targetRefOrQuery || !hasMore) return;
+  useEffect(() => {
+    setQueryState(prev => {
+      if (prev.target !== targetRefOrQuery) {
+        return { target: targetRefOrQuery, limitCount: pageSize };
+      }
+      return prev;
+    });
+  }, [targetRefOrQuery, pageSize]);
+
+  useEffect(() => {
+    if (!queryState.target) {
+      setData(null);
+      setIsLoading(false);
+      setHasMore(false);
+      return;
+    }
 
     setIsLoading(true);
     
-    let paginatedQuery = query(targetRefOrQuery, limit(pageSize));
-    if (lastDocRef.current) {
-      paginatedQuery = query(paginatedQuery, startAfter(lastDocRef.current));
-    }
+    const paginatedQuery = query(queryState.target, limit(queryState.limitCount));
 
     const unsubscribe = onSnapshot(
       paginatedQuery,
@@ -75,11 +87,11 @@ export function useCollectionPaginated<T = any>(
           ...doc.data() as T,
         }));
 
-        allDataRef.current = [...allDataRef.current, ...newDocs];
-        setData([...allDataRef.current]);
+        setData(newDocs);
         
-        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null;
-        setHasMore(snapshot.docs.length === pageSize);
+        // If the number of docs returned is less than the limit we requested,
+        // it means there are no more docs to load.
+        setHasMore(snapshot.docs.length === queryState.limitCount);
         setIsLoading(false);
       },
       (err: FirestoreError) => {
@@ -91,31 +103,17 @@ export function useCollectionPaginated<T = any>(
       }
     );
 
-    return unsubscribe;
-  }, [targetRefOrQuery, pageSize, hasMore]);
+    return () => unsubscribe();
+  }, [queryState]);
 
-  useEffect(() => {
-    allDataRef.current = [];
-    lastDocRef.current = null;
-    setHasMore(true);
-    
-    if (!targetRefOrQuery) {
-      setData(null);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    loadMore();
-  }, [targetRefOrQuery]);
+  const loadMore = useCallback(() => {
+    setQueryState(prev => ({ ...prev, limitCount: prev.limitCount + pageSize }));
+  }, [pageSize]);
 
   const reset = useCallback(() => {
-    allDataRef.current = [];
-    lastDocRef.current = null;
-    setHasMore(true);
+    setQueryState(prev => ({ ...prev, limitCount: pageSize }));
     setData(null);
-    loadMore();
-  }, [loadMore]);
+  }, [pageSize]);
 
   return {
     data,

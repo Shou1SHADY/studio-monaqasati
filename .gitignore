@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+.opencode/*
 
 # next.js
 /.next/
