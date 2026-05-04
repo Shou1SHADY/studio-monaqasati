@@ -181,10 +181,9 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري</Label>
+                <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري (اختياري)</Label>
                 <Input 
                   id="crNumber" 
-                  required 
                   placeholder="مثال: 1010XXXXXX"
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.crNumber}
@@ -196,10 +195,9 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="city" className="text-slate-700 font-bold">المدينة</Label>
+                <Label htmlFor="city" className="text-slate-700 font-bold">المدينة (اختياري)</Label>
                 <Input 
                   id="city" 
-                  required 
                   placeholder="مثال: الرياض"
                   className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.city}
@@ -274,16 +272,16 @@ export default function RegisterPage() {
 
             <Button 
               type="submit" 
-              className="w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 mt-4" 
+              className="w-full h-12 text-base font-bold rounded-lg mt-4" 
               disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
             >
               {isLoading ? <Loader2 className="animate-spin" /> : "تأكيد التسجيل"}
             </Button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-slate-500">
+          <p className="mt-8 text-center text-sm text-muted-foreground">
             لديك حساب مسبقاً؟{" "}
-            <Link href="/login" className="text-primary font-bold hover:underline">
+            <Link href="/login" className="text-cta font-bold hover:underline">
               سجل الدخول الآن
             </Link>
           </p>
