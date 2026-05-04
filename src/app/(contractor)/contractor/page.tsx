@@ -4,6 +4,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { 
   FileText, 
   Users, 
@@ -82,6 +83,20 @@ export default function ContractorDashboard() {
     })) || [])
   ]
 
+  if (!profile || !rfqs || !suppliers) {
+    return (
+      <PortalLayout>
+        <div className="space-y-8 text-right max-w-7xl mx-auto pb-10">
+          <Skeleton className="h-48 rounded-3xl w-full" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-lg" />)}
+          </div>
+          <Skeleton className="h-64 rounded-lg w-full" />
+        </div>
+      </PortalLayout>
+    )
+  }
+
   return (
     <PortalLayout>
       <div className="space-y-8 text-right max-w-7xl mx-auto pb-10">
@@ -111,17 +126,17 @@ export default function ContractorDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat) => (
-            <Card key={stat.title} className={`border-none shadow-sm overflow-hidden group hover:-translate-y-1 hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-white to-slate-50/50 ${stat.gradient}`}>
+            <Card key={stat.title} className={`glass-card border-none shadow-sm overflow-hidden group hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ${stat.gradient}`}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-3.5 rounded-2xl transition-all duration-300", stat.bg, stat.glow)}>
+                  <div className={cn("p-3.5 rounded-lg transition-all duration-300", stat.bg, stat.glow)}>
                     <stat.icon className={cn("h-6 w-6", stat.color)} strokeWidth={2.5} />
                   </div>
-                  <ArrowUpRight className="h-5 w-5 text-slate-300 group-hover:text-slate-600 group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
+                  <ArrowUpRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm font-bold text-slate-500">{stat.title}</p>
-                  <p className="text-3xl font-black text-slate-800 tracking-tight">{stat.value}</p>
+                  <p className="text-sm font-bold text-muted-foreground">{stat.title}</p>
+                  <p className="text-3xl font-black text-foreground tracking-tight">{stat.value}</p>
                 </div>
               </CardContent>
             </Card>
@@ -130,9 +145,9 @@ export default function ContractorDashboard() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Recent Activity */}
-          <Card className="lg:col-span-2 shadow-md border-none overflow-hidden bg-white/60 backdrop-blur-xl">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 bg-white/50 pb-4">
-              <CardTitle className="text-lg font-black flex items-center gap-2 text-slate-800">
+          <Card className="lg:col-span-2 shadow-md border-none overflow-hidden glass-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border bg-muted/50 pb-4">
+                <CardTitle className="text-lg font-black flex items-center gap-2 text-foreground">
                 <div className="p-2 bg-primary/10 rounded-lg">
                   <History className="h-5 w-5 text-primary" />
                 </div>
@@ -143,20 +158,20 @@ export default function ContractorDashboard() {
               </Link>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y divide-slate-100/80">
+                <div className="divide-y divide-border/80">
                 {recentActivity.length > 0 ? recentActivity.map((activity) => (
-                  <div key={activity.id} className="p-5 hover:bg-slate-50/80 transition-colors flex items-center justify-between group cursor-pointer">
+                  <div key={activity.id} className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between group cursor-pointer">
                     <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-2xl bg-white border shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
+                         <div className="h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300">
                         {activity.type === 'offer' && <TrendingUp className="h-5 w-5 text-emerald-500" />}
                         {activity.type === 'rfq' && <FileText className="h-5 w-5 text-blue-500" />}
                         {activity.type === 'award' && <Trophy className="h-5 w-5 text-amber-500" />}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800 group-hover:text-primary transition-colors">{activity.text}</p>
+                        <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">{activity.text}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
-                          <p className="text-[11px] font-medium text-slate-500" suppressHydrationWarning>{activity.time}</p>
+                          <span className="h-1.5 w-1.5 rounded-full bg-border" />
+                          <p className="text-[11px] font-medium text-muted-foreground" suppressHydrationWarning>{activity.time}</p>
                         </div>
                       </div>
                     </div>

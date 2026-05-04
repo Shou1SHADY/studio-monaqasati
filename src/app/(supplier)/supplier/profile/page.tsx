@@ -25,6 +25,7 @@ import {
   ChevronDown,
   Loader2
 } from "lucide-react"
+import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,19 +61,6 @@ interface CompanyFile {
   url: string
 }
 
-const PREDEFINED_CATEGORIES = [
-  "حديد ومعادن",
-  "أسمنت وخرسانة",
-  "أرضيات وتشطيبات",
-  "كهرباء وإنارة",
-  "أدوات صحية وسباكة",
-  "عزل وأسقف",
-  "أبواب ونوافذ",
-  "دهانات",
-  "خرسانة جاهزة",
-  "معدات وآليات"
-]
-
 export default function SupplierProfilePage() {
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
@@ -92,11 +80,16 @@ export default function SupplierProfilePage() {
     phone: "",
     crNumber: "",
     description: "",
-    location: "",
+    location: "", // headquarters
+    coverageCities: [] as string[], // additional coverage cities
     specializations: [] as string[],
     certificates: [] as Certificate[],
     projects: [] as Project[],
-    companyFiles: [] as CompanyFile[]
+    companyFiles: [] as CompanyFile[],
+    isVerified: false,
+    isPremium: false,
+    commitmentScore: 0,
+    verificationRequested: false
   })
 
   const userDocRef = useMemoFirebase(() => {
@@ -116,11 +109,16 @@ export default function SupplierProfilePage() {
         phone: userData.phone || "",
         crNumber: userData.crNumber || "",
         location: userData.city || userData.location || "",
+        coverageCities: userData.coverageCities || [],
         description: userData.description || "",
         specializations: userData.specializations || [],
         certificates: userData.certificates || [],
         projects: userData.projects || [],
-        companyFiles: userData.companyFiles || []
+        companyFiles: userData.companyFiles || [],
+        isVerified: userData.isVerified || false,
+        isPremium: userData.isPremium || false,
+        commitmentScore: userData.commitmentScore || 0,
+        verificationRequested: userData.verificationRequested || false
       }))
     }
   }, [userData, user])
@@ -136,6 +134,7 @@ export default function SupplierProfilePage() {
         crNumber: profile.crNumber,
         city: profile.location,
         location: profile.location,
+        coverageCities: profile.coverageCities,
         description: profile.description,
         specializations: profile.specializations,
         certificates: profile.certificates,
@@ -148,6 +147,27 @@ export default function SupplierProfilePage() {
       toast({ title: "خطأ", description: e.message, variant: "destructive" })
     } finally {
       setIsLoading(false)
+    }
+   }
+
+  const requestVerification = async () => {
+    if (!user || !firestore) return
+    if (profile.isVerified || profile.verificationRequested) {
+      toast({ title: "تنبيه", description: "لقد قمت بالطلب مسبقاً أو أنك موثق بالفعل" })
+      return
+    }
+    if (!profile.crNumber || profile.certificates.length === 0) {
+      toast({ title: "بيانات ناقصة", description: "يجب رفع السجل التجاري وشهادة واحدة على الأقل", variant: "destructive" })
+      return
+    }
+    try {
+      await updateDoc(doc(firestore, "users", user.uid), {
+        verificationRequested: true
+      })
+      setProfile(prev => ({ ...prev, verificationRequested: true }))
+      toast({ title: "تم إرسال الطلب", description: "سيتم مراجعة وثائقك من قبل الإدارة" })
+    } catch (e: any) {
+      toast({ title: "خطأ", description: e.message, variant: "destructive" })
     }
   }
 
@@ -390,6 +410,35 @@ export default function SupplierProfilePage() {
                         onChange={e => setProfile({...profile, location: e.target.value})}
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>مدن التغطية الإضافية</Label>
+                    <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 min-h-[80px]">
+                      {profile.coverageCities.map(city => (
+                        <Badge key={city} className="bg-blue-100 text-blue-800 border-blue-200 px-3 py-1.5 flex items-center gap-2 hover:bg-blue-200 transition-colors text-sm">
+                          {city}
+                          <button onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} className="hover:text-destructive hover:bg-white/50 rounded-full p-0.5 transition-colors">
+                            <X size={14} />
+                          </button>
+                        </Badge>
+                      ))}
+                      <Input 
+                        placeholder="أضف مدينة واضغط Enter"
+                        className="h-8 w-40 bg-white"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const input = e.target as HTMLInputElement
+                            const city = input.value.trim()
+                            if (city && !profile.coverageCities.includes(city)) {
+                              setProfile(prev => ({ ...prev, coverageCities: [...prev.coverageCities, city] }))
+                              input.value = ''
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">اضغط Enter لإضافة مدينة جديدة للتغطية</p>
                   </div>
                 </div>
 
@@ -761,16 +810,43 @@ export default function SupplierProfilePage() {
                   <h3 className="font-bold text-2xl tracking-tight">{profile.name || "الشركة"}</h3>
                   <p className="text-sm text-white/60 mt-1">شريك مورد عبر منصة مناقصتي</p>
                 </div>
-                <div className="pt-6 space-y-4 border-t border-white/10">
-                  <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
-                    <span className="text-white/80 flex items-center gap-2"><CheckCircle2 size={16} className="text-success" /> حالة التحقق</span>
-                    <Badge className="bg-success text-white border-none shadow-sm">موثوق</Badge>
-                  </div>
-                  <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
-                    <span className="text-white/80 flex items-center gap-2"><Award size={16} className="text-amber-400" /> التقييم العام</span>
-                    <span className="font-bold text-amber-400">4.8 / 5.0</span>
-                  </div>
-                </div>
+                 <div className="pt-6 space-y-4 border-t border-white/10">
+                   <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                     <span className="text-white/80 flex items-center gap-2">
+                       <CheckCircle2 size={16} className={profile.isVerified ? "text-success" : "text-amber-400"} /> 
+                       حالة التحقق
+                     </span>
+                     {profile.isVerified ? (
+                       <Badge className="bg-success text-white border-none shadow-sm">موثق</Badge>
+                     ) : (
+                       <Badge className="bg-amber-500/20 text-amber-200 border-amber-400/30 shadow-sm">غير موثق</Badge>
+                     )}
+                   </div>
+                   <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                     <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-blue-400" /> المقر الرئيسي</span>
+                     <span className="font-bold text-white/90">{profile.location || "غير محدد"}</span>
+                   </div>
+                   {profile.coverageCities.length > 0 && (
+                     <div className="text-sm bg-white/5 p-3 rounded-lg space-y-2">
+                       <span className="text-white/80 flex items-center gap-2"><MapPin size={16} className="text-green-400" /> مدن التغطية</span>
+                       <div className="flex flex-wrap gap-1">
+                         {profile.coverageCities.map(city => (
+                           <Badge key={city} className="bg-white/10 text-white/90 border-white/20 text-xs">{city}</Badge>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                   <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                     <span className="text-white/80 flex items-center gap-2"><Award size={16} className="text-amber-400" /> التقييم العام</span>
+                     <span className="font-bold text-amber-400">4.8 / 5.0</span>
+                   </div>
+                   {profile.isPremium && (
+                     <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">
+                       <span className="text-white/80 flex items-center gap-2"><Zap size={16} className="text-blue-400" /> درجة الالتزام</span>
+                       <span className="font-bold text-blue-400">{profile.commitmentScore}%</span>
+                     </div>
+                   )}
+                 </div>
               </CardContent>
             </Card>
 
@@ -785,6 +861,20 @@ export default function SupplierProfilePage() {
                 <p className="text-sm text-slate-600 leading-relaxed">
                   ملفك الشخصي مكتمل بنسبة <span className="font-bold text-primary">85%</span>. ننصح بإضافة المزيد من المشاريع السابقة وصور المنتجات للوصول لنسبة 100% وزيادة موثوقيتك لدى المقاولين.
                 </p>
+                {profile.isVerified ? (
+                  <Badge className="w-full justify-center bg-success/10 text-success border-success/20 text-sm py-2">موثق ✓</Badge>
+                ) : profile.verificationRequested ? (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg text-center">طلب التوثيق قيد المراجعة</p>
+                ) : profile.crNumber && profile.certificates.length > 0 ? (
+                  <Button className="w-full gap-2" onClick={requestVerification}>
+                    <CheckCircle2 size={16} />
+                    طلب التوثيق
+                  </Button>
+                ) : (
+                  <p className="text-xs text-amber-600 bg-amber-50 p-3 rounded-lg">
+                    لطلب التوثيق، يجب رفع السجل التجاري وشهادة واحدة على الأقل
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

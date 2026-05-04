@@ -21,6 +21,7 @@ import {
   Trash2,
   Package
 } from "lucide-react"
+import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc } from "firebase/firestore"
@@ -59,6 +60,10 @@ export default function AvailableRfqsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
+  const [deadlineFilter, setDeadlineFilter] = useState<"all" | "week" | "month" | "custom">("all")
+  const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [selectedCity, setSelectedCity] = useState<string>("all")
+  const [customDeadline, setCustomDeadline] = useState("")
   const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string} | null>(null)
   const [offerPrice, setOfferPrice] = useState("")
   const [deliveryLocation, setDeliveryLocation] = useState("")
@@ -91,12 +96,21 @@ export default function AvailableRfqsPage() {
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     
-    return query(
+    let q = query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
       orderBy("createdAt", "desc")
     )
-  }, [firestore, user, isUserLoading])
+    
+    if (selectedCategory !== "all") {
+      q = query(q, where("category", "==", selectedCategory))
+    }
+    if (selectedCity !== "all") {
+      q = query(q, where("city", "==", selectedCity))
+    }
+    
+    return q
+  }, [firestore, user, isUserLoading, selectedCategory, selectedCity])
 
   const { data: allRfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
@@ -108,15 +122,36 @@ export default function AvailableRfqsPage() {
   }) || [];
 
   const filteredRfqs = rfqs.filter((rfq: any) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      rfq.title?.toLowerCase().includes(q) ||
-      rfq.category?.toLowerCase().includes(q) ||
-      rfq.subCategory?.toLowerCase().includes(q) ||
-      rfq.city?.toLowerCase().includes(q) ||
-      rfq.district?.toLowerCase().includes(q)
-    );
+    // Search query filter
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = (
+        rfq.title?.toLowerCase().includes(q) ||
+        rfq.category?.toLowerCase().includes(q) ||
+        rfq.subCategory?.toLowerCase().includes(q) ||
+        rfq.city?.toLowerCase().includes(q) ||
+        rfq.district?.toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
+    }
+
+    // Deadline filter
+    if (deadlineFilter !== "all" && rfq.deadline) {
+      const deadline = new Date(rfq.deadline);
+      const now = new Date();
+      if (deadlineFilter === "week") {
+        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+        if (deadline > weekFromNow) return false;
+      } else if (deadlineFilter === "month") {
+        const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        if (deadline > monthFromNow) return false;
+      } else if (deadlineFilter === "custom" && customDeadline) {
+        const customDate = new Date(customDeadline);
+        if (deadline > customDate) return false;
+      }
+    }
+
+    return true;
   }) || [];
 
   const resetForm = () => {
@@ -224,10 +259,56 @@ export default function AvailableRfqsPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="gap-2">
-              <Filter size={18} />
-              تصفية التخصصات
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              {/* Deadline Filter */}
+              <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
+                <SelectTrigger className="w-[140px] h-10 text-sm">
+                  <SelectValue placeholder="الموعد النهائي" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل المواعيد</SelectItem>
+                  <SelectItem value="week">خلال أسبوع</SelectItem>
+                  <SelectItem value="month">خلال شهر</SelectItem>
+                  <SelectItem value="custom">تاريخ محدد</SelectItem>
+                </SelectContent>
+              </Select>
+              {deadlineFilter === "custom" && (
+                <input 
+                  type="date" 
+                  value={customDeadline}
+                  onChange={e => setCustomDeadline(e.target.value)}
+                  className="h-10 px-3 rounded-md border border-input bg-white text-sm w-[140px]"
+                />
+              )}
+
+              {/* Category Filter */}
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[140px] h-10 text-sm">
+                  <SelectValue placeholder="التصنيف" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل التصنيفات</SelectItem>
+                  {PREDEFINED_CATEGORIES.map(cat => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* City Filter */}
+              <Select value={selectedCity} onValueChange={setSelectedCity}>
+                <SelectTrigger className="w-[140px] h-10 text-sm">
+                  <SelectValue placeholder="المدينة" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل المدن</SelectItem>
+                  <SelectItem value="الرياض">الرياض</SelectItem>
+                  <SelectItem value="جدة">جدة</SelectItem>
+                  <SelectItem value="الدمام">الدمام</SelectItem>
+                  <SelectItem value="مكة المكرمة">مكة المكرمة</SelectItem>
+                  <SelectItem value="المدينة المنورة">المدينة المنورة</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
 
