@@ -89,12 +89,13 @@ export default function ContractorRfqsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
-            {isLoading ? (
+            {isLoading && (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
                 <p>جاري تحميل البيانات...</p>
               </div>
-            ) : (!rfqs || rfqs.length === 0) ? (
+            )}
+            {!isLoading && (!rfqs || rfqs.length === 0) && (
               <div className="p-20 text-center space-y-4">
                 <p className="text-muted-foreground">
                   {searchQuery ? "لا توجد مناقصات مطابقة لبحثك." : "لا توجد مناقصات حالية."}
@@ -105,7 +106,8 @@ export default function ContractorRfqsPage() {
                   </Link>
                 )}
               </div>
-            ) : (
+            )}
+            {!isLoading && rfqs && rfqs.length > 0 && (
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
@@ -157,25 +159,22 @@ export default function ContractorRfqsPage() {
                     </TableRow>
                   ))}
                 </TableBody>
+                {hasMore && (
+                  <div className="p-4 text-center">
+                    <Button 
+                      onClick={loadMore} 
+                      disabled={isLoadingMore}
+                      variant="outline"
+                      className="font-bold"
+                    >
+                      {isLoadingMore && <Loader2 className="animate-spin ml-2" size={16} />}
+                      تحميل المزيد
+                    </Button>
+                  </div>
+                )}
               </Table>
-              
-              {hasMore && (
-                <div className="p-4 text-center">
-                  <Button 
-                    onClick={loadMore} 
-                    disabled={isLoadingMore}
-                    variant="outline"
-                    className="font-bold"
-                  >
-                    {isLoadingMore ? (
-                      <Loader2 className="animate-spin ml-2" size={16} />
-                    ) : null}
-                    تحميل المزيد
-                  </Button>
-                </div>
-              )}
             )}
-          </CardContent>
+        </CardContent>
         </Card>
       </div>
     </PortalLayout>

@@ -14,7 +14,21 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "e2e": "playwright test",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "runner": "node scripts/runner.js",
+    "check": "node scripts/check-all.js",
+    "check:quick": "powershell -ExecutionPolicy Bypass -File scripts/quick-check.ps1",
+    "check:code": "powershell -ExecutionPolicy Bypass -File scripts/checks/code-quality.ps1",
+    "check:tests": "powershell -ExecutionPolicy Bypass -File scripts/checks/tests.ps1",
+    "check:security": "powershell -ExecutionPolicy Bypass -File scripts/checks/security.ps1",
+    "check:ui": "powershell -ExecutionPolicy Bypass -File scripts/checks/ui-ux.ps1",
+    "check:arch": "powershell -ExecutionPolicy Bypass -File scripts/checks/architecture.ps1",
+    "check:all": "powershell -ExecutionPolicy Bypass -File scripts/check-all.ps1",
+    "validate": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1",
+    "validate:quick": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Quick",
+    "validate:full": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Full",
+    "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
+    "prepare": "npx playwright install --with-deps"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",
