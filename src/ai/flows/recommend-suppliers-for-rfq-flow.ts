@@ -61,9 +61,9 @@ const recommendSuppliersPrompt = ai.definePrompt({
   prompt: `You are an AI assistant specialized in matching construction RFQs with suitable suppliers. Your task is to recommend suppliers based on the RFQ's category, required service area, and whether a quality certificate is needed.
 
 **Matching Criteria:**
-1.  **Specialization:** The supplier's `specializationCategories` must include the `rfqCategory`.
-2.  **Service Area:** The supplier's `serviceAreas` must include the `rfqArea`.
-3.  **Verification:** Always prioritize `verified` suppliers. If `rfqQualityCertificateRequired` is true, *strictly* recommend only `verified` suppliers.
+1.  **Specialization:** The supplier's \`specializationCategories\` must include the \`rfqCategory\`.
+2.  **Service Area:** The supplier's \`serviceAreas\` must include the \`rfqArea\`.
+3.  **Verification:** Always prioritize \`verified\` suppliers. If \`rfqQualityCertificateRequired\` is true, *strictly* recommend only \`verified\` suppliers.
 
 **RFQ Details:**
 - Category: {{{rfqCategory}}}
@@ -71,7 +71,7 @@ const recommendSuppliersPrompt = ai.definePrompt({
 - Quality Certificate Required: {{{rfqQualityCertificateRequired}}}
 
 **Available Suppliers (JSON Array):**
-{{{json allSuppliers}}}
+{{{json allSuppliers}}
 
 Please provide only the JSON output, with no additional text or explanations.`,
 });

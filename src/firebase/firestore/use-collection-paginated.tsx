@@ -15,7 +15,7 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 /** Utility type to add an 'id' field to a given type T. */
-export type WithId<T> = T & { id: string };
+type WithId<T> = T & { id: string };
 
 /**
  * Interface for the return value of the useCollectionPaginated hook.
@@ -96,7 +96,17 @@ export function useCollectionPaginated<T = any>(
       },
       (err: FirestoreError) => {
         if (err.code === 'permission-denied' || err.code === 'unauthenticated') {
-          errorEmitter.emit(new FirestorePermissionError(err));
+          const target = queryState.target;
+          // Extract the path from the CollectionReference or Query
+          const path = target ? (function(t: any): string {
+            // Firestore Reference/Query has a .path property
+            return t.path;
+          })(target) : '';
+          
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+            operation: 'list',
+            path,
+          }));
         }
         setError(err);
         setIsLoading(false);
