@@ -34,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`${notoSansArabic.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground`} suppressHydrationWarning>
+      <body className={`${notoSansArabic.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground overflow-x-hidden`} suppressHydrationWarning>
         <FirebaseClientProvider>
           {children}
           <Toaster />

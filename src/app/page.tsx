@@ -5,7 +5,7 @@ import { Building2, ShoppingCart, ArrowLeft, CheckCircle2, FileCheck, MapPin, Ph
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-background flex flex-col font-sans text-right" dir="rtl">
+    <div className="min-h-screen bg-background flex flex-col font-sans text-right overflow-x-hidden" dir="rtl">
       {/* Navigation */}
       <nav className="w-full bg-white/95 backdrop-blur-sm border-b border-border sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">

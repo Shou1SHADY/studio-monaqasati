@@ -73,6 +73,15 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    overflow-x: hidden;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+  * {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
   }
 }
 
