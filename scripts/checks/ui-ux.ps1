@@ -1,5 +1,5 @@
 # =============================================================================
-# UI/UX Check - مناقصتي
+# UI/UX Check - مدماك تيك
 # =============================================================================
 # Verifies UI/UX best practices and design system compliance
 
@@ -10,7 +10,7 @@ if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
 Set-Location $ProjectRoot
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  UI/UX Best Practices Check - مناقصتي" -ForegroundColor Cyan
+Write-Host "  UI/UX Best Practices Check - مدماك تيك" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

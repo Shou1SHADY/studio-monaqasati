@@ -1,5 +1,5 @@
 # =============================================================================
-# Comprehensive App Check Script - مناقصتي (PowerShell)
+# Comprehensive App Check Script - مدماك تيك (PowerShell)
 # =============================================================================
 # This script runs all checks on the application:
 # - TypeScript type checking
@@ -45,7 +45,7 @@ function Write-Status {
 $StartTime = Get-Date
 
 Write-Host "╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║          مناقصتي - Comprehensive App Check                      ║" -ForegroundColor Cyan
+Write-Host "║          مدماك تيك - Comprehensive App Check                      ║" -ForegroundColor Cyan
 Write-Host "╚═══════════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 
 # -----------------------------------------------------------------------------

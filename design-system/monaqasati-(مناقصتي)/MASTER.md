@@ -6,7 +6,7 @@
 
 ---
 
-**Project:** Monaqasati (مناقصتي)
+**Project:** Mdmak Tech (مدماك تيك)
 **Generated:** 2026-05-04 02:07:08
 **Category:** SaaS (General)
 

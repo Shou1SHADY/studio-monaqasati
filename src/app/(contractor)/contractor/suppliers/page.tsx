@@ -13,8 +13,21 @@ import {
   Filter, 
   ChevronLeft,
   Briefcase,
-  Loader2
+  Loader2,
+  X
 } from "lucide-react"
+import { 
+  Popover,
+  PopoverContent,
+  PopoverTrigger 
+} from "@/components/ui/popover"
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue 
+} from "@/components/ui/select"
 import { 
   Dialog, 
   DialogContent, 
@@ -25,11 +38,15 @@ import {
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
 import { useState } from "react"
-
+ 
 export default function SuppliersDirectory() {
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filterCity, setFilterCity] = useState<string>("all")
+  const [filterSpecialization, setFilterSpecialization] = useState<string>("all")
+  const [showFilters, setShowFilters] = useState(false)
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
     return query(collection(firestore, "users"), where("role", "==", "Supplier"))
@@ -67,16 +84,53 @@ export default function SuppliersDirectory() {
   
   const isLoading = suppliersLoading || isUserLoading;
 
-  const displaySuppliers = fbSuppliers?.length ? fbSuppliers.map((s: any) => ({
-    ...s,
-    id: s.id,
-    name: s.name || s.companyName || "مورد",
-    city: s.city || s.location || "غير محدد",
-    coverageCities: s.coverageCities || [],
-    specializations: s.specializations || [],
-    certificates: s.certificates || [],
-    isFavorite: favoriteSupplierIds.has(s.id)
-  })) : []
+  const allCities = [...new Set([
+    ...(fbSuppliers?.map((s: any) => s.city).filter(Boolean) || []),
+    ...(fbSuppliers?.flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
+  ])].sort()
+
+  const allSpecializations = [...new Set(
+    fbSuppliers?.flatMap((s: any) => s.specializations || []).filter(Boolean) || []
+  )].sort()
+
+  const displaySuppliers = fbSuppliers?.length ? fbSuppliers
+    .map((s: any) => ({
+      ...s,
+      id: s.id,
+      name: s.name || s.companyName || "مورد",
+      city: s.city || s.location || "غير محدد",
+      coverageCities: s.coverageCities || [],
+      specializations: s.specializations || [],
+      certificates: s.certificates || [],
+      isFavorite: favoriteSupplierIds.has(s.id)
+    }))
+    .filter((s: any) => {
+      // Search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const nameMatch = s.name?.toLowerCase().includes(q);
+        const cityMatch = s.city?.toLowerCase().includes(q);
+        const specMatch = s.specializations?.some((spec: string) => spec.toLowerCase().includes(q));
+        if (!nameMatch && !cityMatch && !specMatch) return false;
+      }
+      // City filter
+      if (filterCity !== "all") {
+        const cityMatch = s.city === filterCity || s.coverageCities?.includes(filterCity);
+        if (!cityMatch) return false;
+      }
+      // Specialization filter
+      if (filterSpecialization !== "all") {
+        const specMatch = s.specializations?.includes(filterSpecialization);
+        if (!specMatch) return false;
+      }
+      return true;
+    }) : []
+
+  const hasActiveFilters = filterCity !== "all" || filterSpecialization !== "all"
+  const clearFilters = () => {
+    setFilterCity("all")
+    setFilterSpecialization("all")
+  }
 
   return (
     <PortalLayout>
@@ -89,12 +143,89 @@ export default function SuppliersDirectory() {
           <div className="flex gap-2">
             <div className="relative w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="بحث باسم المورد..." className="pr-10" />
+              <Input 
+                placeholder="بحث باسم المورد..." 
+                className="pr-10 pl-8"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-destructive transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
-            <Button variant="outline" className="gap-2">
-              <Filter size={18} />
-              تصفية
-            </Button>
+            <Popover open={showFilters} onOpenChange={setShowFilters}>
+              <PopoverTrigger asChild>
+                <Button variant={hasActiveFilters ? "default" : "outline"} className="gap-2 relative">
+                  <Filter size={18} />
+                  تصفية
+                  {hasActiveFilters && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center">
+                      {(filterCity !== "all" ? 1 : 0) + (filterSpecialization !== "all" ? 1 : 0)}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 text-right" dir="rtl">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-sm">خيارات التصفية</h4>
+                    {hasActiveFilters && (
+                      <button 
+                        onClick={() => { clearFilters(); setShowFilters(false) }}
+                        className="text-xs text-destructive hover:underline font-medium"
+                      >
+                        مسح الكل
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* City Filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600">المدينة</label>
+                    <Select value={filterCity} onValueChange={setFilterCity}>
+                      <SelectTrigger className="w-full h-9 text-sm">
+                        <SelectValue placeholder="كل المدن" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">كل المدن</SelectItem>
+                        {allCities.map((city: string) => (
+                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Specialization Filter */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-600">التخصص</label>
+                    <Select value={filterSpecialization} onValueChange={setFilterSpecialization}>
+                      <SelectTrigger className="w-full h-9 text-sm">
+                        <SelectValue placeholder="كل التخصصات" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">كل التخصصات</SelectItem>
+                        {allSpecializations.map((spec: string) => (
+                          <SelectItem key={spec} value={spec}>{spec}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button 
+                    className="w-full" 
+                    size="sm"
+                    onClick={() => setShowFilters(false)}
+                  >
+                    تطبيق
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -105,7 +236,15 @@ export default function SuppliersDirectory() {
           </div>
         ) : displaySuppliers.length === 0 ? (
           <div className="text-center p-20 bg-slate-50 rounded-xl border border-dashed text-muted-foreground">
-            لا يوجد موردين مسجلين حالياً.
+            {searchQuery ? (
+              <>
+                <Search size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="font-bold text-lg">لا توجد نتائج للبحث</p>
+                <p className="text-sm mt-1">حاول تغيير كلمة البحث أو مسح الفلتر</p>
+              </>
+            ) : (
+              "لا يوجد موردين مسجلين حالياً."
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

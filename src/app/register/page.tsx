@@ -79,7 +79,7 @@ export default function RegisterPage() {
 
       toast({
         title: "تم إنشاء الحساب بنجاح",
-        description: "مرحباً بك في منصة مناقصتي!",
+        description: "مرحباً بك في منصة مدماك تيك!",
       })
 
       if (formData.role === "Contractor") {
@@ -115,7 +115,7 @@ export default function RegisterPage() {
           </Link>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">م</div>
-            <span className="text-xl font-bold text-slate-800 font-headline tracking-tight">مناقصتي</span>
+            <span className="text-xl font-bold text-slate-800 font-headline tracking-tight">مدماك تيك</span>
           </div>
         </div>
 
@@ -123,7 +123,7 @@ export default function RegisterPage() {
         <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto py-8">
           <div className="mb-8 text-right">
             <h1 className="text-3xl font-extrabold text-slate-900 mb-3 font-headline">حساب جديد</h1>
-            <p className="text-slate-500 text-sm">انضم الآن إلى منصة مناقصتي وابدأ بتوسيع أعمالك.</p>
+            <p className="text-slate-500 text-sm">انضم الآن إلى منصة مدماك تيك وابدأ بتوسيع أعمالك.</p>
           </div>
 
           <form onSubmit={handleRegister} className="space-y-5">

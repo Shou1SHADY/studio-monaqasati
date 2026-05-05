@@ -92,7 +92,7 @@ export function RoleSidebar() {
     <Sidebar side="right" className="border-l bg-sidebar">
       <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex flex-col gap-2">
-          <Link href="/" className="text-2xl font-bold text-white font-headline">مناقصتي</Link>
+          <Link href="/" className="text-2xl font-bold text-white font-headline">مدماك تيك</Link>
           <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
             {portalTitle}
           </span>

@@ -84,7 +84,7 @@ export default function LoginPage() {
           </Link>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">م</div>
-            <span className="text-xl font-bold text-foreground font-headline tracking-tight">مناقصتي</span>
+            <span className="text-xl font-bold text-foreground font-headline tracking-tight">مدماك تيك</span>
           </div>
         </div>
 
@@ -145,7 +145,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative overflow-hidden">
         <img
           src="/images/hero-bg.png"
-          alt="منصة مناقصتي"
+          alt="منصة مدماك تيك"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />

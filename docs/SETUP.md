@@ -1,4 +1,4 @@
-# مناقصتي (Monaqasati) - Project Setup Guide
+# مدماك تيك (Monaqasati) - Project Setup Guide
 
 ## Table of Contents
 1. [Prerequisites](#prerequisites)
@@ -43,7 +43,7 @@ firebase --version # Should be 14.x
 
 ```bash
 git clone <repository-url>
-cd studio-monaqasati
+cd studio-mdmak-tech
 npm install
 ```
 
@@ -241,7 +241,7 @@ firebase deploy
 ## Project Structure
 
 ```
-studio-monaqasati/
+studio-mdmak-tech/
 ├── src/
 │   ├── app/                 # Next.js pages
 │   │   ├── (admin)/        # Admin routes

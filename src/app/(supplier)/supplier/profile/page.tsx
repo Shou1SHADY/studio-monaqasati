@@ -26,7 +26,7 @@ import {
   Loader2,
   ShieldCheck
 } from "lucide-react"
-import { PREDEFINED_CATEGORIES } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,8 +35,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useUser, useFirestore, useDoc, useMemoFirebase } from "@/firebase"
-import { doc, updateDoc } from "firebase/firestore"
+import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { doc, updateDoc, collection, query as firestoreQuery, orderBy } from "firebase/firestore"
 import { useEffect } from "react"
 
 interface Certificate {
@@ -99,6 +99,30 @@ export default function SupplierProfilePage() {
   }, [firestore, user, isUserLoading])
   
   const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+
+  // Fetch cities from Firestore (temporary fallback to hardcoded if Firebase not ready)
+  const citiesQuery = useMemoFirebase(() => {
+    if (!firestore) return null
+    return firestoreQuery(collection(firestore, "cities"), orderBy("name", "asc"))
+  }, [firestore])
+  
+  const { data: citiesFromDB, isLoading: isCitiesLoading } = useCollection(citiesQuery)
+  
+  // Debug log
+  console.log("Cities Status:", { 
+    loading: isCitiesLoading, 
+    fromDB: citiesFromDB, 
+    fromDBLength: citiesFromDB?.length, 
+    fallbackLength: SAUDI_CITIES.length 
+  })
+  
+  // SIMPLE FIX: Always use hardcoded list for now (Caveman approach)
+  // Once Firebase rules are deployed and seed is run, you can switch to dynamic
+  const cities = SAUDI_CITIES
+  // Uncomment below for dynamic version:
+  // const cities = (!citiesFromDB || citiesFromDB.length === 0) 
+  //   ? SAUDI_CITIES 
+  //   : citiesFromDB.map((c: any) => c.name)
 
   // Sync with user data
   useEffect(() => {
@@ -414,32 +438,94 @@ export default function SupplierProfilePage() {
                   </div>
 <div className="space-y-2 md:col-span-2">
                     <Label>مدن التغطية الإضافية</Label>
-                    <div className="flex flex-wrap gap-2 p-4 bg-accent/5 rounded-xl border border-accent/20 min-h-[80px]">
-                      {profile.coverageCities.map(city => (
-                        <Badge key={city} className="bg-accent text-white px-3 py-1.5 flex items-center gap-2 hover:bg-accent/80 transition-colors text-sm shadow-sm">
-                          {city}
-                          <button onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} className="hover:text-white hover:bg-white/20 rounded-full p-0.5 transition-colors">
-                            <X size={14} />
-                          </button>
-                        </Badge>
-                      ))}
-                      <Input 
-                        placeholder="أضف مدينةواضغط Enter"
-                        className="h-9 w-40 bg-white border-accent/20 focus:border-accent"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            const input = e.target as HTMLInputElement
-                            const city = input.value.trim()
-                            if (city && !profile.coverageCities.includes(city)) {
-                              setProfile(prev => ({ ...prev, coverageCities: [...prev.coverageCities, city] }))
-                              input.value = ''
+                    <div className="p-4 bg-accent/5 rounded-xl border border-accent/20">
+                      {/* Selected Cities Display */}
+                      <div className="flex flex-wrap gap-2 mb-4 min-h-[36px]">
+                        {profile.coverageCities.length > 0 ? (
+                          profile.coverageCities.map(city => (
+                            <Badge key={city} className="bg-accent text-white px-3 py-1.5 flex items-center gap-2 hover:bg-accent/80 transition-all text-sm shadow-sm group">
+                              <MapPin size={12} className="group-hover:scale-110 transition-transform" />
+                              {city}
+                              <button 
+                                onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} 
+                                className="hover:text-white hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                                aria-label={`حذف ${city}`}
+                              >
+                                <X size={14} />
+                              </button>
+                            </Badge>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic">لم تتم إضافة أي مدن بعد</p>
+                        )}
+                      </div>
+                      
+                      {/* Add City Section */}
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="أضف مدينة..."
+                          className="h-9 flex-1 bg-white border-accent/20 focus:border-accent"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              const input = e.target as HTMLInputElement
+                              const city = input.value.trim()
+                              if (city && !profile.coverageCities.includes(city)) {
+                                setProfile(prev => ({ ...prev, coverageCities: [...prev.coverageCities, city] }))
+                                input.value = ''
+                                toast({ title: "تم الإضافة", description: `تم إضافة ${city} لقائمة التغطية` })
+                              }
                             }
-                          }
-                        }}
-/>
+                          }}
+                        />
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-9 border-accent/20 bg-white gap-1">
+                              <span className="text-xs">اختر من القائمة</span>
+                              <ChevronDown size={14} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-56 text-right max-h-72 overflow-y-auto" dir="rtl">
+                            {isCitiesLoading ? (
+                              <div className="flex items-center justify-center p-4">
+                                <Loader2 size={20} className="animate-spin text-muted-foreground" />
+                              </div>
+                            ) : (
+                              <>
+                                <div className="p-2 border-b">
+                                  <Input 
+                                    placeholder="بحث في المدن..."
+                                    className="h-8 text-xs"
+                                    onChange={(e) => {
+                                      const searchTerm = e.target.value.toLowerCase()
+                                      // Filter logic will be handled by the map below
+                                    }}
+                                  />
+                                </div>
+                                {cities
+                                  .filter(c => !profile.coverageCities.includes(c))
+                                  .map(city => (
+                                    <DropdownMenuItem 
+                                      key={city} 
+                                      onClick={() => {
+                                        if (!profile.coverageCities.includes(city)) {
+                                          setProfile(prev => ({ ...prev, coverageCities: [...prev.coverageCities, city] }))
+                                          toast({ title: "تم الإضافة", description: `تم إضافة ${city} لقائمة التغطية` })
+                                        }
+                                      }} 
+                                      className="cursor-pointer hover:bg-accent/10"
+                                    >
+                                      <MapPin size={12} className="ml-2 text-muted-foreground" />
+                                      {city}
+                                    </DropdownMenuItem>
+                                  ))}
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">اضغط Enter لإضافة مدينة جديدة للتغطية</p>
+                    <p className="text-xs text-muted-foreground mt-2">أضف المدن التي يمكنك التوصيل إليها. اكتب المدينة أو اخترها من القائمة</p>
                   </div>
 
                   <div className="space-y-2 pt-4 border-t border-slate-100">
@@ -809,7 +895,7 @@ export default function SupplierProfilePage() {
                 </div>
                 <div className="text-center">
                   <h3 className="font-bold text-2xl tracking-tight">{profile.name || "الشركة"}</h3>
-                  <p className="text-sm text-white/60 mt-1">شريك مورد عبر منصة مناقصتي</p>
+                  <p className="text-sm text-white/60 mt-1">شريك مورد عبر منصة مدماك تيك</p>
                 </div>
                  <div className="pt-6 space-y-4 border-t border-white/10">
                    <div className="flex items-center justify-between text-sm bg-white/5 p-3 rounded-lg">

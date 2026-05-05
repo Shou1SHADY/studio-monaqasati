@@ -18,7 +18,7 @@ const notoNaskhArabic = Noto_Naskh_Arabic({
 });
 
 export const metadata: Metadata = {
-  title: 'مناقصتي - منصة ربط المقاولين بالموردين',
+  title: 'مدماك تيك - منصة التقنية للمقاولين والموردين',
   description: 'منصة B2B متكاملة لربط المقاولين بالموردين في قطاع الإنشاءات',
   icons: {
     icon: '/favicon.png',
@@ -33,8 +33,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl">
-      <body className={`${notoSansArabic.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground`}>
+    <html lang="ar" dir="rtl" suppressHydrationWarning>
+      <body className={`${notoSansArabic.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground`} suppressHydrationWarning>
         <FirebaseClientProvider>
           {children}
           <Toaster />

@@ -1,4 +1,4 @@
-# Frontend Architecture - مناقصتي
+# Frontend Architecture - مدماك تيك
 
 ## Overview
 

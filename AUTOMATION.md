@@ -1,5 +1,5 @@
 # =============================================================================
-# Complete Automation Index - مناقصتي
+# Complete Automation Index - مدماك تيك
 # =============================================================================
 # 
 # This file documents all automation created for the project
@@ -210,7 +210,7 @@ Use these for advanced automation:
 ## FILE STRUCTURE
 
 ```
-studio-monaqasati/
+studio-mdmak-tech/
 ├── .git/hooks/              # Git hooks
 │   ├── pre-commit          # Pre-commit validation
 │   ├── pre-commit.ps1      # PowerShell version

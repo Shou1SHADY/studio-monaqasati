@@ -218,3 +218,9 @@ export const CATEGORIES_DATA: Record<string, string[]> = {
 
 /** Flat list of all main category names — used for supplier specialization picker */
 export const PREDEFINED_CATEGORIES = Object.keys(CATEGORIES_DATA)
+
+export const SAUDI_CITIES = [
+  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
+  "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط",
+  "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
+]

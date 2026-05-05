@@ -1,5 +1,5 @@
 # =============================================================================
-# Quick App Check - مناقصتي (PowerShell)
+# Quick App Check - مدماك تيك (PowerShell)
 # =============================================================================
 # Fast checks: TypeScript + ESLint only
 # Use this for quick feedback during development
@@ -12,7 +12,7 @@ if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
 Set-Location $ProjectRoot
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  مناقصتي - Quick Check (TypeScript + ESLint)" -ForegroundColor Cyan
+Write-Host "  مدماك تيك - Quick Check (TypeScript + ESLint)" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

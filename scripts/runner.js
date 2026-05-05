@@ -1,5 +1,5 @@
 # =============================================================================
-# Global Command Runner - مناقصتي
+# Global Command Runner - مدماك تيك
 # =============================================================================
 # Unified command interface for all development tasks
 # Usage: node scripts/runner.js <command> [options]
@@ -150,7 +150,7 @@ function runPowerShell(scriptPath) {
 function showHelp() {
     console.log(`
 ╔═══════════════════════════════════════════════════════════════════╗
-║                    مناقصتي - Command Runner                        ║
+║                    مدماك تيك - Command Runner                        ║
 ╚═══════════════════════════════════════════════════════════════════╝
 
 Usage: node scripts/runner.js <command> [options]

@@ -76,6 +76,7 @@ export function useCollectionPaginated<T = any>(
     }
 
     setIsLoading(true);
+    setData(null); // Clear old data immediately when query changes
     
     const paginatedQuery = query(queryState.target, limit(queryState.limitCount));
 

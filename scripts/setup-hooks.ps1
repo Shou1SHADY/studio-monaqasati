@@ -1,5 +1,5 @@
 # =============================================================================
-# Git Hooks Setup - مناقصتي
+# Git Hooks Setup - مدماك تيك
 # =============================================================================
 # Installs and configures Git hooks for automatic validation
 # =============================================================================
@@ -12,7 +12,7 @@ Set-Location $ProjectRoot
 
 Write-Host ""
 Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  مناقصتي - Git Hooks Setup" -ForegroundColor Cyan
+Write-Host "  مدماك تيك - Git Hooks Setup" -ForegroundColor Cyan
 Write-Host "════════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

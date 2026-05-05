@@ -11,7 +11,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center font-bold text-2xl text-white shadow-lg">م</div>
-            <span className="text-2xl font-bold text-foreground font-headline tracking-tight">مناقصتي</span>
+            <span className="text-2xl font-bold text-foreground font-headline tracking-tight">مدماك تيك</span>
           </div>
 
           <div className="hidden md:flex items-center gap-8 text-foreground/70 font-medium text-sm">
@@ -41,7 +41,7 @@ export default function Home() {
           {/* Text Content */}
           <div className="flex-1 space-y-8">
             <h1 className="text-4xl md:text-5xl lg:text-5xl font-black text-foreground font-headline leading-tight">
-              منصة <span className="text-cta">مناقصتي</span> شريكك الأمثل لتوريد مواد البناء
+              منصة <span className="text-cta">مدماك تيك</span> شريكك الأمثل لتوريد مواد البناء
             </h1>
 
             <p className="text-lg text-muted-foreground leading-relaxed max-w-xl">
@@ -68,7 +68,7 @@ export default function Home() {
             <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-border">
               <img
                 src="/images/hero-bg.png"
-                alt="منصة مناقصتي - منصة المشتريات الإنشائية"
+                alt="منصة مدماك تيك - منصة المشتريات الإنشائية"
                 className="w-full h-auto object-cover aspect-[4/3]"
               />
             </div>
@@ -171,7 +171,7 @@ export default function Home() {
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-xl">م</div>
-              <span className="text-xl font-bold text-white font-headline tracking-tight">مناقصتي</span>
+              <span className="text-xl font-bold text-white font-headline tracking-tight">مدماك تيك</span>
             </div>
             <p className="text-sm leading-relaxed max-w-md mb-6">
               المنصة الرائدة في المملكة العربية السعودية لربط المقاولين بالموردين في قطاع الإنشاءات والبناء. نوفر الشفافية والكفاءة في كل عملية شراء.
@@ -207,7 +207,7 @@ export default function Home() {
           </div>
         </div>
         <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-slate-900 text-center text-sm">
-          جميع الحقوق محفوظة © {new Date().getFullYear()} منصة مناقصتي
+          جميع الحقوق محفوظة © {new Date().getFullYear()} منصة مدماك تيك
         </div>
       </footer>
     </div>

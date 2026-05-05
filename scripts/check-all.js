@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Comprehensive App Check - مناقصتي
+ * Comprehensive App Check - مدماك تيك
  * 
  * This script runs all automated checks on the application:
  * - TypeScript type checking
@@ -50,7 +50,7 @@ function runCommand(command, description) {
 
 async function main() {
   console.log(`${colors.blue}╔═══════════════════════════════════════════════════════════════╗${colors.reset}`);
-  console.log(`${colors.blue}║          مناقصتي - Comprehensive App Check                      ║${colors.reset}`);
+  console.log(`${colors.blue}║          مدماك تيك - Comprehensive App Check                      ║${colors.reset}`);
   console.log(`${colors.blue}╚═══════════════════════════════════════════════════════════════╝${colors.reset}\n`);
 
   const results = {

@@ -1,8 +1,8 @@
-# Contributing to مناقصتي
+# Contributing to مدماك تيك
 
 ## Welcome
 
-Thank you for contributing to مناقصتي! This guide will help you get started.
+Thank you for contributing to مدماك تيك! This guide will help you get started.
 
 ## Code Style
 

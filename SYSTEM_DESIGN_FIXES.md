@@ -1,4 +1,4 @@
-# System Design Fixes - Monaqasati (مناقصتي)
+# System Design Fixes - Monaqasati (مدماك تيك)
 
 ## ✅ Implemented Fixes
 

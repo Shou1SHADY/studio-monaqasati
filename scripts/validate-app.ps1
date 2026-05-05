@@ -1,5 +1,5 @@
 # =============================================================================
-# Professional App Validation Suite - مناقصتي
+# Professional App Validation Suite - مدماك تيك
 # =============================================================================
 # Comprehensive automation combining:
 # - Code Quality (TypeScript, ESLint, Build)
@@ -52,7 +52,7 @@ $StartTime = Get-Date
 Write-Host @"
 
 ╔═══════════════════════════════════════════════════════════════════╗
-║           مناقصتي - Professional App Validation                    ║
+║           مدماك تيك - Professional App Validation                    ║
 ║                    Comprehensive Quality Suite                      ║
 ╚═══════════════════════════════════════════════════════════════════╝
 

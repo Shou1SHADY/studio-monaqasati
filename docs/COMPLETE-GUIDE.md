@@ -1,4 +1,4 @@
-# مناقصتي - Complete Development Guide
+# مدماك تيك - Complete Development Guide
 
 ## Table of Contents
 1. [Quick Start](#quick-start)
@@ -27,7 +27,7 @@
 ```powershell
 # Clone and install
 git clone <repo-url>
-cd studio-monaqasati
+cd studio-mdmak-tech
 npm install
 
 # Copy environment template
@@ -110,7 +110,7 @@ src/
 ## Project Structure
 
 ```
-studio-monaqasati/
+studio-mdmak-tech/
 ├── src/                    # Source code
 │   ├── app/               # Pages
 │   ├── components/       # UI components

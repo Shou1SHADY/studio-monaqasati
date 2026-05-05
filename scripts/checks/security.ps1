@@ -1,5 +1,5 @@
 # =============================================================================
-# Security Check - مناقصتي
+# Security Check - مدماك تيك
 # =============================================================================
 
 $ErrorActionPreference = "Continue"
@@ -9,7 +9,7 @@ if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
 Set-Location $ProjectRoot
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Security Check - مناقصتي" -ForegroundColor Cyan
+Write-Host "  Security Check - مدماك تيك" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

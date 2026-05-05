@@ -1,5 +1,5 @@
 # =============================================================================
-# Architecture Check - مناقصتي
+# Architecture Check - مدماك تيك
 # =============================================================================
 # Verifies architectural best practices and patterns
 
@@ -10,7 +10,7 @@ if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
 Set-Location $ProjectRoot
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Architecture Check - مناقصتي" -ForegroundColor Cyan
+Write-Host "  Architecture Check - مدماك تيك" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

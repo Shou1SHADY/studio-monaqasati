@@ -23,7 +23,8 @@ import {
   Package,
   Phone,
   ArrowDown,
-  Box
+  Box,
+  File
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
@@ -39,6 +40,7 @@ export default function RfqOffersPage() {
   const { user, isUserLoading } = useUser()
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
 
   const openChat = async (offer: any) => {
     if (!firestore || !user) return
@@ -168,7 +170,18 @@ export default function RfqOffersPage() {
     }
   }
 
-  const sortedOffers = offers ? [...offers].sort((a: any, b: any) => a.price - b.price) : []
+  const sortedOffers = offers ? [...offers].sort((a: any, b: any) => {
+    if (sortBy === "price") {
+      return (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0);
+    } else if (sortBy === "date") {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    } else if (sortBy === "duration") {
+      const durA = (parseInt(a.executionDuration) || 9999) * (a.executionDurationUnit === "أشهر" ? 30 : a.executionDurationUnit === "أسابيع" ? 7 : 1);
+      const durB = (parseInt(b.executionDuration) || 9999) * (b.executionDurationUnit === "أشهر" ? 30 : b.executionDurationUnit === "أسابيع" ? 7 : 1);
+      return durA - durB;
+    }
+    return 0;
+  }) : []
   const lowestPrice = sortedOffers.length > 0 ? sortedOffers[0].price : null
 
   return (
@@ -222,11 +235,58 @@ export default function RfqOffersPage() {
                         </a>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Tag size={16} className="text-muted-foreground" />
-                      الكمية: {rfq.quantity} {rfq.unitOfMeasure}
-                    </div>
+                    {rfq.isQualityCertificateRequired && (
+                      <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">
+                        شهادة جودة مطلوبة
+                      </Badge>
+                    )}
                   </div>
+
+                  {/* Products List */}
+                  {rfq.products && rfq.products.length > 0 && (
+                    <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                      <p className="text-xs font-bold text-slate-600 mb-3">المنتجات المطلوبة:</p>
+                      <div className="space-y-2">
+                        {rfq.products.map((product: any, idx: number) => (
+                          <div key={idx} className="flex items-center justify-between bg-white p-3 rounded border border-slate-100">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-slate-800">{product.name}</p>
+                              {product.description && (
+                                <p className="text-xs text-muted-foreground mt-1">{product.description}</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-bold text-primary">{product.quantity}</span>
+                              <span className="text-muted-foreground">{product.unitOfMeasure}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {rfq.notes && (
+                    <div className="mt-4 p-4 bg-blue-50/50 rounded-lg border border-blue-100">
+                      <p className="text-xs font-bold text-slate-600 mb-2">ملاحظات:</p>
+                      <p className="text-sm text-slate-700">{rfq.notes}</p>
+                    </div>
+                  )}
+
+                  {/* PDF Attachment */}
+                  {rfq.pdfUrl && (
+                    <div className="mt-4">
+                      <a 
+                        href={rfq.pdfUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
+                      >
+                        <File size={16} />
+                        عرض الملف المرفق (PDF)
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:w-px md:h-24 bg-slate-100 hidden md:block" />
@@ -526,64 +586,160 @@ export default function RfqOffersPage() {
               </Card>
             ) : (
               <Card className="border-none shadow-sm overflow-hidden bg-white">
+                {/* Sorting Buttons */}
+                <div className="p-4 border-b flex items-center gap-2 flex-wrap bg-slate-50/50">
+                  <span className="text-xs font-bold text-slate-500 ml-2">فرز سريع:</span>
+                  <Button 
+                    variant={sortBy === "price" ? "default" : "outline"} 
+                    size="sm" 
+                    onClick={() => setSortBy("price")}
+                    className="h-8 text-xs rounded-lg"
+                  >
+                    حسب السعر (الأقل أولاً)
+                  </Button>
+                  <Button 
+                    variant={sortBy === "date" ? "default" : "outline"} 
+                    size="sm" 
+                    onClick={() => setSortBy("date")}
+                    className="h-8 text-xs rounded-lg"
+                  >
+                    حسب التاريخ (الأحدث أولاً)
+                  </Button>
+                  <Button 
+                    variant={sortBy === "duration" ? "default" : "outline"} 
+                    size="sm" 
+                    onClick={() => setSortBy("duration")}
+                    className="h-8 text-xs rounded-lg"
+                  >
+                    حسب مدة التنفيذ (الأقل أولاً)
+                  </Button>
+                </div>
                 <div className="overflow-x-auto">
                   <Table>
-                    <TableHeader className="bg-slate-50">
+                    <TableHeader className="bg-gradient-to-r from-slate-50 to-white border-b-2 border-slate-100">
                       <TableRow>
-                        <TableHead className="text-right whitespace-nowrap w-32">المعيار</TableHead>
+                        <TableHead className="text-right font-bold text-slate-700 whitespace-nowrap w-40">المعيار</TableHead>
                         {sortedOffers.map((o: any, i: number) => (
-                          <TableHead key={o.id} className={`text-center min-w-[140px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
-                            مورد {i + 1}
-                            {o.price === lowestPrice && (
-                              <div className="text-[10px] text-amber-600 font-bold mt-1">أفضل سعر ⭐</div>
-                            )}
+                          <TableHead key={o.id} className={`text-center min-w-[160px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <User size={16} className="text-primary" />
+                              </div>
+                              <span className="font-bold text-slate-800">{o.supplierName || `مورد ${i + 1}`}</span>
+                              {o.price === lowestPrice && (
+                                <div className="text-[10px] text-amber-600 font-bold">أفضل سعر ⭐</div>
+                              )}
+                            </div>
                           </TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر / الوحدة</TableCell>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">السعر المقترح</TableCell>
                         {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className={`text-center font-bold ${o.price === lowestPrice ? 'text-success' : 'text-slate-800'}`}>
-                            {o.price} ر.س
+                          <TableCell key={o.id} className={`text-center font-bold ${o.price === lowestPrice ? 'text-success text-lg' : 'text-slate-800'}`}>
+                            <div className="flex flex-col">
+                              <span>{Number(o.price).toLocaleString('ar-SA')}</span>
+                              <span className="text-xs text-muted-foreground">ر.س</span>
+                            </div>
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">السعر الإجمالي</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className={`text-center text-sm ${o.price === lowestPrice ? 'text-success/80 font-bold' : 'text-slate-600'}`}>
-                            {rfq?.quantity ? (o.price * rfq.quantity).toLocaleString('en-US') : '-'} ر.س
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">التسليم</TableCell>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">الموقع</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            {o.deliveryTime || 3} أيام
+                            <div className="flex items-center justify-center gap-1">
+                              <MapPin size={12} className="text-muted-foreground" />
+                              {o.deliveryLocation || "—"}
+                            </div>
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">شهادة الجودة</TableCell>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">طريقة التسليم</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            {o.qualityCert ? <span className="text-success">✓</span> : <span className="text-muted-foreground">—</span>}
+                            {o.deliveryMethod ? (
+                              <div className="flex items-center justify-center gap-1">
+                                <Truck size={12} className="text-muted-foreground" />
+                                {o.deliveryMethod}
+                              </div>
+                            ) : "—"}
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">ملاحظات</TableCell>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">وتيرة التسليم</TableCell>
                         {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-xs text-slate-500 max-w-[150px] truncate">
-                            {o.note || "—"}
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
+                            {o.deliveryFrequency || "—"}
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow>
-                        <TableCell className="font-bold text-slate-600 bg-slate-50/50">القرار</TableCell>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">توصيل مجاني</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm">
+                            {o.isFreeShipping ? (
+                              <Badge className="bg-success/10 text-success border-success/20 text-xs">✓ نعم</Badge>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">يتضمن عينة</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm">
+                            {o.includesSample ? (
+                              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">✓ نعم</Badge>
+                            ) : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">مدة التنفيذ</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
+                            {o.executionDuration ? `${o.executionDuration} ${o.executionDurationUnit || 'أيام'}` : "—"}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">ملاحظات</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600 max-w-[150px]">
+                            <p className="truncate">{o.notes || "—"}</p>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      {rfq?.products && rfq.products.length > 0 && (
+                        <TableRow className="hover:bg-slate-50/50">
+                          <TableCell className="font-bold text-slate-700 bg-slate-50/50">عدد المنتجات</TableCell>
+                          {sortedOffers.map((o: any) => (
+                            <TableCell key={o.id} className="text-center text-sm text-slate-600">
+                              <div className="flex items-center justify-center gap-1">
+                                <Package size={12} className="text-muted-foreground" />
+                                {rfq.products.length} منتج
+                              </div>
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      )}
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">تاريخ التقديم</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center text-sm text-slate-600" suppressHydrationWarning>
+                            <div className="flex items-center justify-center gap-1">
+                              <Calendar size={12} className="text-muted-foreground" />
+                              {o.createdAt ? new Date(o.createdAt).toLocaleDateString('ar-SA') : "—"}
+                            </div>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">القرار</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center">
                             <div className="flex justify-center">{getStatusBadge(o.status || "قيد المراجعة")}</div>

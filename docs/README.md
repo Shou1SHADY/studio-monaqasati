@@ -1,4 +1,4 @@
-# مناقصتي Documentation Index
+# مدماك تيك Documentation Index
 
 ## Quick Links
 
@@ -12,7 +12,7 @@
 
 ## Project Overview
 
-**مناقصتي** (Monaqasati) is a platform connecting contractors and suppliers for bidding on construction/material projects.
+**مدماك تيك** (Monaqasati) is a platform connecting contractors and suppliers for bidding on construction/material projects.
 
 ### Tech Stack
 

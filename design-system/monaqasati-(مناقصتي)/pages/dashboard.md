@@ -1,6 +1,6 @@
 # Dashboard Page Overrides
 
-> **PROJECT:** Monaqasati (مناقصتي)
+> **PROJECT:** Mdmak Tech (مدماك تيك)
 > **Generated:** 2026-05-04
 > **Page Type:** Dashboard / Data View
 > **Source:** UX Design Article - "6 steps to design thoughtful dashboards for B2B SaaS"

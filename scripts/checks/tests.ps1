@@ -1,5 +1,5 @@
 # =============================================================================
-# Test Suite Check - مناقصتي
+# Test Suite Check - مدماك تيك
 # =============================================================================
 
 param(
@@ -15,7 +15,7 @@ if (-not $ProjectRoot) { $ProjectRoot = Get-Location }
 Set-Location $ProjectRoot
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Test Suite Check - مناقصتي" -ForegroundColor Cyan
+Write-Host "  Test Suite Check - مدماك تيك" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 

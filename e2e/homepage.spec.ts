@@ -7,7 +7,7 @@ test.describe('Homepage', () => {
 
   test('should load the homepage successfully', async ({ page }) => {
     // Check that the main heading is visible
-    await expect(page.locator('h1')).toContainText('مناقصتي');
+    await expect(page.locator('h1')).toContainText('مدماك تيك');
   });
 
   test('should display navigation with links', async ({ page }) => {

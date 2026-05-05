@@ -1,4 +1,4 @@
-# **App Name**: مناقصتي
+# **App Name**: مدماك تيك
 
 ## Core Features:
 

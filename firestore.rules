@@ -2,60 +2,98 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only access their own user document
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Allow admin full access (requires custom claims in production)
-      allow read, write: if request.auth != null && request.auth.token.admin == true;
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // RFQs - Contractors can only access their own RFQs
-    match /rfqs/{rfqId} {
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.contractorId;
-      allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.contractorId;
-      // Suppliers can read RFQs in their service areas/categories
-      allow read: if request.auth != null && 
-        request.auth.token.role == 'supplier' &&
-        request.auth.token.verified == true;
-      
-      // Offers subcollection - nested under RFQs
-      match /offers/{offerId} {
-        allow create: if request.auth != null && 
-          request.auth.uid == request.resource.data.supplierId &&
-          exists(/databases/$(database)/documents/rfqs/$(rfqId));
-        allow read: if request.auth != null && 
-          (request.auth.uid == resource.data.supplierId || 
-           request.auth.uid == get(/databases/$(database)/documents/rfqs/$(rfqId)).data.contractorId);
-        allow update: if request.auth != null && 
-          (request.auth.uid == resource.data.supplierId || 
-           request.auth.uid == get(/databases/$(database)/documents/rfqs/$(rfqId)).data.contractorId);
-        allow delete: if request.auth != null && 
-          request.auth.uid == resource.data.supplierId;
+    function getUserData() {
+      // Use get() safely only if the document exists
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && getUserData().role == role;
+    }
+
+    function isAdmin() { return hasRole('Admin'); }
+    function isSupplier() { return hasRole('Supplier'); }
+    function isContractor() { return hasRole('Contractor'); }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // --- Collection Rules ---
+
+    match /users/{userId} {
+      allow create: if isOwner(userId) || isAdmin();
+      allow get: if isOwner(userId) || isSignedIn();
+      allow list: if isAdmin() || isSignedIn();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      match /notifications/{notificationId} {
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
-    // Suppliers - Verified suppliers can read/write their own data
-    match /suppliers/{supplierId} {
-      allow read: if request.auth != null; // All authenticated users can read supplier profiles
-      allow write: if request.auth != null && request.auth.uid == supplierId;
-      allow write: if request.auth != null && request.auth.token.admin == true; // Admin can verify
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    // AI Cache - Server-side only (requires admin SDK in functions)
-    match /ai-cache/{cacheId} {
-      allow read: if request.auth != null;
-      allow write: if false; // Only server-side writes via Cloud Functions
+    match /cities/{cityId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    // Notifications - Users can only access their own notifications
-    match /notifications/{notificationId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+    match /rfqs/{rfqId} {
+      // Read access for all signed-in users
+      allow read: if isSignedIn();
+      // Allow creation if user is contractor (by role) or if the resource matches the user's UID
+      allow create: if isAdmin()
+        || isContractor()
+        || (isSignedIn() && request.resource.data.contractorId == request.auth.uid);
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid);
+      allow delete: if isAdmin();
     }
 
-    // Chats - Participants can only access their own chats
+    match /offers/{offerId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        || isSupplier()
+        || (isSignedIn() && request.resource.data.supplierId == request.auth.uid);
+      // Supplier can update, Contractor can change status (if they own the original RFQ)
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.supplierId == request.auth.uid)
+        || (isSignedIn() && resource.data.rfqId != null
+            && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    match /notification_queue/{queueEntryId} {
+      allow read, write: if isAdmin();
+    }
+
     match /chats/{chatId} {
-      allow read, write: if request.auth != null && 
-        request.auth.uid in resource.data.participants;
+      // Any signed-in user can create a chat (code handles logic)
+      allow create: if isSignedIn();
+      // Read/update for contractor or supplier only (resource == null means document doesn't exist yet)
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid
+      );
+
+      match /messages/{messageId} {
+        allow read, create: if isSignedIn();
+      }
     }
   }
 }

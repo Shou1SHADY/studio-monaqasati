@@ -19,11 +19,12 @@ import {
   Calendar,
   Truck,
   Plus,
-  Trash2
+  Trash2,
+  MapPin
 } from "lucide-react"
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, addDoc, doc } from "firebase/firestore"
+import { collection, query, where, addDoc, doc, orderBy } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 
@@ -71,6 +72,17 @@ export default function SupplierDashboard() {
 
   const { data: rfqs } = useCollection(rfqsQuery)
   const { data: offers } = useCollection(offersQuery)
+  
+  // Fetch cities from Firestore
+  const citiesQuery = useMemoFirebase(() => {
+    if (!firestore) return null
+    return query(collection(firestore, "cities"), orderBy("name", "asc"))
+  }, [firestore])
+  
+  const { data: citiesFromDB, isLoading: isCitiesLoading } = useCollection(citiesQuery)
+  const cities = (!citiesFromDB || citiesFromDB.length === 0)
+    ? ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الأحساء', 'الجبيل', 'تبوك', 'حائل', 'القصيم', 'بريدة', 'عنيزة', 'أبها', 'خميس مشيط', 'جازان', 'نجران', 'الباحة', 'سكاكا', 'عرعر']
+    : citiesFromDB.map((c: any) => c.name)
   
   const pendingCount = offers?.filter((o: any) => o.status === "قيد المراجعة" || o.status === "New").length || 0
   const acceptedCount = offers?.filter((o: any) => o.status === "مقبول" || o.status === "Accepted").length || 0
@@ -272,11 +284,19 @@ export default function SupplierDashboard() {
               <div className="space-y-3">
                 <p className="text-sm font-bold text-slate-700">مناطق التغطية:</p>
                 <div className="flex flex-wrap gap-2">
-                  {['الرياض', 'المنطقة الشرقية', 'جدة'].map((area) => (
-                    <span key={area} className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded">
-                      {area}
-                    </span>
-                  ))}
+                  {userData?.coverageCities?.length > 0 ? (
+                    userData.coverageCities.slice(0, 6).map((city: string) => (
+                      <span key={city} className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 transition-colors cursor-default">
+                        <MapPin size={10} className="inline ml-1" />
+                        {city}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">لم تتم إضافة مدن بعد</span>
+                  )}
+                  {userData?.coverageCities && userData.coverageCities.length > 6 && (
+                    <span className="text-xs text-primary font-medium">+{userData.coverageCities.length - 6} مدن أخرى</span>
+                  )}
                 </div>
               </div>
               <Link href="/supplier/profile" className="block pt-4">
@@ -315,7 +335,7 @@ export default function SupplierDashboard() {
                     value={deliveryLocation}
                     onChange={(e) => setDeliveryLocation(e.target.value)}
                     className="sm:col-span-3 w-full"
-                    placeholder="مثال: الرياض - حي النرجس"
+                    placeholder="أدخل عنوان أو اختر من المدن المغطاة"
                   />
                 </div>
 

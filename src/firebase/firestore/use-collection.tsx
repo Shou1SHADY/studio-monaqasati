@@ -71,6 +71,7 @@ export function useCollection<T = any>(
 
     setIsLoading(true);
     setError(null);
+    setData(null); // Clear old data immediately when query changes
 
     // Directly use memoizedTargetRefOrQuery as it's assumed to be the final query
     const unsubscribe = onSnapshot(
