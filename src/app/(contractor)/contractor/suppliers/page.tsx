@@ -35,8 +35,8 @@ import {
   DialogTitle, 
   DialogDescription 
 } from "@/components/ui/dialog"
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { collection, query, where } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
+import { collection, query, where, doc } from "firebase/firestore"
 import { useState } from "react"
  
 export default function SuppliersDirectory() {
@@ -47,6 +47,12 @@ export default function SuppliersDirectory() {
   const [filterCity, setFilterCity] = useState<string>("all")
   const [filterSpecialization, setFilterSpecialization] = useState<string>("all")
   const [showFilters, setShowFilters] = useState(false)
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
+
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
     return query(collection(firestore, "users"), where("role", "==", "Supplier"))
@@ -57,8 +63,8 @@ export default function SuppliersDirectory() {
   // Fetch contractor's RFQs
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "rfqs"), where("contractorId", "==", user.uid))
-  }, [firestore, user, isUserLoading])
+    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
+  }, [firestore, user, isUserLoading, profile?.organizationId])
   
   const { data: myRfqs } = useCollection(rfqsQuery)
   const myRfqIds = myRfqs?.map((r: any) => r.id) || []

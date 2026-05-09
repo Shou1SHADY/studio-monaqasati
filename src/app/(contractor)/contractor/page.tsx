@@ -67,17 +67,17 @@ export default function ContractorDashboard() {
     return lastRfq?.createdAt ? new Date(lastRfq.createdAt) : null;
   }
 
-  const rfqsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "rfqs"), where("contractorId", "==", user.uid))
-  }, [firestore, user, isUserLoading])
-
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   
   const { data: profile } = useDoc(userDocRef)
+
+  const rfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const usersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -93,9 +93,12 @@ export default function ContractorDashboard() {
   // Extract RFQ IDs to find accepted offers
   const myRfqIds = rfqs?.map((r: any) => r.id) || [];
   const acceptedOffersQuery = useMemoFirebase(() => {
-    if (!firestore || myRfqIds.length === 0) return null
-    return query(collection(firestore, "offers"), where("rfqId", "in", myRfqIds.slice(0, 30)))
-  }, [firestore, myRfqIds.join(",")])
+    if (!firestore || !profile || !user) return null
+    return query(collection(firestore, "offers"), 
+      where("contractorOrgId", "==", profile.organizationId || user.uid),
+      where("status", "==", "مقبول")
+    )
+  }, [firestore, profile?.organizationId, user?.uid])
   
   const { data: offersData } = useCollection(acceptedOffersQuery)
   

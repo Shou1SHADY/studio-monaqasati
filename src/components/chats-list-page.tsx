@@ -5,8 +5,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Loader2, ChevronLeft, Clock } from "lucide-react"
-import { useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
-import { collection, query, where } from "firebase/firestore"
+import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
+import { collection, query, where, doc } from "firebase/firestore"
 import { useRouter } from "next/navigation"
 
 interface ChatsListPageProps {
@@ -16,16 +16,21 @@ interface ChatsListPageProps {
 export function ChatsListPage({ role }: ChatsListPageProps) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
   const router = useRouter()
 
   const chatsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    const field = role === "contractor" ? "contractorId" : "supplierId"
+    const field = role === "contractor" ? "contractorOrgId" : "supplierOrgId"
     return query(
       collection(firestore, "chats"),
-      where(field, "==", user.uid)
+      where(field, "==", profile?.organizationId || user.uid)
     )
-  }, [firestore, user, isUserLoading, role])
+  }, [firestore, user, isUserLoading, role, profile?.organizationId])
 
   const { data: rawChats, isLoading } = useCollection(chatsQuery)
 

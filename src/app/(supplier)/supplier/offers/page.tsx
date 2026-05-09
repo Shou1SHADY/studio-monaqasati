@@ -35,6 +35,11 @@ import Link from "next/link"
 export default function SupplierOffersPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
   const { toast } = useToast()
   const router = useRouter()
   const [viewOffer, setViewOffer] = useState<any | null>(null)
@@ -56,14 +61,19 @@ export default function SupplierOffersPage() {
     if (isUserLoading || !user || !firestore) return null
     return query(
       collection(firestore, "offers"),
-      where("supplierId", "==", user.uid),
-      orderBy("createdAt", "desc")
+      where("organizationId", "==", profile?.organizationId || user.uid)
     )
   }, [firestore, user, isUserLoading])
 
-  const { data: offersData, isLoading: isCollectionLoading } = useCollection(offersQuery)
+  const { data: rawOffers, isLoading: isCollectionLoading } = useCollection(offersQuery)
   const isLoading = isUserLoading || isCollectionLoading
-  const offers = offersData || []
+  const offers = rawOffers
+    ? [...rawOffers].sort((a: any, b: any) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+        return bTime - aTime
+      })
+    : []
 
   // Stats
   const pendingCount = offers.filter((o: any) => o.status === "قيد المراجعة").length
@@ -230,24 +240,24 @@ export default function SupplierOffersPage() {
                     <TableHead className="text-right">السعر</TableHead>
                     <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-left">إجراءات</TableHead>
+                    <TableHead className="text-right">إجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {offers.map((offer: any) => (
                     <TableRow key={offer.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-mono text-xs hidden md:table-cell">{offer.id.substring(0, 8)}</TableCell>
-                      <TableCell className="font-bold">{offer.rfqTitle || "مناقصة غير محددة"}</TableCell>
-                      <TableCell className="font-bold">
-                        <div className="flex items-center gap-1">
+                      <TableCell className="font-mono text-xs hidden md:table-cell text-right">{offer.id.substring(0, 8)}</TableCell>
+                      <TableCell className="font-bold text-right">{offer.rfqTitle || "مناقصة غير محددة"}</TableCell>
+                      <TableCell className="font-bold text-right">
+                        <div className="flex items-center justify-start gap-1">
                           <span className="text-primary font-bold">{offer.price ? `${offer.price}` : "غير متوفر"}</span>
                           {offer.price && <span className="text-xs text-muted-foreground">ر.س</span>}
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground hidden sm:table-cell" suppressHydrationWarning>
+                      <TableCell className="text-xs text-muted-foreground hidden sm:table-cell text-right" suppressHydrationWarning>
                         {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString("ar-SA") : "-"}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-right">
                         <div className="flex flex-col gap-1 items-start">
                           {getStatusBadge(offer.status || "قيد المراجعة")}
                           {offer.sampleStatus && (
@@ -261,8 +271,8 @@ export default function SupplierOffersPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-left">
-                        <div className="flex items-center gap-1">
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-start gap-1">
                           {/* View Details */}
                           <Button
                             variant="ghost"

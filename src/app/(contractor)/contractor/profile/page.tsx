@@ -3,16 +3,47 @@
 
 import { useState, useEffect } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+import { useUser, useFirestore, useDoc, useMemoFirebase } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Building2, MapPin, Phone, Mail, Globe, FileCheck, CheckCircle2, ShieldCheck, Upload, Trash2, Link as LinkIcon } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { MapPicker } from "@/components/ui/map-picker"
+import { 
+  Loader2, 
+  Building2, 
+  MapPin, 
+  Phone, 
+  Mail, 
+  Globe, 
+  FileCheck, 
+  CheckCircle2, 
+  ShieldCheck, 
+  Upload, 
+  Trash2, 
+  Link as LinkIcon,
+  X,
+  Plus,
+  Briefcase,
+  Award,
+  FolderOpen,
+  User
+} from "lucide-react"
 
 export default function ContractorProfilePage() {
   const { user, isUserLoading } = useUser()
@@ -29,8 +60,17 @@ export default function ContractorProfilePage() {
     phone: "",
     email: "",
     website: "",
-    certificates: [] as {name: string, date: string}[]
+    certificates: [] as {id: string, name: string, date: string, url?: string}[],
+    legalDocuments: {
+      cr: { url: "", expiryDate: "" },
+      vat: { url: "", expiryDate: "" },
+      zakat: { url: "", expiryDate: "" },
+      gosi: { url: "", expiryDate: "" },
+      chamber: { url: "", expiryDate: "" },
+    },
+    locationCoords: null as { lat: number, lng: number } | null
   })
+  const [showMapDialog, setShowMapDialog] = useState(false)
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -51,7 +91,15 @@ export default function ContractorProfilePage() {
         email: userData.email || user?.email || "",
         description: userData.description || "",
         website: userData.website || "",
-        certificates: userData.certificates || []
+        certificates: userData.certificates || [],
+        legalDocuments: userData.legalDocuments || {
+          cr: { url: "", expiryDate: "" },
+          vat: { url: "", expiryDate: "" },
+          zakat: { url: "", expiryDate: "" },
+          gosi: { url: "", expiryDate: "" },
+          chamber: { url: "", expiryDate: "" },
+        },
+        locationCoords: userData.locationCoords || null
       }))
     }
   }, [userData, user])
@@ -71,6 +119,8 @@ export default function ContractorProfilePage() {
         description: profile.description,
         website: profile.website,
         certificates: profile.certificates,
+        legalDocuments: profile.legalDocuments,
+        locationCoords: profile.locationCoords,
         profileCompleted: true
       })
       toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
@@ -86,209 +136,424 @@ export default function ContractorProfilePage() {
     if (!file) return
     
     setIsUploading(true)
-    // Simulate upload delay
     setTimeout(() => {
       const newCert = {
+        id: Date.now().toString(),
         name: file.name,
-        date: new Date().toLocaleDateString('ar-SA')
+        date: new Date().toLocaleDateString('ar-SA'),
+        url: URL.createObjectURL(file)
       }
       setProfile(prev => ({
         ...prev,
         certificates: [...prev.certificates, newCert]
       }))
       setIsUploading(false)
-      toast({ title: "تم الرفع", description: "تمت إضافة المستند بنجاح. لا تنسَ حفظ التغييرات." })
+      toast({ title: "تم الرفع", description: "تمت إضافة المستند بنجاح." })
     }, 1500)
   }
 
-  const removeCertificate = (index: number) => {
+  const removeCertificate = (id: string) => {
     setProfile(prev => ({
       ...prev,
-      certificates: prev.certificates.filter((_, i) => i !== index)
+      certificates: prev.certificates.filter(c => c.id !== id)
     }))
   }
 
-  if (isUserLoading || isUserDataLoading) return <div className="p-20 text-center"><Loader2 className="animate-spin mx-auto" /></div>
+  const handleLegalDocUpload = (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    setIsUploading(true)
+    toast({ title: "جاري الرفع...", description: "يتم رفع المستند الآن" })
+    
+    setTimeout(() => {
+      setProfile(prev => ({
+        ...prev,
+        legalDocuments: {
+          ...prev.legalDocuments,
+          [key]: {
+            ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
+            url: URL.createObjectURL(file)
+          }
+        }
+      }))
+      setIsUploading(false)
+      toast({ title: "تم الرفع", description: "تم تحديث المستند بنجاح." })
+    }, 1000)
+  }
+
+  const updateLegalDocExpiry = (key: string, date: string) => {
+    setProfile(prev => ({
+      ...prev,
+      legalDocuments: {
+        ...prev.legalDocuments,
+        [key]: {
+          ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
+          expiryDate: date
+        }
+      }
+    }))
+  }
+
+  const completionPercentage = Math.round([
+    profile.name,
+    profile.phone,
+    profile.location,
+    profile.description,
+    profile.crNumber,
+    profile.legalDocuments.cr.url,
+    profile.legalDocuments.vat.url
+  ].filter(Boolean).length / 7 * 100)
+
+  if (isUserLoading || isUserDataLoading) {
+    return (
+      <PortalLayout>
+        <div className="flex justify-center items-center h-[60vh]">
+          <Loader2 className="animate-spin text-primary" size={32} />
+        </div>
+      </PortalLayout>
+    )
+  }
 
   return (
     <PortalLayout>
-      <div className="max-w-4xl mx-auto py-8 text-right space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">ملف المقاول</h1>
-          <p className="text-muted-foreground mt-1">إدارة بيانات شركتك التعريفية ومعلومات التواصل</p>
+      <div className="max-w-6xl mx-auto py-8 text-right space-y-8">
+        {/* Header Section - Clean SaaS Redesign */}
+        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/40 p-8 relative overflow-hidden group">
+          {/* Subtle Decorative Gradient */}
+          <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-primary/5 to-transparent opacity-50 pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-10">
+            <div className="flex flex-col md:flex-row items-center gap-10 flex-1">
+              {/* Avatar Section - Enhanced Pro Max Icon */}
+              <div className="relative group/avatar">
+                <div className="h-36 w-36 rounded-[3rem] bg-white shadow-[0_20px_50px_rgba(15,23,42,0.15)] flex items-center justify-center overflow-hidden transition-all duration-700 group-hover/avatar:scale-110 group-hover/avatar:rotate-3 border border-slate-100">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/80 to-secondary opacity-[0.03]" />
+                  <div className="h-20 w-20 rounded-[2rem] bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-lg transform transition-transform duration-500 group-hover/avatar:scale-110">
+                    <Building2 size={40} className="text-white" />
+                  </div>
+                </div>
+                <div className="absolute -bottom-3 -left-3 bg-success text-white p-3 rounded-[1.5rem] shadow-2xl border-4 border-white z-20 animate-in zoom-in duration-500">
+                  <ShieldCheck size={24} />
+                </div>
+              </div>
+
+              {/* Text Info - Enhanced Pro Max Typography */}
+              <div className="text-center md:text-right space-y-4">
+                <div className="space-y-1">
+                  <Badge className="px-4 py-1 rounded-full text-[10px] font-black border-none shadow-sm mb-2 bg-success/10 text-success">
+                    مقاول معتمد لدى مدماك
+                  </Badge>
+                  <h1 className="text-4xl lg:text-5xl font-black text-slate-900 font-headline tracking-tighter leading-none">{profile.name || "شركة مقاولات"}</h1>
+                </div>
+                <div className="flex flex-wrap justify-center md:justify-start items-center gap-4 text-slate-500">
+                  <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-sm">
+                    <Mail size={14} className="text-primary/60" />
+                    <span>{profile.email}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Stats Dashboard */}
+            <div className="w-full lg:w-80 grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">جاهزية الملف</span>
+                <span className="text-3xl font-black text-primary leading-none">{completionPercentage}%</span>
+                <div className="w-full h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
+                  <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${completionPercentage}%` }} />
+                </div>
+              </div>
+              <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">الشهادات</span>
+                <span className="text-3xl font-black text-slate-800 leading-none">{profile.certificates.length}</span>
+                <span className="text-[10px] text-slate-400 font-medium mt-1">شهادة مرفوعة</span>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="shadow-sm border-none">
-              <CardHeader className="border-b">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Building2 size={20} className="text-primary" />
-                  المعلومات الأساسية
+        {/* Action Bar - Sticky */}
+        <div className="sticky top-6 z-40 flex justify-end gap-3 bg-white/40 backdrop-blur-2xl p-4 rounded-[2rem] border border-white/20 shadow-xl shadow-slate-200/20 max-w-fit mr-auto">
+          <Button variant="ghost" onClick={() => window.location.reload()} className="h-12 px-6 rounded-2xl hover:bg-white/50 text-slate-600 transition-all font-bold">
+            <X size={18} className="ml-2" />
+            إلغاء
+          </Button>
+          <Button className="gap-2 h-12 px-10 rounded-2xl shadow-xl shadow-primary/30 bg-primary hover:bg-secondary hover:text-white hover:scale-105 active:scale-95 transition-all duration-300 font-bold text-white ring-offset-2 ring-primary/20 hover:ring-4" onClick={handleSave} disabled={isLoading}>
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            حفظ التغييرات
+          </Button>
+        </div>
+
+        <Tabs defaultValue="basic" className="space-y-8" dir="rtl">
+          <TabsList className="w-full justify-start h-14 p-1 bg-slate-100/50 rounded-2xl border mb-8 overflow-x-auto overflow-y-hidden no-scrollbar">
+            <TabsTrigger value="basic" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
+              <User size={18} />
+              البيانات الأساسية
+            </TabsTrigger>
+            <TabsTrigger value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
+              <ShieldCheck size={18} />
+              التوثيق القانوني
+            </TabsTrigger>
+            <TabsTrigger value="certificates" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
+              <Award size={18} />
+              الشهادات والاعتمادات
+            </TabsTrigger>
+          </TabsList>
+
+          {/* BASIC INFO TAB */}
+          <TabsContent value="basic" className="m-0 focus-visible:outline-none">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <Building2 size={22} className="text-primary" />
+                  معلومات المقاول والمقر
                 </CardTitle>
+                <CardDescription>البيانات التي تظهر للموردين في المناقصات</CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">اسم الشركة</Label>
-                    <Input id="name" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cr">رقم السجل التجاري</Label>
-                    <Input id="cr" value={profile.crNumber} onChange={e => setProfile({...profile, crNumber: e.target.value})} className="dir-ltr text-left" />
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="desc">نبذة عن الشركة</Label>
-                  <Textarea 
-                    id="desc" 
-                    rows={4} 
-                    value={profile.description} 
-                    onChange={e => setProfile({...profile, description: e.target.value})} 
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">رقم الهاتف</Label>
-                    <div className="relative">
-                      <Phone className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input id="phone" className="pr-10 dir-ltr text-left" value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">البريد الإلكتروني</Label>
-                    <div className="relative">
-                      <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input id="email" className="pr-10 bg-slate-50 text-slate-500 dir-ltr text-left" disabled value={profile.email} />
-                    </div>
-                  </div>
-                  <div className="space-y-2 sm:col-span-2">
-                    <Label htmlFor="loc">المدينة / المقر</Label>
-                    <div className="relative">
-                      <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة / المؤسسة</Label>
                       <Input 
-                        id="loc" 
-                        className="pr-10" 
-                        value={profile.location} 
-                        onChange={e => setProfile({...profile, location: e.target.value})} 
-                        placeholder="الرياض، جدة..."
+                        id="name" 
+                        value={profile.name}
+                        onChange={e => setProfile({...profile, name: e.target.value})}
+                        className="h-11 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone" className="text-slate-700 font-bold">رقم التواصل المعتمد</Label>
+                      <Input 
+                        id="phone" 
+                        value={profile.phone}
+                        onChange={e => setProfile({...profile, phone: e.target.value})}
+                        className="dir-ltr text-left h-11"
+                        placeholder="+966 5x xxx xxxx"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="cr" className="text-slate-700 font-bold">رقم السجل التجاري</Label>
+                      <Input 
+                        id="cr" 
+                        value={profile.crNumber}
+                        onChange={e => setProfile({...profile, crNumber: e.target.value})}
+                        className="dir-ltr text-left h-11"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="website" className="text-slate-700 font-bold">الموقع الإلكتروني</Label>
+                      <Input 
+                        id="website" 
+                        value={profile.website}
+                        onChange={e => setProfile({...profile, website: e.target.value})}
+                        className="dir-ltr text-left h-11"
+                        placeholder="https://..."
                       />
                     </div>
                   </div>
                 </div>
-              </CardContent>
-              <CardFooter className="border-t bg-slate-50/50 justify-end p-4">
-                <Button className="gap-2" onClick={handleSave} disabled={isLoading}>
-                  {isLoading ? <Loader2 className="animate-spin h-5 w-5" /> : <CheckCircle2 size={18} />}
-                  حفظ التغييرات
-                </Button>
-              </CardFooter>
-            </Card>
 
-            <Card className="shadow-sm border-none">
-              <CardHeader className="border-b">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileCheck size={20} className="text-primary" />
-                  التوثيقات والشهادات
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between p-4 bg-success/5 border border-success/20 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <ShieldCheck className="text-success" size={24} />
-                    <div>
-                      <p className="font-bold text-slate-800">السجل التجاري موثق</p>
-                      <p className="text-xs text-muted-foreground">تم التحقق من بيانات الشركة من قبل الإدارة</p>
+                <Separator className="my-4" />
+
+                <div className="space-y-4">
+                  <Label htmlFor="loc" className="text-slate-700 font-bold">المقر الرئيسي</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input 
+                        id="loc" 
+                        className="pr-10 h-11"
+                        value={profile.location}
+                        onChange={e => setProfile({...profile, location: e.target.value})}
+                        placeholder="المدينة، الحي..."
+                      />
                     </div>
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="icon" 
+                      className={`h-11 w-11 shrink-0 ${profile.locationCoords ? 'bg-success/10 border-success/30 text-success' : ''}`}
+                      onClick={() => setShowMapDialog(true)}
+                    >
+                      <MapPin size={18} />
+                    </Button>
                   </div>
-                  <Badge className="bg-success text-white">نشط</Badge>
+                  {profile.locationCoords && (
+                    <p className="text-[10px] text-success font-medium mt-1">✓ تم تحديد الموقع على الخريطة</p>
+                  )}
                 </div>
-                
-                {profile.certificates.length > 0 && (
-                  <div className="space-y-3 mb-4">
-                    {profile.certificates.map((cert, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 border rounded-lg bg-slate-50 group">
+
+                <Dialog open={showMapDialog} onOpenChange={setShowMapDialog}>
+                  <DialogContent className="sm:max-w-[600px] text-right" dir="rtl">
+                    <DialogHeader>
+                      <DialogTitle>تحديد المقر على الخريطة</DialogTitle>
+                      <DialogDescription>اختر موقع المقر الرئيسي لشركتك بدقة</DialogDescription>
+                    </DialogHeader>
+                    <div className="h-[400px] w-full rounded-xl overflow-hidden border">
+                      <MapPicker 
+                        initialPosition={profile.locationCoords} 
+                        onLocationSelect={(coords) => setProfile(prev => ({ ...prev, locationCoords: coords }))} 
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button onClick={() => setShowMapDialog(false)} className="w-full">تأكيد الموقع</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                <div className="space-y-4 pt-4">
+                  <Label htmlFor="desc" className="text-slate-700 font-bold">وصف الشركة (البروفايل التعريفي)</Label>
+                  <Textarea 
+                    id="desc" 
+                    rows={5}
+                    placeholder="اكتب نبذة عن تاريخ الشركة، خبراتها في تنفيذ المشاريع..."
+                    value={profile.description}
+                    onChange={e => setProfile({...profile, description: e.target.value})}
+                    className="bg-white resize-none text-md leading-relaxed"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* LEGAL TAB */}
+          <TabsContent value="legal" className="m-0 focus-visible:outline-none">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <ShieldCheck size={22} className="text-primary" />
+                  الوثائق الرسمية والتوثيق
+                </CardTitle>
+                <CardDescription>الوثائق المطلوبة للتحقق من هوية المقاول</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { id: 'cr', label: 'السجل التجاري', icon: Building2 },
+                    { id: 'vat', label: 'شهادة ضريبة القيمة المضافة', icon: FileCheck },
+                    { id: 'zakat', label: 'شهادة الزكاة', icon: ShieldCheck },
+                    { id: 'gosi', label: 'شهادة التأمينات الاجتماعية (GOSI)', icon: CheckCircle2 },
+                    { id: 'chamber', label: 'شهادة الغرفة التجارية', icon: Building2 }
+                  ].map((doc) => {
+                    const data = profile.legalDocuments[doc.id as keyof typeof profile.legalDocuments]
+                    return (
+                      <div key={doc.id} className="p-5 rounded-2xl border bg-white hover:border-primary/20 transition-all space-y-4 shadow-sm">
                         <div className="flex items-center gap-3">
-                          <FileCheck className="text-primary" size={20} />
-                          <div>
-                            <p className="font-bold text-sm text-slate-800">{cert.name}</p>
-                            <p className="text-xs text-muted-foreground">تاريخ الرفع: {cert.date}</p>
+                          <div className="h-10 w-10 rounded-lg bg-slate-50 flex items-center justify-center text-primary border">
+                            <doc.icon size={20} />
+                          </div>
+                          <h4 className="font-bold text-slate-800 text-sm">{doc.label}</h4>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">تاريخ الانتهاء</span>
+                            {data?.expiryDate && (
+                              <Badge variant="outline" className="text-[10px] font-normal">
+                                {new Date(data.expiryDate) < new Date() ? "منتهي" : "ساري"}
+                              </Badge>
+                            )}
+                          </div>
+                          <Input 
+                            type="date" 
+                            className="h-9 text-xs"
+                            value={data?.expiryDate || ""}
+                            onChange={(e) => updateLegalDocExpiry(doc.id, e.target.value)}
+                          />
+                          
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="flex-1 h-9 relative overflow-hidden bg-slate-50 hover:bg-primary hover:text-white transition-all group/upload">
+                              <input 
+                                type="file" 
+                                className="absolute inset-0 opacity-0 cursor-pointer z-20"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={(e) => handleLegalDocUpload(doc.id, e)}
+                              />
+                              <Upload size={14} className="ml-2 transition-transform group-hover/upload:-translate-y-1" />
+                              <span className="text-xs font-bold">{data?.url ? 'تحديث' : 'رفع'}</span>
+                            </Button>
+                            {data?.url && (
+                              <Button variant="ghost" size="sm" className="h-9 w-9 p-0" asChild>
+                                <a href={data.url} target="_blank" rel="noopener noreferrer"><LinkIcon size={14} /></a>
+                              </Button>
+                            )}
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => removeCertificate(idx)} className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* CERTIFICATES TAB */}
+          <TabsContent value="certificates" className="m-0 focus-visible:outline-none">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="flex flex-row items-center justify-between border-b bg-slate-50/50">
+                <div>
+                  <CardTitle className="text-xl font-bold flex items-center gap-2">
+                    <Award size={22} className="text-primary" />
+                    الشهادات والاعتمادات
+                  </CardTitle>
+                  <CardDescription>شهادات الأيزو، الجودة، واعتمادات التصنيف</CardDescription>
+                </div>
+                <Button className="relative overflow-hidden rounded-full h-10 px-6 gap-2 shadow-md">
+                  <input 
+                    type="file" 
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    onChange={handleFileUpload}
+                    disabled={isUploading}
+                  />
+                  {isUploading ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
+                  رفع شهادة جديدة
+                </Button>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {profile.certificates.map(cert => (
+                    <div key={cert.id} className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-primary/20 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="h-12 w-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100">
+                          <Award size={24} />
+                        </div>
+                        <div>
+                          <h5 className="font-bold text-slate-800 text-md leading-tight">{cert.name}</h5>
+                          <p className="text-xs text-muted-foreground mt-1">تم الرفع: {cert.date}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {cert.url && (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" asChild>
+                            <a href={cert.url} target="_blank" rel="noopener noreferrer"><LinkIcon size={14} /></a>
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-300 hover:text-destructive" onClick={() => removeCertificate(cert.id)}>
                           <Trash2 size={16} />
                         </Button>
                       </div>
-                    ))}
-                  </div>
-                )}
-                
-                <div className="p-4 border border-dashed rounded-lg flex flex-col items-center justify-center py-8 text-center gap-2 relative hover:bg-slate-50 transition-colors">
-                  <input 
-                    type="file" 
-                    accept=".pdf,.png,.jpg,.jpeg" 
-                    onChange={handleFileUpload}
-                    disabled={isUploading}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed" 
-                  />
-                  {isUploading ? (
-                    <Loader2 className="animate-spin text-primary" size={24} />
-                  ) : (
-                    <>
-                      <p className="text-sm text-muted-foreground mb-2">هل لديك شهادات جودة (ISO) أو تصنيفات أخرى؟</p>
-                      <Button variant="outline" size="sm" className="pointer-events-none gap-2">
-                        <Upload size={16} />
-                        إضافة مستند جديد
-                      </Button>
-                    </>
+                    </div>
+                  ))}
+                  
+                  {profile.certificates.length === 0 && (
+                    <div className="col-span-full py-20 flex flex-col items-center justify-center text-muted-foreground bg-slate-50/50 rounded-2xl border border-dashed">
+                      <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
+                        <Award size={32} className="opacity-20" />
+                      </div>
+                      <p className="font-medium">لا توجد شهادات مضافة</p>
+                      <p className="text-xs mt-1">أضف شهادات التصنيف والجودة لتعزيز ملفك</p>
+                    </div>
                   )}
                 </div>
               </CardContent>
             </Card>
-          </div>
-
-          <div className="space-y-6">
-            <Card className="shadow-sm border-none bg-primary text-white">
-              <CardContent className="p-6 space-y-4 text-center">
-                <div className="h-24 w-24 rounded-full bg-white/20 flex items-center justify-center mx-auto border-4 border-white/10">
-                  <Building2 size={48} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-xl">{profile.name}</h3>
-                  <Badge className="mt-2 bg-white/20 text-white border-none">مقاول معتمد</Badge>
-                </div>
-                <div className="pt-4 flex flex-col gap-2 text-sm text-white/80">
-                  <div className="flex items-center justify-between">
-                    <span>تاريخ الانضمام</span>
-                    <span className="font-bold">يناير 2024</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>إجمالي المناقصات</span>
-                    <span className="font-bold">12 مناقصة</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-sm border-slate-100">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-md font-bold">معلومات التواصل</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div className="flex items-center gap-3">
-                  <MapPin size={16} className="text-primary shrink-0" />
-                  <span className="text-slate-600">{profile.location}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Globe size={16} className="text-primary shrink-0" />
-                  <span className="text-slate-600">{profile.website}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </PortalLayout>
   )

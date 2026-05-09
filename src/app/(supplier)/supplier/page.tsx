@@ -3,12 +3,14 @@
 import { useState } from "react"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Package, 
   Handshake, 
@@ -22,6 +24,7 @@ import {
   Trash2,
   MapPin
 } from "lucide-react"
+import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import Link from "next/link"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, addDoc, doc, orderBy } from "firebase/firestore"
@@ -34,14 +37,6 @@ export default function SupplierDashboard() {
    const firestore = useFirestore();
    const { user, isUserLoading } = useUser();
    const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
-   const [offerPrice, setOfferPrice] = useState("")
-   const [deliveryLocation, setDeliveryLocation] = useState("")
-   const [deliveryMethod, setDeliveryMethod] = useState("")
-   const [deliveryFrequency, setDeliveryFrequency] = useState("")
-   const [deliveryBatches, setDeliveryBatches] = useState<{id: string, quantity: string, deliveryDate: string, price: string}[]>([
-     { id: "1", quantity: "", deliveryDate: "", price: "" }
-   ])
-
    // Fetch supplier profile from Firestore
    const userDocRef = useMemoFirebase(() => {
      if (isUserLoading || !user || !firestore) return null
@@ -51,8 +46,6 @@ export default function SupplierDashboard() {
 
    const rfqsQuery = useMemoFirebase(() => {
      if (isUserLoading || !user || !firestore) return null
-     
-     // If supplier has specializations, filter RFQs by those categories
      const specializations = userData?.specializations || []
      if (specializations.length > 0) {
        return query(
@@ -61,28 +54,16 @@ export default function SupplierDashboard() {
          where("category", "in", specializations.slice(0, 30))
        )
      }
-     
      return query(collection(firestore, "rfqs"), where("status", "==", "New"))
    }, [firestore, user, isUserLoading, userData])
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "offers"), where("supplierId", "==", user.uid))
-  }, [firestore, user, isUserLoading])
+    return query(collection(firestore, "offers"), where("organizationId", "==", userData?.organizationId || user.uid))
+  }, [firestore, user, isUserLoading, userData?.organizationId])
 
   const { data: rfqs } = useCollection(rfqsQuery)
   const { data: offers } = useCollection(offersQuery)
-  
-  // Fetch cities from Firestore
-  const citiesQuery = useMemoFirebase(() => {
-    if (!firestore) return null
-    return query(collection(firestore, "cities"), orderBy("name", "asc"))
-  }, [firestore])
-  
-  const { data: citiesFromDB, isLoading: isCitiesLoading } = useCollection(citiesQuery)
-  const cities = (!citiesFromDB || citiesFromDB.length === 0)
-    ? ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الأحساء', 'الجبيل', 'تبوك', 'حائل', 'القصيم', 'بريدة', 'عنيزة', 'أبها', 'خميس مشيط', 'جازان', 'نجران', 'الباحة', 'سكاكا', 'عرعر']
-    : citiesFromDB.map((c: any) => c.name)
   
   const pendingCount = offers?.filter((o: any) => o.status === "قيد المراجعة" || o.status === "New").length || 0
   const acceptedCount = offers?.filter((o: any) => o.status === "مقبول" || o.status === "Accepted").length || 0
@@ -99,86 +80,6 @@ export default function SupplierDashboard() {
   ]
 
   const recommendedRfqs = rfqs?.slice(0, 3) || []
-
-  const resetForm = () => {
-    setOfferPrice("")
-    setDeliveryLocation("")
-    setDeliveryMethod("")
-    setDeliveryFrequency("")
-    setDeliveryBatches([{ id: "1", quantity: "", deliveryDate: "", price: "" }])
-  }
-
-  const addBatch = () => {
-    setDeliveryBatches([...deliveryBatches, { id: Date.now().toString(), quantity: "", deliveryDate: "", price: "" }])
-  }
-
-  const removeBatch = (id: string) => {
-    if (deliveryBatches.length > 1) {
-      setDeliveryBatches(deliveryBatches.filter(b => b.id !== id))
-    }
-  }
-
-  const updateBatch = (id: string, field: string, value: string) => {
-    setDeliveryBatches(deliveryBatches.map(b => b.id === id ? { ...b, [field]: value } : b))
-  }
-
-  const submitOffer = async () => {
-    if (!user || !firestore) {
-      toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
-      return;
-    }
-
-    if (!selectedRfq || !offerPrice || !deliveryLocation || !deliveryMethod) {
-      toast({ title: "بيانات ناقصة", description: "يرجى ملء جميع الحقول المطلوبة", variant: "destructive" });
-      return;
-    }
-
-    const validBatches = deliveryBatches.filter(b => b.quantity && b.deliveryDate && b.price)
-    if (validBatches.length === 0) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إضافة دفعة تسليم واحدة على الأقل", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const totalBatchesPrice = validBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
-
-      await addDoc(collection(firestore, "offers"), {
-        supplierId: user.uid,
-        rfqId: selectedRfq.id,
-        rfqTitle: selectedRfq.title,
-        price: offerPrice,
-        deliveryLocation: deliveryLocation,
-        deliveryMethod: deliveryMethod,
-        deliveryFrequency: deliveryFrequency,
-        deliveryBatches: validBatches.map(b => ({
-          quantity: b.quantity,
-          deliveryDate: b.deliveryDate,
-          price: b.price
-        })),
-        totalBatchesPrice: totalBatchesPrice,
-        status: "قيد المراجعة",
-        createdAt: new Date().toISOString()
-      });
-
-      toast({
-        title: "تم تقديم العرض بنجاح!",
-        description: `تم إرسال عرضك بنجاح بمبلغ ${offerPrice} ر.س.`,
-      })
-      setSelectedRfq(null);
-      resetForm();
-      setTimeout(() => {
-        router.push("/supplier/offers")
-      }, 1000)
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "خطأ",
-        description: "حدث خطأ أثناء تقديم العرض",
-        variant: "destructive"
-      })
-    }
-  }
-
   return (
     <PortalLayout>
       <div className="space-y-8 text-right">
@@ -310,169 +211,11 @@ export default function SupplierDashboard() {
         </div>
       </div>
 
-      <Dialog open={!!selectedRfq} onOpenChange={(open) => { if (!open) { setSelectedRfq(null); resetForm() } }}>
-        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>تقديم عرض سعر</DialogTitle>
-            <DialogDescription className="mt-2">
-              أدخل التفاصيل الكاملة لعرضك على: <span className="font-bold text-slate-800">{selectedRfq?.title}</span>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-5 py-4">
-            <div className="space-y-3">
-              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
-                <Truck size={16} />
-                معلومات التسليم
-              </h3>
-              
-              <div className="grid gap-3">
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryLocation" className="text-right sm:col-span-1 font-medium">
-                    موقع التسليم <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="deliveryLocation"
-                    value={deliveryLocation}
-                    onChange={(e) => setDeliveryLocation(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="أدخل عنوان أو اختر من المدن المغطاة"
-                  />
-                </div>
-
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryMethod" className="text-right sm:col-span-1 font-medium">
-                    طريقة التسليم <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="deliveryMethod"
-                    value={deliveryMethod}
-                    onChange={(e) => setDeliveryMethod(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="مثال: شاحنات متخصصة / تسليم يدوي"
-                  />
-                </div>
-
-                <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                  <Label htmlFor="deliveryFrequency" className="text-right sm:col-span-1 font-medium">
-                    وتيرة التسليم
-                  </Label>
-                  <Input
-                    id="deliveryFrequency"
-                    value={deliveryFrequency}
-                    onChange={(e) => setDeliveryFrequency(e.target.value)}
-                    className="sm:col-span-3 w-full"
-                    placeholder="مثال: أسبوعية / شهرية / دفعة واحدة"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h3 className="font-bold text-sm text-primary flex items-center gap-2">
-                <Calendar size={16} />
-                جدول الشحنات والتسعير
-              </h3>
-              
-              <div className="space-y-3">
-                {deliveryBatches.map((batch, index) => (
-                  <div key={batch.id} className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-600">الشحنة {index + 1}</span>
-                      {deliveryBatches.length > 1 && (
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => removeBatch(batch.id)}
-                        >
-                          <Trash2 size={14} />
-                        </Button>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          الكمية <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          value={batch.quantity}
-                          onChange={(e) => updateBatch(batch.id, "quantity", e.target.value)}
-                          placeholder={selectedRfq?.unitOfMeasure ? `مثال: 50 ${selectedRfq.unitOfMeasure}` : "الكمية"}
-                        />
-                      </div>
-                      
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          تاريخ التسليم <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          type="date"
-                          value={batch.deliveryDate}
-                          onChange={(e) => updateBatch(batch.id, "deliveryDate", e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="flex flex-col gap-1">
-                        <Label className="text-xs font-medium text-slate-600">
-                          السعر (ر.س) <span className="text-red-500">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          value={batch.price}
-                          onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
-                          placeholder="سعر الشحنة"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={addBatch}
-              >
-                <Plus size={16} />
-                إضافة شحنة أخرى
-              </Button>
-            </div>
-
-            <div className="space-y-3 pt-2 border-t">
-              <h3 className="font-bold text-sm text-primary">السعر الإجمالي</h3>
-              <div className="flex flex-col sm:grid sm:grid-cols-4 items-start sm:items-center gap-2">
-                <Label htmlFor="price-dashboard" className="text-right sm:col-span-1 font-bold">
-                  السعر الكلي (ر.س) <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="price-dashboard"
-                  type="number"
-                  value={offerPrice}
-                  onChange={(e) => setOfferPrice(e.target.value)}
-                  className="sm:col-span-3 w-full"
-                  placeholder="مثال: 50000"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
-            <Button variant="outline" onClick={() => { setSelectedRfq(null); resetForm() }}>إلغاء</Button>
-            <Button 
-              onClick={submitOffer} 
-              disabled={!offerPrice || !deliveryLocation || !deliveryMethod}
-            >
-              تأكيد وإرسال العرض
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <SubmitOfferDialog 
+        selectedRfq={selectedRfq} 
+        onClose={() => setSelectedRfq(null)} 
+        onSuccess={() => router.push("/supplier/offers")}
+      />
     </PortalLayout>
   )
-}
-
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(" ")
 }

@@ -57,6 +57,7 @@ export default function LoginPage() {
       }
       
     } catch (error: any) {
+      console.error("❌ Login error:", error)
       let errorMsg = error.message || "حدث خطأ أثناء تسجيل الدخول"
       if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
         errorMsg = "البريد الإلكتروني أو كلمة المرور غير صحيحة"
@@ -64,7 +65,7 @@ export default function LoginPage() {
       
       toast({
         title: "فشل تسجيل الدخول",
-        description: errorMsg,
+        description: `${errorMsg} (${error.code || error.message})`,
         variant: "destructive"
       })
     } finally {

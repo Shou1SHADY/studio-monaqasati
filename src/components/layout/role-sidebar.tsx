@@ -43,6 +43,7 @@ const supplierItems: NavItem[] = [
   { title: "المناقصات المتاحة", href: "/supplier/rfqs", icon: Search },
   { title: "عروضي المقدمة", href: "/supplier/offers", icon: History },
   { title: "محادثاتي", href: "/supplier/chats", icon: MessageSquare },
+  { title: "إدارة الفريق", href: "/supplier/team", icon: Users },
   { title: "التنبيهات", href: "/supplier/notifications", icon: Bell },
   { title: "الملف الشخصي", href: "/supplier/profile", icon: UserCircle },
 ]
@@ -53,6 +54,7 @@ const contractorItems: NavItem[] = [
   { title: "طرح مناقصة جديدة", href: "/contractor/rfqs/new", icon: PlusCircle },
   { title: "دليل الموردين", href: "/contractor/suppliers", icon: Users },
   { title: "محادثاتي", href: "/contractor/chats", icon: MessageSquare },
+  { title: "إدارة الفريق", href: "/contractor/team", icon: Users },
   { title: "التنبيهات", href: "/contractor/notifications", icon: Bell },
   { title: "الملف الشخصي", href: "/contractor/profile", icon: UserCircle },
 ]

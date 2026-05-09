@@ -9,9 +9,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { 
-  CheckCircle2, 
-  XCircle, 
+import {
+  CheckCircle2,
+  XCircle,
   Loader2,
   ArrowRight,
   TrendingUp,
@@ -42,6 +42,11 @@ export default function RfqOffersPage() {
   const { toast } = useToast()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
@@ -59,7 +64,9 @@ export default function RfqOffersPage() {
           rfqId: rfqId,
           rfqTitle: offer.rfqTitle || offer.title || "",
           contractorId: user.uid,
+          contractorOrgId: profile?.organizationId || user.uid,
           supplierId: offer.supplierId,
+          supplierOrgId: offer.organizationId || offer.supplierId,
           createdAt: new Date().toISOString()
         })
       }
@@ -121,7 +128,9 @@ export default function RfqOffersPage() {
             rfqId: rfqId,
             rfqTitle: offer.rfqTitle || offer.title || "",
             contractorId: user.uid,
+            contractorOrgId: profile?.organizationId || user.uid,
             supplierId: offer.supplierId,
+            supplierOrgId: offer.organizationId || offer.supplierId,
             createdAt: new Date().toISOString()
           })
         }
@@ -139,8 +148,8 @@ export default function RfqOffersPage() {
       description: decision === "مقبول"
         ? "سيتم إشعار المورد. يمكنك التواصل معه من صفحة محادثاتي."
         : decision === "مرفوض"
-        ? "تم رفض العرض وسيتم إشعار المورد."
-        : "تم إرسال طلب للمورد لتخفيض السعر المقدم.",
+          ? "تم رفض العرض وسيتم إشعار المورد."
+          : "تم إرسال طلب للمورد لتخفيض السعر المقدم.",
     })
     setProcessingId(null)
   }
@@ -154,9 +163,9 @@ export default function RfqOffersPage() {
         sampleUpdatedAt: new Date().toISOString(),
         readAt: null // reset read status for supplier
       });
-      toast({ 
-        title: action === "مطلوبة" ? "تم طلب العينة" : "تم استلام العينة", 
-        description: action === "مطلوبة" ? "تم إرسال طلب للمورد لتوفير عينة." : "تم تأكيد استلام العينة بنجاح." 
+      toast({
+        title: action === "مطلوبة" ? "تم طلب العينة" : "تم استلام العينة",
+        description: action === "مطلوبة" ? "تم إرسال طلب للمورد لتوفير عينة." : "تم تأكيد استلام العينة بنجاح."
       });
     } catch (error) {
       toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
@@ -217,9 +226,9 @@ export default function RfqOffersPage() {
                       </Badge>
                     )}
                     {rfq.pdfUrl && (
-                      <a 
-                        href={rfq.pdfUrl} 
-                        target="_blank" 
+                      <a
+                        href={rfq.pdfUrl}
+                        target="_blank"
                         rel="noopener noreferrer"
                         download
                         className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors"
@@ -233,15 +242,15 @@ export default function RfqOffersPage() {
                       تاريخ الطرح: {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
                     </div>
                   </div>
-                  
+
                   <h2 className="text-2xl font-bold text-slate-800">{rfq.title}</h2>
-                  
+
                   <div className="flex flex-wrap items-center gap-6 text-sm text-slate-600">
                     <div className="flex items-center gap-2">
                       <MapPin size={16} className="text-primary" />
                       {rfq.city} - {rfq.district}
                       {rfq.locationCoords && (
-                        <a 
+                        <a
                           href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -292,9 +301,9 @@ export default function RfqOffersPage() {
                   {/* PDF Attachment */}
                   {rfq.pdfUrl && (
                     <div className="mt-4">
-                      <a 
-                        href={rfq.pdfUrl} 
-                        target="_blank" 
+                      <a
+                        href={rfq.pdfUrl}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
                       >
@@ -373,234 +382,192 @@ export default function RfqOffersPage() {
           </div>
 
           <TabsContent value="list" className="space-y-4 m-0 mt-6">
-          {isLoading ? (
-            <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-              <Loader2 className="animate-spin" size={40} />
-              <p>جاري تحميل العروض...</p>
-            </div>
-          ) : !offers || offers.length === 0 ? (
-            <Card className="border-dashed border-2 border-slate-200 shadow-none">
-              <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
-                <TrendingUp size={48} className="opacity-20" />
-                <p className="font-bold text-lg">لا توجد عروض حتى الآن</p>
-                <p className="text-sm">عندما يقدم الموردون عروضهم لهذه المناقصة، ستظهر هنا تلقائياً.</p>
-              </CardContent>
-            </Card>
-          ) : (
-            offers.map((offer: any) => {
-              const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
-              
-              return (
-                <Card key={offer.id} className={`border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative ${
-                  offer.status === "مقبول" ? "border-success/30 bg-success/5" : 
-                  offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" : 
-                  isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
-                }`}>
-                  {isBestOffer && offer.status === "قيد المراجعة" && (
-                    <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
-                      <TrendingUp size={12} /> أفضل سعر
-                    </div>
-                  )}
-                  <CardContent className="p-0">
-                    <div className="flex flex-col md:flex-row">
-                      {/* Offer Details */}
-                    <div className="p-6 flex-1 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
-                            <User size={18} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-sm text-slate-800">{offer.supplierName || offer.companyName || "مورد مسجل"}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
-                            {offer.supplierWebsite && (
-                              <a 
-                                href={offer.supplierWebsite.startsWith('http') ? offer.supplierWebsite : `https://${offer.supplierWebsite}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
-                              >
-                                <Globe size={10} />
-                                زيارة الموقع
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                        {getStatusBadge(offer.status || "قيد المراجعة")}
-                      </div>
+            {isLoading ? (
+              <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+                <Loader2 className="animate-spin" size={40} />
+                <p>جاري تحميل العروض...</p>
+              </div>
+            ) : !offers || offers.length === 0 ? (
+              <Card className="border-dashed border-2 border-slate-200 shadow-none">
+                <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
+                  <TrendingUp size={48} className="opacity-20" />
+                  <p className="font-bold text-lg">لا توجد عروض حتى الآن</p>
+                  <p className="text-sm">عندما يقدم الموردون عروضهم لهذه المناقصة، ستظهر هنا تلقائياً.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              offers.map((offer: any) => {
+                const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
 
-                      <div className="flex flex-wrap gap-4 text-sm mt-2">
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
-                          <span className="text-muted-foreground font-medium">السعر المقترح:</span>
-                          <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
-                            {offer.price} <span className="text-sm font-normal">ر.س</span>
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
-                          <Calendar size={14} />
-                          <span>{offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}</span>
-                        </div>
-                        {/* Extra options */}
-                        <div className="flex flex-wrap items-center gap-3 mt-4">
-                          {offer.isFreeShipping && (
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none hover:bg-primary/20 transition-colors cursor-default">
-                              توصيل مجاني
-                            </Badge>
-                          )}
-                          {offer.includesSample && (
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none hover:bg-primary/20 transition-colors cursor-default">
-                              يتضمن عينة (Sample)
-                            </Badge>
-                          )}
-                          {offer.sampleStatus && (
-                            <Badge variant="outline" className={`border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors cursor-default ${offer.sampleStatus === "تم الاستلام" ? "bg-success/10 text-success border-success/30" : ""}`}>
-                              العينة: {offer.sampleStatus}
-                            </Badge>
-                          )}
-                        </div>
+                return (
+                  <Card key={offer.id} className={`border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative ${offer.status === "مقبول" ? "border-success/30 bg-success/5" :
+                      offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" :
+                        isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
+                    }`}>
+                    {isBestOffer && offer.status === "قيد المراجعة" && (
+                      <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
+                        <TrendingUp size={12} /> أفضل سعر
                       </div>
-
-                      {offer.deliveryLocation && (
-                        <div className="mt-4 p-4 bg-slate-50 rounded-lg space-y-3 border border-slate-100">
-                          <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                            <Truck size={16} className="text-primary" />
-                            تفاصيل التسليم
-                          </div>
-                          
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    )}
+                    <CardContent className="p-0">
+                      <div className="flex flex-col md:flex-row">
+                        {/* Offer Details */}
+                        <div className="p-6 flex-1 space-y-3">
+                          <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <MapPin size={14} className="text-muted-foreground" />
-                              <span className="text-slate-600">موقع التسليم:</span>
-                              <span className="font-medium">{offer.deliveryLocation}</span>
+                              <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                                <User size={18} />
+                              </div>
+                              <div>
+                                <p className="font-bold text-sm text-slate-800">{offer.supplierName || offer.companyName || "مورد مسجل"}</p>
+                                <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
+                                {offer.supplierWebsite && (
+                                  <a
+                                    href={offer.supplierWebsite.startsWith('http') ? offer.supplierWebsite : `https://${offer.supplierWebsite}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+                                  >
+                                    <Globe size={10} />
+                                    الالكتروني زيارة الموقع
+                                  </a>
+                                )}
+                              </div>
                             </div>
-                            {offer.deliveryMethod && (
-                              <div className="flex items-center gap-2">
-                                <Package size={14} className="text-muted-foreground" />
-                                <span className="text-slate-600">الطريقة:</span>
-                                <span className="font-medium">{offer.deliveryMethod}</span>
-                              </div>
-                            )}
-                            {offer.deliveryFrequency && (
-                              <div className="flex items-center gap-2 sm:col-span-2">
-                                <Calendar size={14} className="text-muted-foreground" />
-                                <span className="text-slate-600">وتيرة التسليم:</span>
-                                <span className="font-medium">{offer.deliveryFrequency}</span>
-                              </div>
-                            )}
+                            {getStatusBadge(offer.status || "قيد المراجعة")}
                           </div>
 
-                          {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-slate-200">
-                              <p className="text-xs font-bold text-slate-600 mb-2">جدول الشحنات:</p>
-                              <div className="space-y-2">
-                                {offer.deliveryBatches.map((batch: any, idx: number) => (
-                                  <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
-                                    <div className="flex items-center gap-2">
-                                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
-                                        شحنة {idx + 1}
-                                      </span>
-                                      <span className="text-slate-600">{batch.quantity}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Calendar size={12} className="text-muted-foreground" />
-                                      <span className="text-slate-600">{batch.deliveryDate}</span>
-                                      <span className="font-bold text-success">{batch.price} ر.س</span>
-                                    </div>
+                          <div className="flex flex-wrap gap-4 text-sm mt-2">
+                            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
+                              <span className="text-muted-foreground font-medium">السعر المقترح:</span>
+                              <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
+                                {offer.price} <span className="text-sm font-normal">ر.س</span>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
+                              <Calendar size={14} />
+                              <span>{offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}</span>
+                            </div>
+                                {offer.deliveryFrequency && (
+                                  <div className="flex items-center gap-2 sm:col-span-2">
+                                    <Calendar size={14} className="text-muted-foreground" />
+                                    <span className="text-slate-600">وتيرة التسليم:</span>
+                                    <span className="font-medium">{offer.deliveryFrequency}</span>
                                   </div>
-                                ))}
+                                )}
                               </div>
-                              {offer.totalBatchesPrice && (
-                                <div className="mt-2 flex justify-end">
-                                  <span className="text-xs text-muted-foreground">
-                                    إجمالي أسعار الشحنات: <span className="font-bold text-success">{offer.totalBatchesPrice} ر.س</span>
-                                  </span>
+
+                              {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-slate-200">
+                                  <p className="text-xs font-bold text-slate-600 mb-2">جدول الشحنات:</p>
+                                  <div className="space-y-2">
+                                    {offer.deliveryBatches.map((batch: any, idx: number) => (
+                                      <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
+                                        <div className="flex items-center gap-2">
+                                          <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
+                                            شحنة {idx + 1}
+                                          </span>
+                                          <span className="text-slate-600">{batch.quantity}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Calendar size={12} className="text-muted-foreground" />
+                                          <span className="text-slate-600">{batch.deliveryDate}</span>
+                                          <span className="font-bold text-success">{batch.price} ر.س</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {offer.totalBatchesPrice && (
+                                    <div className="mt-2 flex justify-end">
+                                      <span className="text-xs text-muted-foreground">
+                                        إجمالي أسعار الشحنات: <span className="font-bold text-success">{offer.totalBatchesPrice} ر.س</span>
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons - Pending */}
-                    {offer.status === "قيد المراجعة" && (
-                      <div className="bg-slate-50/70 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
-                        <Button
-                          onClick={() => handleDecision(offer.id, "مقبول")}
-                          disabled={processingId === offer.id}
-                          className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
-                          size="sm"
-                        >
-                          {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                          قبول العرض
-                        </Button>
-                        <Button
-                          onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
-                          disabled={processingId === offer.id}
-                          variant="outline"
-                          className="w-full gap-2 rounded-full border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 hover:text-amber-800 transition-all font-medium"
-                          size="sm"
-                        >
-                          <ArrowDown size={14} />
-                          طلب تخفيض
-                        </Button>
-                        <Button
-                          onClick={() => handleDecision(offer.id, "مرفوض")}
-                          disabled={processingId === offer.id}
-                          variant="ghost"
-                          className="w-full gap-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
-                          size="sm"
-                        >
-                          <XCircle size={14} />
-                          رفض
-                        </Button>
-                        {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
-                          <Button
-                            onClick={() => handleSampleAction(offer.id, "مطلوبة")}
-                            disabled={processingId === offer.id}
-                            variant="outline"
-                            className="w-full gap-2 rounded-full border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-800 transition-all font-medium mt-1"
-                            size="sm"
-                          >
-                            <Box size={14} />
-                            {offer.sampleStatus ? "طلب عينة أخرى" : "طلب عينة"}
-                          </Button>
+                        
+                        {/* Action Buttons - Pending */}
+                        {offer.status === "قيد المراجعة" && (
+                          <div className="bg-slate-50/70 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                            <Button
+                              onClick={() => handleDecision(offer.id, "مقبول")}
+                              disabled={processingId === offer.id}
+                              className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
+                              size="sm"
+                            >
+                              {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                              قبول العرض
+                            </Button>
+                            <Button
+                              onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
+                              disabled={processingId === offer.id}
+                              variant="outline"
+                              className="w-full gap-2 rounded-full border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 hover:text-amber-800 transition-all font-medium"
+                              size="sm"
+                            >
+                              <ArrowDown size={14} />
+                              طلب تخفيض
+                            </Button>
+                            <Button
+                              onClick={() => handleDecision(offer.id, "مرفوض")}
+                              disabled={processingId === offer.id}
+                              variant="ghost"
+                              className="w-full gap-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
+                              size="sm"
+                            >
+                              <XCircle size={14} />
+                              رفض
+                            </Button>
+                            {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
+                              <Button
+                                onClick={() => handleSampleAction(offer.id, "مطلوبة")}
+                                disabled={processingId === offer.id}
+                                variant="outline"
+                                className="w-full gap-2 rounded-full border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-800 transition-all font-medium mt-1"
+                                size="sm"
+                              >
+                                <Box size={14} />
+                                {offer.sampleStatus ? "طلب عينة أخرى" : "طلب عينة"}
+                              </Button>
+                            )}
+                            {offer.sampleStatus === "تم الإرسال" && (
+                              <Button
+                                onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
+                                disabled={processingId === offer.id}
+                                variant="outline"
+                                className="w-full gap-2 rounded-full border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-all font-medium mt-1"
+                                size="sm"
+                              >
+                                <CheckCircle2 size={14} />
+                                تأكيد استلام العينة
+                              </Button>
+                            )}
+                          </div>
                         )}
-                        {offer.sampleStatus === "تم الإرسال" && (
-                          <Button
-                            onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
-                            disabled={processingId === offer.id}
-                            variant="outline"
-                            className="w-full gap-2 rounded-full border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-all font-medium mt-1"
-                            size="sm"
-                          >
-                            <CheckCircle2 size={14} />
-                            تأكيد استلام العينة
-                          </Button>
+
+                        {/* Action Buttons - Accepted */}
+                        {offer.status === "مقبول" && (
+                          <div className="bg-success/5 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                            <Button
+                              onClick={() => openChat(offer)}
+                              disabled={openingChat === offer.id}
+                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg"
+                              size="sm"
+                            >
+                              {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+                              فتح المحادثة
+                            </Button>
+                            <SupplierWhatsAppButton supplierId={offer.supplierId} />
+                          </div>
                         )}
                       </div>
-                    )}
-
-                    {/* Action Buttons - Accepted */}
-                    {offer.status === "مقبول" && (
-                      <div className="bg-success/5 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
-                        <Button
-                          onClick={() => openChat(offer)}
-                          disabled={openingChat === offer.id}
-                          className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg"
-                          size="sm"
-                        >
-                          {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-                          فتح المحادثة
-                        </Button>
-                        <SupplierWhatsAppButton supplierId={offer.supplierId} />
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )})
-          )}
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
           </TabsContent>
 
           <TabsContent value="compare" className="m-0 mt-6">
@@ -617,25 +584,25 @@ export default function RfqOffersPage() {
                 {/* Sorting Buttons */}
                 <div className="p-4 border-b flex items-center gap-2 flex-wrap bg-slate-50/50">
                   <span className="text-xs font-bold text-slate-500 ml-2">فرز سريع:</span>
-                  <Button 
-                    variant={sortBy === "price" ? "default" : "outline"} 
-                    size="sm" 
+                  <Button
+                    variant={sortBy === "price" ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setSortBy("price")}
                     className="h-8 text-xs rounded-lg"
                   >
                     حسب السعر (الأقل أولاً)
                   </Button>
-                  <Button 
-                    variant={sortBy === "date" ? "default" : "outline"} 
-                    size="sm" 
+                  <Button
+                    variant={sortBy === "date" ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setSortBy("date")}
                     className="h-8 text-xs rounded-lg"
                   >
                     حسب التاريخ (الأحدث أولاً)
                   </Button>
-                  <Button 
-                    variant={sortBy === "duration" ? "default" : "outline"} 
-                    size="sm" 
+                  <Button
+                    variant={sortBy === "duration" ? "default" : "outline"}
+                    size="sm"
                     onClick={() => setSortBy("duration")}
                     className="h-8 text-xs rounded-lg"
                   >
@@ -674,58 +641,7 @@ export default function RfqOffersPage() {
                           </TableCell>
                         ))}
                       </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">الموقع</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            <div className="flex items-center justify-center gap-1">
-                              <MapPin size={12} className="text-muted-foreground" />
-                              {o.deliveryLocation || "—"}
-                            </div>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">طريقة التسليم</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            {o.deliveryMethod ? (
-                              <div className="flex items-center justify-center gap-1">
-                                <Truck size={12} className="text-muted-foreground" />
-                                {o.deliveryMethod}
-                              </div>
-                            ) : "—"}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">وتيرة التسليم</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            {o.deliveryFrequency || "—"}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">توصيل مجاني</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm">
-                            {o.isFreeShipping ? (
-                              <Badge className="bg-success/10 text-success border-success/20 text-xs">✓ نعم</Badge>
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">يتضمن عينة</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm">
-                            {o.includesSample ? (
-                              <Badge className="bg-primary/10 text-primary border-primary/20 text-xs">✓ نعم</Badge>
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </TableCell>
-                        ))}
-                      </TableRow>
+                      {/* Removed Location, Delivery, and Sample rows for simplicity */}
                       <TableRow className="hover:bg-slate-50/50">
                         <TableCell className="font-bold text-slate-700 bg-slate-50/50">مدة التنفيذ</TableCell>
                         {sortedOffers.map((o: any) => (
@@ -742,19 +658,7 @@ export default function RfqOffersPage() {
                           </TableCell>
                         ))}
                       </TableRow>
-                      {rfq?.products && rfq.products.length > 0 && (
-                        <TableRow className="hover:bg-slate-50/50">
-                          <TableCell className="font-bold text-slate-700 bg-slate-50/50">عدد المنتجات</TableCell>
-                          {sortedOffers.map((o: any) => (
-                            <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                              <div className="flex items-center justify-center gap-1">
-                                <Package size={12} className="text-muted-foreground" />
-                                {rfq.products.length} منتج
-                              </div>
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      )}
+                      {/* Removed Products Count row for simplicity */}
                       <TableRow className="hover:bg-slate-50/50">
                         <TableCell className="font-bold text-slate-700 bg-slate-50/50">تاريخ التقديم</TableCell>
                         {sortedOffers.map((o: any) => (
@@ -825,7 +729,7 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
     try {
       // Get the inquiry to find supplier ID for notification
       const inquiry = inquiries?.find((i: any) => i.id === inquiryId)
-      
+
       await updateDoc(
         doc(firestore, "rfqs", rfqId, "inquiries", inquiryId),
         {
@@ -834,7 +738,7 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
           repliedBy: user?.uid || ""
         }
       )
-      
+
       // Create notification for the supplier
       if (inquiry?.userId) {
         const notificationData = {
@@ -851,7 +755,7 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
       } else {
         console.warn("⚠️ No userId found for inquiry notification", inquiry)
       }
-      
+
       toast({ title: "تم الرد", description: "تم إرسال الرد بنجاح على الاستفسار" })
       setReplyText(prev => ({ ...prev, [inquiryId]: "" }))
       setShowReply(null)
@@ -911,7 +815,7 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
                     </span>
                   </div>
                   <p className="text-slate-600 text-sm leading-relaxed">{inq.question}</p>
-                  
+
                   {inq.reply ? (
                     <div className="mt-3 p-3 bg-success/5 rounded-lg border border-success/20">
                       <div className="flex items-center gap-2 mb-1">

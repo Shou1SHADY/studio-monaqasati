@@ -4,21 +4,22 @@ import * as React from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box, MessageCircle, Send } from "lucide-react"
+import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box, MessageCircle, Send, Users } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
+import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 
 export default function SupplierNotificationsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const { toast } = useToast()
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return query(
       collection(firestore, "offers"),
-      where("supplierId", "==", user.uid),
-      orderBy("createdAt", "desc")
+      where("supplierId", "==", user.uid)
     )
   }, [firestore, user, isUserLoading])
 
@@ -28,12 +29,18 @@ export default function SupplierNotificationsPage() {
   const userNotificationsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return query(
-      collection(firestore, "users", user.uid, "notifications"),
-      orderBy("createdAt", "desc")
+      collection(firestore, "users", user.uid, "notifications")
     )
   }, [firestore, user, isUserLoading])
 
-  const { data: userNotifications } = useCollection(userNotificationsQuery)
+  const { data: userNotifications, isLoading: userNotifsLoading, error: notifsError } = useCollection(userNotificationsQuery)
+
+  React.useEffect(() => {
+    if (notifsError) {
+      console.error("❌ Notifications query error:", notifsError)
+      toast({ title: "خطأ في التنبيهات", description: "تعذر تحميل التنبيهات الخاصة بك.", variant: "destructive" })
+    }
+  }, [notifsError, toast])
 
   // Fetch supplier's profile to get specializations for RFQ filtering
   const userDocRef = useMemoFirebase(() => {
@@ -49,8 +56,7 @@ export default function SupplierNotificationsPage() {
     return query(
       collection(firestore, "rfqs"),
       where("status", "==", "New"),
-      where("visibility", "==", "public"),
-      orderBy("createdAt", "desc")
+      where("visibility", "==", "public")
     )
   }, [firestore, profile])
 
@@ -77,7 +83,10 @@ export default function SupplierNotificationsPage() {
     const rfqsList = (rfqs || [])
       .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
       .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
-    const inquiryList = (userNotifications || []).map((n: any) => ({ ...n, type: "inquiry_reply" }))
+    const inquiryList = (userNotifications || []).map((n: any) => ({ 
+      ...n, 
+      type: n.type || "inquiry_reply" // preserve original type if exists
+    }))
     
     return [...offersList, ...rfqsList, ...inquiryList].sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -122,7 +131,7 @@ export default function SupplierNotificationsPage() {
   // An offer is "unread" if it has a decided status AND has no readAt yet
   // Also inquiry replies are unread if they don't have read: true
   const isUnread = (offer: any) => {
-    if (offer.type === "inquiry_reply") {
+    if (offer.type === "inquiry_reply" || offer.type === "invitation") {
       return offer.read !== true
     }
     return (offer.status === "مقبول" || offer.status === "مرفوض" || offer.status === "مطلوب تخفيض" || offer.sampleStatus === "مطلوبة" || offer.sampleStatus === "تم الاستلام") && !offer.readAt
@@ -134,6 +143,15 @@ export default function SupplierNotificationsPage() {
       return (
         <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0">
           <MessageCircle size={22} />
+        </div>
+      )
+    }
+
+    // Handle invitation notifications
+    if (offer.type === "invitation") {
+      return (
+        <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+          <Users size={22} />
         </div>
       )
     }
@@ -178,7 +196,15 @@ export default function SupplierNotificationsPage() {
     if (offer.type === "inquiry_reply") {
       return {
         title: offer.title || "رد على استفسارك",
-        desc: offer.description || "لقد وردك رد على استفسارك من المقاول.",
+        desc: offer.description || offer.message || "لقد وردك رد على استفسارك من المقاول.",
+      }
+    }
+
+    // Handle invitation notifications
+    if (offer.type === "invitation") {
+      return {
+        title: offer.title || "دعوة للانضمام للفريق",
+        desc: offer.message || "لقد تلقيت دعوة للانضمام إلى فريق عمل جديد.",
       }
     }
     
@@ -231,6 +257,10 @@ export default function SupplierNotificationsPage() {
             <p className="text-muted-foreground mt-1">تابع حالة عروضك المقدمة وردود المقاولين</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Debug Info */}
+            <div className="text-[10px] bg-slate-100 p-1 rounded border font-mono">
+              Raw: {userNotifications?.length || 0} | Err: {notifsError ? "Yes" : "No"}
+            </div>
             {unreadCount > 0 && (
               <span className="text-xs bg-destructive/10 text-destructive px-3 py-1 rounded-full font-bold">
                 {unreadCount} غير مقروء
@@ -366,10 +396,20 @@ export default function SupplierNotificationsPage() {
                         </div>
                       )}
 
-                      {unread && !(notif.sampleStatus === "مطلوبة" || notif.status === "مطلوب تخفيض") && (
+                      {unread && !(notif.sampleStatus === "مطلوبة" || notif.status === "مطلوب تخفيض" || notif.type === "invitation") && (
                         <p className="text-[11px] text-muted-foreground mt-1 italic">
                           انقر لتحديد كمقروء ✓
                         </p>
+                      )}
+
+                      {unread && notif.type === "invitation" && (
+                        <div className="pt-2">
+                          <Link href={`/${profile?.role?.toLowerCase()}/team`} className="inline-flex">
+                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
+                              الانتقال لصفحة الفريق للقبول
+                            </Button>
+                          </Link>
+                        </div>
                       )}
                     </div>
                     {/* Unread indicator dot */}

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useFirebase } from "@/firebase"
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth"
-import { doc, setDoc } from "firebase/firestore"
+import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,24 +58,46 @@ export default function RegisterPage() {
 
     setIsLoading(true)
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
+      const emailLower = formData.email.toLowerCase().trim()
+      const userCredential = await createUserWithEmailAndPassword(auth, emailLower, formData.password)
       const user = userCredential.user
 
       await updateProfile(user, { displayName: formData.name })
 
+      // Check for invitation
+      const inviteRef = doc(firestore, "invitations", emailLower)
+      const inviteSnap = await getDoc(inviteRef)
+      
+      let organizationId = user.uid
+      let organizationRole = 'owner'
+      let role = formData.role
+      
+      if (inviteSnap.exists()) {
+        const inviteData = inviteSnap.data()
+        organizationId = inviteData.organizationId
+        organizationRole = inviteData.organizationRole || 'member'
+        role = inviteData.role || formData.role
+      }
+
       await setDoc(doc(firestore, "users", user.uid), {
         id: user.uid,
         name: formData.name,
-        email: formData.email,
+        email: emailLower,
         phone: formData.phone,
         crNumber: formData.crNumber,
         city: formData.city,
-        role: formData.role,
-        specializations: formData.role === "Supplier" ? formData.specializations : [],
+        role: role,
+        organizationId: organizationId,
+        organizationRole: organizationRole,
+        specializations: role === "Supplier" ? formData.specializations : [],
         isVerified: false,
-        profileCompleted: false, // flag indicating they should complete extra info later
+        profileCompleted: false, 
         joinedAt: new Date().toISOString()
       })
+
+      if (inviteSnap.exists()) {
+        await deleteDoc(inviteRef)
+      }
 
       toast({
         title: "تم إنشاء الحساب بنجاح",
@@ -89,13 +111,15 @@ export default function RegisterPage() {
       }
       
     } catch (error: any) {
+      console.error("❌ Registration error:", error)
       let errorMsg = "حدث خطأ غير متوقع"
       if (error.code === "auth/email-already-in-use") errorMsg = "البريد الإلكتروني مسجل مسبقاً"
       if (error.code === "auth/weak-password") errorMsg = "كلمة المرور ضعيفة جداً"
+      if (error.code === "auth/invalid-email") errorMsg = "البريد الإلكتروني غير صحيح"
       
       toast({
         title: "فشل إنشاء الحساب",
-        description: errorMsg,
+        description: `${errorMsg} (${error.code || error.message})`,
         variant: "destructive"
       })
     } finally {

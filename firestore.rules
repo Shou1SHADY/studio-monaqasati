@@ -13,6 +13,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function getOrganizationId() {
+      return getUserData().organizationId;
+    }
+
     function hasRole(role) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -23,19 +27,27 @@ service cloud.firestore {
     function isSupplier() { return hasRole('Supplier'); }
     function isContractor() { return hasRole('Contractor'); }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    function isOrgMember(orgId) {
+      return isSignedIn() && getOrganizationId() == orgId;
+    }
 
     // --- Collection Rules ---
 
     match /users/{userId} {
       allow create: if isOwner(userId) || isAdmin();
-      allow get: if isOwner(userId) || isSignedIn();
+      allow get: if isOwner(userId) || isOrgMember(resource.data.organizationId) || isSignedIn();
       allow list: if isAdmin() || isSignedIn();
-      allow update: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin() || (
+        isSignedIn() && 
+        resource.data.organizationId == getOrganizationId() && 
+        getUserData().organizationRole == 'owner'
+      );
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow create: if isSignedIn() && request.auth.uid != userId && isContractor();
+        allow create: if isSignedIn() && request.auth.uid != userId && (isContractor() || isSupplier());
         allow update: if isOwner(userId) || isAdmin();
         allow delete: if isAdmin();
       }
@@ -57,9 +69,9 @@ service cloud.firestore {
       // Allow creation if user is contractor (by role) or if the resource matches the user's UID
       allow create: if isAdmin()
         || isContractor()
-        || (isSignedIn() && request.resource.data.contractorId == request.auth.uid);
+        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.contractorId == request.auth.uid);
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
       allow delete: if isAdmin();
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
@@ -68,7 +80,7 @@ service cloud.firestore {
         allow create: if isSignedIn();
         allow update: if isAdmin()
           || (isSignedIn() && resource.data.userId == request.auth.uid)
-          || (isSignedIn() && get(/databases/$(database)/documents/rfqs/$(rfqId)).data.contractorId == request.auth.uid);
+          || (isSignedIn() && get(/databases/$(database)/documents/rfqs/$(rfqId)).data.organizationId == getOrganizationId());
         allow delete: if isAdmin()
           || (isSignedIn() && resource.data.userId == request.auth.uid);
       }
@@ -78,12 +90,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isAdmin()
         || isSupplier()
-        || (isSignedIn() && request.resource.data.supplierId == request.auth.uid);
+        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
       // Supplier can update, Contractor can change status (if they own the original RFQ)
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.supplierId == request.auth.uid)
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId())
         || (isSignedIn() && resource.data.rfqId != null
-            && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid);
+            && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId());
       allow delete: if isAdmin();
     }
 
@@ -97,17 +109,22 @@ service cloud.firestore {
       // Read/update for contractor or supplier only (resource == null means document doesn't exist yet)
       allow read: if isSignedIn() && (
         resource == null ||
-        resource.data.contractorId == request.auth.uid ||
-        resource.data.supplierId == request.auth.uid
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId()
       );
       allow update: if isSignedIn() && (
-        resource.data.contractorId == request.auth.uid ||
-        resource.data.supplierId == request.auth.uid
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId()
       );
 
       match /messages/{messageId} {
         allow read, create: if isSignedIn();
       }
     }
+
+    match /invitations/{email} {
+      allow read, create, delete: if isSignedIn();
+    }
+
   }
 }

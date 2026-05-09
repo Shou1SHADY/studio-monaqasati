@@ -36,8 +36,8 @@ import {
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore, useUser, useStorage, addDocumentNonBlocking } from "@/firebase"
-import { collection } from "firebase/firestore"
+import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
+import { collection, doc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA } from "@/lib/constants"
 
@@ -83,7 +83,12 @@ export default function NewRfqPage() {
   const { toast } = useToast()
   const router = useRouter()
   const firestore = useFirestore()
-  const { user } = useUser()
+  const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
 
   const isAiEnabled = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
 
@@ -95,8 +100,6 @@ export default function NewRfqPage() {
     district: "",
     deadline: "",
     notes: "",
-    certRequired: false,
-    visibility: "public" as "public" | "favorites",
     pdfUrl: null as string | null,
     pdfStoragePath: null as string | null
   })
@@ -201,13 +204,6 @@ export default function NewRfqPage() {
     
     if (!formData.deadline) {
       errors.push({ field: "deadline", message: "يرجى تحديد الموعد النهائي للعروض" })
-    } else {
-      const deadlineDate = new Date(formData.deadline)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      if (deadlineDate < today) {
-        errors.push({ field: "deadline", message: "الموعد النهائي يجب أن يكون في المستقبل" })
-      }
     }
     
     return errors
@@ -317,6 +313,7 @@ export default function NewRfqPage() {
 
     const rfqData = {
       contractorId: user.uid,
+      organizationId: profile?.organizationId || user.uid, // Fallback to UID if orgId not present
       title: formData.title,
       category: formData.category,
       subCategory: formData.subCategory,
@@ -328,12 +325,7 @@ export default function NewRfqPage() {
       })),
       deadline: formData.deadline,
       city: formData.city,
-      district: formData.district || "",
-      isQualityCertificateRequired: formData.certRequired,
-      visibility: formData.visibility,
-      notes: formData.notes,
-      pdfUrl: formData.pdfUrl,
-      pdfStoragePath: formData.pdfStoragePath,
+      district: formData.district,
       status: status,
       createdAt: new Date().toISOString()
     }
@@ -353,8 +345,6 @@ export default function NewRfqPage() {
         district: "",
         deadline: "",
         notes: "",
-        certRequired: false,
-        visibility: "public",
         pdfUrl: null,
         pdfStoragePath: null
       })
@@ -382,9 +372,8 @@ export default function NewRfqPage() {
 
         <div className="flex items-center justify-center gap-4 mb-8">
           {[
-            { step: 1, label: "تفاصيل المنتج", icon: FileText },
-            { step: 2, label: "الموقع والمواعيد", icon: MapPin },
-            { step: 3, label: "تأكيد النشر", icon: ClipboardCheck }
+            { step: 1, label: "تفاصيل الطلب", icon: FileText },
+            { step: 2, label: "الموقع والموعد", icon: MapPin },
           ].map(({ step: s, label, icon: Icon }, idx) => (
             <div key={s} className="flex items-center">
               <button
@@ -401,7 +390,7 @@ export default function NewRfqPage() {
                 {step > s ? <CheckCircle2 size={20} /> : <Icon size={20} />}
                 <span className="font-bold text-sm">{label}</span>
               </button>
-              {idx < 2 && (
+              {idx < 1 && (
                 <ChevronLeft size={20} className="mx-2 text-slate-300" />
               )}
             </div>
@@ -484,23 +473,29 @@ export default function NewRfqPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">التصنيف الفرعي</Label>
-                    <Select
-                      disabled={!formData.category}
-                      onValueChange={v => setFormData({ ...formData, subCategory: v })}
-                      value={formData.subCategory}
-                    >
-                      <SelectTrigger className="h-12 rounded-xl border-slate-200 cursor-pointer">
-                        <SelectValue placeholder={formData.category ? "اختر النوع" : "اختر الفئة أولاً"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {formData.category && (CATEGORIES_DATA[formData.category] || []).map(sub => (
-                          <SelectItem key={sub} value={sub}>{sub}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {formData.category && CATEGORIES_DATA[formData.category] && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold text-slate-700">
+                        الفئة الفرعية<RequiredStar />
+                      </Label>
+                      <Select 
+                        value={formData.subCategory}
+                        onValueChange={v => {
+                          setFormData({ ...formData, subCategory: v })
+                          clearError("subCategory")
+                        }}
+                      >
+                        <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("subCategory") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
+                          <SelectValue placeholder="اختر الفئة الفرعية" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CATEGORIES_DATA[formData.category].map(sub => (
+                            <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -695,23 +690,29 @@ export default function NewRfqPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">المنطقة / الحي</Label>
-                    <Select
-                      disabled={!formData.city}
-                      onValueChange={v => setFormData({ ...formData, district: v })}
-                      value={formData.district}
-                    >
-                      <SelectTrigger className="h-12 rounded-xl border-slate-200 cursor-pointer">
-                        <SelectValue placeholder={formData.city ? "اختر الحي" : "اختر المدينة أولاً"} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {formData.city && (CITIES_DISTRICTS[formData.city] || ["شمال", "جنوب", "شرق", "غرب", "وسط", "جميع"]).map(dist => (
-                          <SelectItem key={dist} value={dist}>{dist}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {formData.city && CITIES_DISTRICTS[formData.city] && (
+                    <div className="space-y-3">
+                      <Label className="text-sm font-semibold text-slate-700">
+                        الحي / المنطقة<RequiredStar />
+                      </Label>
+                      <Select 
+                        value={formData.district} 
+                        onValueChange={v => {
+                          setFormData({ ...formData, district: v })
+                          clearError("district")
+                        }}
+                      >
+                        <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("district") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
+                          <SelectValue placeholder="اختر الحي" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CITIES_DISTRICTS[formData.city].map(dist => (
+                            <SelectItem key={dist} value={dist}>{dist}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
@@ -759,89 +760,6 @@ export default function NewRfqPage() {
               </div>
             )}
 
-            {step === 3 && (
-              <div className="p-8 space-y-8">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <ClipboardCheck size={18} className="text-primary" />
-                    </div>
-                    <Label className="text-base font-bold text-slate-700">نطاق نشر المناقصة</Label>
-                  </div>
-                  <RadioGroup 
-                    value={formData.visibility} 
-                    onValueChange={(v) => setFormData({...formData, visibility: v as "public" | "favorites"})}
-                    className="space-y-3 mt-2"
-                  >
-                    <div className="flex items-start gap-4 p-5 rounded-2xl border-2 border-slate-200 cursor-pointer hover:bg-slate-50 hover:border-primary/30 transition-all group">
-                      <RadioGroupItem value="public" id="r-public" className="mt-1 cursor-pointer" />
-                      <div className="flex-1">
-                        <Label htmlFor="r-public" className="font-bold text-base text-slate-800 cursor-pointer block">عام (جميع الموردين)</Label>
-                        <p className="text-sm text-slate-500 mt-2">تظهر المناقصة لجميع الموردين المتخصصين في نفس الفئة</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-4 p-5 rounded-2xl border-2 border-slate-200 cursor-pointer hover:bg-slate-50 hover:border-primary/30 transition-all group">
-                      <RadioGroupItem value="favorites" id="r-favorites" className="mt-1 cursor-pointer" />
-                      <div className="flex-1">
-                        <Label htmlFor="r-favorites" className="font-bold text-base text-slate-800 cursor-pointer block">خاص (الموردون المفضلون)</Label>
-                        <p className="text-sm text-slate-500 mt-2">تظهر المناقصة حصرياً للموردين في قائمتك المفضلة</p>
-                      </div>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                <div className="relative flex items-center justify-between p-6 bg-gradient-to-r from-amber-50/50 to-orange-50/50 rounded-2xl border border-amber-200/50">
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                      <FileText size={24} className="text-amber-600" />
-                    </div>
-                    <div>
-                      <Label className="text-base font-bold text-slate-800">شهادة جودة مطلوبة</Label>
-                      <p className="text-sm text-slate-500 mt-1">حصر المشاركة على الموردين الحاصلين على شهادات معتمدة</p>
-                    </div>
-                  </div>
-                  <div className="shrink-0">
-                    <Switch
-                      checked={formData.certRequired}
-                      onCheckedChange={v => setFormData({ ...formData, certRequired: v })}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                  <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
-                    <FileText size={18} className="text-primary" />
-                    ملخص المناقصة
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">العنوان:</span>
-                      <span className="font-bold mr-2">{formData.title || "-"}</span>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">الفئة:</span>
-                      <span className="font-bold mr-2">{formData.category || "-"}</span>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">المدينة:</span>
-                      <span className="font-bold mr-2">{formData.city || "-"}</span>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">المنطقة:</span>
-                      <span className="font-bold mr-2">{formData.district || "-"}</span>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">الموعد النهائي:</span>
-                      <span className="font-bold mr-2">{formData.deadline ? new Date(formData.deadline).toLocaleDateString('ar-SA') : "-"}</span>
-                    </div>
-                    <div className="p-3 bg-white rounded-lg">
-                      <span className="text-muted-foreground">المنتجات:</span>
-                      <span className="font-bold mr-2">{products.filter(p => p.name).length} منتج</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </CardContent>
 
           <div className="flex items-center justify-between border-t bg-slate-50/50 p-6">
@@ -855,7 +773,7 @@ export default function NewRfqPage() {
               السابق
             </Button>
 
-            {step < 3 ? (
+            {step === 1 ? (
               <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
                 التالي
                 <ChevronLeft size={18} />

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle } from "lucide-react"
 import Link from "next/link"
-import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
@@ -29,6 +29,11 @@ export default function ContractorRfqsPage() {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
 
   const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all"
   const clearFilters = () => {
@@ -88,7 +93,7 @@ const handleBatchPublish = async () => {
     
     let q = query(
       collection(firestore, "rfqs"),
-      where("contractorId", "==", user.uid),
+      where("organizationId", "==", profile?.organizationId || user.uid),
       orderBy("createdAt", "desc")
     );
 
