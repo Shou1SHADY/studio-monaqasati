@@ -4,7 +4,7 @@ import * as React from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box } from "lucide-react"
+import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box, MessageCircle, Send } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import Link from "next/link"
@@ -23,6 +23,17 @@ export default function SupplierNotificationsPage() {
   }, [firestore, user, isUserLoading])
 
   const { data: offers, isLoading } = useCollection(offersQuery)
+
+  // Query user's notifications from subcollection
+  const userNotificationsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "users", user.uid, "notifications"),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, user, isUserLoading])
+
+  const { data: userNotifications } = useCollection(userNotificationsQuery)
 
   // Fetch supplier's profile to get specializations for RFQ filtering
   const userDocRef = useMemoFirebase(() => {
@@ -66,15 +77,16 @@ export default function SupplierNotificationsPage() {
     const rfqsList = (rfqs || [])
       .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
       .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
+    const inquiryList = (userNotifications || []).map((n: any) => ({ ...n, type: "inquiry_reply" }))
     
-    return [...offersList, ...rfqsList].sort((a: any, b: any) => 
+    return [...offersList, ...rfqsList, ...inquiryList].sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
-  }, [offers, rfqs, profile])
+  }, [offers, rfqs, profile, userNotifications])
 
-  // Mark a notification as read by stamping readAt on the offer doc
+  // Mark an offer notification as read
   const markAsRead = async (offerId: string) => {
-    if (!firestore) return
+    if (!firestore || !user) return
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         readAt: new Date().toISOString()
@@ -84,11 +96,48 @@ export default function SupplierNotificationsPage() {
     }
   }
 
+  // Mark an inquiry notification as read
+  const markInquiryAsRead = async (notificationId: string) => {
+    if (!firestore || !user) return
+    try {
+      await updateDoc(doc(firestore, "users", user.uid, "notifications", notificationId), {
+        read: true,
+        readAt: new Date().toISOString()
+      })
+    } catch {
+      // silently fail — non-critical
+    }
+  }
+
+  // Handle clicking on a notification - marks as read and navigates
+  const handleNotificationClick = async (notif: any) => {
+    // Mark as read if unread
+    if (notif.type === "inquiry_reply" && notif.read !== true) {
+      await markInquiryAsRead(notif.id)
+    } else if (notif.type === "offer" && isUnread(notif)) {
+      await markAsRead(notif.id)
+    }
+  }
+
   // An offer is "unread" if it has a decided status AND has no readAt yet
-  const isUnread = (offer: any) =>
-    (offer.status === "مقبول" || offer.status === "مرفوض" || offer.status === "مطلوب تخفيض" || offer.sampleStatus === "مطلوبة" || offer.sampleStatus === "تم الاستلام") && !offer.readAt
+  // Also inquiry replies are unread if they don't have read: true
+  const isUnread = (offer: any) => {
+    if (offer.type === "inquiry_reply") {
+      return offer.read !== true
+    }
+    return (offer.status === "مقبول" || offer.status === "مرفوض" || offer.status === "مطلوب تخفيض" || offer.sampleStatus === "مطلوبة" || offer.sampleStatus === "تم الاستلام") && !offer.readAt
+  }
 
   const getIcon = (offer: any) => {
+    // Handle inquiry reply notifications
+    if (offer.type === "inquiry_reply") {
+      return (
+        <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0">
+          <MessageCircle size={22} />
+        </div>
+      )
+    }
+    
     switch (offer.status) {
       case "مقبول":
         return (
@@ -125,6 +174,14 @@ export default function SupplierNotificationsPage() {
   }
 
   const getMessage = (offer: any) => {
+    // Handle inquiry reply notifications
+    if (offer.type === "inquiry_reply") {
+      return {
+        title: offer.title || "رد على استفسارك",
+        desc: offer.description || "لقد وردك رد على استفسارك من المقاول.",
+      }
+    }
+    
     switch (offer.status) {
       case "مقبول":
         return {
@@ -254,14 +311,17 @@ export default function SupplierNotificationsPage() {
               const msg = getMessage(notif)
               const unread = isUnread(notif)
               const isPending = notif.status === "قيد المراجعة"
+              const isInquiryReply = notif.type === "inquiry_reply"
 
               return (
                 <Card
                   key={notif.id}
-                  onClick={() => unread && markAsRead(notif.id)}
+                  onClick={() => handleNotificationClick(notif)}
                   className={`border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden ${
                     unread
-                      ? notif.sampleStatus === "مطلوبة"
+                      ? isInquiryReply
+                        ? "bg-success/5 ring-2 ring-success/30 hover:shadow-md"
+                        : notif.sampleStatus === "مطلوبة"
                         ? "bg-blue-50/80 ring-2 ring-blue-400 hover:shadow-md"
                         : notif.status === "مطلوب تخفيض"
                           ? "bg-amber-50/80 ring-2 ring-amber-400 hover:shadow-md"

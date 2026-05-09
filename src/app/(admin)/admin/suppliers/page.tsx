@@ -30,23 +30,28 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { useFirestore, useCollection } from "@/firebase"
+import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 
 export default function AdminSuppliersPage() {
   const firestore = useFirestore()
+  const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const [searchQuery, setSearchQuery] = useState("")
   const [limitCount, setLimitCount] = useState(20)
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
   
-  const suppliersQuery = query(
-    collection(firestore!, "users"),
-    where("role", "==", "Supplier"),
-    limit(limitCount)
-  )
+  const suppliersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "users"),
+      where("role", "==", "Supplier"),
+      limit(limitCount)
+    )
+  }, [firestore, user, isUserLoading, limitCount])
+  
   const { data: suppliers, isLoading } = useCollection(suppliersQuery)
   const [localSuppliers, setLocalSuppliers] = useState<any[]>([])
 

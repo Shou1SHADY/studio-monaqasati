@@ -2,16 +2,16 @@
 
 ## Overview
 
-The backend is built on **Firebase** (Firestore, Authentication, Cloud Functions, Hosting) with **Genkit** for AI capabilities.
+The backend is built on **Firebase** (Firestore, Authentication, Cloud Functions, Hosting) with **Genkit** for AI capabilities. This is a serverless architecture where most backend logic is handled by Firebase services.
 
 ## Firebase Services
 
 | Service | Purpose | Configuration |
 |---------|---------|---------------|
 | **Firestore** | NoSQL database for all application data | `firestore.rules`, `firestore.indexes.json` |
-| **Authentication** | User auth with email/password & phone | Firebase Console |
+| **Authentication** | User auth with email/password | Firebase Console |
 | **Hosting** | Static hosting for Next.js app | `firebase.json` |
-| **Cloud Functions** | Server-side logic & AI processing | `functions/` directory |
+| **Cloud Functions** | Server-side logic & AI processing (future) | `functions/` directory |
 
 ## Data Model
 
@@ -21,46 +21,48 @@ The backend is built on **Firebase** (Firestore, Authentication, Cloud Functions
 ```typescript
 interface UserProfile {
   id: string;                    // Firebase UID
-  role: 'admin' | 'contractor' | 'supplier';
+  role: 'Admin' | 'Contractor' | 'Supplier';
   name: string;
-  phoneNumber: string;
   email: string;
-  city: string;
-  commercialRegistrationNumber?: string;  // Suppliers only
-  isVerified?: boolean;                   // Suppliers only
-  commitmentScore?: number;               // Contractors only
-  specializationCategoryIds?: string[];   // Suppliers only
-  serviceAreas?: string[];                 // Suppliers only
-  joinedAt: Date;
+  phone: string;
+  crNumber?: string;             // Commercial Registration (optional)
+  city?: string;
+  specializations?: string[];     // Suppliers only (from PREDEFINED_CATEGORIES)
+  isVerified: boolean;            // Default: false
+  profileCompleted: boolean;      // Default: false
+  coverageCities?: string[];     // Suppliers - service areas
+  joinedAt: string;               // ISO date string
 }
 ```
 
-#### Category
+#### RFQ (RequestForQuotation)
 ```typescript
-interface Category {
-  id: string;
-  name: string;        // e.g., 'حديد ومعادن'
-  description?: string;
-}
-```
-
-#### RequestForQuotation (RFQ)
-```typescript
-interface RequestForQuotation {
+interface RFQ {
   id: string;
   contractorId: string;
   title: string;
-  categoryId: string;
-  quantity: number;
-  unitOfMeasure: string;    // 'طن', 'متر', 'قطعة'
-  deadline: Date;
-  location: string;         // e.g., 'Riyadh'
-  area: string;
-  paymentTerms: 'cash' | 'net-30' | 'net-60' | 'LC';
-  isQualityCertificateRequired: boolean;
+  category: string;                // From PREDEFINED_CATEGORIES
+  subCategory?: string;
+  quantity?: number;
+  unitOfMeasure?: string;
+  deadline: string;               // ISO date string
+  city: string;
+  district?: string;
+  paymentTerms?: string;
+  isQualityCertificateRequired?: boolean;
   notes?: string;
-  status: 'new' | 'awarded' | 'in_progress' | 'completed' | 'cancelled';
-  createdAt: Date;
+  products?: Product[];          // Array of products for detailed RFQs
+  status: 'Draft' | 'New' | 'Awarded' | 'cancelled';
+  createdAt: string;              // ISO date string
+  publishedAt?: string;          // ISO date string when status changed to New
+}
+
+interface Product {
+  id: string;
+  name: string;
+  quantity: string;
+  unit: string;
+  description?: string;
 }
 ```
 
@@ -68,15 +70,24 @@ interface RequestForQuotation {
 ```typescript
 interface Offer {
   id: string;
-  requestForQuotationId: string;
-  contractorId: string;      // Denormalized from RFQ
+  rfqId: string;
   supplierId: string;
-  pricePerUnit: number;
-  estimatedDeliveryDays: number;
-  supplierNotes?: string;
-  canProvideQualityCertificate: boolean;
-  status: 'pending' | 'accepted' | 'rejected';
-  submittedAt: Date;
+  rfqTitle: string;
+  price: string;
+  deliveryLocation: string;
+  deliveryMethod: string;
+  deliveryFrequency?: string;
+  deliveryBatches: DeliveryBatch[];
+  totalBatchesPrice: number;
+  status: 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'New' | 'Accepted' | 'Rejected';
+  createdAt: string;
+}
+
+interface DeliveryBatch {
+  id: string;
+  quantity: string;
+  deliveryDate: string;
+  price: string;
 }
 ```
 
@@ -86,9 +97,9 @@ interface InAppNotification {
   id: string;
   userId: string;
   message: string;
-  isRead: boolean;
   type: 'new_rfq' | 'offer_submitted' | 'offer_accepted' | 'offer_rejected' | 'system';
-  sentAt: Date;
+  isRead: boolean;
+  sentAt: string;
 }
 ```
 
@@ -97,199 +108,223 @@ interface InAppNotification {
 ```
 /users/{userId}
   - User profile data
-  - Role-based access
-
-/categories/{categoryId}
-  - Predefined categories (public read)
+  - Role-based access control
+  - Specializations for suppliers
 
 /rfqs/{rfqId}
   - RFQ documents
-  - Authorization via contractorId
+  - contractorId for authorization
+  - status: Draft, New, Awarded
 
 /offers/{offerId}
   - Offer documents
-  - Denormalized contractorId for authorization
+  - rfqId and supplierId for queries
+  - Delivery batches
 
 /users/{userId}/notifications/{notificationId}
-  - User-specific notifications
+  - User-specific notifications (subcollection)
 
-/notification_queue/{queueEntryId}
-  - External notification queue (SMS/Email)
-
-/ai-cache/{cacheId}
-  - AI recommendation cache (read-only client)
+/cities/{cityId} (optional)
+  - Predefined cities for dropdowns
 ```
 
 ## Security Rules
 
-### Authorization Principles
-
-1. **Authorization Independence**: Denormalize user IDs for direct access checks
-2. **Role-Based Access**: Use custom claims for role verification
-3. **Ownership Verification**: Always verify resource ownership
-
-### Key Rules
-
-```firestore
-// Users - own profile only
-match /users/{userId} {
-  allow read, write: if request.auth.uid == userId;
-}
-
-// RFQs - owner + matching suppliers
-match /rfqs/{rfqId} {
-  allow create: if request.auth.uid == request.resource.data.contractorId;
-  allow read, update, delete: if request.auth.uid == resource.data.contractorId;
-  allow read: if request.auth.token.role == 'supplier' && request.auth.token.verified;
-}
-
-// Offers - participants only
-match /offers/{offerId} {
-  allow create: if request.auth.uid == request.resource.data.supplierId;
-  allow read: if request.auth.uid in [resource.data.supplierId, resource.data.contractorId];
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.uid == userId;
+    }
+    
+    match /rfqs/{rfqId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == request.resource.data.contractorId;
+      allow update, delete: if request.auth.uid == resource.data.contractorId;
+    }
+    
+    match /offers/{offerId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == request.resource.data.supplierId;
+      allow update: if request.auth.uid in [resource.data.supplierId, resource.data.contractorId];
+    }
+    
+    match /users/{userId}/notifications/{notificationId} {
+      allow read, write: if request.auth.uid == userId;
+    }
+  }
 }
 ```
 
-## Cloud Functions
+## Authentication Flow
 
-### Triggers
-
-1. **onCreate User**: Initialize user profile
-2. **onCreate RFQ**: Notify matching suppliers
-3. **onCreate Offer**: Notify contractor
-4. **onUpdate Offer**: Update RFQ status
-
-### AI Flows (Genkit)
-
-| Flow | Purpose | Input | Output |
-|------|---------|-------|--------|
-| `recommendRFQForSupplier` | Match RFQs to supplier | supplierId | RFQ[] |
-| `recommendSuppliersForRFQ` | Match suppliers to RFQ | rfqId | Supplier[] |
-| `suggestSupplierSpecializations` | AI categorization | supplierId | Category[] |
-| `draftRFQDescription` | AI-assisted RFQ creation | rawText | description |
+1. User visits `/login` or `/register`
+2. Firebase Auth handles email/password authentication
+3. On successful auth, user document is fetched from Firestore
+4. Role-based routing occurs:
+   - `Admin` → `/admin`
+   - `Contractor` → `/contractor`
+   - `Supplier` → `/supplier`
+5. Auth state is maintained via `onAuthStateChanged` listener
 
 ## API Reference
 
-### REST Endpoints (via Cloud Functions)
+All API operations are performed client-side using Firebase SDK:
 
-```
-POST /createUserProfile
-  Input: { uid, role, name, phoneNumber, email, city }
-  Output: { success, profileId }
+### Authentication
+```typescript
+// Register
+createUserWithEmailAndPassword(auth, email, password)
+updateProfile(user, { displayName: name })
+setDoc(doc(firestore, "users", user.uid), userData)
 
-POST /createRFQ
-  Input: { contractorId, title, categoryId, quantity, ... }
-  Output: { success, rfqId }
-
-POST /submitOffer
-  Input: { rfqId, supplierId, pricePerUnit, ... }
-  Output: { success, offerId }
-
-POST /acceptOffer
-  Input: { offerId }
-  Output: { success }
-
-POST /rejectOffer
-  Input: { offerId }
-  Output: { success }
+// Login
+signInWithEmailAndPassword(auth, email, password)
+getDoc(doc(firestore, "users", user.uid))
 ```
 
-### Real-time Subscriptions
+### RFQ Operations
+```typescript
+// Create RFQ
+addDoc(collection(firestore, "rfqs"), rfqData)
 
+// List RFQs
+const q = query(
+  collection(firestore, "rfqs"),
+  where("contractorId", "==", user.uid),
+  orderBy("createdAt", "desc")
+)
+
+// Update RFQ status
+updateDoc(doc(firestore, "rfqs", rfqId), { status: "New" })
 ```
-/users/{userId}          - Profile changes
-/rfqs                    - New RFQs (filtered by role)
-/rfqs/{rfqId}/offers    - Offer updates
-/users/{userId}/notifications - Notification changes
+
+### Offer Operations
+```typescript
+// Submit Offer
+addDoc(collection(firestore, "offers"), offerData)
+
+// List Offers (Supplier)
+query(
+  collection(firestore, "offers"),
+  where("supplierId", "==", user.uid)
+)
+
+// List Offers (RFQ - Contractor)
+query(
+  collection(firestore, "offers"),
+  where("rfqId", "==", rfqId)
+)
 ```
 
 ## Indexes
 
-Custom indexes in `firestore.indexes.json`:
+Required composite indexes in Firestore (defined in `firestore.indexes.json`):
 
 ```json
-{
-  "collectionGroup": "offers",
-  "queryScope": "collection",
-  "fields": [
-    { "fieldPath": "contractorId", "order": "ascending" },
-    { "fieldPath": "status", "order": "ascending" }
-  ]
-}
+[
+  {
+    "collectionGroup": "offers",
+    "queryScope": "COLLECTION",
+    "fields": [
+      { "fieldPath": "supplierId", "order": "ASCENDING" },
+      { "fieldPath": "createdAt", "order": "DESCENDING" }
+    ]
+  },
+  {
+    "collectionGroup": "rfqs",
+    "queryScope": "COLLECTION",
+    "fields": [
+      { "fieldPath": "contractorId", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" }
+    ]
+  },
+  {
+    "collectionGroup": "rfqs",
+    "queryScope": "COLLECTION",
+    "fields": [
+      { "fieldPath": "category", "order": "ASCENDING" },
+      { "fieldPath": "status", "order": "ASCENDING" }
+    ]
+  }
+]
 ```
 
-## Firestore Emulator
+## AI Flows (Genkit)
 
-For local development:
+### Available Flows
+
+| Flow | Purpose | Input | Output |
+|------|---------|-------|--------|
+| `recommendRFQForSupplier` | Match RFQs to supplier's specializations | supplierId | RFQ[] |
+| `recommendSuppliersForRFQ` | Match suppliers to RFQ's category | rfqId | Supplier[] |
+| `suggestSupplierSpecializations` | AI categorize supplier based on profile | supplierId | Category[] |
+| `draftRFQDescription` | AI-assisted RFQ description generation | rawText | description |
+
+### Running AI Flows
+
 ```bash
-firebase emulators:start
+# Start Genkit dev server
+npm run genkit:dev
+
+# Watch mode for development
+npm run genkit:watch
 ```
 
-Set environment:
+## Deployment
+
+### Firebase Deployment
 ```bash
-export FIRESTORE_EMULATOR_HOST="localhost:8080"
+# Deploy hosting
+firebase deploy --only hosting
+
+# Deploy Firestore rules
+firebase deploy --only firestore:rules
+
+# Deploy indexes
+firebase deploy --only firestore:indexes
+
+# Full deploy
+firebase deploy
+```
+
+### Environment Variables
+
+Required in `.env.local`:
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_GEMINI_API_KEY=
 ```
 
 ## Best Practices
 
-### Data Modeling
-1. Denormalize for authorization independence
-2. Use subcollections for user-specific data
-3. Index frequently queried fields
-
-### Security
-1. Never trust client-side role checks
-2. Validate all inputs in security rules
-3. Use custom claims for role verification
-
-### Performance
-1. Limit document size to 1MB
-2. Use batch writes for bulk operations
-3. Implement pagination for large collections
-
-### Backup & Recovery
-1. Configure automated daily backups
-2. Test restore procedures quarterly
-
-## Deployment
-
-### Firestore Deployment
-```bash
-firebase deploy --only firestore
-```
-
-### Functions Deployment
-```bash
-firebase deploy --only functions
-```
-
-### Full Deployment
-```bash
-firebase deploy
-```
-
-## Monitoring
-
-### Console Monitoring
-- Firebase Console → Firestore → Usage
-- Firebase Console → Functions → Logs
-
-### Alerts
-- Configure error rate alerts
-- Monitor cold starts
-- Track quota usage
+1. **Data Denormalization**: Store `contractorId` in RFQ documents for direct access checks
+2. **Real-time Listeners**: Use Firestore `onSnapshot` for live data updates
+3. **Optimistic Updates**: Update UI immediately, then sync with server
+4. **Error Handling**: Wrap all Firestore operations in try-catch blocks
+5. **Loading States**: Always show loading indicators while fetching data
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Permission Denied**: Check security rules and auth state
-2. **Slow Queries**: Review index usage in console
-3. **Quota Exceeded**: Optimize queries and batch operations
-4. **Function Timeout**: Increase timeout or optimize logic
+1. **Permission Denied**: Check Firestore rules and ensure user is authenticated
+2. **Slow Queries**: Review index usage in Firebase Console
+3. **Auth State Issues**: Verify Firebase Auth configuration
+4. **Build Errors**: Run `npm run typecheck` to identify type errors
 
 ### Debug Mode
-```bash
-firebase functions:log
-firebase emulators:exec "npm test"
+
+Add to `.env.local`:
+```env
+NEXT_PUBLIC_DEBUG=true
 ```
+
+Check browser console for Firebase logs.

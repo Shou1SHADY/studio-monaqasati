@@ -2,7 +2,7 @@
 
 ## Overview
 
-The frontend is built with **Next.js 15** (App Router), **React 19**, **TypeScript**, and **Tailwind CSS**. It uses a component-based architecture with the Shadcn/ui design system.
+The frontend is a **Next.js 15** (App Router) application with **React 19**, **TypeScript**, and **Tailwind CSS**. It uses a component-based architecture with the Shadcn/ui design system and Firebase for backend services.
 
 ## Tech Stack
 
@@ -11,7 +11,7 @@ The frontend is built with **Next.js 15** (App Router), **React 19**, **TypeScri
 | Framework | Next.js | 15.5.9 |
 | UI Library | React | 19.2.1 |
 | Styling | Tailwind CSS | 3.4.1 |
-| Components | Shadcn/ui | Latest |
+| Components | Shadcn/ui + Radix UI | Latest |
 | State | React Hook Form + Zod | 7.54.2 / 3.24.2 |
 | Charts | Recharts | 2.15.1 |
 | Maps | React Leaflet | 5.0.0 |
@@ -25,43 +25,82 @@ The frontend is built with **Next.js 15** (App Router), **React 19**, **TypeScri
 
 ```
 src/
-├── app/                    # Next.js App Router pages
-│   ├── (admin)/           # Admin route group
-│   │   └── admin/        # Admin dashboard & pages
-│   ├── (contractor)/     # Contractor route group
-│   │   └── contractor/   # Contractor portal
-│   ├── (supplier)/        # Supplier route group
-│   │   └── supplier/     # Supplier portal
-│   ├── login/            # Login page
-│   ├── register/         # Registration page
-│   ├── chat/             # Chat functionality
-│   ├── layout.tsx         # Root layout
-│   └── page.tsx           # Landing page
+├── app/                          # Next.js App Router pages
+│   ├── (admin)/                  # Admin route group
+│   │   └── admin/
+│   │       ├── page.tsx          # Admin dashboard
+│   │       ├── rfqs/page.tsx     # All RFQs view
+│   │       ├── suppliers/page.tsx # Supplier management
+│   │       ├── notifications/page.tsx
+│   │       ├── stats/page.tsx
+│   │       ├── settings/page.tsx
+│   │       └── seed/page.tsx     # Data seeding
+│   ├── (contractor)/            # Contractor route group
+│   │   └── contractor/
+│   │       ├── page.tsx         # Dashboard
+│   │       ├── rfqs/
+│   │       │   ├── page.tsx     # RFQ list with filters
+│   │       │   ├── new/page.tsx  # Create RFQ
+│   │       │   └── [id]/offers/page.tsx # Offers for RFQ
+│   │       ├── suppliers/page.tsx
+│   │       ├── profile/page.tsx
+│   │       ├── chats/page.tsx
+│   │       └── notifications/page.tsx
+│   ├── (supplier)/              # Supplier route group
+│   │   └── supplier/
+│   │       ├── page.tsx         # Dashboard with quick offer
+│   │       ├── rfqs/page.tsx    # Browse RFQs
+│   │       ├── offers/page.tsx  # My submitted offers
+│   │       ├── orders/page.tsx
+│   │       ├── profile/page.tsx
+│   │       ├── chats/page.tsx
+│   │       └── notifications/page.tsx
+│   ├── chat/
+│   │   └── [chatId]/page.tsx    # Chat page
+│   ├── login/page.tsx           # Login page
+│   ├── register/page.tsx        # Registration page
+│   ├── layout.tsx               # Root layout with Firebase provider
+│   └── page.tsx                 # Landing page
 ├── components/
-│   ├── ui/               # Shadcn/ui components
-│   ├── layout/           # Layout components (sidebar, portal-layout)
-│   └── *.tsx             # Feature components
-├── firebase/             # Firebase client
-│   ├── config.ts         # Firebase configuration
-│   ├── provider.tsx      # React context provider
-│   ├── client-provider.tsx
-│   ├── firestore/        # Firestore hooks
-│   │   ├── use-collection.tsx
-│   │   ├── use-doc.tsx
-│   │   └── use-collection-paginated.tsx
-│   ├── errors.ts         # Error handling
-│   └── index.ts          # Firebase exports
-├── hooks/                # Custom React hooks
-│   ├── use-toast.ts      # Toast notifications
-│   └── use-mobile.tsx   # Mobile detection
-├── lib/                  # Utility functions
-│   ├── utils.ts         # cn() helper
-│   ├── constants.ts     # App constants
+│   ├── ui/                      # Shadcn/ui components (Accordion, Alert, etc.)
+│   ├── layout/
+│   │   └── portal-layout.tsx    # Shared portal layout with sidebar
+│   ├── FirebaseErrorListener.tsx
+│   └── chats-list-page.tsx
+├── firebase/                    # Firebase configuration & hooks
+│   ├── index.ts                 # Firebase initialization
+│   ├── config.ts                 # Firebase config object
+│   ├── provider.tsx             # React context provider
+│   ├── client-provider.tsx       # Client-side provider wrapper
+│   ├── firestore/
+│   │   ├── use-collection.tsx    # Hook for querying collections
+│   │   ├── use-doc.tsx           # Hook for single document
+│   │   └── use-collection-paginated.tsx # Paginated collection query
+│   ├── errors.ts                # Error types
+│   ├── error-emitter.ts         # Global error handling
+│   ├── on-blocking-updates.tsx
+│   └── on-blocking-login.tsx
+├── hooks/
+│   ├── use-toast.ts             # Toast notification hook
+│   └── use-mobile.tsx           # Mobile detection hook
+├── lib/
+│   ├── utils.ts                 # cn() helper
+│   ├── constants.ts             # PREDEFINED_CATEGORIES, SAUDI_CITIES
 │   └── placeholder-images.ts
-└── ai/                   # Genkit AI flows
-    ├── flows/           # AI flow implementations
-    ├── genkit.ts        # Genkit config
-    └── dev.ts           # Dev server
+├── ai/                          # Genkit AI flows
+│   ├── flows/
+│   │   ├── draft-rfq-description-flow.ts
+│   │   ├── recommend-suppliers-for-rfq-flow.ts
+│   │   ├── suggest-supplier-specializations-flow.ts
+│   │   └── recommend-rfq-for-supplier-flow.ts
+│   ├── genkit.ts               # Genkit configuration
+│   ├── cache.ts                # AI response caching
+│   └── dev.ts                  # Dev server entry
+└── utils/
+    ├── rfq-products.ts         # Product management for RFQs
+    ├── rfq-filters.ts          # RFQ filtering and sorting
+    ├── offer-utils.ts          # Offer calculations
+    └── inquiry-utils.ts        # Inquiry helpers
 ```
 
 ## Route Structure
@@ -72,70 +111,106 @@ src/
 - `/register` - Registration page
 
 ### Role-Based Routes (Protected)
-- `/admin/*` - Admin dashboard (requires admin role)
-- `/contractor/*` - Contractor portal (requires contractor role)
-- `/supplier/*` - Supplier portal (requires supplier role)
+- `/admin/*` - Admin dashboard (requires Admin role)
+- `/contractor/*` - Contractor portal (requires Contractor role)
+- `/supplier/*` - Supplier portal (requires Supplier role)
 
 ### Shared Routes
 - `/chat/[chatId]` - Chat functionality (all roles)
+
+## Authentication Flow
+
+1. **Registration** (`/register`):
+   - User selects role (Contractor or Supplier)
+   - Creates Firebase Auth account with email/password
+   - Creates user document in Firestore
+   - Redirects to respective portal
+
+2. **Login** (`/login`):
+   - User enters credentials
+   - Firebase Auth validates
+   - Fetches user document from Firestore
+   - Routes based on role
+
+3. **Auth State Management**:
+   - `FirebaseClientProvider` initializes Firebase
+   - `FirebaseProvider` wraps app with auth context
+   - `useFirebase` hook provides auth, firestore, user
+
+## Component Patterns
+
+### PortalLayout
+Provides consistent layout with sidebar navigation:
+```tsx
+<PortalLayout>
+  {/* Page content */}
+</PortalLayout>
+```
+
+### Data Fetching
+```tsx
+const query = useMemoFirebase(() => {
+  if (isUserLoading || !user || !firestore) return null
+  return query(collection(firestore, "collection"))
+}, [firestore, user, isUserLoading])
+
+const { data, isLoading } = useCollection(query)
+```
+
+### Form Submission
+```tsx
+const submitOffer = async () => {
+  try {
+    await addDoc(collection(firestore, "offers"), offerData)
+    toast({ title: "Success!" })
+  } catch (error) {
+    toast({ title: "Error", variant: "destructive" })
+  }
+}
+```
 
 ## UI/UX Guidelines
 
 ### Design Tokens
 
 ```css
-:root {
-  /* Primary Colors */
-  --primary: #2874D4;        /* Trust & professionalism */
-  --primary-hover: #1E5BA8;
-  --background: #ECF2F9;     /* Soft blue-grey */
-  --accent: #20CBD5;         /* Vivid cyan */
-  
-  /* Sidebar */
-  --sidebar: #0B1F3A;        /* Dark navy */
-  
-  /* Cards */
-  --card: #FFFFFF;
-  --card-border: #E2E8F0;
-  --card-radius: 12px;
-  
-  /* Semantic */
-  --success: #12A063;
-  --error: #DC2626;
-  --warning: #F59E0B;
-  
-  /* Typography */
-  --font-family: 'IBM Plex Sans Arabic', sans-serif;
-}
+--primary: #2874D4;        /* Trust & professionalism */
+--primary-hover: #1E5BA8;
+--background: #ECF2F9;     /* Soft blue-grey */
+--accent: #20CBD5;         /* Vivid cyan */
+--sidebar: #0B1F3A;        /* Dark navy */
+--card: #FFFFFF;
+--card-border: #E2E8F0;
+--success: #12A063;
+--destructive: #DC2626;
+--warning: #F59E0B;
 ```
 
 ### Layout Principles
 
-1. **RTL-First**: All content flows right-to-left
-2. **Sidebar Navigation**: Persistent dark navy sidebar on the right
+1. **RTL-First**: All content flows right-to-left (`dir="rtl"`)
+2. **Sidebar Navigation**: Persistent dark navy sidebar
 3. **Card-Based Content**: Clean white cards with subtle borders
 4. **Responsive**: Mobile-first with breakpoints at 640px, 768px, 1024px, 1280px
 
-### Component Guidelines
+### Design System Colors
 
-- Use Shadcn/ui components as base
-- Follow consistent spacing (4px grid: 4, 8, 12, 16, 24, 32, 48, 64)
-- Implement skeleton loading states
-- Use proper ARIA labels for accessibility
-- Support keyboard navigation
-
-### Animation Guidelines
-
-- Page transitions: 200ms ease-out
-- Hover states: 150ms ease
-- Modals: 300ms cubic-bezier(0.16, 1, 0.3, 1)
-- Use CSS transforms over opacity for performance
+| Color | Hex | Usage |
+|-------|-----|-------|
+| Primary | #2874D4 | Buttons, links, key highlights |
+| Primary Hover | #1E5BA8 | Button hover states |
+| Background | #ECF2F9 | Page background |
+| Accent | #20CBD5 | Secondary actions |
+| Sidebar | #0B1F3A | Navigation background |
+| Success | #12A063 | Positive statuses |
+| Destructive | #DC2626 | Error states |
+| Warning | #F59E0B | Warning states |
 
 ## State Management
 
 ### Client State
 - React Hook Form for form state
-- React Context for auth state (Firebase Auth)
+- React Context for auth state
 - Local state for UI state
 
 ### Server State
@@ -146,69 +221,17 @@ src/
 - Zod schemas for validation
 - Server-side validation via Firestore security rules
 
-## Performance Guidelines
-
-1. **Code Splitting**: Next.js automatic route-based code splitting
-2. **Image Optimization**: Next.js Image component
-3. **Font Optimization**: next/font for IBM Plex Sans Arabic
-4. **Bundle Analysis**: Run `npm run build` and check bundle size
-5. **Lazy Loading**: Dynamic imports for heavy components
-
-## Accessibility
-
-- WCAG 2.1 AA compliance target
-- Proper heading hierarchy (h1 → h6)
-- Focus indicators on all interactive elements
-- Screen reader friendly labels
-- Color contrast ratio minimum 4.5:1
-
-## Testing Strategy
+## Testing
 
 ### Unit Tests (Jest)
-- Component rendering
-- Utility functions
-- Form validation
+- Location: `src/__tests__/*.test.ts`
+- Run: `npm run test`
 
 ### E2E Tests (Playwright)
-- Critical user flows
-- Authentication flows
-- Navigation
+- Location: `e2e/*.spec.ts`
+- Run: `npm run e2e`
 
-### Manual Testing
-- Browser compatibility
-- Mobile devices
-- Accessibility
-
-## Deployment
-
-### Environment Variables
-```env
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
-NEXT_PUBLIC_GEMINI_API_KEY=
-```
-
-### Build & Deploy
-```bash
-npm run build
-firebase deploy --only hosting
-```
-
-## Best Practices
-
-1. **Component Composition**: Prefer composition over inheritance
-2. **Colocation**: Keep related files together
-3. **Type Safety**: Use TypeScript strictly, avoid `any`
-4. **Error Boundaries**: Implement error boundaries for graceful failures
-5. **Loading States**: Always show loading states for async operations
-6. **Error Handling**: Show user-friendly error messages
-7. **Security**: Never expose sensitive data in client-side code
-
-## Scripts Reference
+## Available Scripts
 
 ```bash
 # Development
@@ -230,6 +253,10 @@ npm run e2e:ui           # Playwright UI mode
 # AI Development
 npm run genkit:dev       # Start Genkit dev server
 npm run genkit:watch     # Watch mode for AI flows
+
+# Validation
+npm run validate         # Full validation
+npm run validate:quick   # Quick check
 ```
 
 ## Troubleshooting
@@ -237,7 +264,7 @@ npm run genkit:watch     # Watch mode for AI flows
 ### Common Issues
 
 1. **Build Errors**: Run `npm run typecheck` to see type errors
-2. **Firestore Issues**: Check firestore.rules and ensure proper permissions
+2. **Firestore Issues**: Check `firestore.rules` and ensure proper permissions
 3. **Auth Issues**: Verify Firebase Auth configuration in console
 4. **UI Issues**: Check Tailwind configuration and CSS imports
 
@@ -247,3 +274,15 @@ Add to `.env.local`:
 ```env
 NEXT_PUBLIC_DEBUG=true
 ```
+
+## Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `src/app/layout.tsx` | Root layout with Firebase provider |
+| `src/firebase/provider.tsx` | Auth context and Firebase hooks |
+| `src/components/layout/portal-layout.tsx` | Shared portal layout |
+| `src/lib/constants.ts` | Predefined categories and cities |
+| `src/app/(contractor)/contractor/rfqs/page.tsx` | RFQ management for contractors |
+| `src/app/(supplier)/supplier/page.tsx` | Supplier dashboard |
+| `src/app/(admin)/admin/page.tsx` | Admin dashboard |

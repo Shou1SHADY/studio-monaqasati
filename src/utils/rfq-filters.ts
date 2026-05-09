@@ -9,10 +9,10 @@ export interface Rfq {
 
 export type DeadlineFilter = 'all' | 'week' | 'month' | 'custom'
 
-export function filterRfqsByDeadline(rfqs: Rfq[], filter: DeadlineFilter, customDate?: string, now: string = new Date().toISOString()): Rfq[] {
+export function filterRfqsByDeadline(rfqs: Rfq[], filter: DeadlineFilter, now?: string, customDate?: string): Rfq[] {
   if (filter === 'all') return rfqs
   
-  const currentDate = new Date(now)
+  const currentDate = new Date(now || new Date().toISOString())
   
   return rfqs.filter(rfq => {
     if (!rfq.deadline) return true

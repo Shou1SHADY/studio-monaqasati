@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useRef } from "react"
@@ -16,17 +15,8 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { MapPicker } from "@/components/ui/map-picker"
 import {
   ChevronLeft,
   ChevronRight,
@@ -41,7 +31,8 @@ import {
   Upload,
   File,
   Save,
-  Send
+  Send,
+  AlertCircle
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -49,8 +40,6 @@ import { useFirestore, useUser, useStorage, addDocumentNonBlocking } from "@/fir
 import { collection } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA } from "@/lib/constants"
-import { format } from "date-fns"
-import { ar } from "date-fns/locale"
 
 const SAUDI_CITIES = [
   "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
@@ -77,12 +66,20 @@ const CITIES_DISTRICTS: Record<string, string[]> = {
   "نجران": ["الفيصلية", "الخالدية", "الفهد", "جميع نجران"],
 }
 
+interface ValidationError {
+  field: string
+  message: string
+}
+
+function RequiredStar() {
+  return <span className="text-destructive mr-1">*</span>
+}
+
 export default function NewRfqPage() {
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false)
-  const [tempCoords, setTempCoords] = useState<{ lat: number, lng: number } | null>(null)
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const { toast } = useToast()
   const router = useRouter()
   const firestore = useFirestore()
@@ -100,7 +97,6 @@ export default function NewRfqPage() {
     notes: "",
     certRequired: false,
     visibility: "public" as "public" | "favorites",
-    locationCoords: null as { lat: number, lng: number } | null,
     pdfUrl: null as string | null,
     pdfStoragePath: null as string | null
   })
@@ -135,7 +131,7 @@ export default function NewRfqPage() {
   }
 
   const storage = useStorage()
-  
+
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -173,10 +169,86 @@ export default function NewRfqPage() {
     if (pdfInputRef.current) pdfInputRef.current.value = ""
   }
 
-  const nextStep = () => setStep(s => s + 1)
-  const prevStep = () => setStep(s => s - 1)
+  const clearError = (field: string) => {
+    setValidationErrors(prev => prev.filter(e => e.field !== field))
+  }
+
+  const validateStep1 = (): ValidationError[] => {
+    const errors: ValidationError[] = []
+    
+    if (!formData.title.trim()) {
+      errors.push({ field: "title", message: "يرجى إدخال عنوان للمناقصة" })
+    }
+    
+    if (!formData.category) {
+      errors.push({ field: "category", message: "يرجى اختيار الفئة الرئيسية" })
+    }
+    
+    const validProducts = products.filter(p => p.name.trim() && p.quantity.trim() && p.unit.trim())
+    if (validProducts.length === 0) {
+      errors.push({ field: "products", message: "يرجى إدخال منتج واحد على الأقل مع تحديد الكمية والوحدة" })
+    }
+    
+    return errors
+  }
+
+  const validateStep2 = (): ValidationError[] => {
+    const errors: ValidationError[] = []
+    
+    if (!formData.city) {
+      errors.push({ field: "city", message: "يرجى اختيار المدينة" })
+    }
+    
+    if (!formData.deadline) {
+      errors.push({ field: "deadline", message: "يرجى تحديد الموعد النهائي للعروض" })
+    } else {
+      const deadlineDate = new Date(formData.deadline)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (deadlineDate < today) {
+        errors.push({ field: "deadline", message: "الموعد النهائي يجب أن يكون في المستقبل" })
+      }
+    }
+    
+    return errors
+  }
+
+  const showErrors = (errors: ValidationError[]) => {
+    setValidationErrors(errors)
+    if (errors.length > 0) {
+      const firstError = errors[0]
+      const fieldElement = document.getElementById(firstError.field)
+      if (fieldElement) {
+        fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+      
+      toast({
+        title: "بيانات ناقصة",
+        description: errors[0].message,
+        variant: "destructive"
+      })
+    }
+  }
+
+  const nextStep = () => {
+    const errors = step === 1 ? validateStep1() : step === 2 ? validateStep2() : []
+    
+    if (errors.length > 0) {
+      showErrors(errors)
+      return
+    }
+    
+    setValidationErrors([])
+    setStep(s => s + 1)
+  }
+
+  const prevStep = () => {
+    setStep(s => s - 1)
+    setValidationErrors([])
+  }
 
   const handleAiDraft = async () => {
+    clearError("title")
     if (!formData.title || !formData.category) {
       toast({
         title: "بيانات ناقصة",
@@ -256,8 +328,7 @@ export default function NewRfqPage() {
       })),
       deadline: formData.deadline,
       city: formData.city,
-      district: formData.district,
-      locationCoords: formData.locationCoords ? { lat: formData.locationCoords.lat, lng: formData.locationCoords.lng } : null,
+      district: formData.district || "",
       isQualityCertificateRequired: formData.certRequired,
       visibility: formData.visibility,
       notes: formData.notes,
@@ -274,7 +345,6 @@ export default function NewRfqPage() {
         title: "تم الحفظ!",
         description: "تم حفظ المناقصة كمسودة. يمكنك نشرها لاحقاً من قائمة المناقصات.",
       })
-      // Reset form for another RFQ
       setFormData({
         title: "",
         category: "",
@@ -285,7 +355,6 @@ export default function NewRfqPage() {
         notes: "",
         certRequired: false,
         visibility: "public",
-        locationCoords: null,
         pdfUrl: null,
         pdfStoragePath: null
       })
@@ -300,6 +369,8 @@ export default function NewRfqPage() {
       router.push("/contractor/rfqs")
     }
   }
+
+  const hasError = (field: string) => validationErrors.some(e => e.field === field)
 
   return (
     <PortalLayout>
@@ -337,13 +408,32 @@ export default function NewRfqPage() {
           ))}
         </div>
 
+        {validationErrors.length > 0 && (
+          <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start gap-3">
+            <AlertCircle className="text-destructive shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
+              <p className="font-bold text-destructive text-sm">يرجى إصلاح الأخطاء التالية:</p>
+              <ul className="mt-2 space-y-1 text-sm text-destructive/80">
+                {validationErrors.map((error, idx) => (
+                  <li key={idx} className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-destructive shrink-0" />
+                    {error.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         <Card className="shadow-xl border-0 overflow-hidden">
           <CardContent className="p-0">
             {step === 1 && (
               <div className="p-8 space-y-8">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <Label className="text-base font-bold text-slate-700">عنوان المناقصة</Label>
+                    <Label className="text-base font-bold text-slate-700">
+                      عنوان المناقصة<RequiredStar />
+                    </Label>
                     {isAiEnabled && (
                       <Button
                         variant="outline"
@@ -357,20 +447,34 @@ export default function NewRfqPage() {
                       </Button>
                     )}
                   </div>
-                  <Input
-                    id="title"
-                    placeholder="مثال: توريد حديد تسليح لمشروع في الرياض"
-                    value={formData.title}
-                    onChange={e => setFormData({ ...formData, title: e.target.value })}
-                    className="h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="title"
+                      placeholder="مثال: توريد حديد تسليح لمشروع في الرياض"
+                      value={formData.title}
+                      onChange={e => {
+                        setFormData({ ...formData, title: e.target.value })
+                        clearError("title")
+                      }}
+                      className={`h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl ${hasError("title") ? 'border-destructive ring-1 ring-destructive' : ''}`}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">عنوان واضح يسهل على الموردين البحث والفرز</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">الفئة الرئيسية</Label>
-                    <Select onValueChange={v => setFormData({ ...formData, category: v, subCategory: "" })}>
-                      <SelectTrigger className="h-12 rounded-xl border-slate-200 cursor-pointer">
+                    <Label className="text-sm font-semibold text-slate-700">
+                      الفئة الرئيسية<RequiredStar />
+                    </Label>
+                    <Select 
+                      value={formData.category}
+                      onValueChange={v => {
+                        setFormData({ ...formData, category: v, subCategory: "" })
+                        clearError("category")
+                      }}
+                    >
+                      <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("category") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
                         <SelectValue placeholder="اختر الفئة" />
                       </SelectTrigger>
                       <SelectContent>
@@ -410,7 +514,9 @@ export default function NewRfqPage() {
                         <FileText size={20} className="text-primary" />
                       </div>
                       <div>
-                        <Label className="text-lg font-bold text-slate-800">المنتجات المطلوبة</Label>
+                        <Label className="text-lg font-bold text-slate-800">
+                          المنتجات المطلوبة<RequiredStar />
+                        </Label>
                         <p className="text-xs text-slate-500 mt-0.5">أضف كل المنتجات التي تحتاجها في هذه المناقصة</p>
                       </div>
                     </div>
@@ -419,6 +525,12 @@ export default function NewRfqPage() {
                       إضافة منتج
                     </Button>
                   </div>
+                  {hasError("products") && (
+                    <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-lg text-sm text-destructive flex items-center gap-2">
+                      <AlertCircle size={16} />
+                      {validationErrors.find(e => e.field === "products")?.message}
+                    </div>
+                  )}
                   <div className="space-y-4">
                     {products.map((product, index) => (
                       <div key={product.id} className="p-6 bg-gradient-to-br from-white to-slate-50 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
@@ -443,7 +555,9 @@ export default function NewRfqPage() {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                           <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">اسم المنتج</Label>
+                            <Label className="text-xs font-semibold text-slate-600">
+                              اسم المنتج<RequiredStar />
+                            </Label>
                             <Input
                               placeholder="مثال: حديد تسليح طولي"
                               value={product.name}
@@ -452,7 +566,9 @@ export default function NewRfqPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">الكمية المطلوبة</Label>
+                            <Label className="text-xs font-semibold text-slate-600">
+                              الكمية المطلوبة<RequiredStar />
+                            </Label>
                             <Input
                               type="number"
                               placeholder="0"
@@ -462,7 +578,9 @@ export default function NewRfqPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">وحدة القياس</Label>
+                            <Label className="text-xs font-semibold text-slate-600">
+                              وحدة القياس<RequiredStar />
+                            </Label>
                             <Input
                               placeholder="طن - متر - قطعة"
                               value={product.unit}
@@ -557,9 +675,17 @@ export default function NewRfqPage() {
               <div className="p-8 space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">المدينة</Label>
-                    <Select onValueChange={v => setFormData({ ...formData, city: v, district: "" })}>
-                      <SelectTrigger className="h-12 rounded-xl border-slate-200 cursor-pointer">
+                    <Label className="text-sm font-semibold text-slate-700">
+                      المدينة<RequiredStar />
+                    </Label>
+                    <Select 
+                      value={formData.city} 
+                      onValueChange={v => {
+                        setFormData({ ...formData, city: v, district: "" })
+                        clearError("city")
+                      }}
+                    >
+                      <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("city") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
                         <SelectValue placeholder="اختر المدينة" />
                       </SelectTrigger>
                       <SelectContent>
@@ -570,7 +696,7 @@ export default function NewRfqPage() {
                     </Select>
                   </div>
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">الحي أو المنطقة</Label>
+                    <Label className="text-sm font-semibold text-slate-700">المنطقة / الحي</Label>
                     <Select
                       disabled={!formData.city}
                       onValueChange={v => setFormData({ ...formData, district: v })}
@@ -580,7 +706,7 @@ export default function NewRfqPage() {
                         <SelectValue placeholder={formData.city ? "اختر الحي" : "اختر المدينة أولاً"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {formData.city && (CITIES_DISTRICTS[formData.city] || ["الشمال", "الجنوب", "الشرق", "الغرب", "المركز", "جميع المناطق"]).map(dist => (
+                        {formData.city && (CITIES_DISTRICTS[formData.city] || ["شمال", "جنوب", "شرق", "غرب", "وسط", "جميع"]).map(dist => (
                           <SelectItem key={dist} value={dist}>{dist}</SelectItem>
                         ))}
                       </SelectContent>
@@ -588,112 +714,46 @@ export default function NewRfqPage() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-success/10 flex items-center justify-center">
-                      <MapPin size={18} className="text-success" />
+                    <div className="h-9 w-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                      <MapPin size={18} className="text-amber-600" />
                     </div>
-                    <Label className="text-base font-bold text-slate-700">موقع التوريد الدقيق</Label>
+                    <div>
+                      <Label className="text-base font-bold text-slate-700">معلومات التوريد</Label>
+                      <p className="text-xs text-slate-500 mt-0.5">سيتمكن الموردون من رؤية المدينة والمنطقة فقط</p>
+                    </div>
                   </div>
-
-                  {formData.locationCoords ? (
-                    <div className="relative h-56 rounded-2xl border-2 border-success/30 bg-gradient-to-br from-success/5 to-white flex flex-col items-center justify-center text-center p-6">
-                      <div className="h-16 w-16 rounded-2xl bg-success/10 flex items-center justify-center mb-4">
-                        <MapPin className="text-success" size={32} />
-                      </div>
-                      <p className="text-lg font-bold text-success">تم تحديد الموقع بنجاح</p>
-                      <p className="text-xs text-success/70 mt-2 font-mono">
-                        {formData.locationCoords.lat.toFixed(4)}, {formData.locationCoords.lng.toFixed(4)}
-                      </p>
-                      <div className="flex gap-3 mt-6">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="cursor-pointer rounded-xl"
-                          onClick={() => {
-                            setTempCoords(formData.locationCoords)
-                            setIsMapModalOpen(true)
-                          }}
-                        >
-                          تعديل الموقع
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:bg-destructive/10 cursor-pointer rounded-xl"
-                          onClick={() => setFormData({ ...formData, locationCoords: null })}
-                        >
-                          إلغاء التحديد
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <Dialog open={isMapModalOpen} onOpenChange={setIsMapModalOpen}>
-                      <DialogTrigger asChild>
-                        <div className="relative h-56 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center justify-center text-center p-6 group hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
-                          <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                            <MapPin size={28} className="text-primary" />
-                          </div>
-                          <h3 className="font-bold text-slate-800 text-lg">تحديد الموقع على الخريطة</h3>
-                          <p className="text-sm text-slate-500 max-w-[240px] mt-2">انقر لفتح الخريطة واختيار موقع المشروع بدقة لتسهيل التوصيل على الموردين</p>
-                          <Button variant="secondary" size="sm" className="mt-5 rounded-full cursor-pointer pointer-events-none">
-                            فتح الخريطة
-                          </Button>
-                        </div>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-[600px] w-[95vw] h-[80vh] flex flex-col">
-                        <DialogHeader>
-                          <DialogTitle className="text-right">تحديد الموقع الدقيق</DialogTitle>
-                          <DialogDescription className="text-right">
-                            انقر على الخريطة لتحديد موقع التوريد بدقة
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex-1 relative rounded-xl overflow-hidden border border-slate-200 min-h-0 my-4">
-                          {isMapModalOpen && (
-                            <MapPicker
-                              key={isMapModalOpen ? 'open' : 'closed'}
-                              className="w-full h-full"
-                              initialPosition={tempCoords || { lat: 24.7136, lng: 46.6753 }}
-                              onLocationSelect={(loc) => setTempCoords(loc)}
-                            />
-                          )}
-                          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur text-sm font-bold px-5 py-2.5 rounded-full shadow-lg z-[400] pointer-events-none border border-slate-200">
-                            انقر على الخريطة لتحديد الموقع
-                          </div>
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4 border-t mt-auto">
-                          <Button variant="outline" onClick={() => setIsMapModalOpen(false)} className="rounded-xl cursor-pointer">
-                            إلغاء
-                          </Button>
-                          <Button
-                            disabled={!tempCoords}
-                            onClick={() => {
-                              if (tempCoords) {
-                                setFormData({ ...formData, locationCoords: tempCoords })
-                                toast({ title: "تم تأكيد الموقع", description: "تم حفظ الإحداثيات بنجاح" })
-                                setIsMapModalOpen(false)
-                              }
-                            }}
-                            className="rounded-xl cursor-pointer"
-                          >
-                            تأكيد الموقع
-                          </Button>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  )}
+                  <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200/50">
+                    <p className="text-sm text-amber-800 flex items-center gap-2">
+                      <AlertCircle size={16} className="shrink-0" />
+                      <span>يتم عرض موقع التوريد على مستوى المدينة فقط للحفاظ على خصوصية المشروع</span>
+                    </p>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">الموعد النهائي للعروض</Label>
+                    <Label className="text-sm font-semibold text-slate-700">
+                      الموعد النهائي للعروض<RequiredStar />
+                    </Label>
                     <input
                       type="date"
+                      id="deadline"
                       value={formData.deadline}
-                      onChange={e => setFormData({ ...formData, deadline: e.target.value })}
-                      className="flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm cursor-pointer"
+                      onChange={e => {
+                        setFormData({ ...formData, deadline: e.target.value })
+                        clearError("deadline")
+                      }}
+                      className={`flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm cursor-pointer ${hasError("deadline") ? 'border-destructive ring-1 ring-destructive' : ''}`}
                       dir="ltr"
+                      min={new Date().toISOString().split('T')[0]}
                     />
+                    {formData.deadline && (
+                      <p className="text-xs text-muted-foreground">
+                        الموعد النهائي: {new Date(formData.deadline).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -709,7 +769,7 @@ export default function NewRfqPage() {
                     <Label className="text-base font-bold text-slate-700">نطاق نشر المناقصة</Label>
                   </div>
                   <RadioGroup 
-                    defaultValue={formData.visibility} 
+                    value={formData.visibility} 
                     onValueChange={(v) => setFormData({...formData, visibility: v as "public" | "favorites"})}
                     className="space-y-3 mt-2"
                   >
@@ -747,6 +807,39 @@ export default function NewRfqPage() {
                     />
                   </div>
                 </div>
+
+                <div className="p-6 bg-slate-50 rounded-2xl border border-slate-200">
+                  <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                    <FileText size={18} className="text-primary" />
+                    ملخص المناقصة
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">العنوان:</span>
+                      <span className="font-bold mr-2">{formData.title || "-"}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">الفئة:</span>
+                      <span className="font-bold mr-2">{formData.category || "-"}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">المدينة:</span>
+                      <span className="font-bold mr-2">{formData.city || "-"}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">المنطقة:</span>
+                      <span className="font-bold mr-2">{formData.district || "-"}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">الموعد النهائي:</span>
+                      <span className="font-bold mr-2">{formData.deadline ? new Date(formData.deadline).toLocaleDateString('ar-SA') : "-"}</span>
+                    </div>
+                    <div className="p-3 bg-white rounded-lg">
+                      <span className="text-muted-foreground">المنتجات:</span>
+                      <span className="font-bold mr-2">{products.filter(p => p.name).length} منتج</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </CardContent>
@@ -756,7 +849,7 @@ export default function NewRfqPage() {
               variant="outline"
               onClick={prevStep}
               disabled={step === 1 || isSubmitting}
-              className={`gap-2 px-6 rounded-xl hover:bg-slate-100 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+              className={`gap-2 px-6 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             >
               <ChevronRight size={18} />
               السابق

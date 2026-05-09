@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -24,10 +25,13 @@ import {
   Phone,
   ArrowDown,
   Box,
-  File
+  File,
+  Send,
+  Globe,
+  Download
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 
@@ -212,6 +216,18 @@ export default function RfqOffersPage() {
                         {rfq.subCategory}
                       </Badge>
                     )}
+                    {rfq.pdfUrl && (
+                      <a 
+                        href={rfq.pdfUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        download
+                        className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors"
+                      >
+                        <File size={12} />
+                        تحميل PDF
+                      </a>
+                    )}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mr-auto bg-slate-50 px-2 py-1 rounded">
                       <Calendar size={12} />
                       تاريخ الطرح: {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
@@ -352,6 +368,7 @@ export default function RfqOffersPage() {
             <TabsList className="bg-slate-100/50 border border-slate-200">
               <TabsTrigger value="list" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">قائمة العروض</TabsTrigger>
               <TabsTrigger value="compare" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">مقارنة العروض</TabsTrigger>
+              <TabsTrigger value="inquiries" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">الاستفسارات</TabsTrigger>
             </TabsList>
           </div>
 
@@ -394,8 +411,19 @@ export default function RfqOffersPage() {
                             <User size={18} />
                           </div>
                           <div>
-                            <p className="font-bold text-sm text-slate-800">مورد مسجل</p>
+                            <p className="font-bold text-sm text-slate-800">{offer.supplierName || offer.companyName || "مورد مسجل"}</p>
                             <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
+                            {offer.supplierWebsite && (
+                              <a 
+                                href={offer.supplierWebsite.startsWith('http') ? offer.supplierWebsite : `https://${offer.supplierWebsite}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
+                              >
+                                <Globe size={10} />
+                                زيارة الموقع
+                              </a>
+                            )}
                           </div>
                         </div>
                         {getStatusBadge(offer.status || "قيد المراجعة")}
@@ -415,17 +443,17 @@ export default function RfqOffersPage() {
                         {/* Extra options */}
                         <div className="flex flex-wrap items-center gap-3 mt-4">
                           {offer.isFreeShipping && (
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none">
+                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none hover:bg-primary/20 transition-colors cursor-default">
                               توصيل مجاني
                             </Badge>
                           )}
                           {offer.includesSample && (
-                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none">
+                            <Badge variant="secondary" className="bg-primary/10 text-primary border-none hover:bg-primary/20 transition-colors cursor-default">
                               يتضمن عينة (Sample)
                             </Badge>
                           )}
                           {offer.sampleStatus && (
-                            <Badge variant="outline" className={`border border-amber-300 bg-amber-50 text-amber-700 ${offer.sampleStatus === "تم الاستلام" ? "bg-success/10 text-success border-success/30" : ""}`}>
+                            <Badge variant="outline" className={`border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors cursor-default ${offer.sampleStatus === "تم الاستلام" ? "bg-success/10 text-success border-success/30" : ""}`}>
                               العينة: {offer.sampleStatus}
                             </Badge>
                           )}
@@ -500,7 +528,7 @@ export default function RfqOffersPage() {
                         <Button
                           onClick={() => handleDecision(offer.id, "مقبول")}
                           disabled={processingId === offer.id}
-                          className="w-full bg-success hover:bg-success/90 gap-2 rounded-full"
+                          className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
                           size="sm"
                         >
                           {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -510,7 +538,7 @@ export default function RfqOffersPage() {
                           onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
                           disabled={processingId === offer.id}
                           variant="outline"
-                          className="w-full gap-2 rounded-full border-primary/20 text-primary hover:bg-primary/5"
+                          className="w-full gap-2 rounded-full border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 hover:text-amber-800 transition-all font-medium"
                           size="sm"
                         >
                           <ArrowDown size={14} />
@@ -520,7 +548,7 @@ export default function RfqOffersPage() {
                           onClick={() => handleDecision(offer.id, "مرفوض")}
                           disabled={processingId === offer.id}
                           variant="ghost"
-                          className="w-full gap-2 rounded-full text-destructive hover:text-destructive hover:bg-destructive/5"
+                          className="w-full gap-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
                           size="sm"
                         >
                           <XCircle size={14} />
@@ -531,7 +559,7 @@ export default function RfqOffersPage() {
                             onClick={() => handleSampleAction(offer.id, "مطلوبة")}
                             disabled={processingId === offer.id}
                             variant="outline"
-                            className="w-full gap-2 rounded-full border-blue-200 text-blue-600 hover:bg-blue-50 mt-1"
+                            className="w-full gap-2 rounded-full border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-800 transition-all font-medium mt-1"
                             size="sm"
                           >
                             <Box size={14} />
@@ -543,7 +571,7 @@ export default function RfqOffersPage() {
                             onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
                             disabled={processingId === offer.id}
                             variant="outline"
-                            className="w-full gap-2 rounded-full border-success/30 text-success hover:bg-success/10 mt-1"
+                            className="w-full gap-2 rounded-full border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-all font-medium mt-1"
                             size="sm"
                           >
                             <CheckCircle2 size={14} />
@@ -559,7 +587,7 @@ export default function RfqOffersPage() {
                         <Button
                           onClick={() => openChat(offer)}
                           disabled={openingChat === offer.id}
-                          className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full"
+                          className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg"
                           size="sm"
                         >
                           {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
@@ -763,9 +791,188 @@ export default function RfqOffersPage() {
               </Card>
             )}
           </TabsContent>
+
+          <TabsContent value="inquiries" className="m-0 mt-6">
+            <InquiriesSection rfqId={rfqId} rfqTitle={rfq?.title || ""} />
+          </TabsContent>
         </Tabs>
       </div>
     </PortalLayout>
+  )
+}
+
+function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string }) {
+  const [replyText, setReplyText] = useState<{ [key: string]: string }>({})
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [showReply, setShowReply] = useState<string | null>(null)
+  const { toast } = useToast()
+  const firestore = useFirestore()
+  const { user } = useUser()
+
+  const inquiriesQuery = useMemoFirebase(() => {
+    if (!firestore || !rfqId) return null
+    return query(
+      collection(firestore, "rfqs", rfqId, "inquiries"),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, rfqId])
+
+  const { data: inquiries, isLoading } = useCollection(inquiriesQuery)
+
+  const handleReply = async (inquiryId: string) => {
+    if (!firestore || !replyText[inquiryId]?.trim()) return
+    setReplyingTo(inquiryId)
+    try {
+      // Get the inquiry to find supplier ID for notification
+      const inquiry = inquiries?.find((i: any) => i.id === inquiryId)
+      
+      await updateDoc(
+        doc(firestore, "rfqs", rfqId, "inquiries", inquiryId),
+        {
+          reply: replyText[inquiryId].trim(),
+          repliedAt: new Date().toISOString(),
+          repliedBy: user?.uid || ""
+        }
+      )
+      
+      // Create notification for the supplier
+      if (inquiry?.userId) {
+        const notificationData = {
+          type: "inquiry_reply",
+          title: "رد على استفسارك",
+          description: `رد المقاول على استفسارك في "${rfqTitle}": ${replyText[inquiryId].trim().substring(0, 100)}${replyText[inquiryId].trim().length > 100 ? "..." : ""}`,
+          rfqId: rfqId,
+          rfqTitle: rfqTitle,
+          inquiryId: inquiryId,
+          createdAt: new Date().toISOString(),
+          read: false
+        }
+        await addDoc(collection(firestore, "users", inquiry.userId, "notifications"), notificationData)
+      } else {
+        console.warn("⚠️ No userId found for inquiry notification", inquiry)
+      }
+      
+      toast({ title: "تم الرد", description: "تم إرسال الرد بنجاح على الاستفسار" })
+      setReplyText(prev => ({ ...prev, [inquiryId]: "" }))
+      setShowReply(null)
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل إرسال الرد", variant: "destructive" })
+    } finally {
+      setReplyingTo(null)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="border-none shadow-sm">
+        <CardContent className="p-12 flex justify-center">
+          <Loader2 className="animate-spin text-primary" size={32} />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!inquiries || inquiries.length === 0) {
+    return (
+      <Card className="border-dashed border-2 border-slate-200 shadow-none">
+        <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
+          <MessageSquare size={48} className="opacity-20" />
+          <p className="font-bold text-lg">لا توجد استفسارات حتى الآن</p>
+          <p className="text-sm">الاستفسارات من الموردين ستظهر هنا</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="border-none shadow-sm">
+      <CardHeader className="border-b bg-slate-50/50">
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <MessageSquare size={20} className="text-primary" />
+          الاستفسارات والأسئلة ({inquiries.length})
+        </CardTitle>
+        <p className="text-sm text-muted-foreground mt-1">
+          جميع الاستفسارات مرئية للمقاولين والموردين
+        </p>
+      </CardHeader>
+      <CardContent className="p-6">
+        <div className="space-y-4">
+          {inquiries.map((inq: any) => (
+            <div key={inq.id} className="p-4 bg-white rounded-xl border border-slate-200 hover:border-primary/30 transition-colors">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                  <MessageSquare size={18} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="font-bold text-sm text-slate-700">{inq.supplierName || "مورد"}</span>
+                    <span className="text-xs text-muted-foreground" suppressHydrationWarning>
+                      {new Date(inq.createdAt).toLocaleDateString('ar-SA')}
+                    </span>
+                  </div>
+                  <p className="text-slate-600 text-sm leading-relaxed">{inq.question}</p>
+                  
+                  {inq.reply ? (
+                    <div className="mt-3 p-3 bg-success/5 rounded-lg border border-success/20">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle2 size={14} className="text-success" />
+                        <span className="text-xs font-bold text-success">ردك:</span>
+                        <span className="text-xs text-success/70" suppressHydrationWarning>
+                          {new Date(inq.repliedAt).toLocaleDateString('ar-SA')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-700">{inq.reply}</p>
+                    </div>
+                  ) : (
+                    <div className="mt-3">
+                      {showReply === inq.id ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            value={replyText[inq.id] || ""}
+                            onChange={(e) => setReplyText(prev => ({ ...prev, [inq.id]: e.target.value }))}
+                            placeholder="اكتب ردك هنا... سيتمكن جميع الموردين من رؤية هذا الرد"
+                            rows={3}
+                            className="text-sm"
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleReply(inq.id)}
+                              disabled={!replyText[inq.id]?.trim() || replyingTo === inq.id}
+                              className="gap-2"
+                            >
+                              {replyingTo === inq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                              إرسال الرد
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => { setShowReply(null); setReplyText(prev => ({ ...prev, [inq.id]: "" })) }}
+                            >
+                              إلغاء
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowReply(inq.id)}
+                          className="gap-2 mt-2"
+                        >
+                          <MessageSquare size={14} />
+                          رد على الاستفسار
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

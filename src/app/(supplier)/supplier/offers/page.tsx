@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box } from "lucide-react"
+import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -72,10 +72,30 @@ export default function SupplierOffersPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "مقبول":   return <Badge className="bg-success/10 text-success border-success/20">مقبول ✅</Badge>
-      case "مرفوض":  return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">مرفوض ❌</Badge>
-      case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">مطلوب تخفيض السعر 📉</Badge>
-      default:        return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة ⏳</Badge>
+      case "مقبول":   
+        return (
+          <Badge className="bg-success/10 text-success border-success/20 gap-1">
+            <Check size={12} />مقبول
+          </Badge>
+        )
+      case "مرفوض":  
+        return (
+          <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none gap-1">
+            <XCircle size={12} />مرفوض
+          </Badge>
+        )
+      case "مطلوب تخفيض": 
+        return (
+          <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
+            <AlertCircle size={12} />مطلوب تخفيض
+          </Badge>
+        )
+      default:        
+        return (
+          <Badge className="bg-amber-50 text-amber-600 border-amber-100 gap-1">
+            <CircleDot size={12} />قيد المراجعة
+          </Badge>
+        )
     }
   }
 
@@ -189,12 +209,16 @@ export default function SupplierOffersPage() {
                 <p>جاري تحميل العروض...</p>
               </div>
             ) : offers.length === 0 ? (
-              <div className="p-10 flex flex-col items-center text-center text-muted-foreground space-y-3">
-                <History size={48} className="opacity-20 mb-2" />
-                <p>لا توجد عروض مقدمة حتى الآن.</p>
-                <p className="text-sm">تصفح المناقصات المتاحة وقدم عرضك الأول!</p>
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="h-20 w-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                  <FileText size={36} className="text-slate-300" />
+                </div>
+                <h3 className="font-semibold text-lg text-slate-700 mb-2">لا توجد عروض مقدمة</h3>
+                <p className="text-muted-foreground text-sm mb-6 max-w-sm">
+                  لم تقم بتقديم أي عروض سعر بعد.تصفح المناقصات المتاحة وقدم عروضك الأولى!
+                </p>
                 <Link href="/supplier/rfqs">
-                  <Button size="sm" className="mt-1">تصفح المناقصات</Button>
+                  <Button size="sm">تصفح المناقصات</Button>
                 </Link>
               </div>
             ) : (
@@ -214,7 +238,12 @@ export default function SupplierOffersPage() {
                     <TableRow key={offer.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-mono text-xs hidden md:table-cell">{offer.id.substring(0, 8)}</TableCell>
                       <TableCell className="font-bold">{offer.rfqTitle || "مناقصة غير محددة"}</TableCell>
-                      <TableCell className="text-primary font-bold">{offer.price ? `${offer.price} ر.س` : "غير متوفر"}</TableCell>
+                      <TableCell className="font-bold">
+                        <div className="flex items-center gap-1">
+                          <span className="text-primary font-bold">{offer.price ? `${offer.price}` : "غير متوفر"}</span>
+                          {offer.price && <span className="text-xs text-muted-foreground">ر.س</span>}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground hidden sm:table-cell" suppressHydrationWarning>
                         {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString("ar-SA") : "-"}
                       </TableCell>
@@ -238,6 +267,7 @@ export default function SupplierOffersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="hover:bg-slate-100 hover text-secondary transition-colors cursor-pointer"
                             title="عرض التفاصيل"
                             onClick={() => setViewOffer(offer)}
                           >
@@ -250,10 +280,10 @@ export default function SupplierOffersPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="hover:bg-primary/10 text-primary hover:text-primary transition-colors cursor-pointer"
                                 title="فتح المحادثة مع المقاول"
                                 onClick={() => openChat(offer)}
                                 disabled={openingChat === offer.id}
-                                className="text-primary"
                               >
                                 {openingChat === offer.id
                                   ? <Loader2 size={16} className="animate-spin" />
@@ -268,9 +298,9 @@ export default function SupplierOffersPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="hover:bg-amber-100 text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
                               title="تحديث السعر"
                               onClick={() => { setUpdatePriceOffer(offer); setNewPrice(offer.price || ""); }}
-                              className="text-amber-600 bg-amber-50 hover:bg-amber-100"
                             >
                               <ArrowDown size={16} />
                             </Button>
@@ -281,10 +311,10 @@ export default function SupplierOffersPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              className="hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
                               title="تأكيد إرسال العينة"
                               onClick={() => setConfirmSampleOffer(offer)}
                               disabled={deletingId === offer.id}
-                              className="text-blue-600 bg-blue-50 hover:bg-blue-100"
                             >
                               {deletingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <Box size={16} />}
                             </Button>
@@ -294,7 +324,7 @@ export default function SupplierOffersPage() {
                           {offer.status === "قيد المراجعة" && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
+                                <Button variant="ghost" size="icon" className="hover:bg-slate-100 transition-colors cursor-pointer">
                                   {deletingId === offer.id
                                     ? <Loader2 size={16} className="animate-spin" />
                                     : <MoreVertical size={16} />}
@@ -302,7 +332,7 @@ export default function SupplierOffersPage() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="text-right" dir="rtl">
                                 <DropdownMenuItem
-                                  className="text-destructive cursor-pointer gap-2"
+                                  className="text-destructive cursor-pointer gap-2 focus:bg-destructive/10"
                                   onClick={() => handleWithdraw(offer.id)}
                                 >
                                   <Trash2 size={14} />
@@ -341,7 +371,9 @@ export default function SupplierOffersPage() {
                     <DollarSign size={12} />
                     السعر المقدم
                   </div>
-                  <p className="font-bold text-lg text-primary">{viewOffer.price} ر.س</p>
+                  <p className="font-bold text-2xl text-primary">
+                    {viewOffer.price} <span className="text-sm font-normal text-muted-foreground">ر.س</span>
+                  </p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg space-y-1">
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">

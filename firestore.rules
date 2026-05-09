@@ -34,7 +34,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isSignedIn() && request.auth.uid != userId && isContractor();
+        allow update: if isOwner(userId) || isAdmin();
+        allow delete: if isAdmin();
       }
     }
 
@@ -58,6 +61,17 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.contractorId == request.auth.uid);
       allow delete: if isAdmin();
+
+      // Subcollection: inquiries (questions from suppliers about the RFQ)
+      match /inquiries/{inquiryId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update: if isAdmin()
+          || (isSignedIn() && resource.data.userId == request.auth.uid)
+          || (isSignedIn() && get(/databases/$(database)/documents/rfqs/$(rfqId)).data.contractorId == request.auth.uid);
+        allow delete: if isAdmin()
+          || (isSignedIn() && resource.data.userId == request.auth.uid);
+      }
     }
 
     match /offers/{offerId} {

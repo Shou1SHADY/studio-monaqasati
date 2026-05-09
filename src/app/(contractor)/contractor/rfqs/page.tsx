@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X } from "lucide-react"
+import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle } from "lucide-react"
 import Link from "next/link"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
@@ -370,6 +370,19 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           الموعد: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
                           {getStatusBadge(rfq)}
                         </div>
+                        {rfq.pdfUrl && (
+                          <a 
+                            href={rfq.pdfUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            download
+                            className="flex items-center gap-2 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors w-fit"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <File size={12} />
+                            تحميل PDF
+                          </a>
+                        )}
                       </div>
                       
                       <div className="flex gap-2">
@@ -377,6 +390,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <Eye size={14} />
                             عرض العروض
+                          </Button>
+                        </Link>
+                        <Link href={`/contractor/rfqs/${rfq.id}/offers?tab=inquiries`} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
+                            <MessageCircle size={14} />
+                            الاستفسارات
                           </Button>
                         </Link>
                       </div>
