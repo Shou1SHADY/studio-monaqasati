@@ -22,7 +22,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
 import { collection, addDoc, doc } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 
 interface DeliveryBatch {
   id: string
@@ -110,6 +110,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setDeliveryBatches(deliveryBatches.map(b => b.id === id ? { ...b, [field]: value } : b))
   }
 
+  const [offerPdfStoragePath, setOfferPdfStoragePath] = useState<string | null>(null)
+
   const handleOfferPdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -126,6 +128,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       const downloadUrl = await getDownloadURL(fileRef)
       setOfferPdfUrl(downloadUrl)
       setOfferPdfFile(file)
+      setOfferPdfStoragePath(storagePath)
       toast({ title: "تم الرفع", description: "تم إرفاق ملف عرض السعر بنجاح" })
     } catch (error) {
       console.error("PDF upload failed:", error)
@@ -135,9 +138,18 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     }
   }
 
-  const removeOfferPdf = () => {
+  const removeOfferPdf = async () => {
+    if (offerPdfStoragePath && storage) {
+      try {
+        const fileRef = ref(storage, offerPdfStoragePath)
+        await deleteObject(fileRef)
+      } catch (error) {
+        console.warn("Could not delete from storage:", error)
+      }
+    }
     setOfferPdfFile(null)
     setOfferPdfUrl(null)
+    setOfferPdfStoragePath(null)
     if (offerPdfInputRef.current) offerPdfInputRef.current.value = ""
   }
 

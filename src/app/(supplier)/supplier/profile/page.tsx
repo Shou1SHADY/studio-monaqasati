@@ -53,7 +53,7 @@ import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-spec
 import { useToast } from "@/hooks/use-toast"
 import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection, useStorage } from "@/firebase"
 import { doc, updateDoc, collection, query as firestoreQuery, orderBy } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useEffect } from "react"
 
 interface Certificate {
@@ -371,6 +371,7 @@ export default function SupplierProfilePage() {
   }
 
   const removeCertificate = async (id: string) => {
+    const certToRemove = profile.certificates.find(c => c.id === id)
     const updatedCerts = profile.certificates.filter(c => c.id !== id)
     setProfile(prev => ({
       ...prev,
@@ -382,6 +383,17 @@ export default function SupplierProfilePage() {
         await updateDoc(doc(firestore, "users", user.uid), {
           certificates: updatedCerts
         })
+        
+        // Cleanup storage
+        if (certToRemove?.documentUrl && storage) {
+          try {
+            const fileRef = ref(storage, certToRemove.documentUrl)
+            await deleteObject(fileRef)
+          } catch (storageErr) {
+            console.warn("Could not delete from storage:", storageErr)
+          }
+        }
+        
         toast({ title: "تم الحذف", description: "تم حذف الشهادة وحفظ التغييرات" })
       } catch (err) {
         console.error("Auto-save failed:", err)
@@ -438,6 +450,7 @@ export default function SupplierProfilePage() {
   }
 
   const removeProject = async (id: string) => {
+    const projectToRemove = profile.projects.find(p => p.id === id)
     const updatedProjects = profile.projects.filter(p => p.id !== id)
     setProfile(prev => ({
       ...prev,
@@ -449,6 +462,19 @@ export default function SupplierProfilePage() {
         await updateDoc(doc(firestore, "users", user.uid), {
           projects: updatedProjects
         })
+
+        // Cleanup storage for all project images
+        if (projectToRemove?.images && storage) {
+          for (const imageUrl of projectToRemove.images) {
+            try {
+              const imageRef = ref(storage, imageUrl)
+              await deleteObject(imageRef)
+            } catch (storageErr) {
+              console.warn("Could not delete project image:", storageErr)
+            }
+          }
+        }
+
         toast({ title: "تم الحذف", description: "تم حذف المشروع وحفظ التغييرات" })
       } catch (err) {
         console.error("Auto-save failed:", err)
@@ -470,8 +496,21 @@ export default function SupplierProfilePage() {
         type: isImage ? 'image' : 'document',
         url: url
       }
-      setProfile(prev => ({ ...prev, companyFiles: [...prev.companyFiles, newFile] }))
-      toast({ title: "تم الرفع", description: "تم رفع الملف بنجاح." })
+      const updatedFiles = [...profile.companyFiles, newFile]
+      setProfile(prev => ({ ...prev, companyFiles: updatedFiles }))
+
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            companyFiles: updatedFiles
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+
+      toast({ title: "تم الحفظ", description: "تم رفع الملف وحفظه بنجاح." })
     } catch (err) {
       toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
     } finally {
@@ -480,6 +519,7 @@ export default function SupplierProfilePage() {
   }
 
   const removeFile = async (id: string) => {
+    const fileToRemove = profile.companyFiles.find(f => f.id === id)
     const updatedFiles = profile.companyFiles.filter(f => f.id !== id)
     setProfile(prev => ({
       ...prev,
@@ -491,6 +531,17 @@ export default function SupplierProfilePage() {
         await updateDoc(doc(firestore, "users", user.uid), {
           companyFiles: updatedFiles
         })
+
+        // Cleanup storage
+        if (fileToRemove?.url && storage) {
+          try {
+            const fileRef = ref(storage, fileToRemove.url)
+            await deleteObject(fileRef)
+          } catch (storageErr) {
+            console.warn("Could not delete file from storage:", storageErr)
+          }
+        }
+
         toast({ title: "تم الحذف", description: "تم حذف الملف وحفظ التغييرات" })
       } catch (err) {
         console.error("Auto-save failed:", err)

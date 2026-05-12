@@ -14,7 +14,7 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useUser, useFirestore, useDoc, useMemoFirebase, useStorage } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -178,6 +178,7 @@ export default function ContractorProfilePage() {
   }
 
   const removeCertificate = async (id: string) => {
+    const certToRemove = profile.certificates.find(c => c.id === id)
     const updatedCerts = profile.certificates.filter(c => c.id !== id)
     setProfile(prev => ({
       ...prev,
@@ -189,6 +190,17 @@ export default function ContractorProfilePage() {
         await updateDoc(doc(firestore, "users", user.uid), {
           certificates: updatedCerts
         })
+
+        // Cleanup storage
+        if (certToRemove?.url && storage) {
+          try {
+            const fileRef = ref(storage, certToRemove.url)
+            await deleteObject(fileRef)
+          } catch (storageErr) {
+            console.warn("Could not delete from storage:", storageErr)
+          }
+        }
+
         toast({ title: "تم الحذف", description: "تم حذف الشهادة وحفظ التغييرات" })
       } catch (err) {
         console.error("Auto-save failed:", err)
