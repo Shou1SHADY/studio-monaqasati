@@ -107,6 +107,8 @@ export default function RfqOffersPage() {
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         status: decision,
+        decidedByUserId: user.uid,
+        decidedByUserName: profile?.name || user.email || "عضو الإدارة",
         decidedAt: new Date().toISOString(),
         readAt: null // reset read status for supplier
       })
@@ -419,8 +421,13 @@ export default function RfqOffersPage() {
                                 <User size={18} />
                               </div>
                               <div>
-                                <p className="font-bold text-sm text-slate-800">{offer.supplierName || offer.companyName || "مورد مسجل"}</p>
-                                <p className="text-xs text-muted-foreground font-mono">{offer.supplierId?.substring(0, 10)}...</p>
+                                <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || "مورد مسجل"}</p>
+                                {offer.submittedByUserName && (
+                                  <p className="text-[11px] text-slate-500 mt-0.5">
+                                    مقدم العرض: <span className="font-semibold">{offer.submittedByUserName}</span>
+                                  </p>
+                                )}
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
                                 {offer.supplierWebsite && (
                                   <a
                                     href={offer.supplierWebsite.startsWith('http') ? offer.supplierWebsite : `https://${offer.supplierWebsite}`}
@@ -484,6 +491,21 @@ export default function RfqOffersPage() {
                                       </span>
                                     </div>
                                   )}
+                                </div>
+                              )}
+
+                              {offer.offerPdfUrl && (
+                                <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <File size={18} className="text-blue-600" />
+                                    <span className="text-sm font-bold text-slate-700">ملف عرض السعر الملحق</span>
+                                  </div>
+                                  <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
+                                    <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
+                                      <Download size={12} className="ml-1" />
+                                      عرض الملف
+                                    </a>
+                                  </Button>
                                 </div>
                               )}
                             </div>
@@ -671,6 +693,23 @@ export default function RfqOffersPage() {
                         ))}
                       </TableRow>
                       <TableRow className="hover:bg-slate-50/50">
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">الملف المرفق</TableCell>
+                        {sortedOffers.map((o: any) => (
+                          <TableCell key={o.id} className="text-center">
+                            {o.offerPdfUrl ? (
+                              <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-[10px]">
+                                <a href={o.offerPdfUrl} target="_blank" rel="noopener noreferrer">
+                                  <Download size={10} className="ml-1" />
+                                  عرض الملف
+                                </a>
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic">لا يوجد</span>
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                      <TableRow className="hover:bg-slate-50/50">
                         <TableCell className="font-bold text-slate-700 bg-slate-50/50">القرار</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center">
@@ -697,7 +736,7 @@ export default function RfqOffersPage() {
           </TabsContent>
 
           <TabsContent value="inquiries" className="m-0 mt-6">
-            <InquiriesSection rfqId={rfqId} rfqTitle={rfq?.title || ""} />
+            <InquiriesSection rfqId={rfqId} rfqTitle={rfq?.title || ""} profile={profile} />
           </TabsContent>
         </Tabs>
       </div>
@@ -705,7 +744,7 @@ export default function RfqOffersPage() {
   )
 }
 
-function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string }) {
+function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitle: string; profile: any }) {
   const [replyText, setReplyText] = useState<{ [key: string]: string }>({})
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [showReply, setShowReply] = useState<string | null>(null)
@@ -735,7 +774,8 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
         {
           reply: replyText[inquiryId].trim(),
           repliedAt: new Date().toISOString(),
-          repliedBy: user?.uid || ""
+          repliedBy: user?.uid || "",
+          repliedByUserName: profile?.name || user?.email || "عضو الإدارة"
         }
       )
 
@@ -809,7 +849,10 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="font-bold text-sm text-slate-700">{inq.supplierName || "مورد"}</span>
+                    <span className="font-bold text-sm text-slate-700">
+                      {inq.supplierName || "مورد"}
+                      {inq.submittedByUserName && <span className="text-[11px] font-normal text-slate-500 mr-2">({inq.submittedByUserName})</span>}
+                    </span>
                     <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                       {new Date(inq.createdAt).toLocaleDateString('ar-SA')}
                     </span>
@@ -820,7 +863,8 @@ function InquiriesSection({ rfqId, rfqTitle }: { rfqId: string; rfqTitle: string
                     <div className="mt-3 p-3 bg-success/5 rounded-lg border border-success/20">
                       <div className="flex items-center gap-2 mb-1">
                         <CheckCircle2 size={14} className="text-success" />
-                        <span className="text-xs font-bold text-success">ردك:</span>
+                        <span className="text-xs font-bold text-success">رد الإدارة:</span>
+                        {inq.repliedByUserName && <span className="text-[11px] text-success/80">({inq.repliedByUserName})</span>}
                         <span className="text-xs text-success/70" suppressHydrationWarning>
                           {new Date(inq.repliedAt).toLocaleDateString('ar-SA')}
                         </span>

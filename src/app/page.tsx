@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,6 +25,24 @@ import {
 } from 'lucide-react';
 
 export default function Home() {
+  const [activeFlow, setActiveFlow] = useState<'contractor' | 'supplier'>('contractor');
+
+  const contractorSteps = [
+    { step: "01", title: "طرح الطلب", desc: "تحديد الكميات والمواصفات في دقائق.", icon: FileCheck },
+    { step: "02", title: "استقبال العروض", desc: "وصول عروض تنافسية من الموردين.", icon: ShoppingCart },
+    { step: "03", title: "الترسية والتعميد", desc: "المفاضلة والاعتماد بضغطة زر واحدة.", icon: ShieldCheck },
+    { step: "04", title: "التوريد والدفع", desc: "متابعة التوريد وضمان الاستلام والدفع.", icon: Truck }
+  ];
+
+  const supplierSteps = [
+    { step: "01", title: "استقبال الطلبات", desc: "إشعارات فورية بالمناقصات المطابقة لنشاطك.", icon: Zap },
+    { step: "02", title: "تقديم العرض", desc: "إرسال عروض أسعار احترافية بكل سهولة.", icon: FileCheck },
+    { step: "03", title: "التفاوض والاعتماد", desc: "تواصل مباشر واعتماد رقمي للعرض.", icon: CheckCircle2 },
+    { step: "04", title: "التوريد والتحصيل", desc: "تسليم المواد وتحصيل الدفعات بانتظام.", icon: BarChart3 }
+  ];
+
+  const activeSteps = activeFlow === 'contractor' ? contractorSteps : supplierSteps;
+
   return (
     <div className="min-h-screen bg-white flex flex-col font-body text-right overflow-x-hidden selection:bg-primary/10 selection:text-primary" dir="rtl">
 
@@ -113,7 +132,8 @@ export default function Home() {
 
             {/* Visual Part - Premium Glass */}
             <div className="lg:col-span-5 relative animate-in zoom-in duration-1000 delay-300">
-              <div className="relative rounded-[2.5rem] overflow-hidden shadow-[0_40px_100px_-20px_rgba(0,0,0,0.15)] border-4 border-white bg-slate-50 group">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-gradient-to-tr from-indigo-500/20 via-sky-500/20 to-emerald-500/20 blur-[80px] rounded-full z-0 pointer-events-none"></div>
+              <div className="relative z-10 rounded-[2.5rem] overflow-hidden shadow-[0_40px_100px_-20px_rgba(0,0,0,0.15)] border-4 border-white bg-slate-50 group">
                 <img
                   src="/images/hero-modern.png"
                   alt="Midmak Experience"
@@ -172,8 +192,75 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Experience Section - Refined Contrast */}
-        <section className="py-32 md:py-48 bg-white overflow-hidden relative">
+        {/* Contractor Experience Section - Refined Pro Max */}
+        <section className="py-24 md:py-32 bg-slate-50 overflow-hidden relative">
+          <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-gradient-to-br from-slate-200/50 to-transparent rounded-full -translate-y-1/2 translate-x-1/2 blur-[100px] pointer-events-none"></div>
+          <div className="max-w-7xl mx-auto px-6 relative z-10">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
+              
+              {/* Visual Part - Left side */}
+              <div className="relative order-2 lg:order-1">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100%] h-[100%] bg-gradient-to-tr from-[#0F172A]/10 via-[#0369A1]/10 to-transparent blur-[60px] rounded-full z-0 pointer-events-none"></div>
+                <div className="rounded-[3rem] overflow-hidden border-8 border-white shadow-2xl group relative z-10">
+                  <img
+                    src="/images/hero-modern.png"
+                    alt="Contractor Dashboard"
+                    className="w-full aspect-[4/3] object-cover transition-transform duration-1000 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0F172A]/60 via-transparent to-transparent opacity-80"></div>
+
+                  {/* Stats Overlay */}
+                  <div className="absolute bottom-8 right-8 p-6 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/50 animate-float">
+                    <div className="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">التوفير المحقق</div>
+                    <div className="text-3xl font-black text-emerald-500 font-body flex items-center gap-2">
+                      15%
+                      <span className="text-sm bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">▲</span>
+                    </div>
+                    <div className="mt-2 text-xs font-bold text-slate-500">في تكاليف المشتريات الإنشائية</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Text Part - Right side */}
+              <div className="space-y-10 order-1 lg:order-2">
+                <div className="inline-flex items-center gap-3 text-[#0F172A] font-black text-xs uppercase tracking-[0.2em]">
+                  <div className="w-8 h-[2px] bg-[#0F172A]"></div>
+                  للمقاولين وشركات البناء
+                </div>
+                <h2 className="text-4xl md:text-5xl font-bold text-[#0F172A] font-headline leading-[1.3] tracking-tight">
+                  تحكم كامل بمشتريات <br /> مشاريعك الإنشائية
+                </h2>
+                <p className="text-lg text-slate-500 font-medium leading-relaxed max-w-xl font-body">
+                  أتمتة كاملة لدورة المشتريات بدءاً من طرح المناقصات ومروراً بالمفاضلة الذكية بين عروض الموردين وحتى اعتماد الدفعات واستلام المواد في الموقع بضغطة زر.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {[
+                    "شبكة موردين معتمدة",
+                    "مفاضلة أسعار آلية",
+                    "توفير التكاليف والوقت",
+                    "تقارير وتحليلات لحظية"
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-center gap-3 text-slate-600 font-bold text-sm bg-white p-4 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all">
+                      <Building2 size={18} className="text-[#0369A1]" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+
+                <Link href="/register?role=Contractor" className="inline-block pt-6">
+                  <Button className="h-14 px-10 text-base font-bold rounded-xl bg-[#0369A1] hover:bg-[#0284C7] text-white shadow-xl shadow-[#0369A1]/20 transition-all hover:scale-[1.02]">
+                    سجل كمقاول الآن
+                  </Button>
+                </Link>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        {/* Supplier Experience Section - Refined Contrast */}
+        <section className="py-24 md:py-32 bg-white overflow-hidden relative">
           <div className="max-w-7xl mx-auto px-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
 
@@ -242,13 +329,32 @@ export default function Home() {
               <p className="text-lg text-slate-500 font-medium font-body opacity-80">خطوات بسيطة لتحويل مشترياتك التقليدية إلى منظومة رقمية</p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-12 relative">
-              {[
-                { step: "01", title: "طرح الطلب", desc: "تحديد الكميات والمواصفات في دقائق.", icon: FileCheck },
-                { step: "02", title: "استقبال العروض", desc: "وصول عروض تنافسية من الموردين.", icon: ShoppingCart },
-                { step: "03", title: "الترسية والتعميد", desc: "المفاضلة والاعتماد بضغطة زر واحدة.", icon: ShieldCheck },
-                { step: "04", title: "التوريد والدفع", desc: "متابعة التوريد وضمان الاستلام والدفع.", icon: Truck }
-              ].map((s, i) => (
+            <div className="flex justify-center mb-16">
+              <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 inline-flex relative z-10 overflow-hidden">
+                <div 
+                  className="absolute inset-y-1.5 w-[calc(50%-6px)] bg-[#0F172A] rounded-xl transition-all duration-300 ease-out z-0"
+                  style={{ 
+                    transform: activeFlow === 'contractor' ? 'translateX(0)' : 'translateX(-100%)',
+                    right: '6px'
+                  }}
+                />
+                <button 
+                  onClick={() => setActiveFlow('contractor')}
+                  className={`relative z-10 px-8 py-3 text-sm font-bold rounded-xl transition-colors duration-300 ${activeFlow === 'contractor' ? 'text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  كيف تستفيد كمقاول؟
+                </button>
+                <button 
+                  onClick={() => setActiveFlow('supplier')}
+                  className={`relative z-10 px-8 py-3 text-sm font-bold rounded-xl transition-colors duration-300 ${activeFlow === 'supplier' ? 'text-white' : 'text-slate-500 hover:text-slate-900'}`}
+                >
+                  كيف تستفيد كمورد؟
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-12 relative animate-in fade-in slide-in-from-bottom-4 duration-700" key={activeFlow}>
+              {activeSteps.map((s, i) => (
                 <div key={i} className="flex flex-col items-center text-center space-y-8 group">
                   <div className="w-20 h-20 rounded-[2.5rem] bg-white shadow-xl flex items-center justify-center text-[#0F172A] font-bold text-xl relative group-hover:bg-[#0F172A] group-hover:text-white transition-all duration-500 group-hover:-translate-y-2">
                     <s.icon size={32} />

@@ -127,7 +127,7 @@ export default function ContractorDashboard() {
       text: `تم طرح مناقصة '${r.title || 'غير محدد'}'`, 
       time: r.createdAt ? new Date(r.createdAt).toLocaleDateString('ar-SA') : 'الآن', 
       status: r.status || "جديد",
-      actionUrl: `/contractor/rfqs/${r.id}`,
+      actionUrl: `/contractor/rfqs/${r.id}/offers`,
       actionLabel: r.status === "New" ? "عرض والتفاوض" : "عرض التفاصيل"
     })) || [])
   ]

@@ -78,6 +78,7 @@ export default function AvailableRfqsPage() {
     setCustomDeadline("")
   }
   const [showRfqDetails, setShowRfqDetails] = useState(false)
+  const [showSubmitOffer, setShowSubmitOffer] = useState(false)
   const [showInquiries, setShowInquiries] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false)
@@ -186,7 +187,9 @@ export default function AvailableRfqsPage() {
         supplierId: user.uid,
         organizationId: profile?.organizationId || user.uid,
         userId: user.uid,
-        supplierName: profile?.name || "مورد",
+        supplierName: profile?.companyName || profile?.name || "مورد",
+        submittedByUserId: user.uid,
+        submittedByUserName: profile?.name || user.email || "عضو الفريق",
         createdAt: new Date().toISOString(),
         reply: null,
         repliedAt: null
@@ -372,31 +375,59 @@ export default function AvailableRfqsPage() {
                     </div>
                   </div>
                   
-                  <Button 
-                    onClick={() => {
-                      setSelectedRfq({
-                        id: rfq.id, 
-                        title: rfq.title,
-                        quantity: rfq.quantity,
-                        unitOfMeasure: rfq.unitOfMeasure,
-                        contractorId: rfq.contractorId,
-                        products: rfq.products,
-                        notes: rfq.notes,
-                        pdfUrl: rfq.pdfUrl,
-                        category: rfq.category,
-                        subCategory: rfq.subCategory,
-                        city: rfq.city,
-                        district: rfq.district,
-                        deadline: rfq.deadline,
-                        locationCoords: rfq.locationCoords
-                      })
-                      setShowRfqDetails(true)
-                    }}
-                    className="w-full gap-2 bg-slate-900 hover:bg-primary text-white rounded-xl h-11 transition-all group-hover:shadow-md"
-                  >
-                    تقديم عرض سعر
-                    <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={() => {
+                        setSelectedRfq({
+                          id: rfq.id, 
+                          title: rfq.title,
+                          quantity: rfq.quantity,
+                          unitOfMeasure: rfq.unitOfMeasure,
+                          contractorId: rfq.contractorId,
+                          products: rfq.products,
+                          notes: rfq.notes,
+                          pdfUrl: rfq.pdfUrl,
+                          category: rfq.category,
+                          subCategory: rfq.subCategory,
+                          city: rfq.city,
+                          district: rfq.district,
+                          deadline: rfq.deadline,
+                          locationCoords: rfq.locationCoords
+                        })
+                        setShowRfqDetails(true)
+                      }}
+                      variant="outline"
+                      className="flex-1 gap-2 rounded-xl h-11 bg-transparent text-slate-700 hover:bg-transparent hover:text-primary transition-all border-slate-200 hover:border-primary/50"
+                    >
+                      <Eye size={16} />
+                      التفاصيل
+                    </Button>
+                    <Button 
+                      onClick={() => {
+                        setSelectedRfq({
+                          id: rfq.id, 
+                          title: rfq.title,
+                          quantity: rfq.quantity,
+                          unitOfMeasure: rfq.unitOfMeasure,
+                          contractorId: rfq.contractorId,
+                          products: rfq.products,
+                          notes: rfq.notes,
+                          pdfUrl: rfq.pdfUrl,
+                          category: rfq.category,
+                          subCategory: rfq.subCategory,
+                          city: rfq.city,
+                          district: rfq.district,
+                          deadline: rfq.deadline,
+                          locationCoords: rfq.locationCoords
+                        })
+                        setShowSubmitOffer(true)
+                      }}
+                      className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
+                    >
+                      تقديم عرض
+                      <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))
@@ -406,7 +437,11 @@ export default function AvailableRfqsPage() {
 
       <SubmitOfferDialog 
         selectedRfq={selectedRfq} 
-        onClose={() => setSelectedRfq(null)} 
+        isOpen={showSubmitOffer}
+        onClose={() => {
+          setShowSubmitOffer(false)
+          if (!showRfqDetails) setSelectedRfq(null)
+        }} 
         onSuccess={() => router.push("/supplier/offers")}
       />
 
@@ -418,9 +453,6 @@ export default function AvailableRfqsPage() {
           <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">{selectedRfq?.title}</h2>
-              <Button variant="ghost" size="sm" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }} className="shrink-0">
-                ✕
-              </Button>
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
               <Badge variant="secondary" className="bg-primary/10 text-primary">{selectedRfq?.category}</Badge>
@@ -548,7 +580,7 @@ export default function AvailableRfqsPage() {
             <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
               إغلاق
             </Button>
-            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setSelectedRfq(selectedRfq) }}>
+            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
               تقديم عرض سعر
               <ChevronLeft size={16} />
             </Button>

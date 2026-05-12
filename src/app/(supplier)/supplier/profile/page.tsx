@@ -51,8 +51,9 @@ import {
 import { MapPicker } from "@/components/ui/map-picker"
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection, useStorage } from "@/firebase"
 import { doc, updateDoc, collection, query as firestoreQuery, orderBy } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useEffect } from "react"
 
 interface Certificate {
@@ -145,7 +146,7 @@ export default function SupplierProfilePage() {
 
   // Sync with user data
   useEffect(() => {
-    if (userData) {
+    if (userData && !profile.name && !profile.description) { // Only initial sync
       setProfile(prev => ({
         ...prev,
         name: userData.name || userData.companyName || user?.displayName || "",
@@ -252,9 +253,20 @@ export default function SupplierProfilePage() {
       const newSpecs = Array.from(new Set([...profile.specializations, ...result.suggestedCategories]))
       setProfile(prev => ({ ...prev, specializations: newSpecs }))
       
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            specializations: newSpecs
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+      
       toast({
         title: "اقتراحات ناجحة",
-        description: "تم تحديث تخصصاتك بناءً على وصف العمل الخاص بك.",
+        description: "تم تحديث تخصصاتك بناءً على وصف العمل الخاص بك وحفظها.",
       })
     } catch (error) {
       toast({
@@ -267,82 +279,155 @@ export default function SupplierProfilePage() {
     }
   }
 
-  const removeSpec = (spec: string) => {
+  const removeSpec = async (spec: string) => {
+    const updatedSpecs = profile.specializations.filter(s => s !== spec)
     setProfile(prev => ({
       ...prev,
-      specializations: prev.specializations.filter(s => s !== spec)
+      specializations: updatedSpecs
     }))
-  }
-
-  const addSpec = (spec: string) => {
-    if (!profile.specializations.includes(spec)) {
-      setProfile(prev => ({
-        ...prev,
-        specializations: [...prev.specializations, spec]
-      }))
+    
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          specializations: updatedSpecs
+        })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
     }
   }
 
-  const addCertificate = () => {
+  const addSpec = async (spec: string) => {
+    if (!profile.specializations.includes(spec)) {
+      const updatedSpecs = [...profile.specializations, spec]
+      setProfile(prev => ({
+        ...prev,
+        specializations: updatedSpecs
+      }))
+      
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            specializations: updatedSpecs
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+    }
+  }
+
+  const addCertificate = async () => {
     if (!newCert.name || !newCert.issuer) {
       toast({ title: "خطأ", description: "يرجى تعبئة الحقول المطلوبة", variant: "destructive" })
       return
     }
+    const updatedCerts = [...profile.certificates, { ...newCert, id: Date.now().toString() }]
     setProfile(prev => ({
       ...prev,
-      certificates: [...prev.certificates, { ...newCert, id: Date.now().toString() }]
+      certificates: updatedCerts
     }))
+    
+    // Auto-save to firestore
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          certificates: updatedCerts
+        })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
+
     setNewCert({ name: "", issuer: "", issueDate: "", expiryDate: "", documentUrl: "" })
     setShowCertForm(false)
-    toast({ title: "تم", description: "تمت إضافة الشهادة بنجاح" })
+    toast({ title: "تم الحفظ", description: "تمت إضافة الشهادة وحفظها بنجاح" })
   }
 
-  const handleCertUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const storage = useStorage()
+  
+  const uploadToStorage = async (file: File, pathFolder: string) => {
+    if (!storage) throw new Error("Storage not initialized")
+    const storagePath = `${pathFolder}/${user?.uid}/${Date.now()}-${file.name}`
+    const fileRef = ref(storage, storagePath)
+    await uploadBytes(fileRef, file)
+    return await getDownloadURL(fileRef)
+  }
+
+  const handleCertUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setIsUploadingCert(true)
-    setTimeout(() => {
-      setNewCert(prev => ({
-        ...prev,
-        documentUrl: URL.createObjectURL(file) // Mock URL
-      }))
-      setIsUploadingCert(false)
+    try {
+      const url = await uploadToStorage(file, "certificates")
+      setNewCert(prev => ({ ...prev, documentUrl: url }))
       toast({ title: "تم الرفع", description: "تم إرفاق مستند الشهادة بنجاح" })
-    }, 1500)
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+    } finally {
+      setIsUploadingCert(false)
+    }
   }
 
-  const removeCertificate = (id: string) => {
+  const removeCertificate = async (id: string) => {
+    const updatedCerts = profile.certificates.filter(c => c.id !== id)
     setProfile(prev => ({
       ...prev,
-      certificates: prev.certificates.filter(c => c.id !== id)
+      certificates: updatedCerts
     }))
+    
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          certificates: updatedCerts
+        })
+        toast({ title: "تم الحذف", description: "تم حذف الشهادة وحفظ التغييرات" })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
-  const addProject = () => {
+  const addProject = async () => {
     if (!newProject.name) {
       toast({ title: "خطأ", description: "يرجى كتابة اسم المشروع", variant: "destructive" })
       return
     }
+    const updatedProjects = [...profile.projects, { ...newProject, id: Date.now().toString() }]
     setProfile(prev => ({
       ...prev,
-      projects: [...prev.projects, { ...newProject, id: Date.now().toString() }]
+      projects: updatedProjects
     }))
+    
+    // Auto-save to firestore to prevent data loss on refresh
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          projects: updatedProjects
+        })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
+    
     setNewProject({ name: "", description: "", images: [] })
     setShowProjectForm(false)
-    toast({ title: "تم", description: "تمت إضافة المشروع بنجاح" })
+    toast({ title: "تم الحفظ", description: "تمت إضافة المشروع وحفظه بنجاح" })
   }
 
-  const handleProjectImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProjectImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setIsUploadingProjImg(true)
-    setTimeout(() => {
-      setNewProject(prev => ({
-        ...prev,
-        images: [...prev.images, URL.createObjectURL(file)]
-      }))
+    try {
+      const url = await uploadToStorage(file, "projects")
+      setNewProject(prev => ({ ...prev, images: [...prev.images, url] }))
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع الصورة", variant: "destructive" })
+    } finally {
       setIsUploadingProjImg(false)
-    }, 1000)
+    }
   }
 
   const removeProjectImage = (index: number) => {
@@ -352,74 +437,127 @@ export default function SupplierProfilePage() {
     }))
   }
 
-  const removeProject = (id: string) => {
+  const removeProject = async (id: string) => {
+    const updatedProjects = profile.projects.filter(p => p.id !== id)
     setProfile(prev => ({
       ...prev,
-      projects: prev.projects.filter(p => p.id !== id)
+      projects: updatedProjects
     }))
+    
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          projects: updatedProjects
+        })
+        toast({ title: "تم الحذف", description: "تم حذف المشروع وحفظ التغييرات" })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
     setIsUploadingFile(true)
-    setTimeout(() => {
+    try {
       const isImage = file.type.startsWith('image/')
+      const url = await uploadToStorage(file, "companyFiles")
       const newFile: CompanyFile = {
         id: Date.now().toString(),
         name: file.name,
         type: isImage ? 'image' : 'document',
-        url: URL.createObjectURL(file) // Mock URL
+        url: url
       }
-      setProfile(prev => ({
-        ...prev,
-        companyFiles: [...prev.companyFiles, newFile]
-      }))
-      setIsUploadingFile(false)
+      setProfile(prev => ({ ...prev, companyFiles: [...prev.companyFiles, newFile] }))
       toast({ title: "تم الرفع", description: "تم رفع الملف بنجاح." })
-    }, 1500)
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+    } finally {
+      setIsUploadingFile(false)
+    }
   }
 
-  const removeFile = (id: string) => {
+  const removeFile = async (id: string) => {
+    const updatedFiles = profile.companyFiles.filter(f => f.id !== id)
     setProfile(prev => ({
       ...prev,
-      companyFiles: prev.companyFiles.filter(f => f.id !== id)
+      companyFiles: updatedFiles
     }))
+    
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          companyFiles: updatedFiles
+        })
+        toast({ title: "تم الحذف", description: "تم حذف الملف وحفظ التغييرات" })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
-  const handleLegalDocUpload = (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLegalDocUpload = async (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
     toast({ title: "جاري الرفع...", description: "يتم رفع المستند الآن" })
     
-    setTimeout(() => {
-      setProfile(prev => ({
-        ...prev,
-        legalDocuments: {
-          ...prev.legalDocuments,
-          [key]: {
-            ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
-            url: URL.createObjectURL(file)
-          }
-        }
-      }))
-      toast({ title: "تم الرفع", description: "تم تحديث المستند بنجاح" })
-    }, 1000)
-  }
-
-  const updateLegalDocExpiry = (key: string, date: string) => {
-    setProfile(prev => ({
-      ...prev,
-      legalDocuments: {
-        ...prev.legalDocuments,
+    try {
+      const url = await uploadToStorage(file, "legalDocuments")
+      const updatedDocs = {
+        ...profile.legalDocuments,
         [key]: {
-          ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
-          expiryDate: date
+          ...profile.legalDocuments[key as keyof typeof profile.legalDocuments],
+          url: url
         }
       }
+      setProfile(prev => ({
+        ...prev,
+        legalDocuments: updatedDocs
+      }))
+
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            legalDocuments: updatedDocs
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+
+      toast({ title: "تم الرفع", description: "تم تحديث المستند وحفظه بنجاح" })
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع المستند القانوني", variant: "destructive" })
+    }
+  }
+
+  const updateLegalDocExpiry = async (key: string, date: string) => {
+    const updatedDocs = {
+      ...profile.legalDocuments,
+      [key]: {
+        ...profile.legalDocuments[key as keyof typeof profile.legalDocuments],
+        expiryDate: date
+      }
+    }
+    setProfile(prev => ({
+      ...prev,
+      legalDocuments: updatedDocs
     }))
+
+    // Auto-save to firestore
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          legalDocuments: updatedDocs
+        })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
   const completionPercentage = Math.round([

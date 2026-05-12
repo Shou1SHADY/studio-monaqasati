@@ -406,6 +406,19 @@ export default function SupplierOffersPage() {
                 <p className="text-xs text-muted-foreground">معرف العرض</p>
                 <p className="font-mono text-xs text-slate-500">{viewOffer.id}</p>
               </div>
+              {viewOffer.offerPdfUrl && (
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} className="text-blue-600" />
+                    <span className="text-sm font-bold text-slate-700">ملف العرض المرفق</span>
+                  </div>
+                  <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-xs">
+                    <a href={viewOffer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
+                      عرض الملف
+                    </a>
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

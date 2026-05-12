@@ -35,11 +35,12 @@ interface DeliveryBatch {
 
 interface SubmitOfferDialogProps {
   selectedRfq: any | null
+  isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
 }
 
-export function SubmitOfferDialog({ selectedRfq, onClose, onSuccess }: SubmitOfferDialogProps) {
+export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: SubmitOfferDialogProps) {
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
@@ -172,6 +173,8 @@ export function SubmitOfferDialog({ selectedRfq, onClose, onSuccess }: SubmitOff
         supplierName: profile?.name || profile?.companyName || "مورد",
         companyName: profile?.companyName || "",
         supplierWebsite: supplierWebsite || profile?.website || null,
+        submittedByUserId: user.uid,
+        submittedByUserName: profile?.name || user.email || "عضو الفريق",
         rfqId: selectedRfq.id,
         rfqTitle: selectedRfq.title,
         contractorId: selectedRfq.contractorId || null,
@@ -212,7 +215,7 @@ export function SubmitOfferDialog({ selectedRfq, onClose, onSuccess }: SubmitOff
 
   return (
     <>
-      <Dialog open={!!selectedRfq} onOpenChange={(open) => { if (!open) onClose() }}>
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
         <DialogContent
           className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
           dir="rtl"

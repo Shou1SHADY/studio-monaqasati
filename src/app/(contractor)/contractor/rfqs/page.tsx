@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle } from "lucide-react"
+import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User } from "lucide-react"
 import Link from "next/link"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
@@ -57,6 +57,7 @@ const handleBatchPublish = async () => {
       for (const rfqId of selectedRfqs) {
         await updateDoc(doc(firestore, "rfqs", rfqId), {
           status: "New",
+          visibility: "public",
           publishedAt: new Date().toISOString()
         });
       }
@@ -93,8 +94,7 @@ const handleBatchPublish = async () => {
     
     let q = query(
       collection(firestore, "rfqs"),
-      where("organizationId", "==", profile?.organizationId || user.uid),
-      orderBy("createdAt", "desc")
+      where("organizationId", "==", profile?.organizationId || user.uid)
     );
 
     if (statusFilter !== "all") {
@@ -108,10 +108,10 @@ const handleBatchPublish = async () => {
     }
     
     return q;
-  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter])
+  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, profile?.organizationId])
 
-  const { data: rfqs, isLoading: isCollectionLoading, hasMore, loadMore } = useCollectionPaginated(rfqsQuery)
-  const isLoading = isUserLoading || (isCollectionLoading && !rfqs)
+  const { data: rfqs, isLoading: isCollectionLoading, hasMore, loadMore, error } = useCollectionPaginated(rfqsQuery)
+  const isLoading = isUserLoading || (isCollectionLoading && !rfqs && !error)
   const isLoadingMore = isCollectionLoading && !!rfqs
 
 const filteredRfqs = rfqs?.filter((rfq: any) => {
@@ -144,6 +144,10 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     }
 
     return true;
+  }).sort((a: any, b: any) => {
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
   }) || [];
 
   const getStatusBadge = (rfq: any) => {
@@ -308,7 +312,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                 <p>جاري تحميل البيانات...</p>
               </div>
             )}
-            {!isLoading && filteredRfqs.length === 0 && (
+            {error && (
+              <div className="p-10 text-center space-y-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-red-600 font-bold">حدث خطأ أثناء جلب البيانات:</p>
+                <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+              </div>
+            )}
+            {!isLoading && !error && filteredRfqs.length === 0 && (
               <div className="p-20 text-center space-y-4">
                 <p className="text-muted-foreground">
                   {searchQuery || categoryFilter !== "all" || locationFilter !== "all" || deadlineFilter !== "all" 
@@ -362,6 +372,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       </div>
 
                       <div className="space-y-3 pt-4 border-t border-slate-100/80 mb-5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 text-xs text-slate-600">
+                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                              <User size={12} className="text-slate-500" />
+                            </div>
+                            <span className="truncate">بواسطة: <span className="font-bold text-slate-700">{rfq.createdByUserName || "الإدارة"}</span></span>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2 text-xs text-slate-600">
                           <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                             <MapPin size={12} className="text-blue-600" />

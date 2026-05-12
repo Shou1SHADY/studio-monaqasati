@@ -22,7 +22,12 @@ import {
   Truck,
   Plus,
   Trash2,
-  MapPin
+  MapPin,
+  Eye,
+  File,
+  Download,
+  Loader2,
+  MessageCircle
 } from "lucide-react"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import Link from "next/link"
@@ -36,7 +41,12 @@ export default function SupplierDashboard() {
    const { toast } = useToast()
    const firestore = useFirestore();
    const { user, isUserLoading } = useUser();
-   const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string} | null>(null)
+   const [selectedRfq, setSelectedRfq] = useState<any | null>(null)
+   const [showRfqDetails, setShowRfqDetails] = useState(false)
+   const [showSubmitOffer, setShowSubmitOffer] = useState(false)
+   const [showInquiries, setShowInquiries] = useState(false)
+   const [newQuestion, setNewQuestion] = useState("")
+   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false)
    // Fetch supplier profile from Firestore
    const userDocRef = useMemoFirebase(() => {
      if (isUserLoading || !user || !firestore) return null
@@ -62,8 +72,42 @@ export default function SupplierDashboard() {
     return query(collection(firestore, "offers"), where("organizationId", "==", userData?.organizationId || user.uid))
   }, [firestore, user, isUserLoading, userData?.organizationId])
 
+  const inquiriesQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedRfq?.id) return null
+    return query(
+      collection(firestore, "rfqs", selectedRfq.id, "inquiries"),
+      orderBy("createdAt", "desc")
+    )
+  }, [firestore, selectedRfq?.id])
+
   const { data: rfqs } = useCollection(rfqsQuery)
   const { data: offers } = useCollection(offersQuery)
+  const { data: inquiries, isLoading: inquiriesLoading } = useCollection(inquiriesQuery)
+
+  const submitQuestion = async () => {
+    if (!user || !firestore || !selectedRfq?.id || !newQuestion.trim()) return
+    setIsSubmittingQuestion(true)
+    try {
+      await addDoc(collection(firestore, "rfqs", selectedRfq.id, "inquiries"), {
+        question: newQuestion.trim(),
+        supplierId: user.uid,
+        organizationId: userData?.organizationId || user.uid,
+        userId: user.uid,
+        supplierName: userData?.companyName || userData?.name || "مورد",
+        submittedByUserId: user.uid,
+        submittedByUserName: userData?.name || user.email || "عضو الفريق",
+        createdAt: new Date().toISOString(),
+        reply: null,
+        repliedAt: null
+      })
+      setNewQuestion("")
+      toast({ title: "تم الإرسال", description: "تم إرسال سؤالك للمقاول ينتظر الرد." })
+    } catch (error) {
+      toast({ title: "خطأ", description: "فشل إرسال السؤال", variant: "destructive" })
+    } finally {
+      setIsSubmittingQuestion(false)
+    }
+  }
   
   const pendingCount = offers?.filter((o: any) => o.status === "قيد المراجعة" || o.status === "New").length || 0
   const acceptedCount = offers?.filter((o: any) => o.status === "مقبول" || o.status === "Accepted").length || 0
@@ -145,17 +189,59 @@ export default function SupplierDashboard() {
                           <Calendar size={16} />
                           <span>الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : "-"}</span>
                         </div>
-                        <Button 
-                          onClick={() => setSelectedRfq({
-                            id: rfq.id, 
-                            title: rfq.title,
-                            quantity: rfq.quantity,
-                            unitOfMeasure: rfq.unitOfMeasure
-                          })}
-                          className="w-full md:w-auto bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-sm"
-                        >
-                          تقديم عرض سعر
-                        </Button>
+                        <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                          <Button 
+                            onClick={() => {
+                              setSelectedRfq({
+                                id: rfq.id, 
+                                title: rfq.title,
+                                quantity: rfq.quantity,
+                                unitOfMeasure: rfq.unitOfMeasure,
+                                contractorId: rfq.contractorId,
+                                products: rfq.products,
+                                notes: rfq.notes,
+                                pdfUrl: rfq.pdfUrl,
+                                category: rfq.category,
+                                subCategory: rfq.subCategory,
+                                city: rfq.city,
+                                district: rfq.district,
+                                deadline: rfq.deadline,
+                                locationCoords: rfq.locationCoords
+                              })
+                              setShowRfqDetails(true)
+                            }}
+                            variant="outline"
+                            className="flex-1 md:flex-none gap-2 rounded-full h-9 text-slate-700 bg-transparent hover:bg-transparent hover:text-primary transition-all border-slate-200 hover:border-primary/50 text-xs px-4"
+                          >
+                            <Eye size={14} />
+                            التفاصيل
+                          </Button>
+                          <Button 
+                            onClick={() => {
+                              setSelectedRfq({
+                                id: rfq.id, 
+                                title: rfq.title,
+                                quantity: rfq.quantity,
+                                unitOfMeasure: rfq.unitOfMeasure,
+                                contractorId: rfq.contractorId,
+                                products: rfq.products,
+                                notes: rfq.notes,
+                                pdfUrl: rfq.pdfUrl,
+                                category: rfq.category,
+                                subCategory: rfq.subCategory,
+                                city: rfq.city,
+                                district: rfq.district,
+                                deadline: rfq.deadline,
+                                locationCoords: rfq.locationCoords
+                              })
+                              setShowSubmitOffer(true)
+                            }}
+                            className="flex-[2] md:flex-none bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-xs gap-2 group"
+                          >
+                            تقديم عرض
+                            <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -213,9 +299,156 @@ export default function SupplierDashboard() {
 
       <SubmitOfferDialog 
         selectedRfq={selectedRfq} 
-        onClose={() => setSelectedRfq(null)} 
+        isOpen={showSubmitOffer}
+        onClose={() => {
+          setShowSubmitOffer(false)
+          if (!showRfqDetails) setSelectedRfq(null)
+        }} 
         onSuccess={() => router.push("/supplier/offers")}
       />
+
+      {/* RFQ Details Dialog */}
+      <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false) } }}>
+        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir="rtl">
+          <DialogTitle className="sr-only">تفاصيل المناقصة</DialogTitle>
+          
+          <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">{selectedRfq?.title}</h2>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              <Badge variant="secondary" className="bg-primary/10 text-primary">{selectedRfq?.category}</Badge>
+              {selectedRfq?.subCategory && <Badge variant="outline">{selectedRfq?.subCategory}</Badge>}
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+            {/* Products */}
+            {selectedRfq?.products && selectedRfq.products.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                  <Package size={16} className="text-primary" />
+                  المنتجات المطلوبة
+                </h3>
+                <div className="space-y-2">
+                  {selectedRfq.products.map((prod: any, idx: number) => (
+                    <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-slate-800">{prod.name}</span>
+                        <span className="text-sm text-primary font-bold">{prod.quantity} {prod.unitOfMeasure}</span>
+                      </div>
+                      {prod.description && <p className="text-sm text-slate-600 mt-1">{prod.description}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            {selectedRfq?.notes && (
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <h3 className="font-bold text-amber-800 text-sm mb-1">ملاحظات إضافية</h3>
+                <p className="text-sm text-amber-900">{selectedRfq.notes}</p>
+              </div>
+            )}
+
+            {/* PDF */}
+            {selectedRfq?.pdfUrl && (
+              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <File size={20} className="text-blue-600" />
+                <span className="flex-1 text-sm font-medium text-blue-800">ملف PDF مرفق</span>
+                <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer" download>
+                  <Button variant="outline" size="sm" className="gap-1">
+                    <Download size={14} />
+                    تحميل
+                  </Button>
+                </a>
+              </div>
+            )}
+
+            {/* Location & Deadline */}
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="flex items-center gap-2 text-slate-600">
+                <MapPin size={14} className="text-primary" />
+                <span>{selectedRfq?.city} - {selectedRfq?.district}</span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-600">
+                <Calendar size={14} className="text-amber-600" />
+                <span>الموعد: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+              </div>
+            </div>
+
+            {/* Inquiries Section */}
+            <div className="border-t pt-4">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowInquiries(!showInquiries)} 
+                className="w-full justify-between hover:bg-slate-50"
+              >
+                <span className="font-bold text-slate-700 flex items-center gap-2">
+                  <MessageCircle size={16} className="text-primary" />
+                  الاستفسارات والأسئلة
+                </span>
+                {showInquiries ? <ChevronLeft size={16} className="-rotate-90 transition-transform" /> : <ChevronLeft size={16} className="transition-transform" />}
+              </Button>
+
+              {showInquiries && (
+                <div className="mt-3 space-y-3">
+                  {/* Question Form */}
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="اكتب سؤالك للمقاول..." 
+                      value={newQuestion}
+                      onChange={(e) => setNewQuestion(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button onClick={submitQuestion} disabled={!newQuestion.trim() || isSubmittingQuestion} size="icon">
+                      {isSubmittingQuestion ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                    </Button>
+                  </div>
+
+                  {/* Questions List */}
+                  {inquiriesLoading ? (
+                    <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
+                  ) : inquiries && inquiries.length > 0 ? (
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {inquiries.map((inq: any) => (
+                        <div key={inq.id} className={`p-3 rounded-lg ${inq.supplierId === user?.uid ? 'bg-primary/5 border border-primary/20' : 'bg-slate-50'}`}>
+                          <div className="flex items-start gap-2">
+                            <MessageCircle size={14} className="text-primary mt-1 shrink-0" />
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-slate-700">{inq.supplierName}</p>
+                              <p className="text-sm text-slate-600">{inq.question}</p>
+                              {inq.reply && (
+                                <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
+                                  <p className="text-xs font-bold text-green-700">رد المقاول:</p>
+                                  <p className="text-sm text-green-800">{inq.reply}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">لا توجد استفسارات بعد. كن أول من يسأل!</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="px-5 py-4 border-t bg-white shrink-0 flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
+              إغلاق
+            </Button>
+            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
+              تقديم عرض سعر
+              <ChevronLeft size={16} />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </PortalLayout>
   )
 }

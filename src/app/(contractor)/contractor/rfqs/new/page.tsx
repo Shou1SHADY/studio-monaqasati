@@ -327,6 +327,9 @@ export default function NewRfqPage() {
       city: formData.city,
       district: formData.district,
       status: status,
+      visibility: "public",
+      createdByUserId: user.uid,
+      createdByUserName: profile?.name || user.email || "عضو الفريق",
       createdAt: new Date().toISOString()
     }
 

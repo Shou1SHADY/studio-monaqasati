@@ -12,8 +12,9 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
-import { useUser, useFirestore, useDoc, useMemoFirebase } from "@/firebase"
+import { useUser, useFirestore, useDoc, useMemoFirebase, useStorage } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -81,7 +82,7 @@ export default function ContractorProfilePage() {
 
   // Sync with user data
   useEffect(() => {
-    if (userData) {
+    if (userData && !profile.name && !profile.description) { // Only initial sync
       setProfile(prev => ({
         ...prev,
         name: userData.name || userData.companyName || user?.displayName || "",
@@ -131,68 +132,133 @@ export default function ContractorProfilePage() {
     }
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const storage = useStorage()
+  
+  const uploadToStorage = async (file: File, pathFolder: string) => {
+    if (!storage) throw new Error("Storage not initialized")
+    const storagePath = `${pathFolder}/${user?.uid}/${Date.now()}-${file.name}`
+    const fileRef = ref(storage, storagePath)
+    await uploadBytes(fileRef, file)
+    return await getDownloadURL(fileRef)
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
     setIsUploading(true)
-    setTimeout(() => {
+    try {
+      const url = await uploadToStorage(file, "certificates")
       const newCert = {
         id: Date.now().toString(),
         name: file.name,
         date: new Date().toLocaleDateString('ar-SA'),
-        url: URL.createObjectURL(file)
+        url: url
       }
-      setProfile(prev => ({
-        ...prev,
-        certificates: [...prev.certificates, newCert]
-      }))
+      const updatedCerts = [...profile.certificates, newCert]
+      setProfile(prev => ({ ...prev, certificates: updatedCerts }))
+      
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            certificates: updatedCerts
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+
+      toast({ title: "تم الرفع", description: "تمت إضافة المستند بنجاح وحفظه." })
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+    } finally {
       setIsUploading(false)
-      toast({ title: "تم الرفع", description: "تمت إضافة المستند بنجاح." })
-    }, 1500)
+    }
   }
 
-  const removeCertificate = (id: string) => {
+  const removeCertificate = async (id: string) => {
+    const updatedCerts = profile.certificates.filter(c => c.id !== id)
     setProfile(prev => ({
       ...prev,
-      certificates: prev.certificates.filter(c => c.id !== id)
+      certificates: updatedCerts
     }))
+
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          certificates: updatedCerts
+        })
+        toast({ title: "تم الحذف", description: "تم حذف الشهادة وحفظ التغييرات" })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
-  const handleLegalDocUpload = (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLegalDocUpload = async (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     
     setIsUploading(true)
     toast({ title: "جاري الرفع...", description: "يتم رفع المستند الآن" })
     
-    setTimeout(() => {
-      setProfile(prev => ({
-        ...prev,
-        legalDocuments: {
-          ...prev.legalDocuments,
-          [key]: {
-            ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
-            url: URL.createObjectURL(file)
-          }
-        }
-      }))
-      setIsUploading(false)
-      toast({ title: "تم الرفع", description: "تم تحديث المستند بنجاح." })
-    }, 1000)
-  }
-
-  const updateLegalDocExpiry = (key: string, date: string) => {
-    setProfile(prev => ({
-      ...prev,
-      legalDocuments: {
-        ...prev.legalDocuments,
+    try {
+      const url = await uploadToStorage(file, "legalDocuments")
+      const updatedDocs = {
+        ...profile.legalDocuments,
         [key]: {
-          ...prev.legalDocuments[key as keyof typeof prev.legalDocuments],
-          expiryDate: date
+          ...profile.legalDocuments[key as keyof typeof profile.legalDocuments],
+          url: url
         }
       }
+      setProfile(prev => ({
+        ...prev,
+        legalDocuments: updatedDocs
+      }))
+
+      // Auto-save to firestore
+      if (user && firestore) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid), {
+            legalDocuments: updatedDocs
+          })
+        } catch (err) {
+          console.error("Auto-save failed:", err)
+        }
+      }
+
+      toast({ title: "تم الرفع", description: "تم تحديث المستند وحفظه بنجاح." })
+    } catch (err) {
+      toast({ title: "خطأ", description: "فشل رفع المستند القانوني", variant: "destructive" })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const updateLegalDocExpiry = async (key: string, date: string) => {
+    const updatedDocs = {
+      ...profile.legalDocuments,
+      [key]: {
+        ...profile.legalDocuments[key as keyof typeof profile.legalDocuments],
+        expiryDate: date
+      }
+    }
+    setProfile(prev => ({
+      ...prev,
+      legalDocuments: updatedDocs
     }))
+
+    // Auto-save to firestore
+    if (user && firestore) {
+      try {
+        await updateDoc(doc(firestore, "users", user.uid), {
+          legalDocuments: updatedDocs
+        })
+      } catch (err) {
+        console.error("Auto-save failed:", err)
+      }
+    }
   }
 
   const completionPercentage = Math.round([
