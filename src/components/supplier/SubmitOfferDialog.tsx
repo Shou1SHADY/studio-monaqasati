@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
-import { collection, addDoc, doc } from "firebase/firestore"
+import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 
 interface DeliveryBatch {
@@ -54,10 +54,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const { data: profile } = useDoc(userDocRef)
 
   const [offerPrice, setOfferPrice] = useState("")
-  const [deliveryLocation, setDeliveryLocation] = useState("")
-  const [deliveryCoords, setDeliveryCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
-    { id: "1", deliveryDate: "", price: "", location: "" }
+    { id: "1", deliveryDate: new Date().toISOString().split('T')[0], price: "", location: "" }
   ])
   const [mapBatchId, setMapBatchId] = useState<string | null>(null)
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null)
@@ -66,13 +64,12 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const [offerPdfFile, setOfferPdfFile] = useState<File | null>(null)
   const [offerPdfUrl, setOfferPdfUrl] = useState<string | null>(null)
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
-  const [supplierWebsite, setSupplierWebsite] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [supplierWebsite, setSupplierWebsite] = useState(profile?.website || "")
   const offerPdfInputRef = useRef<HTMLInputElement>(null)
 
   const resetForm = () => {
     setOfferPrice("")
-    setDeliveryLocation("")
-    setDeliveryCoords(null)
     setDeliveryBatches([{ id: "1", deliveryDate: "", price: "", location: "" }])
     setMapBatchId(null)
     setTempLocation(null)
@@ -95,20 +92,6 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       setSupplierWebsite(profile.website)
     }
   }, [profile])
-
-  const addBatch = () => {
-    setDeliveryBatches(prev => [...prev, { id: Date.now().toString(), deliveryDate: "", price: "", location: "", coords: null }])
-  }
-
-  const removeBatch = (id: string) => {
-    if (deliveryBatches.length > 1) {
-      setDeliveryBatches(deliveryBatches.filter(b => b.id !== id))
-    }
-  }
-
-  const updateBatch = (id: string, field: keyof DeliveryBatch, value: string) => {
-    setDeliveryBatches(deliveryBatches.map(b => b.id === id ? { ...b, [field]: value } : b))
-  }
 
   const [offerPdfStoragePath, setOfferPdfStoragePath] = useState<string | null>(null)
 
@@ -164,20 +147,12 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       return;
     }
 
-    const invalidBatch = deliveryBatches.find(b => !b.deliveryDate || !b.price)
-    if (invalidBatch) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إكمال بيانات جميع الشحنات (التاريخ، السعر)", variant: "destructive" });
-      return;
-    }
-
-    const totalFromBatches = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
-    const finalPrice = offerPrice || String(totalFromBatches)
-
-    if (!finalPrice || parseFloat(finalPrice) <= 0) {
+    if (!offerPrice || parseFloat(offerPrice) <= 0) {
       toast({ title: "بيانات ناقصة", description: "يرجى إدخال السعر الإجمالي", variant: "destructive" });
       return;
     }
 
+    setIsSubmitting(true)
     try {
       const offerData: any = {
         supplierId: user.uid,
@@ -191,14 +166,13 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         rfqTitle: selectedRfq.title,
         contractorId: selectedRfq.contractorId || null,
         contractorOrgId: selectedRfq.organizationId || selectedRfq.contractorId || null,
-        price: finalPrice,
+        price: offerPrice,
         deliveryLocation: deliveryBatches[0].location,
-        deliveryBatches: deliveryBatches.map(b => ({
+        deliveryBatches: deliveryBatches.map((b, i) => ({
           location: b.location,
           deliveryDate: b.deliveryDate,
-          price: b.price,
+          price: i === 0 ? offerPrice : b.price,
         })),
-        totalBatchesPrice: totalFromBatches,
         status: "قيد المراجعة",
         createdAt: new Date().toISOString()
       };
@@ -213,9 +187,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
       await addDoc(collection(firestore, "offers"), offerData);
 
+      try {
+        const rfqRef = doc(firestore, "rfqs", selectedRfq.id);
+        const rfqSnap = await getDoc(rfqRef);
+        if (rfqSnap.exists()) {
+          const currentCount = rfqSnap.data().offersCount || 0;
+          await updateDoc(rfqRef, { offersCount: currentCount + 1 });
+        }
+      } catch (err) {
+        console.error("Failed to update offersCount:", err);
+      }
+
       toast({
         title: "تم تقديم العرض بنجاح!",
-        description: `تم إرسال عرضك بمبلغ ${Number(finalPrice).toLocaleString('ar-SA')} ر.س.`,
+        description: `تم إرسال عرضك بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س.`,
       })
       onClose()
       if (onSuccess) onSuccess()
@@ -243,15 +228,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
           </div>
 
           <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
-            {/* Removed Delivery Options for simplicity */}
-
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-slate-200" />
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">الشحنات</span>
-              <div className="flex-1 h-px bg-slate-200" />
-            </div>
-
-            <div className="space-y-3">
+            <div className="hidden">
               {deliveryBatches.map((batch, index) => (
                 <div key={batch.id} className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 border-b border-slate-200">
@@ -259,142 +236,28 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                       <Package size={14} />
                       الشحنة {index + 1}
                     </span>
-                    {deliveryBatches.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeBatch(batch.id)}
-                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
-                      >
-                        <Trash2 size={12} />
-                        حذف
-                      </button>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-semibold text-slate-600">موقع التسليم (اختياري)</Label>
-                      <div className="flex gap-2">
-                        <div className="relative flex-1">
-                          <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                          <Input 
-                            className="h-10 pr-10 text-xs"
-                            value={batch.location || ""}
-                            onChange={(e) => updateBatch(batch.id, "location", e.target.value)}
-                            placeholder="اكتب الموقع أو اختر من الخريطة"
-                          />
-                        </div>
-                        <Button 
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          className={`h-10 w-10 shrink-0 border-slate-200 ${batch.coords ? 'bg-success/10 border-success/30 text-success' : ''}`}
-                          onClick={() => setMapBatchId(batch.id)}
-                          title="تحديد من الخريطة"
-                        >
-                          <MapPin size={16} />
-                        </Button>
-                      </div>
-                      {batch.coords && (
-                        <p className="text-[10px] text-success font-medium">✓ تم تحديد الإحداثيات من الخريطة</p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-600">تاريخ التسليم <span className="text-red-500">*</span></Label>
-                        <input
-                          type="date"
-                          value={batch.deliveryDate}
-                          onChange={(e) => updateBatch(batch.id, "deliveryDate", e.target.value)}
-                          className="w-full h-10 px-3 rounded-lg border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          min={new Date().toISOString().split('T')[0]}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-600">سعر الشحنة (ر.س) <span className="text-red-500">*</span></Label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            value={batch.price}
-                            onChange={(e) => updateBatch(batch.id, "price", e.target.value)}
-                            className="w-full h-10 px-3 pl-14 rounded-lg border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            placeholder="0"
-                            min="0"
-                          />
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">ر.س</span>
-                        </div>
-                      </div>
-                    </div>
                   </div>
                 </div>
               ))}
-
-              <button
-                type="button"
-                onClick={addBatch}
-                className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border-2 border-dashed border-slate-300 text-sm font-medium text-slate-500 hover:border-primary hover:text-primary transition-colors"
-              >
-                <Plus size={14} />
-                إضافة شحنة أخرى
-              </button>
-
-              {deliveryBatches.length > 1 && (
-                <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border border-primary/15 rounded-xl">
-                  <span className="text-sm font-semibold text-slate-600">إجمالي الشحنات</span>
-                  <span className="text-xl font-black text-primary">
-                    {deliveryBatches.reduce((s, b) => s + (parseFloat(b.price) || 0), 0).toLocaleString('ar-SA')}
-                    <span className="text-sm font-semibold mr-1">ر.س</span>
-                  </span>
-                </div>
-              )}
             </div>
 
-            {/* Removed Free Shipping and Sample options for simplicity */}
-
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">مدة التنفيذ</Label>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={executionDuration}
-                    onChange={(e) => setExecutionDuration(e.target.value)}
-                    className="w-full h-11 px-3 pr-16 rounded-xl border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    placeholder="0"
-                    min="0"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">المدة</span>
-                </div>
-                <Select value={executionDurationUnit} onValueChange={setExecutionDurationUnit}>
-                  <SelectTrigger className="h-11 text-sm rounded-xl">
-                    <SelectValue placeholder="الوحدة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="أيام">أيام</SelectItem>
-                    <SelectItem value="أشهر">أشهر</SelectItem>
-                    <SelectItem value="أسابيع">أسابيع</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold flex items-center gap-2">
-                رابط الموقع الإلكتروني للمورد
-                <span className="text-[10px] text-muted-foreground font-normal">(اختياري)</span>
-              </Label>
-              <div className="relative">
-                <input
-                  type="url"
-                  value={supplierWebsite}
-                  onChange={(e) => setSupplierWebsite(e.target.value)}
-                  className="w-full h-11 px-3 pr-10 rounded-xl border border-input bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  placeholder="https://example.com"
-                  dir="ltr"
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-sm font-semibold">موقع التوريد (اختياري)</Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="المدينة، الحي..."
+                  value={deliveryBatches[0].location}
+                  onChange={(e) => setDeliveryBatches(prev => prev.map(b => b.id === "1" ? { ...b, location: e.target.value } : b))}
+                  className="h-11 rounded-xl border-2 border-input focus:ring-2 focus:ring-primary/30"
                 />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Globe size={16} />
-                </div>
+                <Button 
+                  variant="outline" 
+                  size="icon" 
+                  className="shrink-0 h-11 w-11 rounded-xl border-2 hover:bg-primary/5"
+                  onClick={() => setMapBatchId("1")}
+                >
+                  <MapPin size={18} className="text-primary" />
+                </Button>
               </div>
             </div>
 
@@ -407,16 +270,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   </div>
                   <div className="flex-1">
                     <span className="text-sm font-semibold text-blue-800">تم إرفاق ملف PDF</span>
-                    <p className="text-xs text-blue-600/70 mt-0.5">ملف عرض السعر جاهز للإرسال</p>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={removeOfferPdf} 
-                    className="text-red-500 hover:bg-red-50 hover:text-red-600 rounded-lg"
-                  >
-                    <Trash2 size={16} />
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={removeOfferPdf} className="text-red-500 rounded-lg"><Trash2 size={16} /></Button>
                 </div>
               ) : (
                 <div className="relative">
@@ -426,19 +281,16 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                     accept=".pdf"
                     onChange={handleOfferPdfUpload}
                     disabled={isUploadingPdf}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   <div className="flex items-center justify-center gap-3 h-24 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
-                    {isUploadingPdf ? (
-                      <Loader2 size={24} className="animate-spin text-primary" />
-                    ) : (
+                    {isUploadingPdf ? <Loader2 size={24} className="animate-spin text-primary" /> : (
                       <>
                         <div className="h-10 w-10 rounded-lg bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
                           <Upload size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
                         </div>
                         <div className="text-right">
                           <span className="text-sm font-semibold text-slate-700 block">اضغط لرفع ملف PDF</span>
-                          <span className="text-xs text-slate-400">عرض السعر بصيغة PDF</span>
                         </div>
                       </>
                     )}
@@ -447,23 +299,46 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               )}
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-sm font-semibold">السعر الإجمالي (ر.س) <span className="text-red-500">*</span></Label>
-              <div className="relative">
-                <input
-                  type="number"
-                  value={offerPrice}
-                  onChange={(e) => setOfferPrice(e.target.value)}
-                  className="w-full h-12 px-4 pl-16 rounded-xl border-2 border-input bg-white text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                  placeholder={deliveryBatches.length > 1 ? String(deliveryBatches.reduce((s, b) => s + (parseFloat(b.price) || 0), 0)) : "0"}
-                  min="0"
-                />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">ر.س</span>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">مدة التنفيذ</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder="مثال: 5"
+                    value={executionDuration}
+                    onChange={(e) => setExecutionDuration(e.target.value)}
+                    className="h-11 rounded-xl border-2 border-input focus:border-primary transition-colors"
+                  />
+                  <Select value={executionDurationUnit} onValueChange={setExecutionDurationUnit}>
+                    <SelectTrigger className="w-24 h-11 rounded-xl border-2 border-input">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="أيام">أيام</SelectItem>
+                      <SelectItem value="أسابيع">أسابيع</SelectItem>
+                      <SelectItem value="أشهر">أشهر</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              {deliveryBatches.length > 1 && (
-                <p className="text-xs text-muted-foreground">اتركه فارغاً ليُحسب تلقائياً من مجموع الشحنات، أو أدخل قيمة مخصصة</p>
-              )}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold">السعر الإجمالي (ر.س) <span className="text-red-500">*</span></Label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={offerPrice}
+                    onChange={(e) => setOfferPrice(e.target.value)}
+                    className="w-full h-11 px-4 pl-12 rounded-xl border-2 border-input bg-white text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    placeholder="0"
+                    min="0"
+                  />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">ر.س</span>
+                </div>
+              </div>
             </div>
+
+
 
           </div>
 
@@ -473,12 +348,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             </Button>
             <Button
               onClick={submitOffer}
-              disabled={
-                deliveryBatches.some(b => !b.location || !b.deliveryDate || !b.price) ||
-                (!offerPrice && deliveryBatches.every(b => !b.price))
-              }
+              disabled={!offerPrice || isSubmitting || isUploadingPdf}
               className="flex-[2] order-1 sm:order-2"
             >
+              {isSubmitting ? <Loader2 size={18} className="ml-2 animate-spin" /> : null}
               تأكيد وإرسال العرض
             </Button>
           </div>

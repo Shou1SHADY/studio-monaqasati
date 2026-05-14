@@ -110,17 +110,20 @@ export default function NewRfqPage() {
     quantity: string
     unit: string
     description: string
+    category: string
+    subCategory: string
+    otherSubCategory?: string
   }
 
   const [products, setProducts] = useState<Product[]>([
-    { id: "1", name: "", quantity: "", unit: "", description: "" }
+    { id: "1", name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }
   ])
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
   const addProduct = () => {
-    setProducts([...products, { id: Date.now().toString(), name: "", quantity: "", unit: "", description: "" }])
+    setProducts([...products, { id: Date.now().toString(), name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
   }
 
   const removeProduct = (id: string) => {
@@ -182,12 +185,14 @@ export default function NewRfqPage() {
     if (!formData.title.trim()) {
       errors.push({ field: "title", message: "يرجى إدخال عنوان للمناقصة" })
     }
-    
-    if (!formData.category) {
-      errors.push({ field: "category", message: "يرجى اختيار الفئة الرئيسية" })
-    }
-    
-    const validProducts = products.filter(p => p.name.trim() && p.quantity.trim() && p.unit.trim())
+
+    const validProducts = products.filter(p => 
+      p.name.trim() && 
+      p.quantity.trim() && 
+      p.unit.trim() && 
+      p.category && 
+      (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
+    )
     if (validProducts.length === 0) {
       errors.push({ field: "products", message: "يرجى إدخال منتج واحد على الأقل مع تحديد الكمية والوحدة" })
     }
@@ -197,14 +202,6 @@ export default function NewRfqPage() {
 
   const validateStep2 = (): ValidationError[] => {
     const errors: ValidationError[] = []
-    
-    if (!formData.city) {
-      errors.push({ field: "city", message: "يرجى اختيار المدينة" })
-    }
-    
-    if (!formData.deadline) {
-      errors.push({ field: "deadline", message: "يرجى تحديد الموعد النهائي للعروض" })
-    }
     
     return errors
   }
@@ -315,13 +312,15 @@ export default function NewRfqPage() {
       contractorId: user.uid,
       organizationId: profile?.organizationId || user.uid, // Fallback to UID if orgId not present
       title: formData.title,
-      category: formData.category,
-      subCategory: formData.subCategory,
+      category: validProducts[0]?.category || "",
+      subCategory: validProducts[0]?.subCategory || "",
       products: validProducts.map(p => ({
         name: p.name,
         quantity: Number(p.quantity),
         unitOfMeasure: p.unit,
-        description: p.description
+        description: p.description,
+        category: p.category,
+        subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
       })),
       deadline: formData.deadline,
       city: formData.city,
@@ -351,7 +350,7 @@ export default function NewRfqPage() {
         pdfUrl: null,
         pdfStoragePath: null
       })
-      setProducts([{ id: "1", name: "", quantity: "", unit: "", description: "" }])
+      setProducts([{ id: "1", name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
       setStep(1)
       setIsSubmitting(false)
     } else {
@@ -454,51 +453,8 @@ export default function NewRfqPage() {
                   <p className="text-xs text-muted-foreground">عنوان واضح يسهل على الموردين البحث والفرز</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <Label className="text-sm font-semibold text-slate-700">
-                      الفئة الرئيسية<RequiredStar />
-                    </Label>
-                    <Select 
-                      value={formData.category}
-                      onValueChange={v => {
-                        setFormData({ ...formData, category: v, subCategory: "" })
-                        clearError("category")
-                      }}
-                    >
-                      <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("category") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                        <SelectValue placeholder="اختر الفئة" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(CATEGORIES_DATA).map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {formData.category && CATEGORIES_DATA[formData.category] && (
-                    <div className="space-y-3">
-                      <Label className="text-sm font-semibold text-slate-700">
-                        الفئة الفرعية<RequiredStar />
-                      </Label>
-                      <Select 
-                        value={formData.subCategory}
-                        onValueChange={v => {
-                          setFormData({ ...formData, subCategory: v })
-                          clearError("subCategory")
-                        }}
-                      >
-                        <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("subCategory") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                          <SelectValue placeholder="اختر الفئة الفرعية" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CATEGORIES_DATA[formData.category].map(sub => (
-                            <SelectItem key={sub} value={sub}>{sub}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent pointer-events-none" style={{ height: '1px' }} />
                 </div>
 
                 <div className="relative">
@@ -518,10 +474,6 @@ export default function NewRfqPage() {
                         <p className="text-xs text-slate-500 mt-0.5">أضف كل المنتجات التي تحتاجها في هذه المناقصة</p>
                       </div>
                     </div>
-                    <Button variant="outline" size="sm" onClick={addProduct} className="gap-2 border-slate-300 bg-white hover:bg-primary hover:text-white hover:border-primary rounded-xl h-10 px-4 cursor-pointer transition-colors duration-200">
-                      <Plus size={16} />
-                      إضافة منتج
-                    </Button>
                   </div>
                   {hasError("products") && (
                     <div className="mb-4 p-3 bg-destructive/5 border border-destructive/20 rounded-lg text-sm text-destructive flex items-center gap-2">
@@ -551,6 +503,54 @@ export default function NewRfqPage() {
                             </Button>
                           )}
                         </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+                          <div className="space-y-2">
+                            <Label className="text-xs font-semibold text-slate-600">
+                              الفئة الرئيسية<RequiredStar />
+                            </Label>
+                            <Select 
+                              value={product.category}
+                              onValueChange={v => updateProduct(product.id, "category", v)}
+                            >
+                              <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                                <SelectValue placeholder="اختر الفئة" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Object.keys(CATEGORIES_DATA).map(cat => (
+                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs font-semibold text-slate-600">
+                              الفئة الفرعية<RequiredStar />
+                            </Label>
+                            <Select 
+                              value={product.subCategory}
+                              onValueChange={v => updateProduct(product.id, "subCategory", v)}
+                            >
+                              <SelectTrigger className="h-11 rounded-xl border-slate-200">
+                                <SelectValue placeholder="اختر الفئة الفرعية" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {product.category && CATEGORIES_DATA[product.category]?.map(sub => (
+                                  <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                                ))}
+                                <SelectItem value="أخرى">أخرى</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {product.subCategory === "أخرى" && (
+                              <Input
+                                placeholder="ادخل الفئة الفرعية..."
+                                value={product.otherSubCategory || ""}
+                                onChange={e => updateProduct(product.id, "otherSubCategory", e.target.value)}
+                                className="h-11 rounded-xl border-slate-200 mt-2"
+                              />
+                            )}
+                          </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
@@ -599,6 +599,13 @@ export default function NewRfqPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-8 flex justify-center">
+                    <Button variant="outline" size="sm" onClick={addProduct} className="gap-2 border-slate-300 bg-white hover:bg-primary hover:text-white hover:border-primary rounded-xl h-11 px-8 cursor-pointer transition-all shadow-sm">
+                      <Plus size={18} />
+                      إضافة منتج آخر للطلب
+                    </Button>
                   </div>
                 </div>
 
@@ -674,7 +681,7 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
-                      المدينة<RequiredStar />
+                      المدينة
                     </Label>
                     <Select 
                       value={formData.city} 
@@ -696,7 +703,7 @@ export default function NewRfqPage() {
                   {formData.city && CITIES_DISTRICTS[formData.city] && (
                     <div className="space-y-3">
                       <Label className="text-sm font-semibold text-slate-700">
-                        الحي / المنطقة<RequiredStar />
+                        الحي / المنطقة
                       </Label>
                       <Select 
                         value={formData.district} 

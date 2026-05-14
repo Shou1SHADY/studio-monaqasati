@@ -27,7 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -149,8 +149,27 @@ export default function SupplierOffersPage() {
         sampleStatus: action,
         sampleUpdatedAt: new Date().toISOString()
       });
+      
+      const offerSnap = await getDoc(doc(firestore, "offers", offerId));
+      const offerData = offerSnap.data();
+      if (offerData) {
+        await addDoc(collection(firestore, "notifications"), {
+          userId: offerData.contractorId,
+          organizationId: offerData.contractorOrgId || offerData.contractorId,
+          type: "sample_sent",
+          title: "تم إرسال عينة",
+          message: `قام المورد بإرسال العينة المطلوبة لمناقصة: ${offerData.rfqTitle}`,
+          offerId: offerId,
+          rfqId: offerData.rfqId,
+          createdAt: new Date().toISOString(),
+          read: false
+        });
+      }
+
       toast({ title: "تم تأكيد الإرسال", description: "تم إشعار المقاول بأنه تم إرسال العينة." });
       setConfirmSampleOffer(null);
+      // Open chat dialog after sending
+      setOpeningChat(offerId);
     } catch (error) {
       toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
     } finally {
@@ -489,6 +508,26 @@ export default function SupplierOffersPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
+        <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
+          <AlertDialogContent dir="rtl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
+              <AlertDialogDescription>
+                هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex gap-2">
+              <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                const id = openingChat;
+                setOpeningChat(null);
+                router.push(`/chat/${id}`);
+              }}>
+                فتح المحادثة
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </AlertDialog>
     </PortalLayout>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
+  MessageCircle,
+  TrendingUp,
+  Clock,
+  History,
+  ArrowUpRight,
+  ArrowRight,
+  ChevronUp,
+  ChevronDown,
+  Activity,
   Package, 
   Handshake, 
   Send, 
@@ -19,15 +28,11 @@ import {
   Search,
   ChevronLeft,
   Calendar,
-  Truck,
-  Plus,
-  Trash2,
   MapPin,
   Eye,
   File,
   Download,
-  Loader2,
-  MessageCircle
+  Loader2
 } from "lucide-react"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import Link from "next/link"
@@ -47,6 +52,42 @@ export default function SupplierDashboard() {
    const [showInquiries, setShowInquiries] = useState(false)
    const [newQuestion, setNewQuestion] = useState("")
    const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false)
+   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+   useEffect(() => {
+     if (typeof window !== "undefined") {
+       const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+       setPrefersReducedMotion(mediaQuery.matches);
+       const handler = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+       mediaQuery.addEventListener("change", handler);
+       return () => mediaQuery.removeEventListener("change", handler);
+     }
+   }, []);
+
+   const formatActivityDate = (date: Date | null) => {
+     if (!date) return null;
+     const now = new Date();
+     const diffMs = now.getTime() - date.getTime();
+     const diffMins = Math.floor(diffMs / 60000);
+     if (diffMins < 1) return "الآن";
+     if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
+     const diffHours = Math.floor(diffMins / 60);
+     if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+     const diffDays = Math.floor(diffHours / 24);
+     if (diffDays < 7) return `منذ ${diffDays} يوم`;
+     return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' });
+   }
+
+   const getLastActivityDate = () => {
+     if (!offers || offers.length === 0) return null;
+     const sortedOffers = [...offers].sort((a: any, b: any) => {
+       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+       return dateB - dateA;
+     });
+     const lastOffer = sortedOffers[0];
+     return lastOffer?.createdAt ? new Date(lastOffer.createdAt) : null;
+   }
    // Fetch supplier profile from Firestore
    const userDocRef = useMemoFirebase(() => {
      if (isUserLoading || !user || !firestore) return null
@@ -115,37 +156,71 @@ export default function SupplierDashboard() {
     .reduce((sum: number, o: any) => sum + (parseFloat(o.price?.replace(/,/g, '')) || 0), 0) || 0
 
   const activeRfqsCount = rfqs?.length || 0
+  const lastActivityDate = getLastActivityDate();
 
   const stats = [
-    { title: "الطلبات النشطة", value: activeRfqsCount.toString(), icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: "عروض قيد الانتظار", value: pendingCount.toString(), icon: Send, color: "text-amber-600", bg: "bg-amber-50" },
-    { title: "عروض تم قبولها", value: acceptedCount.toString(), icon: Handshake, color: "text-success", bg: "bg-success/10" },
-    { title: "إجمالي العقود", value: totalValue > 1000 ? `${(totalValue/1000).toFixed(1)}k` : totalValue.toString(), icon: DollarSign, color: "text-success", bg: "bg-success/10" },
+    { title: "الطلبات النشطة", value: activeRfqsCount.toString(), icon: Activity, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", actionUrl: "/supplier/rfqs" },
+    { title: "عروض قيد الانتظار", value: pendingCount.toString(), icon: Send, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", actionUrl: "/supplier/offers" },
+    { title: "عروض تم قبولها", value: acceptedCount.toString(), icon: Handshake, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", actionUrl: "/supplier/offers?status=Accepted" },
+    { title: "إجمالي العقود", value: totalValue > 1000 ? `${(totalValue/1000).toFixed(1)}k` : totalValue.toString(), icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", actionUrl: "/supplier/offers" },
   ]
 
   const recommendedRfqs = rfqs?.slice(0, 3) || []
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right">
-        <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">أهلاً بك، المورد المتكامل</h1>
-          <p className="text-muted-foreground mt-1">إليك ملخص لنشاطك التجاري اليوم</p>
+      <div className="space-y-8 text-right max-w-7xl mx-auto pb-10">
+        {/* Animated Header Section */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 sm:p-10 text-white shadow-xl">
+          {!prefersReducedMotion && (
+            <>
+              <div className="absolute top-0 right-0 -mt-20 -mr-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl mix-blend-screen" />
+              <div className="absolute bottom-0 left-0 -mb-20 -ml-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl mix-blend-screen" />
+            </>
+          )}
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                  أهلاً بك، <span className="text-transparent bg-clip-text bg-gradient-to-l from-accent to-cyan-300">{userData?.companyName || userData?.name || "شريكنا المورد"}</span>
+                </h1>
+                {lastActivityDate && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs font-medium text-white/80">
+                    <Clock className="h-3 w-3" />
+                    آخر نشاط: {formatActivityDate(new Date(lastActivityDate))}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-200 text-lg font-medium max-w-xl leading-relaxed">
+                لوحة التحكم الذكية للموردين. تتبع عروضك، اكتشف مناقصات جديدة، وقم بتنمية أعمالك بكل سهولة واحترافية.
+              </p>
+            </div>
+            <Link href="/supplier/rfqs" className="shrink-0">
+              <Button className="bg-white text-secondary hover:bg-slate-100 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_rgba(255,255,255,0.5)] transition-all duration-300 h-12 px-6 rounded-xl font-bold text-base group">
+                <Search className={cn("ml-2 h-5 w-5", !prefersReducedMotion && "transition-transform group-hover:scale-110")} />
+                تصفح المناقصات
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat) => (
-            <Card key={stat.title} className="border-none shadow-sm group hover:shadow-md transition-shadow">
+            <Card key={stat.title} className={cn("glass-card border-none shadow-sm overflow-hidden group hover:-translate-y-1 hover:shadow-xl transition-all duration-300", stat.gradient)}>
               <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={cn("p-3 rounded-xl", stat.bg)}>
-                    <stat.icon className={cn("h-6 w-6", stat.color)} />
+                <Link href={stat.actionUrl || "#"} className="block">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={cn("p-3.5 rounded-lg transition-all duration-300", stat.bg, stat.glow)}>
+                      <stat.icon className={cn("h-6 w-6", stat.color)} strokeWidth={2.5} />
+                    </div>
+                    <ArrowUpRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-1 group-hover:-translate-y-1 transition-all duration-300" />
                   </div>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-2xl font-bold text-slate-800">{stat.value}</p>
-                </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-bold text-muted-foreground">{stat.title}</p>
+                    <p className="text-3xl font-black text-foreground tracking-tight">{stat.value}</p>
+                  </div>
+                </Link>
               </CardContent>
             </Card>
           ))}

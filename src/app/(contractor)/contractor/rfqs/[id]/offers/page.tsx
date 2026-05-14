@@ -10,6 +10,16 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   CheckCircle2,
   XCircle,
   Loader2,
@@ -165,6 +175,25 @@ export default function RfqOffersPage() {
         sampleUpdatedAt: new Date().toISOString(),
         readAt: null // reset read status for supplier
       });
+
+      if (action === "مطلوبة") {
+        const offerSnap = await getDoc(doc(firestore, "offers", offerId));
+        const offerData = offerSnap.data();
+        if (offerData) {
+          await addDoc(collection(firestore, "notifications"), {
+            userId: offerData.supplierId,
+            organizationId: offerData.organizationId || offerData.supplierId,
+            type: "sample_requested",
+            title: "طلب عينة جديد",
+            message: `قام المقاول بطلب عينة لمناقصة: ${offerData.rfqTitle}`,
+            offerId: offerId,
+            rfqId: rfqId,
+            createdAt: new Date().toISOString(),
+            read: false
+          });
+        }
+      }
+
       toast({
         title: action === "مطلوبة" ? "تم طلب العينة" : "تم استلام العينة",
         description: action === "مطلوبة" ? "تم إرسال طلب للمورد لتوفير عينة." : "تم تأكيد استلام العينة بنجاح."
@@ -554,17 +583,28 @@ export default function RfqOffersPage() {
                                 {offer.sampleStatus ? "طلب عينة أخرى" : "طلب عينة"}
                               </Button>
                             )}
-                            {offer.sampleStatus === "تم الإرسال" && (
-                              <Button
-                                onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
-                                disabled={processingId === offer.id}
-                                variant="outline"
-                                className="w-full gap-2 rounded-full border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-all font-medium mt-1"
-                                size="sm"
-                              >
-                                <CheckCircle2 size={14} />
-                                تأكيد استلام العينة
-                              </Button>
+                             {offer.sampleStatus === "تم الإرسال" && (
+                              <div className="w-full space-y-2">
+                                <Button
+                                  onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
+                                  disabled={processingId === offer.id}
+                                  variant="outline"
+                                  className="w-full gap-2 rounded-full border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 hover:text-emerald-800 transition-all font-medium mt-1"
+                                  size="sm"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  تأكيد استلام العينة
+                                </Button>
+                                <Button
+                                  onClick={() => openChat(offer)}
+                                  disabled={openingChat === offer.id}
+                                  className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all"
+                                  size="sm"
+                                >
+                                  <MessageSquare size={14} />
+                                  الدردشة حول العينة
+                                </Button>
+                              </div>
                             )}
                           </div>
                         )}
@@ -739,6 +779,26 @@ export default function RfqOffersPage() {
             <InquiriesSection rfqId={rfqId} rfqTitle={rfq?.title || ""} profile={profile} />
           </TabsContent>
         </Tabs>
+        <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
+          <AlertDialogContent dir="rtl">
+            <AlertDialogHeader>
+              <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
+              <AlertDialogDescription>
+                هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex gap-2">
+              <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
+              <AlertDialogAction onClick={() => {
+                const id = openingChat;
+                setOpeningChat(null);
+                router.push(`/chat/${id}`);
+              }}>
+                فتح المحادثة
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </PortalLayout>
   )
