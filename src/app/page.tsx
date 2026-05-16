@@ -170,11 +170,10 @@ export default function Home() {
           </div>
 
           {/* Side Progress Bar */}
-          <div className="absolute right-10 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-8 items-center hidden md:flex">
+          <div className="absolute right-10 -mr-[30px] top-1/2 -translate-y-1/2 z-20 flex flex-col gap-8 items-center hidden md:flex">
             {heroSlides.map((_, i) => (
               <button key={i} onClick={() => setSlide(i)}
                 className={`group flex items-center gap-4 transition-all ${i === slide ? 'text-sky-400' : 'text-slate-500'}`}>
-                <span className={`text-[10px] font-black uppercase tracking-widest transition-opacity ${i === slide ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>0{i + 1}</span>
                 <div className={`h-12 w-[2px] transition-all duration-500 ${i === slide ? 'bg-cta h-16' : 'bg-white/10 group-hover:bg-white/30'}`} />
               </button>
             ))}
