@@ -19,6 +19,7 @@ interface ChatPageContentProps {
   backPath: string
 }
 
+
 export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const params = useParams()
   const chatId = params.chatId as string
@@ -32,7 +33,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const [metaLoading, setMetaLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Load chat metadata (one-time get; real-time not needed for meta)
+  // Load chat metadata(one-time get; real-time not needed for meta)
   useEffect(() => {
     if (!firestore || !chatId) return
     getDoc(doc(firestore, "chats", chatId)).then((snap) => {
@@ -64,7 +65,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     if (unreadFor.includes(user.uid)) {
       updateDoc(doc(firestore, "chats", chatId), {
         unreadFor: unreadFor.filter((uid: string) => uid !== user.uid)
-      }).catch(() => {})
+      }).catch(() => { })
     }
   }, [firestore, chatId, user, chatMeta, metaLoading])
 
@@ -111,7 +112,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
             createdAt: new Date().toISOString(),
             read: false
           }
-        ).catch(() => {}) // non-blocking — unread dot on chat is the primary signal
+        ).catch(() => { }) // non-blocking — unread dot on chat is the primary signal
       }
 
       // Refresh local chatMeta to reflect updated unreadFor
@@ -197,11 +198,10 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
                     className={`flex ${isMine ? "justify-end" : "justify-start"}`}
                   >
                     <div
-                      className={`max-w-[75%] px-4 py-2.5 rounded-2xl shadow-sm ${
-                        isMine
+                      className={`max-w-[75%] px-4 py-2.5 rounded-2xl shadow-sm ${isMine
                           ? "bg-primary text-white rounded-tr-sm"
                           : "bg-white text-slate-800 rounded-tl-sm border border-slate-100"
-                      }`}
+                        }`}
                     >
                       <p className="text-sm leading-relaxed">{msg.text}</p>
                       <p
