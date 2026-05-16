@@ -191,7 +191,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       try {
         if (selectedRfq.contractorId) {
           // 1. In-app notification
-          await addDoc(collection(firestore, "notifications"), {
+          await addDoc(collection(firestore, "users", selectedRfq.contractorId, "notifications"), {
             userId: selectedRfq.contractorId,
             organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
             type: "new_offer",

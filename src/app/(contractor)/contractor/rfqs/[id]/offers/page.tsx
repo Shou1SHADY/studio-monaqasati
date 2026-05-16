@@ -174,7 +174,7 @@ export default function RfqOffersPage() {
         const offerSnap = await getDoc(doc(firestore, "offers", offerId));
         const offerData = offerSnap.data();
         if (offerData?.supplierId) {
-          await addDoc(collection(firestore, "notifications"), {
+          await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
             type: "sample_requested",
@@ -870,7 +870,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
           createdAt: new Date().toISOString(),
           read: false
         }
-        await addDoc(collection(firestore, "notifications"), notificationData)
+        await addDoc(collection(firestore, "users", inquiry.userId, "notifications"), notificationData)
       } else {
         console.warn("⚠️ No userId found for inquiry notification", inquiry)
       }

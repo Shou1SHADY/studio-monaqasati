@@ -232,7 +232,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (isSupplier) {
       if (notif.type === "new_rfq") {
         markRfqAsRead(notif.id)
-      } else if (!notif.readAt && firestore) {
+      } else if ((notif.type === "sample_requested" || notif.type === "inquiry_reply" || notif.type === "invitation") && !notif.read && firestore && user) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), { read: true, readAt: new Date().toISOString() })
+        } catch (e) {
+          // ignore
+        }
+      } else if (!notif.readAt && firestore && notif.type === "offer_update") {
         try {
           await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
         } catch (e) {
@@ -243,6 +249,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     // 2. Navigate
     if (notif.type === "invitation") {
       router.push(`/${basePath}/team`)
+    } else if (notif.type === "sample_requested") {
+      router.push(`/supplier/offers`)
+    } else if (notif.type === "inquiry_reply") {
+      router.push(`/supplier/rfqs`)
     } else if (isSupplier) {
       if (notif.type === "new_rfq") {
         router.push(`/supplier/rfqs`)
@@ -322,16 +332,19 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq"
                       const isAccepted = notif.status === "مقبول" && notif.type !== "new_rfq"
                       const isPriceReduction = notif.status === "مطلوب تخفيض" && notif.type !== "new_rfq"
-                      const isSampleRequest = notif.sampleStatus === "مطلوبة" && notif.type !== "new_rfq"
+                      const isSampleRequest = (notif.sampleStatus === "مطلوبة" || notif.type === "sample_requested") && notif.type !== "new_rfq"
                       const isSampleReceived = notif.sampleStatus === "تم الاستلام" && notif.type !== "new_rfq"
                       const isInvitation = notif.type === "invitation"
+                      const isInquiryReply = notif.type === "inquiry_reply"
                       const isUnread = isNewRfq 
                         ? !readRfqIds.includes(notif.id)
                         : isInvitation
                           ? !notif.read
-                          : isSupplier 
-                            ? !notif.readAt && (isAccepted || notif.status === "مرفوض" || isPriceReduction || isSampleRequest || isSampleReceived)
-                            : isPending || (notif.type === "new_offer" && !notif.contractorReadAt);
+                          : notif.type === "sample_requested" || notif.type === "inquiry_reply"
+                            ? !notif.read
+                            : isSupplier 
+                              ? !notif.readAt && (isAccepted || notif.status === "مرفوض" || isPriceReduction || isSampleRequest || isSampleReceived)
+                              : isPending || (notif.type === "new_offer" && !notif.contractorReadAt);
                       
                       return (
                         <div
@@ -349,9 +362,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             isNewRfq ? "bg-blue-100 text-blue-600" :
                             isAccepted ? "bg-success/10 text-success" :
                             isInvitation ? "bg-primary/10 text-primary" :
+                            isInquiryReply ? "bg-success/10 text-success" :
                             "bg-muted text-muted-foreground"
                           }`}>
-                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isInvitation ? <Bell size={14} /> : <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
@@ -363,6 +377,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                   : isPriceReduction ? "📉 مطلوب تخفيض السعر"
                                   : isAccepted ? "✅ تم قبول عرضك!"
                                   : isInvitation ? (notif.title || "🔔 دعوة للفريق")
+                                  : isInquiryReply ? "💬 رد على استفسارك"
                                   : "❌ تم رفض العرض"
                                 : isInvitation ? (notif.title || "🔔 دعوة للفريق")
                                 : "🔔 عرض سعر جديد"}
@@ -372,9 +387,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                 ? `تم طرح مناقصة في قسم ${notif.category}`
                                 : isInvitation
                                   ? (notif.message || "لقد تلقيت دعوة للانضمام إلى فريق عمل جديد.")
-                                  : isSupplier
-                                    ? `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
-                                    : `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
+                                  : isSampleRequest && notif.type === "sample_requested"
+                                    ? (notif.message || "طلب المقاول عينة للعرض المقدم.")
+                                    : isInquiryReply
+                                      ? (notif.description || notif.message || "رد المقاول على استفسارك.")
+                                      : isSupplier
+                                        ? `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
+                                        : `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
                               }
                             </p>
                           </div>
