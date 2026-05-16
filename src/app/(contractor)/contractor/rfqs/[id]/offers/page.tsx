@@ -174,7 +174,7 @@ export default function RfqOffersPage() {
         const offerSnap = await getDoc(doc(firestore, "offers", offerId));
         const offerData = offerSnap.data();
         if (offerData?.supplierId) {
-          await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
+          await addDoc(collection(firestore, "notifications"), {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
             type: "sample_requested",
@@ -859,6 +859,8 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
       // Create notification for the supplier
       if (inquiry?.userId) {
         const notificationData = {
+          userId: inquiry.userId,
+          organizationId: inquiry.organizationId || inquiry.userId,
           type: "inquiry_reply",
           title: "رد على استفسارك",
           description: `رد المقاول على استفسارك في "${rfqTitle}": ${replyText[inquiryId].trim().substring(0, 100)}${replyText[inquiryId].trim().length > 100 ? "..." : ""}`,
@@ -868,7 +870,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
           createdAt: new Date().toISOString(),
           read: false
         }
-        await addDoc(collection(firestore, "users", inquiry.userId, "notifications"), notificationData)
+        await addDoc(collection(firestore, "notifications"), notificationData)
       } else {
         console.warn("⚠️ No userId found for inquiry notification", inquiry)
       }
