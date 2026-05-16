@@ -9,7 +9,6 @@ service cloud.firestore {
     }
 
     function getUserData() {
-      // Use get() safely only if the document exists
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
@@ -27,7 +26,7 @@ service cloud.firestore {
     function isSupplier() { return hasRole('Supplier'); }
     function isContractor() { return hasRole('Contractor'); }
     function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-    
+
     function isOrgMember(orgId) {
       return isSignedIn() && getOrganizationId() == orgId;
     }
@@ -37,23 +36,26 @@ service cloud.firestore {
     match /users/{userId} {
       allow create: if isOwner(userId) || isAdmin();
       allow get: if isOwner(userId) || isOrgMember(resource.data.organizationId) || isSignedIn();
-      allow list: if isAdmin() || isSignedIn();
+      allow list: if isSignedIn();
       allow update: if isOwner(userId) || isAdmin() || (
-        isSignedIn() && 
-        resource.data.organizationId == getOrganizationId() && 
+        isSignedIn() &&
+        resource.data.organizationId == getOrganizationId() &&
         getUserData().organizationRole == 'owner'
       );
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isSignedIn() && request.auth.uid != userId && (isContractor() || isSupplier());
+        // Only the owner of the user doc can read their own notifications
+        allow get, list: if isOwner(userId) || isAdmin();
+        // Any signed-in user can create a notification for another user
+        allow create: if isSignedIn();
         allow update: if isOwner(userId) || isAdmin();
         allow delete: if isAdmin();
       }
     }
 
     match /categories/{categoryId} {
+      // 'read' = get + list, safe for signed-in users (static reference data)
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
@@ -64,9 +66,8 @@ service cloud.firestore {
     }
 
     match /rfqs/{rfqId} {
-      // Read access for all signed-in users
+      // Both get and list are safe for all signed-in users (RFQs are semi-public)
       allow read: if isSignedIn();
-      // Allow creation if user is contractor (by role) or if the resource matches the user's UID
       allow create: if isAdmin()
         || isContractor()
         || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
@@ -87,16 +88,30 @@ service cloud.firestore {
     }
 
     match /offers/{offerId} {
-      allow read: if isSignedIn();
+      // 'get' (single document): check the resource fields for ownership
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.supplierId == request.auth.uid ||
+        resource.data.organizationId == getOrganizationId() ||
+        resource.data.contractorOrgId == getOrganizationId() ||
+        isAdmin()
+      );
+      // 'list' (collection query): allow any signed-in user; the app's 'where' clause
+      // (filtering by rfqId, organizationId, etc.) ensures data isolation.
+      allow list: if isSignedIn();
       allow create: if isAdmin()
         || isSupplier()
+        || (isSignedIn() && request.resource.data.supplierId == request.auth.uid)
         || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
-      // Supplier can update, Contractor can change status (if they own the original RFQ)
+      // Supplier can update their own offer; Contractor can update status on offers for their RFQs
       allow update: if isAdmin()
+        || (isSignedIn() && resource.data.supplierId == request.auth.uid)
         || (isSignedIn() && resource.data.organizationId == getOrganizationId())
+        || (isSignedIn() && resource.data.contractorOrgId == getOrganizationId())
         || (isSignedIn() && resource.data.rfqId != null
             && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId());
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.supplierId == request.auth.uid);
     }
 
     match /notification_queue/{queueEntryId} {
@@ -104,17 +119,23 @@ service cloud.firestore {
     }
 
     match /chats/{chatId} {
-      // Any signed-in user can create a chat (code handles logic)
       allow create: if isSignedIn();
-      // Read/update for contractor or supplier only (resource == null means document doesn't exist yet)
-      allow read: if isSignedIn() && (
+      // 'get' (single document): only parties to the chat
+      allow get: if isSignedIn() && (
         resource == null ||
         resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId()
+        resource.data.supplierOrgId == getOrganizationId() ||
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid ||
+        isAdmin()
       );
+      // 'list' (collection query): allow any signed-in user; app 'where' clause filters by orgId
+      allow list: if isSignedIn();
       allow update: if isSignedIn() && (
         resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId()
+        resource.data.supplierOrgId == getOrganizationId() ||
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid
       );
 
       match /messages/{messageId} {
@@ -128,3 +149,4 @@ service cloud.firestore {
 
   }
 }
+

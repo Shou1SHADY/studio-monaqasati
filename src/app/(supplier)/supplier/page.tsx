@@ -110,7 +110,7 @@ export default function SupplierDashboard() {
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "offers"), where("organizationId", "==", userData?.organizationId || user.uid))
+    return query(collection(firestore, "offers"), where("supplierId", "==", user.uid))
   }, [firestore, user, isUserLoading, userData?.organizationId])
 
   const inquiriesQuery = useMemoFirebase(() => {

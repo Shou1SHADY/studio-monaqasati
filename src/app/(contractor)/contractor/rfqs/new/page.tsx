@@ -94,8 +94,6 @@ export default function NewRfqPage() {
 
   const [formData, setFormData] = useState({
     title: "",
-    category: "",
-    subCategory: "",
     city: "",
     district: "",
     deadline: "",
@@ -203,6 +201,14 @@ export default function NewRfqPage() {
   const validateStep2 = (): ValidationError[] => {
     const errors: ValidationError[] = []
     
+    if (!formData.city) {
+      errors.push({ field: "city", message: "يرجى اختيار المدينة" })
+    }
+    
+    if (!formData.deadline) {
+      errors.push({ field: "deadline", message: "يرجى تحديد الموعد النهائي للعروض" })
+    }
+    
     return errors
   }
 
@@ -242,10 +248,11 @@ export default function NewRfqPage() {
 
   const handleAiDraft = async () => {
     clearError("title")
-    if (!formData.title || !formData.category) {
+    const firstProduct = products[0]
+    if (!formData.title || !firstProduct?.category) {
       toast({
         title: "بيانات ناقصة",
-        description: "يرجى إدخال العنوان والفئة ليتمكن الذكاء الاصطناعي من مساعدتك.",
+        description: "يرجى إدخال العنوان واختيار فئة للمنتج الأول ليتمكن الذكاء الاصطناعي من مساعدتك.",
         variant: "destructive"
       })
       return
@@ -253,12 +260,11 @@ export default function NewRfqPage() {
 
     setIsGenerating(true)
     try {
-      const firstProduct = products[0]
       const result = await draftRfqDescription({
         keywords: formData.title,
-        category: formData.category,
-        quantity: Number(firstProduct?.quantity) || 1,
-        unit: firstProduct?.unit || "عدد",
+        category: firstProduct.category,
+        quantity: Number(firstProduct.quantity) || 1,
+        unit: firstProduct.unit || "عدد",
         notes: formData.notes
       })
 
@@ -295,15 +301,25 @@ export default function NewRfqPage() {
   const handleSubmit = async (status: "Draft" | "New" = "New") => {
     if (!firestore || !user) return
 
-    const validProducts = products.filter(p => p.name && p.quantity && p.unit)
-    if (validProducts.length === 0) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إضافة منتج واحد على الأقل", variant: "destructive" })
+    // Perform full validation
+    const step1Errors = validateStep1()
+    const step2Errors = validateStep2()
+    const allErrors = [...step1Errors, ...step2Errors]
+
+    if (allErrors.length > 0) {
+      // If we are at step 1 but there are errors in step 2 (shouldn't happen often)
+      // or if we are at step 2 and there are errors in step 1.
+      showErrors(allErrors)
       return
     }
-    if (!formData.title || !formData.category || !formData.city || !formData.deadline) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إكمال بيانات المناقصة الأساسية", variant: "destructive" })
-      return
-    }
+
+    const validProducts = products.filter(p => 
+      p.name.trim() && 
+      p.quantity.trim() && 
+      p.unit.trim() && 
+      p.category && 
+      (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
+    )
 
     setIsSubmitting(true)
     const rfqsRef = collection(firestore, "rfqs")
@@ -325,6 +341,9 @@ export default function NewRfqPage() {
       deadline: formData.deadline,
       city: formData.city,
       district: formData.district,
+      notes: formData.notes,
+      pdfUrl: formData.pdfUrl,
+      pdfStoragePath: formData.pdfStoragePath,
       status: status,
       visibility: "public",
       createdByUserId: user.uid,
@@ -341,8 +360,6 @@ export default function NewRfqPage() {
       })
       setFormData({
         title: "",
-        category: "",
-        subCategory: "",
         city: "",
         district: "",
         deadline: "",

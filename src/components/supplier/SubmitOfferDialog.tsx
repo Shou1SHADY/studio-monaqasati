@@ -88,10 +88,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   }, [selectedRfq])
 
   useEffect(() => {
-    if (profile?.website && !supplierWebsite) {
-      setSupplierWebsite(profile.website)
+    if (profile?.website) {
+      setSupplierWebsite((prev: string) => prev || profile.website)
     }
-  }, [profile])
+  }, [profile?.website])
 
   const [offerPdfStoragePath, setOfferPdfStoragePath] = useState<string | null>(null)
 
@@ -187,6 +187,24 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
       await addDoc(collection(firestore, "offers"), offerData);
 
+      // Notify contractor of new offer
+      try {
+        if (selectedRfq.contractorId) {
+          await addDoc(collection(firestore, "notifications"), {
+            userId: selectedRfq.contractorId,
+            organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
+            type: "new_offer",
+            title: "عرض سعر جديد",
+            message: `قدم المورد ${profile?.companyName || profile?.name || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على مناقصة: ${selectedRfq.title}`,
+            offerId: null,
+            rfqId: selectedRfq.id,
+            createdAt: new Date().toISOString(),
+            read: false
+          });
+        }
+      } catch (err) {
+        console.error("Failed to send offer notification:", err);
+      }
       try {
         const rfqRef = doc(firestore, "rfqs", selectedRfq.id);
         const rfqSnap = await getDoc(rfqRef);
@@ -225,6 +243,19 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               طلب: <span className="font-semibold text-slate-700">{selectedRfq?.title}</span>
             </p>
             {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
+            {selectedRfq?.pdfUrl && (
+              <div className="mt-3 flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <File size={16} className="text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-800">مرفقات المناقصة</span>
+                </div>
+                <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-xs">
+                  <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer">
+                    عرض المرفق
+                  </a>
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
@@ -299,7 +330,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-sm font-semibold text-slate-700">مدة التنفيذ</Label>
                 <div className="flex gap-2">
@@ -434,9 +465,20 @@ function ContractorInfo({ contractorId }: { contractorId: string }) {
             </Badge>
           )}
           {contractor.certificates?.map((cert: any, idx: number) => (
-            <Badge key={idx} variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
-              {cert.name}
-            </Badge>
+            <a 
+              key={idx} 
+              href={cert.fileUrl || cert.url || '#'} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex"
+              onClick={(e) => {
+                if (!cert.fileUrl && !cert.url) e.preventDefault()
+              }}
+            >
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1 hover:bg-blue-100 cursor-pointer transition-colors">
+                {cert.name || "ملف مرفق"}
+              </Badge>
+            </a>
           ))}
         </div>
       )}

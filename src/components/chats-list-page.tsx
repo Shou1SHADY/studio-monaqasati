@@ -2,7 +2,6 @@
 
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { MessageSquare, Loader2, ChevronLeft, Clock } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
@@ -34,12 +33,12 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
 
   const { data: rawChats, isLoading } = useCollection(chatsQuery)
 
-  // Sort client-side by createdAt descending (avoids composite index requirement)
+  // Sort client-side by lastMessageAt (most recent first), fallback to createdAt
   const chats = rawChats
     ? [...rawChats].sort((a: any, b: any) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return bTime - aTime
+        const aTime = a.lastMessageAt || a.createdAt
+        const bTime = b.lastMessageAt || b.createdAt
+        return (bTime ? new Date(bTime).getTime() : 0) - (aTime ? new Date(aTime).getTime() : 0)
       })
     : []
 
@@ -74,32 +73,61 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
               </CardContent>
             </Card>
           ) : (
-            chats.map((chat: any) => (
-              <Card
-                key={chat.id}
-                onClick={() => router.push(`/chat/${chat.id}`)}
-                className="border-none shadow-sm hover:shadow-md transition-all cursor-pointer group"
-              >
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors">
-                    <MessageSquare size={22} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-foreground truncate">
-                      {chat.rfqTitle || "محادثة عقد"}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge className="bg-success/10 text-success border-success/20 text-xs">مقبول ✅</Badge>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
-                        <Clock size={10} />
-                        {chat.createdAt ? new Date(chat.createdAt).toLocaleDateString("ar-SA") : ""}
-                      </span>
+            chats.map((chat: any) => {
+              const hasUnread = Array.isArray(chat.unreadFor) && user && chat.unreadFor.includes(user.uid)
+              return (
+                <Card
+                  key={chat.id}
+                  onClick={() => router.push(`/${role}/chat/${chat.id}`)}
+                  className={`border shadow-sm hover:shadow-md transition-all cursor-pointer group ${
+                    hasUnread ? "border-primary/30 bg-primary/5" : "border-none"
+                  }`}
+                >
+                  <CardContent className="p-5 flex items-center gap-4">
+                    <div className={`relative h-12 w-12 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                      hasUnread
+                        ? "bg-primary text-white"
+                        : "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white"
+                    }`}>
+                      <MessageSquare size={22} />
+                      {hasUnread && (
+                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center">
+                          !
+                        </span>
+                      )}
                     </div>
-                  </div>
-                  <ChevronLeft size={18} className="text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
-                </CardContent>
-              </Card>
-            ))
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className={`font-bold truncate ${hasUnread ? "text-primary" : "text-foreground"}`}>
+                          {chat.rfqTitle || "محادثة عقد"}
+                        </p>
+                        {hasUnread && (
+                          <Badge className="bg-primary text-white border-none text-[10px] px-2 py-0 shrink-0">
+                            جديد
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {chat.lastMessage ? (
+                          <p className={`text-xs truncate max-w-[280px] ${hasUnread ? "text-primary/80 font-medium" : "text-muted-foreground"}`}>
+                            {chat.lastMessage}
+                          </p>
+                        ) : (
+                          <Badge className="bg-success/10 text-success border-success/20 text-xs">مقبول ✅</Badge>
+                        )}
+                        <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0 mr-auto" suppressHydrationWarning>
+                          <Clock size={10} />
+                          {(chat.lastMessageAt || chat.createdAt)
+                            ? new Date(chat.lastMessageAt || chat.createdAt).toLocaleDateString("ar-SA")
+                            : ""}
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronLeft size={18} className={`shrink-0 transition-colors ${hasUnread ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`} />
+                  </CardContent>
+                </Card>
+              )
+            })
           )}
         </div>
       </div>

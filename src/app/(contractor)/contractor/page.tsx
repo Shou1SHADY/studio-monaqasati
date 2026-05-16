@@ -360,7 +360,7 @@ export default function ContractorDashboard() {
               <p className="text-sm text-slate-500 mt-1">الشركات التي أتممت معها صفقات سابقة بنجاح</p>
             </div>
             <Link href="/contractor/suppliers">
-              <Button variant="outline" className="rounded-xl font-bold bg-white hover:bg-slate-50 border-slate-200 shadow-sm">إدارة المفضلة</Button>
+              <Button variant="outline" className="rounded-xl font-bold bg-white hover:bg-primary hover:text-white hover:border-primary border-slate-200 shadow-sm transition-all duration-300">إدارة المفضلة</Button>
             </Link>
           </div>
           

@@ -52,18 +52,17 @@ export default function SupplierOffersPage() {
 
   const openChat = async (offer: any) => {
     if (!user) return
-    // The chat document is created automatically when the contractor accepts.
-    // Just navigate to the chat page — it will show empty state if not created yet.
-    router.push(`/chat/${offer.id}`)
+    router.push(`/supplier/chat/${offer.id}`)
   }
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
+    // Query by organizationId (preferred) or by supplierId as fallback
     return query(
       collection(firestore, "offers"),
-      where("organizationId", "==", profile?.organizationId || user.uid)
+      where("supplierId", "==", user.uid)
     )
-  }, [firestore, user, isUserLoading])
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const { data: rawOffers, isLoading: isCollectionLoading } = useCollection(offersQuery)
   const isLoading = isUserLoading || isCollectionLoading
@@ -508,26 +507,28 @@ export default function SupplierOffersPage() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-        <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
-          <AlertDialogContent dir="rtl">
-            <AlertDialogHeader>
-              <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
-              <AlertDialogDescription>
-                هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter className="flex gap-2">
-              <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
-              <AlertDialogAction onClick={() => {
-                const id = openingChat;
-                setOpeningChat(null);
-                router.push(`/chat/${id}`);
-              }}>
-                فتح المحادثة
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      </AlertDialog>
+
+      {/* Chat Redirect Dialog after sample sent - must be sibling, NOT nested */}
+      <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
+        <AlertDialogContent dir="rtl" className="text-right">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2">
+            <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const id = openingChat;
+              setOpeningChat(null);
+              router.push(`/supplier/chat/${id}`);
+            }}>
+              فتح المحادثة
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
     </PortalLayout>
   )

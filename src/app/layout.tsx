@@ -1,21 +1,16 @@
- 
 import type {Metadata} from 'next';
-import { Noto_Sans_Arabic, Noto_Naskh_Arabic } from 'next/font/google';
+import { Noto_Sans_Arabic } from 'next/font/google';
 import './globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { Toaster } from '@/components/ui/toaster';
 
 const notoSansArabic = Noto_Sans_Arabic({
   subsets: ['arabic'],
-  weight: ['300', '400', '500', '700'],
+  weight: ['300', '400', '500', '600', '700', '800', '900'],
   variable: '--font-body',
 });
 
-const notoNaskhArabic = Noto_Naskh_Arabic({
-  subsets: ['arabic'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-headline',
-});
+const notoNaskhArabic = { variable: '--font-headline' };
 
 export const metadata: Metadata = {
   title: 'مدماك تيك - منصة التقنية للمقاولين والموردين',

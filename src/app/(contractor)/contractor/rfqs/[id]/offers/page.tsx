@@ -9,16 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+
+
 import {
   CheckCircle2,
   XCircle,
@@ -80,7 +72,7 @@ export default function RfqOffersPage() {
           createdAt: new Date().toISOString()
         })
       }
-      router.push(`/chat/${offer.id}`)
+      router.push(`/contractor/chat/${offer.id}`)
     } catch (err: any) {
       console.error("❌ openChat failed:", err?.code, err?.message)
       toast({ title: "خطأ", description: "تعذر فتح المحادثة: " + (err?.code || ""), variant: "destructive" })
@@ -179,13 +171,13 @@ export default function RfqOffersPage() {
       if (action === "مطلوبة") {
         const offerSnap = await getDoc(doc(firestore, "offers", offerId));
         const offerData = offerSnap.data();
-        if (offerData) {
-          await addDoc(collection(firestore, "notifications"), {
+        if (offerData?.supplierId) {
+          await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
             type: "sample_requested",
             title: "طلب عينة جديد",
-            message: `قام المقاول بطلب عينة لمناقصة: ${offerData.rfqTitle}`,
+            message: `قام المقاول بطلب عينة لمناقصة: ${offerData.rfqTitle || ""}`,
             offerId: offerId,
             rfqId: rfqId,
             createdAt: new Date().toISOString(),
@@ -779,26 +771,6 @@ export default function RfqOffersPage() {
             <InquiriesSection rfqId={rfqId} rfqTitle={rfq?.title || ""} profile={profile} />
           </TabsContent>
         </Tabs>
-        <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
-          <AlertDialogContent dir="rtl">
-            <AlertDialogHeader>
-              <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
-              <AlertDialogDescription>
-                هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter className="flex gap-2">
-              <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
-              <AlertDialogAction onClick={() => {
-                const id = openingChat;
-                setOpeningChat(null);
-                router.push(`/chat/${id}`);
-              }}>
-                فتح المحادثة
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </div>
     </PortalLayout>
   )

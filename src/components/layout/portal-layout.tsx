@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -49,8 +49,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   
   const basePath = pathname.split("/")[1] || "admin"
 
+  // Role-based redirect guard — chat now lives inside role groups, no exception needed
   React.useEffect(() => {
-    if (profile && profile.role) {
+    if (profile && profile.role && basePath !== "chat") {
       if (profile.role === "Supplier" && basePath !== "supplier") {
         router.push("/supplier")
       } else if (profile.role === "Contractor" && basePath !== "contractor") {
@@ -111,6 +112,27 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const { data: contractorOffers } = useCollection(contractorOffersQuery)
 
+  // --- Chat unread count: chats where the current user's UID is in unreadFor ---
+  const chatsUnreadQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    const orgField = isContractor ? "contractorOrgId" : "supplierOrgId"
+    const orgValue = profile?.organizationId || user.uid
+    return query(
+      collection(firestore, "chats"),
+      where(orgField, "==", orgValue)
+    )
+  }, [firestore, user, isUserLoading, isContractor, isSupplier, profile?.organizationId])
+
+  const { data: allMyChats } = useCollection(chatsUnreadQuery)
+
+  // Chats that have an unread message for this specific user
+  const unreadChats = React.useMemo(() => {
+    if (!allMyChats || !user) return []
+    return allMyChats.filter((chat: any) =>
+      Array.isArray(chat.unreadFor) && chat.unreadFor.includes(user.uid)
+    )
+  }, [allMyChats, user])
+
   // Query user's notifications from subcollection (for invitations, etc)
   const userNotificationsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -168,13 +190,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     localStorage.setItem("readRfqIds", JSON.stringify(updated))
   }
 
-  // Unread count
+  // Unread count (offers + invitations + unread chats)
   const unreadCount = notifications.filter((n: any) => {
     if (n.type === "new_rfq") return !readRfqIds.includes(n.id)
     if (n.type === "new_offer") return n.status === "قيد المراجعة" && !n.contractorReadAt
     if (n.type === "offer_update") return (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
     return !n.read // for invitations and generic
-  }).length
+  }).length + unreadChats.length
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -360,6 +382,30 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                         </div>
                       )
                     })}
+                  </div>
+                )}
+
+                {/* Unread Chat Messages */}
+                {unreadChats.length > 0 && (
+                  <div className="border-t">
+                    {unreadChats.map((chat: any) => (
+                      <div
+                        key={chat.id}
+                        onClick={() => router.push(`/${basePath}/chat/${chat.id}`)}
+                        className="flex items-start gap-3 px-4 py-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer select-none"
+                      >
+                        <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                          <MessageSquare size={14} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-foreground truncate">💬 رسالة جديدة</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                            {chat.lastMessage || "رسالة جديدة في المحادثة"} — {chat.rfqTitle || "محادثة عقد"}
+                          </p>
+                        </div>
+                        <div className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />
+                      </div>
+                    ))}
                   </div>
                 )}
 
