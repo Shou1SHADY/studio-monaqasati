@@ -190,6 +190,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       // Notify contractor of new offer
       try {
         if (selectedRfq.contractorId) {
+          // 1. In-app notification
           await addDoc(collection(firestore, "notifications"), {
             userId: selectedRfq.contractorId,
             organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
@@ -201,6 +202,32 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             createdAt: new Date().toISOString(),
             read: false
           });
+
+          // 2. Queue SMS/WhatsApp via Twilio Extension
+          const contractorDoc = await getDoc(doc(firestore, "users", selectedRfq.contractorId));
+          const contractorData = contractorDoc.data();
+          if (contractorData) {
+            const phone = contractorData.phone || contractorData.whatsapp || contractorData.mobile;
+            if (phone) {
+              // Ensure phone starts with + for Twilio
+              let formattedPhone = phone.replace(/\D/g, "");
+              if (formattedPhone.startsWith("0")) formattedPhone = "966" + formattedPhone.slice(1);
+              if (!formattedPhone.startsWith("+")) formattedPhone = "+" + formattedPhone;
+
+              try {
+                await fetch("/api/sms", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    to: formattedPhone,
+                    body: `منصة مناقصتي: وصلك عرض سعر جديد بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على مناقصة: ${selectedRfq.title}. قم بتسجيل الدخول للمراجعة.`
+                  })
+                });
+              } catch (smsError) {
+                console.error("Failed to call SMS API:", smsError);
+              }
+            }
+          }
         }
       } catch (err) {
         console.error("Failed to send offer notification:", err);
@@ -331,6 +358,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             </div>
 
             <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-semibold text-slate-700">رابط الموقع الإلكتروني (اختياري)</Label>
+                <div className="relative">
+                  <Globe className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Input
+                    placeholder="https://example.com"
+                    value={supplierWebsite}
+                    onChange={(e) => setSupplierWebsite(e.target.value)}
+                    className="h-11 pl-4 pr-10 rounded-xl border-2 border-input focus:border-primary transition-colors text-left"
+                    dir="ltr"
+                  />
+                </div>
+                <p className="text-xs text-slate-500">يساعد المقاول في التعرف على منتجاتك ومشاريعك السابقة</p>
+              </div>
               <div className="space-y-1.5">
                 <Label className="text-sm font-semibold text-slate-700">مدة التنفيذ</Label>
                 <div className="flex gap-2">

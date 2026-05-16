@@ -8,21 +8,33 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClipboardList, Truck, PackageCheck, MapPin, MoreHorizontal, Eye, Clock, Calendar, Tag, DollarSign, User, MapPinned } from "lucide-react"
 import { useState } from "react"
-import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, orderBy } from "firebase/firestore"
+import { collection, query, where, orderBy, doc } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 
 export default function SupplierOrdersPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const userDocRef = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user, isUserLoading])
+  const { data: profile } = useDoc(userDocRef)
+
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const ordersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
+    if (profile?.organizationId) {
+      return query(
+        collection(firestore, "offers"),
+        where("organizationId", "==", profile.organizationId)
+      )
+    }
     return query(
       collection(firestore, "offers"),
       where("supplierId", "==", user.uid)
     )
-  }, [firestore, user, isUserLoading])
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const { data: allOffers, isLoading: isCollectionLoading } = useCollection(ordersQuery)
   const isLoading = isUserLoading || isCollectionLoading

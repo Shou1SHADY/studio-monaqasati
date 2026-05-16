@@ -95,8 +95,7 @@ export default function ContractorDashboard() {
   const acceptedOffersQuery = useMemoFirebase(() => {
     if (!firestore || !profile || !user) return null
     return query(collection(firestore, "offers"), 
-      where("contractorOrgId", "==", profile.organizationId || user.uid),
-      where("status", "==", "مقبول")
+      where("contractorOrgId", "==", profile.organizationId || user.uid)
     )
   }, [firestore, profile?.organizationId, user?.uid])
   
@@ -116,7 +115,7 @@ export default function ContractorDashboard() {
   const stats = [
     { title: "المناقصات المفتوحة", value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: "تصفح المناقصات", actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? "لا توجد مناقصات نشطة" : `${activeRfqsCount} تنتظر عروض` },
     { title: "عقود تم ترسيتها", value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: "عرض العقود", actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: "منذ بداية العام" },
-    { title: "نسبة الالتزام", value: "90%", icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", action: "كيف يُحسب؟", actionUrl: "/contractor/help", trend: { value: 2, isPositive: true }, context: "أعلى من المتوسط" },
+    { title: "نسبة الالتزام", value: "90%", icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", action: "كيف يُحسب؟", actionUrl: "#", trend: { value: 2, isPositive: true }, context: "أعلى من المتوسط" },
     { title: "موردين متواصلين", value: suppliersCount.toString(), icon: Users, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: "تصفح الموردين", actionUrl: "/contractor/suppliers", context: "تواصل سابق بنجاح" },
   ]
 

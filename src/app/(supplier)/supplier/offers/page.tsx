@@ -57,7 +57,13 @@ export default function SupplierOffersPage() {
 
   const offersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    // Query by organizationId (preferred) or by supplierId as fallback
+    if (profile?.organizationId) {
+      return query(
+        collection(firestore, "offers"),
+        where("organizationId", "==", profile.organizationId)
+      )
+    }
+    
     return query(
       collection(firestore, "offers"),
       where("supplierId", "==", user.uid)

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 
 import {
@@ -51,6 +52,7 @@ export default function RfqOffersPage() {
   const { data: profile } = useDoc(userDocRef)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
+  const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
   const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
 
   const openChat = async (offer: any) => {
@@ -299,6 +301,11 @@ export default function RfqOffersPage() {
                           <div key={idx} className="flex items-center justify-between bg-white p-3 rounded border border-slate-100">
                             <div className="flex-1">
                               <p className="font-bold text-sm text-slate-800">{product.name}</p>
+                              {product.subCategory && (
+                                <div className="mt-1">
+                                  <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">{product.subCategory}</span>
+                                </div>
+                              )}
                               {product.description && (
                                 <p className="text-xs text-muted-foreground mt-1">{product.description}</p>
                               )}
@@ -565,7 +572,7 @@ export default function RfqOffersPage() {
                             </Button>
                             {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
                               <Button
-                                onClick={() => handleSampleAction(offer.id, "مطلوبة")}
+                                onClick={() => offer.sampleStatus ? handleSampleAction(offer.id, "مطلوبة") : setSampleRequestOffer(offer)}
                                 disabled={processingId === offer.id}
                                 variant="outline"
                                 className="w-full gap-2 rounded-full border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100 hover:border-blue-500 hover:text-blue-800 transition-all font-medium mt-1"
@@ -772,6 +779,44 @@ export default function RfqOffersPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={!!sampleRequestOffer} onOpenChange={(open) => !open && setSampleRequestOffer(null)}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>طلب عينة</DialogTitle>
+            <DialogDescription className="text-right mt-2 text-slate-600">
+              سيتم إرسال طلب للمورد لتوفير عينة من المنتج. هل ترغب أيضاً في بدء محادثة مع المورد لمناقشة تفاصيل العينة، أم تكتفي بإرسال إشعار فقط؟
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-row justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (sampleRequestOffer) {
+                  await handleSampleAction(sampleRequestOffer.id, "مطلوبة");
+                  setSampleRequestOffer(null);
+                }
+              }}
+              disabled={!!processingId}
+            >
+              إرسال إشعار فقط
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary/90 text-white"
+              onClick={async () => {
+                if (sampleRequestOffer) {
+                  await handleSampleAction(sampleRequestOffer.id, "مطلوبة");
+                  openChat(sampleRequestOffer);
+                  setSampleRequestOffer(null);
+                }
+              }}
+              disabled={!!processingId || !!openingChat}
+            >
+              إرسال وبدء محادثة
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PortalLayout>
   )
 }

@@ -324,34 +324,52 @@ export default function NewRfqPage() {
     setIsSubmitting(true)
     const rfqsRef = collection(firestore, "rfqs")
 
-    const rfqData = {
-      contractorId: user.uid,
-      organizationId: profile?.organizationId || user.uid, // Fallback to UID if orgId not present
-      title: formData.title,
-      category: validProducts[0]?.category || "",
-      subCategory: validProducts[0]?.subCategory || "",
-      products: validProducts.map(p => ({
-        name: p.name,
-        quantity: Number(p.quantity),
-        unitOfMeasure: p.unit,
-        description: p.description,
-        category: p.category,
-        subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
-      })),
-      deadline: formData.deadline,
-      city: formData.city,
-      district: formData.district,
-      notes: formData.notes,
-      pdfUrl: formData.pdfUrl,
-      pdfStoragePath: formData.pdfStoragePath,
-      status: status,
-      visibility: "public",
-      createdByUserId: user.uid,
-      createdByUserName: profile?.name || user.email || "عضو الفريق",
-      createdAt: new Date().toISOString()
-    }
+    // Group products by their main category
+    const groupedProducts = validProducts.reduce((acc, product) => {
+      const cat = product.category
+      if (!acc[cat]) acc[cat] = []
+      acc[cat].push(product)
+      return acc
+    }, {} as Record<string, typeof validProducts>)
 
-    addDocumentNonBlocking(rfqsRef, rfqData)
+    const categories = Object.keys(groupedProducts)
+
+    for (const cat of categories) {
+      const catProducts = groupedProducts[cat]
+      const rfqTitle = categories.length > 1 ? `${formData.title} - ${cat}` : formData.title
+
+      const rfqData = {
+        contractorId: user.uid,
+        organizationId: profile?.organizationId || user.uid, // Fallback to UID if orgId not present
+        title: rfqTitle,
+        category: cat,
+        // If there's only one product or all products share the same subcategory, use it. Otherwise, leave empty.
+        subCategory: catProducts.every(p => p.subCategory === catProducts[0].subCategory) 
+          ? (catProducts[0].subCategory === "أخرى" ? catProducts[0].otherSubCategory : catProducts[0].subCategory) 
+          : "متعدد",
+        products: catProducts.map(p => ({
+          name: p.name,
+          quantity: Number(p.quantity),
+          unitOfMeasure: p.unit,
+          description: p.description,
+          category: p.category,
+          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
+        })),
+        deadline: formData.deadline,
+        city: formData.city,
+        district: formData.district,
+        notes: formData.notes,
+        pdfUrl: formData.pdfUrl,
+        pdfStoragePath: formData.pdfStoragePath,
+        status: status,
+        visibility: "public",
+        createdByUserId: user.uid,
+        createdByUserName: profile?.name || user.email || "عضو الفريق",
+        createdAt: new Date().toISOString()
+      }
+
+      addDocumentNonBlocking(rfqsRef, rfqData)
+    }
 
     if (status === "Draft") {
       toast({

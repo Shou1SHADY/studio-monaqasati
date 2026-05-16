@@ -521,7 +521,7 @@ export default function Home() {
       <style jsx global>{`
         @keyframes scroll-x {
           0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+          100% { transform: translateX(50%); }
         }
         .animate-scroll-x {
           animation: scroll-x 40s linear infinite;

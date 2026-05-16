@@ -412,6 +412,11 @@ export default function SupplierDashboard() {
                         <span className="font-bold text-slate-800">{prod.name}</span>
                         <span className="text-sm text-primary font-bold">{prod.quantity} {prod.unitOfMeasure}</span>
                       </div>
+                      {prod.subCategory && (
+                        <div className="mt-1">
+                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{prod.subCategory}</span>
+                        </div>
+                      )}
                       {prod.description && <p className="text-sm text-slate-600 mt-1">{prod.description}</p>}
                     </div>
                   ))}
