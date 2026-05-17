@@ -442,13 +442,25 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 </div>
               </div>
             </div>
+          </div>
 
-
-
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+          <div className="px-5 py-4 border-t bg-white shrink-0 flex flex-col sm:flex-row gap-3">
+            <Button variant="outline" className="flex-1 order-2 sm:order-1" onClick={onClose}>
+              إلغاء
+            </Button>
+            <Button
+              onClick={submitOffer}
+              disabled={!offerPrice || isSubmitting || isUploadingPdf}
+              className="flex-[2] order-1 sm:order-2"
+            >
+              {isSubmitting ? <Loader2 size={18} className="ml-2 animate-spin" /> : null}
+              تأكيد وإرسال العرض
+            </Button>
+          </div>
+        </>
+      )}
+    </DialogContent>
+  </Dialog>
 
       <Dialog open={!!mapBatchId} onOpenChange={(open) => { 
         if (!open) {
