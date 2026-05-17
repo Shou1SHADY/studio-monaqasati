@@ -530,29 +530,11 @@ function ContractorInfo({ contractorId }: { contractorId: string }) {
         <span className="text-md font-bold text-slate-800">{contractor.name || contractor.companyName || "مقاول"}</span>
       </div>
       
-      {(contractor.certificates?.length > 0 || contractor.profileCompleted) && (
+      {contractor.profileCompleted && (
         <div className="flex gap-2 flex-wrap">
-          {contractor.profileCompleted && (
-            <Badge variant="outline" className="bg-success/10 text-success border-success/30 px-3 py-1">
-              السجل التجاري موثق ✓
-            </Badge>
-          )}
-          {contractor.certificates?.map((cert: any, idx: number) => (
-            <a 
-              key={idx} 
-              href={cert.fileUrl || cert.url || '#'} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="inline-flex"
-              onClick={(e) => {
-                if (!cert.fileUrl && !cert.url) e.preventDefault()
-              }}
-            >
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1 hover:bg-blue-100 cursor-pointer transition-colors">
-                {cert.name || "ملف مرفق"}
-              </Badge>
-            </a>
-          ))}
+          <Badge variant="outline" className="bg-success/10 text-success border-success/30 px-3 py-1">
+            السجل التجاري موثق ✓
+          </Badge>
         </div>
       )}
     </div>
