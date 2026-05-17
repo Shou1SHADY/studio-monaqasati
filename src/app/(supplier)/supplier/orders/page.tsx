@@ -6,11 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ClipboardList, Truck, PackageCheck, MapPin, MoreHorizontal, Eye, Clock, Calendar, Tag, DollarSign, User, MapPinned } from "lucide-react"
+import { ClipboardList, Truck, PackageCheck, MapPin, MoreHorizontal, Eye, Clock, Calendar, Tag, DollarSign, User, MapPinned, Star } from "lucide-react"
 import { useState } from "react"
 import { collection, query, where, orderBy, doc } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { ReviewDialog } from "@/components/ReviewDialog"
 
 export default function SupplierOrdersPage() {
   const firestore = useFirestore()
@@ -20,6 +21,7 @@ export default function SupplierOrdersPage() {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const [reviewOrder, setReviewOrder] = useState<any | null>(null)
 
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const ordersQuery = useMemoFirebase(() => {
@@ -163,7 +165,7 @@ export default function SupplierOrdersPage() {
                     </TableCell>
                     <TableCell className="text-right">{getStatusBadge(order.status)}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center gap-1 justify-start">
+                      <div className="flex items-center gap-2 justify-start">
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -173,6 +175,22 @@ export default function SupplierOrdersPage() {
                         >
                           <Eye size={16} />
                         </Button>
+                        {order.status === "تم التسليم" && (
+                          order.supplierRated ? (
+                            <Badge className="bg-slate-100 text-slate-400 border-none text-[10px] py-1.5 font-bold">
+                              تم التقييم ⭐
+                            </Badge>
+                          ) : (
+                            <Button
+                              onClick={() => setReviewOrder(order)}
+                              className="bg-amber-500 hover:bg-amber-600 text-white rounded-lg h-7 px-2.5 text-xs font-bold gap-1 transition-all shadow-sm shadow-amber-500/10"
+                              size="sm"
+                            >
+                              <Star size={12} className="fill-white" />
+                              تقييم العميل
+                            </Button>
+                          )
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -247,11 +265,48 @@ export default function SupplierOrdersPage() {
               </div>
             </div>
           )}
-          <DialogFooter>
-            <Button variant="outline" className="w-full" onClick={() => setSelectedOrder(null)}>إغلاق</Button>
+          <DialogFooter className="flex flex-col gap-2 mt-4">
+            {selectedOrder && selectedOrder.status === "تم التسليم" && (
+              selectedOrder.supplierRated ? (
+                <div className="text-center text-xs text-muted-foreground bg-slate-50 py-2 rounded-lg border border-dashed mb-2 w-full font-bold">
+                  لقد قمت بتقييم المقاول مسبقاً ✓
+                </div>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setReviewOrder(selectedOrder)
+                    setSelectedOrder(null)
+                  }}
+                  className="w-full bg-amber-500 hover:bg-amber-600 gap-2 h-10 rounded-xl transition-all font-bold text-white shadow-lg shadow-amber-500/20"
+                >
+                  <Star size={16} className="fill-white" />
+                  تقييم تجربة المقاول (العميل)
+                </Button>
+              )
+            )}
+            <Button variant="outline" className="w-full h-10 rounded-xl" onClick={() => setSelectedOrder(null)}>إغلاق</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Review Dialog */}
+      {reviewOrder && (
+        <ReviewDialog
+          open={!!reviewOrder}
+          onOpenChange={(open) => !open && setReviewOrder(null)}
+          offerId={reviewOrder.id}
+          rfqId={reviewOrder.rfqId}
+          reviewerId={user?.uid || ""}
+          reviewerName={profile?.companyName || profile?.name || ""}
+          reviewerRole="Supplier"
+          revieweeId={reviewOrder.contractorId || reviewOrder.contractorOrgId || reviewOrder.submittedByUserId || ""}
+          revieweeName={reviewOrder.contractorName || "المقاول"}
+          revieweeRole="Contractor"
+          onSubmitSuccess={() => {
+            setReviewOrder(null)
+          }}
+        />
+      )}
     </PortalLayout>
   )
 }

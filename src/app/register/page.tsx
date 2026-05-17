@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
-  
+
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -67,11 +67,11 @@ export default function RegisterPage() {
       // Check for invitation
       const inviteRef = doc(firestore, "invitations", emailLower)
       const inviteSnap = await getDoc(inviteRef)
-      
+
       let organizationId = user.uid
       let organizationRole = 'owner'
       let role = formData.role
-      
+
       if (inviteSnap.exists()) {
         const inviteData = inviteSnap.data()
         organizationId = inviteData.organizationId
@@ -91,7 +91,7 @@ export default function RegisterPage() {
         organizationRole: organizationRole,
         specializations: role === "Supplier" ? formData.specializations : [],
         isVerified: false,
-        profileCompleted: false, 
+        profileCompleted: false,
         joinedAt: new Date().toISOString()
       })
 
@@ -109,14 +109,14 @@ export default function RegisterPage() {
       } else {
         router.push("/supplier")
       }
-      
+
     } catch (error: any) {
       console.error("❌ Registration error:", error)
       let errorMsg = "حدث خطأ غير متوقع"
       if (error.code === "auth/email-already-in-use") errorMsg = "البريد الإلكتروني مسجل مسبقاً"
       if (error.code === "auth/weak-password") errorMsg = "كلمة المرور ضعيفة جداً"
       if (error.code === "auth/invalid-email") errorMsg = "البريد الإلكتروني غير صحيح"
-      
+
       toast({
         title: "فشل إنشاء الحساب",
         description: `${errorMsg} (${error.code || error.message})`,
@@ -153,9 +153,9 @@ export default function RegisterPage() {
           <form onSubmit={handleRegister} className="space-y-5">
             <div className="space-y-3">
               <Label className="text-slate-700 font-bold">طبيعة نشاطك</Label>
-              <RadioGroup 
-                value={formData.role} 
-                onValueChange={(v) => setFormData({...formData, role: v as "Contractor" | "Supplier"})}
+              <RadioGroup
+                value={formData.role}
+                onValueChange={(v) => setFormData({ ...formData, role: v as "Contractor" | "Supplier" })}
                 className="grid grid-cols-2 gap-3"
               >
                 <div>
@@ -183,55 +183,55 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة أو المؤسسة</Label>
-              <Input 
-                id="name" 
-                required 
+              <Input
+                id="name"
+                required
                 placeholder="أدخل الاسم التجاري"
                 className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري (اختياري)</Label>
-                <Input 
-                  id="crNumber" 
+                <Input
+                  id="crNumber"
                   placeholder="مثال: 1010XXXXXX"
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.crNumber}
                   onChange={e => {
                     const val = e.target.value.replace(/\D/g, '')
-                    setFormData({...formData, crNumber: val})
+                    setFormData({ ...formData, crNumber: val })
                   }}
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="city" className="text-slate-700 font-bold">المدينة (اختياري)</Label>
-                <Input 
-                  id="city" 
+                <Input
+                  id="city"
                   placeholder="مثال: الرياض"
                   className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.city}
-                  onChange={e => setFormData({...formData, city: e.target.value})}
+                  onChange={e => setFormData({ ...formData, city: e.target.value })}
                 />
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="phone" className="text-slate-700 font-bold">رقم الجوال للتواصل</Label>
-              <Input 
-                id="phone" 
-                required 
+              <Input
+                id="phone"
+                required
                 type="tel"
                 placeholder="05XXXXXXXX"
                 className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.phone}
                 onChange={e => {
                   const val = e.target.value.replace(/\D/g, '')
-                  setFormData({...formData, phone: val})
+                  setFormData({ ...formData, phone: val })
                 }}
               />
             </div>
@@ -245,11 +245,10 @@ export default function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setSpecDropdownOpen(prev => !prev)}
-                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-right transition-colors ${
-                      formData.specializations.length === 0
+                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-right transition-colors ${formData.specializations.length === 0
                         ? "border-slate-200 text-slate-400"
                         : "border-primary/40 text-slate-800"
-                    } hover:border-primary/60`}
+                      } hover:border-primary/60`}
                   >
                     <span className="text-sm truncate">
                       {formData.specializations.length === 0
@@ -269,15 +268,13 @@ export default function RegisterPage() {
                               key={cat}
                               type="button"
                               onClick={() => toggleSpec(cat)}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right hover:bg-primary/5 transition-colors ${
-                                isSelected ? "bg-primary/5" : ""
-                              }`}
+                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right hover:bg-primary/5 transition-colors ${isSelected ? "bg-primary/5" : ""
+                                }`}
                             >
-                              <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
-                                isSelected
+                              <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${isSelected
                                   ? "bg-primary border-primary"
                                   : "border-slate-300 bg-white"
-                              }`}>
+                                }`}>
                                 {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
                               </div>
                               <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{cat}</span>
@@ -314,33 +311,33 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-bold">البريد الإلكتروني</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                required 
+              <Input
+                id="email"
+                type="email"
+                required
                 placeholder="name@company.com"
                 className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.email}
-                onChange={e => setFormData({...formData, email: e.target.value})}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-700 font-bold">كلمة المرور</Label>
-              <Input 
-                id="password" 
-                type="password" 
-                required 
+              <Input
+                id="password"
+                type="password"
+                required
                 placeholder="••••••••"
                 className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.password}
-                onChange={e => setFormData({...formData, password: e.target.value})}
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
               />
             </div>
 
-            <Button 
-              type="submit" 
-              className="w-full h-12 text-base font-bold rounded-lg mt-4" 
+            <Button
+              type="submit"
+              className="w-full h-12 text-base font-bold rounded-lg mt-4"
               disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
             >
               {isLoading ? <Loader2 className="animate-spin" /> : "تأكيد التسجيل"}
@@ -359,9 +356,9 @@ export default function RegisterPage() {
       {/* Left Side - Image/Artwork */}
       <div className="hidden lg:flex flex-1 relative bg-slate-900 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent z-10" />
-        <img 
-          src="/images/hero-bg.png" 
-          alt="Monaqasati Platform Architecture" 
+        <img
+          src="/images/loading-dock.jpg"
+          alt="Monaqasati Platform Architecture"
           className="absolute inset-0 w-full h-full object-cover opacity-80"
         />
         <div className="absolute bottom-0 left-0 right-0 p-16 z-20 text-white">

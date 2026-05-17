@@ -21,6 +21,12 @@ import {
   getOffersQueryField,
 } from '../utils/offer-notifications'
 
+import {
+  isReviewable,
+  calculateAverageRating,
+  buildReviewPayload,
+} from '../utils/review-utils'
+
 import { CATEGORIES_DATA, PREDEFINED_CATEGORIES } from '../lib/constants'
 
 // ─── 1. PRODUCT & CATEGORY STRUCTURE ────────────────────────────────────────
@@ -438,3 +444,102 @@ describe('7. Website URL Auto-fill', () => {
     expect(result).toBe('https://mysite.com')
   })
 })
+
+// ─── 8. TWO-WAY REVIEWS & COMPLETED STATUS LOGIC ────────────────────────────
+
+describe('8. Two-Way Reviews & Completed Status', () => {
+  describe('isReviewable', () => {
+    it('should be reviewable if order status is "تم التسليم" and reviewer has not yet rated', () => {
+      const result = isReviewable('تم التسليم', false)
+      expect(result).toBe(true)
+    })
+
+    it('should NOT be reviewable if order status is NOT "تم التسليم"', () => {
+      const result = isReviewable('مقبول', false)
+      expect(result).toBe(false)
+    })
+
+    it('should NOT be reviewable if reviewer has already rated', () => {
+      const result = isReviewable('تم التسليم', true)
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('calculateAverageRating', () => {
+    it('should calculate the mathematical average correct to 1 decimal place', () => {
+      const result = calculateAverageRating([5, 4, 4, 5, 3])
+      expect(result).toBe(4.2)
+    })
+
+    it('should round correctly', () => {
+      const result = calculateAverageRating([5, 5, 4])
+      // 14 / 3 = 4.6666...
+      expect(result).toBe(4.7)
+    })
+
+    it('should return 0 for empty array', () => {
+      const result = calculateAverageRating([])
+      expect(result).toBe(0)
+    })
+  })
+
+  describe('buildReviewPayload', () => {
+    it('should construct a valid review payload', () => {
+      const payload = buildReviewPayload({
+        offerId: 'offer-123',
+        rfqId: 'rfq-456',
+        reviewerId: 'rev-789',
+        reviewerName: 'المقاول الرئيسي',
+        reviewerRole: 'Contractor',
+        revieweeId: 'supp-999',
+        revieweeName: 'مورد الحديد',
+        revieweeRole: 'Supplier',
+        rating: 5,
+        comment: '  خدمة ممتازة وسريعة جداً  '
+      })
+
+      expect(payload.offerId).toBe('offer-123')
+      expect(payload.rfqId).toBe('rfq-456')
+      expect(payload.reviewerId).toBe('rev-789')
+      expect(payload.reviewerName).toBe('المقاول الرئيسي')
+      expect(payload.reviewerRole).toBe('Contractor')
+      expect(payload.revieweeId).toBe('supp-999')
+      expect(payload.revieweeName).toBe('مورد الحديد')
+      expect(payload.revieweeRole).toBe('Supplier')
+      expect(payload.rating).toBe(5)
+      expect(payload.comment).toBe('خدمة ممتازة وسريعة جداً')
+      expect(payload.createdAt).toBeTruthy()
+    })
+
+    it('should enforce rating bounds between 1 and 5', () => {
+      const payloadUnder = buildReviewPayload({
+        offerId: 'o',
+        rfqId: 'r',
+        reviewerId: 'u1',
+        reviewerName: 'a',
+        reviewerRole: 'Contractor',
+        revieweeId: 'u2',
+        revieweeName: 'b',
+        revieweeRole: 'Supplier',
+        rating: 0,
+        comment: ''
+      })
+      expect(payloadUnder.rating).toBe(1)
+
+      const payloadOver = buildReviewPayload({
+        offerId: 'o',
+        rfqId: 'r',
+        reviewerId: 'u1',
+        reviewerName: 'a',
+        reviewerRole: 'Contractor',
+        revieweeId: 'u2',
+        revieweeName: 'b',
+        revieweeRole: 'Supplier',
+        rating: 6,
+        comment: ''
+      })
+      expect(payloadOver.rating).toBe(5)
+    })
+  })
+})
+

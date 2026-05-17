@@ -16,7 +16,7 @@ export default function LoginPage() {
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
-  
+
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     email: "",
@@ -33,7 +33,7 @@ export default function LoginPage() {
       const user = userCredential.user
 
       const userDoc = await getDoc(doc(firestore, "users", user.uid))
-      
+
       if (!userDoc.exists()) {
         throw new Error("بيانات المستخدم غير موجودة في النظام")
       }
@@ -55,14 +55,14 @@ export default function LoginPage() {
       } else {
         throw new Error("صلاحية غير معروفة")
       }
-      
+
     } catch (error: any) {
       console.error("❌ Login error:", error)
       let errorMsg = error.message || "حدث خطأ أثناء تسجيل الدخول"
       if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
         errorMsg = "البريد الإلكتروني أو كلمة المرور غير صحيحة"
       }
-      
+
       toast({
         title: "فشل تسجيل الدخول",
         description: `${errorMsg} (${error.code || error.message})`,
@@ -99,14 +99,14 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-foreground font-bold">البريد الإلكتروني</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                required 
+              <Input
+                id="email"
+                type="email"
+                required
                 placeholder="name@company.com"
                 className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
                 value={formData.email}
-                onChange={e => setFormData({...formData, email: e.target.value})}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
 
@@ -117,14 +117,14 @@ export default function LoginPage() {
                   نسيت كلمة المرور؟
                 </Link>
               </div>
-              <Input 
-                id="password" 
-                type="password" 
-                required 
+              <Input
+                id="password"
+                type="password"
+                required
                 placeholder="••••••••"
                 className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
                 value={formData.password}
-                onChange={e => setFormData({...formData, password: e.target.value})}
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
               />
             </div>
 
@@ -145,7 +145,7 @@ export default function LoginPage() {
       {/* Left Side - Image */}
       <div className="hidden lg:flex flex-1 relative overflow-hidden">
         <img
-          src="/images/hero-bg.png"
+          src="/images/loading-dock.jpg"
           alt="منصة مدماك تيك"
           className="w-full h-full object-cover"
         />

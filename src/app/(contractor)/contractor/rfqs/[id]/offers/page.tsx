@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ReviewDialog } from "@/components/ReviewDialog"
+import { Star } from "lucide-react"
 
 
 import {
@@ -54,6 +56,7 @@ export default function RfqOffersPage() {
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
   const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
+  const [reviewOffer, setReviewOffer] = useState<any | null>(null)
 
   const openChat = async (offer: any) => {
     if (!firestore || !user) return
@@ -199,9 +202,33 @@ export default function RfqOffersPage() {
     }
   }
 
+  const handleMarkAsCompleted = async (offerId: string) => {
+    if (!firestore || !user) return
+    setProcessingId(offerId)
+    try {
+      await updateDoc(doc(firestore, "offers", offerId), {
+        status: "تم التسليم",
+        completedAt: new Date().toISOString()
+      })
+      toast({
+        title: "✅ تم اكتمال التوريد بنجاح!",
+        description: "تم تحديث حالة العقد إلى مكتمل. يمكنك الآن تقييم المورد."
+      })
+    } catch (error: any) {
+      toast({
+        title: "خطأ",
+        description: `فشل إكمال العقد: ${error.message}`,
+        variant: "destructive"
+      })
+    } finally {
+      setProcessingId(null)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "مقبول": return <Badge className="bg-success/10 text-success border-success/20">مقبول ✅</Badge>
+      case "تم التسليم": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">مكتمل ومسلم 📦✅</Badge>
       case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">مرفوض ❌</Badge>
       case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">مطلوب تخفيض السعر 📉</Badge>
       default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة 🕐</Badge>
@@ -614,13 +641,57 @@ export default function RfqOffersPage() {
                             <Button
                               onClick={() => openChat(offer)}
                               disabled={openingChat === offer.id}
-                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg"
+                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
                               size="sm"
                             >
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
                               فتح المحادثة
                             </Button>
                             <SupplierWhatsAppButton supplierId={offer.supplierId} />
+                            <Button
+                              onClick={() => handleMarkAsCompleted(offer.id)}
+                              disabled={processingId === offer.id}
+                              className="w-full bg-blue-600 hover:bg-blue-700 gap-2 rounded-full transition-all text-xs"
+                              size="sm"
+                            >
+                              {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                              تأكيد اكتمال التوريد
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Action Buttons - Completed */}
+                        {offer.status === "تم التسليم" && (
+                          <div className="bg-blue-50/20 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                            <Button
+                              onClick={() => openChat(offer)}
+                              disabled={openingChat === offer.id}
+                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
+                              size="sm"
+                            >
+                              {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+                              فتح المحادثة
+                            </Button>
+                            <SupplierWhatsAppButton supplierId={offer.supplierId} />
+                            {offer.contractorRated ? (
+                              <Button
+                                disabled
+                                className="w-full bg-slate-100 text-slate-400 gap-2 rounded-full border-none text-xs"
+                                size="sm"
+                              >
+                                <Star size={14} className="fill-slate-300 text-slate-300" />
+                                تم تقييم المورد
+                              </Button>
+                            ) : (
+                              <Button
+                                onClick={() => setReviewOffer(offer)}
+                                className="w-full bg-amber-500 hover:bg-amber-600 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-amber-500/20 text-xs"
+                                size="sm"
+                              >
+                                <Star size={14} className="fill-white" />
+                                تقييم المورد
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -817,6 +888,23 @@ export default function RfqOffersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Review Dialog */}
+      {reviewOffer && (
+        <ReviewDialog
+          open={!!reviewOffer}
+          onOpenChange={(open) => !open && setReviewOffer(null)}
+          offerId={reviewOffer.id}
+          rfqId={rfqId}
+          reviewerId={user?.uid || ""}
+          reviewerName={profile?.companyName || profile?.name || ""}
+          reviewerRole="Contractor"
+          revieweeId={reviewOffer.supplierId}
+          revieweeName={reviewOffer.supplierName || "المورد"}
+          revieweeRole="Supplier"
+          onSubmitSuccess={() => setReviewOffer(null)}
+        />
+      )}
     </PortalLayout>
   )
 }
