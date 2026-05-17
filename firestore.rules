@@ -143,8 +143,10 @@ service cloud.firestore {
       }
     }
 
-    match /invitations/{email} {
-      allow read, create, delete: if isSignedIn();
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.reviewerId == request.auth.uid);
     }
 
   }

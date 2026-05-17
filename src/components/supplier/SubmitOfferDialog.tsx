@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -17,7 +18,8 @@ import {
   Loader2,
   Trash2,
   Plus,
-  Globe
+  Globe,
+  AlertCircle
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
@@ -41,6 +43,7 @@ interface SubmitOfferDialogProps {
 }
 
 export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: SubmitOfferDialogProps) {
+  const router = useRouter()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
@@ -264,7 +267,37 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         >
           <DialogTitle className="sr-only">تقديم عرض سعر</DialogTitle>
 
-          <div className="px-5 pl-12 pt-5 pb-4 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
+          {profile && (!profile.crNumber?.trim() || !profile.taxNumber?.trim()) ? (
+            <div className="p-8 text-center space-y-6">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
+                <AlertCircle size={32} />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800">بيانات التوثيق مطلوبة</h2>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                يجب إكمال بيانات التوثيق الرسمية للمؤسسة <strong className="text-primary">(السجل التجاري والرقم الضريبي)</strong> في ملفك الشخصي قبل تقديم عروض الأسعار.
+              </p>
+              <div className="pt-4 flex flex-col gap-2">
+                <Button
+                  onClick={() => {
+                    onClose();
+                    router.push("/supplier/profile");
+                  }}
+                  className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
+                >
+                  الذهاب إلى الملف الشخصي لتعبئة البيانات
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="w-full h-11 rounded-xl"
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="px-5 pl-12 pt-5 pb-4 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
             <h2 className="text-lg font-bold text-slate-800">تقديم عرض سعر</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
               طلب: <span className="font-semibold text-slate-700">{selectedRfq?.title}</span>
@@ -412,21 +445,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
 
 
-          </div>
-
-          <div className="px-5 py-4 border-t bg-white shrink-0 flex flex-col sm:flex-row gap-3">
-            <Button variant="outline" className="flex-1 order-2 sm:order-1" onClick={onClose}>
-              إلغاء
-            </Button>
-            <Button
-              onClick={submitOffer}
-              disabled={!offerPrice || isSubmitting || isUploadingPdf}
-              className="flex-[2] order-1 sm:order-2"
-            >
-              {isSubmitting ? <Loader2 size={18} className="ml-2 animate-spin" /> : null}
-              تأكيد وإرسال العرض
-            </Button>
-          </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 

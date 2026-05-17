@@ -62,3 +62,12 @@ export function buildReviewPayload(params: {
     createdAt: new Date().toISOString()
   }
 }
+
+/**
+ * Checks if the user's business profile meets verification requirements.
+ * Both CR number and Tax ID must be present and non-empty.
+ */
+export function isBusinessVerified(profile: { crNumber?: string; taxNumber?: string } | null | undefined): boolean {
+  if (!profile) return false
+  return !!(profile.crNumber?.trim() && profile.taxNumber?.trim())
+}

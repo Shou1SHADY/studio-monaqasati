@@ -26,6 +26,7 @@ export default function RegisterPage() {
     password: "",
     phone: "",
     crNumber: "",
+    taxNumber: "",
     city: "",
     role: "Contractor" as "Contractor" | "Supplier",
     specializations: [] as string[]
@@ -85,6 +86,7 @@ export default function RegisterPage() {
         email: emailLower,
         phone: formData.phone,
         crNumber: formData.crNumber,
+        taxNumber: formData.taxNumber,
         city: formData.city,
         role: role,
         organizationId: organizationId,
@@ -195,9 +197,10 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري (اختياري)</Label>
+                <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري</Label>
                 <Input
                   id="crNumber"
+                  required
                   placeholder="مثال: 1010XXXXXX"
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.crNumber}
@@ -209,15 +212,30 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="city" className="text-slate-700 font-bold">المدينة (اختياري)</Label>
+                <Label htmlFor="taxNumber" className="text-slate-700 font-bold">الرقم الضريبي</Label>
                 <Input
-                  id="city"
-                  placeholder="مثال: الرياض"
-                  className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                  value={formData.city}
-                  onChange={e => setFormData({ ...formData, city: e.target.value })}
+                  id="taxNumber"
+                  required
+                  placeholder="مثال: 3XXXXXXXXXXXXXX"
+                  className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
+                  value={formData.taxNumber || ""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, '')
+                    setFormData({ ...formData, taxNumber: val })
+                  }}
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="city" className="text-slate-700 font-bold">المدينة (اختياري)</Label>
+              <Input
+                id="city"
+                placeholder="مثال: الرياض"
+                className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
+                value={formData.city}
+                onChange={e => setFormData({ ...formData, city: e.target.value })}
+              />
             </div>
 
             <div className="space-y-2">

@@ -56,6 +56,7 @@ export default function ContractorProfilePage() {
   const [profile, setProfile] = useState({
     name: "",
     crNumber: "",
+    taxNumber: "",
     description: "",
     location: "",
     phone: "",
@@ -87,6 +88,7 @@ export default function ContractorProfilePage() {
         ...prev,
         name: userData.name || userData.companyName || user?.displayName || "",
         crNumber: userData.crNumber || "",
+        taxNumber: userData.taxNumber || "",
         location: userData.city || userData.location || "",
         phone: userData.phone || userData.phoneNumber || "",
         email: userData.email || user?.email || "",
@@ -113,6 +115,7 @@ export default function ContractorProfilePage() {
         name: profile.name,
         companyName: profile.name,
         crNumber: profile.crNumber,
+        taxNumber: profile.taxNumber || "",
         city: profile.location,
         location: profile.location,
         phone: profile.phone,
@@ -279,9 +282,10 @@ export default function ContractorProfilePage() {
     profile.location,
     profile.description,
     profile.crNumber,
+    profile.taxNumber,
     profile.legalDocuments.cr.url,
     profile.legalDocuments.vat.url
-  ].filter(Boolean).length / 7 * 100)
+  ].filter(Boolean).length / 8 * 100)
 
   if (isUserLoading || isUserDataLoading) {
     return (
@@ -421,6 +425,17 @@ export default function ContractorProfilePage() {
                         value={profile.crNumber}
                         onChange={e => setProfile({...profile, crNumber: e.target.value})}
                         className="dir-ltr text-left h-11"
+                        placeholder="10 أرقام"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="taxNumber" className="text-slate-700 font-bold">الرقم الضريبي / رقم البطاقة الضريبية</Label>
+                      <Input 
+                        id="taxNumber" 
+                        value={profile.taxNumber || ""}
+                        onChange={e => setProfile({...profile, taxNumber: e.target.value})}
+                        className="dir-ltr text-left h-11"
+                        placeholder="15 رقم تبدأ بـ 3"
                       />
                     </div>
                     <div className="space-y-2">

@@ -25,6 +25,7 @@ import {
   isReviewable,
   calculateAverageRating,
   buildReviewPayload,
+  isBusinessVerified,
 } from '../utils/review-utils'
 
 import { CATEGORIES_DATA, PREDEFINED_CATEGORIES } from '../lib/constants'
@@ -539,6 +540,27 @@ describe('8. Two-Way Reviews & Completed Status', () => {
         comment: ''
       })
       expect(payloadOver.rating).toBe(5)
+    })
+  })
+
+  describe('9. Business Verification Rules', () => {
+    it('should fail verification if profile is null or undefined', () => {
+      expect(isBusinessVerified(null)).toBe(false)
+      expect(isBusinessVerified(undefined)).toBe(false)
+    })
+
+    it('should fail verification if crNumber is missing or empty', () => {
+      expect(isBusinessVerified({ taxNumber: '300012345678901' })).toBe(false)
+      expect(isBusinessVerified({ crNumber: '  ', taxNumber: '300012345678901' })).toBe(false)
+    })
+
+    it('should fail verification if taxNumber is missing or empty', () => {
+      expect(isBusinessVerified({ crNumber: '1010123456' })).toBe(false)
+      expect(isBusinessVerified({ crNumber: '1010123456', taxNumber: ' ' })).toBe(false)
+    })
+
+    it('should pass verification if both crNumber and taxNumber are provided', () => {
+      expect(isBusinessVerified({ crNumber: '1010123456', taxNumber: '300012345678901' })).toBe(true)
     })
   })
 })
