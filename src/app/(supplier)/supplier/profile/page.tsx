@@ -28,8 +28,11 @@ import {
   Building2,
   Upload,
   Link as LinkIcon,
-  Mail
+  Mail,
+  Lock
 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { sendEmailVerification } from "firebase/auth"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
 import {
   DropdownMenu,
@@ -116,7 +119,8 @@ export default function SupplierProfilePage() {
       gosi: { url: "", expiryDate: "" },
       chamber: { url: "", expiryDate: "" },
     },
-    locationCoords: null as { lat: number, lng: number } | null
+    locationCoords: null as { lat: number, lng: number } | null,
+    twoFactorEnabled: false
   })
   const [showMapDialog, setShowMapDialog] = useState(false)
 
@@ -173,7 +177,8 @@ export default function SupplierProfilePage() {
           gosi: { url: "", expiryDate: "" },
           chamber: { url: "", expiryDate: "" },
         },
-        locationCoords: userData.locationCoords || null
+        locationCoords: userData.locationCoords || null,
+        twoFactorEnabled: userData.twoFactorEnabled || false
       }))
     }
   }, [userData, user])
@@ -198,6 +203,7 @@ export default function SupplierProfilePage() {
         companyFiles: profile.companyFiles,
         legalDocuments: profile.legalDocuments,
         locationCoords: profile.locationCoords,
+        twoFactorEnabled: profile.twoFactorEnabled || false,
         profileCompleted: true
       })
       toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
@@ -736,6 +742,10 @@ export default function SupplierProfilePage() {
             <TabsTrigger value="files" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <FolderOpen size={18} />
               المرفقات العامة
+            </TabsTrigger>
+            <TabsTrigger value="security" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
+              <Lock size={18} />
+              الأمان والخصوصية
             </TabsTrigger>
           </TabsList>
 
@@ -1401,6 +1411,122 @@ export default function SupplierProfilePage() {
                     </div>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* SECURITY TAB */}
+          <TabsContent value="security" className="m-0 focus-visible:outline-none">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <Lock size={22} className="text-primary" />
+                  إعدادات الأمان والخصوصية
+                </CardTitle>
+                <CardDescription>إدارة أمان حسابك، وتوثيق البريد الإلكتروني، والتحقق بخطوتين</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-6">
+                
+                {/* 1. Account Provider Details */}
+                <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1 text-right">
+                    <h4 className="font-bold text-slate-800 text-sm">طريقة تسجيل الدخول</h4>
+                    <p className="text-xs text-muted-foreground">نوع حساب تسجيل الدخول النشط حالياً</p>
+                  </div>
+                  <Badge variant="outline" className="px-4 py-1.5 rounded-xl font-bold text-xs bg-white shadow-sm flex items-center gap-1.5">
+                    {user?.providerData.some(p => p.providerId === "google.com") ? (
+                      <>
+                        <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                        حساب Google متصل
+                      </>
+                    ) : (
+                      <>
+                        <span className="h-2 w-2 rounded-full bg-primary" />
+                        بريد إلكتروني وكلمة مرور
+                      </>
+                    )}
+                  </Badge>
+                </div>
+
+                <Separator />
+
+                {/* 2. Email Verification Control */}
+                <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div className="space-y-1 text-right">
+                    <h4 className="font-bold text-slate-800 text-sm">حالة تفعيل البريد الإلكتروني</h4>
+                    <p className="text-xs text-muted-foreground font-semibold">{profile.email}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {user?.emailVerified ? (
+                      <Badge className="px-4 py-1.5 rounded-xl font-bold text-xs bg-success/10 text-success border-none shadow-sm flex items-center gap-1.5">
+                        <CheckCircle2 size={14} />
+                        مفعل ونشط
+                      </Badge>
+                    ) : (
+                      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                        <Badge className="px-4 py-1.5 rounded-xl font-bold text-xs bg-amber-100 text-amber-700 border-none shadow-sm flex items-center justify-center gap-1.5">
+                          غير مفعل
+                        </Badge>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-9 px-4 rounded-xl text-xs font-bold bg-white"
+                          onClick={async () => {
+                            try {
+                              if (user) {
+                                await sendEmailVerification(user);
+                                toast({
+                                  title: "تم إرسال رابط التفعيل",
+                                  description: "تم إرسال رابط التفعيل إلى بريدك الإلكتروني بنجاح. يرجى مراجعة البريد الوارد."
+                                });
+                              }
+                            } catch (e: any) {
+                              toast({
+                                title: "خطأ",
+                                description: e.message || "فشل إرسال الرابط",
+                                variant: "destructive"
+                              });
+                            }
+                          }}
+                        >
+                          إرسال رابط تفعيل جديد
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* 3. 2-Step Verification Toggle */}
+                <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+                  <div className="space-y-1 flex-1 text-right">
+                    <div className="flex items-center gap-2 justify-start">
+                      <h4 className="font-bold text-slate-800 text-sm">التحقق بخطوتين (2-Step Verification)</h4>
+                      <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black">جوال SMS</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground max-w-xl leading-relaxed mt-1">
+                      عند تفعيل هذه الميزة، سيطلب منك النظام إدخال رمز تحقق OTP مؤلف من 6 أرقام يتم إرساله إلى جوالك المعتمد ({profile.phone || "يرجى إضافة رقم جوال أولاً"}) عند كل عملية تسجيل دخول لتأمين حسابك.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Switch
+                      checked={profile.twoFactorEnabled || false}
+                      onCheckedChange={(checked) => {
+                        if (checked && !profile.phone) {
+                          toast({
+                            title: "رقم جوال مطلوب",
+                            description: "يرجى إضافة رقم جوال معتمد وحفظه في البيانات الأساسية أولاً لتتمكن من تفعيل ميزة التحقق بخطوتين.",
+                            variant: "destructive"
+                          });
+                          return;
+                        }
+                        setProfile(prev => ({ ...prev, twoFactorEnabled: checked }));
+                      }}
+                    />
+                  </div>
+                </div>
+
               </CardContent>
             </Card>
           </TabsContent>

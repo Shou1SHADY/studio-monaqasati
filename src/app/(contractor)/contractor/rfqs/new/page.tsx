@@ -84,48 +84,14 @@ export default function NewRfqPage() {
   const router = useRouter()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const storage = useStorage()
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
 
-  if (isUserLoading || isProfileLoading) {
-    return (
-      <PortalLayout>
-        <div className="flex justify-center items-center h-[60vh]">
-          <Loader2 className="animate-spin text-primary" size={32} />
-        </div>
-      </PortalLayout>
-    )
-  }
-
-  if (profile && (!profile.crNumber?.trim() || !profile.taxNumber?.trim())) {
-    return (
-      <PortalLayout>
-        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir="rtl">
-          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
-            <AlertCircle size={32} />
-          </div>
-          <h2 className="text-2xl font-black text-slate-800 font-headline">بيانات التوثيق مطلوبة</h2>
-          <p className="text-slate-600 text-sm leading-relaxed">
-            يجب إكمال بيانات التوثيق الرسمية للمؤسسة <strong className="text-primary">(السجل التجاري والرقم الضريبي)</strong> في ملفك الشخصي قبل البدء بطرح المناقصات.
-          </p>
-          <div className="pt-4">
-            <Button
-              onClick={() => router.push("/contractor/profile")}
-              className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
-            >
-              الذهاب إلى الملف الشخصي لتعبئة البيانات
-            </Button>
-          </div>
-        </div>
-      </PortalLayout>
-    )
-  }
-
-  const isAiEnabled = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
-
+  // ── All useState/useRef hooks MUST be declared before any early returns ──
   const [formData, setFormData] = useState({
     title: "",
     city: "",
@@ -154,6 +120,42 @@ export default function NewRfqPage() {
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
+  if (isUserLoading || isProfileLoading) {
+    return (
+      <PortalLayout>
+        <div className="flex justify-center items-center h-[60vh]">
+          <Loader2 className="animate-spin text-primary" size={32} />
+        </div>
+      </PortalLayout>
+    )
+  }
+
+  if (profile && !profile.isVerified) {
+    return (
+      <PortalLayout>
+        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir="rtl">
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-slate-800 font-headline">توثيق الحساب مطلوب</h2>
+          <p className="text-slate-600 text-sm leading-relaxed">
+            لا يمكنك طرح مناقصات حتى يتم توثيق حسابك من قبل الإدارة. يرجى إكمال بياناتك ومستنداتك الرسمية <strong className="text-primary">(السجل التجاري والرقم الضريبي)</strong> في ملفك الشخصي وانتظار التوثيق.
+          </p>
+          <div className="pt-4">
+            <Button
+              onClick={() => router.push("/contractor/profile")}
+              className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
+            >
+              الذهاب إلى الملف الشخصي لتعبئة البيانات
+            </Button>
+          </div>
+        </div>
+      </PortalLayout>
+    )
+  }
+
+  const isAiEnabled = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+
   const addProduct = () => {
     setProducts([...products, { id: Date.now().toString(), name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
   }
@@ -167,8 +169,6 @@ export default function NewRfqPage() {
   const updateProduct = (id: string, field: keyof Product, value: string) => {
     setProducts(products.map(p => p.id === id ? { ...p, [field]: value } : p))
   }
-
-  const storage = useStorage()
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

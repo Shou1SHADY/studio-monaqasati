@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
 import { 
   Users, 
   Package, 
@@ -12,11 +13,12 @@ import {
   Activity, 
   ShieldAlert,
   BarChart3,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Clock
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query } from "firebase/firestore"
+import { collection, query, where, orderBy, limit } from "firebase/firestore"
 
 export default function AdminDashboard() {
   const firestore = useFirestore();
@@ -37,9 +39,31 @@ export default function AdminDashboard() {
     return query(collection(firestore, "offers"))
   }, [firestore, user, isUserLoading])
 
+  // Pending verification requests (real data)
+  const pendingVerifyQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "users"),
+      where("verificationRequested", "==", true),
+      limit(5)
+    )
+  }, [firestore, user, isUserLoading])
+
+  // Recent RFQs for activity feed
+  const recentRfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "rfqs"),
+      orderBy("createdAt", "desc"),
+      limit(5)
+    )
+  }, [firestore, user, isUserLoading])
+
   const { data: rfqs } = useCollection(rfqsQuery)
   const { data: users } = useCollection(usersQuery)
   const { data: offers } = useCollection(offersQuery)
+  const { data: pendingVerify } = useCollection(pendingVerifyQuery)
+  const { data: recentRfqs } = useCollection(recentRfqsQuery)
 
   const suppliersCount = users?.filter((u: any) => u.role === "Supplier").length || 0;
   const contractorsCount = users?.filter((u: any) => u.role === "Contractor").length || 0;
@@ -79,6 +103,17 @@ export default function AdminDashboard() {
   
   const pieData = dynamicPieData.length > 0 ? dynamicPieData : [{ name: "لا توجد بيانات", value: 1, color: "#cbd5e1" }];
 
+  const formatTimeAgo = (isoString: string) => {
+    if (!isoString) return "وقت غير معلوم"
+    const diff = Date.now() - new Date(isoString).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return "الآن"
+    if (mins < 60) return `قبل ${mins} دقيقة`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `قبل ${hrs} ساعة`
+    return `قبل ${Math.floor(hrs / 24)} يوم`
+  }
+
   return (
     <PortalLayout>
       <div className="space-y-8 text-right">
@@ -107,7 +142,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* RFQs per Week Chart Placeholder */}
+          {/* RFQs per Week Chart */}
           <Card className="shadow-sm border-slate-100">
             <CardHeader className="flex flex-row items-center justify-between border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
@@ -120,7 +155,7 @@ export default function AdminDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={barData} margin={{ top: 20, right: 0, left: -20, bottom: 0 }} style={{ direction: 'ltr' }}>
                   <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                   <Bar dataKey="rfqs" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -128,7 +163,7 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          {/* Offers per Category Pie Placeholder */}
+          {/* Offers per Category Pie */}
           <Card className="shadow-sm border-slate-100">
             <CardHeader className="flex flex-row items-center justify-between border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
@@ -160,54 +195,71 @@ export default function AdminDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Security / Verification Alerts */}
+          {/* Pending Verification Alerts — REAL data */}
           <Card className="lg:col-span-1 shadow-sm border-slate-100">
             <CardHeader className="border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-destructive" />
-                تنبيهات الأمان والتحقق
+                طلبات التوثيق المعلقة
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y">
-                {[
-                  { user: "مؤسسة البناء القوي", msg: "طلب تحقق جديد مرفق بسجل تجاري", type: "verify" },
-                  { user: "مقاولات الشرق", msg: "هبوط مؤشر الالتزام إلى ما دون 50%", type: "warning" },
-                ].map((alert, i) => (
-                  <div key={i} className="p-4 hover:bg-slate-50 transition-colors">
-                    <p className="text-sm font-bold text-slate-800">{alert.user}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{alert.msg}</p>
-                    <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-primary font-bold">اتخاذ إجراء</Button>
-                  </div>
-                ))}
-              </div>
+              {pendingVerify && pendingVerify.length > 0 ? (
+                <div className="divide-y">
+                  {(pendingVerify as any[]).map((u: any) => (
+                    <div key={u.id} className="p-4 hover:bg-slate-50 transition-colors">
+                      <p className="text-sm font-bold text-slate-800">{u.name || "مستخدم غير معروف"}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{u.role} — {u.email}</p>
+                      <Link href={u.role === "Supplier" ? "/admin/suppliers" : "/admin/contractors"}>
+                        <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-primary font-bold">
+                          مراجعة الطلب ←
+                        </Button>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <ShieldAlert className="mx-auto h-10 w-10 opacity-20 mb-2" />
+                  <p className="text-sm font-medium">لا توجد طلبات توثيق معلقة</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* User Activity Feed */}
+          {/* Recent RFQ Activity — REAL data */}
           <Card className="lg:col-span-2 shadow-sm border-slate-100">
             <CardHeader className="border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <Activity className="h-5 w-5 text-blue-500" />
-                سجل النشاط المباشر
+                آخر المناقصات المنشورة
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="divide-y">
-                {[
-                  { action: "سجل مورد جديد:", user: "شركة الإنارة المتطورة", time: "قبل دقيقتين" },
-                  { action: "نشر مناقصة جديدة:", user: "مجموعة العمار", time: "قبل 15 دقيقة" },
-                  { action: "ترسية عقد:", user: "المورد المتميز x مقاولات الرياض", time: "قبل ساعة" },
-                ].map((act, i) => (
-                  <div key={i} className="p-4 flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-medium text-muted-foreground">{act.action} </span>
-                      <span className="text-sm font-bold text-slate-800">{act.user}</span>
+              {recentRfqs && recentRfqs.length > 0 ? (
+                <div className="divide-y">
+                  {(recentRfqs as any[]).map((rfq: any) => (
+                    <div key={rfq.id} className="p-4 flex items-center justify-between">
+                      <div>
+                        <span className="text-sm font-bold text-slate-800 block">{rfq.title || "مناقصة بدون عنوان"}</span>
+                        <span className="text-xs text-muted-foreground">{rfq.categoryId || "غير مصنف"}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant="secondary" className="text-xs">{rfq.status || "جديدة"}</Badge>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Clock size={11} />
+                          {formatTimeAgo(rfq.createdAt)}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-xs text-muted-foreground">{act.time}</span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Activity className="mx-auto h-10 w-10 opacity-20 mb-2" />
+                  <p className="text-sm font-medium">لا توجد مناقصات حتى الآن</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

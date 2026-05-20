@@ -1,4 +1,3 @@
- 
 "use client"
 
 import { useState, useEffect } from "react"
@@ -8,12 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { 
-  Users, 
-  Search, 
-  ShieldCheck, 
-  ShieldAlert, 
-  MoreVertical,
+import { Separator } from "@/components/ui/separator"
+import {
+  Users,
+  Search,
+  ShieldCheck,
+  ShieldAlert,
   Filter,
   CheckCircle2,
   XCircle,
@@ -21,7 +20,9 @@ import {
   Eye,
   FileText,
   Building,
-  Award
+  Award,
+  ExternalLink,
+  AlertCircle
 } from "lucide-react"
 import {
   Dialog,
@@ -34,6 +35,14 @@ import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebas
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 
+const DOC_LABELS: Record<string, string> = {
+  cr: "السجل التجاري (CR)",
+  vat: "شهادة ضريبة القيمة المضافة (VAT)",
+  zakat: "شهادة الزكاة",
+  gosi: "شهادة التأمينات الاجتماعية (GOSI)",
+  chamber: "عضوية الغرفة التجارية",
+}
+
 export default function AdminSuppliersPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -42,7 +51,7 @@ export default function AdminSuppliersPage() {
   const [limitCount, setLimitCount] = useState(20)
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
-  
+
   const suppliersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return query(
@@ -51,26 +60,42 @@ export default function AdminSuppliersPage() {
       limit(limitCount)
     )
   }, [firestore, user, isUserLoading, limitCount])
-  
+
   const { data: suppliers, isLoading } = useCollection(suppliersQuery)
   const [localSuppliers, setLocalSuppliers] = useState<any[]>([])
 
   useEffect(() => {
     if (suppliers) {
-      setLocalSuppliers(suppliers.map((s: any) => ({
-        id: s.id,
-        name: s.name || "غير محدد",
-        contact: s.phone || "غير محدد",
-        email: s.email || "",
-        category: s.specializations?.[0] || "غير محدد",
-        verified: s.isVerified || false,
-        verificationRequested: s.verificationRequested || false,
-        status: s.isVerified ? "نشط" : s.verificationRequested ? "بانتظار التوثيق" : "قيد المراجعة",
-        hasCr: !!s.crNumber,
-        crNumber: s.crNumber || "",
-        hasCerts: (s.certificates?.length || 0) > 0,
-        certificates: s.certificates || []
-      })))
+      setLocalSuppliers(suppliers.map((s: any) => {
+        const legalDocs = s.legalDocuments || {}
+        // Count how many legal docs have an actual uploaded URL
+        const uploadedDocKeys = Object.keys(legalDocs).filter(
+          k => legalDocs[k]?.url && legalDocs[k].url.length > 0
+        )
+        return {
+          id: s.id,
+          name: s.name || "غير محدد",
+          contact: s.phone || "غير محدد",
+          email: s.email || "",
+          city: s.city || "",
+          crNumber: s.crNumber || "",
+          taxNumber: s.taxNumber || "",
+          category: s.specializations?.[0] || "غير محدد",
+          specializations: s.specializations || [],
+          verified: s.isVerified || false,
+          verificationRequested: s.verificationRequested || false,
+          status: s.isVerified ? "نشط" : s.verificationRequested ? "بانتظار التوثيق" : "قيد المراجعة",
+          // Legal documents — the actual uploaded PDFs
+          legalDocuments: legalDocs,
+          uploadedDocKeys,
+          hasUploadedDocs: uploadedDocKeys.length > 0,
+          hasAllRequiredDocs: !!(legalDocs.cr?.url?.length > 0 && legalDocs.vat?.url?.length > 0),
+          // Legacy fields (for backwards compat)
+          hasCr: !!s.crNumber,
+          certificates: s.certificates || [],
+          hasCerts: (s.certificates?.length || 0) > 0,
+        }
+      }))
     }
   }, [suppliers])
 
@@ -81,8 +106,16 @@ export default function AdminSuppliersPage() {
         isVerified: verify,
         verificationRequested: false
       })
-      setLocalSuppliers(prev => prev.map(s => s.id === id ? { ...s, verified: verify, verificationRequested: false, status: verify ? "نشط" : "قيد المراجعة" } : s))
-      toast({ title: verify ? "تم التوثيق" : "تم إلغاء التوثيق", description: "تم تحديث حالة المورد بنجاح" })
+      setLocalSuppliers(prev =>
+        prev.map(s => s.id === id
+          ? { ...s, verified: verify, verificationRequested: false, status: verify ? "نشط" : "قيد المراجعة" }
+          : s
+        )
+      )
+      if (selectedSupplier?.id === id) {
+        setSelectedSupplier((prev: any) => prev ? { ...prev, verified: verify, verificationRequested: false, status: verify ? "نشط" : "قيد المراجعة" } : prev)
+      }
+      toast({ title: verify ? "✅ تم التوثيق بنجاح" : "تم إلغاء التوثيق", description: "تم تحديث حالة المورد" })
     } catch (e: any) {
       toast({ title: "خطأ", description: e.message, variant: "destructive" })
     }
@@ -91,14 +124,16 @@ export default function AdminSuppliersPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "نشط": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
-      case "قيد المراجعة": return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة</Badge>
-      case "موقوف": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">موقوف</Badge>
+      case "بانتظار التوثيق": return <Badge className="bg-amber-50 text-amber-600 border-amber-100">بانتظار التوثيق</Badge>
+      case "قيد المراجعة": return <Badge variant="secondary">قيد المراجعة</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
     }
   }
 
-  const filteredSuppliers = localSuppliers.filter(s => 
-    s.name.includes(searchQuery) || s.contact.includes(searchQuery)
+  const filteredSuppliers = localSuppliers.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.contact.includes(searchQuery) ||
+    s.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
   return (
@@ -107,14 +142,14 @@ export default function AdminSuppliersPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-secondary font-headline">إدارة الموردين</h1>
-            <p className="text-muted-foreground mt-1">التحقق من الموردين الجدد وإدارة حساباتهم</p>
+            <p className="text-muted-foreground mt-1">التحقق من الموردين الجدد وإدارة حساباتهم ومستنداتهم</p>
           </div>
           <div className="flex gap-2">
             <div className="relative w-full sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="بحث باسم المورد..." 
-                className="pr-10" 
+              <Input
+                placeholder="بحث بالاسم أو البريد..."
+                className="pr-10"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
@@ -126,6 +161,7 @@ export default function AdminSuppliersPage() {
           </div>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="border-none shadow-sm bg-blue-50/50">
             <CardContent className="p-6 flex items-center gap-4">
@@ -144,7 +180,7 @@ export default function AdminSuppliersPage() {
                 <ShieldCheck size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">موثقين</p>
+                <p className="text-sm text-muted-foreground">موثقون</p>
                 <p className="text-2xl font-bold">{localSuppliers.filter(s => s.verified).length}</p>
               </div>
             </CardContent>
@@ -162,6 +198,7 @@ export default function AdminSuppliersPage() {
           </Card>
         </div>
 
+        {/* Table */}
         <Card className="border-none shadow-sm overflow-hidden">
           <CardHeader className="border-b bg-white">
             <CardTitle className="text-lg">قائمة الموردين</CardTitle>
@@ -171,16 +208,20 @@ export default function AdminSuppliersPage() {
               <div className="p-20 flex justify-center">
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>
+            ) : filteredSuppliers.length === 0 ? (
+              <div className="p-16 text-center text-muted-foreground">
+                <Users className="mx-auto h-12 w-12 opacity-20 mb-3" />
+                <p className="font-medium">لا يوجد موردون مطابقون</p>
+              </div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
                     <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
                     <TableHead className="text-right">اسم المورد</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">الفئة الرئيسية</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">الوثائق</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">التخصص</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">المستندات</TableHead>
                     <TableHead className="text-right hidden sm:table-cell">طلب التوثيق</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">التوثيق</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
                     <TableHead className="text-left">إجراءات</TableHead>
                   </TableRow>
@@ -192,14 +233,22 @@ export default function AdminSuppliersPage() {
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-bold">{s.name}</span>
-                          <span className="text-xs text-muted-foreground">{s.contact}</span>
+                          <span className="text-xs text-muted-foreground">{s.email}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">{s.category}</TableCell>
+                      <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>
                       <TableCell className="hidden sm:table-cell">
-                        <div className="flex gap-1">
-                          {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">CR</Badge>}
+                        <div className="flex gap-1 flex-wrap">
+                          {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">CR رقم</Badge>}
+                          {s.uploadedDocKeys.length > 0 && (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                              {s.uploadedDocKeys.length} ملف PDF
+                            </Badge>
+                          )}
                           {s.hasCerts && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">شهادات</Badge>}
+                          {!s.hasCr && s.uploadedDocKeys.length === 0 && (
+                            <span className="text-xs text-muted-foreground">لا يوجد</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
@@ -209,32 +258,34 @@ export default function AdminSuppliersPage() {
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {s.verified ? (
-                          <div className="flex items-center gap-1 text-success text-xs font-medium">
-                            <CheckCircle2 size={14} />
-                            موثق
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-muted-foreground text-xs font-medium">
-                            <XCircle size={14} />
-                            غير موثق
-                          </div>
-                        )}
-                      </TableCell>
                       <TableCell>{getStatusBadge(s.status)}</TableCell>
                       <TableCell className="text-left">
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" onClick={() => { setSelectedSupplier(s); setShowDetailDialog(true) }} className="gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setSelectedSupplier(s); setShowDetailDialog(true) }}
+                            className="gap-1"
+                          >
                             <Eye size={14} />
                             عرض
                           </Button>
                           {s.verified ? (
-                            <Button variant="outline" size="sm" onClick={() => handleVerify(s.id, false)} className="text-destructive border-destructive/20 hover:bg-destructive/5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleVerify(s.id, false)}
+                              className="text-destructive border-destructive/20 hover:bg-destructive/5"
+                            >
                               إلغاء
                             </Button>
                           ) : (
-                            <Button size="sm" onClick={() => handleVerify(s.id, true)} className="gap-1" disabled={!s.hasCr || !s.hasCerts}>
+                            <Button
+                              size="sm"
+                              onClick={() => handleVerify(s.id, true)}
+                              disabled={!s.hasAllRequiredDocs}
+                              className="gap-1"
+                            >
                               <CheckCircle2 size={14} />
                               توثيق
                             </Button>
@@ -244,18 +295,19 @@ export default function AdminSuppliersPage() {
                     </TableRow>
                   ))}
                 </TableBody>
-                 </Table>
-              )}
-              {suppliers && suppliers.length >= limitCount && (
-                <div className="p-4 text-center">
-                  <Button variant="outline" onClick={() => setLimitCount(limitCount + 20)}>
-                    عرض المزيد
-                  </Button>
-                </div>
-              )}
+              </Table>
+            )}
+            {suppliers && suppliers.length >= limitCount && (
+              <div className="p-4 text-center border-t">
+                <Button variant="outline" onClick={() => setLimitCount(limitCount + 20)}>
+                  عرض المزيد
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 
+        {/* Detail Dialog */}
         <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
             <DialogHeader>
@@ -264,135 +316,155 @@ export default function AdminSuppliersPage() {
                 تفاصيل المورد
               </DialogTitle>
               <DialogDescription>
-                مراجعة وثائق المورد قبل التوثيق
+                مراجعة وثائق المورد قبل منح أو رفض التوثيق
               </DialogDescription>
             </DialogHeader>
-            
+
             {selectedSupplier && (
-              <div className="space-y-6 py-4">
+              <div className="space-y-5 py-2">
                 {/* Basic Info */}
-                <div className="bg-slate-50 p-4 rounded-lg space-y-3">
-                  <h4 className="font-bold text-lg text-slate-800">{selectedSupplier.name}</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">رقم الجوال:</span>
-                      <span className="mr-2 font-medium">{selectedSupplier.contact}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">الفئة:</span>
-                      <span className="mr-2 font-medium">{selectedSupplier.category}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">الحالة:</span>
-                      <span className="mr-2">{getStatusBadge(selectedSupplier.status)}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">طلب التوثيق:</span>
-                      <span className="mr-2">{selectedSupplier.verificationRequested ? "مقدم" : "غير مقدم"}</span>
-                    </div>
+                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-lg text-slate-800">{selectedSupplier.name}</h4>
+                    {getStatusBadge(selectedSupplier.status)}
                   </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <div><span className="text-muted-foreground">البريد الإلكتروني:</span><span className="mr-2 font-medium text-xs">{selectedSupplier.email || "—"}</span></div>
+                    <div><span className="text-muted-foreground">رقم الجوال:</span><span className="mr-2 font-medium">{selectedSupplier.contact || "—"}</span></div>
+                    <div><span className="text-muted-foreground">المدينة:</span><span className="mr-2 font-medium">{selectedSupplier.city || "—"}</span></div>
+                    <div><span className="text-muted-foreground">رقم السجل التجاري:</span><span className="mr-2 font-medium">{selectedSupplier.crNumber || "—"}</span></div>
+                    <div><span className="text-muted-foreground">الرقم الضريبي:</span><span className="mr-2 font-medium">{selectedSupplier.taxNumber || "—"}</span></div>
+                    <div><span className="text-muted-foreground">التخصص:</span><span className="mr-2 font-medium">{selectedSupplier.category || "—"}</span></div>
+                  </div>
+                  {selectedSupplier.specializations?.length > 1 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {selectedSupplier.specializations.map((spec: string) => (
+                        <Badge key={spec} variant="secondary" className="text-xs">{spec}</Badge>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Documents */}
-                <div className="space-y-4">
+                <Separator />
+
+                {/* Legal Documents — Uploaded PDFs */}
+                <div className="space-y-3">
                   <h4 className="font-bold text-slate-800 flex items-center gap-2">
                     <FileText size={18} className="text-primary" />
-                    الوثائق المقدمة
+                    المستندات الرسمية المرفوعة
                   </h4>
-                  
-                  {/* CR Number */}
-                  <div className={`p-4 rounded-lg border ${selectedSupplier.hasCr ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Building size={20} className={selectedSupplier.hasCr ? 'text-green-600' : 'text-red-500'} />
-                        <div>
-                          <p className="font-bold">السجل التجاري (CR)</p>
-                          {selectedSupplier.hasCr ? (
-                            <>
-                              <p className="text-sm text-green-700">موجود ✓</p>
-                              {selectedSupplier.crNumber && (
-                                <p className="text-xs text-slate-600 mt-1">رقم السجل: {selectedSupplier.crNumber}</p>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-sm text-red-600">غير موجود ✗</p>
-                          )}
-                        </div>
-                      </div>
-                      {selectedSupplier.hasCr && (
-                        <Badge className="bg-green-100 text-green-700 border-green-200">تم التفعيل</Badge>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Certificates */}
-                  <div className={`p-4 rounded-lg border ${selectedSupplier.hasCerts ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Award size={20} className={selectedSupplier.hasCerts ? 'text-green-600' : 'text-red-500'} />
-                        <div>
-                          <p className="font-bold">الشهادات المهنية</p>
-                          {selectedSupplier.hasCerts ? (
-                            <>
-                              <p className="text-sm text-green-700">موجودة ✓ ({selectedSupplier.certificates?.length || 0})</p>
-                              {selectedSupplier.certificates && selectedSupplier.certificates.length > 0 && (
-                                <div className="mt-2 space-y-1">
-                                  {selectedSupplier.certificates.map((cert: any, idx: number) => (
-                                    <p key={idx} className="text-xs text-slate-600 bg-white/50 p-1 rounded">
-                                      • {cert.name} - {cert.issuer}
-                                    </p>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <p className="text-sm text-red-600">غير موجودة ✗</p>
-                          )}
+                  {Object.entries(DOC_LABELS).map(([key, label]) => {
+                    const docData = selectedSupplier.legalDocuments?.[key]
+                    const hasUrl = docData?.url && docData.url.length > 0
+                    return (
+                      <div
+                        key={key}
+                        className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${hasUrl ? "bg-emerald-50/60 border-emerald-200" : "bg-slate-50 border-slate-200"}`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${hasUrl ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"}`}>
+                            <FileText size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-sm text-slate-800">{label}</p>
+                            {hasUrl ? (
+                              <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                                مرفوع ✓
+                                {docData.expiryDate && <span className="text-slate-500 mr-2">• تنتهي: {docData.expiryDate}</span>}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-400 mt-0.5">لم يُرفع بعد</p>
+                            )}
+                          </div>
                         </div>
+                        {hasUrl ? (
+                          <a
+                            href={docData.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0"
+                          >
+                            <Button size="sm" variant="outline" className="gap-1.5 text-xs font-bold border-emerald-300 hover:bg-emerald-50">
+                              <ExternalLink size={13} />
+                              فتح الملف
+                            </Button>
+                          </a>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs shrink-0">غير موجود</Badge>
+                        )}
                       </div>
-                      {selectedSupplier.hasCerts && (
-                        <Badge className="bg-green-100 text-green-700 border-green-200">مضافة</Badge>
-                      )}
-                    </div>
-                  </div>
+                    )
+                  })}
                 </div>
 
+                {/* Certificates */}
+                {selectedSupplier.certificates?.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                        <Award size={18} className="text-purple-500" />
+                        الشهادات والاعتمادات ({selectedSupplier.certificates.length})
+                      </h4>
+                      <div className="space-y-2">
+                        {selectedSupplier.certificates.map((cert: any, idx: number) => (
+                          <div key={idx} className="p-3 rounded-xl border bg-purple-50/40 border-purple-100 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-sm">{cert.name}</p>
+                              <p className="text-xs text-muted-foreground">{cert.issuer}{cert.expiryDate && ` • تنتهي: ${cert.expiryDate}`}</p>
+                            </div>
+                            {cert.documentUrl && (
+                              <a href={cert.documentUrl} target="_blank" rel="noopener noreferrer">
+                                <Button size="sm" variant="outline" className="gap-1 text-xs">
+                                  <ExternalLink size={12} />
+                                  عرض
+                                </Button>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Warning if no docs at all */}
+                {!selectedSupplier.hasAllRequiredDocs && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
+                    <AlertCircle className="text-destructive shrink-0 mt-0.5" size={18} />
+                    <p className="text-sm text-destructive font-bold">
+                      لا يمكن توثيق الحساب حتى يكمل المورد رفع المستندات الرسمية (السجل التجاري والشهادة الضريبية).
+                    </p>
+                  </div>
+                )}
+
+                <Separator />
+
                 {/* Actions */}
-                <div className="flex gap-3 pt-4 border-t">
+                <div className="flex gap-3 pt-1">
                   <Button variant="outline" className="flex-1" onClick={() => setShowDetailDialog(false)}>
                     إغلاق
                   </Button>
                   {selectedSupplier.verified ? (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="flex-1 text-destructive border-destructive/20 hover:bg-destructive/5"
-                      onClick={() => {
-                        handleVerify(selectedSupplier.id, false)
-                        setShowDetailDialog(false)
-                      }}
+                      onClick={() => { handleVerify(selectedSupplier.id, false); setShowDetailDialog(false) }}
                     >
                       إلغاء التوثيق
                     </Button>
                   ) : (
-                    <Button 
+                    <Button
                       className="flex-1 gap-2"
-                      disabled={!selectedSupplier.hasCr || !selectedSupplier.hasCerts}
-                      onClick={() => {
-                        handleVerify(selectedSupplier.id, true)
-                        setShowDetailDialog(false)
-                      }}
+                      disabled={!selectedSupplier.hasAllRequiredDocs}
+                      onClick={() => { handleVerify(selectedSupplier.id, true); setShowDetailDialog(false) }}
                     >
                       <CheckCircle2 size={16} />
-                      توثيق المورد
+                      توثيق الحساب
                     </Button>
                   )}
                 </div>
-                
-                {!selectedSupplier.hasCr && !selectedSupplier.hasCerts && (
-                  <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg text-center">
-                    ⚠️ لا يمكن توثيق المورد إلا بعد رفع السجل التجاري وشهادة واحدة على الأقل
-                  </p>
-                )}
               </div>
             )}
           </DialogContent>

@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare, ShieldCheck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -34,7 +34,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   
-  const { data: profile } = useDoc(userDocRef)
+  const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
   
   const router = useRouter()
   const pathname = usePathname()
@@ -42,10 +42,45 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = React.useState(searchParams.get("search") || "")
   
   React.useEffect(() => {
-    if (!isUserLoading && !user && pathname !== "/admin/seed") {
-      router.push("/login")
+    if (!isUserLoading) {
+      if (!user && pathname !== "/admin/seed") {
+        router.push("/login")
+        return
+      }
+
+      if (user) {
+        // 1. Email Verification Guard (password users only)
+        // Exception: Bypass for the hardcoded admin email since the owner cannot access its inbox
+        const isPasswordProvider = user.providerData.some(p => p.providerId === "password")
+        if (isPasswordProvider && !user.emailVerified && user.email !== "admin@munaqasati.sa") {
+          router.push("/verify-email")
+          return
+        }
+
+        // 2. Admin-only route guard — block non-admins from /admin
+        if (pathname.startsWith("/admin") && pathname !== "/admin/seed") {
+          // Only enforce once profile is finished loading
+          if (!isProfileLoading && (!profile || profile.role !== "Admin")) {
+            if (profile?.role === "Supplier") router.push("/supplier")
+            else if (profile?.role === "Contractor") router.push("/contractor")
+            else router.push("/login")
+            return
+          }
+        }
+
+        // 3. 2-Step Verification (MFA) Guard
+        if (profile?.twoFactorEnabled && profile?.phone) {
+          const is2FAVerified = sessionStorage.getItem(`2fa_verified_${user.uid}`) === "true"
+          if (!is2FAVerified) {
+            const auth = getAuth()
+            signOut(auth).then(() => {
+              router.push("/login")
+            })
+          }
+        }
+      }
     }
-  }, [user, isUserLoading, router, pathname])
+  }, [user, isUserLoading, profile, isProfileLoading, router, pathname])
   
   const basePath = pathname.split("/")[1] || "admin"
 
@@ -266,6 +301,41 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         router.push(`/contractor/notifications`)
       }
     }
+  }
+
+  // Block rendering until auth and profile are resolved
+  if (isUserLoading || (user && isProfileLoading)) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
+        <Loader2 className="animate-spin text-primary" size={32} />
+      </div>
+    )
+  }
+
+  // Prevent rendering anything if user is not authenticated and is being redirected
+  if (!user && pathname !== "/admin/seed") {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
+        <Loader2 className="animate-spin text-primary" size={32} />
+      </div>
+    )
+  }
+
+  // Prevent rendering if user is authenticated but not an Admin trying to access /admin
+  if (user && pathname.startsWith("/admin") && pathname !== "/admin/seed" && profile?.role !== "Admin") {
+    return (
+      <div className="flex flex-col h-screen w-full items-center justify-center bg-slate-50/50 p-6 text-center">
+        <ShieldCheck className="h-16 w-16 text-destructive mb-4" />
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">عفواً، لا تملك الصلاحيات الكافية</h2>
+        <p className="text-muted-foreground mb-6 max-w-md">
+          لا يمكنك الدخول إلى لوحة تحكم الإدارة لأن حسابك ليس مسجلاً كمسؤول (Admin).
+          يرجى التأكد من تعديل دورك في قاعدة البيانات (Firestore) إلى Admin.
+        </p>
+        <Button onClick={handleLogout} variant="outline">
+          تسجيل الخروج
+        </Button>
+      </div>
+    )
   }
 
   return (

@@ -52,6 +52,11 @@ service cloud.firestore {
         allow update: if isOwner(userId) || isAdmin();
         allow delete: if isAdmin();
       }
+
+      match /2fa/{docId} {
+        // Only the user themselves and admins can read/write OTP codes
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     match /categories/{categoryId} {
