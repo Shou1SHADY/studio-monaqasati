@@ -130,6 +130,30 @@ export default function NewRfqPage() {
     )
   }
 
+  if (profile && !profile.profileCompleted) {
+    return (
+      <PortalLayout>
+        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir="rtl">
+          <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
+            <AlertCircle size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-slate-800 font-headline">استكمال البيانات مطلوب</h2>
+          <p className="text-slate-600 text-sm leading-relaxed">
+            لا يمكنك طرح مناقصات لأن ملفك الشخصي غير مكتمل. يرجى إكمال بياناتك الأساسية للتمكن من إضافة المناقصات واستقبال العروض.
+          </p>
+          <div className="pt-4">
+            <Button
+              onClick={() => router.push("/contractor/profile")}
+              className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
+            >
+              استكمال الملف الشخصي
+            </Button>
+          </div>
+        </div>
+      </PortalLayout>
+    )
+  }
+
   if (profile && !profile.isVerified) {
     return (
       <PortalLayout>
@@ -139,14 +163,14 @@ export default function NewRfqPage() {
           </div>
           <h2 className="text-2xl font-black text-slate-800 font-headline">توثيق الحساب مطلوب</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
-            لا يمكنك طرح مناقصات حتى يتم توثيق حسابك من قبل الإدارة. يرجى إكمال بياناتك ومستنداتك الرسمية <strong className="text-primary">(السجل التجاري والرقم الضريبي)</strong> في ملفك الشخصي وانتظار التوثيق.
+            لا يمكنك طرح مناقصات حتى يتم توثيق حسابك من قبل الإدارة. يرجى التأكد من رفع مستنداتك الرسمية <strong className="text-primary">(السجل التجاري والشهادة الضريبية)</strong> في ملفك الشخصي وانتظار التوثيق.
           </p>
           <div className="pt-4">
             <Button
               onClick={() => router.push("/contractor/profile")}
               className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
             >
-              الذهاب إلى الملف الشخصي لتعبئة البيانات
+              الذهاب إلى الملف الشخصي
             </Button>
           </div>
         </div>

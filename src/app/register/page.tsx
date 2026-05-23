@@ -142,32 +142,25 @@ export default function RegisterPage() {
   const handleGoogleRegister = async () => {
     if (!auth || !firestore) return
 
-    if (!formData.name) {
-      toast({ title: "خطأ في التحقق", description: "يرجى كتابة الاسم التجاري للشركة", variant: "destructive" })
-      return
-    }
-    if (!formData.phone) {
-      toast({ title: "خطأ في التحقق", description: "يرجى إدخال رقم الجوال المعتمد", variant: "destructive" })
-      return
-    }
-    if (!formData.crNumber) {
-      toast({ title: "خطأ في التحقق", description: "يرجى إدخال رقم السجل التجاري", variant: "destructive" })
-      return
-    }
-    if (!formData.city) {
-      toast({ title: "خطأ في التحقق", description: "يرجى تحديد مدينة المقر", variant: "destructive" })
-      return
-    }
-    if (formData.role === "Supplier" && formData.specializations.length === 0) {
-      toast({ title: "خطأ في التحقق", description: "يرجى تحديد تخصص واحد على الأقل للمورد", variant: "destructive" })
-      return
-    }
-
     setIsLoading(true)
     try {
       const provider = new GoogleAuthProvider()
       const result = await signInWithPopup(auth, provider)
       const user = result.user
+
+      const userDocRef = doc(firestore, "users", user.uid)
+      const userDocSnap = await getDoc(userDocRef)
+
+      if (userDocSnap.exists()) {
+        toast({
+          title: "مرحباً بعودتك",
+          description: "لديك حساب مسبقاً، تم تسجيل دخولك بنجاح.",
+        })
+        const existingData = userDocSnap.data()
+        if (existingData.role === "Contractor") router.push("/contractor")
+        else router.push("/supplier")
+        return
+      }
 
       const emailLower = user.email?.toLowerCase().trim() || formData.email.toLowerCase().trim()
 
@@ -185,14 +178,14 @@ export default function RegisterPage() {
         role = inviteData.role || formData.role
       }
 
-      await setDoc(doc(firestore, "users", user.uid), {
+      await setDoc(userDocRef, {
         id: user.uid,
-        name: formData.name,
+        name: formData.name || user.displayName || "مستخدم جديد",
         email: emailLower,
-        phone: formData.phone,
-        crNumber: formData.crNumber,
-        taxNumber: formData.taxNumber,
-        city: formData.city,
+        phone: formData.phone || "",
+        crNumber: formData.crNumber || "",
+        taxNumber: formData.taxNumber || "",
+        city: formData.city || "",
         role: role,
         organizationId: organizationId,
         organizationRole: organizationRole,
@@ -477,9 +470,9 @@ export default function RegisterPage() {
           <Button
             type="button"
             variant="outline"
-            className="w-full h-12 rounded-lg border-slate-200 hover:bg-slate-50 font-bold transition-all flex items-center justify-center gap-3"
+            className="w-full h-12 rounded-lg border border-slate-200 bg-transparent text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-bold transition-all flex items-center justify-center gap-3"
             onClick={handleGoogleRegister}
-            disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
+            disabled={isLoading}
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path

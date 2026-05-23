@@ -101,11 +101,11 @@ export default function ContractorDashboard() {
   
   const { data: offersData } = useCollection(acceptedOffersQuery)
   
-  const favoriteSupplierIds = new Set(
-    offersData
-      ?.filter((o: any) => o.status === "مقبول")
-      .map((o: any) => o.supplierId) || []
-  )
+  const implicitFavoriteIds = offersData
+    ?.filter((o: any) => o.status === "مقبول")
+    .map((o: any) => o.supplierId) || []
+  const explicitFavoriteIds = profile?.favoriteSuppliers || []
+  const favoriteSupplierIds = new Set([...implicitFavoriteIds, ...explicitFavoriteIds])
 
   const favoriteSuppliers = suppliers?.filter((s: any) => favoriteSupplierIds.has(s.id)) || [];
   const suppliersCount = favoriteSuppliers.length || 0;

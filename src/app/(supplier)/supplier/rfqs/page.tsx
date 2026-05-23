@@ -28,7 +28,9 @@ import {
   Eye,
   EyeOff,
   Upload,
-  X
+  X,
+  Star,
+  Award
 } from "lucide-react"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
 import { useToast } from "@/hooks/use-toast"
@@ -80,6 +82,7 @@ export default function AvailableRfqsPage() {
   const [showRfqDetails, setShowRfqDetails] = useState(false)
   const [showSubmitOffer, setShowSubmitOffer] = useState(false)
   const [showInquiries, setShowInquiries] = useState(false)
+  const [showContractorReviews, setShowContractorReviews] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false)
   
@@ -107,6 +110,21 @@ export default function AvailableRfqsPage() {
   }, [firestore, selectedRfq?.id])
 
   const { data: inquiries, isLoading: inquiriesLoading } = useCollection(inquiriesQuery)
+
+  const contractorDocRef = useMemoFirebase(() => {
+    if (!firestore || !selectedRfq?.contractorId) return null;
+    return doc(firestore, "users", selectedRfq.contractorId)
+  }, [firestore, selectedRfq?.contractorId])
+  const { data: contractorInfo } = useDoc(contractorDocRef)
+
+  const contractorReviewsQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedRfq?.contractorId) return null
+    return query(
+      collection(firestore, "reviews"),
+      where("revieweeId", "==", selectedRfq.contractorId)
+    )
+  }, [firestore, selectedRfq?.contractorId])
+  const { data: contractorReviews } = useCollection(contractorReviewsQuery)
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
@@ -446,7 +464,7 @@ export default function AvailableRfqsPage() {
       />
 
       {/* RFQ Details Dialog */}
-      <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false) } }}>
+      <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); } }}>
         <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir="rtl">
           <DialogTitle className="sr-only">تفاصيل المناقصة</DialogTitle>
           
@@ -579,10 +597,72 @@ export default function AvailableRfqsPage() {
                 </div>
               )}
             </div>
+
+            {/* Contractor Info & Reviews */}
+            <div className="border-t pt-4">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowContractorReviews(!showContractorReviews)} 
+                className="w-full justify-between hover:bg-slate-50"
+              >
+                <span className="font-bold text-slate-700 flex items-center gap-2">
+                  <Award size={16} className="text-primary" />
+                  معلومات وتقييمات المقاول ({(contractorInfo as any)?.rating || 0})
+                </span>
+                {showContractorReviews ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              </Button>
+
+              {showContractorReviews && (
+                <div className="mt-3 space-y-4 px-2">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <h4 className="font-bold text-slate-800">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || "مقاول معتمد"}</h4>
+                      <p className="text-sm text-slate-500 mt-1">مقاول طرح المناقصة</p>
+                    </div>
+                    {((contractorInfo as any)?.rating || 0) > 0 && (
+                      <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                        <span className="font-bold text-sm">{(contractorInfo as any)?.rating}</span>
+                        <Star size={14} className="fill-amber-400" />
+                        <span className="text-[10px] text-amber-600/70 mr-1">({contractorReviews?.length || 0} تقييم)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {contractorReviews && contractorReviews.length > 0 ? (
+                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                      <h4 className="font-bold text-sm text-slate-700">آراء الموردين:</h4>
+                      {contractorReviews.map((review: any) => (
+                        <div key={review.id} className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-bold text-slate-700">{review.reviewerName}</span>
+                            <div className="flex items-center gap-0.5 text-amber-500">
+                              <span className="text-xs font-bold">{review.rating}</span>
+                              <Star size={10} className="fill-amber-400" />
+                            </div>
+                          </div>
+                          {review.comment && (
+                            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2 rounded">
+                              "{review.comment}"
+                            </p>
+                          )}
+                          <p className="text-[10px] text-slate-400 mt-2 text-left">
+                            {new Date(review.createdAt).toLocaleDateString("ar-SA")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4 bg-slate-50 rounded-lg border border-dashed">
+                      لا توجد تقييمات سابقة لهذا المقاول.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="px-5 py-4 border-t bg-white shrink-0 flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
+            <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); }}>
               إغلاق
             </Button>
             <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>

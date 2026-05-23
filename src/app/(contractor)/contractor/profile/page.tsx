@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SAUDI_CITIES } from "@/lib/constants"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { useUser, useFirestore, useDoc, useMemoFirebase, useStorage } from "@/firebase"
@@ -24,7 +26,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { MapPicker } from "@/components/ui/map-picker"
 import { 
   Loader2, 
   Building2, 
@@ -48,6 +49,7 @@ import {
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { sendEmailVerification } from "firebase/auth"
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog"
 
 export default function ContractorProfilePage() {
   const { user, isUserLoading } = useUser()
@@ -56,11 +58,13 @@ export default function ContractorProfilePage() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
   const [profile, setProfile] = useState({
     name: "",
     crNumber: "",
     taxNumber: "",
     description: "",
+    city: "",
     location: "",
     phone: "",
     email: "",
@@ -73,10 +77,8 @@ export default function ContractorProfilePage() {
       gosi: { url: "", expiryDate: "" },
       chamber: { url: "", expiryDate: "" },
     },
-    locationCoords: null as { lat: number, lng: number } | null,
     twoFactorEnabled: false
   })
-  const [showMapDialog, setShowMapDialog] = useState(false)
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -93,7 +95,8 @@ export default function ContractorProfilePage() {
         name: userData.name || userData.companyName || user?.displayName || "",
         crNumber: userData.crNumber || "",
         taxNumber: userData.taxNumber || "",
-        location: userData.city || userData.location || "",
+        city: userData.city || "",
+        location: userData.location || "",
         phone: userData.phone || userData.phoneNumber || "",
         email: userData.email || user?.email || "",
         description: userData.description || "",
@@ -106,7 +109,6 @@ export default function ContractorProfilePage() {
           gosi: { url: "", expiryDate: "" },
           chamber: { url: "", expiryDate: "" },
         },
-        locationCoords: userData.locationCoords || null,
         twoFactorEnabled: userData.twoFactorEnabled || false
       }))
     }
@@ -115,13 +117,23 @@ export default function ContractorProfilePage() {
   const handleSave = async () => {
     if (!user || !firestore) return
     setIsLoading(true)
+    
+    const isProfileComplete = Boolean(
+      profile.name?.trim() &&
+      profile.phone?.trim() &&
+      profile.crNumber?.trim() &&
+      profile.taxNumber?.trim() &&
+      profile.city?.trim() &&
+      profile.location?.trim()
+    )
+
     try {
       await updateDoc(doc(firestore, "users", user.uid), {
         name: profile.name,
         companyName: profile.name,
         crNumber: profile.crNumber,
         taxNumber: profile.taxNumber || "",
-        city: profile.location,
+        city: profile.city,
         location: profile.location,
         phone: profile.phone,
         phoneNumber: profile.phone,
@@ -129,11 +141,15 @@ export default function ContractorProfilePage() {
         website: profile.website,
         certificates: profile.certificates,
         legalDocuments: profile.legalDocuments,
-        locationCoords: profile.locationCoords,
         twoFactorEnabled: profile.twoFactorEnabled || false,
-        profileCompleted: true
+        profileCompleted: isProfileComplete
       })
-      toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
+      
+      if (!isProfileComplete) {
+        toast({ title: "تم الحفظ", description: "تم الحفظ بنجاح، يرجى تعبئة الحقول الإلزامية (*) لتفعيل حسابك بالكامل" })
+      } else {
+        toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
+      }
     } catch (e: any) {
       toast({ title: "خطأ", description: e.message, variant: "destructive" })
     } finally {
@@ -407,7 +423,7 @@ export default function ContractorProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة / المؤسسة</Label>
+                      <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة / المؤسسة <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="name" 
                         value={profile.name}
@@ -416,7 +432,7 @@ export default function ContractorProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone" className="text-slate-700 font-bold">رقم التواصل المعتمد</Label>
+                      <Label htmlFor="phone" className="text-slate-700 font-bold">رقم التواصل المعتمد <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="phone" 
                         value={profile.phone}
@@ -429,7 +445,7 @@ export default function ContractorProfilePage() {
                   
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="cr" className="text-slate-700 font-bold">رقم السجل التجاري</Label>
+                      <Label htmlFor="cr" className="text-slate-700 font-bold">رقم السجل التجاري <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="cr" 
                         value={profile.crNumber}
@@ -439,7 +455,7 @@ export default function ContractorProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="taxNumber" className="text-slate-700 font-bold">الرقم الضريبي / رقم البطاقة الضريبية</Label>
+                      <Label htmlFor="taxNumber" className="text-slate-700 font-bold">الرقم الضريبي / رقم البطاقة الضريبية <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="taxNumber" 
                         value={profile.taxNumber || ""}
@@ -449,7 +465,7 @@ export default function ContractorProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="website" className="text-slate-700 font-bold">الموقع الإلكتروني</Label>
+                      <Label htmlFor="website" className="text-slate-700 font-bold">الموقع الإلكتروني <span className="text-slate-400 text-xs font-normal mx-1">(اختياري)</span></Label>
                       <Input 
                         id="website" 
                         value={profile.website}
@@ -463,54 +479,40 @@ export default function ContractorProfilePage() {
 
                 <Separator className="my-4" />
 
-                <div className="space-y-4">
-                  <Label htmlFor="loc" className="text-slate-700 font-bold">المقر الرئيسي</Label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <Label className="text-slate-700 font-bold">المدينة <span className="text-destructive mx-1">*</span></Label>
+                    <Select 
+                      value={profile.city}
+                      onValueChange={(v) => setProfile({ ...profile, city: v })}
+                    >
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="اختر المدينة" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SAUDI_CITIES.map((city) => (
+                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-4">
+                    <Label htmlFor="loc" className="text-slate-700 font-bold">الحي / العنوان التفصيلي <span className="text-destructive mx-1">*</span></Label>
+                    <div className="relative">
                       <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input 
                         id="loc" 
                         className="pr-10 h-11"
                         value={profile.location}
                         onChange={e => setProfile({...profile, location: e.target.value})}
-                        placeholder="المدينة، الحي..."
+                        placeholder="اسم الحي أو الشارع..."
                       />
                     </div>
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      size="icon" 
-                      className={`h-11 w-11 shrink-0 ${profile.locationCoords ? 'bg-success/10 border-success/30 text-success' : ''}`}
-                      onClick={() => setShowMapDialog(true)}
-                    >
-                      <MapPin size={18} />
-                    </Button>
                   </div>
-                  {profile.locationCoords && (
-                    <p className="text-[10px] text-success font-medium mt-1">✓ تم تحديد الموقع على الخريطة</p>
-                  )}
                 </div>
 
-                <Dialog open={showMapDialog} onOpenChange={setShowMapDialog}>
-                  <DialogContent className="sm:max-w-[600px] text-right" dir="rtl">
-                    <DialogHeader>
-                      <DialogTitle>تحديد المقر على الخريطة</DialogTitle>
-                      <DialogDescription>اختر موقع المقر الرئيسي لشركتك بدقة</DialogDescription>
-                    </DialogHeader>
-                    <div className="h-[400px] w-full rounded-xl overflow-hidden border">
-                      <MapPicker 
-                        initialPosition={profile.locationCoords} 
-                        onLocationSelect={(coords) => setProfile(prev => ({ ...prev, locationCoords: coords }))} 
-                      />
-                    </div>
-                    <DialogFooter>
-                      <Button onClick={() => setShowMapDialog(false)} className="w-full">تأكيد الموقع</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-
                 <div className="space-y-4 pt-4">
-                  <Label htmlFor="desc" className="text-slate-700 font-bold">وصف الشركة (البروفايل التعريفي)</Label>
+                  <Label htmlFor="desc" className="text-slate-700 font-bold">وصف الشركة (البروفايل التعريفي) <span className="text-slate-400 text-xs font-normal mx-1">(اختياري)</span></Label>
                   <Textarea 
                     id="desc" 
                     rows={5}
@@ -769,11 +771,36 @@ export default function ContractorProfilePage() {
                   </div>
                 </div>
 
+                <Separator />
+
+                {/* 4. Change Password */}
+                <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+                  <div className="space-y-1 flex-1 text-right">
+                    <h4 className="font-bold text-slate-800 text-sm">تغيير كلمة المرور</h4>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      قم بتحديث كلمة المرور الخاصة بحسابك بشكل دوري لضمان أمان حسابك.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button 
+                      variant="outline" 
+                      className="bg-white"
+                      onClick={() => setIsPasswordDialogOpen(true)}
+                    >
+                      تغيير كلمة المرور
+                    </Button>
+                  </div>
+                </div>
+
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+      <ChangePasswordDialog 
+        open={isPasswordDialogOpen} 
+        onOpenChange={setIsPasswordDialogOpen} 
+      />
     </PortalLayout>
   )
 }

@@ -267,14 +267,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         >
           <DialogTitle className="sr-only">تقديم عرض سعر</DialogTitle>
 
-          {profile && !profile.isVerified ? (
+          {profile && !profile.profileCompleted ? (
             <div className="p-8 text-center space-y-6">
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
                 <AlertCircle size={32} />
               </div>
-              <h2 className="text-xl font-bold text-slate-800">توثيق الحساب مطلوب</h2>
+              <h2 className="text-xl font-bold text-slate-800">استكمال البيانات مطلوب</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                لا يمكنك تقديم عروض أسعار حتى يتم توثيق حسابك من قبل الإدارة. يرجى إكمال بياناتك ومستنداتك الرسمية <strong className="text-primary">(السجل التجاري والشهادة الضريبية)</strong> في ملفك الشخصي وانتظار التوثيق.
+                لا يمكنك تقديم عروض أسعار لأن ملفك الشخصي غير مكتمل. يرجى إكمال بياناتك الأساسية في ملفك الشخصي للتمكن من تقديم العروض.
               </p>
               <div className="pt-4 flex flex-col gap-2">
                 <Button
@@ -284,7 +284,35 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   }}
                   className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
                 >
-                  الذهاب إلى الملف الشخصي لتعبئة البيانات
+                  استكمال الملف الشخصي
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="w-full h-11 rounded-xl"
+                >
+                  إغلاق
+                </Button>
+              </div>
+            </div>
+          ) : profile && !profile.isVerified ? (
+            <div className="p-8 text-center space-y-6">
+              <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
+                <AlertCircle size={32} />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800">توثيق الحساب مطلوب</h2>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                لا يمكنك تقديم عروض أسعار حتى يتم توثيق حسابك من قبل الإدارة. يرجى التأكد من رفع مستنداتك الرسمية <strong className="text-primary">(السجل التجاري والشهادة الضريبية)</strong> في ملفك الشخصي وانتظار التوثيق.
+              </p>
+              <div className="pt-4 flex flex-col gap-2">
+                <Button
+                  onClick={() => {
+                    onClose();
+                    router.push("/supplier/profile");
+                  }}
+                  className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
+                >
+                  الذهاب إلى الملف الشخصي
                 </Button>
                 <Button
                   variant="outline"

@@ -14,7 +14,8 @@ import {
   ChevronLeft,
   Briefcase,
   Loader2,
-  X
+  X,
+  Heart
 } from "lucide-react"
 import { 
   Popover,
@@ -36,12 +37,14 @@ import {
   DialogDescription 
 } from "@/components/ui/dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, doc } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useState } from "react"
+import { useToast } from "@/hooks/use-toast"
  
 export default function SuppliersDirectory() {
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
+  const { toast } = useToast()
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterCity, setFilterCity] = useState<string>("all")
@@ -81,12 +84,63 @@ export default function SuppliersDirectory() {
   
   const { data: offersData } = useCollection(acceptedOffersQuery)
   
+  // Fetch supplier reviews when a supplier is selected (for detail modal)
+  const supplierReviewsQuery = useMemoFirebase(() => {
+    if (!firestore || !selectedSupplier) return null
+    return query(
+      collection(firestore, "reviews"),
+      where("revieweeId", "==", selectedSupplier.id)
+    )
+  }, [firestore, selectedSupplier])
+  const { data: supplierReviews } = useCollection(supplierReviewsQuery)
+
+  // Fetch ALL supplier reviews to compute live averages for the cards
+  const allSupplierReviewsQuery = useMemoFirebase(() => {
+    if (!firestore) return null
+    return query(
+      collection(firestore, "reviews"),
+      where("revieweeRole", "==", "Supplier")
+    )
+  }, [firestore])
+  const { data: allSupplierReviews } = useCollection(allSupplierReviewsQuery)
+
+  // Build a map of supplierId -> { avgRating, count } from live reviews
+  const supplierRatingsMap = (allSupplierReviews || []).reduce((acc: Record<string, { sum: number; count: number }>, r: any) => {
+    if (!r.revieweeId) return acc
+    if (!acc[r.revieweeId]) acc[r.revieweeId] = { sum: 0, count: 0 }
+    acc[r.revieweeId].sum += r.rating || 0
+    acc[r.revieweeId].count += 1
+    return acc
+  }, {})
+
   // Compute set of supplier IDs that have an accepted offer
-  const favoriteSupplierIds = new Set(
-    offersData
-      ?.filter((o: any) => o.status === "مقبول")
-      .map((o: any) => o.supplierId) || []
-  )
+  const implicitFavoriteIds = offersData
+    ?.filter((o: any) => o.status === "مقبول")
+    .map((o: any) => o.supplierId) || []
+  const explicitFavoriteIds = profile?.favoriteSuppliers || []
+  const favoriteSupplierIds = new Set([...implicitFavoriteIds, ...explicitFavoriteIds])
+
+  const toggleFavorite = async (e: React.MouseEvent, supplierId: string) => {
+    e.stopPropagation();
+    if (!userDocRef || !profile) return;
+    const isExplicit = explicitFavoriteIds.includes(supplierId);
+    try {
+      await updateDoc(userDocRef, {
+        favoriteSuppliers: isExplicit ? arrayRemove(supplierId) : arrayUnion(supplierId)
+      });
+      toast({
+        title: isExplicit ? "تم الإزالة" : "تمت الإضافة",
+        description: isExplicit ? "تم إزالة المورد من المفضلة." : "تم إضافة المورد إلى المفضلة بنجاح.",
+      });
+    } catch (err) {
+      console.error("Failed to toggle favorite:", err);
+      toast({
+        title: "خطأ",
+        description: "تعذر تحديث المفضلة.",
+        variant: "destructive"
+      });
+    }
+  }
   
   const isLoading = suppliersLoading || isUserLoading;
 
@@ -108,7 +162,12 @@ export default function SuppliersDirectory() {
       coverageCities: s.coverageCities || [],
       specializations: s.specializations || [],
       certificates: s.certificates || [],
-      isFavorite: favoriteSupplierIds.has(s.id)
+      rating: supplierRatingsMap[s.id]
+        ? parseFloat((supplierRatingsMap[s.id].sum / supplierRatingsMap[s.id].count).toFixed(1))
+        : (s.rating || 0),
+      reviewsCount: supplierRatingsMap[s.id]?.count ?? (s.reviewsCount || 0),
+      isFavorite: favoriteSupplierIds.has(s.id),
+      isExplicitFavorite: explicitFavoriteIds.includes(s.id)
     }))
     .filter((s: any) => {
       // Search query filter
@@ -262,6 +321,14 @@ export default function SuppliersDirectory() {
                       <Briefcase size={28} />
                     </div>
                     <div className="flex flex-col items-end gap-1">
+                      <button 
+                        onClick={(e) => toggleFavorite(e, supplier.id)}
+                        className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
+                        title={supplier.isExplicitFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                      >
+                        <Heart size={16} className={supplier.isExplicitFavorite ? "fill-amber-500" : ""} />
+                      </button>
+
                       {supplier.certificates?.length > 0 && (
                         <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
                           <ShieldCheck size={14} className="ml-1" />
@@ -279,6 +346,28 @@ export default function SuppliersDirectory() {
                   
                   <div className="space-y-1">
                     <h3 className="font-bold text-lg text-slate-800">{supplier.name}</h3>
+                    <div className="flex items-center gap-1 mt-1">
+                      {supplier.rating > 0 ? (
+                        <>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={13}
+                              className={star <= Math.round(supplier.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
+                            />
+                          ))}
+                          <span className="text-sm font-bold text-slate-700 mr-1">{supplier.rating}</span>
+                          <span className="text-[10px] text-muted-foreground">({supplier.reviewsCount || 0} تقييم)</span>
+                        </>
+                      ) : (
+                        <>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star key={star} size={13} className="text-slate-200 fill-slate-200" />
+                          ))}
+                          <span className="text-[10px] text-muted-foreground mr-1">لا توجد تقييمات</span>
+                        </>
+                      )}
+                    </div>
                     <div className="flex flex-col gap-1 mt-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin size={14} className="text-primary" />
@@ -429,6 +518,40 @@ export default function SuppliersDirectory() {
                 ) : (
                   <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
                     لا توجد شهادات مسجلة لهذا المورد.
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Star size={18} className="text-amber-400 fill-amber-400" />
+                  تقييمات المورد ({supplierReviews?.length || 0})
+                </h4>
+                {supplierReviews && supplierReviews.length > 0 ? (
+                  <div className="grid gap-3">
+                    {supplierReviews.map((review: any) => (
+                      <div key={review.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-sm text-slate-800">{review.reviewerName}</p>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-bold text-amber-600">{review.rating}</span>
+                            <Star size={12} className="fill-amber-400 text-amber-400" />
+                          </div>
+                        </div>
+                        {review.comment && (
+                          <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-lg border border-slate-100">
+                            "{review.comment}"
+                          </p>
+                        )}
+                        <p className="text-[10px] text-slate-400 text-left">
+                          {new Date(review.createdAt).toLocaleDateString("ar-SA")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
+                    لا توجد تقييمات مسجلة لهذا المورد حتى الآن.
                   </div>
                 )}
               </div>

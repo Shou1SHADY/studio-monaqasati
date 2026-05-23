@@ -12,6 +12,7 @@ import { collection, query, where, orderBy, doc } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { ReviewDialog } from "@/components/ReviewDialog"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SupplierOrdersPage() {
   const firestore = useFirestore()
@@ -22,6 +23,40 @@ export default function SupplierOrdersPage() {
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
   const [reviewOrder, setReviewOrder] = useState<any | null>(null)
+  const { toast } = useToast()
+
+  const exportToCSV = () => {
+    if (!orders || orders.length === 0) {
+      toast({ title: "تنبيه", description: "لا توجد طلبات لتصديرها.", variant: "destructive" });
+      return;
+    }
+    
+    const headers = ["رقم الطلب", "تاريخ العقد", "المقاول", "المدينة", "قيمة العقد", "الحالة"];
+    
+    const rows = orders.map((o: any) => {
+      const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString("ar-SA") : "غير محدد";
+      return [
+        o.id,
+        date,
+        o.contractorName || "غير محدد",
+        o.rfqCity || "غير محدد",
+        o.price || 0,
+        o.status || "غير محدد"
+      ].join(",");
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `orders_report_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({ title: "تم التصدير", description: "تم تصدير التقرير بنجاح." });
+  }
 
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const ordersQuery = useMemoFirebase(() => {
@@ -76,7 +111,7 @@ export default function SupplierOrdersPage() {
             <h1 className="text-3xl font-bold text-secondary font-headline">طلباتي (العقود)</h1>
             <p className="text-muted-foreground mt-1">إدارة الطلبات المؤكدة والعمليات اللوجستية</p>
           </div>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={exportToCSV}>
             <ClipboardList size={18} />
             تصدير تقرير
           </Button>
@@ -202,73 +237,115 @@ export default function SupplierOrdersPage() {
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-md text-right" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>تفاصيل الطلب (العقد)</DialogTitle>
-            <DialogDescription>معلومات العقد والعملية اللوجستية</DialogDescription>
+        <DialogContent className="sm:max-w-2xl w-[95vw] p-6 text-right max-h-[90vh] overflow-y-auto rounded-[2rem] border-slate-100 shadow-2xl" dir="rtl">
+          <DialogHeader className="pb-6 border-b border-slate-100 relative pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-primary shrink-0 border border-primary/10 shadow-sm">
+                  <ClipboardList size={24} />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl sm:text-2xl font-black text-slate-800">تفاصيل الطلب</DialogTitle>
+                  <DialogDescription className="text-sm font-medium mt-1">
+                    #{selectedOrder?.id?.substring(0, 12)}
+                  </DialogDescription>
+                </div>
+              </div>
+              {selectedOrder && (
+                <div className="mr-auto">
+                  {getStatusBadge(selectedOrder.status)}
+                </div>
+              )}
+            </div>
           </DialogHeader>
+
           {selectedOrder && (
-            <div className="space-y-4 py-2">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                <span className="text-muted-foreground text-sm">حالة الطلب</span>
-                {getStatusBadge(selectedOrder.status)}
+            <div className="space-y-3 py-4">
+              {/* Price Hero */}
+              <div className="bg-gradient-to-l from-primary/5 to-blue-50 rounded-2xl p-5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
+                    <DollarSign size={12} /> قيمة العقد
+                  </p>
+                  <p className="text-3xl font-black text-primary leading-none">
+                    {selectedOrder.price}
+                    <span className="text-base font-bold text-muted-foreground mr-1">ر.س</span>
+                  </p>
+                </div>
+                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                  <DollarSign size={26} />
+                </div>
               </div>
-              
+
+              {/* Info Grid */}
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-primary/5 rounded-lg space-y-1">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <DollarSign size={12} />
-                    قيمة العقد
-                  </div>
-                  <p className="font-bold text-2xl text-primary">
-                    {selectedOrder.price} <span className="text-sm font-normal text-muted-foreground">ر.س</span>
+                <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Calendar size={10} /> تاريخ العقد
                   </p>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-lg space-y-1">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Calendar size={12} />
-                    تاريخ العقد
-                  </div>
                   <p className="font-bold text-sm" suppressHydrationWarning>
-                    {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString("ar-SA") : "-"}
+                    {selectedOrder.createdAt
+                      ? new Date(selectedOrder.createdAt).toLocaleDateString("ar-SA")
+                      : "—"}
+                  </p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Clock size={10} /> آخر تحديث
+                  </p>
+                  <p className="font-bold text-sm" suppressHydrationWarning>
+                    {selectedOrder.updatedAt
+                      ? new Date(selectedOrder.updatedAt).toLocaleDateString("ar-SA")
+                      : "—"}
                   </p>
                 </div>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-lg space-y-2">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground border-b pb-1">
-                  <Tag size={12} />
-                  المناقصة
+              {/* Details List */}
+              <div className="space-y-2">
+                <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                    <Tag size={14} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">المناقصة</p>
+                    <p className="font-bold text-sm leading-snug">{selectedOrder.rfqTitle || "—"}</p>
+                  </div>
                 </div>
-                <p className="font-bold">{selectedOrder.rfqTitle}</p>
+
+                <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                    <User size={14} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">العميل (المقاول)</p>
+                    <p className="font-bold text-sm">{selectedOrder.contractorName || "عميل"}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shrink-0 mt-0.5">
+                    <MapPinned size={14} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">موقع التسليم</p>
+                    <p className="text-sm font-medium">{selectedOrder.deliveryLocation || "غير محدد"}</p>
+                  </div>
+                </div>
               </div>
 
-              <div className="p-3 bg-slate-50 rounded-lg space-y-2">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground border-b pb-1">
-                  <User size={12} />
-                  العميل (المقاول)
-                </div>
-                <p className="font-bold">{selectedOrder.contractorName || "عميل"}</p>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg space-y-2">
-                <div className="flex items-center gap-1 text-xs text-muted-foreground border-b pb-1">
-                  <MapPinned size={12} />
-                  موقع التسليم
-                </div>
-                <p className="text-sm">{selectedOrder.deliveryLocation || "غير محدد"}</p>
-              </div>
-
-              <div className="p-3 bg-slate-50 rounded-lg space-y-1">
-                <p className="text-xs text-muted-foreground">المعرف الرقمي للطلب</p>
-                <p className="font-mono text-xs text-slate-500">{selectedOrder.id}</p>
+              {/* ID */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <p className="text-[10px] text-muted-foreground mb-1">المعرف الرقمي للطلب</p>
+                <p className="font-mono text-xs text-slate-400 break-all">{selectedOrder.id}</p>
               </div>
             </div>
           )}
-          <DialogFooter className="flex flex-col gap-2 mt-4">
+
+          <DialogFooter className="flex flex-col gap-2 pt-4 border-t border-slate-100">
             {selectedOrder && selectedOrder.status === "تم التسليم" && (
               selectedOrder.supplierRated ? (
-                <div className="text-center text-xs text-muted-foreground bg-slate-50 py-2 rounded-lg border border-dashed mb-2 w-full font-bold">
+                <div className="text-center text-xs text-muted-foreground bg-slate-50 py-2.5 rounded-xl border border-dashed w-full font-bold">
                   لقد قمت بتقييم المقاول مسبقاً ✓
                 </div>
               ) : (
@@ -277,14 +354,16 @@ export default function SupplierOrdersPage() {
                     setReviewOrder(selectedOrder)
                     setSelectedOrder(null)
                   }}
-                  className="w-full bg-amber-500 hover:bg-amber-600 gap-2 h-10 rounded-xl transition-all font-bold text-white shadow-lg shadow-amber-500/20"
+                  className="w-full bg-amber-500 hover:bg-amber-600 gap-2 h-11 rounded-xl transition-all font-bold text-white shadow-lg shadow-amber-500/20"
                 >
                   <Star size={16} className="fill-white" />
-                  تقييم تجربة المقاول (العميل)
+                  تقييم تجربة المقاول
                 </Button>
               )
             )}
-            <Button variant="outline" className="w-full h-10 rounded-xl" onClick={() => setSelectedOrder(null)}>إغلاق</Button>
+            <Button variant="outline" className="w-full h-11 rounded-xl font-bold" onClick={() => setSelectedOrder(null)}>
+              إغلاق
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -6,37 +6,37 @@ test.describe('Homepage', () => {
   });
 
   test('should load the homepage successfully', async ({ page }) => {
-    // Check that the main heading is visible
-    await expect(page.locator('h1')).toContainText('مدماك تيك');
+    // Check that the brand name is visible in the nav
+    await expect(page.locator('nav').filter({ hasText: 'مدماك تيك' })).toBeVisible();
   });
 
   test('should display navigation with links', async ({ page }) => {
-    // Check navigation links exist in header - use first() to avoid strict mode
-    await expect(page.getByRole('link', { name: /تسجيل الدخول/i }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /حساب جديد/i }).first()).toBeVisible();
+    // Check navigation links exist in header
+    await expect(page.getByRole('link', { name: /دخول/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /ابدأ مجاناً/i }).first()).toBeVisible();
   });
 
   test('should have working CTA buttons', async ({ page }) => {
     // Check CTA buttons exist and are clickable
-    const startButton = page.getByRole('link', { name: /ابدأ الآن/i });
+    const startButton = page.getByRole('link', { name: /ابدأ مجاناً/i }).first();
     await expect(startButton).toBeVisible();
     await expect(startButton).toHaveAttribute('href', '/register');
   });
 
   test('should display features section', async ({ page }) => {
-    // Check features section exists - use heading role for unique elements
-    await expect(page.getByRole('heading', { name: 'للمقاولين' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'للموردين' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'للمسؤولين' })).toBeVisible();
+    // Check features section exists by looking for the section ID
+    const featuresSection = page.locator('#features');
+    await expect(featuresSection).toBeVisible();
+    await expect(featuresSection).toContainText('قوة مدماك تيك');
   });
 
   test('should navigate to login page', async ({ page }) => {
-    await page.getByRole('link', { name: /تسجيل الدخول/i }).first().click();
+    await page.getByRole('link', { name: /دخول/i }).first().click();
     await expect(page).toHaveURL(/login/);
   });
 
   test('should navigate to register page', async ({ page }) => {
-    await page.getByRole('link', { name: /حساب جديد/i }).first().click();
+    await page.getByRole('link', { name: /ابدأ مجاناً/i }).first().click();
     await expect(page).toHaveURL(/register/);
   });
 });

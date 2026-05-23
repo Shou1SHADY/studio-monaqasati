@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare, ShieldCheck } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare, ShieldCheck, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -23,10 +23,12 @@ import { doc, collection, query, where, orderBy, limit, updateDoc } from "fireba
 import { getAuth, signOut } from "firebase/auth"
 import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { useToast } from "@/hooks/use-toast"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
+  const { toast } = useToast()
   
   // الإصلاح: انتظار Auth قبل محاولة جلب مستند المستخدم
   const userDocRef = useMemoFirebase(() => {
@@ -76,8 +78,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             signOut(auth).then(() => {
               router.push("/login")
             })
+            return
           }
         }
+
+        // No hard redirect for incomplete profile anymore. We show a banner instead.
       }
     }
   }, [user, isUserLoading, profile, isProfileLoading, router, pathname])
@@ -541,6 +546,24 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         
         <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-[100vw]">
           <div className="mx-auto max-w-7xl">
+            {profile && profile.role !== "Admin" && profile.profileCompleted === false && pathname !== `/${profile.role.toLowerCase()}/profile` && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir="rtl">
+                <div className="flex items-center gap-3 text-amber-800">
+                  <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
+                  <div>
+                    <h4 className="font-bold text-sm">تنبيه: ملفك الشخصي غير مكتمل</h4>
+                    <p className="text-xs text-amber-700 mt-1">يرجى استكمال بيانات شركتك (مثل السجل التجاري وطرق التواصل) لتتمكن من تقديم العروض أو إضافة المناقصات.</p>
+                  </div>
+                </div>
+                <Button 
+                  onClick={() => router.push(`/${profile.role.toLowerCase()}/profile`)}
+                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold whitespace-nowrap"
+                  size="sm"
+                >
+                  استكمال البيانات الآن
+                </Button>
+              </div>
+            )}
             {children}
           </div>
         </main>

@@ -135,14 +135,14 @@ export default function Home() {
                 {heroSlides[slide].badge}
               </div>
 
-              <h1 className="text-5xl md:text-7xl font-bold text-white leading-[1.1] tracking-tight">
+              <h1 className="text-5xl md:text-7xl font-bold text-white leading-snug md:leading-tight tracking-tight">
                 {heroSlides[slide].title}<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200">
                   {heroSlides[slide].titleAccent}
                 </span>
               </h1>
 
-              <p className="text-slate-300 text-xl leading-relaxed font-medium max-w-xl">
+              <p className="text-slate-300 text-lg md:text-xl leading-relaxed font-medium max-w-xl">
                 {heroSlides[slide].sub}
               </p>
 
@@ -152,17 +152,10 @@ export default function Home() {
                     سجل الآن مجاناً <ArrowLeft size={20} />
                   </Button>
                 </Link>
-                <div className="flex items-center gap-4 group cursor-pointer py-2">
-                  <div className="flex -space-x-3 rtl:space-x-reverse">
-                    {[1, 2, 3, 4].map(i => (
-                      <div key={i} className="w-10 h-10 rounded-full border-2 border-[#020617] bg-slate-800 overflow-hidden shadow-xl">
-                        <img src={`https://i.pravatar.cc/100?img=${i + 20}`} alt="" />
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex items-center gap-4 py-2">
                   <div className="flex flex-col">
-                    <span className="text-white font-black text-sm tracking-tight">+500 شركة</span>
-                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">تعتمد علينا يومياً</span>
+                    <span className="text-white font-black text-sm tracking-tight">انضم لشبكة عملائنا الأوائل</span>
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">فرص حصرية للمشتركين الأوائل</span>
                   </div>
                 </div>
               </div>
@@ -180,27 +173,69 @@ export default function Home() {
           </div>
 
           {/* Bottom Floating Stats */}
-          <div className="absolute bottom-10 left-6 right-6 z-20">
+          <div className="absolute bottom-4 md:bottom-6 left-6 right-6 z-20">
             <div className="max-w-7xl mx-auto">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="flex md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 overflow-x-auto snap-x snap-mandatory pb-4 hide-scrollbar w-full">
                 {[
-                  { val: '+500', label: 'شركة مسجلة', icon: Building2 },
-                  { val: '+2000', label: 'مناقصة منجزة', icon: FileCheck },
-                  { val: '70%', label: 'توفير في الوقت', icon: Zap },
-                  { val: '15%', label: 'توفير في التكاليف', icon: TrendingUp },
+                  { val: 'الهدف: 500+', label: 'شركة مسجلة قريباً', icon: Building2 },
+                  { val: 'أتمتة كاملة', label: 'للمناقصات الإنشائية', icon: FileCheck },
+                  { val: '70%', label: 'توفير مستهدف للوقت', icon: Zap },
+                  { val: '15%', label: 'تحسين في التكاليف', icon: TrendingUp },
                 ].map((s, i) => (
-                  <div key={i} className="bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-6 flex items-center gap-5 group hover:bg-white/[0.06] transition-all">
-                    <div className="w-12 h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform">
+                  <div key={i} className="min-w-[260px] md:min-w-0 shrink-0 snap-center bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-5 md:p-6 flex items-center gap-4 md:gap-5 group hover:bg-white/[0.06] transition-all">
+                    <div className="w-12 h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
                       <s.icon size={24} />
                     </div>
                     <div>
-                      <div className="text-2xl font-black text-white leading-none">{s.val}</div>
-                      <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-2">{s.label}</div>
+                      <div className="text-xl md:text-2xl font-black text-white leading-none">{s.val}</div>
+                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-widest mt-1 md:mt-2">{s.label}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+          </div>
+        </section>
+
+        {/* TRUSTED BY LOGOS - UI/UX Pro Max */}
+        <section className="py-12 border-b border-white/5 bg-[#020617] overflow-hidden relative flex flex-col items-center">
+          <div className="text-slate-500 text-xs font-black uppercase tracking-[0.4em] mb-10 relative z-10 flex items-center gap-4">
+            <div className="w-12 h-[1px] bg-white/10" />
+            شركاء نعتز بثقتهم
+            <div className="w-12 h-[1px] bg-white/10" />
+          </div>
+          
+          <div className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-[#020617] to-transparent z-10 pointer-events-none" />
+          <div className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none" />
+          
+          <div className="w-full flex overflow-hidden py-4">
+             <div className="flex gap-12 md:gap-16 items-center animate-scroll-x-logos whitespace-nowrap min-w-full justify-around pr-12 md:pr-16">
+                {[
+                  '/images/logo-qudra.png',
+                  '/images/logo-naya.jpeg',
+                  '/images/logo-itc.png',
+                  '/images/logo-qudra.png',
+                  '/images/logo-naya.jpeg',
+                  '/images/logo-itc.png',
+                  '/images/logo-qudra.png',
+                  '/images/logo-naya.jpeg',
+                  '/images/logo-itc.png',
+                  '/images/logo-qudra.png',
+                  '/images/logo-naya.jpeg',
+                  '/images/logo-itc.png',
+                ].map((src, i) => (
+                  <div 
+                    key={i} 
+                    className={`flex items-center justify-center w-32 md:w-44 h-16 md:h-20 p-2 md:p-3 shrink-0 transition-all duration-500 hover:scale-110 ${src.includes('naya') ? '' : 'bg-white/5 rounded-xl border border-white/10'}`}
+                  >
+                    <img 
+                      src={src} 
+                      alt="Partner Logo" 
+                      className={`max-w-full max-h-full object-contain opacity-80 hover:opacity-100 ${src.includes('naya') ? 'mix-blend-screen' : ''}`} 
+                    />
+                  </div>
+                ))}
+             </div>
           </div>
         </section>
 
@@ -211,7 +246,7 @@ export default function Home() {
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
               <div className="space-y-4">
                 <div className="text-sky-400 font-black text-xs uppercase tracking-[0.3em]">التحول الرقمي الكامل</div>
-                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight leading-tight">قوة مدماك تيك <br /> في أتمتة مشترياتك</h2>
+                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight leading-snug md:leading-tight">قوة مدماك تيك <br /> في أتمتة مشترياتك</h2>
               </div>
               <p className="text-slate-400 max-w-md text-lg leading-relaxed border-r-2 border-cta/30 pr-6">
                 كل ما تحتاجه لإدارة مشترياتك الإنشائية في مكان واحد، مع نظام ذكي يضمن الدقة والشفافية.
@@ -340,21 +375,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* IMAGE GALLERY STRIP - Infinite Motion */}
-        <section className="py-12 bg-white/[0.01] overflow-hidden relative">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-transparent to-[#020617] z-10 pointer-events-none" />
-          <div className="flex gap-6 animate-scroll-x py-4">
-            {[
-              '/images/warehouse-desk.jpg', '/images/warehouse-standing.jpg', '/images/construction-site.jpg', '/images/loading-dock.jpg', '/images/supplier-dashboard.jpg',
-              '/images/warehouse-desk.jpg', '/images/warehouse-standing.jpg', '/images/construction-site.jpg', '/images/loading-dock.jpg', '/images/supplier-dashboard.jpg'
-            ].map((src, i) => (
-              <div key={i} className="shrink-0 w-96 h-60 rounded-3xl overflow-hidden border border-white/5 shadow-2xl group relative">
-                <img src={src} alt="" className="w-full h-full object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700 group-hover:scale-110" />
-                <div className="absolute inset-0 bg-cta/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-            ))}
-          </div>
-        </section>
+
 
         {/* HOW IT WORKS - Step Architecture */}
         <section id="how" className="py-32 relative bg-[#0F172A]">
@@ -442,7 +463,7 @@ export default function Home() {
                     ابدأ الآن مجاناً
                   </Button>
                 </Link>
-                <Link href="#how" className="w-full sm:w-auto">
+                <Link href="/contact" className="w-full sm:w-auto">
                   <Button variant="outline" className="w-full h-18 px-14 text-xl font-black rounded-[2rem] border-white/10 text-white hover:bg-white/5 backdrop-blur-md transition-all">
                     تواصل معنا
                   </Button>
@@ -475,20 +496,24 @@ export default function Home() {
               المنصة التقنية السعودية الرائدة لتحويل قطاع المشتريات الإنشائية إلى منظومة رقمية ذكية متكاملة تواكب تطلعات رؤية المملكة 2030.
             </p>
             <div className="flex items-center gap-4">
-              {[Globe, Phone, Mail].map((Icon, idx) => (
-                <Link key={idx} href="#" className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-slate-400 hover:text-sky-400 hover:bg-white/10 transition-all hover:-translate-y-1">
-                  <Icon size={20} />
-                </Link>
-              ))}
+              <Link href="/contact" className="px-6 py-3 rounded-xl bg-white/5 font-bold text-sm text-slate-300 hover:text-sky-400 hover:bg-white/10 transition-all border border-white/5">
+                فريق دعم مدماك مستعد لخدمتك
+              </Link>
             </div>
           </div>
 
           <div className="space-y-8">
             <h4 className="text-white font-black text-xs uppercase tracking-[0.3em]">الروابط السريعة</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
-              {["عن المنصة", "المميزات", "بوابة الموردين", "حلول المقاولين", "الأسئلة الشائعة"].map(l => (
-                <li key={l}><Link href="#" className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
-                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l}
+              {[
+                { label: "عن المنصة", href: "/about" },
+                { label: "المميزات", href: "/#features" },
+                { label: "الأسعار", href: "/pricing" },
+                { label: "بوابة الموردين", href: "/register?role=Supplier" },
+                { label: "حلول المقاولين", href: "/register?role=Contractor" }
+              ].map(l => (
+                <li key={l.label}><Link href={l.href} className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
+                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l.label}
                 </Link></li>
               ))}
             </ul>
@@ -497,9 +522,13 @@ export default function Home() {
           <div className="space-y-8">
             <h4 className="text-white font-black text-xs uppercase tracking-[0.3em]">القانونية والاتصال</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
-              {["سياسة الخصوصية", "الشروط والأحكام", "سياسة الكوكيز", "مركز المساعدة", "اتصل بنا"].map(l => (
-                <li key={l}><Link href="#" className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
-                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l}
+              {[
+                { label: "سياسة الخصوصية", href: "/privacy" },
+                { label: "الشروط والأحكام", href: "/terms" },
+                { label: "تواصل معنا", href: "/contact" }
+              ].map(l => (
+                <li key={l.label}><Link href={l.href} className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
+                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l.label}
                 </Link></li>
               ))}
             </ul>
@@ -522,8 +551,16 @@ export default function Home() {
           0% { transform: translateX(0); }
           100% { transform: translateX(50%); }
         }
+        @keyframes scroll-x-logos {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(50%); }
+        }
         .animate-scroll-x {
           animation: scroll-x 40s linear infinite;
+          width: max-content;
+        }
+        .animate-scroll-x-logos {
+          animation: scroll-x-logos 25s linear infinite;
           width: max-content;
         }
         @keyframes float {

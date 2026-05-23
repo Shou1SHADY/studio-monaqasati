@@ -382,7 +382,7 @@ export default function LoginPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full h-12 rounded-lg border-border hover:bg-muted font-bold transition-all flex items-center justify-center gap-3"
+                className="w-full h-12 rounded-lg border border-border bg-transparent text-foreground hover:bg-muted hover:text-foreground font-bold transition-all flex items-center justify-center gap-3"
                 onClick={handleGoogleLogin}
                 disabled={isLoading}
               >
