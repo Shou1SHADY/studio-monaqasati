@@ -89,6 +89,46 @@
   transform: scaleX(-1);
 }
 
+/* ============================================================
+   Arabic Typography — Global Safety Rules
+   Arabic script has tall diacritical marks (dots, tashkeel)
+   that extend far above/below the baseline. Tight line-height
+   causes inter-line collisions. These rules enforce safe values
+   across the entire RTL layout.
+   ============================================================ */
+
+/* Enforce safe line-height on ALL headings in Arabic context */
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] h4,
+[dir="rtl"] h5,
+[dir="rtl"] h6 {
+  line-height: 1.6 !important;
+}
+
+/* Disable letter-spacing for ALL Arabic text — it breaks
+   cursive script connections and displaces diacritical dots */
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3,
+[dir="rtl"] h4,
+[dir="rtl"] h5,
+[dir="rtl"] h6,
+[dir="rtl"] p,
+[dir="rtl"] span,
+[dir="rtl"] a,
+[dir="rtl"] button,
+[dir="rtl"] label,
+[dir="rtl"] li {
+  letter-spacing: 0 !important;
+}
+
+/* Allow tracking on purely Latin/numeric elements (e.g. badges with uppercase latin) */
+[dir="rtl"] .tracking-latin {
+  letter-spacing: 0.1em !important;
+}
+
 /* إخفاء شريط التمرير للقائمة الجانبية */
 [data-sidebar="content"]::-webkit-scrollbar {
   display: none;

@@ -15,7 +15,7 @@ const heroSlides = [
   {
     img: '/images/warehouse-desk.jpg',
     badge: 'منصة المورد الذكية',
-    title: 'أتمتة المشتريات',
+    title: 'أتمتة الإمدادات',
     titleAccent: 'بذكاء وشفافية مطلقة',
     sub: 'المنصة السعودية الرائدة التي تجمع المقاولين والموردين في نظام بيئي رقمي موحد، لضمان الكفاءة وتقليل التكاليف وتسريع عمليات التوريد.',
   },
@@ -23,13 +23,13 @@ const heroSlides = [
     img: '/images/construction-site.jpg',
     badge: 'لقطاع البناء والتشييد',
     title: 'تبني الشراكات',
-    titleAccent: 'وتطور التوريد',
+    titleAccent: 'وتطور الإمداد',
     sub: 'حلول رقمية متكاملة لقطاع البناء والتشييد تضمن الشفافية والعدالة في المنافسة، مع تتبع دقيق لكل خطوة في عملية الشراء.',
   },
   {
     img: '/images/loading-dock.jpg',
     badge: 'شبكة موردين معتمدة',
-    title: 'شراكات تجارية',
+    title: 'شراكات مهنية',
     titleAccent: 'بثقة واحترافية',
     sub: 'تواصل مباشر وسريع بين كبار المقاولين والموردين المعتمدين في المملكة، مع إدارة رقمية كاملة لطلبات الشراء وعروض الأسعار.',
   },
@@ -75,12 +75,12 @@ export default function Home() {
           <div className="flex items-center gap-3 cursor-pointer group">
             <div className="w-10 h-10 bg-cta rounded-xl flex items-center justify-center font-bold text-xl text-white transition-transform group-hover:scale-110 shadow-lg shadow-cta/20">م</div>
             <div className="flex flex-col">
-              <span className="text-xl font-bold text-white tracking-tight leading-none">مدماك تيك</span>
+              <span className="text-xl font-bold text-white tracking-normal leading-none">مدماك تيك</span>
               <span className="text-[10px] text-sky-400/80 font-bold uppercase tracking-widest mt-1">Mdmak Tech</span>
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-10 text-slate-400 font-bold text-sm tracking-wide">
+          <div className="hidden lg:flex items-center gap-10 text-slate-400 font-bold text-sm tracking-normal">
             <Link href="#features" className="hover:text-white transition-colors relative group">
               المميزات
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
@@ -130,12 +130,12 @@ export default function Home() {
 
           <div className="relative z-10 w-full max-w-7xl mx-auto px-6">
             <div className="max-w-2xl space-y-8 animate-in fade-in slide-in-from-right-10 duration-1000">
-              <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-cta/10 border border-cta/20 backdrop-blur-md text-sky-400 text-xs font-black uppercase tracking-[0.2em] shadow-lg shadow-cta/10">
+              <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-cta/10 border border-cta/20 backdrop-blur-md text-sky-400 text-xs font-black uppercase tracking-normal shadow-lg shadow-cta/10">
                 <div className="w-2 h-2 rounded-full bg-cta animate-pulse" />
                 {heroSlides[slide].badge}
               </div>
 
-              <h1 className="text-5xl md:text-7xl font-bold text-white leading-snug md:leading-tight tracking-tight">
+              <h1 className="text-5xl md:text-7xl font-bold text-white leading-[1.6] tracking-normal">
                 {heroSlides[slide].title}<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200">
                   {heroSlides[slide].titleAccent}
@@ -154,8 +154,8 @@ export default function Home() {
                 </Link>
                 <div className="flex items-center gap-4 py-2">
                   <div className="flex flex-col">
-                    <span className="text-white font-black text-sm tracking-tight">انضم لشبكة عملائنا الأوائل</span>
-                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1">فرص حصرية للمشتركين الأوائل</span>
+                    <span className="text-white font-black text-sm tracking-normal">انضم لشبكة عملائنا الأوائل</span>
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-normal mt-1">فرص حصرية للمشتركين الأوائل</span>
                   </div>
                 </div>
               </div>
@@ -188,7 +188,7 @@ export default function Home() {
                     </div>
                     <div>
                       <div className="text-xl md:text-2xl font-black text-white leading-none">{s.val}</div>
-                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-widest mt-1 md:mt-2">{s.label}</div>
+                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-normal mt-1 md:mt-2">{s.label}</div>
                     </div>
                   </div>
                 ))}
@@ -199,7 +199,7 @@ export default function Home() {
 
         {/* TRUSTED BY LOGOS - UI/UX Pro Max */}
         <section className="py-12 border-b border-white/5 bg-[#020617] overflow-hidden relative flex flex-col items-center">
-          <div className="text-slate-500 text-xs font-black uppercase tracking-[0.4em] mb-10 relative z-10 flex items-center gap-4">
+          <div className="text-slate-500 text-xs font-black uppercase tracking-normal mb-10 relative z-10 flex items-center gap-4">
             <div className="w-12 h-[1px] bg-white/10" />
             شركاء نعتز بثقتهم
             <div className="w-12 h-[1px] bg-white/10" />
@@ -245,8 +245,8 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
               <div className="space-y-4">
-                <div className="text-sky-400 font-black text-xs uppercase tracking-[0.3em]">التحول الرقمي الكامل</div>
-                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight leading-snug md:leading-tight">قوة مدماك تيك <br /> في أتمتة مشترياتك</h2>
+                <div className="text-sky-400 font-black text-xs uppercase tracking-normal">التحول الرقمي الكامل</div>
+                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal leading-snug md:leading-tight">قوة مدماك تيك <br /> في أتمتة مشترياتك</h2>
               </div>
               <p className="text-slate-400 max-w-md text-lg leading-relaxed border-r-2 border-cta/30 pr-6">
                 كل ما تحتاجه لإدارة مشترياتك الإنشائية في مكان واحد، مع نظام ذكي يضمن الدقة والشفافية.
@@ -297,10 +297,10 @@ export default function Home() {
 
             <div className="flex items-center px-10 lg:px-24 py-24 relative bg-[#0F172A]/50">
               <div className="space-y-10 max-w-xl">
-                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-[0.4em]">
+                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
                   <div className="w-10 h-0.5 bg-cta" /> للمقاولين
                 </div>
-                <h2 className="text-4xl md:text-6xl font-bold text-white leading-tight tracking-tight">
+                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal">
                   تحكم كامل بمشتريات <br /> <span className="text-sky-400">مشاريعك الإنشائية</span>
                 </h2>
                 <p className="text-slate-400 text-xl leading-relaxed">أتمتة كاملة لدورة المشتريات بدءاً من طرح المناقصات ومروراً بالمفاضلة الذكية بين عروض الموردين وحتى اعتماد الدفعات واستلام المواد بضغطة زر.</p>
@@ -330,10 +330,10 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
             <div className="flex items-center px-10 lg:px-24 py-24 relative order-2 lg:order-1 bg-[#0F172A]/30">
               <div className="space-y-10 max-w-xl">
-                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-[0.4em]">
+                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
                   <div className="w-10 h-0.5 bg-sky-400" /> للموردين
                 </div>
-                <h2 className="text-4xl md:text-6xl font-bold text-white leading-tight tracking-tight">
+                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal">
                   وسع قاعدة عملائك <br /> <span className="text-sky-400">وزد مبيعاتك رقمياً</span>
                 </h2>
                 <p className="text-slate-400 text-xl leading-relaxed">تلقى طلبات الشراء المباشرة من كبار المقاولين في المملكة. نظامنا يضمن لك وصولاً أسرع لفرص البيع وإدارة أسهل لعروض الأسعار.</p>
@@ -366,7 +366,7 @@ export default function Home() {
                   <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white">
                     <LayoutDashboard size={20} />
                   </div>
-                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-widest">طلبات اليوم</div>
+                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-normal">طلبات اليوم</div>
                 </div>
                 <div className="text-5xl font-black text-white leading-none">24</div>
                 <div className="text-slate-400 text-sm mt-3 font-medium">طلب شراء مباشر <br /> قيد الانتظار</div>
@@ -381,8 +381,8 @@ export default function Home() {
         <section id="how" className="py-32 relative bg-[#0F172A]">
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center mb-20 space-y-4">
-              <div className="text-sky-400 font-black text-xs uppercase tracking-[0.4em]">منهجية العمل</div>
-              <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight">كيف تعمل المنصة؟</h2>
+              <div className="text-sky-400 font-black text-xs uppercase tracking-normal">منهجية العمل</div>
+              <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal">كيف تعمل المنصة؟</h2>
               <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed">خطوات بسيطة وواضحة لتحويل مشترياتك التقليدية إلى منظومة رقمية ذكية</p>
             </div>
 
@@ -426,10 +426,10 @@ export default function Home() {
           <div className="absolute inset-0 bg-gradient-to-b from-[#020617] via-transparent to-[#020617]" />
 
           <div className="relative z-10 max-w-4xl mx-auto px-6 text-center space-y-8">
-            <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-cta/10 border border-cta/20 text-sky-400 text-xs font-black uppercase tracking-[0.4em]">
+            <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-cta/10 border border-cta/20 text-sky-400 text-xs font-black uppercase tracking-normal">
               بيئة عمل موثوقة
             </div>
-            <h2 className="text-4xl md:text-6xl font-bold text-white tracking-tight leading-tight">
+            <h2 className="text-4xl md:text-6xl font-bold text-white tracking-normal leading-[1.6]">
               أكبر شبكة للمقاولين والموردين <br /> <span className="text-sky-400">في مكان واحد</span>
             </h2>
             <p className="text-slate-400 text-xl leading-relaxed font-medium">
@@ -450,7 +450,7 @@ export default function Home() {
               <div className="absolute top-0 right-0 w-96 h-96 bg-cta/10 rounded-full blur-[120px] group-hover:bg-cta/20 transition-all duration-1000" />
               <div className="absolute bottom-0 left-0 w-64 h-64 bg-sky-500/10 rounded-full blur-[100px]" />
 
-              <h2 className="text-4xl md:text-7xl font-bold text-white relative z-10 leading-tight">
+              <h2 className="text-4xl md:text-7xl font-bold text-white relative z-10 leading-[1.6]">
                 ابدأ رحلة التحول الرقمي <br /> <span className="text-sky-400">في مشترياتك اليوم</span>
               </h2>
               <p className="text-slate-300 max-w-2xl mx-auto text-xl relative z-10 leading-relaxed font-medium">
@@ -470,7 +470,7 @@ export default function Home() {
                 </Link>
               </div>
 
-              <div className="pt-10 flex items-center justify-center gap-10 text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] relative z-10">
+              <div className="pt-10 flex items-center justify-center gap-10 text-[10px] font-black text-slate-500 uppercase tracking-normal relative z-10">
                 <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> إعداد سريع</span>
                 <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> بدون رسوم تسجيل</span>
                 <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> رؤية 2030</span>
@@ -503,7 +503,7 @@ export default function Home() {
           </div>
 
           <div className="space-y-8">
-            <h4 className="text-white font-black text-xs uppercase tracking-[0.3em]">الروابط السريعة</h4>
+            <h4 className="text-white font-black text-xs uppercase tracking-normal">الروابط السريعة</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
               {[
                 { label: "عن المنصة", href: "/about" },
@@ -520,7 +520,7 @@ export default function Home() {
           </div>
 
           <div className="space-y-8">
-            <h4 className="text-white font-black text-xs uppercase tracking-[0.3em]">القانونية والاتصال</h4>
+            <h4 className="text-white font-black text-xs uppercase tracking-normal">القانونية والاتصال</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
               {[
                 { label: "سياسة الخصوصية", href: "/privacy" },
@@ -535,7 +535,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-6 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] relative z-10">
+        <div className="max-w-7xl mx-auto px-6 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-black text-slate-600 uppercase tracking-normal relative z-10">
           <p>© {new Date().getFullYear()} MDMAK TECH PLATFORM - ALL RIGHTS RESERVED</p>
           <div className="flex items-center gap-10">
             <span className="flex items-center gap-2 text-slate-400"><Globe size={14} /> العربية</span>

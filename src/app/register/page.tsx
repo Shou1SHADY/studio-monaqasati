@@ -233,7 +233,7 @@ export default function RegisterPage() {
           </Link>
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">م</div>
-            <span className="text-xl font-bold text-slate-800 font-headline tracking-tight">مدماك تيك</span>
+            <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">مدماك تيك</span>
           </div>
         </div>
 
