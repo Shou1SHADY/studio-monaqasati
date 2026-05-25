@@ -53,8 +53,19 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
       if (user) {
         // 1. Email Verification Guard (password users only)
         // Exception: Bypass for the hardcoded admin email since the owner cannot access its inbox
+        // Exception 2: Bypass in local development when enabled via localStorage
         const isPasswordProvider = user.providerData.some(p => p.providerId === "password")
-        if (isPasswordProvider && !user.emailVerified && user.email !== "admin@munaqasati.sa") {
+        const isLocalDev = typeof window !== "undefined" && (
+          window.location.hostname === "localhost" || 
+          window.location.hostname === "127.0.0.1" || 
+          window.location.hostname.startsWith("192.168.")
+        )
+        const bypassEmailVerification = isLocalDev && (
+          process.env.NEXT_PUBLIC_BYPASS_EMAIL_VERIFICATION === "true" || 
+          localStorage.getItem("dev_bypass_email_verification") === "true"
+        )
+        
+        if (isPasswordProvider && !user.emailVerified && user.email !== "admin@munaqasati.sa" && !bypassEmailVerification) {
           router.push("/verify-email")
           return
         }

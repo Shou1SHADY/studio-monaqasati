@@ -18,6 +18,17 @@ export default function VerifyEmailPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isChecking, setIsChecking] = useState(false)
   const [currentUserEmail, setCurrentUserEmail] = useState("")
+  const [isLocal, setIsLocal] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsLocal(
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname.startsWith("192.168.")
+      )
+    }
+  }, [])
 
   useEffect(() => {
     if (!auth) return
@@ -26,8 +37,10 @@ export default function VerifyEmailPage() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         setCurrentUserEmail(user.email || "")
-        if (user.emailVerified) {
-          // If already verified, route to dashboard
+        // Check if bypassed locally
+        const isBypassed = localStorage.getItem("dev_bypass_email_verification") === "true"
+        if (user.emailVerified || (isLocal && isBypassed)) {
+          // If already verified or bypassed, route to dashboard
           handleRedirectToDashboard(user.uid)
         }
       } else {
@@ -36,7 +49,20 @@ export default function VerifyEmailPage() {
     })
 
     return () => unsubscribe()
-  }, [auth])
+  }, [auth, isLocal])
+
+  const handleBypass = () => {
+    localStorage.setItem("dev_bypass_email_verification", "true")
+    toast({
+      title: "وضع التطوير: تم تخطي التحقق",
+      description: "تم تفعيل التخطي المحلي لبريدك الإلكتروني بنجاح.",
+    })
+    if (auth && auth.currentUser) {
+      handleRedirectToDashboard(auth.currentUser.uid)
+    } else {
+      router.push("/")
+    }
+  }
 
   const handleRedirectToDashboard = async (uid: string) => {
     if (!firestore) return
@@ -208,6 +234,29 @@ export default function VerifyEmailPage() {
               "إعادة إرسال رابط التفعيل"
             )}
           </Button>
+
+          {/* Developer Bypass (Visible on Localhost Only) */}
+          {isLocal && (
+            <div className="pt-4 border-t border-dashed border-slate-200 space-y-3">
+              <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-2xl flex gap-3 text-right">
+                <AlertCircle className="text-blue-500 shrink-0 mt-0.5" size={18} />
+                <div>
+                  <p className="text-xs text-blue-900 font-bold">وضع التطوير المكتشف (localhost)</p>
+                  <p className="text-[11px] text-blue-800 leading-relaxed mt-1">
+                    إذا لم تتلقَ رسالة البريد الإلكتروني (بسبب قيود مشروع Firebase الافتراضي)، يمكنك تخطي التحقق للتجربة والتحقق محلياً.
+                  </p>
+                </div>
+              </div>
+              <Button 
+                variant="ghost"
+                type="button"
+                className="w-full h-11 text-xs font-bold rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50/80 transition-all"
+                onClick={handleBypass}
+              >
+                تخطي التحقق والدخول إلى اللوحة
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
