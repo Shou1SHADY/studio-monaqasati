@@ -67,6 +67,7 @@ const adminItems: NavItem[] = [
   { title: "سجل الإشعارات", href: "/admin/notifications", icon: Bell },
   { title: "الإحصائيات", href: "/admin/stats", icon: TrendingUp },
   { title: "الإعدادات", href: "/admin/settings", icon: Settings },
+  { title: "الملف الشخصي", href: "/admin/profile", icon: UserCircle },
 ]
 
 export function RoleSidebar() {
