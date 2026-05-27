@@ -294,15 +294,15 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-cta/10 mix-blend-overlay" />
 
-              <div className="absolute bottom-12 right-12 p-8 bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-cta flex items-center justify-center text-white">
-                    <TrendingUp size={20} />
+              <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 p-4 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
+                <div className="flex items-center gap-2 md:gap-4 mb-2 md:mb-4">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-cta flex items-center justify-center text-white shrink-0">
+                    <TrendingUp size={16} className="md:size-5" />
                   </div>
-                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
+                  <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
                 </div>
-                <div className="text-5xl font-black text-white leading-none">{tContractor('stat_val')}</div>
-                <div className="text-slate-400 text-sm mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
+                <div className="text-3xl md:text-5xl font-black text-white leading-none">{tContractor('stat_val')}</div>
+                <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
               </div>
             </div>
 
@@ -368,15 +368,15 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay" />
 
-              <div className="absolute top-12 left-12 p-8 bg-white/5 backdrop-blur-2xl rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white">
-                    <LayoutDashboard size={20} />
+              <div className="absolute top-6 left-6 md:top-12 md:left-12 p-4 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
+                <div className="flex items-center gap-2 md:gap-4 mb-2 md:mb-4">
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0">
+                    <LayoutDashboard size={16} className="md:size-5" />
                   </div>
-                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
+                  <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
                 </div>
-                <div className="text-5xl font-black text-white leading-none">{tSupplier('stat_val')}</div>
-                <div className="text-slate-400 text-sm mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
+                <div className="text-3xl md:text-5xl font-black text-white leading-none">{tSupplier('stat_val')}</div>
+                <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
               </div>
             </div>
           </div>
