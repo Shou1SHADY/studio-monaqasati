@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification } from "firebase/auth"
 import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore"
@@ -15,6 +17,7 @@ import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check } f
 import { PREDEFINED_CATEGORIES } from "@/lib/constants"
 
 export default function RegisterPage() {
+  const t = useTranslations("Auth.Register")
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
@@ -67,7 +70,7 @@ export default function RegisterPage() {
     setRegisterError("")
     try {
       if (formData.password.length < 6) {
-        throw { code: "auth/weak-password", message: "كلمة المرور يجب أن تتكون من 6 أحرف على الأقل." }
+        throw { code: "auth/weak-password", message: t("error_weak_pwd") }
       }
 
       const emailLower = formData.email.toLowerCase().trim()
@@ -120,18 +123,18 @@ export default function RegisterPage() {
       }
 
       toast({
-        title: "تم إنشاء الحساب بنجاح",
-        description: "يرجى تفعيل حسابك من خلال رابط التفعيل المرسل إلى بريدك الإلكتروني.",
+        title: t("success_title"),
+        description: t("success_desc"),
       })
 
       router.push("/verify-email")
 
     } catch (error: any) {
       console.error("❌ Registration error:", error)
-      let errorMsg = error.message || "حدث خطأ غير متوقع"
-      if (error.code === "auth/email-already-in-use") errorMsg = "البريد الإلكتروني مسجل مسبقاً"
-      if (error.code === "auth/weak-password") errorMsg = "كلمة المرور ضعيفة جداً. يجب أن تتكون من 6 أحرف على الأقل."
-      if (error.code === "auth/invalid-email") errorMsg = "البريد الإلكتروني غير صحيح"
+      let errorMsg = error.message || t("error_unexpected")
+      if (error.code === "auth/email-already-in-use") errorMsg = t("error_email_in_use")
+      if (error.code === "auth/weak-password") errorMsg = t("error_weak_pwd")
+      if (error.code === "auth/invalid-email") errorMsg = t("error_invalid_email")
 
       setRegisterError(errorMsg)
     } finally {
@@ -153,8 +156,8 @@ export default function RegisterPage() {
 
       if (userDocSnap.exists()) {
         toast({
-          title: "مرحباً بعودتك",
-          description: "لديك حساب مسبقاً، تم تسجيل دخولك بنجاح.",
+          title: t("welcome_back"),
+          description: t("welcome_back_desc"),
         })
         const existingData = userDocSnap.data()
         if (existingData.role === "Contractor") router.push("/contractor")
@@ -200,8 +203,8 @@ export default function RegisterPage() {
       }
 
       toast({
-        title: "تم إنشاء الحساب بنجاح",
-        description: "مرحباً بك في منصة مدماك تيك عبر Google!",
+        title: t("success_title"),
+        description: t("google_success_desc"),
       })
 
       if (role === "Contractor") {
@@ -212,8 +215,8 @@ export default function RegisterPage() {
     } catch (error: any) {
       console.error("❌ Google Registration error:", error)
       toast({
-        title: "فشل التسجيل",
-        description: error.message || "حدث خطأ أثناء التسجيل بواسطة Google",
+        title: t("google_failed"),
+        description: error.message || t("google_failed_desc"),
         variant: "destructive"
       })
     } finally {
@@ -222,26 +225,29 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="h-screen bg-white flex" dir="rtl">
+    <div className="h-screen bg-white flex rtl:dir-rtl ltr:dir-ltr">
       {/* Right Side - Form */}
       <div className="flex-1 flex flex-col px-6 md:px-16 lg:px-24 xl:px-32 relative overflow-y-auto py-6">
         {/* Navbar inside form area */}
         <div className="flex items-center justify-between w-full mb-8 shrink-0">
           <Link href="/" className="flex items-center gap-2 group text-slate-500 hover:text-slate-900 transition-colors">
-            <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="font-bold text-sm">العودة للرئيسية</span>
+            <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
+            <span className="font-bold text-sm">{t("back_to_home")}</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">م</div>
-            <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">مدماك تيك</span>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">M</div>
+              <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">Monaqasati</span>
+            </div>
           </div>
         </div>
 
         {/* Register Form */}
         <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto py-8">
-          <div className="mb-8 text-right">
-            <h1 className="text-3xl font-extrabold text-slate-900 mb-3 font-headline">حساب جديد</h1>
-            <p className="text-slate-500 text-sm">انضم الآن إلى منصة مدماك تيك وابدأ بتوسيع أعمالك.</p>
+          <div className="mb-8 text-start">
+            <h1 className="text-3xl font-extrabold text-slate-900 mb-3 font-headline">{t("new_account")}</h1>
+            <p className="text-slate-500 text-sm">{t("join_now")}</p>
           </div>
 
           <form onSubmit={handleRegister} className="space-y-6">
@@ -252,7 +258,7 @@ export default function RegisterPage() {
               </div>
             )}
             <div className="space-y-3">
-              <Label className="text-slate-700 font-bold">طبيعة نشاطك</Label>
+              <Label className="text-slate-700 font-bold">{t("role")}</Label>
               <RadioGroup
                 value={formData.role}
                 onValueChange={(v) => setFormData({ ...formData, role: v as "Contractor" | "Supplier" })}
@@ -265,7 +271,7 @@ export default function RegisterPage() {
                     className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
                   >
                     <Building2 className="mb-2 h-6 w-6 text-primary" />
-                    <span className="font-bold text-sm">مقاول</span>
+                    <span className="font-bold text-sm">{t("contractor")}</span>
                   </Label>
                 </div>
                 <div>
@@ -275,18 +281,18 @@ export default function RegisterPage() {
                     className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-success peer-data-[state=checked]:bg-success/5 cursor-pointer transition-all"
                   >
                     <ShoppingCart className="mb-2 h-6 w-6 text-success" />
-                    <span className="font-bold text-sm">مورد</span>
+                    <span className="font-bold text-sm">{t("supplier")}</span>
                   </Label>
                 </div>
               </RadioGroup>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة أو المؤسسة</Label>
+              <Label htmlFor="name" className="text-slate-700 font-bold">{t("company_name")}</Label>
               <Input
                 id="name"
                 required
-                placeholder="أدخل الاسم التجاري"
+                placeholder={t("company_name_ph")}
                 className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.name}
                 onChange={e => setFormData({ ...formData, name: e.target.value })}
@@ -295,11 +301,11 @@ export default function RegisterPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="crNumber" className="text-slate-700 font-bold">رقم السجل التجاري</Label>
+                <Label htmlFor="crNumber" className="text-slate-700 font-bold">{t("cr_number")}</Label>
                 <Input
                   id="crNumber"
                   required
-                  placeholder="مثال: 1010XXXXXX"
+                  placeholder={t("cr_number_ph")}
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.crNumber}
                   onChange={e => {
@@ -310,11 +316,11 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxNumber" className="text-slate-700 font-bold">الرقم الضريبي</Label>
+                <Label htmlFor="taxNumber" className="text-slate-700 font-bold">{t("tax_number")}</Label>
                 <Input
                   id="taxNumber"
                   required
-                  placeholder="مثال: 3XXXXXXXXXXXXXX"
+                  placeholder={t("tax_number_ph")}
                   className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                   value={formData.taxNumber || ""}
                   onChange={e => {
@@ -326,10 +332,10 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="city" className="text-slate-700 font-bold">المدينة (اختياري)</Label>
+              <Label htmlFor="city" className="text-slate-700 font-bold">{t("city")}</Label>
               <Input
                 id="city"
-                placeholder="مثال: الرياض"
+                placeholder={t("city_ph")}
                 className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.city}
                 onChange={e => setFormData({ ...formData, city: e.target.value })}
@@ -337,12 +343,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-slate-700 font-bold">رقم الجوال للتواصل</Label>
+              <Label htmlFor="phone" className="text-slate-700 font-bold">{t("phone")}</Label>
               <Input
                 id="phone"
                 required
                 type="tel"
-                placeholder="05XXXXXXXX"
+                placeholder={t("phone_ph")}
                 className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.phone}
                 onChange={e => {
@@ -354,22 +360,22 @@ export default function RegisterPage() {
 
             {formData.role === "Supplier" && (
               <div className="space-y-2">
-                <Label className="text-slate-700 font-bold">تخصصات التوريد (اختر تخصصاً واحداً على الأقل)</Label>
+                <Label className="text-slate-700 font-bold">{t("specializations")}</Label>
 
                 {/* Multiselect Dropdown */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setSpecDropdownOpen(prev => !prev)}
-                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-right transition-colors ${formData.specializations.length === 0
+                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-start transition-colors ${formData.specializations.length === 0
                         ? "border-slate-200 text-slate-400"
                         : "border-primary/40 text-slate-800"
                       } hover:border-primary/60`}
                   >
                     <span className="text-sm truncate">
                       {formData.specializations.length === 0
-                        ? "اختر التخصصات..."
-                        : `${formData.specializations.length} تخصص مختار`}
+                        ? t("select_specializations")
+                        : t("selected_specializations", { count: formData.specializations.length })}
                     </span>
                     <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${specDropdownOpen ? "rotate-180" : ""}`} />
                   </button>
@@ -420,13 +426,13 @@ export default function RegisterPage() {
                 )}
 
                 {formData.specializations.length === 0 && (
-                  <p className="text-xs text-destructive font-bold">يجب اختيار تخصص واحد على الأقل لتتمكن من استقبال المناقصات.</p>
+                  <p className="text-xs text-destructive font-bold">{t("specialization_required")}</p>
                 )}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-slate-700 font-bold">البريد الإلكتروني</Label>
+              <Label htmlFor="email" className="text-slate-700 font-bold">{t("email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -439,7 +445,7 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-slate-700 font-bold">كلمة المرور</Label>
+              <Label htmlFor="password" className="text-slate-700 font-bold">{t("password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -456,7 +462,7 @@ export default function RegisterPage() {
               className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 text-white transition-all"
               disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
             >
-              {isLoading ? <Loader2 className="animate-spin" /> : "تأكيد التسجيل"}
+              {isLoading ? <Loader2 className="animate-spin" /> : t("confirm_register")}
             </Button>
           </form>
 
@@ -464,7 +470,7 @@ export default function RegisterPage() {
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
             </div>
-            <span className="relative bg-white px-3 text-xs text-muted-foreground font-bold">أو عبر</span>
+            <span className="relative bg-white px-3 text-xs text-muted-foreground font-bold">{t("or_via")}</span>
           </div>
 
           <Button
@@ -492,13 +498,13 @@ export default function RegisterPage() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            التسجيل بواسطة Google
+            {t("register_google")}
           </Button>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
-            لديك حساب مسبقاً؟{" "}
+            {t("have_account")}{" "}
             <Link href="/login" className="text-cta font-bold hover:underline">
-              سجل الدخول الآن
+              {t("login_now")}
             </Link>
           </p>
         </div>
@@ -510,14 +516,12 @@ export default function RegisterPage() {
         <img
           src="/images/loading-dock.jpg"
           alt="Monaqasati Platform Architecture"
-          className="absolute inset-0 w-full h-full object-cover opacity-80"
+          className="absolute inset-0 w-full h-full object-cover opacity-80 ltr:-scale-x-100"
         />
         <div className="absolute bottom-0 left-0 right-0 p-16 z-20 text-white">
-          <h2 className="text-4xl font-extrabold mb-4 font-headline leading-snug">
-            شراكات استراتيجية <br /> لنمو أعمالك بشكل أسرع.
-          </h2>
+          <h2 className="text-4xl font-extrabold mb-4 font-headline leading-snug" dangerouslySetInnerHTML={{ __html: t("side_title") }} />
           <p className="text-slate-300 text-lg max-w-md leading-relaxed">
-            المنصة التي صُممت لدفع عجلة قطاع التشييد والبناء، وتسهيل الصفقات للجميع.
+            {t("side_desc")}
           </p>
         </div>
       </div>

@@ -8,9 +8,12 @@ import { sendEmailVerification, signOut } from "firebase/auth"
 import { doc, getDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
+import { useTranslations } from "next-intl"
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { Loader2, Mail, ArrowRight, CheckCircle2, AlertCircle } from "lucide-react"
 
 export default function VerifyEmailPage() {
+  const t = useTranslations("Auth.Verify")
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
@@ -54,8 +57,8 @@ export default function VerifyEmailPage() {
   const handleBypass = () => {
     localStorage.setItem("dev_bypass_email_verification", "true")
     toast({
-      title: "وضع التطوير: تم تخطي التحقق",
-      description: "تم تفعيل التخطي المحلي لبريدك الإلكتروني بنجاح.",
+      title: t("dev_bypass_success"),
+      description: t("dev_bypass_success_desc"),
     })
     if (auth && auth.currentUser) {
       handleRedirectToDashboard(auth.currentUser.uid)
@@ -98,21 +101,21 @@ export default function VerifyEmailPage() {
 
       if (user.emailVerified) {
         toast({
-          title: "تم تفعيل البريد الإلكتروني",
-          description: "مرحباً بك في منصة مدماك تيك! تم التحقق من حسابك بنجاح.",
+          title: t("verified_title"),
+          description: t("verified_desc"),
         })
         await handleRedirectToDashboard(user.uid)
       } else {
         toast({
-          title: "البريد غير مفعل بعد",
-          description: "يرجى تفعيل البريد الإلكتروني عبر الرابط المرسل إلى صندوق الوارد الخاص بك.",
+          title: t("not_verified_title"),
+          description: t("not_verified_desc"),
           variant: "destructive"
         })
       }
     } catch (error: any) {
       toast({
-        title: "خطأ أثناء التحقق",
-        description: error.message || "حدث خطأ غير متوقع",
+        title: t("check_error"),
+        description: error.message || t("error_unexpected"),
         variant: "destructive"
       })
     } finally {
@@ -126,14 +129,14 @@ export default function VerifyEmailPage() {
     try {
       await sendEmailVerification(auth.currentUser)
       toast({
-        title: "تم إرسال رابط التفعيل",
-        description: "تم إرسال رابط تفعيل جديد إلى بريدك الإلكتروني بنجاح. يرجى مراجعة صندوق الوارد (أو مجلد البريد العشوائي).",
+        title: t("resend_success_title"),
+        description: t("resend_success_desc"),
       })
     } catch (error: any) {
       console.error(error)
       toast({
-        title: "فشل إرسال الرابط",
-        description: error.message || "يرجى المحاولة مجدداً بعد قليل.",
+        title: t("resend_failed_title"),
+        description: error.message || t("resend_failed_desc"),
         variant: "destructive"
       })
     } finally {
@@ -152,7 +155,7 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <div className="h-screen bg-slate-50 flex items-center justify-center p-6" dir="rtl">
+    <div className="h-screen bg-slate-50 flex items-center justify-center p-6 rtl:dir-rtl ltr:dir-ltr">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-100 shadow-2xl p-8 md:p-10 space-y-8 relative overflow-hidden group">
         {/* Decorative Top Accent */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-primary via-cta to-secondary" />
@@ -160,16 +163,19 @@ export default function VerifyEmailPage() {
         {/* Header Branding */}
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">م</div>
-            <span className="text-lg font-bold text-foreground font-headline tracking-tight">مدماك تيك</span>
+            <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">M</div>
+            <span className="text-lg font-bold text-foreground font-headline tracking-tight">Monaqasati</span>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors"
-          >
-            تسجيل الخروج
-            <ArrowRight size={14} className="rotate-180" />
-          </button>
+          <div className="flex gap-4 items-center">
+            <LanguageSwitcher className="text-xs" />
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-slate-900 transition-colors"
+            >
+              {t("logout")}
+              <ArrowRight size={14} className="rtl:rotate-180 ltr:rotate-0" />
+            </button>
+          </div>
         </div>
 
         {/* Verification Content */}
@@ -183,19 +189,19 @@ export default function VerifyEmailPage() {
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-2xl font-black text-slate-900 font-headline leading-tight">يرجى تفعيل بريدك الإلكتروني</h1>
+            <h1 className="text-2xl font-black text-slate-900 font-headline leading-tight">{t("please_verify")}</h1>
             <p className="text-sm text-slate-500 max-w-sm mx-auto leading-relaxed">
-              لقد أرسلنا رابط تفعيل إلى بريدك الإلكتروني المسجل:
-              <span className="font-bold text-slate-800 block mt-1 dir-ltr text-center">{currentUserEmail || "جاري التحميل..."}</span>
+              {t("sent_link")}
+              <span className="font-bold text-slate-800 block mt-1 dir-ltr text-center">{currentUserEmail || t("loading")}</span>
             </p>
           </div>
         </div>
 
         {/* Quick Alert */}
-        <div className="bg-amber-50/60 border border-amber-100 p-4 rounded-2xl flex gap-3 text-right">
+        <div className="bg-amber-50/60 border border-amber-100 p-4 rounded-2xl flex gap-3 text-start">
           <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={18} />
           <p className="text-xs text-amber-800 leading-relaxed font-semibold">
-            لم تجد الرسالة؟ يرجى مراجعة مجلد البريد العشوائي (Spam) أو انقر على زر إعادة الإرسال أدناه.
+            {t("not_found")}
           </p>
         </div>
 
@@ -209,12 +215,12 @@ export default function VerifyEmailPage() {
             {isChecking ? (
               <>
                 <Loader2 className="animate-spin ml-2" size={16} />
-                جاري التحقق من التفعيل...
+                {t("checking_status")}
               </>
             ) : (
               <>
                 <CheckCircle2 className="ml-2" size={16} />
-                تحقق من التفعيل الآن
+                {t("check_status_btn")}
               </>
             )}
           </Button>
@@ -228,22 +234,21 @@ export default function VerifyEmailPage() {
             {isLoading ? (
               <>
                 <Loader2 className="animate-spin ml-2" size={16} />
-                جاري الإرسال...
+                {t("resending")}
               </>
             ) : (
-              "إعادة إرسال رابط التفعيل"
+              t("resend_btn")
             )}
           </Button>
 
-          {/* Developer Bypass (Visible on Localhost Only) */}
           {isLocal && (
             <div className="pt-4 border-t border-dashed border-slate-200 space-y-3">
-              <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-2xl flex gap-3 text-right">
+              <div className="bg-blue-50/60 border border-blue-100 p-4 rounded-2xl flex gap-3 text-start">
                 <AlertCircle className="text-blue-500 shrink-0 mt-0.5" size={18} />
                 <div>
-                  <p className="text-xs text-blue-900 font-bold">وضع التطوير المكتشف (localhost)</p>
+                  <p className="text-xs text-blue-900 font-bold">{t("dev_mode")}</p>
                   <p className="text-[11px] text-blue-800 leading-relaxed mt-1">
-                    إذا لم تتلقَ رسالة البريد الإلكتروني (بسبب قيود مشروع Firebase الافتراضي)، يمكنك تخطي التحقق للتجربة والتحقق محلياً.
+                    {t("dev_mode_desc")}
                   </p>
                 </div>
               </div>
@@ -253,7 +258,7 @@ export default function VerifyEmailPage() {
                 className="w-full h-11 text-xs font-bold rounded-xl text-blue-600 hover:text-blue-700 hover:bg-blue-50/80 transition-all"
                 onClick={handleBypass}
               >
-                تخطي التحقق والدخول إلى اللوحة
+                {t("dev_bypass_btn")}
               </Button>
             </div>
           )}

@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
 import { getAuth, signOut } from "firebase/auth"
@@ -383,6 +384,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3 mr-auto">
+            <LanguageSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground">

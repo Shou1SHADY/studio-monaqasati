@@ -11,11 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, ArrowRight, Building2, CheckCircle2, ShieldCheck, Lock } from "lucide-react"
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
+import { useTranslations } from "next-intl"
 
 export default function LoginPage() {
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
+  const t = useTranslations("Auth.Login")
 
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState("")
@@ -41,7 +44,7 @@ export default function LoginPage() {
         expiresAt
       })
 
-      const messageBody = `رمز التحقق الخاص بك لمنصة مدماك تيك هو: ${code}. صالح لمدة 5 دقائق.`
+      const messageBody = t("sms_body", { code })
       const smsRes = await fetch("/api/sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -54,15 +57,15 @@ export default function LoginPage() {
       if (!smsRes.ok) {
         console.error("Twilio SMS send failed, displaying OTP for fallback.")
         toast({
-          title: "رمز التحقق (بيئة التجربة)",
-          description: `تم إرسال رمز التحقق لجوالك (الرمز: ${code})`,
+          title: t("test_env_code"),
+          description: t("test_env_desc", { code }),
         })
         return true
       }
 
       toast({
-        title: "تم إرسال الرمز",
-        description: "تم إرسال رمز التحقق إلى جوالك المسجل."
+        title: t("code_sent"),
+        description: t("code_sent_desc")
       })
       return true
     } catch (error) {
@@ -79,24 +82,24 @@ export default function LoginPage() {
     try {
       const otpDoc = await getDoc(doc(firestore, "users", tempUserData.uid, "2fa", "current"))
       if (!otpDoc.exists()) {
-        throw new Error("رمز التحقق غير موجود أو منتهي الصلاحية")
+        throw new Error(t("err_code_not_found"))
       }
 
       const otpData = otpDoc.data()
       if (new Date() > new Date(otpData.expiresAt)) {
-        throw new Error("رمز التحقق منتهي الصلاحية. يرجى طلب رمز جديد.")
+        throw new Error(t("err_code_expired"))
       }
 
       if (otpData.code !== twoFactorCode) {
-        throw new Error("رمز التحقق غير صحيح. يرجى التأكد وإعادة المحاولة.")
+        throw new Error(t("err_code_invalid"))
       }
 
       await deleteDoc(doc(firestore, "users", tempUserData.uid, "2fa", "current"))
       sessionStorage.setItem(`2fa_verified_${tempUserData.uid}`, "true")
 
       toast({
-        title: "تم تسجيل الدخول بنجاح",
-        description: `مرحباً بك مجدداً، ${tempUserData.name}`,
+        title: t("success_login"),
+        description: t("welcome_user", { name: tempUserData.name }),
       })
 
       if (tempUserData.role === "Admin") {
@@ -106,12 +109,12 @@ export default function LoginPage() {
       } else if (tempUserData.role === "Supplier") {
         router.push("/supplier")
       } else {
-        throw new Error("صلاحية غير معروفة")
+        throw new Error(t("err_unknown_role"))
       }
     } catch (error: any) {
       toast({
-        title: "فشل التحقق بخطوتين",
-        description: error.message || "حدث خطأ أثناء عملية التحقق",
+        title: t("err_2fa_failed"),
+        description: error.message || t("err_2fa_process"),
         variant: "destructive"
       })
     } finally {
@@ -138,7 +141,7 @@ export default function LoginPage() {
           setTempUserData({
             uid: user.uid,
             role: role,
-            name: userData.name || "عزيزي المستخدم",
+            name: userData.name || t("dear_user"),
             phone: userData.phone
           })
           const sent = await sendTwoFactorCode(user.uid, userData.phone)
@@ -150,8 +153,8 @@ export default function LoginPage() {
         }
 
         toast({
-          title: "تم تسجيل الدخول بنجاح",
-          description: `مرحباً بك مجدداً، ${userData.name || "عزيزي المستخدم"}`,
+          title: t("success_login"),
+          description: t("welcome_user", { name: userData.name || t("dear_user") }),
         })
 
         if (role === "Admin") {
@@ -161,15 +164,15 @@ export default function LoginPage() {
         } else if (role === "Supplier") {
           router.push("/supplier")
         } else {
-          throw new Error("صلاحية غير معروفة")
+          throw new Error(t("err_unknown_role"))
         }
       } else {
         await auth.signOut()
-        setLoginError("لا يوجد حساب مسجل بحساب Google هذا. يرجى إنشاء حساب جديد.")
+        setLoginError(t("err_google_no_acc"))
       }
     } catch (error: any) {
       console.error("❌ Google Login error:", error)
-      setLoginError(error.message || "حدث خطأ أثناء تسجيل الدخول بواسطة Google")
+      setLoginError(error.message || t("err_google_login"))
     } finally {
       setIsLoading(false)
     }
@@ -188,7 +191,7 @@ export default function LoginPage() {
       const userDoc = await getDoc(doc(firestore, "users", user.uid))
 
       if (!userDoc.exists()) {
-        throw new Error("بيانات المستخدم غير موجودة في النظام")
+        throw new Error(t("err_user_not_found"))
       }
 
       const userData = userDoc.data()
@@ -206,12 +209,12 @@ export default function LoginPage() {
       }
 
       if (userData.twoFactorEnabled && userData.phone) {
-        setTempUserData({
-          uid: user.uid,
-          role: role,
-          name: userData.name || "عزيزي المستخدم",
-          phone: userData.phone
-        })
+          setTempUserData({
+            uid: user.uid,
+            role: role,
+            name: userData.name || t("dear_user"),
+            phone: userData.phone
+          })
         const sent = await sendTwoFactorCode(user.uid, userData.phone)
         if (sent) {
           setShowTwoFactor(true)
@@ -221,8 +224,8 @@ export default function LoginPage() {
       }
 
       toast({
-        title: "تم تسجيل الدخول بنجاح",
-        description: `مرحباً بك مجدداً، ${userData.name || "عزيزي المستخدم"}`,
+        title: t("success_login"),
+        description: t("welcome_user", { name: userData.name || t("dear_user") }),
       })
 
       if (role === "Admin") {
@@ -232,14 +235,14 @@ export default function LoginPage() {
       } else if (role === "Supplier") {
         router.push("/supplier")
       } else {
-        throw new Error("صلاحية غير معروفة")
+        throw new Error(t("err_unknown_role"))
       }
 
     } catch (error: any) {
       console.error("❌ Login error:", error)
-      let errorMsg = error.message || "حدث خطأ أثناء تسجيل الدخول"
+      let errorMsg = error.message || t("err_login")
       if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
-        errorMsg = "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+        errorMsg = t("err_invalid_creds")
       }
 
       setLoginError(errorMsg)
@@ -249,39 +252,42 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-screen bg-background flex" dir="rtl">
+    <div className="h-screen bg-background flex rtl:dir-rtl ltr:dir-ltr">
       {/* Right Side - Form */}
       <div className="flex-1 flex flex-col px-6 md:px-16 lg:px-24 xl:px-32 relative overflow-y-auto py-6">
         {/* Navbar inside form area */}
         <div className="flex items-center justify-between w-full mb-8 shrink-0">
           <Link href="/" className="flex items-center gap-2 group text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="font-bold text-sm">العودة للرئيسية</span>
+            <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
+            <span className="font-bold text-sm">{t("back_to_home")}</span>
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">م</div>
-            <span className="text-xl font-bold text-foreground font-headline tracking-normal">مدماك تيك</span>
+          <div className="flex items-center gap-4">
+            <LanguageSwitcher />
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">M</div>
+              <span className="text-xl font-bold text-foreground font-headline tracking-normal">Monaqasati</span>
+            </div>
           </div>
         </div>
 
         {/* Login Form */}
         <div className="flex-1 flex flex-col justify-center max-w-sm w-full mx-auto">
           {showTwoFactor ? (
-            <div className="text-right space-y-6">
+            <div className="text-start space-y-6">
               <div className="mb-8">
                 <div className="h-12 w-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-4">
                   <ShieldCheck size={28} />
                 </div>
-                <h1 className="text-3xl font-extrabold text-foreground mb-3 font-headline">التحقق بخطوتين</h1>
+                <h1 className="text-3xl font-extrabold text-foreground mb-3 font-headline">{t("two_factor")}</h1>
                 <p className="text-muted-foreground text-sm leading-relaxed">
-                  تم إرسال رمز تحقق مؤلف من 6 أرقام إلى جوالك المعتمد:
-                  <span className="font-bold text-foreground block dir-ltr text-right mt-1">{tempUserData?.phone}</span>
+                  {t("two_factor_desc")}
+                  <span className="font-bold text-foreground block dir-ltr text-start mt-1">{tempUserData?.phone}</span>
                 </p>
               </div>
 
               <form onSubmit={handleVerifyTwoFactor} className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="otp" className="text-foreground font-bold">رمز التحقق (OTP)</Label>
+                  <Label htmlFor="otp" className="text-foreground font-bold">{t("otp_label")}</Label>
                   <Input
                     id="otp"
                     type="text"
@@ -295,7 +301,7 @@ export default function LoginPage() {
                 </div>
 
                 <Button type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all" disabled={twoFactorLoading}>
-                  {twoFactorLoading ? <Loader2 className="animate-spin" /> : "تأكيد الرمز"}
+                  {twoFactorLoading ? <Loader2 className="animate-spin" /> : t("confirm_code")}
                 </Button>
               </form>
 
@@ -306,7 +312,7 @@ export default function LoginPage() {
                   className="w-full h-11 text-sm font-semibold text-primary hover:bg-primary/5 transition-all"
                   onClick={() => tempUserData && sendTwoFactorCode(tempUserData.uid, tempUserData.phone)}
                 >
-                  إعادة إرسال رمز التحقق
+                  {t("resend_code")}
                 </Button>
                 <Button
                   type="button"
@@ -318,15 +324,15 @@ export default function LoginPage() {
                     setTempUserData(null)
                   }}
                 >
-                  العودة لتسجيل الدخول
+                  {t("back_to_login")}
                 </Button>
               </div>
             </div>
           ) : (
             <>
-              <div className="mb-10 text-right">
-                <h1 className="text-3xl font-extrabold text-foreground mb-3 font-headline">تسجيل الدخول</h1>
-                <p className="text-muted-foreground text-sm">أهلاً بعودتك! الرجاء إدخال بيانات الدخول الخاصة بك.</p>
+              <div className="mb-10 text-start rtl:text-right ltr:text-left">
+                <h1 className="text-3xl font-extrabold text-foreground mb-3 font-headline">{t('submit_login')}</h1>
+                <p className="text-muted-foreground text-sm">{t("welcome_back_title")}</p>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
@@ -337,7 +343,7 @@ export default function LoginPage() {
                   </div>
                 )}
                 <div className="space-y-2">
-                  <Label htmlFor="email" className="text-right block text-slate-700">البريد الإلكتروني</Label>
+                  <Label htmlFor="email" className="text-start block text-slate-700 font-bold">{t("email")}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -351,9 +357,9 @@ export default function LoginPage() {
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-foreground font-bold">كلمة المرور</Label>
+                    <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
                     <Link href="#" className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
-                      نسيت كلمة المرور؟
+                      {t("forgot_password")}
                     </Link>
                   </div>
                   <Input
@@ -368,7 +374,7 @@ export default function LoginPage() {
                 </div>
 
                 <Button type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="animate-spin" /> : "تسجيل الدخول"}
+                  {isLoading ? <Loader2 className="animate-spin" /> : t('submit_login')}
                 </Button>
               </form>
 
@@ -376,7 +382,7 @@ export default function LoginPage() {
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border" />
                 </div>
-                <span className="relative bg-background px-3 text-xs text-muted-foreground font-bold">أو عبر</span>
+                <span className="relative bg-background px-3 text-xs text-muted-foreground font-bold">{t("or_via")}</span>
               </div>
 
               <Button
@@ -404,15 +410,15 @@ export default function LoginPage() {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                   />
                 </svg>
-                تسجيل الدخول بواسطة Google
+                {t("login_google")}
               </Button>
             </>
           )}
 
           <p className="mt-10 text-center text-sm text-muted-foreground">
-            ليس لديك حساب بعد؟{" "}
+            {t("no_account")}{" "}
             <Link href="/register" className="text-primary font-semibold hover:text-primary/80 transition-colors">
-              أنشئ حساباً جديداً
+              {t("create_account")}
             </Link>
           </p>
         </div>
@@ -422,16 +428,16 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative overflow-hidden">
         <img
           src="/images/loading-dock.jpg"
-          alt="منصة مدماك تيك"
-          className="w-full h-full object-cover"
+          alt="Monaqasati Platform"
+          className="w-full h-full object-cover ltr:-scale-x-100"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-12 z-10">
+        <div className="absolute bottom-0 left-0 right-0 p-12 z-10 text-white rtl:text-right ltr:text-left">
           <h2 className="text-3xl font-bold text-white mb-4 font-headline">
-            إدارة المشتريات أصبحت أسهل
+            {t("side_title")}
           </h2>
           <p className="text-slate-300 text-lg max-w-md leading-relaxed">
-            انضم إلى مئات المقاولين والموردين المعتمدين في قطاع الإنشاءات السعودي
+            {t("side_desc")}
           </p>
         </div>
       </div>

@@ -10,32 +10,50 @@ import {
   ChevronRight, Globe, ArrowRight, Truck, Star, TrendingUp,
   LayoutDashboard, Search, FileText, CheckCircle
 } from 'lucide-react';
+import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { useTranslations, useLocale } from 'next-intl';
 
-const heroSlides = [
-  {
-    img: '/images/warehouse-desk.jpg',
-    badge: 'منصة المورد الذكية',
-    title: 'أتمتة الإمدادات',
-    titleAccent: 'بذكاء وشفافية مطلقة',
-    sub: 'المنصة السعودية الرائدة التي تجمع المقاولين والموردين في نظام بيئي رقمي موحد، لضمان الكفاءة وتقليل التكاليف وتسريع عمليات التوريد.',
-  },
-  {
-    img: '/images/construction-site.jpg',
-    badge: 'لقطاع البناء والتشييد',
-    title: 'تبني الشراكات',
-    titleAccent: 'وتطور الإمداد',
-    sub: 'حلول رقمية متكاملة لقطاع البناء والتشييد تضمن الشفافية والعدالة في المنافسة، مع تتبع دقيق لكل خطوة في عملية الشراء.',
-  },
-  {
-    img: '/images/loading-dock.jpg',
-    badge: 'شبكة موردين معتمدة',
-    title: 'شراكات مهنية',
-    titleAccent: 'بثقة واحترافية',
-    sub: 'تواصل مباشر وسريع بين كبار المقاولين والموردين المعتمدين في المملكة، مع إدارة رقمية كاملة لطلبات الشراء وعروض الأسعار.',
-  },
-];
+
 
 export default function Home() {
+  const tNav = useTranslations('Landing.Navbar');
+  const tHero = useTranslations('Landing.HeroSlides');
+  const tAction = useTranslations('Landing.HeroAction');
+  const tStats = useTranslations('Landing.Stats');
+  const tFeatures = useTranslations('Landing.Features');
+  const tContractor = useTranslations('Landing.Contractor');
+  const tSupplier = useTranslations('Landing.Supplier');
+  const tHow = useTranslations('Landing.HowItWorks');
+  const tPartnership = useTranslations('Landing.Partnership');
+  const tCTA = useTranslations('Landing.CTA');
+  const tFooter = useTranslations('Landing.Footer');
+  const tLanding = useTranslations('Landing');
+  const locale = useLocale();
+
+  const heroSlides = [
+    {
+      img: '/images/warehouse-desk.jpg',
+      badge: tHero('slide1_badge'),
+      title: tHero('slide1_title'),
+      titleAccent: tHero('slide1_accent'),
+      sub: tHero('slide1_sub'),
+    },
+    {
+      img: '/images/construction-site.jpg',
+      badge: tHero('slide2_badge'),
+      title: tHero('slide2_title'),
+      titleAccent: tHero('slide2_accent'),
+      sub: tHero('slide2_sub'),
+    },
+    {
+      img: '/images/loading-dock.jpg',
+      badge: tHero('slide3_badge'),
+      title: tHero('slide3_title'),
+      titleAccent: tHero('slide3_accent'),
+      sub: tHero('slide3_sub'),
+    },
+  ];
+
   const [activeFlow, setActiveFlow] = useState<'contractor' | 'supplier'>('contractor');
   const [slide, setSlide] = useState(0);
   const [scrolled, setScrolled] = useState(false);
@@ -51,23 +69,23 @@ export default function Home() {
   }, []);
 
   const contractorSteps = [
-    { step: "01", title: "طرح الطلب", desc: "تحديد الكميات والمواصفات بدقة في دقائق.", icon: FileText },
-    { step: "02", title: "استقبال العروض", desc: "وصول عروض تنافسية فورية من الموردين.", icon: Search },
-    { step: "03", title: "المفاضلة والتعميد", desc: "المقارنة الذكية والاعتماد بضغطة زر.", icon: ShieldCheck },
-    { step: "04", title: "التوريد والدفع", desc: "متابعة التوريد وضمان الاستلام والتحصيل.", icon: Truck }
+    { step: "01", title: tHow('c_s1_title'), desc: tHow('c_s1_desc'), icon: FileText },
+    { step: "02", title: tHow('c_s2_title'), desc: tHow('c_s2_desc'), icon: Search },
+    { step: "03", title: tHow('c_s3_title'), desc: tHow('c_s3_desc'), icon: ShieldCheck },
+    { step: "04", title: tHow('c_s4_title'), desc: tHow('c_s4_desc'), icon: Truck }
   ];
 
   const supplierSteps = [
-    { step: "01", title: "استقبال الطلبات", desc: "إشعارات فورية بالمناقصات المطابقة لنشاطك.", icon: Zap },
-    { step: "02", title: "تقديم العرض", desc: "إرسال عروض أسعار احترافية متكاملة.", icon: FileCheck },
-    { step: "03", title: "التفاوض والاعتماد", desc: "تواصل مباشر مع المقاولين واعتماد رقمي.", icon: CheckCircle },
-    { step: "04", title: "التسليم والتحصيل", desc: "تسليم المواد وتحصيل الدفعات بانتظام.", icon: BarChart3 }
+    { step: "01", title: tHow('s_s1_title'), desc: tHow('s_s1_desc'), icon: Zap },
+    { step: "02", title: tHow('s_s2_title'), desc: tHow('s_s2_desc'), icon: FileCheck },
+    { step: "03", title: tHow('s_s3_title'), desc: tHow('s_s3_desc'), icon: CheckCircle },
+    { step: "04", title: tHow('s_s4_title'), desc: tHow('s_s4_desc'), icon: BarChart3 }
   ];
 
   const activeSteps = activeFlow === 'contractor' ? contractorSteps : supplierSteps;
 
   return (
-    <div className="min-h-screen bg-[#020617] flex flex-col font-body text-right overflow-x-hidden selection:bg-cta/30" dir="rtl">
+    <div className="min-h-screen bg-[#020617] flex flex-col font-body text-foreground overflow-x-hidden selection:bg-cta/30">
 
       {/* Premium Navigation - Aligned with App Primary Navy & CTA Blue */}
       <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${scrolled ? 'bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
@@ -82,29 +100,30 @@ export default function Home() {
 
           <div className="hidden lg:flex items-center gap-10 text-slate-400 font-bold text-sm tracking-normal">
             <Link href="#features" className="hover:text-white transition-colors relative group">
-              المميزات
+              {tNav('features')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
             <Link href="#how" className="hover:text-white transition-colors relative group">
-              كيف نعمل
+              {tNav('how_it_works')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
             <Link href="/register?role=Supplier" className="hover:text-white transition-colors relative group">
-              بوابة الموردين
+              {tNav('suppliers_portal')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
             <Link href="/register?role=Contractor" className="hover:text-white transition-colors relative group">
-              بوابة المقاولين
+              {tNav('contractors_portal')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
           </div>
 
           <div className="flex items-center gap-4">
+            <LanguageSwitcher className="text-slate-300 hover:text-white hover:bg-white/5" />
             <Link href="/login">
-              <Button variant="ghost" className="text-slate-300 hover:text-white font-bold text-sm px-5 h-11 hover:bg-white/5 transition-all">دخول</Button>
+              <Button variant="ghost" className="text-slate-300 hover:text-white font-bold text-sm px-5 h-11 hover:bg-white/5 transition-all">{tNav('login')}</Button>
             </Link>
             <Link href="/register">
-              <Button className="font-bold bg-white text-primary hover:bg-cta hover:text-white px-8 rounded-xl h-11 text-sm transition-all shadow-xl shadow-white/5 border-none">ابدأ مجاناً</Button>
+              <Button className="font-bold bg-white text-primary hover:bg-cta hover:text-white px-8 rounded-xl h-11 text-sm transition-all shadow-xl shadow-white/5 border-none">{tNav('start_free')}</Button>
             </Link>
           </div>
         </div>
@@ -113,7 +132,7 @@ export default function Home() {
       <main className="relative">
 
         {/* HERO - Full bleed architectural design */}
-        <section className="relative h-screen min-h-[800px] overflow-hidden flex items-center">
+        <section className="relative h-screen min-h-[800px] overflow-hidden flex flex-col">
           {/* Slides */}
           {heroSlides.map((s, i) => (
             <div key={i} className={`absolute inset-0 transition-all duration-[1500ms] ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
@@ -128,34 +147,35 @@ export default function Home() {
           <div className="absolute inset-0 z-[5] opacity-20 pointer-events-none"
             style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
 
-          <div className="relative z-10 w-full max-w-7xl mx-auto px-6">
-            <div className="max-w-2xl space-y-8 animate-in fade-in slide-in-from-right-10 duration-1000">
+          {/* Hero Text Content */}
+          <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-20">
+            <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-right-10 duration-1000">
               <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-cta/10 border border-cta/20 backdrop-blur-md text-sky-400 text-xs font-black uppercase tracking-normal shadow-lg shadow-cta/10">
                 <div className="w-2 h-2 rounded-full bg-cta animate-pulse" />
                 {heroSlides[slide].badge}
               </div>
 
-              <h1 className="text-5xl md:text-7xl font-bold text-white leading-[1.6] tracking-normal">
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white leading-tight tracking-normal">
                 {heroSlides[slide].title}<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200">
                   {heroSlides[slide].titleAccent}
                 </span>
               </h1>
 
-              <p className="text-slate-300 text-lg md:text-xl leading-relaxed font-medium max-w-xl">
+              <p className="text-slate-300 text-base md:text-lg leading-relaxed font-medium max-w-xl">
                 {heroSlides[slide].sub}
               </p>
 
-              <div className="flex flex-col sm:flex-row items-center gap-6 pt-4">
+              <div className="flex flex-col sm:flex-row items-center gap-5 pt-2">
                 <Link href="/register" className="w-full sm:w-auto">
-                  <Button className="w-full h-16 px-10 text-lg font-black rounded-2xl bg-cta hover:bg-sky-600 text-white gap-3 transition-all hover:scale-105 shadow-2xl shadow-cta/30 border-none">
-                    سجل الآن مجاناً <ArrowLeft size={20} />
+                  <Button className="w-full h-14 px-8 text-base font-black rounded-2xl bg-cta hover:bg-sky-600 text-white gap-3 transition-all hover:scale-105 shadow-2xl shadow-cta/30 border-none">
+                    {tAction('register_now')} <ArrowLeft size={18} className="rtl:rotate-0 ltr:rotate-180" />
                   </Button>
                 </Link>
                 <div className="flex items-center gap-4 py-2">
                   <div className="flex flex-col">
-                    <span className="text-white font-black text-sm tracking-normal">انضم لشبكة عملائنا الأوائل</span>
-                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-normal mt-1">فرص حصرية للمشتركين الأوائل</span>
+                    <span className="text-white font-black text-sm tracking-normal">{tAction('join_early')}</span>
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-normal mt-1">{tAction('exclusive_opportunities')}</span>
                   </div>
                 </div>
               </div>
@@ -163,7 +183,7 @@ export default function Home() {
           </div>
 
           {/* Side Progress Bar */}
-          <div className="absolute right-10 -mr-[30px] top-1/2 -translate-y-1/2 z-20 flex flex-col gap-8 items-center hidden md:flex">
+          <div className="absolute right-10 -mr-[30px] top-1/2 -translate-y-1/2 z-20 flex-col gap-8 items-center hidden md:flex">
             {heroSlides.map((_, i) => (
               <button key={i} onClick={() => setSlide(i)}
                 className={`group flex items-center gap-4 transition-all ${i === slide ? 'text-sky-400' : 'text-slate-500'}`}>
@@ -172,23 +192,23 @@ export default function Home() {
             ))}
           </div>
 
-          {/* Bottom Floating Stats */}
-          <div className="absolute bottom-4 md:bottom-6 left-6 right-6 z-20">
+          {/* Bottom Floating Stats - now in normal flow */}
+          <div className="relative z-20 px-6 pb-4 md:pb-6">
             <div className="max-w-7xl mx-auto">
-              <div className="flex md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 overflow-x-auto snap-x snap-mandatory pb-4 hide-scrollbar w-full">
+              <div className="flex md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 overflow-x-auto snap-x snap-mandatory pb-2 hide-scrollbar w-full">
                 {[
-                  { val: 'الهدف: 500+', label: 'شركة مسجلة قريباً', icon: Building2 },
-                  { val: 'أتمتة كاملة', label: 'للمناقصات الإنشائية', icon: FileCheck },
-                  { val: '70%', label: 'توفير مستهدف للوقت', icon: Zap },
-                  { val: '15%', label: 'تحسين في التكاليف', icon: TrendingUp },
+                  { val: tStats('goal_500'), label: tStats('registered_company'), icon: Building2 },
+                  { val: tStats('full_automation'), label: tStats('construction_tenders'), icon: FileCheck },
+                  { val: tStats('saving_70'), label: tStats('time_saving'), icon: Zap },
+                  { val: tStats('improvement_15'), label: tStats('cost_improvement'), icon: TrendingUp },
                 ].map((s, i) => (
                   <div key={i} className="min-w-[260px] md:min-w-0 shrink-0 snap-center bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-5 md:p-6 flex items-center gap-4 md:gap-5 group hover:bg-white/[0.06] transition-all">
                     <div className="w-12 h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
                       <s.icon size={24} />
                     </div>
-                    <div>
-                      <div className="text-xl md:text-2xl font-black text-white leading-none">{s.val}</div>
-                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-normal mt-1 md:mt-2">{s.label}</div>
+                    <div className="flex flex-col justify-center min-w-0">
+                      <div className="text-lg md:text-xl font-black text-white leading-tight">{s.val}</div>
+                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
                     </div>
                   </div>
                 ))}
@@ -201,7 +221,7 @@ export default function Home() {
         <section className="py-12 border-b border-white/5 bg-[#020617] overflow-hidden relative flex flex-col items-center">
           <div className="text-slate-500 text-xs font-black uppercase tracking-normal mb-10 relative z-10 flex items-center gap-4">
             <div className="w-12 h-[1px] bg-white/10" />
-            شركاء نعتز بثقتهم
+            {tLanding('Partners')}
             <div className="w-12 h-[1px] bg-white/10" />
           </div>
           
@@ -245,19 +265,19 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
               <div className="space-y-4">
-                <div className="text-sky-400 font-black text-xs uppercase tracking-normal">التحول الرقمي الكامل</div>
-                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal leading-snug md:leading-tight">قوة مدماك تيك <br /> في أتمتة مشترياتك</h2>
+                <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tFeatures('tagline')}</div>
+                <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal leading-snug md:leading-tight" dangerouslySetInnerHTML={{ __html: tFeatures.raw('title') }} />
               </div>
-              <p className="text-slate-400 max-w-md text-lg leading-relaxed border-r-2 border-cta/30 pr-6">
-                كل ما تحتاجه لإدارة مشترياتك الإنشائية في مكان واحد، مع نظام ذكي يضمن الدقة والشفافية.
+              <p className="text-slate-400 max-w-md text-lg leading-relaxed border-s-2 border-cta/30 ps-6">
+                {tFeatures('desc')}
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {[
-                { title: "شفافية المناقصات", desc: "نظام إلكتروني يضمن عدالة المنافسة وشفافية العروض لجميع الأطراف والحد من التلاعب.", icon: ShieldCheck, color: "cta" },
-                { title: "سرعة التنفيذ", desc: "تقليل الوقت المستغرق في طلب المواد والمفاضلة بين الموردين بنسبة تصل إلى 70%.", icon: Zap, color: "blue" },
-                { title: "تحليلات متقدمة", desc: "تقارير ذكية حول الأسعار، الجودة، والتزام الموردين بالمواعيد لاتخاذ قرارات أدق.", icon: BarChart3, color: "purple" }
+                { title: tFeatures('f1_title'), desc: tFeatures('f1_desc'), icon: ShieldCheck, color: "cta" },
+                { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, color: "blue" },
+                { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, color: "purple" }
               ].map((f, i) => (
                 <div key={i} className="p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-cta/30 transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden">
                   <div className="absolute -top-10 -left-10 w-32 h-32 bg-cta/5 rounded-full blur-3xl group-hover:bg-cta/10 transition-all" />
@@ -266,8 +286,8 @@ export default function Home() {
                   </div>
                   <h3 className="text-2xl font-bold text-white mb-4 group-hover:text-sky-400 transition-colors">{f.title}</h3>
                   <p className="text-slate-400 text-base leading-relaxed">{f.desc}</p>
-                  <div className="mt-8 flex items-center gap-2 text-sky-400 text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
-                    تعرف على المزيد <ArrowLeft size={14} />
+                  <div className="mt-8 flex items-center gap-2 text-sky-400 text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all rtl:translate-x-2 ltr:-translate-x-2 group-hover:translate-x-0">
+                    {tFeatures('learn_more')} <ArrowLeft size={14} className="rtl:rotate-0 ltr:rotate-180" />
                   </div>
                 </div>
               ))}
@@ -288,25 +308,23 @@ export default function Home() {
                   <div className="w-10 h-10 rounded-xl bg-cta flex items-center justify-center text-white">
                     <TrendingUp size={20} />
                   </div>
-                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-widest">تحسين الأداء</div>
+                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
                 </div>
-                <div className="text-5xl font-black text-white leading-none">15%</div>
-                <div className="text-slate-400 text-sm mt-3 font-medium">توفير حقيقي في <br /> ميزانية المشتريات</div>
+                <div className="text-5xl font-black text-white leading-none">{tContractor('stat_val')}</div>
+                <div className="text-slate-400 text-sm mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
               </div>
             </div>
 
             <div className="flex items-center px-10 lg:px-24 py-24 relative bg-[#0F172A]/50">
               <div className="space-y-10 max-w-xl">
                 <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
-                  <div className="w-10 h-0.5 bg-cta" /> للمقاولين
+                  <div className="w-10 h-0.5 bg-cta" /> {tContractor('tagline')}
                 </div>
-                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal">
-                  تحكم كامل بمشتريات <br /> <span className="text-sky-400">مشاريعك الإنشائية</span>
-                </h2>
-                <p className="text-slate-400 text-xl leading-relaxed">أتمتة كاملة لدورة المشتريات بدءاً من طرح المناقصات ومروراً بالمفاضلة الذكية بين عروض الموردين وحتى اعتماد الدفعات واستلام المواد بضغطة زر.</p>
+                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal" dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }} />
+                <p className="text-slate-400 text-xl leading-relaxed">{tContractor('desc')}</p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {["شبكة موردين معتمدة", "مفاضلة أسعار آلية", "توفير التكاليف والوقت", "تقارير وتحليلات لحظية"].map((item, i) => (
+                  {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
                     <div key={i} className="flex items-center gap-4 text-slate-300 text-sm font-bold bg-white/5 p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all">
                       <CheckCircle2 size={20} className="text-sky-400 shrink-0" /> {item}
                     </div>
@@ -316,7 +334,7 @@ export default function Home() {
                 <div className="pt-6">
                   <Link href="/register?role=Contractor">
                     <Button className="h-16 px-12 text-lg font-black rounded-2xl bg-cta hover:bg-sky-600 text-white shadow-2xl shadow-cta/20 border-none transition-all hover:scale-105">
-                      سجل كمقاول الآن
+                      {tContractor('cta')}
                     </Button>
                   </Link>
                 </div>
@@ -331,15 +349,13 @@ export default function Home() {
             <div className="flex items-center px-10 lg:px-24 py-24 relative order-2 lg:order-1 bg-[#0F172A]/30">
               <div className="space-y-10 max-w-xl">
                 <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
-                  <div className="w-10 h-0.5 bg-sky-400" /> للموردين
+                  <div className="w-10 h-0.5 bg-sky-400" /> {tSupplier('tagline')}
                 </div>
-                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal">
-                  وسع قاعدة عملائك <br /> <span className="text-sky-400">وزد مبيعاتك رقمياً</span>
-                </h2>
-                <p className="text-slate-400 text-xl leading-relaxed">تلقى طلبات الشراء المباشرة من كبار المقاولين في المملكة. نظامنا يضمن لك وصولاً أسرع لفرص البيع وإدارة أسهل لعروض الأسعار.</p>
+                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal" dangerouslySetInnerHTML={{ __html: tSupplier.raw('title') }} />
+                <p className="text-slate-400 text-xl leading-relaxed">{tSupplier('desc')}</p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {["وصول لمشاريع كبرى", "إدارة عروض رقمية", "تتبع الدفعات والتوريد", "نظام تقييم معتمد"].map((item, i) => (
+                  {[tSupplier('access'), tSupplier('digital'), tSupplier('tracking'), tSupplier('rating')].map((item, i) => (
                     <div key={i} className="flex items-center gap-4 text-slate-300 text-sm font-bold bg-white/5 p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all">
                       <CheckCircle2 size={20} className="text-sky-400 shrink-0" /> {item}
                     </div>
@@ -349,7 +365,7 @@ export default function Home() {
                 <div className="pt-6">
                   <Link href="/register?role=Supplier">
                     <Button className="h-16 px-12 text-lg font-black rounded-2xl bg-sky-600 hover:bg-sky-500 text-white shadow-2xl shadow-sky-500/20 border-none transition-all hover:scale-105">
-                      سجل كمورد الآن
+                      {tSupplier('cta')}
                     </Button>
                   </Link>
                 </div>
@@ -366,10 +382,10 @@ export default function Home() {
                   <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white">
                     <LayoutDashboard size={20} />
                   </div>
-                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-normal">طلبات اليوم</div>
+                  <div className="text-[10px] font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
                 </div>
-                <div className="text-5xl font-black text-white leading-none">24</div>
-                <div className="text-slate-400 text-sm mt-3 font-medium">طلب شراء مباشر <br /> قيد الانتظار</div>
+                <div className="text-5xl font-black text-white leading-none">{tSupplier('stat_val')}</div>
+                <div className="text-slate-400 text-sm mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
               </div>
             </div>
           </div>
@@ -381,21 +397,21 @@ export default function Home() {
         <section id="how" className="py-32 relative bg-[#0F172A]">
           <div className="max-w-7xl mx-auto px-6">
             <div className="text-center mb-20 space-y-4">
-              <div className="text-sky-400 font-black text-xs uppercase tracking-normal">منهجية العمل</div>
-              <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal">كيف تعمل المنصة؟</h2>
-              <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed">خطوات بسيطة وواضحة لتحويل مشترياتك التقليدية إلى منظومة رقمية ذكية</p>
+              <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tHow('tagline')}</div>
+              <h2 className="text-4xl md:text-5xl font-bold text-white tracking-normal">{tHow('title')}</h2>
+              <p className="text-slate-400 max-w-xl mx-auto text-lg leading-relaxed">{tHow('desc')}</p>
             </div>
 
             <div className="flex justify-center mb-16">
               <div className="bg-white/5 p-1.5 rounded-2xl inline-flex border border-white/10 relative overflow-hidden group">
-                <div className={`absolute inset-y-1.5 w-[calc(50%-6px)] bg-cta rounded-xl transition-all duration-500 ease-out z-0 ${activeFlow === 'contractor' ? 'translate-x-0' : '-translate-x-[100%]'}`} />
+                <div className={`absolute inset-y-1.5 w-[calc(50%-6px)] bg-cta rounded-xl transition-all duration-500 ease-out z-0 ${activeFlow === 'contractor' ? 'rtl:translate-x-0 ltr:translate-x-0' : 'rtl:-translate-x-[100%] ltr:translate-x-[100%]'}`} />
                 <button onClick={() => setActiveFlow('contractor')}
                   className={`relative z-10 px-10 py-3.5 text-sm font-black rounded-xl transition-all duration-300 ${activeFlow === 'contractor' ? 'text-white' : 'text-slate-400 hover:text-white'}`}>
-                  المقاولين
+                  {tHow('contractors_tab')}
                 </button>
                 <button onClick={() => setActiveFlow('supplier')}
                   className={`relative z-10 px-10 py-3.5 text-sm font-black rounded-xl transition-all duration-300 ${activeFlow === 'supplier' ? 'text-white' : 'text-slate-400 hover:text-white'}`}>
-                  الموردين
+                  {tHow('suppliers_tab')}
                 </button>
               </div>
             </div>
@@ -404,11 +420,11 @@ export default function Home() {
               {activeSteps.map((s, i) => (
                 <div key={i} className="flex flex-col items-center text-center space-y-6 group relative">
                   {i < 3 && (
-                    <div className="hidden md:block absolute top-10 -left-1/2 w-full h-[2px] bg-gradient-to-r from-transparent via-white/5 to-transparent z-0" />
+                    <div className="hidden md:block absolute top-10 rtl:-left-1/2 ltr:-right-1/2 w-full h-[2px] bg-gradient-to-r from-transparent via-white/5 to-transparent z-0" />
                   )}
                   <div className="w-20 h-20 rounded-[2.5rem] bg-white/[0.02] border border-white/5 flex items-center justify-center text-slate-300 relative group-hover:bg-cta group-hover:border-cta group-hover:text-white transition-all duration-500 z-10 shadow-xl group-hover:scale-110">
                     <s.icon size={36} />
-                    <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-cta text-white text-xs font-black flex items-center justify-center border-4 border-[#0F172A]">{s.step}</div>
+                    <div className="absolute -top-3 rtl:-right-3 ltr:-left-3 w-8 h-8 rounded-full bg-cta text-white text-xs font-black flex items-center justify-center border-4 border-[#0F172A]">{s.step}</div>
                   </div>
                   <div className="space-y-3 z-10">
                     <h4 className="text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h4>
@@ -427,17 +443,15 @@ export default function Home() {
 
           <div className="relative z-10 max-w-4xl mx-auto px-6 text-center space-y-8">
             <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-cta/10 border border-cta/20 text-sky-400 text-xs font-black uppercase tracking-normal">
-              بيئة عمل موثوقة
+              {tPartnership('tagline')}
             </div>
-            <h2 className="text-4xl md:text-6xl font-bold text-white tracking-normal leading-[1.6]">
-              أكبر شبكة للمقاولين والموردين <br /> <span className="text-sky-400">في مكان واحد</span>
-            </h2>
+            <h2 className="text-4xl md:text-6xl font-bold text-white tracking-normal leading-[1.6]" dangerouslySetInnerHTML={{ __html: tPartnership.raw('title') }} />
             <p className="text-slate-400 text-xl leading-relaxed font-medium">
-              نربط كبار المقاولين بأفضل الموردين المعتمدين لضمان جودة التوريد والالتزام بالمواصفات، مع نظام تقييم ذكي يضمن احترافية التعامل.
+              {tPartnership('desc')}
             </p>
             <div className="pt-4">
               <Button variant="outline" className="h-16 px-12 text-lg font-black rounded-2xl border-white/10 text-white hover:bg-white/5 transition-all">
-                تعرف على شركائنا
+                {tPartnership('cta')}
               </Button>
             </div>
           </div>
@@ -450,30 +464,28 @@ export default function Home() {
               <div className="absolute top-0 right-0 w-96 h-96 bg-cta/10 rounded-full blur-[120px] group-hover:bg-cta/20 transition-all duration-1000" />
               <div className="absolute bottom-0 left-0 w-64 h-64 bg-sky-500/10 rounded-full blur-[100px]" />
 
-              <h2 className="text-4xl md:text-7xl font-bold text-white relative z-10 leading-[1.6]">
-                ابدأ رحلة التحول الرقمي <br /> <span className="text-sky-400">في مشترياتك اليوم</span>
-              </h2>
+              <h2 className="text-4xl md:text-7xl font-bold text-white relative z-10 leading-[1.6]" dangerouslySetInnerHTML={{ __html: tCTA.raw('title') }} />
               <p className="text-slate-300 max-w-2xl mx-auto text-xl relative z-10 leading-relaxed font-medium">
-                انضم إلى مئات الشركات السعودية التي تعتمد على مدماك تيك في رفع كفاءة سلاسل الإمداد وتوفير التكاليف التشغيلية.
+                {tCTA('desc')}
               </p>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-6 relative z-10 pt-6">
                 <Link href="/register" className="w-full sm:w-auto">
                   <Button className="w-full h-18 px-14 text-xl font-black rounded-[2rem] bg-white text-primary hover:bg-cta hover:text-white transition-all hover:scale-105 shadow-2xl shadow-white/5 border-none">
-                    ابدأ الآن مجاناً
+                    {tCTA('register')}
                   </Button>
                 </Link>
                 <Link href="/contact" className="w-full sm:w-auto">
                   <Button variant="outline" className="w-full h-18 px-14 text-xl font-black rounded-[2rem] border-white/10 text-white hover:bg-white/5 backdrop-blur-md transition-all">
-                    تواصل معنا
+                    {tCTA('contact')}
                   </Button>
                 </Link>
               </div>
 
               <div className="pt-10 flex items-center justify-center gap-10 text-[10px] font-black text-slate-500 uppercase tracking-normal relative z-10">
-                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> إعداد سريع</span>
-                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> بدون رسوم تسجيل</span>
-                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> رؤية 2030</span>
+                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> {tCTA('setup')}</span>
+                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> {tCTA('no_fees')}</span>
+                <span className="flex items-center gap-2"><CheckCircle size={14} className="text-sky-400" /> {tCTA('vision')}</span>
               </div>
             </div>
           </div>
@@ -493,42 +505,42 @@ export default function Home() {
               </div>
             </div>
             <p className="text-slate-500 text-lg leading-relaxed max-w-sm font-medium">
-              المنصة التقنية السعودية الرائدة لتحويل قطاع المشتريات الإنشائية إلى منظومة رقمية ذكية متكاملة تواكب تطلعات رؤية المملكة 2030.
+              {tFooter('desc')}
             </p>
             <div className="flex items-center gap-4">
               <Link href="/contact" className="px-6 py-3 rounded-xl bg-white/5 font-bold text-sm text-slate-300 hover:text-sky-400 hover:bg-white/10 transition-all border border-white/5">
-                فريق دعم مدماك مستعد لخدمتك
+                {tFooter('support')}
               </Link>
             </div>
           </div>
 
           <div className="space-y-8">
-            <h4 className="text-white font-black text-xs uppercase tracking-normal">الروابط السريعة</h4>
+            <h4 className="text-white font-black text-xs uppercase tracking-normal">{tFooter('quick_links')}</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
               {[
-                { label: "عن المنصة", href: "/about" },
-                { label: "المميزات", href: "/#features" },
-                { label: "الأسعار", href: "/pricing" },
-                { label: "بوابة الموردين", href: "/register?role=Supplier" },
-                { label: "حلول المقاولين", href: "/register?role=Contractor" }
+                { label: tFooter('l_about'), href: "/about" },
+                { label: tFooter('l_features'), href: "/#features" },
+                { label: tFooter('l_pricing'), href: "/pricing" },
+                { label: tFooter('l_suppliers'), href: "/register?role=Supplier" },
+                { label: tFooter('l_contractors'), href: "/register?role=Contractor" }
               ].map(l => (
                 <li key={l.label}><Link href={l.href} className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
-                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l.label}
+                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4 rtl:group-hover:mr-2 ltr:group-hover:ml-2" /> {l.label}
                 </Link></li>
               ))}
             </ul>
           </div>
 
           <div className="space-y-8">
-            <h4 className="text-white font-black text-xs uppercase tracking-normal">القانونية والاتصال</h4>
+            <h4 className="text-white font-black text-xs uppercase tracking-normal">{tFooter('legal')}</h4>
             <ul className="space-y-5 text-base text-slate-500 font-bold">
               {[
-                { label: "سياسة الخصوصية", href: "/privacy" },
-                { label: "الشروط والأحكام", href: "/terms" },
-                { label: "تواصل معنا", href: "/contact" }
+                { label: tFooter('l_privacy'), href: "/privacy" },
+                { label: tFooter('l_terms'), href: "/terms" },
+                { label: tFooter('l_contact'), href: "/contact" }
               ].map(l => (
                 <li key={l.label}><Link href={l.href} className="hover:text-sky-400 transition-colors flex items-center gap-2 group">
-                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4" /> {l.label}
+                  <div className="w-0 h-px bg-cta transition-all group-hover:w-4 rtl:group-hover:mr-2 ltr:group-hover:ml-2" /> {l.label}
                 </Link></li>
               ))}
             </ul>
@@ -536,10 +548,10 @@ export default function Home() {
         </div>
 
         <div className="max-w-7xl mx-auto px-6 pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-black text-slate-600 uppercase tracking-normal relative z-10">
-          <p>© {new Date().getFullYear()} MDMAK TECH PLATFORM - ALL RIGHTS RESERVED</p>
+          <p>{tFooter('copyright', { year: new Date().getFullYear() })}</p>
           <div className="flex items-center gap-10">
-            <span className="flex items-center gap-2 text-slate-400"><Globe size={14} /> العربية</span>
-            <span>بكل فخر في المملكة العربية السعودية 🇸🇦</span>
+            <span className="flex items-center gap-2 text-slate-400"><Globe size={14} /> {locale === 'ar' ? 'العربية' : 'English'}</span>
+            <span>{tFooter('made_in')}</span>
           </div>
         </div>
 
