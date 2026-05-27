@@ -274,9 +274,17 @@ export default function LoginPage() {
 
     } catch (error: any) {
       console.error("❌ Login error:", error)
-      let errorMsg = error.message || t("err_login")
+      let errorMsg = t("err_login")
       if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
         errorMsg = t("err_invalid_creds")
+      } else if (error.code === "auth/invalid-email") {
+        errorMsg = t("err_invalid_email")
+      } else if (error.code === "auth/user-disabled") {
+        errorMsg = t("err_user_disabled")
+      } else if (error.code === "auth/too-many-requests") {
+        errorMsg = t("err_too_many_requests")
+      } else if (error.code === "auth/network-request-failed") {
+        errorMsg = t("err_network")
       }
 
       setLoginError(errorMsg)

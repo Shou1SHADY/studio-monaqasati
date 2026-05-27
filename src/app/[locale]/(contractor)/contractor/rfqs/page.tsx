@@ -394,7 +394,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
                             <Calendar size={12} className="text-amber-600" />
                           </div>
-                          {t("rfq_deadline_label")}: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set")}</span>
+                          {t("rfq_deadline_label", { date: rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set") })}
                           {getStatusBadge(rfq)}
                         </div>
                         {rfq.pdfUrl && (

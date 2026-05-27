@@ -109,7 +109,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
           collection(firestore, "users", otherId, "notifications"),
           {
             type: "new_chat_message",
-            title: "رسالة جديدة",
+            title: t("chat_new_message"),
             message: msgText.length > 80 ? msgText.substring(0, 80) + "..." : msgText,
             chatId: chatId,
             rfqTitle: chatMeta.rfqTitle || "",

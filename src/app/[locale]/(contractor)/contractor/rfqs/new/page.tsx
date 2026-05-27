@@ -40,7 +40,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, displayCity } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
 const SAUDI_CITIES = [
@@ -490,7 +490,7 @@ export default function NewRfqPage() {
                 <span className="font-bold text-sm">{label}</span>
               </button>
               {idx < 1 && (
-                <ChevronLeft size={20} className="mx-2 text-slate-300" />
+                locale === 'ar' ? <ChevronLeft size={20} className="mx-2 text-slate-300" /> : <ChevronRight size={20} className="mx-2 text-slate-300" />
               )}
             </div>
           ))}
@@ -614,7 +614,7 @@ export default function NewRfqPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {Object.keys(CATEGORIES_DATA).map(cat => (
-                                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                  <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -632,7 +632,7 @@ export default function NewRfqPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 {product.category && CATEGORIES_DATA[product.category]?.map(sub => (
-                                  <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                                  <SelectItem key={sub} value={sub}>{displaySubcategory(sub, locale)}</SelectItem>
                                 ))}
                                 <SelectItem value="أخرى">{t("newrfq_other_category")}</SelectItem>
                               </SelectContent>
@@ -876,14 +876,14 @@ export default function NewRfqPage() {
               disabled={step === 1 || isSubmitting}
               className={`gap-2 px-6 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             >
-              <ChevronRight size={18} />
+              {locale === 'ar' ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
               {t("newrfq_prev")}
             </Button>
 
             {step === 1 ? (
               <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
                 {t("newrfq_next")}
-                <ChevronLeft size={18} />
+                {locale === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
               </Button>
             ) : (
               <div className="flex gap-3 flex-wrap">

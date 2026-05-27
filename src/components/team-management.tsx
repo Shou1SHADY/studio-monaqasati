@@ -93,7 +93,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         // Create notification for the user
         await addDoc(collection(firestore, "users", targetUser.id, "notifications"), {
           title: t("team_pending_invitations"),
-          message: `${profile.name} ${t("team_invitation_to_join", { name: "" }).trim()}`,
+          message: `${profile.name} ${t("team_invitation_to_join", { name: profile.companyName || profile.name || "" }).trim()}`,
           type: "invitation",
           organizationId: profile.organizationId,
           createdAt: new Date().toISOString(),

@@ -364,7 +364,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
           <SidebarTrigger />
           
           <div className="flex-1 max-w-md flex">
@@ -395,8 +395,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground">
                   <Bell size={20} />
                   {unreadCount > 0 && (
-                    <span className={cn("absolute top-1.5 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-1.5' : 'left-1.5')}>
-                      {unreadCount > 9 ? "9+" : unreadCount}
+                    <span className={cn("absolute top-1.5 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-1.5' : 'left-1.5')}>
+                      {unreadCount}
                     </span>
                   )}
                 </Button>
@@ -476,17 +476,19 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                 : t("notification_new_offer")}
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                              {isNewRfq 
-                                ? t("notification_rfq_in_category", { category: notif.category })
-                                : isInvitation
-                                  ? (notif.message || "")
-                                  : isSampleRequest && notif.type === "sample_requested"
-                                    ? (notif.message || "")
-                                    : isInquiryReply
-                                      ? (notif.description || notif.message || "")
-                                      : t("notification_offer_detail", { price: notif.price, title: notif.rfqTitle || "" })
-                              }
-                            </p>
+                               {isNewRfq 
+                                 ? t("notification_rfq_in_category", { category: notif.category })
+                                 : isInvitation
+                                   ? (notif.message || "")
+                                   : isSampleRequest && notif.type === "sample_requested"
+                                     ? (notif.message || "")
+                                     : isInquiryReply
+                                       ? (notif.description || notif.message || "")
+                                       : notif.price
+                                         ? t("notification_offer_detail", { price: notif.price, title: notif.rfqTitle || "" })
+                                         : (notif.message || notif.description || "")
+                               }
+                             </p>
                           </div>
                           {isUnread && <div className="h-2 w-2 rounded-full bg-amber-500 shrink-0 mt-1.5" />}
                         </div>
@@ -552,7 +554,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("profile")}</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/settings`)}>{t("settings")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("settings")}</DropdownMenuItem>
                   <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>{t("logout")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -127,7 +127,7 @@ export default function ContractorDashboard() {
     ...(rfqs?.slice(0, 3).map((r: any) => ({
       id: r.id, 
       type: "rfq", 
-      text: t("rfq_created", { title: r.title || t("rfq_not_set") }), 
+      text: t("rfq_created", { title: (typeof r.title === 'string' && r.title) ? r.title : t("rfq_not_set") }), 
       time: r.createdAt ? new Date(r.createdAt).toLocaleDateString(locale) : t("now"), 
       status: r.status || t("rfq_status_new"),
       actionUrl: `/contractor/rfqs/${r.id}/offers`,

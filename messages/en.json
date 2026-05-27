@@ -61,7 +61,7 @@
     "Testimonial2Role": "CEO, Al-Rashid Contracting",
     "Features": {
       "tagline": "Full Digital Transformation",
-      "title": "The Power of Mdmak Tech <br /> in Automating Procurement",
+      "title": "The Power of Mdmak Tech in Automating Procurement",
       "desc": "Everything you need to manage your construction procurement in one place, with a smart system that ensures accuracy and transparency.",
       "f1_title": "Tender Transparency",
       "f1_desc": "An electronic system ensuring fair competition and bid transparency for all parties, minimizing manipulation.",
@@ -1634,6 +1634,10 @@
       "err_user_not_found": "User data not found in the system",
       "err_invalid_creds": "Invalid email or password",
       "err_login": "An error occurred while logging in",
+      "err_invalid_email": "Please enter a valid email address",
+      "err_user_disabled": "This account has been disabled. Please contact support.",
+      "err_too_many_requests": "Too many login attempts. Please try again later or reset your password.",
+      "err_network": "Network error. Please check your internet connection and try again.",
       "dear_user": "Dear User"
     },
     "Register": {
