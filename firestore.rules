@@ -92,11 +92,12 @@ service cloud.firestore {
       }
     }
 
-    match /offers/{offerId} {
+      match /offers/{offerId} {
       // 'get' (single document): check the resource fields for ownership
       allow get: if isSignedIn() && (
         resource == null ||
         resource.data.supplierId == request.auth.uid ||
+        resource.data.contractorId == request.auth.uid ||
         resource.data.organizationId == getOrganizationId() ||
         resource.data.contractorOrgId == getOrganizationId() ||
         isAdmin()
@@ -111,10 +112,14 @@ service cloud.firestore {
       // Supplier can update their own offer; Contractor can update status on offers for their RFQs
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.supplierId == request.auth.uid)
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid)
         || (isSignedIn() && resource.data.organizationId == getOrganizationId())
         || (isSignedIn() && resource.data.contractorOrgId == getOrganizationId())
         || (isSignedIn() && resource.data.rfqId != null
-            && get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId());
+            && (
+              get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId()
+              || get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid
+            ));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.supplierId == request.auth.uid);
     }

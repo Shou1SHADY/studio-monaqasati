@@ -67,3 +67,8 @@ opencode.json
 #opencode skills json
 skills-lock.json
 
+# snapshot.yml
+rfq-new-page.png
+supplier-rfqs-snapshot.yml
+rfq-form-snapshot.yml
+contractor-offers-snapshot.yml
