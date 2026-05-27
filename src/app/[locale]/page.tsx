@@ -92,10 +92,10 @@ export default function Home() {
       <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${scrolled ? 'bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer group">
-            <div className="w-10 h-10 bg-cta rounded-xl flex items-center justify-center font-bold text-xl text-white transition-transform group-hover:scale-110 shadow-lg shadow-cta/20">م</div>
+            <div className="w-10 h-10 bg-cta rounded-xl flex items-center justify-center font-bold text-xl text-white transition-transform group-hover:scale-110 shadow-lg shadow-cta/20">{locale === 'ar' ? 'م' : 'M'}</div>
             <div className="flex flex-col">
-              <span className="text-xl font-bold text-white tracking-normal leading-none">مدماك تيك</span>
-              <span className="text-[10px] text-sky-400/80 font-bold uppercase tracking-widest mt-1">Mdmak Tech</span>
+              <span className="text-xl font-bold text-white tracking-normal leading-none">{locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}</span>
+              <span className="text-[10px] text-sky-400/80 font-bold uppercase tracking-widest mt-1">{locale === 'ar' ? 'Mdmak Tech' : 'مدماك تيك'}</span>
             </div>
           </div>
 
@@ -138,7 +138,7 @@ export default function Home() {
           {heroSlides.map((s, i) => (
             <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
               <img src={s.img} alt={s.title} className="w-full h-full object-cover object-center" />
-              <div className="absolute inset-0 bg-gradient-to-l from-[#020617] via-[#020617]/70 to-transparent" />
+              <div className={`absolute inset-0 ${locale === 'ar' ? 'bg-gradient-to-l' : 'bg-gradient-to-r'} from-[#020617] via-[#020617]/70 to-transparent`} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-[#020617]/30" />
             </div>
@@ -149,8 +149,8 @@ export default function Home() {
             style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
 
           {/* Hero Text Content */}
-          <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-16 md:pt-20">
-            <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-right-10 duration-1000">
+          <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24">
+            <div className={`max-w-2xl space-y-6 animate-in fade-in duration-1000 ${locale === 'ar' ? 'slide-in-from-right-10' : 'slide-in-from-left-10'}`}>
 
               <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col gap-2 md:gap-3">
                 <span>{heroSlides[slide].title}</span>
@@ -557,10 +557,10 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-20 mb-12 md:mb-20 relative z-10">
           <div className="col-span-1 md:col-span-2 space-y-10">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-cta text-white rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg shadow-cta/20">م</div>
+              <div className="w-12 h-12 bg-cta text-white rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg shadow-cta/20">{locale === 'ar' ? 'م' : 'M'}</div>
               <div className="flex flex-col">
-                <span className="text-2xl font-bold text-white leading-none">مدماك تيك</span>
-                <span className="text-xs text-sky-400/70 font-bold uppercase tracking-widest mt-1">Mdmak Tech</span>
+                <span className="text-2xl font-bold text-white leading-none">{locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}</span>
+                <span className="text-xs text-sky-400/70 font-bold uppercase tracking-widest mt-1">{locale === 'ar' ? 'Mdmak Tech' : 'مدماك تيك'}</span>
               </div>
             </div>
             <p className="text-slate-500 text-lg leading-relaxed max-w-sm font-medium">

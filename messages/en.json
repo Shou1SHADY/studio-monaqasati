@@ -73,7 +73,7 @@
     },
     "Contractor": {
       "tagline": "For Contractors",
-      "title": "Full Control over <br /> <span className=\"text-sky-400\">Construction Procurement</span>",
+      "title": "Full Control over <br /> <span class=\"text-sky-400\">Construction Procurement</span>",
       "desc": "Full automation of the procurement cycle, from tendering and smart bid comparison to payment approval and material receipt with a single click.",
       "network": "Certified Suppliers Network",
       "comparison": "Automated Price Comparison",
@@ -86,7 +86,7 @@
     },
     "Supplier": {
       "tagline": "For Suppliers",
-      "title": "Expand Your Client Base <br /> <span className=\"text-sky-400\">and Increase Sales Digitally</span>",
+      "title": "Expand Your Client Base <br /> <span class=\"text-sky-400\">and Increase Sales Digitally</span>",
       "desc": "Receive direct purchase requests from top contractors in the Kingdom. Our system guarantees faster access to sales opportunities and easier bid management.",
       "access": "Access to Major Projects",
       "digital": "Digital Bid Management",
@@ -122,12 +122,12 @@
     },
     "Partnership": {
       "tagline": "Trusted Work Environment",
-      "title": "The Largest Network of Contractors and Suppliers <br /> <span className=\"text-sky-400\">in One Place</span>",
+      "title": "The Largest Network of Contractors and Suppliers <br /> <span class=\"text-sky-400\">in One Place</span>",
       "desc": "We connect top contractors with certified suppliers to ensure supply quality and specification adherence, with a smart rating system ensuring professional dealing.",
       "cta": "Meet our Partners"
     },
     "CTA": {
-      "title": "Start your Digital Transformation <br /> <span className=\"text-sky-400\">in Procurement Today</span>",
+      "title": "Start your Digital Transformation <br /> <span class=\"text-sky-400\">in Procurement Today</span>",
       "desc": "Join hundreds of Saudi companies relying on Mdmak Tech to increase supply chain efficiency and reduce operational costs.",
       "register": "Start Now for Free",
       "contact": "Contact Us",
@@ -914,7 +914,7 @@
       "no_activities": "No activities yet",
       "no_activities_desc": "Create a new tender to start receiving offers.",
       "commitment_index": "Commitment Index",
-      "commitment_desc": "Your high commitment to tenders builds market trust and helps you secure <span className=\"text-accent font-bold\">the best prices</span>.",
+      "commitment_desc": "Your high commitment to tenders builds market trust and helps you secure <span class=\"text-accent font-bold\">the best prices</span>.",
       "commitment_cta": "How is it calculated?",
       "favorite_suppliers": "Favorite Suppliers",
       "favorite_suppliers_desc": "Companies you've previously completed successful deals with",
