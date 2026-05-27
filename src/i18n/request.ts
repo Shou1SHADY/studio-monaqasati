@@ -32,11 +32,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
 
   const messages = (await import(`../../messages/${locale}.json`)).default;
 
-  // ── debug: remove these 3 lines once the error is gone ──
-  console.log('[i18n] locale:', locale);
-  console.log('[i18n] Portal.Sidebar exists:', !!(messages as any)?.Portal?.Sidebar);
-  console.log('[i18n] top-level keys:', Object.keys(messages || {}));
-  // ────────────────────────────────────────────────────────
+
 
   return {
     locale,
