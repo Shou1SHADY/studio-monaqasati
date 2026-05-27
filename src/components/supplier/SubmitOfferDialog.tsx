@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -22,6 +22,7 @@ import {
   AlertCircle
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
 import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
@@ -46,6 +47,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const router = useRouter()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
   const firestore = useFirestore()
   const storage = useStorage()
 
@@ -102,7 +105,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     const file = e.target.files?.[0]
     if (!file) return
     if (file.type !== "application/pdf") {
-      toast({ title: "خطأ", description: "يرجى رفع ملف PDF فقط", variant: "destructive" })
+      toast({ title: t("offer_error"), description: t("offer_pdf_only"), variant: "destructive" })
       return
     }
     setIsUploadingPdf(true)
@@ -115,10 +118,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       setOfferPdfUrl(downloadUrl)
       setOfferPdfFile(file)
       setOfferPdfStoragePath(storagePath)
-      toast({ title: "تم الرفع", description: "تم إرفاق ملف عرض السعر بنجاح" })
+      toast({ title: t("offer_pdf_uploaded"), description: t("offer_pdf_uploaded") })
     } catch (error) {
       console.error("PDF upload failed:", error)
-      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+      toast({ title: t("offer_error"), description: t("offer_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingPdf(false)
     }
@@ -141,17 +144,17 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
   const submitOffer = async () => {
     if (!user || !firestore) {
-      toast({ title: "خطأ", description: "يجب تسجيل الدخول أولاً", variant: "destructive" });
+      toast({ title: t("offer_error"), description: t("offer_login_required"), variant: "destructive" });
       return;
     }
 
     if (!selectedRfq) {
-      toast({ title: "بيانات ناقصة", description: "يرجى اختيار مناقصة", variant: "destructive" });
+      toast({ title: t("offer_incomplete_data"), description: t("offer_select_rfq"), variant: "destructive" });
       return;
     }
 
     if (!offerPrice || parseFloat(offerPrice) <= 0) {
-      toast({ title: "بيانات ناقصة", description: "يرجى إدخال السعر الإجمالي", variant: "destructive" });
+      toast({ title: t("offer_incomplete_data"), description: t("offer_enter_price"), variant: "destructive" });
       return;
     }
 
@@ -247,14 +250,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       }
 
       toast({
-        title: "تم تقديم العرض بنجاح!",
-        description: `تم إرسال عرضك بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س.`,
+        title: t("offer_submitted_title"),
+        description: t("offer_submitted_desc", { price: Number(offerPrice).toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US') }),
       })
       onClose()
       if (onSuccess) onSuccess()
     } catch (error) {
       console.error(error);
-      toast({ title: "خطأ", description: "حدث خطأ أثناء تقديم العرض", variant: "destructive" })
+      toast({ title: t("offer_error"), description: t("offer_submit_failed"), variant: "destructive" })
     }
   }
 
@@ -263,18 +266,18 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
         <DialogContent
           className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
-          dir="rtl"
+          dir={locale === 'ar' ? 'rtl' : 'ltr'}
         >
-          <DialogTitle className="sr-only">تقديم عرض سعر</DialogTitle>
+          <DialogTitle className="sr-only">{t("offer_submit_title")}</DialogTitle>
 
           {profile && !profile.profileCompleted ? (
             <div className="p-8 text-center space-y-6">
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
                 <AlertCircle size={32} />
               </div>
-              <h2 className="text-xl font-bold text-slate-800">استكمال البيانات مطلوب</h2>
+              <h2 className="text-xl font-bold text-slate-800">{t("offer_profile_incomplete_title")}</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                لا يمكنك تقديم عروض أسعار لأن ملفك الشخصي غير مكتمل. يرجى إكمال بياناتك الأساسية في ملفك الشخصي للتمكن من تقديم العروض.
+                {t("offer_profile_incomplete_desc")}
               </p>
               <div className="pt-4 flex flex-col gap-2">
                 <Button
@@ -284,14 +287,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   }}
                   className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
                 >
-                  استكمال الملف الشخصي
+                  {t("offer_complete_profile")}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={onClose}
                   className="w-full h-11 rounded-xl"
                 >
-                  إغلاق
+                  {t("offer_close")}
                 </Button>
               </div>
             </div>
@@ -300,9 +303,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
                 <AlertCircle size={32} />
               </div>
-              <h2 className="text-xl font-bold text-slate-800">توثيق الحساب مطلوب</h2>
+              <h2 className="text-xl font-bold text-slate-800">{t("offer_verification_required_title")}</h2>
               <p className="text-slate-600 text-sm leading-relaxed">
-                لا يمكنك تقديم عروض أسعار حتى يتم توثيق حسابك من قبل الإدارة. يرجى التأكد من رفع مستنداتك الرسمية <strong className="text-primary">(السجل التجاري والشهادة الضريبية)</strong> في ملفك الشخصي وانتظار التوثيق.
+                {t("offer_verification_required_desc")}
               </p>
               <div className="pt-4 flex flex-col gap-2">
                 <Button
@@ -312,34 +315,34 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   }}
                   className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg"
                 >
-                  الذهاب إلى الملف الشخصي
+                  {t("offer_go_to_profile")}
                 </Button>
                 <Button
                   variant="outline"
                   onClick={onClose}
                   className="w-full h-11 rounded-xl"
                 >
-                  إغلاق
+                  {t("offer_close")}
                 </Button>
               </div>
             </div>
           ) : (
             <>
               <div className="px-5 pl-12 pt-5 pb-4 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
-            <h2 className="text-lg font-bold text-slate-800">تقديم عرض سعر</h2>
+            <h2 className="text-lg font-bold text-slate-800">{t("offer_submit_title")}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              طلب: <span className="font-semibold text-slate-700">{selectedRfq?.title}</span>
+              {selectedRfq?.title}
             </p>
             {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
             {selectedRfq?.pdfUrl && (
               <div className="mt-3 flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">
                 <div className="flex items-center gap-2">
                   <File size={16} className="text-blue-600" />
-                  <span className="text-sm font-semibold text-blue-800">مرفقات المناقصة</span>
+                  <span className="text-sm font-semibold text-blue-800">{t("offer_rfq_attachments")}</span>
                 </div>
                 <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-xs">
                   <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer">
-                    عرض المرفق
+                    {t("offer_view_attachment")}
                   </a>
                 </Button>
               </div>
@@ -353,7 +356,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 border-b border-slate-200">
                     <span className="text-sm font-bold text-primary flex items-center gap-1.5">
                       <Package size={14} />
-                      الشحنة {index + 1}
+                      {t("offer_delivery_location")} {index + 1}
                     </span>
                   </div>
                 </div>
@@ -361,10 +364,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             </div>
 
             <div className="space-y-1.5 flex-1">
-              <Label className="text-sm font-semibold">موقع التوريد (اختياري)</Label>
+              <Label className="text-sm font-semibold">{t("offer_delivery_location")}</Label>
               <div className="flex gap-2">
                 <Input
-                  placeholder="المدينة، الحي..."
+                  placeholder={t("offer_city_district")}
                   value={deliveryBatches[0].location}
                   onChange={(e) => setDeliveryBatches(prev => prev.map(b => b.id === "1" ? { ...b, location: e.target.value } : b))}
                   className="h-11 rounded-xl border-2 border-input focus:ring-2 focus:ring-primary/30"
@@ -381,14 +384,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             </div>
 
             <div className="space-y-3">
-              <Label className="text-sm font-semibold">رفع ملف عرض السعر (PDF)</Label>
+              <Label className="text-sm font-semibold">{t("offer_upload_pdf")}</Label>
               {offerPdfUrl ? (
                 <div className="flex items-center gap-4 p-4 bg-blue-50/50 border border-blue-200/50 rounded-xl">
                   <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
                     <File size={20} className="text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <span className="text-sm font-semibold text-blue-800">تم إرفاق ملف PDF</span>
+                    <span className="text-sm font-semibold text-blue-800">{t("offer_pdf_attached")}</span>
                   </div>
                   <Button variant="ghost" size="sm" onClick={removeOfferPdf} className="text-red-500 rounded-lg"><Trash2 size={16} /></Button>
                 </div>
@@ -409,7 +412,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                           <Upload size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
                         </div>
                         <div className="text-right">
-                          <span className="text-sm font-semibold text-slate-700 block">اضغط لرفع ملف PDF</span>
+                          <span className="text-sm font-semibold text-slate-700 block">{t("offer_click_to_upload_pdf")}</span>
                         </div>
                       </>
                     )}
@@ -420,25 +423,25 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">رابط الموقع الإلكتروني (اختياري)</Label>
+                <Label className="text-sm font-semibold text-slate-700">{t("offer_website_label")}</Label>
                 <div className="relative">
                   <Globe className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input
-                    placeholder="https://example.com"
+                    placeholder={t("offer_website_placeholder")}
                     value={supplierWebsite}
                     onChange={(e) => setSupplierWebsite(e.target.value)}
                     className="h-11 pl-4 pr-10 rounded-xl border-2 border-input focus:border-primary transition-colors text-left"
                     dir="ltr"
                   />
                 </div>
-                <p className="text-xs text-slate-500">يساعد المقاول في التعرف على منتجاتك ومشاريعك السابقة</p>
+                <p className="text-xs text-slate-500">{t("offer_website_help")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">مدة التنفيذ</Label>
+                <Label className="text-sm font-semibold text-slate-700">{t("offer_execution_duration")}</Label>
                 <div className="flex gap-2">
                   <Input
                     type="number"
-                    placeholder="مثال: 5"
+                    placeholder={t("offer_duration_placeholder")}
                     value={executionDuration}
                     onChange={(e) => setExecutionDuration(e.target.value)}
                     className="h-11 rounded-xl border-2 border-input focus:border-primary transition-colors"
@@ -448,15 +451,15 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="أيام">أيام</SelectItem>
-                      <SelectItem value="أسابيع">أسابيع</SelectItem>
-                      <SelectItem value="أشهر">أشهر</SelectItem>
+                      <SelectItem value="أيام">{t("offer_days")}</SelectItem>
+                      <SelectItem value="أسابيع">{t("offer_weeks")}</SelectItem>
+                      <SelectItem value="أشهر">{t("offer_months")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">السعر الإجمالي (ر.س) <span className="text-red-500">*</span></Label>
+                <Label className="text-sm font-semibold">{t("offer_total_price")} <span className="text-red-500">*</span></Label>
                 <div className="relative">
                   <input
                     type="number"
@@ -466,7 +469,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                     placeholder="0"
                     min="0"
                   />
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">ر.س</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">{t("offer_sar")}</span>
                 </div>
               </div>
             </div>
@@ -474,7 +477,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
           <div className="px-5 py-4 border-t bg-white shrink-0 flex flex-col sm:flex-row gap-3">
             <Button variant="outline" className="flex-1 order-2 sm:order-1" onClick={onClose}>
-              إلغاء
+              {t("offer_cancel")}
             </Button>
             <Button
               onClick={submitOffer}
@@ -482,7 +485,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               className="flex-[2] order-1 sm:order-2"
             >
               {isSubmitting ? <Loader2 size={18} className="ml-2 animate-spin" /> : null}
-              تأكيد وإرسال العرض
+              {t("offer_confirm_submit")}
             </Button>
           </div>
         </>
@@ -496,10 +499,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
           setTempLocation(null);
         }
       }}>
-        <DialogContent className="sm:max-w-[600px]" dir="rtl">
+        <DialogContent className="sm:max-w-[600px]" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>تحديد موقع التسليم</DialogTitle>
-            <DialogDescription>اضغط على الخريطة لتحديد الموقع، ثم اضغط تأكيد</DialogDescription>
+            <DialogTitle>{t("offer_select_location_title")}</DialogTitle>
+            <DialogDescription>{t("offer_select_location_desc")}</DialogDescription>
           </DialogHeader>
           {mapBatchId && (
             <MapPicker
@@ -512,7 +515,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             />
           )}
           <DialogFooter className="flex gap-2 sm:justify-start">
-            <Button variant="outline" onClick={() => { setMapBatchId(null); setTempLocation(null); }}>إلغاء</Button>
+            <Button variant="outline" onClick={() => { setMapBatchId(null); setTempLocation(null); }}>{t("offer_cancel")}</Button>
             <Button 
               disabled={!tempLocation} 
               onClick={async () => {
@@ -531,7 +534,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 }
               }}
             >
-              تأكيد الموقع
+              {t("offer_confirm_location")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -542,6 +545,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
 function ContractorInfo({ contractorId }: { contractorId: string }) {
   const firestore = useFirestore()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
   const docRef = useMemoFirebase(() => {
     if (!firestore || !contractorId) return null
     return doc(firestore, "users", contractorId)
@@ -554,14 +559,14 @@ function ContractorInfo({ contractorId }: { contractorId: string }) {
   return (
     <div className="mt-2 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-3 shadow-inner">
       <div className="flex justify-between items-center">
-        <span className="text-sm font-bold text-slate-500">صاحب المناقصة:</span>
-        <span className="text-md font-bold text-slate-800">{contractor.name || contractor.companyName || "مقاول"}</span>
+        <span className="text-sm font-bold text-slate-500">{t("offer_rfq_owner_label")}</span>
+        <span className="text-md font-bold text-slate-800">{contractor.name || contractor.companyName || t("offer_contractor_label")}</span>
       </div>
       
       {contractor.profileCompleted && (
         <div className="flex gap-2 flex-wrap">
           <Badge variant="outline" className="bg-success/10 text-success border-success/30 px-3 py-1">
-            السجل التجاري موثق ✓
+            {t("offer_cr_verified")}
           </Badge>
         </div>
       )}

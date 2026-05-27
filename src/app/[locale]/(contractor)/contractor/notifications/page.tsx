@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,12 +9,14 @@ import { Bell, MessageSquare, TrendingUp, CheckCircle2, Clock, Loader2, Eye } fr
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 
 export default function ContractorNotificationsPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
 
   // Fetch all offers for RFQs owned by this contractor
   // We do this by reading offers where rfqId matches any of this contractor's RFQs.
@@ -75,7 +78,7 @@ export default function ContractorNotificationsPage() {
   useEffect(() => {
     if (notifsError) {
       console.error("❌ Contractor notifications error:", notifsError)
-      toast({ title: "خطأ في التنبيهات", description: "تعذر تحميل التنبيهات الخاصة بك.", variant: "destructive" })
+      toast({ title: t("notif_toast_error_title"), description: t("notif_toast_error_desc"), variant: "destructive" })
     }
   }, [notifsError, toast])
 
@@ -123,31 +126,26 @@ export default function ContractorNotificationsPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">مركز التنبيهات</h1>
-            <p className="text-muted-foreground mt-1">ابقَ على اطلاع بحالة مناقصاتك وعروض الموردين</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-[10px] bg-slate-100 p-1 rounded border font-mono">
-              Raw: {userNotifications?.length || 0} | Err: {notifsError ? "Yes" : "No"}
-            </div>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("notif_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("notif_page_desc")}</p>
           </div>
         </div>
 
-        <div className="max-w-4xl space-y-3">
+        <div className="max-w-4xl space-y-4 pb-6">
           {isLoading ? (
             <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
               <Loader2 className="animate-spin" size={40} />
-              <p>جاري تحميل التنبيهات...</p>
+              <p>{t("notif_loading")}</p>
             </div>
           ) : !notifications || notifications.length === 0 ? (
             <Card className="border-dashed border-2 border-slate-200 shadow-none">
               <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                 <Bell size={48} className="opacity-20" />
-                <p className="font-bold text-lg">لا توجد تنبيهات حالياً</p>
-                <p className="text-sm">عندما يقدم الموردون عروضاً لمناقصاتك ستظهر هنا فوراً.</p>
+                <p className="font-bold text-lg">{t("notif_no_data")}</p>
+                <p className="text-sm">{t("notif_no_data_desc")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -173,17 +171,17 @@ export default function ContractorNotificationsPage() {
                       <div className="flex-1">
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                           <p className="font-bold text-slate-900">
-                            {offer.status === "قيد المراجعة" ? "عرض سعر جديد 🔔" :
-                             offer.status === "مقبول" ? "عرض سعر مقبول ✅" : "عرض سعر مرفوض ❌"}
+                            {offer.status === "قيد المراجعة" ? t("notif_new_offer") :
+                             offer.status === "مقبول" ? t("notif_accepted_offer") : t("notif_rejected_offer")}
                           </p>
                           <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
                             <Clock size={11} />
-                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : ""}
+                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : ""}
                           </span>
                         </div>
                         <p className="text-sm text-slate-500 mt-1">
-                          تم تقديم عرض بمبلغ <span className="font-bold text-primary">{offer.price} ر.س</span>
-                          {relatedRfq ? ` لمناقصة "${relatedRfq.title}"` : ""}
+                          {t("notif_amount", { price: offer.price })}
+                          {relatedRfq ? ` ${t("notif_for_tender", { title: relatedRfq.title })}` : ""}
                         </p>
                       </div>
                       {offer.status === "قيد المراجعة" && (
@@ -193,7 +191,7 @@ export default function ContractorNotificationsPage() {
                         >
                           <Button size="sm" className="gap-1 rounded-full shrink-0">
                             <Eye size={14} />
-                            مراجعة العرض
+                            {t("notif_review")}
                           </Button>
                         </Link>
                       )}
@@ -226,10 +224,10 @@ export default function ContractorNotificationsPage() {
                     </div>
                     <div className="flex-1">
                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
-                        <p className="font-bold text-slate-900">{notif.title || "تنبيه جديد"}</p>
+                        <p className="font-bold text-slate-900">{notif.title || t("notif_new")}</p>
                         <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
                           <Clock size={11} />
-                          {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString('ar-SA') : ""}
+                          {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString(locale) : ""}
                         </span>
                       </div>
                       <p className="text-sm text-slate-500 mt-1">{notif.message || notif.description}</p>
@@ -237,7 +235,7 @@ export default function ContractorNotificationsPage() {
                         <div className="pt-2">
                           <Link href="/contractor/team">
                             <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
-                              الانتقال لصفحة الفريق للقبول
+                              {t("notif_go_to_team")}
                             </Button>
                           </Link>
                         </div>

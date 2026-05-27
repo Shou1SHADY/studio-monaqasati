@@ -12,7 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useUser, useFirestore, useCollection, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, deleteDoc, setDoc, getDocs, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 import { Users, UserPlus, Trash2, Mail, Shield, ShieldCheck, Loader2, Search, X } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface TeamPageProps {
   role: "Contractor" | "Supplier"
@@ -22,6 +24,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
   
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
@@ -68,7 +72,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         const targetData = targetUser.data()
         
         if (targetData.organizationId && targetData.organizationId !== targetUser.id) {
-           toast({ title: "خطأ", description: "هذا المستخدم مسجل بالفعل في منظمة أخرى.", variant: "destructive" })
+           toast({ title: t("team_error"), description: t("team_user_already_in_org"), variant: "destructive" })
            setIsInviting(false)
            return
         }
@@ -88,15 +92,15 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
 
         // Create notification for the user
         await addDoc(collection(firestore, "users", targetUser.id, "notifications"), {
-          title: "دعوة للانضمام للفريق",
-          message: `قام ${profile.name} بدعوتك للانضمام إلى فريقه. يمكنك القبول من صفحة الفريق.`,
+          title: t("team_pending_invitations"),
+          message: `${profile.name} ${t("team_invitation_to_join", { name: "" }).trim()}`,
           type: "invitation",
           organizationId: profile.organizationId,
           createdAt: new Date().toISOString(),
           read: false
         })
 
-        toast({ title: "تم إرسال الطلب", description: "تم إرسال طلب انضمام للمستخدم وتنبيهه." })
+        toast({ title: t("team_invitation_sent"), description: t("team_invitation_sent_desc") })
       } else {
         // Create an invitation record for new user
         await setDoc(doc(firestore, "invitations", emailLower), {
@@ -110,7 +114,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           createdAt: new Date().toISOString(),
           isExistingUser: false
         })
-        toast({ title: "تم إرسال الدعوة", description: "سيتم ربط المستخدم بفريقك فور تسجيله في المنصة." })
+        toast({ title: t("team_invite_sent"), description: t("team_invite_sent_desc") })
       }
       
       setIsInviteOpen(false)
@@ -119,8 +123,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     } catch (error: any) {
       console.error("❌ Invitation error:", error)
       toast({ 
-        title: "خطأ", 
-        description: `فشل إرسال الدعوة: ${error.message || "خطأ غير معروف"}`, 
+        title: t("team_error"), 
+        description: t("team_invite_failed", { message: error.message || t("team_unknown_error") }), 
         variant: "destructive" 
       })
     } finally {
@@ -136,9 +140,9 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         organizationId: memberId,
         organizationRole: "owner"
       })
-      toast({ title: "تمت الإزالة", description: "تمت إزالة العضو من الفريق." })
+      toast({ title: t("team_removed"), description: t("team_removed_desc") })
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل إزالة العضو.", variant: "destructive" })
+      toast({ title: t("team_error"), description: t("team_remove_failed"), variant: "destructive" })
     }
   }
 
@@ -152,9 +156,9 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         role: invitation.role || profile.role
       })
       await deleteDoc(doc(firestore, "invitations", user.email!.toLowerCase()))
-      toast({ title: "تم الانضمام", description: "لقد انضممت إلى الفريق بنجاح." })
+      toast({ title: t("team_joined"), description: t("team_joined_desc") })
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل الانضمام للفريق.", variant: "destructive" })
+      toast({ title: t("team_error"), description: t("team_join_failed"), variant: "destructive" })
     } finally {
       setIsInviting(false)
     }
@@ -164,9 +168,9 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     if (!firestore || !user?.email) return
     try {
       await deleteDoc(doc(firestore, "invitations", user.email.toLowerCase()))
-      toast({ title: "تم الرفض", description: "تم رفض الدعوة وحذفها." })
+      toast({ title: t("team_declined"), description: t("team_declined_desc") })
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل رفض الدعوة.", variant: "destructive" })
+      toast({ title: t("team_error"), description: t("team_decline_failed"), variant: "destructive" })
     }
   }
 
@@ -179,16 +183,16 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right" dir="rtl">
+      <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">إدارة الفريق</h1>
-            <p className="text-muted-foreground mt-1">قم بإدارة أعضاء فريقك وصلاحياتهم في {profile?.role === "Contractor" ? "المقاولات" : "التوريد"}</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("team_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{profile?.role === "Contractor" ? t("team_page_desc_contractor") : t("team_page_desc_supplier")}</p>
           </div>
           {isOwner && (
             <Button onClick={() => setIsInviteOpen(true)} className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-xl">
               <UserPlus size={18} />
-              إضافة عضو جديد
+              {t("team_add_member")}
             </Button>
           )}
         </div>
@@ -197,18 +201,18 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-secondary flex items-center gap-2">
               <Mail className="text-primary" size={20} />
-              دعوات معلقة
+              {t("team_pending_invitations")}
             </h2>
             {myInvitations.map((invite: any) => (
               <Card key={invite.id} className="border-primary/20 bg-primary/5 shadow-none overflow-hidden">
                 <CardContent className="p-4 flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-4 text-right">
+                  <div className="flex items-center gap-4">
                     <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                       <Users size={24} />
                     </div>
                     <div>
-                      <p className="font-bold text-lg">دعوة للانضمام إلى {invite.invitedByName || "منظمة جديدة"}</p>
-                      <p className="text-sm text-muted-foreground">أنت مدعو للانضمام كـ {invite.organizationRole === "owner" ? "مدير" : "عضو فريق"}</p>
+                      <p className="font-bold text-lg">{t("team_invitation_to_join", { name: invite.invitedByName || t("team_new_org") })}</p>
+                      <p className="text-sm text-muted-foreground">{invite.organizationRole === "owner" ? t("team_invited_as_owner") : t("team_invited_as_member")}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -217,7 +221,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                       disabled={isInviting}
                       className="bg-primary text-white hover:bg-primary/90 rounded-xl px-6"
                     >
-                      قبول الدعوة
+                      {t("team_accept")}
                     </Button>
                     <Button 
                       variant="outline" 
@@ -225,7 +229,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                       disabled={isInviting}
                       className="rounded-xl"
                     >
-                      رفض
+                      {t("team_decline")}
                     </Button>
                   </div>
                 </CardContent>
@@ -238,39 +242,39 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           <CardHeader className="bg-white border-b flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <Users className="text-primary" size={20} />
-              <CardTitle className="text-lg">أعضاء الفريق</CardTitle>
+              <CardTitle className="text-lg">{t("team_team_members")}</CardTitle>
             </div>
             <div className="relative w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
               <Input 
-                placeholder="بحث عن عضو..." 
-                className="pr-10 h-9"
+                placeholder={t("team_search_member")} 
+                className={cn("h-9", locale === 'ar' ? 'pr-10' : 'pl-10')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             {isLoading ? (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
-                <p>جاري تحميل قائمة الفريق...</p>
+                <p>{t("team_loading")}</p>
               </div>
             ) : filteredMembers.length === 0 ? (
               <div className="p-20 text-center flex flex-col items-center gap-3 text-muted-foreground">
                 <Users size={48} className="opacity-20" />
-                <p className="text-lg font-bold">لا يوجد أعضاء آخرون</p>
-                <p className="text-sm">ابدأ بإضافة أعضاء فريقك للعمل معاً</p>
+                <p className="text-lg font-bold">{t("team_no_members")}</p>
+                <p className="text-sm">{t("team_no_members_desc")}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right">الاسم</TableHead>
-                    <TableHead className="text-right">البريد الإلكتروني</TableHead>
-                    <TableHead className="text-right">الدور</TableHead>
-                    <TableHead className="text-right">تاريخ الانضمام</TableHead>
-                    {isOwner && <TableHead className="text-right">الإجراءات</TableHead>}
+                    <TableHead>{t("team_name")}</TableHead>
+                    <TableHead>{t("team_email")}</TableHead>
+                    <TableHead>{t("team_role")}</TableHead>
+                    <TableHead>{t("team_join_date")}</TableHead>
+                    {isOwner && <TableHead>{t("team_actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -281,23 +285,23 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                           <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xs">
                             {member.name?.substring(0, 1) || "U"}
                           </div>
-                          {member.name || "مستخدم جديد"}
+                          {member.name || t("team_new_user")}
                         </div>
                       </TableCell>
                       <TableCell>{member.email}</TableCell>
                       <TableCell>
                         {member.organizationRole === "owner" ? (
                           <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
-                            <Shield size={12} /> مدير (CEO)
+                            <Shield size={12} /> {t("team_ceo")}
                           </Badge>
                         ) : (
                           <Badge className="bg-blue-100 text-blue-700 border-none gap-1">
-                            <ShieldCheck size={12} /> عضو فريق
+                            <ShieldCheck size={12} /> {t("team_team_member")}
                           </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
-                        {member.createdAt ? new Date(member.createdAt).toLocaleDateString("ar-SA") : "-"}
+                        {member.createdAt ? new Date(member.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US') : "-"}
                       </TableCell>
                       {isOwner && (
                         <TableCell>
@@ -324,25 +328,25 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
 
       {/* Invite Dialog */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
-        <DialogContent className="text-right sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>إضافة عضو جديد للفريق</DialogTitle>
+            <DialogTitle>{t("team_dialog_title")}</DialogTitle>
             <DialogDescription>
-              أدخل بيانات الشخص الذي ترغب في إضافته لفريقك. سيتم ربطه بـ {profile?.companyName || "منظمتك"} تلقائياً.
+              {t("team_dialog_desc", { company: profile?.companyName || t("team_your_org") })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="invite-name">الاسم (اختياري)</Label>
+              <Label htmlFor="invite-name">{t("team_name_label")}</Label>
               <Input 
                 id="invite-name" 
                 value={inviteName} 
                 onChange={(e) => setInviteName(e.target.value)} 
-                placeholder="اسم الزميل..."
+                placeholder={t("team_name_placeholder")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invite-email">البريد الإلكتروني</Label>
+              <Label htmlFor="invite-email">{t("team_email_label")}</Label>
               <Input 
                 id="invite-email" 
                 type="email"
@@ -354,10 +358,10 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setIsInviteOpen(false)} disabled={isInviting}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setIsInviteOpen(false)} disabled={isInviting}>{t("team_cancel")}</Button>
             <Button onClick={handleInvite} disabled={!inviteEmail || isInviting} className="bg-primary text-white">
               {isInviting ? <Loader2 size={16} className="animate-spin ml-2" /> : <Mail size={16} className="ml-2" />}
-              إرسال الدعوة
+              {t("team_send_invite")}
             </Button>
           </DialogFooter>
         </DialogContent>

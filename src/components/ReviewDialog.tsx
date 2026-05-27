@@ -9,6 +9,7 @@ import { Star, Loader2, Award } from "lucide-react"
 import { useFirestore } from "@/firebase"
 import { collection, addDoc, doc, updateDoc, getDocs, query, where } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 
 interface ReviewDialogProps {
   open: boolean
@@ -43,12 +44,14 @@ export function ReviewDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const firestore = useFirestore()
   const { toast } = useToast()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
 
   const handleSubmit = async () => {
     if (rating === 0) {
       toast({
-        title: "تنبيه",
-        description: "يرجى تحديد تقييم بالنجوم أولاً.",
+        title: t("review_rating_required"),
+        description: t("review_rating_required_desc"),
         variant: "destructive"
       })
       return
@@ -106,8 +109,8 @@ export function ReviewDialog({
       }
 
       toast({
-        title: "✅ تم إضافة التقييم بنجاح!",
-        description: "شكراً لك على تقديم ملاحظاتك القيمة، تساهم في رفع جودة المنصة."
+        title: t("review_submitted_title"),
+        description: t("review_submitted_desc")
       })
 
       // Reset form
@@ -118,8 +121,8 @@ export function ReviewDialog({
     } catch (error: any) {
       console.error("Submit review failed:", error)
       toast({
-        title: "خطأ",
-        description: `فشل إرسال التقييم: ${error.message}`,
+        title: t("review_error"),
+        description: t("review_submit_failed", { message: error.message }),
         variant: "destructive"
       })
     } finally {
@@ -129,21 +132,21 @@ export function ReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md text-right border-none shadow-2xl rounded-3xl" dir="rtl">
+      <DialogContent className="sm:max-w-md text-right border-none shadow-2xl rounded-3xl" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
         <DialogHeader className="space-y-2">
           <div className="mx-auto h-12 w-12 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 mb-2">
             <Award size={24} />
           </div>
-          <DialogTitle className="text-xl font-black text-slate-900 text-center font-headline">تقييم تجربة التعامل</DialogTitle>
+          <DialogTitle className="text-xl font-black text-slate-900 text-center font-headline">{t("review_title")}</DialogTitle>
           <DialogDescription className="text-center text-slate-500">
-            أخبرنا برأيك عن تعاملك مع <span className="font-bold text-primary">{revieweeName}</span> لتعزيز الشفافية والموثوقية.
+            {t("review_desc", { name: revieweeName })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Star Rating Select */}
           <div className="flex flex-col items-center gap-2">
-            <Label className="text-sm font-bold text-slate-700">التقييم العام</Label>
+            <Label className="text-sm font-bold text-slate-700">{t("review_rating_label")}</Label>
             <div className="flex items-center gap-1.5 direction-ltr">
               {[1, 2, 3, 4, 5].map((star) => {
                 const isSelected = star <= (hoverRating || rating)
@@ -170,17 +173,17 @@ export function ReviewDialog({
             </div>
             {rating > 0 && (
               <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1">
-                {rating === 5 ? "ممتاز جداً 🌟" : rating === 4 ? "جيد جداً 👍" : rating === 3 ? "جيد 😐" : rating === 2 ? "مقبول 👎" : "سيء جداً ⚠️"}
+                {rating === 5 ? t("review_excellent") : rating === 4 ? t("review_very_good") : rating === 3 ? t("review_good") : rating === 2 ? t("review_fair") : t("review_very_bad")}
               </span>
             )}
           </div>
 
           {/* Review Comment Textarea */}
           <div className="space-y-2">
-            <Label htmlFor="comment" className="text-slate-700 font-bold">التعليق والملاحظات (اختياري)</Label>
+            <Label htmlFor="comment" className="text-slate-700 font-bold">{t("review_comment_label")}</Label>
             <Textarea
               id="comment"
-              placeholder="اكتب تفاصيل تجربتك هنا... ما هي نقاط القوة؟ وما الذي يمكن تحسينه؟"
+              placeholder={t("review_comment_placeholder")}
               className="min-h-[100px] rounded-2xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary text-sm p-4 leading-relaxed"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
@@ -196,7 +199,7 @@ export function ReviewDialog({
             onClick={handleSubmit}
           >
             {isSubmitting ? <Loader2 className="animate-spin ml-2 h-4 w-4" /> : null}
-            تأكيد التقييم وإرسال
+            {t("review_submit")}
           </Button>
           <Button
             variant="ghost"
@@ -204,7 +207,7 @@ export function ReviewDialog({
             className="w-full h-11 text-sm font-bold rounded-xl text-slate-500"
             onClick={() => onOpenChange(false)}
           >
-            إلغاء
+            {t("review_cancel")}
           </Button>
         </DialogFooter>
       </DialogContent>

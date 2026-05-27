@@ -18,6 +18,7 @@ import {
   updatePassword,
 } from "firebase/auth";
 import { useUser } from "@/firebase";
+import { useTranslations, useLocale } from 'next-intl';
 import { KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 
 interface ChangePasswordDialogProps {
@@ -27,6 +28,8 @@ interface ChangePasswordDialogProps {
 
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
   const { user } = useUser();
+  const t = useTranslations("Portal.Shared");
+  const locale = useLocale();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,10 +42,10 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
 
   const passwordStrength = (pw: string) => {
     if (pw.length === 0) return null;
-    if (pw.length < 6) return { level: "ضعيفة", color: "bg-red-400", width: "w-1/4" };
-    if (pw.length < 8) return { level: "متوسطة", color: "bg-amber-400", width: "w-2/4" };
-    if (pw.length < 12 || !/[A-Z]/.test(pw) || !/[0-9]/.test(pw)) return { level: "جيدة", color: "bg-blue-400", width: "w-3/4" };
-    return { level: "قوية", color: "bg-emerald-500", width: "w-full" };
+    if (pw.length < 6) return { level: t("password_weak"), color: "bg-red-400", width: "w-1/4" };
+    if (pw.length < 8) return { level: t("password_medium"), color: "bg-amber-400", width: "w-2/4" };
+    if (pw.length < 12 || !/[A-Z]/.test(pw) || !/[0-9]/.test(pw)) return { level: t("password_good"), color: "bg-blue-400", width: "w-3/4" };
+    return { level: t("password_strong"), color: "bg-emerald-500", width: "w-full" };
   };
 
   const strength = passwordStrength(newPassword);
@@ -61,15 +64,15 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
     setError(null);
 
     if (newPassword !== confirmPassword) {
-      setError("كلمتا المرور الجديدتان غير متطابقتين.");
+      setError(t("password_error_mismatch"));
       return;
     }
     if (newPassword.length < 8) {
-      setError("يجب أن تكون كلمة المرور الجديدة 8 أحرف على الأقل.");
+      setError(t("password_error_length"));
       return;
     }
     if (!user || !user.email) {
-      setError("لا يوجد مستخدم مسجل دخول.");
+      setError(t("password_error_no_user"));
       return;
     }
 
@@ -88,19 +91,19 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
       switch (err.code) {
         case "auth/wrong-password":
         case "auth/invalid-credential":
-          setError("كلمة المرور الحالية غير صحيحة. يرجى المحاولة مجدداً.");
+          setError(t("password_error_wrong_current"));
           break;
         case "auth/too-many-requests":
-          setError("تم تجاوز عدد المحاولات. يرجى الانتظار قليلاً ثم المحاولة.");
+          setError(t("password_error_too_many_requests"));
           break;
         case "auth/weak-password":
-          setError("كلمة المرور الجديدة ضعيفة جداً. استخدم 8 أحرف على الأقل.");
+          setError(t("password_error_weak_new"));
           break;
         case "auth/requires-recent-login":
-          setError("انتهت صلاحية الجلسة. يرجى تسجيل الخروج ثم الدخول مجدداً.");
+          setError(t("password_error_session_expired"));
           break;
         default:
-          setError("حدث خطأ غير متوقع. يرجى المحاولة مجدداً.");
+          setError(t("password_error_unexpected"));
       }
     } finally {
       setLoading(false);
@@ -109,16 +112,16 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md w-full text-right" dir="rtl">
+      <DialogContent className="max-w-md w-full text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
         <DialogHeader className="pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <KeyRound size={20} />
             </div>
             <div>
-              <DialogTitle className="text-xl font-bold">تغيير كلمة المرور</DialogTitle>
+              <DialogTitle className="text-xl font-bold">{t("password_title")}</DialogTitle>
               <DialogDescription className="text-xs mt-0.5">
-                أدخل كلمة مرورك الحالية ثم اختر كلمة مرور جديدة
+                {t("password_desc")}
               </DialogDescription>
             </div>
           </div>
@@ -130,8 +133,8 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
               <CheckCircle2 size={32} className="text-emerald-500" />
             </div>
             <div>
-              <p className="font-bold text-lg text-slate-800">تم تغيير كلمة المرور بنجاح!</p>
-              <p className="text-sm text-muted-foreground mt-1">سيتم إغلاق هذه النافذة تلقائياً...</p>
+              <p className="font-bold text-lg text-slate-800">{t("password_success_title")}</p>
+              <p className="text-sm text-muted-foreground mt-1">{t("password_success_desc")}</p>
             </div>
           </div>
         ) : (
@@ -139,7 +142,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             {/* Current Password */}
             <div className="space-y-2">
               <Label htmlFor="current-password" className="font-bold text-sm">
-                كلمة المرور الحالية
+                {t("password_current_label")}
               </Label>
               <div className="relative">
                 <Input
@@ -147,7 +150,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   type={showCurrent ? "text" : "password"}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="أدخل كلمة مرورك الحالية"
+                  placeholder={t("password_current_placeholder")}
                   className="h-11 pr-4 pl-10 text-right"
                   required
                   autoComplete="current-password"
@@ -165,7 +168,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             {/* New Password */}
             <div className="space-y-2">
               <Label htmlFor="new-password" className="font-bold text-sm">
-                كلمة المرور الجديدة
+                {t("password_new_label")}
               </Label>
               <div className="relative">
                 <Input
@@ -173,7 +176,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   type={showNew ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="8 أحرف على الأقل"
+                  placeholder={t("password_new_placeholder")}
                   className="h-11 pr-4 pl-10 text-right"
                   required
                   autoComplete="new-password"
@@ -193,7 +196,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                     <div className={`h-full rounded-full transition-all duration-500 ${strength.color} ${strength.width}`} />
                   </div>
                   <p className="text-[10px] text-muted-foreground font-bold">
-                    قوة كلمة المرور: <span className="text-slate-700">{strength.level}</span>
+                    {t("password_strength_label", { level: strength.level })}
                   </p>
                 </div>
               )}
@@ -202,7 +205,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
             {/* Confirm Password */}
             <div className="space-y-2">
               <Label htmlFor="confirm-password" className="font-bold text-sm">
-                تأكيد كلمة المرور الجديدة
+                {t("password_confirm_label")}
               </Label>
               <div className="relative">
                 <Input
@@ -210,7 +213,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                   type={showConfirm ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="أعد إدخال كلمة المرور الجديدة"
+                  placeholder={t("password_confirm_placeholder")}
                   className="h-11 pr-4 pl-10 text-right"
                   required
                   autoComplete="new-password"
@@ -249,9 +252,9 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                 className="w-full h-11 rounded-xl font-bold"
               >
                 {loading ? (
-                  <><Loader2 size={16} className="animate-spin ml-2" /> جاري الحفظ...</>
+                  <><Loader2 size={16} className="animate-spin ml-2" /> {t("password_save")}</>
                 ) : (
-                  <><KeyRound size={16} className="ml-2" /> تحديث كلمة المرور</>
+                  <><KeyRound size={16} className="ml-2" /> {t("password_update")}</>
                 )}
               </Button>
               <Button
@@ -261,7 +264,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialo
                 onClick={handleClose}
                 disabled={loading}
               >
-                إلغاء
+                {t("password_cancel")}
               </Button>
             </DialogFooter>
           </form>

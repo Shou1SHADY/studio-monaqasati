@@ -1,0 +1,298 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5] [cursor=pointer]:
+          - generic [ref=e6]: م
+          - generic [ref=e7]:
+            - generic [ref=e8]: مدماك تيك
+            - generic [ref=e9]: Mdmak Tech
+        - generic [ref=e15]:
+          - button "العربية" [ref=e16] [cursor=pointer]
+          - link "Login" [ref=e17] [cursor=pointer]:
+            - /url: /login
+            - button "Login" [ref=e18]
+          - link "Start for Free" [ref=e19] [cursor=pointer]:
+            - /url: /register
+            - button "Start for Free" [ref=e20]
+    - main [ref=e21]:
+      - generic [ref=e22]:
+        - img "Supply Automation" [ref=e24]
+        - img "Building Partnerships" [ref=e29]
+        - img "Professional Partnerships" [ref=e34]
+        - generic [ref=e39]:
+          - generic [ref=e40]: Smart Supplier Platform
+          - heading "Supply Automation with Absolute Smartness & Transparency" [level=1] [ref=e387]:
+            - text: Supply Automation
+            - text: with Absolute Smartness & Transparency
+          - paragraph [ref=e43]: The leading Saudi platform connecting contractors and suppliers in a unified digital ecosystem, ensuring efficiency, reducing costs, and accelerating procurement.
+          - generic [ref=e44]:
+            - link "Register Now for Free" [ref=e45] [cursor=pointer]:
+              - /url: /register
+              - button "Register Now for Free" [ref=e46]:
+                - text: Register Now for Free
+                - img
+            - generic [ref=e48]:
+              - generic [ref=e49]: Join Our Early Clients Network
+              - generic [ref=e50]: Exclusive Opportunities for Early Subscribers
+        - generic [ref=e60]:
+          - generic [ref=e61]:
+            - img [ref=e63]
+            - generic [ref=e67]:
+              - generic [ref=e68]: "Goal: 500+"
+              - generic [ref=e69]: Registered Company Soon
+          - generic [ref=e70]:
+            - img [ref=e72]
+            - generic [ref=e76]:
+              - generic [ref=e77]: Full Automation
+              - generic [ref=e78]: For Construction Tenders
+          - generic [ref=e79]:
+            - img [ref=e81]
+            - generic [ref=e83]:
+              - generic [ref=e84]: 70%
+              - generic [ref=e85]: Targeted Time Saving
+          - generic [ref=e86]:
+            - img [ref=e88]
+            - generic [ref=e91]:
+              - generic [ref=e92]: 15%
+              - generic [ref=e93]: Cost Improvement
+      - generic [ref=e94]:
+        - generic [ref=e95]: Partners we trust
+        - generic [ref=e99]:
+          - img "Partner Logo" [ref=e101]
+          - img "Partner Logo" [ref=e103]
+          - img "Partner Logo" [ref=e105]
+          - img "Partner Logo" [ref=e107]
+          - img "Partner Logo" [ref=e109]
+          - img "Partner Logo" [ref=e111]
+          - img "Partner Logo" [ref=e113]
+          - img "Partner Logo" [ref=e115]
+          - img "Partner Logo" [ref=e117]
+          - img "Partner Logo" [ref=e119]
+          - img "Partner Logo" [ref=e121]
+          - img "Partner Logo" [ref=e123]
+      - generic [ref=e126]:
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - generic [ref=e129]: Full Digital Transformation
+            - heading "The Power of Mdmak Tech in Automating Procurement" [level=2] [ref=e130]:
+              - text: The Power of Mdmak Tech
+              - text: in Automating Procurement
+          - paragraph [ref=e131]: Everything you need to manage your construction procurement in one place, with a smart system that ensures accuracy and transparency.
+        - generic [ref=e132]:
+          - generic [ref=e133]:
+            - img [ref=e136]
+            - heading "Tender Transparency" [level=3] [ref=e139]
+            - paragraph [ref=e140]: An electronic system ensuring fair competition and bid transparency for all parties, minimizing manipulation.
+            - generic [ref=e141]:
+              - text: Learn More
+              - img [ref=e142]
+          - generic [ref=e144]:
+            - img [ref=e147]
+            - heading "Speed of Execution" [level=3] [ref=e149]
+            - paragraph [ref=e150]: Reduce time spent ordering materials and comparing suppliers by up to 70%.
+            - generic [ref=e151]:
+              - text: Learn More
+              - img [ref=e152]
+          - generic [ref=e154]:
+            - img [ref=e157]
+            - heading "Advanced Analytics" [level=3] [ref=e159]
+            - paragraph [ref=e160]: Smart reports on pricing, quality, and supplier commitment for more accurate decisions.
+            - generic [ref=e161]:
+              - text: Learn More
+              - img [ref=e162]
+      - generic [ref=e165]:
+        - generic [ref=e166]:
+          - img "Contractor" [ref=e167]
+          - generic [ref=e170]:
+            - generic [ref=e171]:
+              - img [ref=e173]
+              - generic [ref=e176]: Performance Boost
+            - generic [ref=e177]: 15%
+            - generic [ref=e178]:
+              - text: Real savings in
+              - text: procurement budget
+        - generic [ref=e180]:
+          - generic [ref=e181]: For Contractors
+          - heading "Full Control over Construction Procurement" [level=2] [ref=e183]:
+            - text: Full Control over
+            - text: Construction Procurement
+          - paragraph [ref=e184]: Full automation of the procurement cycle, from tendering and smart bid comparison to payment approval and material receipt with a single click.
+          - generic [ref=e185]:
+            - generic [ref=e186]:
+              - img [ref=e187]
+              - text: Certified Suppliers Network
+            - generic [ref=e190]:
+              - img [ref=e191]
+              - text: Automated Price Comparison
+            - generic [ref=e194]:
+              - img [ref=e195]
+              - text: Cost & Time Savings
+            - generic [ref=e198]:
+              - img [ref=e199]
+              - text: Real-time Analytics
+          - link "Register as Contractor Now" [ref=e203] [cursor=pointer]:
+            - /url: /register?role=Contractor
+            - button "Register as Contractor Now" [ref=e204]
+      - generic [ref=e206]:
+        - generic [ref=e208]:
+          - generic [ref=e209]: For Suppliers
+          - heading "Expand Your Client Base and Increase Sales Digitally" [level=2] [ref=e211]:
+            - text: Expand Your Client Base
+            - text: and Increase Sales Digitally
+          - paragraph [ref=e212]: Receive direct purchase requests from top contractors in the Kingdom. Our system guarantees faster access to sales opportunities and easier bid management.
+          - generic [ref=e213]:
+            - generic [ref=e214]:
+              - img [ref=e215]
+              - text: Access to Major Projects
+            - generic [ref=e218]:
+              - img [ref=e219]
+              - text: Digital Bid Management
+            - generic [ref=e222]:
+              - img [ref=e223]
+              - text: Payment & Supply Tracking
+            - generic [ref=e226]:
+              - img [ref=e227]
+              - text: Certified Rating System
+          - link "Register as Supplier Now" [ref=e231] [cursor=pointer]:
+            - /url: /register?role=Supplier
+            - button "Register as Supplier Now" [ref=e232]
+        - generic [ref=e233]:
+          - img "Supplier" [ref=e234]
+          - generic [ref=e237]:
+            - generic [ref=e238]:
+              - img [ref=e240]
+              - generic [ref=e245]: Today's Requests
+            - generic [ref=e246]: "24"
+            - generic [ref=e247]:
+              - text: Direct purchase requests
+              - text: pending
+      - generic [ref=e249]:
+        - generic [ref=e250]:
+          - generic [ref=e251]: Methodology
+          - heading "How does the platform work?" [level=2] [ref=e252]
+          - paragraph [ref=e253]: Simple and clear steps to transform traditional procurement into a smart digital ecosystem.
+        - generic [ref=e255]:
+          - button "Contractors" [ref=e257] [cursor=pointer]
+          - button "Suppliers" [ref=e258] [cursor=pointer]
+        - generic [ref=e259]:
+          - generic [ref=e260]:
+            - generic [ref=e262]:
+              - img [ref=e263]
+              - generic [ref=e266]: "01"
+            - generic [ref=e267]:
+              - heading "Submit Request" [level=4] [ref=e268]
+              - paragraph [ref=e269]: Accurately define quantities and specs in minutes.
+          - generic [ref=e270]:
+            - generic [ref=e272]:
+              - img [ref=e273]
+              - generic [ref=e276]: "02"
+            - generic [ref=e277]:
+              - heading "Receive Bids" [level=4] [ref=e278]
+              - paragraph [ref=e279]: Instant competitive offers from suppliers.
+          - generic [ref=e280]:
+            - generic [ref=e282]:
+              - img [ref=e283]
+              - generic [ref=e286]: "03"
+            - generic [ref=e287]:
+              - heading "Compare & Approve" [level=4] [ref=e288]
+              - paragraph [ref=e289]: Smart comparison and one-click approval.
+          - generic [ref=e290]:
+            - generic [ref=e291]:
+              - img [ref=e292]
+              - generic [ref=e297]: "04"
+            - generic [ref=e298]:
+              - heading "Supply & Pay" [level=4] [ref=e299]
+              - paragraph [ref=e300]: Track supply and guarantee receipt and payment.
+      - generic [ref=e301]:
+        - img "Partnership" [ref=e302]
+        - generic [ref=e304]:
+          - generic [ref=e305]: Trusted Work Environment
+          - heading "The Largest Network of Contractors and Suppliers in One Place" [level=2] [ref=e306]:
+            - text: The Largest Network of Contractors and Suppliers
+            - text: in One Place
+          - paragraph [ref=e307]: We connect top contractors with certified suppliers to ensure supply quality and specification adherence, with a smart rating system ensuring professional dealing.
+          - button "Meet our Partners" [ref=e309] [cursor=pointer]
+      - generic [ref=e312]:
+        - heading "Start your Digital Transformation in Procurement Today" [level=2] [ref=e315]:
+          - text: Start your Digital Transformation
+          - text: in Procurement Today
+        - paragraph [ref=e316]: Join hundreds of Saudi companies relying on Mdmak Tech to increase supply chain efficiency and reduce operational costs.
+        - generic [ref=e317]:
+          - link "Start Now for Free" [ref=e318] [cursor=pointer]:
+            - /url: /register
+            - button "Start Now for Free" [ref=e319]
+          - link "Contact Us" [ref=e320] [cursor=pointer]:
+            - /url: /contact
+            - button "Contact Us" [ref=e321]
+        - generic [ref=e322]:
+          - generic [ref=e323]:
+            - img [ref=e324]
+            - text: Quick Setup
+          - generic [ref=e327]:
+            - img [ref=e328]
+            - text: No Registration Fees
+          - generic [ref=e331]:
+            - img [ref=e332]
+            - text: Vision 2030
+    - contentinfo [ref=e335]:
+      - generic [ref=e336]:
+        - generic [ref=e337]:
+          - generic [ref=e338]:
+            - generic [ref=e339]: م
+            - generic [ref=e340]:
+              - generic [ref=e341]: مدماك تيك
+              - generic [ref=e342]: Mdmak Tech
+          - paragraph [ref=e343]: The leading Saudi digital platform transforming construction procurement into an integrated smart ecosystem aligned with Vision 2030.
+          - link "Mdmak support team is ready to serve you" [ref=e345] [cursor=pointer]:
+            - /url: /contact
+        - generic [ref=e346]:
+          - heading "Quick Links" [level=4] [ref=e347]
+          - list [ref=e348]:
+            - listitem [ref=e349]:
+              - link "About the Platform" [ref=e350] [cursor=pointer]:
+                - /url: /about
+                - text: About the Platform
+            - listitem [ref=e351]:
+              - link "Features" [ref=e352] [cursor=pointer]:
+                - /url: /#features
+                - text: Features
+            - listitem [ref=e353]:
+              - link "Pricing" [ref=e354] [cursor=pointer]:
+                - /url: /pricing
+                - text: Pricing
+            - listitem [ref=e355]:
+              - link "Suppliers Portal" [ref=e356] [cursor=pointer]:
+                - /url: /register?role=Supplier
+                - text: Suppliers Portal
+            - listitem [ref=e357]:
+              - link "Contractors Solutions" [ref=e358] [cursor=pointer]:
+                - /url: /register?role=Contractor
+                - text: Contractors Solutions
+        - generic [ref=e359]:
+          - heading "Legal & Contact" [level=4] [ref=e360]
+          - list [ref=e361]:
+            - listitem [ref=e362]:
+              - link "Privacy Policy" [ref=e363] [cursor=pointer]:
+                - /url: /privacy
+                - text: Privacy Policy
+            - listitem [ref=e364]:
+              - link "Terms & Conditions" [ref=e365] [cursor=pointer]:
+                - /url: /terms
+                - text: Terms & Conditions
+            - listitem [ref=e366]:
+              - link "Contact Us" [ref=e367] [cursor=pointer]:
+                - /url: /contact
+                - text: Contact Us
+      - generic [ref=e368]:
+        - paragraph [ref=e369]: © 2026 MDMAK TECH PLATFORM - ALL RIGHTS RESERVED
+        - generic [ref=e370]:
+          - generic [ref=e371]:
+            - img [ref=e372]
+            - text: English
+          - generic [ref=e375]: Proudly in the Kingdom of Saudi Arabia 🇸🇦
+  - region "Notifications (F8)":
+    - list
+  - button "Open Next.js Dev Tools" [ref=e382] [cursor=pointer]:
+    - img [ref=e383]
+  - alert [ref=e386]

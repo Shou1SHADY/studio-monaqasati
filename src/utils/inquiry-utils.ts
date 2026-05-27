@@ -28,20 +28,36 @@ export function getInquiryStatus(inquiry: Inquiry): InquiryStatus {
   return isInquiryReplied(inquiry) ? 'مجابة' : 'في انتظار الرد'
 }
 
-export function getTimeAgo(timestamp: string): string {
+export function getStatusLabel(status: InquiryStatus, locale: string = 'ar'): string {
+  if (locale.startsWith('ar')) return status
+  const labels: Record<InquiryStatus, string> = {
+    'مجابة': 'Answered',
+    'في انتظار الرد': 'Pending Reply'
+  }
+  return labels[status] || status
+}
+
+export function getTimeAgo(timestamp: string, locale: string = 'ar'): string {
   const now = new Date()
   const date = new Date(timestamp)
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMins / 60)
   const diffDays = Math.floor(diffHours / 24)
-  
-  if (diffMins < 1) return 'الآن'
-  if (diffMins < 60) return `منذ ${diffMins} دقيقة`
-  if (diffHours < 24) return `منذ ${diffHours} ساعة`
-  if (diffDays < 7) return `منذ ${diffDays} يوم`
-  
-  return formatInquiryTimestamp(timestamp)
+
+  if (locale.startsWith('ar')) {
+    if (diffMins < 1) return 'الآن'
+    if (diffMins < 60) return `منذ ${diffMins} دقيقة`
+    if (diffHours < 24) return `منذ ${diffHours} ساعة`
+    if (diffDays < 7) return `منذ ${diffDays} يوم`
+  } else {
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins} min ago`
+    if (diffHours < 24) return `${diffHours} hr ago`
+    if (diffDays < 7) return `${diffDays} day ago`
+  }
+
+  return formatInquiryTimestamp(timestamp, locale === 'ar' ? 'ar-SA' : 'en-US')
 }
 
 export function filterInquiriesBySupplier(inquiries: Inquiry[], supplierId: string): Inquiry[] {

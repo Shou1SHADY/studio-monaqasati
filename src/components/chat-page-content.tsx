@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import {
   query, orderBy
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 
 interface ChatPageContentProps {
   backPath: string
@@ -27,6 +29,8 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const { toast } = useToast()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
   const [chatMeta, setChatMeta] = useState<any>(null)
@@ -120,7 +124,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
 
     } catch (err: any) {
       console.error("send message failed:", err?.code, err?.message)
-      toast({ title: "خطأ", description: "فشل إرسال الرسالة", variant: "destructive" })
+      toast({ title: t("chat_error"), description: t("chat_send_failed"), variant: "destructive" })
       setMessage(msgText) // restore on error
     } finally {
       setSending(false)
@@ -138,7 +142,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     if (!ts) return ""
     const d = ts?.toDate ? ts.toDate() : new Date(ts)
     if (isNaN(d.getTime())) return ""
-    return d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })
+    return d.toLocaleTimeString(locale === 'ar' ? 'ar-SA' : 'en-US', { hour: "2-digit", minute: "2-digit" })
   }
 
   const isLoading = isUserLoading || metaLoading || messagesLoading
@@ -155,7 +159,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
             className="gap-1 text-muted-foreground"
           >
             <ArrowRight size={16} />
-            العودة للمحادثات
+            {t("chat_back_to_chats")}
           </Button>
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -164,11 +168,11 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-secondary">
-                  {chatMeta?.rfqTitle || "محادثة العقد"}
+                  {chatMeta?.rfqTitle || t("chat_contract_chat")}
                 </h1>
                 <div className="flex items-center gap-2">
-                  <Badge className="bg-success/10 text-success border-success/20 text-xs">مقبول ✅</Badge>
-                  <span className="text-xs text-muted-foreground">قناة تواصل خاصة</span>
+                  <Badge className="bg-success/10 text-success border-success/20 text-xs">{t("chat_accepted")}</Badge>
+                  <span className="text-xs text-muted-foreground">{t("chat_private_channel")}</span>
                 </div>
               </div>
             </div>
@@ -186,8 +190,8 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
             ) : !messages || messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
                 <MessageSquare size={40} className="opacity-20" />
-                <p className="font-bold">ابدأ المحادثة</p>
-                <p className="text-sm">أرسل رسالتك الأولى للبدء في التواصل مع الطرف الآخر.</p>
+                <p className="font-bold">{t("chat_start_chat")}</p>
+                <p className="text-sm">{t("chat_start_chat_desc")}</p>
               </div>
             ) : (
               messages.map((msg: any) => {
@@ -232,9 +236,9 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="اكتب رسالتك... (Enter للإرسال)"
+              placeholder={t("chat_send_placeholder")}
               className="flex-1 rounded-full bg-slate-50 border-none focus-visible:ring-1 text-right"
-              dir="rtl"
+              dir={locale === 'ar' ? 'rtl' : 'ltr'}
               disabled={sending}
             />
           </div>

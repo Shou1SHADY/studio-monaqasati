@@ -89,13 +89,16 @@ export function buildSampleSentNotification(
 /**
  * Validates that an offer price is valid (positive number).
  */
-export function validateOfferPrice(price: string): { isValid: boolean; error?: string } {
+export function validateOfferPrice(
+  price: string,
+  t?: (key: string) => string
+): { isValid: boolean; error?: string } {
   if (!price || price.trim() === '') {
-    return { isValid: false, error: 'يرجى إدخال السعر الإجمالي' }
+    return { isValid: false, error: t ? t('offer_validation_enter_price') : 'يرجى إدخال السعر الإجمالي' }
   }
   const parsed = parseFloat(price)
   if (isNaN(parsed) || parsed <= 0) {
-    return { isValid: false, error: 'يجب أن يكون السعر رقماً موجباً' }
+    return { isValid: false, error: t ? t('offer_validation_price_positive') : 'يجب أن يكون السعر رقماً موجباً' }
   }
   return { isValid: true }
 }
@@ -108,6 +111,8 @@ export function isOfferSubmittable(price: string, isSubmitting: boolean, isUploa
 }
 
 /**
+ * Notification titles/messages stored in Firestore are in Arabic (data values).
+ * The UI display translation is handled in Portal.Layout notification rendering.
  * Builds the complete offer data object for Firestore submission.
  */
 export function buildOfferData(params: {

@@ -22,8 +22,11 @@ import {
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, orderBy } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
+import { useTranslations, useLocale } from 'next-intl'
 
 export default function AdminRfqsPage() {
+  const t = useTranslations("Portal.Admin.Rfqs")
+  const locale = useLocale()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const firestore = useFirestore()
@@ -54,9 +57,9 @@ export default function AdminRfqsPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "New": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
-      case "Awarded": return <Badge className="bg-blue-50 text-blue-600">تمت الترسية</Badge>
-      case "Completed": return <Badge className="bg-slate-50 text-slate-600">مكتمل</Badge>
+      case "New": return <Badge className="bg-success/10 text-success border-success/20">{t("status_new")}</Badge>
+      case "Awarded": return <Badge className="bg-blue-50 text-blue-600">{t("status_awarded")}</Badge>
+      case "Completed": return <Badge className="bg-slate-50 text-slate-600">{t("status_completed")}</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
     }
   }
@@ -66,14 +69,14 @@ export default function AdminRfqsPage() {
       <div className="space-y-6 text-right">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">إدارة المناقصات</h1>
-            <p className="text-muted-foreground mt-1">مراقبة كافة المناقصات المطروحة على المنصة</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
-                placeholder="بحث في المناقصات..." 
+                placeholder={t("search_placeholder")} 
                 className="pr-10" 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -81,7 +84,7 @@ export default function AdminRfqsPage() {
             </div>
             <Button variant="outline" className="gap-2">
               <Filter size={18} />
-              تصفية
+              {t("filter")}
             </Button>
           </div>
         </div>
@@ -90,27 +93,27 @@ export default function AdminRfqsPage() {
           <CardHeader className="border-b bg-white">
             <CardTitle className="text-lg flex items-center gap-2">
               <FileText className="text-primary" size={20} />
-              كافة الطلبات
+              {t("all_requests")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             {isLoading ? (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
-                <p>جاري تحميل البيانات...</p>
+                <p>{t("loading_data")}</p>
               </div>
             ) : filteredRfqs.length === 0 ? (
-              <div className="p-20 text-center text-muted-foreground">لا توجد مناقصات حالياً.</div>
+              <div className="p-20 text-center text-muted-foreground">{t("no_tenders_current")}</div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
-                    <TableHead className="text-right">المناقصة</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">الفئة</TableHead>
-                    <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
-                    <TableHead className="text-left">إجراءات</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">{t("id_col")}</TableHead>
+                    <TableHead className="text-right">{t("tender")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("category")}</TableHead>
+                    <TableHead className="text-right">{t("status")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("date")}</TableHead>
+                    <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -128,7 +131,7 @@ export default function AdminRfqsPage() {
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={14} />
-                          {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
+                          {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US') : '-'}
                         </div>
                       </TableCell>
                       <TableCell className="text-left">

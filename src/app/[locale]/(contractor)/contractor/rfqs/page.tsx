@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,12 +11,12 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User } from "lucide-react"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 
 export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
@@ -26,6 +28,8 @@ export default function ContractorRfqsPage() {
   const [customDeadline, setCustomDeadline] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
@@ -62,14 +66,14 @@ const handleBatchPublish = async () => {
         });
       }
       toast({
-        title: "تم النشر!",
-        description: `تم نشر ${selectedRfqs.length} مناقصة بنجاح.`,
+        title: t("rfq_batch_publish_title"),
+        description: t("rfq_batch_publish_desc", { count: selectedRfqs.length }),
       });
       setSelectedRfqs([]);
     } catch (error) {
       toast({
-        title: "خطأ",
-        description: "فشل نشر بعض المناقصات.",
+        title: t("rfq_batch_publish_error"),
+        description: t("rfq_batch_publish_error_desc"),
         variant: "destructive"
       });
     } finally {
@@ -152,11 +156,11 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
 
   const getStatusBadge = (rfq: any) => {
     if (rfq.status === "Draft") {
-      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 font-bold">مسودة 📝</Badge>;
+      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 font-bold">{t("rfq_badge_draft")}</Badge>;
     }
     
     if (rfq.status === "Awarded") {
-      return <Badge className="bg-success/10 text-success border-success/20 font-bold">تمت الترسية 🏆</Badge>;
+      return <Badge className="bg-success/10 text-success border-success/20 font-bold">{t("rfq_badge_awarded")}</Badge>;
     }
     
     if (rfq.deadline) {
@@ -164,25 +168,25 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0); // Normalize to start of day for accurate comparison
       if (deadlineDate < today) {
-        return <Badge className="bg-destructive/10 text-destructive border-none font-bold">منتهية الصلاحية ⏱️</Badge>;
+        return <Badge className="bg-destructive/10 text-destructive border-none font-bold">{t("rfq_badge_expired")}</Badge>;
       }
     }
     
-    return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">مفتوحة للتقديم 🟢</Badge>;
+    return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>;
   }
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">مناقصاتي</h1>
-            <p className="text-muted-foreground mt-1">إدارة ومتابعة طلبات عروض السعر الخاصة بك</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("rfq_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
           </div>
           <Link href="/contractor/rfqs/new">
             <Button className="w-full sm:w-auto gap-2">
               <PlusCircle size={18} />
-              طرح مناقصة جديدة
+              {t("rfq_new_tender")}
             </Button>
           </Link>
         </div>
@@ -190,10 +194,10 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-2 flex-wrap">
           {[
-            { value: "all", label: "الكل" },
-            { value: "Draft", label: "مسودة" },
-            { value: "New", label: "نشطة" },
-            { value: "Awarded", label: "مكتملة" }
+            { value: "all", label: t("rfq_all") },
+            { value: "Draft", label: t("rfq_status_draft") },
+            { value: "New", label: t("rfq_status_active") },
+            { value: "Awarded", label: t("rfq_status_completed") }
           ].map(tab => (
             <Button
               key={tab.value}
@@ -216,7 +220,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <FileText className="text-primary" size={20} />
-                  قائمة المناقصات
+                  {t("rfq_tender_list")}
                 </CardTitle>
                 <div className="flex items-center gap-3 flex-wrap">
                   {selectedRfqs.length > 0 && (
@@ -227,17 +231,17 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       size="sm"
                     >
                       {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
-                      نشر المحدد ({selectedRfqs.length})
+                      {t("rfq_batch_publish", { count: selectedRfqs.length })}
                     </Button>
                   )}
                   {selectedRfqs.length === 0 && (
                     <div className="relative">
-                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <Search className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", locale === 'ar' ? 'right-3' : 'left-3')} size={18} />
                       <Input
-                        placeholder="بحث في المناقصات..."
+                        placeholder={t("rfq_search_placeholder")}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className="pr-10 w-full sm:w-64 h-10 rounded-xl bg-slate-50 border-slate-200 focus:bg-white cursor-pointer"
+                        className={cn("w-full sm:w-64 h-10 rounded-xl bg-slate-50 border-slate-200 focus:bg-white cursor-pointer", locale === 'ar' ? 'pr-10' : 'pl-10')}
                       />
                     </div>
                   )}
@@ -247,40 +251,40 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               <div className="flex flex-wrap gap-2">
                 {/* Category Filter */}
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-[140px] h-10 text-sm rounded-xl">
-                    <SelectValue placeholder="التصنيف" />
+                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
+                    <SelectValue placeholder={t("rfq_category_filter")} />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل التصنيفات</SelectItem>
+                  <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectItem value="all">{t("rfq_all_categories")}</SelectItem>
                     {PREDEFINED_CATEGORIES.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
                 {/* Location Filter */}
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
-                  <SelectTrigger className="w-[140px] h-10 text-sm rounded-xl">
-                    <SelectValue placeholder="المدينة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل المدن</SelectItem>
+                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
+                    <SelectValue placeholder={t("rfq_city_filter")} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectItem value="all">{t("rfq_all_cities")}</SelectItem>
                     {SAUDI_CITIES.map(city => (
-                      <SelectItem key={city} value={city}>{city}</SelectItem>
+                      <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
 
                 {/* Deadline Filter */}
                 <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
-                  <SelectTrigger className="w-[140px] h-10 text-sm rounded-xl">
-                    <SelectValue placeholder="الموعد النهائي" />
+                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
+                    <SelectValue placeholder={t("rfq_deadline_filter")} />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">كل المواعيد</SelectItem>
-                    <SelectItem value="week">خلال أسبوع</SelectItem>
-                    <SelectItem value="month">خلال شهر</SelectItem>
-                    <SelectItem value="custom">تاريخ محدد</SelectItem>
+                  <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectItem value="all">{t("rfq_all_deadlines")}</SelectItem>
+                    <SelectItem value="week">{t("rfq_within_week")}</SelectItem>
+                    <SelectItem value="month">{t("rfq_within_month")}</SelectItem>
+                    <SelectItem value="custom">{t("rfq_custom_date")}</SelectItem>
                   </SelectContent>
                 </Select>
                 {deadlineFilter === "custom" && (
@@ -299,7 +303,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                     className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1"
                   >
                     <X size={12} />
-                    مسح الفلاتر
+                    {t("rfq_clear_filters")}
                   </Button>
                 )}
               </div>
@@ -309,12 +313,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             {isLoading && (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
-                <p>جاري تحميل البيانات...</p>
+                <p>{t("rfq_loading")}</p>
               </div>
             )}
             {error && (
               <div className="p-10 text-center space-y-4 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-red-600 font-bold">حدث خطأ أثناء جلب البيانات:</p>
+                <p className="text-red-600 font-bold">{t("rfq_error_fetching")}</p>
                 <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
               </div>
             )}
@@ -322,12 +326,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               <div className="p-20 text-center space-y-4">
                 <p className="text-muted-foreground">
                   {searchQuery || categoryFilter !== "all" || locationFilter !== "all" || deadlineFilter !== "all" 
-                    ? "لا توجد مناقصات مطابقة للفلترة المحددة." 
-                    : "لا توجد مناقصات حالية."}
+                    ? t("rfq_no_matching") 
+                    : t("rfq_no_tenders")}
                 </p>
                 {!searchQuery && categoryFilter === "all" && locationFilter === "all" && deadlineFilter === "all" && (
                   <Link href="/contractor/rfqs/new">
-                    <Button variant="outline">اطرح أول مناقصة الآن</Button>
+                    <Button variant="outline">{t("rfq_first_tender")}</Button>
                   </Link>
                 )}
               </div>
@@ -343,7 +347,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             <Checkbox
                               checked={selectedRfqs.includes(rfq.id)}
                               onCheckedChange={() => toggleSelectRfq(rfq.id)}
-                              className="cursor-pointer ml-2"
+                              className={cn("cursor-pointer", locale === 'ar' ? 'ml-2' : 'mr-2')}
                             />
                           )}
                           <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
@@ -365,8 +369,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md mt-2">
                           <Package size={14} className="text-primary" />
                           {rfq.products && rfq.products.length > 0 
-                            ? `${rfq.products.length} منتج`
-                            : `الكمية: ${rfq.quantity} ${rfq.unitOfMeasure}`
+                            ? t("rfq_products_count", { count: rfq.products.length })
+                            : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
                           }
                         </div>
                       </div>
@@ -377,7 +381,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
                               <User size={12} className="text-slate-500" />
                             </div>
-                            <span className="truncate">بواسطة: <span className="font-bold text-slate-700">{rfq.createdByUserName || "الإدارة"}</span></span>
+                            <span className="truncate">{t("rfq_by_label")} <span className="font-bold text-slate-700">{rfq.createdByUserName || t("rfq_admin_label")}</span></span>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-600">
@@ -390,7 +394,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
                             <Calendar size={12} className="text-amber-600" />
                           </div>
-                          الموعد: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+                          {t("rfq_deadline_label")}: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set")}</span>
                           {getStatusBadge(rfq)}
                         </div>
                         {rfq.pdfUrl && (
@@ -403,7 +407,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <File size={12} />
-                            تحميل PDF
+                            {t("rfq_download_pdf")}
                           </a>
                         )}
                       </div>
@@ -412,13 +416,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <Link href={`/contractor/rfqs/${rfq.id}/offers`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <Eye size={14} />
-                            عرض العروض
+                            {t("rfq_view_offers")}
                           </Button>
                         </Link>
                         <Link href={`/contractor/rfqs/${rfq.id}/offers?tab=inquiries`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <MessageCircle size={14} />
-                            الاستفسارات
+                            {t("rfq_inquiries")}
                           </Button>
                         </Link>
                       </div>
@@ -435,8 +439,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   variant="outline"
                   className="font-bold"
                 >
-                  {isLoadingMore && <Loader2 className="animate-spin ml-2" size={16} />}
-                  تحميل المزيد
+                  {isLoadingMore && <Loader2 className={cn("animate-spin", locale === 'ar' ? 'ml-2' : 'mr-2')} size={16} />}
+                  {t("rfq_load_more")}
                 </Button>
               </div>
             )}

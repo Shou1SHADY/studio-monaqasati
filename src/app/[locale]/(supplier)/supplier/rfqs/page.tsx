@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -32,35 +33,20 @@ import {
   Star,
   Award
 } from "lucide-react"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, addDoc, serverTimestamp } from "firebase/firestore"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
 import { useStorage } from "@/firebase"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 
-const getRemainingTime = (dateString: string) => {
-  if (!dateString) return "";
-  const deadline = new Date(dateString);
-  // Set to end of day
-  deadline.setHours(23, 59, 59, 999);
-  
-  const now = new Date();
-  const diff = deadline.getTime() - now.getTime();
-  
-  if (diff < 0) return "انتهى الموعد";
-  
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return "ينتهي اليوم";
-  if (days === 1) return "ينتهي غداً";
-  if (days === 2) return "ينتهي بعد يومين";
-  if (days <= 10) return `متبقي ${days} أيام`;
-  return `متبقي ${days} يوماً`;
-}
-
 export default function AvailableRfqsPage() {
+  const t = useTranslations("Portal.Supplier")
+  const locale = useLocale()
   const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -79,6 +65,20 @@ export default function AvailableRfqsPage() {
     setSelectedCity("all")
     setCustomDeadline("")
   }
+  const getRemainingTime = (dateString: string) => {
+    if (!dateString) return "";
+    const deadline = new Date(dateString);
+    deadline.setHours(23, 59, 59, 999);
+    const now = new Date();
+    const diff = deadline.getTime() - now.getTime();
+    if (diff < 0) return t("expired");
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return t("expires_today");
+    if (days === 1) return t("expires_tomorrow");
+    if (days === 2) return t("expires_in_two_days");
+    return t("remaining_days", { count: days });
+  }
+
   const [showRfqDetails, setShowRfqDetails] = useState(false)
   const [showSubmitOffer, setShowSubmitOffer] = useState(false)
   const [showInquiries, setShowInquiries] = useState(false)
@@ -213,9 +213,9 @@ export default function AvailableRfqsPage() {
         repliedAt: null
       })
       setNewQuestion("")
-      toast({ title: "تم الإرسال", description: "تم إرسال سؤالك للمقاول ينتظر الرد." })
+      toast({ title: t("question_sent_title"), description: t("question_sent_desc") })
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل إرسال السؤال", variant: "destructive" })
+      toast({ title: t("error_title"), description: t("question_failed"), variant: "destructive" })
     } finally {
       setIsSubmittingQuestion(false)
     }
@@ -224,17 +224,17 @@ export default function AvailableRfqsPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right">
+      <div className={cn("space-y-8", locale === 'ar' ? 'text-right' : 'text-left')}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">المناقصات المتاحة</h1>
-            <p className="text-muted-foreground mt-1">تصفح الفرص الجديدة المتاحة في السوق لمجالات تخصصك</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("rfqs_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("rfqs_page_desc")}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
-                placeholder="بحث في المناقصات..." 
+                placeholder={t("search_placeholder")} 
                 className="pr-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -244,13 +244,13 @@ export default function AvailableRfqsPage() {
               {/* Deadline Filter */}
               <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
                 <SelectTrigger className="w-[140px] h-10 text-sm">
-                  <SelectValue placeholder="الموعد النهائي" />
+                  <SelectValue placeholder={t("deadline_filter")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">كل المواعيد</SelectItem>
-                  <SelectItem value="week">خلال أسبوع</SelectItem>
-                  <SelectItem value="month">خلال شهر</SelectItem>
-                  <SelectItem value="custom">تاريخ محدد</SelectItem>
+                  <SelectItem value="all">{t("all_deadlines")}</SelectItem>
+                  <SelectItem value="week">{t("within_week")}</SelectItem>
+                  <SelectItem value="month">{t("within_month")}</SelectItem>
+                  <SelectItem value="custom">{t("custom_date")}</SelectItem>
                 </SelectContent>
               </Select>
               {deadlineFilter === "custom" && (
@@ -264,26 +264,26 @@ export default function AvailableRfqsPage() {
 
               {/* Category Filter */}
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="w-[140px] h-10 text-sm">
-                  <SelectValue placeholder="التصنيف" />
+                <SelectTrigger className="w-[200px] h-10 text-sm">
+                  <SelectValue placeholder={t("category")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل التصنيفات</SelectItem>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  <SelectItem value="all">{t("all_categories")}</SelectItem>
                   {PREDEFINED_CATEGORIES.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
 
               {/* City Filter */}
               <Select value={selectedCity} onValueChange={setSelectedCity}>
-                <SelectTrigger className="w-[140px] h-10 text-sm">
-                  <SelectValue placeholder="المدينة" />
+                <SelectTrigger className="w-[200px] h-10 text-sm">
+                  <SelectValue placeholder={t("city")} />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل المدن</SelectItem>
+                <SelectContent className="max-h-72 overflow-y-auto">
+                  <SelectItem value="all">{t("all_cities")}</SelectItem>
                   {SAUDI_CITIES.map(city => (
-                    <SelectItem key={city} value={city}>{city}</SelectItem>
+                    <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -294,8 +294,8 @@ export default function AvailableRfqsPage() {
                    onClick={clearFilters}
                    className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1"
                  >
-                   <X size={12} />
-                   مسح الفلاتر
+                    <X size={12} />
+                    {t("clear_filters")}
                  </Button>
                )}
              </div>
@@ -306,13 +306,13 @@ export default function AvailableRfqsPage() {
           {isLoading ? (
             <div className="col-span-full p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
               <Loader2 className="animate-spin text-primary" size={40} />
-              <p className="font-medium animate-pulse">جاري تحميل المناقصات المتاحة...</p>
+              <p className="font-medium animate-pulse">{t("loading_rfqs")}</p>
             </div>
           ) : filteredRfqs.length === 0 ? (
             <div className="col-span-full p-20 text-center flex flex-col items-center gap-3 text-muted-foreground bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
               <Search size={48} className="opacity-20" />
-              <p className="text-lg font-bold text-slate-600">لا توجد مناقصات مطابقة لبحثك</p>
-              <p className="text-sm">حاول تغيير كلمات البحث أو تصفية التخصصات</p>
+              <p className="text-lg font-bold text-slate-600">{t("no_matching_rfqs")}</p>
+              <p className="text-sm">{t("no_matching_rfqs_desc")}</p>
             </div>
           ) : (
             filteredRfqs.map((rfq: any) => (
@@ -339,8 +339,8 @@ export default function AvailableRfqsPage() {
                     <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md mt-2">
                       <Package size={14} className="text-primary" />
                       {rfq.products && rfq.products.length > 0 
-                        ? `${rfq.products.length} منتج`
-                        : `الكمية: ${rfq.quantity} ${rfq.unitOfMeasure}`
+                        ? t("products_count", { count: rfq.products.length })
+                        : t("quantity_label", { quantity: rfq.quantity, unit: rfq.unitOfMeasure })
                       }
                     </div>
                   </div>
@@ -359,7 +359,7 @@ export default function AvailableRfqsPage() {
                           className="text-[10px] bg-blue-100/50 text-blue-700 px-2 py-0.5 rounded-full hover:bg-blue-200 transition-colors mr-auto shrink-0"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          خريطة
+                          {t("map_label")}
                         </a>
                       )}
                     </div>
@@ -367,7 +367,7 @@ export default function AvailableRfqsPage() {
                       <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
                         <Calendar size={12} className="text-amber-600" />
                       </div>
-                      الموعد: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+                      {t("deadline_label")}: <span className="font-bold text-slate-700">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("not_specified")}</span>
                       {rfq.deadline && (
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold mr-1 ${
                           new Date(rfq.deadline).getTime() < new Date().getTime() 
@@ -418,7 +418,7 @@ export default function AvailableRfqsPage() {
                       className="flex-1 gap-2 rounded-xl h-11 bg-transparent text-slate-700 hover:bg-transparent hover:text-primary transition-all border-slate-200 hover:border-primary/50"
                     >
                       <Eye size={16} />
-                      التفاصيل
+                      {t("details")}
                     </Button>
                     <Button 
                       onClick={() => {
@@ -442,7 +442,7 @@ export default function AvailableRfqsPage() {
                       }}
                       className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
                     >
-                      تقديم عرض
+                      {t("submit_offer")}
                       <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
                     </Button>
                   </div>
@@ -465,8 +465,8 @@ export default function AvailableRfqsPage() {
 
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); } }}>
-        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir="rtl">
-          <DialogTitle className="sr-only">تفاصيل المناقصة</DialogTitle>
+        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogTitle className="sr-only">{t("rfq_details_title")}</DialogTitle>
           
           <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
             <div className="flex items-center justify-between">
@@ -484,7 +484,7 @@ export default function AvailableRfqsPage() {
               <div className="space-y-3">
                 <h3 className="font-bold text-slate-700 flex items-center gap-2">
                   <Package size={16} className="text-primary" />
-                  المنتجات المطلوبة
+                  {t("required_products")}
                 </h3>
                 <div className="space-y-2">
                   {selectedRfq.products.map((prod: any, idx: number) => (
@@ -508,7 +508,7 @@ export default function AvailableRfqsPage() {
             {/* Notes */}
             {selectedRfq?.notes && (
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <h3 className="font-bold text-amber-800 text-sm mb-1">ملاحظات إضافية</h3>
+                <h3 className="font-bold text-amber-800 text-sm mb-1">{t("additional_notes")}</h3>
                 <p className="text-sm text-amber-900">{selectedRfq.notes}</p>
               </div>
             )}
@@ -517,11 +517,11 @@ export default function AvailableRfqsPage() {
             {selectedRfq?.pdfUrl && (
               <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <File size={20} className="text-blue-600" />
-                <span className="flex-1 text-sm font-medium text-blue-800">ملف PDF مرفق</span>
+                <span className="flex-1 text-sm font-medium text-blue-800">{t("pdf_attached")}</span>
                 <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer" download>
                   <Button variant="outline" size="sm" className="gap-1">
                     <Download size={14} />
-                    تحميل
+                    {t("download")}
                   </Button>
                 </a>
               </div>
@@ -535,7 +535,7 @@ export default function AvailableRfqsPage() {
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Calendar size={14} className="text-amber-600" />
-                <span>الموعد: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+                <span>{t("deadline_label")}: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString(locale) : t("not_specified")}</span>
               </div>
             </div>
 
@@ -548,7 +548,7 @@ export default function AvailableRfqsPage() {
               >
                 <span className="font-bold text-slate-700 flex items-center gap-2">
                   <MessageCircle size={16} className="text-primary" />
-                  الاستفسارات والأسئلة
+                  {t("inquiries")}
                 </span>
                 {showInquiries ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
               </Button>
@@ -558,7 +558,7 @@ export default function AvailableRfqsPage() {
                   {/* Question Form */}
                   <div className="flex gap-2">
                     <Input 
-                      placeholder="اكتب سؤالك للمقاول..." 
+                      placeholder={t("ask_question_placeholder")} 
                       value={newQuestion}
                       onChange={(e) => setNewQuestion(e.target.value)}
                       className="flex-1"
@@ -582,7 +582,7 @@ export default function AvailableRfqsPage() {
                               <p className="text-sm text-slate-600">{inq.question}</p>
                               {inq.reply && (
                                 <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
-                                  <p className="text-xs font-bold text-green-700">رد المقاول:</p>
+                                  <p className="text-xs font-bold text-green-700">{t("reply_from_contractor")}</p>
                                   <p className="text-sm text-green-800">{inq.reply}</p>
                                 </div>
                               )}
@@ -592,7 +592,7 @@ export default function AvailableRfqsPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">لا توجد استفسارات بعد. كن أول من يسأل!</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">{t("no_inquiries_yet")}</p>
                   )}
                 </div>
               )}
@@ -607,7 +607,7 @@ export default function AvailableRfqsPage() {
               >
                 <span className="font-bold text-slate-700 flex items-center gap-2">
                   <Award size={16} className="text-primary" />
-                  معلومات وتقييمات المقاول ({(contractorInfo as any)?.rating || 0})
+                  {t("contractor_info_label", { rating: (contractorInfo as any)?.rating || 0 })}
                 </span>
                 {showContractorReviews ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
               </Button>
@@ -616,21 +616,21 @@ export default function AvailableRfqsPage() {
                 <div className="mt-3 space-y-4 px-2">
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
                     <div>
-                      <h4 className="font-bold text-slate-800">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || "مقاول معتمد"}</h4>
-                      <p className="text-sm text-slate-500 mt-1">مقاول طرح المناقصة</p>
+                      <h4 className="font-bold text-slate-800">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || t("approved_contractor")}</h4>
+                      <p className="text-sm text-slate-500 mt-1">{t("contractor_desc")}</p>
                     </div>
                     {((contractorInfo as any)?.rating || 0) > 0 && (
                       <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
                         <span className="font-bold text-sm">{(contractorInfo as any)?.rating}</span>
                         <Star size={14} className="fill-amber-400" />
-                        <span className="text-[10px] text-amber-600/70 mr-1">({contractorReviews?.length || 0} تقييم)</span>
+                        <span className="text-[10px] text-amber-600/70 mr-1">{t("reviews_count", { count: contractorReviews?.length || 0 })}</span>
                       </div>
                     )}
                   </div>
 
                   {contractorReviews && contractorReviews.length > 0 ? (
                     <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                      <h4 className="font-bold text-sm text-slate-700">آراء الموردين:</h4>
+                      <h4 className="font-bold text-sm text-slate-700">{t("supplier_opinions")}</h4>
                       {contractorReviews.map((review: any) => (
                         <div key={review.id} className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
                           <div className="flex items-center justify-between mb-2">
@@ -646,14 +646,14 @@ export default function AvailableRfqsPage() {
                             </p>
                           )}
                           <p className="text-[10px] text-slate-400 mt-2 text-left">
-                            {new Date(review.createdAt).toLocaleDateString("ar-SA")}
+                            {new Date(review.createdAt).toLocaleDateString(locale)}
                           </p>
                         </div>
                       ))}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground text-center py-4 bg-slate-50 rounded-lg border border-dashed">
-                      لا توجد تقييمات سابقة لهذا المقاول.
+                      {t("no_previous_reviews")}
                     </p>
                   )}
                 </div>
@@ -663,10 +663,10 @@ export default function AvailableRfqsPage() {
 
           <div className="px-5 py-4 border-t bg-white shrink-0 flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); }}>
-              إغلاق
+              {t("close")}
             </Button>
             <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
-              تقديم عرض سعر
+              {t("submit_price_offer")}
               <ChevronLeft size={16} />
             </Button>
           </div>

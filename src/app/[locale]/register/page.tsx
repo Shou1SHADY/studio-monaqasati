@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { useTranslations } from "next-intl"
+import { useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
+import { useTranslations, useLocale } from "next-intl"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification } from "firebase/auth"
@@ -14,10 +14,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check } from "lucide-react"
-import { PREDEFINED_CATEGORIES } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 
 export default function RegisterPage() {
   const t = useTranslations("Auth.Register")
+  const locale = useLocale()
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
@@ -214,6 +215,9 @@ export default function RegisterPage() {
       }
     } catch (error: any) {
       console.error("❌ Google Registration error:", error)
+      if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user") {
+        return
+      }
       toast({
         title: t("google_failed"),
         description: error.message || t("google_failed_desc"),
@@ -238,7 +242,7 @@ export default function RegisterPage() {
             <LanguageSwitcher />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">M</div>
-              <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">Monaqasati</span>
+              <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">Mdmak Tech</span>
             </div>
           </div>
         </div>
@@ -399,7 +403,7 @@ export default function RegisterPage() {
                                 }`}>
                                 {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
                               </div>
-                              <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{cat}</span>
+                              <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{displayCategory(cat, locale)}</span>
                             </button>
                           )
                         })}
@@ -515,7 +519,7 @@ export default function RegisterPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent z-10" />
         <img
           src="/images/loading-dock.jpg"
-          alt="Monaqasati Platform Architecture"
+          alt="Mdmak Tech Platform Architecture"
           className="absolute inset-0 w-full h-full object-cover opacity-80 ltr:-scale-x-100"
         />
         <div className="absolute bottom-0 left-0 right-0 p-16 z-20 text-white">

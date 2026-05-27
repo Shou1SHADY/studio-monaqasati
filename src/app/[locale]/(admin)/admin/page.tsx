@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 import { 
   Users, 
   Package, 
@@ -19,8 +19,11 @@ import {
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, limit } from "firebase/firestore"
+import { useTranslations, useLocale } from 'next-intl'
 
 export default function AdminDashboard() {
+  const t = useTranslations("Portal.Admin.Dashboard")
+  const locale = useLocale()
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
 
@@ -71,13 +74,13 @@ export default function AdminDashboard() {
   const offersCount = offers?.length || 0;
 
   const stats = [
-    { title: "إجمالي الموردين", value: suppliersCount.toString(), icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
-    { title: "إجمالي المقاولين", value: contractorsCount.toString(), icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
-    { title: "مناقصات نشطة", value: activeRfqsCount.toString(), icon: Package, color: "text-success", bg: "bg-success/10" },
-    { title: "عروض السعر", value: offersCount.toString(), icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
+    { title: t("total_suppliers"), value: suppliersCount.toString(), icon: Users, color: "text-purple-600", bg: "bg-purple-50" },
+    { title: t("total_contractors"), value: contractorsCount.toString(), icon: Users, color: "text-blue-600", bg: "bg-blue-50" },
+    { title: t("active_tenders"), value: activeRfqsCount.toString(), icon: Package, color: "text-success", bg: "bg-success/10" },
+    { title: t("price_offers"), value: offersCount.toString(), icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
   ]
 
-  const days = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const days = [t("sunday"), t("monday"), t("tuesday"), t("wednesday"), t("thursday"), t("friday"), t("saturday")];
   const dayCounts = [0, 0, 0, 0, 0, 0, 0];
   rfqs?.forEach((rfq: any) => {
     if (rfq.createdAt) {
@@ -89,7 +92,7 @@ export default function AdminDashboard() {
   const barData = days.map((name, i) => ({ name, rfqs: dayCounts[i] }));
 
   const categoryCounts = rfqs?.reduce((acc: any, rfq: any) => {
-    const cat = rfq.categoryId || "أخرى"
+    const cat = rfq.categoryId || t("other")
     acc[cat] = (acc[cat] || 0) + 1;
     return acc;
   }, {}) || {};
@@ -101,25 +104,25 @@ export default function AdminDashboard() {
     color: colors[i % colors.length]
   }));
   
-  const pieData = dynamicPieData.length > 0 ? dynamicPieData : [{ name: "لا توجد بيانات", value: 1, color: "#cbd5e1" }];
+  const pieData = dynamicPieData.length > 0 ? dynamicPieData : [{ name: t("no_data"), value: 1, color: "#cbd5e1" }];
 
   const formatTimeAgo = (isoString: string) => {
-    if (!isoString) return "وقت غير معلوم"
+    if (!isoString) return t("unknown_time")
     const diff = Date.now() - new Date(isoString).getTime()
     const mins = Math.floor(diff / 60000)
-    if (mins < 1) return "الآن"
-    if (mins < 60) return `قبل ${mins} دقيقة`
+    if (mins < 1) return t("now")
+    if (mins < 60) return t("minutes_ago", { mins })
     const hrs = Math.floor(mins / 60)
-    if (hrs < 24) return `قبل ${hrs} ساعة`
-    return `قبل ${Math.floor(hrs / 24)} يوم`
+    if (hrs < 24) return t("hours_ago", { hrs })
+    return t("days_ago", { days: Math.floor(hrs / 24) })
   }
 
   return (
     <PortalLayout>
       <div className="space-y-8 text-right">
         <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">لوحة التحكم الإدارية</h1>
-          <p className="text-muted-foreground mt-1">نظرة شاملة على أداء المنصة ونشاط المستخدمين</p>
+          <h1 className="text-3xl font-bold text-secondary font-headline">{t("title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("subtitle")}</p>
         </div>
 
         {/* Stats Grid */}
@@ -147,9 +150,9 @@ export default function AdminDashboard() {
             <CardHeader className="flex flex-row items-center justify-between border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
-                المناقصات المطروحة أسبوعياً
+                {t("weekly_tenders")}
               </CardTitle>
-              <Badge variant="secondary">آخر 30 يوم</Badge>
+              <Badge variant="secondary">{t("last_30_days")}</Badge>
             </CardHeader>
             <CardContent className="p-6 h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -168,7 +171,7 @@ export default function AdminDashboard() {
             <CardHeader className="flex flex-row items-center justify-between border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <PieChartIcon className="h-5 w-5 text-accent" />
-                توزيع العروض حسب الفئة
+                {t("offers_by_category")}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-6 h-[300px]">
@@ -200,7 +203,7 @@ export default function AdminDashboard() {
             <CardHeader className="border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-destructive" />
-                طلبات التوثيق المعلقة
+                {t("pending_verification")}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -208,11 +211,11 @@ export default function AdminDashboard() {
                 <div className="divide-y">
                   {(pendingVerify as any[]).map((u: any) => (
                     <div key={u.id} className="p-4 hover:bg-slate-50 transition-colors">
-                      <p className="text-sm font-bold text-slate-800">{u.name || "مستخدم غير معروف"}</p>
+                      <p className="text-sm font-bold text-slate-800">{u.name || t("unknown_user")}</p>
                       <p className="text-xs text-muted-foreground mt-0.5">{u.role} — {u.email}</p>
                       <Link href={u.role === "Supplier" ? "/admin/suppliers" : "/admin/contractors"}>
                         <Button variant="link" size="sm" className="p-0 h-auto mt-2 text-primary font-bold">
-                          مراجعة الطلب ←
+                          {t("review_request")}
                         </Button>
                       </Link>
                     </div>
@@ -221,7 +224,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="p-8 text-center text-muted-foreground">
                   <ShieldAlert className="mx-auto h-10 w-10 opacity-20 mb-2" />
-                  <p className="text-sm font-medium">لا توجد طلبات توثيق معلقة</p>
+                  <p className="text-sm font-medium">{t("no_pending_requests")}</p>
                 </div>
               )}
             </CardContent>
@@ -232,7 +235,7 @@ export default function AdminDashboard() {
             <CardHeader className="border-b">
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <Activity className="h-5 w-5 text-blue-500" />
-                آخر المناقصات المنشورة
+                {t("activity_feed")}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -241,11 +244,11 @@ export default function AdminDashboard() {
                   {(recentRfqs as any[]).map((rfq: any) => (
                     <div key={rfq.id} className="p-4 flex items-center justify-between">
                       <div>
-                        <span className="text-sm font-bold text-slate-800 block">{rfq.title || "مناقصة بدون عنوان"}</span>
-                        <span className="text-xs text-muted-foreground">{rfq.categoryId || "غير مصنف"}</span>
+                        <span className="text-sm font-bold text-slate-800 block">{rfq.title || t("no_title")}</span>
+                        <span className="text-xs text-muted-foreground">{rfq.categoryId || t("uncategorized")}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <Badge variant="secondary" className="text-xs">{rfq.status || "جديدة"}</Badge>
+                        <Badge variant="secondary" className="text-xs">{rfq.status || t("status_new")}</Badge>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock size={11} />
                           {formatTimeAgo(rfq.createdAt)}
@@ -257,7 +260,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="p-8 text-center text-muted-foreground">
                   <Activity className="mx-auto h-10 w-10 opacity-20 mb-2" />
-                  <p className="text-sm font-medium">لا توجد مناقصات حتى الآن</p>
+                  <p className="text-sm font-medium">{t("no_tenders")}</p>
                 </div>
               )}
             </CardContent>

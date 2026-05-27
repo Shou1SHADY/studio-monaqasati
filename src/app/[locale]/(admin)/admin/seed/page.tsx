@@ -9,6 +9,7 @@ import { doc, setDoc } from "firebase/firestore"
 import { signInAnonymously } from "firebase/auth"
 import { Loader2, Database, RefreshCw } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 
 const SAMPLE_CATEGORIES = [
   { id: "cat-1", name: "حديد ومعادن", description: "جميع أنواع حديد التسليح والصلب" },
@@ -24,6 +25,8 @@ const SAUDI_CITIES_SEED = [
 ]
 
 export default function SeedPage() {
+  const t = useTranslations("Portal.Admin.Seed")
+  const locale = useLocale()
   const [isSeeding, setIsSeeding] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([])
   const { auth, firestore } = useFirebase()
@@ -143,13 +146,13 @@ export default function SeedPage() {
         <Card className="border-none shadow-xl bg-white">
           <CardHeader className="text-center border-b pb-6">
             <Database size={60} className="mx-auto text-primary mb-4" />
-            <CardTitle className="text-2xl font-bold">تهيئة بيانات منصة مدماك تيك</CardTitle>
-            <CardDescription className="text-lg">سيتم إعداد حسابك كمسؤول وإضافة البيانات التجريبية فوراً.</CardDescription>
+            <CardTitle className="text-2xl font-bold">{t("page_title")}</CardTitle>
+            <CardDescription className="text-lg">{t("page_desc")}</CardDescription>
           </CardHeader>
           <CardContent className="p-8 space-y-6">
             <div className="bg-slate-900 text-green-400 p-5 rounded-xl font-mono text-sm h-64 overflow-y-auto shadow-inner border-2 border-slate-800">
               {debugLog.map((log, i) => <div key={i} className="mb-1">➜ {log}</div>)}
-              {debugLog.length === 0 && <div className="text-slate-500 italic">بانتظار الضغط على زر التأسيس...</div>}
+              {debugLog.length === 0 && <div className="text-slate-500 italic">{t("waiting_for_seed")}</div>}
             </div>
             
             <Button 
@@ -160,12 +163,12 @@ export default function SeedPage() {
               {isSeeding ? (
                 <>
                   <Loader2 className="animate-spin ml-3" size={24} />
-                  جاري التأسيس...
+                  {t("seeding")}
                 </>
               ) : (
                 <>
                   <RefreshCw className="ml-3" size={24} />
-                  تأسيس البيانات الآن
+                  {t("seed_now")}
                 </>
               )}
             </Button>

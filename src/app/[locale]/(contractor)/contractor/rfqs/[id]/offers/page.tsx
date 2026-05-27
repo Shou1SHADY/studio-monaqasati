@@ -1,7 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
+import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -38,9 +41,11 @@ import {
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 
 export default function RfqOffersPage() {
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
   const params = useParams()
   const rfqId = params.id as string
   const router = useRouter()
@@ -80,7 +85,7 @@ export default function RfqOffersPage() {
       router.push(`/contractor/chat/${offer.id}`)
     } catch (err: any) {
       console.error("❌ openChat failed:", err?.code, err?.message)
-      toast({ title: "خطأ", description: "تعذر فتح المحادثة: " + (err?.code || ""), variant: "destructive" })
+      toast({ title: t("offers_toast_error"), description: t("offers_toast_error_desc", { message: err?.code || "" }), variant: "destructive" })
       setOpeningChat(null)
     }
   }
@@ -121,7 +126,7 @@ export default function RfqOffersPage() {
       })
     } catch (error: any) {
       console.error("❌ updateDoc offer failed:", error?.code, error?.message)
-      toast({ title: "خطأ", description: `فشل تحديث العرض: ${error?.code || error?.message}`, variant: "destructive" })
+      toast({ title: t("offers_toast_error"), description: t("offers_toast_error_desc", { message: error?.code || error?.message }), variant: "destructive" })
       setProcessingId(null)
       return
     }
@@ -146,19 +151,19 @@ export default function RfqOffersPage() {
       } catch (error: any) {
         console.error("❌ setDoc chat failed:", error?.code, error?.message)
         // Don't block the accept flow — offer is already updated
-        toast({ title: "تنبيه", description: "تم قبول العرض لكن فشل إنشاء المحادثة. تحقق من قواعد Firestore.", variant: "destructive" })
+        toast({ title: t("offers_toast_chat_alert"), description: t("offers_toast_chat_alert_desc"), variant: "destructive" })
         setProcessingId(null)
         return
       }
     }
 
     toast({
-      title: decision === "مقبول" ? "✅ تم قبول العرض!" : decision === "مرفوض" ? "❌ تم رفض العرض" : "📉 تم طلب التخفيض",
+      title: decision === "مقبول" ? t("offers_toast_accepted_title") : decision === "مرفوض" ? t("offers_toast_rejected_title") : t("offers_toast_reduction_title"),
       description: decision === "مقبول"
-        ? "سيتم إشعار المورد. يمكنك التواصل معه من صفحة محادثاتي."
+        ? t("offers_toast_accepted_desc")
         : decision === "مرفوض"
-          ? "تم رفض العرض وسيتم إشعار المورد."
-          : "تم إرسال طلب للمورد لتخفيض السعر المقدم.",
+          ? t("offers_toast_rejected_desc")
+          : t("offers_toast_reduction_desc"),
     })
     setProcessingId(null)
   }
@@ -192,11 +197,11 @@ export default function RfqOffersPage() {
       }
 
       toast({
-        title: action === "مطلوبة" ? "تم طلب العينة" : "تم استلام العينة",
-        description: action === "مطلوبة" ? "تم إرسال طلب للمورد لتوفير عينة." : "تم تأكيد استلام العينة بنجاح."
+        title: action === "مطلوبة" ? t("offers_toast_sample_req") : t("offers_toast_sample_rcv"),
+        description: action === "مطلوبة" ? t("offers_toast_sample_req_desc") : t("offers_toast_sample_rcv_desc")
       });
     } catch (error) {
-      toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
+      toast({ title: t("offers_toast_error"), description: t("offers_toast_sample_error"), variant: "destructive" });
     } finally {
       setProcessingId(null);
     }
@@ -211,13 +216,13 @@ export default function RfqOffersPage() {
         completedAt: new Date().toISOString()
       })
       toast({
-        title: "✅ تم اكتمال التوريد بنجاح!",
-        description: "تم تحديث حالة العقد إلى مكتمل. يمكنك الآن تقييم المورد."
+        title: t("offers_toast_completed_title"),
+        description: t("offers_toast_completed_desc")
       })
     } catch (error: any) {
       toast({
-        title: "خطأ",
-        description: `فشل إكمال العقد: ${error.message}`,
+        title: t("offers_toast_error"),
+        description: t("offers_toast_error_desc", { message: error.message }),
         variant: "destructive"
       })
     } finally {
@@ -227,11 +232,11 @@ export default function RfqOffersPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "مقبول": return <Badge className="bg-success/10 text-success border-success/20">مقبول ✅</Badge>
-      case "تم التسليم": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">مكتمل ومسلم 📦✅</Badge>
-      case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">مرفوض ❌</Badge>
-      case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">مطلوب تخفيض السعر 📉</Badge>
-      default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد المراجعة 🕐</Badge>
+      case "مقبول": return <Badge className="bg-success/10 text-success border-success/20">{t("offers_status_accepted")}</Badge>
+      case "تم التسليم": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">{t("offers_status_completed")}</Badge>
+      case "مرفوض": return <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none">{t("offers_status_rejected")}</Badge>
+      case "مطلوب تخفيض": return <Badge className="bg-amber-100 text-amber-700 border-none">{t("offers_status_reduction")}</Badge>
+      default: return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("offers_status_review")}</Badge>
     }
   }
 
@@ -251,16 +256,16 @@ export default function RfqOffersPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <Button variant="ghost" size="sm" onClick={() => router.back()} className="mb-2 gap-1 text-muted-foreground">
               <ArrowRight size={16} />
-              العودة للمناقصات
+              {t("offers_back_to_tenders")}
             </Button>
-            <h1 className="text-3xl font-bold text-secondary font-headline">عروض المناقصة</h1>
-            <p className="text-muted-foreground mt-1">راجع عروض الأسعار المقدمة من الموردين واتخذ قرارك</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("offers_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("offers_page_desc")}</p>
           </div>
         </div>
         {rfq && (
@@ -286,12 +291,12 @@ export default function RfqOffersPage() {
                         className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors"
                       >
                         <File size={12} />
-                        تحميل PDF
+                        {t("offers_download_pdf")}
                       </a>
                     )}
                     <div className="flex items-center gap-1 text-xs text-muted-foreground mr-auto bg-slate-50 px-2 py-1 rounded">
                       <Calendar size={12} />
-                      تاريخ الطرح: {rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString('ar-SA') : '-'}
+                      {t("offers_created_date", { date: rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString(locale) : '-' })}
                     </div>
                   </div>
 
@@ -308,13 +313,13 @@ export default function RfqOffersPage() {
                           rel="noopener noreferrer"
                           className="text-xs text-primary underline mr-2 hover:text-primary/70 transition-colors"
                         >
-                          عرض الموقع
+                          {t("offers_view_location")}
                         </a>
                       )}
                     </div>
                     {rfq.isQualityCertificateRequired && (
                       <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">
-                        شهادة جودة مطلوبة
+                        {t("offers_quality_cert")}
                       </Badge>
                     )}
                   </div>
@@ -322,7 +327,7 @@ export default function RfqOffersPage() {
                   {/* Products List */}
                   {rfq.products && rfq.products.length > 0 && (
                     <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                      <p className="text-xs font-bold text-slate-600 mb-3">المنتجات المطلوبة:</p>
+                      <p className="text-xs font-bold text-slate-600 mb-3">{t("offers_requested_products")}</p>
                       <div className="space-y-2">
                         {rfq.products.map((product: any, idx: number) => (
                           <div key={idx} className="flex items-center justify-between bg-white p-3 rounded border border-slate-100">
@@ -350,7 +355,7 @@ export default function RfqOffersPage() {
                   {/* Notes */}
                   {rfq.notes && (
                     <div className="mt-4 p-4 bg-blue-50/50 rounded-lg border border-blue-100">
-                      <p className="text-xs font-bold text-slate-600 mb-2">ملاحظات:</p>
+                      <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_notes_label")}</p>
                       <p className="text-sm text-slate-700">{rfq.notes}</p>
                     </div>
                   )}
@@ -365,7 +370,7 @@ export default function RfqOffersPage() {
                         className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
                       >
                         <File size={16} />
-                        عرض الملف المرفق (PDF)
+                        {t("offers_view_pdf")}
                       </a>
                     </div>
                   )}
@@ -374,14 +379,14 @@ export default function RfqOffersPage() {
                 <div className="md:w-px md:h-24 bg-slate-100 hidden md:block" />
 
                 <div className="space-y-2 min-w-[200px]">
-                  <p className="text-xs text-muted-foreground">رقم المناقصة</p>
+                  <p className="text-xs text-muted-foreground">{t("offers_tender_number")}</p>
                   <p className="font-mono text-sm font-bold text-primary bg-primary/5 px-3 py-2 rounded-lg border border-primary/10">
                     {rfqId}
                   </p>
                   {rfq.deadline && (
                     <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/5 px-3 py-2 rounded-lg border border-destructive/10">
                       <Calendar size={14} />
-                      الموعد النهائي: {new Date(rfq.deadline).toLocaleDateString('ar-SA')}
+                      {t("offers_deadline_label", { date: new Date(rfq.deadline).toLocaleDateString(locale) })}
                     </div>
                   )}
                 </div>
@@ -398,7 +403,7 @@ export default function RfqOffersPage() {
                 <TrendingUp size={18} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">إجمالي العروض</p>
+                <p className="text-xs text-muted-foreground">{t("offers_total")}</p>
                 <p className="text-xl font-bold">{offers?.length || 0}</p>
               </div>
             </CardContent>
@@ -409,7 +414,7 @@ export default function RfqOffersPage() {
                 <CheckCircle2 size={18} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">تم قبولها</p>
+                <p className="text-xs text-muted-foreground">{t("offers_accepted_count")}</p>
                 <p className="text-xl font-bold">{offers?.filter((o: any) => o.status === "مقبول").length || 0}</p>
               </div>
             </CardContent>
@@ -420,7 +425,7 @@ export default function RfqOffersPage() {
                 <Loader2 size={18} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">قيد المراجعة</p>
+                <p className="text-xs text-muted-foreground">{t("offers_under_review_count")}</p>
                 <p className="text-xl font-bold">{offers?.filter((o: any) => o.status === "قيد المراجعة").length || 0}</p>
               </div>
             </CardContent>
@@ -430,11 +435,11 @@ export default function RfqOffersPage() {
         {/* Offers and Compare Tabs */}
         <Tabs defaultValue="list" className="space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg text-slate-800">العروض المقدمة</h3>
+            <h3 className="font-bold text-lg text-slate-800">{t("offers_title")}</h3>
             <TabsList className="bg-slate-100/50 border border-slate-200">
-              <TabsTrigger value="list" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">قائمة العروض</TabsTrigger>
-              <TabsTrigger value="compare" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">مقارنة العروض</TabsTrigger>
-              <TabsTrigger value="inquiries" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">الاستفسارات</TabsTrigger>
+              <TabsTrigger value="list" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">{t("offers_tab_list")}</TabsTrigger>
+              <TabsTrigger value="compare" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">{t("offers_tab_compare")}</TabsTrigger>
+              <TabsTrigger value="inquiries" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">{t("offers_tab_inquiries")}</TabsTrigger>
             </TabsList>
           </div>
 
@@ -442,14 +447,14 @@ export default function RfqOffersPage() {
             {isLoading ? (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
-                <p>جاري تحميل العروض...</p>
+                <p>{t("offers_loading")}</p>
               </div>
             ) : !offers || offers.length === 0 ? (
               <Card className="border-dashed border-2 border-slate-200 shadow-none">
                 <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                   <TrendingUp size={48} className="opacity-20" />
-                  <p className="font-bold text-lg">لا توجد عروض حتى الآن</p>
-                  <p className="text-sm">عندما يقدم الموردون عروضهم لهذه المناقصة، ستظهر هنا تلقائياً.</p>
+                  <p className="font-bold text-lg">{t("offers_no_data")}</p>
+                  <p className="text-sm">{t("offers_no_data_desc")}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -463,7 +468,7 @@ export default function RfqOffersPage() {
                     }`}>
                     {isBestOffer && offer.status === "قيد المراجعة" && (
                       <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
-                        <TrendingUp size={12} /> أفضل سعر
+                        <TrendingUp size={12} /> {t("offers_best_price")}
                       </div>
                     )}
                     <CardContent className="p-0">
@@ -476,10 +481,10 @@ export default function RfqOffersPage() {
                                 <User size={18} />
                               </div>
                               <div>
-                                <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || "مورد مسجل"}</p>
+                                <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</p>
                                 {offer.submittedByUserName && (
                                   <p className="text-[11px] text-slate-500 mt-0.5">
-                                    مقدم العرض: <span className="font-semibold">{offer.submittedByUserName}</span>
+                                    {t("offers_submitted_by")} <span className="font-semibold">{offer.submittedByUserName}</span>
                                   </p>
                                 )}
                                 <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
@@ -491,7 +496,7 @@ export default function RfqOffersPage() {
                                     className="flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1"
                                   >
                                     <Globe size={10} />
-                                    الالكتروني زيارة الموقع
+                                    {t("offers_visit_website")}
                                   </a>
                                 )}
                               </div>
@@ -501,19 +506,19 @@ export default function RfqOffersPage() {
 
                           <div className="flex flex-wrap gap-4 text-sm mt-2">
                             <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
-                              <span className="text-muted-foreground font-medium">السعر المقترح:</span>
+                              <span className="text-muted-foreground font-medium">{t("offers_proposed_price")}</span>
                               <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
-                                {offer.price} <span className="text-sm font-normal">ر.س</span>
+                                  {offer.price} <span className="text-sm font-normal">{t("offers_currency_sar")}</span>
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
                               <Calendar size={14} />
-                              <span>{offer.createdAt ? new Date(offer.createdAt).toLocaleDateString('ar-SA') : "-"}</span>
+                              <span>                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : "-"}</span>
                             </div>
                                 {offer.deliveryFrequency && (
                                   <div className="flex items-center gap-2 sm:col-span-2">
                                     <Calendar size={14} className="text-muted-foreground" />
-                                    <span className="text-slate-600">وتيرة التسليم:</span>
+                                    <span className="text-slate-600">{t("offers_delivery_frequency")}</span>
                                     <span className="font-medium">{offer.deliveryFrequency}</span>
                                   </div>
                                 )}
@@ -521,20 +526,20 @@ export default function RfqOffersPage() {
 
                               {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
                                 <div className="mt-3 pt-3 border-t border-slate-200">
-                                  <p className="text-xs font-bold text-slate-600 mb-2">جدول الشحنات:</p>
+                                  <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_batches")}</p>
                                   <div className="space-y-2">
                                     {offer.deliveryBatches.map((batch: any, idx: number) => (
                                       <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
                                         <div className="flex items-center gap-2">
                                           <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
-                                            شحنة {idx + 1}
+                                            {t("offers_batch_no", { number: idx + 1 })}
                                           </span>
                                           <span className="text-slate-600">{batch.quantity}</span>
                                         </div>
                                         <div className="flex items-center gap-2">
                                           <Calendar size={12} className="text-muted-foreground" />
                                           <span className="text-slate-600">{batch.deliveryDate}</span>
-                                          <span className="font-bold text-success">{batch.price} ر.س</span>
+                                          <span className="font-bold text-success">{batch.price} {t("offers_currency_sar")}</span>
                                         </div>
                                       </div>
                                     ))}
@@ -542,7 +547,7 @@ export default function RfqOffersPage() {
                                   {offer.totalBatchesPrice && (
                                     <div className="mt-2 flex justify-end">
                                       <span className="text-xs text-muted-foreground">
-                                        إجمالي أسعار الشحنات: <span className="font-bold text-success">{offer.totalBatchesPrice} ر.س</span>
+                                        {t("offers_total_batches_price")} <span className="font-bold text-success">{offer.totalBatchesPrice} {t("offers_currency_sar")}</span>
                                       </span>
                                     </div>
                                   )}
@@ -553,12 +558,12 @@ export default function RfqOffersPage() {
                                 <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     <File size={18} className="text-blue-600" />
-                                    <span className="text-sm font-bold text-slate-700">ملف عرض السعر الملحق</span>
+                                    <span className="text-sm font-bold text-slate-700">{t("offers_attached_file")}</span>
                                   </div>
                                   <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
                                     <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
                                       <Download size={12} className="ml-1" />
-                                      عرض الملف
+                                      {t("offers_view_file")}
                                     </a>
                                   </Button>
                                 </div>
@@ -575,7 +580,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                              قبول العرض
+                              {t("offers_accept")}
                             </Button>
                             <Button
                               onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
@@ -585,7 +590,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               <ArrowDown size={14} />
-                              طلب تخفيض
+                              {t("offers_request_reduction")}
                             </Button>
                             <Button
                               onClick={() => handleDecision(offer.id, "مرفوض")}
@@ -595,7 +600,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               <XCircle size={14} />
-                              رفض
+                              {t("offers_reject")}
                             </Button>
                             {(!offer.sampleStatus || offer.sampleStatus === "تم الاستلام") && (
                               <Button
@@ -606,7 +611,7 @@ export default function RfqOffersPage() {
                                 size="sm"
                               >
                                 <Box size={14} />
-                                {offer.sampleStatus ? "طلب عينة أخرى" : "طلب عينة"}
+                                {offer.sampleStatus ? t("offers_request_another_sample") : t("offers_request_sample")}
                               </Button>
                             )}
                              {offer.sampleStatus === "تم الإرسال" && (
@@ -619,7 +624,7 @@ export default function RfqOffersPage() {
                                   size="sm"
                                 >
                                   <CheckCircle2 size={14} />
-                                  تأكيد استلام العينة
+                                  {t("offers_confirm_receipt")}
                                 </Button>
                                 <Button
                                   onClick={() => openChat(offer)}
@@ -628,7 +633,7 @@ export default function RfqOffersPage() {
                                   size="sm"
                                 >
                                   <MessageSquare size={14} />
-                                  الدردشة حول العينة
+                                  {t("offers_chat_sample")}
                                 </Button>
                               </div>
                             )}
@@ -645,7 +650,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-                              فتح المحادثة
+                              {t("offers_open_chat")}
                             </Button>
                             <SupplierWhatsAppButton supplierId={offer.supplierId} />
                             <Button
@@ -655,7 +660,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                              تأكيد اكتمال التوريد
+                              {t("offers_confirm_completion")}
                             </Button>
                           </div>
                         )}
@@ -670,7 +675,7 @@ export default function RfqOffersPage() {
                               size="sm"
                             >
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-                              فتح المحادثة
+                              {t("offers_open_chat")}
                             </Button>
                             <SupplierWhatsAppButton supplierId={offer.supplierId} />
                             {offer.contractorRated ? (
@@ -680,7 +685,7 @@ export default function RfqOffersPage() {
                                 size="sm"
                               >
                                 <Star size={14} className="fill-slate-300 text-slate-300" />
-                                تم تقييم المورد
+                                {t("offers_supplier_rated")}
                               </Button>
                             ) : (
                               <Button
@@ -689,7 +694,7 @@ export default function RfqOffersPage() {
                                 size="sm"
                               >
                                 <Star size={14} className="fill-white" />
-                                تقييم المورد
+                                {t("offers_rate_supplier")}
                               </Button>
                             )}
                           </div>
@@ -707,22 +712,22 @@ export default function RfqOffersPage() {
               <Card className="border-dashed border-2 border-slate-200 shadow-none">
                 <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                   <TrendingUp size={48} className="opacity-20" />
-                  <p className="font-bold text-lg">نحتاج عرضين على الأقل للمقارنة</p>
-                  <p className="text-sm">لا يوجد عدد كافٍ من العروض لإجراء مقارنة بينها.</p>
+                  <p className="font-bold text-lg">{t("offers_need_two")}</p>
+                  <p className="text-sm">{t("offers_need_two_desc")}</p>
                 </CardContent>
               </Card>
             ) : (
               <Card className="border-none shadow-sm overflow-hidden bg-white">
                 {/* Sorting Buttons */}
                 <div className="p-4 border-b flex items-center gap-2 flex-wrap bg-slate-50/50">
-                  <span className="text-xs font-bold text-slate-500 ml-2">فرز سريع:</span>
+                  <span className="text-xs font-bold text-slate-500 ml-2">{t("offers_sort")}</span>
                   <Button
                     variant={sortBy === "price" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setSortBy("price")}
                     className="h-8 text-xs rounded-lg"
                   >
-                    حسب السعر (الأقل أولاً)
+                    {t("offers_sort_price")}
                   </Button>
                   <Button
                     variant={sortBy === "date" ? "default" : "outline"}
@@ -730,7 +735,7 @@ export default function RfqOffersPage() {
                     onClick={() => setSortBy("date")}
                     className="h-8 text-xs rounded-lg"
                   >
-                    حسب التاريخ (الأحدث أولاً)
+                    {t("offers_sort_date")}
                   </Button>
                   <Button
                     variant={sortBy === "duration" ? "default" : "outline"}
@@ -738,23 +743,23 @@ export default function RfqOffersPage() {
                     onClick={() => setSortBy("duration")}
                     className="h-8 text-xs rounded-lg"
                   >
-                    حسب مدة التنفيذ (الأقل أولاً)
+                    {t("offers_sort_duration")}
                   </Button>
                 </div>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader className="bg-gradient-to-r from-slate-50 to-white border-b-2 border-slate-100">
                       <TableRow>
-                        <TableHead className="text-right font-bold text-slate-700 whitespace-nowrap w-40">المعيار</TableHead>
+                        <TableHead className="text-right font-bold text-slate-700 whitespace-nowrap w-40">{t("offers_criteria")}</TableHead>
                         {sortedOffers.map((o: any, i: number) => (
                           <TableHead key={o.id} className={`text-center min-w-[160px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
                             <div className="flex flex-col items-center gap-1">
                               <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                                 <User size={16} className="text-primary" />
                               </div>
-                              <span className="font-bold text-slate-800">{o.supplierName || `مورد ${i + 1}`}</span>
+                              <span className="font-bold text-slate-800">{o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}</span>
                               {o.price === lowestPrice && (
-                                <div className="text-[10px] text-amber-600 font-bold">أفضل سعر ⭐</div>
+                                <div className="text-[10px] text-amber-600 font-bold">{t("offers_best_price")} ⭐</div>
                               )}
                             </div>
                           </TableHead>
@@ -763,19 +768,19 @@ export default function RfqOffersPage() {
                     </TableHeader>
                     <TableBody>
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">السعر المقترح</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_price_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className={`text-center font-bold ${o.price === lowestPrice ? 'text-success text-lg' : 'text-slate-800'}`}>
                             <div className="flex flex-col">
                               <span>{Number(o.price).toLocaleString('ar-SA')}</span>
-                              <span className="text-xs text-muted-foreground">ر.س</span>
+                              <span className="text-xs text-muted-foreground">{t("offers_currency_sar")}</span>
                             </div>
                           </TableCell>
                         ))}
                       </TableRow>
                       {/* Removed Location, Delivery, and Sample rows for simplicity */}
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">مدة التنفيذ</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_duration_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center text-sm text-slate-600">
                             {o.executionDuration ? `${o.executionDuration} ${o.executionDurationUnit || 'أيام'}` : "—"}
@@ -783,7 +788,7 @@ export default function RfqOffersPage() {
                         ))}
                       </TableRow>
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">ملاحظات</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_notes_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center text-sm text-slate-600 max-w-[150px]">
                             <p className="truncate">{o.notes || "—"}</p>
@@ -792,35 +797,35 @@ export default function RfqOffersPage() {
                       </TableRow>
                       {/* Removed Products Count row for simplicity */}
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">تاريخ التقديم</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_date_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center text-sm text-slate-600" suppressHydrationWarning>
                             <div className="flex items-center justify-center gap-1">
                               <Calendar size={12} className="text-muted-foreground" />
-                              {o.createdAt ? new Date(o.createdAt).toLocaleDateString('ar-SA') : "—"}
+                              {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale) : "—"}
                             </div>
                           </TableCell>
                         ))}
                       </TableRow>
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">الملف المرفق</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_file_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center">
                             {o.offerPdfUrl ? (
                               <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-[10px]">
                                 <a href={o.offerPdfUrl} target="_blank" rel="noopener noreferrer">
                                   <Download size={10} className="ml-1" />
-                                  عرض الملف
+                                  {t("offers_view_file")}
                                 </a>
                               </Button>
                             ) : (
-                              <span className="text-xs text-muted-foreground italic">لا يوجد</span>
+                              <span className="text-xs text-muted-foreground italic">{t("offers_not_available")}</span>
                             )}
                           </TableCell>
                         ))}
                       </TableRow>
                       <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">القرار</TableCell>
+                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_decision_col")}</TableCell>
                         {sortedOffers.map((o: any) => (
                           <TableCell key={o.id} className="text-center">
                             <div className="flex justify-center">{getStatusBadge(o.status || "قيد المراجعة")}</div>
@@ -832,7 +837,7 @@ export default function RfqOffersPage() {
                                 size="sm"
                               >
                                 {processingId === o.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                قبول
+                                {t("offers_accept_btn")}
                               </Button>
                             )}
                           </TableCell>
@@ -852,11 +857,11 @@ export default function RfqOffersPage() {
       </div>
 
       <Dialog open={!!sampleRequestOffer} onOpenChange={(open) => !open && setSampleRequestOffer(null)}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>طلب عينة</DialogTitle>
+            <DialogTitle>{t("offers_sample_dialog_title")}</DialogTitle>
             <DialogDescription className="text-right mt-2 text-slate-600">
-              سيتم إرسال طلب للمورد لتوفير عينة من المنتج. هل ترغب أيضاً في بدء محادثة مع المورد لمناقشة تفاصيل العينة، أم تكتفي بإرسال إشعار فقط؟
+              {t("offers_sample_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-row justify-end gap-2 mt-4">
@@ -870,7 +875,7 @@ export default function RfqOffersPage() {
               }}
               disabled={!!processingId}
             >
-              إرسال إشعار فقط
+              {t("offers_send_notification")}
             </Button>
             <Button
               className="bg-primary hover:bg-primary/90 text-white"
@@ -883,7 +888,7 @@ export default function RfqOffersPage() {
               }}
               disabled={!!processingId || !!openingChat}
             >
-              إرسال وبدء محادثة
+              {t("offers_send_and_chat")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -910,6 +915,8 @@ export default function RfqOffersPage() {
 }
 
 function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitle: string; profile: any }) {
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
   const [replyText, setReplyText] = useState<{ [key: string]: string }>({})
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [showReply, setShowReply] = useState<string | null>(null)
@@ -963,11 +970,11 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
         console.warn("⚠️ No userId found for inquiry notification", inquiry)
       }
 
-      toast({ title: "تم الرد", description: "تم إرسال الرد بنجاح على الاستفسار" })
+      toast({ title: t("offers_inq_sent_title"), description: t("offers_inq_sent_desc") })
       setReplyText(prev => ({ ...prev, [inquiryId]: "" }))
       setShowReply(null)
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل إرسال الرد", variant: "destructive" })
+      toast({ title: t("offers_toast_error"), description: t("offers_inq_failed"), variant: "destructive" })
     } finally {
       setReplyingTo(null)
     }
@@ -988,8 +995,8 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
       <Card className="border-dashed border-2 border-slate-200 shadow-none">
         <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
           <MessageSquare size={48} className="opacity-20" />
-          <p className="font-bold text-lg">لا توجد استفسارات حتى الآن</p>
-          <p className="text-sm">الاستفسارات من الموردين ستظهر هنا</p>
+          <p className="font-bold text-lg">{t("offers_inq_no_data")}</p>
+          <p className="text-sm">{t("offers_inq_no_data_desc")}</p>
         </CardContent>
       </Card>
     )
@@ -1000,10 +1007,10 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
       <CardHeader className="border-b bg-slate-50/50">
         <CardTitle className="flex items-center gap-2 text-lg">
           <MessageSquare size={20} className="text-primary" />
-          الاستفسارات والأسئلة ({inquiries.length})
+          {t("offers_inquiries_title", { count: inquiries.length })}
         </CardTitle>
         <p className="text-sm text-muted-foreground mt-1">
-          جميع الاستفسارات مرئية للمقاولين والموردين
+          {t("offers_inquiries_desc")}
         </p>
       </CardHeader>
       <CardContent className="p-6">
@@ -1017,11 +1024,11 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="font-bold text-sm text-slate-700">
-                      {inq.supplierName || "مورد"}
+                      {inq.supplierName || t("offers_registered_supplier")}
                       {inq.submittedByUserName && <span className="text-[11px] font-normal text-slate-500 mr-2">({inq.submittedByUserName})</span>}
                     </span>
                     <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-                      {new Date(inq.createdAt).toLocaleDateString('ar-SA')}
+                      {new Date(inq.createdAt).toLocaleDateString(locale)}
                     </span>
                   </div>
                   <p className="text-slate-600 text-sm leading-relaxed">{inq.question}</p>
@@ -1030,10 +1037,10 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                     <div className="mt-3 p-3 bg-success/5 rounded-lg border border-success/20">
                       <div className="flex items-center gap-2 mb-1">
                         <CheckCircle2 size={14} className="text-success" />
-                        <span className="text-xs font-bold text-success">رد الإدارة:</span>
+                        <span className="text-xs font-bold text-success">{t("offers_inq_reply_label")}</span>
                         {inq.repliedByUserName && <span className="text-[11px] text-success/80">({inq.repliedByUserName})</span>}
                         <span className="text-xs text-success/70" suppressHydrationWarning>
-                          {new Date(inq.repliedAt).toLocaleDateString('ar-SA')}
+                          {new Date(inq.repliedAt).toLocaleDateString(locale)}
                         </span>
                       </div>
                       <p className="text-sm text-slate-700">{inq.reply}</p>
@@ -1045,7 +1052,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                           <Textarea
                             value={replyText[inq.id] || ""}
                             onChange={(e) => setReplyText(prev => ({ ...prev, [inq.id]: e.target.value }))}
-                            placeholder="اكتب ردك هنا... سيتمكن جميع الموردين من رؤية هذا الرد"
+                            placeholder={t("offers_inq_reply_placeholder")}
                             rows={3}
                             className="text-sm"
                           />
@@ -1057,14 +1064,14 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                               className="gap-2"
                             >
                               {replyingTo === inq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                              إرسال الرد
+                              {t("offers_inq_send_reply")}
                             </Button>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => { setShowReply(null); setReplyText(prev => ({ ...prev, [inq.id]: "" })) }}
                             >
-                              إلغاء
+                              {t("offers_inq_cancel")}
                             </Button>
                           </div>
                         </div>
@@ -1076,7 +1083,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                           className="gap-2 mt-2"
                         >
                           <MessageSquare size={14} />
-                          رد على الاستفسار
+                          {t("offers_inq_reply_btn")}
                         </Button>
                       )}
                     </div>
@@ -1093,6 +1100,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
 
 function SupplierWhatsAppButton({ supplierId }: { supplierId: string }) {
   const firestore = useFirestore()
+  const t = useTranslations("Portal.Contractor")
   const docRef = useMemoFirebase(() => {
     if (!firestore || !supplierId) return null
     return doc(firestore, "users", supplierId)
@@ -1113,7 +1121,7 @@ function SupplierWhatsAppButton({ supplierId }: { supplierId: string }) {
       className="w-full flex items-center justify-center gap-2 h-8 rounded-full bg-[#25D366] hover:bg-[#20ba5a] text-white text-xs font-bold transition-colors"
     >
       <Phone size={13} />
-      واتسآب المورد
+      {t("offers_supplier_whatsapp")}
     </a>
   )
 }

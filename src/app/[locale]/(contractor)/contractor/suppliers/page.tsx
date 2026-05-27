@@ -1,6 +1,8 @@
 "use client"
 
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { cn } from "@/lib/utils"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -40,8 +42,11 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@
 import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { displayCategory, displayCity } from "@/lib/constants"
  
 export default function SuppliersDirectory() {
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -129,14 +134,14 @@ export default function SuppliersDirectory() {
         favoriteSuppliers: isExplicit ? arrayRemove(supplierId) : arrayUnion(supplierId)
       });
       toast({
-        title: isExplicit ? "تم الإزالة" : "تمت الإضافة",
-        description: isExplicit ? "تم إزالة المورد من المفضلة." : "تم إضافة المورد إلى المفضلة بنجاح.",
+        title: isExplicit ? t("suppliers_fav_removed") : t("suppliers_fav_added"),
+        description: isExplicit ? t("suppliers_fav_removed_desc") : t("suppliers_fav_added_desc"),
       });
     } catch (err) {
       console.error("Failed to toggle favorite:", err);
       toast({
-        title: "خطأ",
-        description: "تعذر تحديث المفضلة.",
+        title: t("offers_toast_error"),
+        description: t("suppliers_fav_error"),
         variant: "destructive"
       });
     }
@@ -157,8 +162,8 @@ export default function SuppliersDirectory() {
     .map((s: any) => ({
       ...s,
       id: s.id,
-      name: s.name || s.companyName || "مورد",
-      city: s.city || s.location || "غير محدد",
+      name: s.name || s.companyName || t("suppliers_registered_supplier"),
+      city: s.city || s.location || t("suppliers_not_set"),
       coverageCities: s.coverageCities || [],
       specializations: s.specializations || [],
       certificates: s.certificates || [],
@@ -199,25 +204,25 @@ export default function SuppliersDirectory() {
 
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right">
+      <div className="space-y-8">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">دليل الموردين</h1>
-            <p className="text-muted-foreground mt-1">تصفح وتواصل مع أفضل الموردين المعتمدين في جميع المجالات</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("suppliers_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("suppliers_page_desc")}</p>
           </div>
           <div className="flex gap-2">
             <div className="relative w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
               <Input 
-                placeholder="بحث باسم المورد..." 
-                className="pr-10 pl-8"
+                placeholder={t("suppliers_search")} 
+                className={cn("pl-8", locale === 'ar' ? 'pr-10' : 'pl-10 pr-8')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-destructive transition-colors"
+                  className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-destructive transition-colors", locale === 'ar' ? 'left-2' : 'right-2')}
                 >
                   <X size={14} />
                 </button>
@@ -227,39 +232,39 @@ export default function SuppliersDirectory() {
               <PopoverTrigger asChild>
                 <Button variant={hasActiveFilters ? "default" : "outline"} className="gap-2 relative">
                   <Filter size={18} />
-                  تصفية
+                  {t("suppliers_filter")}
                   {hasActiveFilters && (
-                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center">
+                    <span className={cn("absolute -top-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center", locale === 'ar' ? '-right-1' : '-left-1')}>
                       {(filterCity !== "all" ? 1 : 0) + (filterSpecialization !== "all" ? 1 : 0)}
                     </span>
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80 text-right" dir="rtl">
+              <PopoverContent className="w-80">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-sm">خيارات التصفية</h4>
+                    <h4 className="font-bold text-sm">{t("suppliers_filter_title")}</h4>
                     {hasActiveFilters && (
                       <button 
                         onClick={() => { clearFilters(); setShowFilters(false) }}
                         className="text-xs text-destructive hover:underline font-medium"
                       >
-                        مسح الكل
+                        {t("suppliers_clear_all")}
                       </button>
                     )}
                   </div>
                   
                   {/* City Filter */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600">المدينة</label>
+                    <label className="text-xs font-semibold text-slate-600">{t("suppliers_filter_city")}</label>
                     <Select value={filterCity} onValueChange={setFilterCity}>
                       <SelectTrigger className="w-full h-9 text-sm">
-                        <SelectValue placeholder="كل المدن" />
+                        <SelectValue placeholder={t("suppliers_all_cities")} />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">كل المدن</SelectItem>
+                      <SelectContent className="max-h-72 overflow-y-auto">
+                        <SelectItem value="all">{t("suppliers_all_cities")}</SelectItem>
                         {allCities.map((city: string) => (
-                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                          <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -267,15 +272,15 @@ export default function SuppliersDirectory() {
 
                   {/* Specialization Filter */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600">التخصص</label>
+                    <label className="text-xs font-semibold text-slate-600">{t("suppliers_filter_spec")}</label>
                     <Select value={filterSpecialization} onValueChange={setFilterSpecialization}>
                       <SelectTrigger className="w-full h-9 text-sm">
-                        <SelectValue placeholder="كل التخصصات" />
+                        <SelectValue placeholder={t("suppliers_all_specs")} />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">كل التخصصات</SelectItem>
+                      <SelectContent className="max-h-72 overflow-y-auto">
+                        <SelectItem value="all">{t("suppliers_all_specs")}</SelectItem>
                         {allSpecializations.map((spec: string) => (
-                          <SelectItem key={spec} value={spec}>{spec}</SelectItem>
+                          <SelectItem key={spec} value={spec}>{displayCategory(spec, locale)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -286,7 +291,7 @@ export default function SuppliersDirectory() {
                     size="sm"
                     onClick={() => setShowFilters(false)}
                   >
-                    تطبيق
+                    {t("suppliers_apply_filters")}
                   </Button>
                 </div>
               </PopoverContent>
@@ -297,18 +302,18 @@ export default function SuppliersDirectory() {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
             <Loader2 className="animate-spin mb-4" size={32} />
-            <p>جاري تحميل قائمة الموردين...</p>
+            <p>{t("suppliers_loading")}</p>
           </div>
         ) : displaySuppliers.length === 0 ? (
           <div className="text-center p-20 bg-slate-50 rounded-xl border border-dashed text-muted-foreground">
             {searchQuery ? (
               <>
                 <Search size={48} className="mx-auto mb-4 opacity-20" />
-                <p className="font-bold text-lg">لا توجد نتائج للبحث</p>
-                <p className="text-sm mt-1">حاول تغيير كلمة البحث أو مسح الفلتر</p>
+                <p className="font-bold text-lg">{t("suppliers_no_search_results")}</p>
+                <p className="text-sm mt-1">{t("suppliers_no_search_results_desc")}</p>
               </>
             ) : (
-              "لا يوجد موردين مسجلين حالياً."
+              t("suppliers_no_suppliers")
             )}
           </div>
         ) : (
@@ -320,25 +325,25 @@ export default function SuppliersDirectory() {
                     <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
                       <Briefcase size={28} />
                     </div>
-                    <div className="flex flex-col items-end gap-1">
+                    <div className={cn("flex flex-col gap-1", locale === 'ar' ? 'items-end' : 'items-start')}>
                       <button 
                         onClick={(e) => toggleFavorite(e, supplier.id)}
                         className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
-                        title={supplier.isExplicitFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة"}
+                        title={supplier.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
                       >
                         <Heart size={16} className={supplier.isExplicitFavorite ? "fill-amber-500" : ""} />
                       </button>
 
                       {supplier.certificates?.length > 0 && (
                         <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
-                          <ShieldCheck size={14} className="ml-1" />
-                          {supplier.certificates.length} شهادة
+                          <ShieldCheck size={14} className={locale === 'ar' ? 'ml-1' : 'mr-1'} />
+                          {t("suppliers_cert_count", { count: supplier.certificates.length })}
                         </Badge>
                       )}
                       {supplier.isFavorite && (
                         <Badge variant="outline" className="border-amber-200 text-amber-600 bg-amber-50 px-2 py-0.5 h-6">
-                          <Star size={10} className="ml-1 fill-amber-500" />
-                          مورد مفضل
+                          <Star size={10} className={cn("fill-amber-500", locale === 'ar' ? 'ml-1' : 'mr-1')} />
+                          {t("suppliers_fav_badge")}
                         </Badge>
                       )}
                     </div>
@@ -356,15 +361,15 @@ export default function SuppliersDirectory() {
                               className={star <= Math.round(supplier.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
                             />
                           ))}
-                          <span className="text-sm font-bold text-slate-700 mr-1">{supplier.rating}</span>
-                          <span className="text-[10px] text-muted-foreground">({supplier.reviewsCount || 0} تقييم)</span>
+                          <span className={cn("text-sm font-bold text-slate-700", locale === 'ar' ? 'mr-1' : 'ml-1')}>{supplier.rating}</span>
+                          <span className="text-[10px] text-muted-foreground">{t("suppliers_review_count", { count: supplier.reviewsCount || 0 })}</span>
                         </>
                       ) : (
                         <>
                           {[1, 2, 3, 4, 5].map((star) => (
                             <Star key={star} size={13} className="text-slate-200 fill-slate-200" />
                           ))}
-                          <span className="text-[10px] text-muted-foreground mr-1">لا توجد تقييمات</span>
+                          <span className={cn("text-[10px] text-muted-foreground", locale === 'ar' ? 'mr-1' : 'ml-1')}>{t("suppliers_no_reviews")}</span>
                         </>
                       )}
                     </div>
@@ -372,7 +377,7 @@ export default function SuppliersDirectory() {
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin size={14} className="text-primary" />
                         <span className="font-medium">{supplier.city}</span>
-                        <span className="text-[10px] bg-slate-100 px-1.5 rounded-sm">المقر</span>
+                        <span className="text-[10px] bg-slate-100 px-1.5 rounded-sm">{t("suppliers_hq")}</span>
                       </div>
                       {supplier.coverageCities?.length > 0 && (
                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
@@ -416,7 +421,7 @@ export default function SuppliersDirectory() {
                         </Badge>
                       ))
                     ) : (
-                      <span className="text-xs text-slate-400">لا توجد تخصصات</span>
+                      <span className="text-xs text-slate-400">{t("suppliers_no_specs")}</span>
                     )}
                   </div>
                 </CardContent>
@@ -426,8 +431,8 @@ export default function SuppliersDirectory() {
                     className="w-full h-12 rounded-none hover:bg-primary hover:text-white transition-colors gap-2"
                     onClick={() => setSelectedSupplier(supplier)}
                   >
-                    عرض الملف الشخصي
-                    <ChevronLeft size={16} />
+                    {t("suppliers_view_profile")}
+                    {locale === 'ar' ? <ChevronLeft size={16} /> : <ChevronLeft size={16} className="rotate-180" />}
                   </Button>
                 </CardFooter>
               </Card>
@@ -437,25 +442,25 @@ export default function SuppliersDirectory() {
       </div>
 
       <Dialog open={!!selectedSupplier} onOpenChange={(open) => !open && setSelectedSupplier(null)}>
-        <DialogContent className="sm:max-w-[600px] text-right max-h-[90vh] overflow-y-auto" dir="rtl">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Briefcase className="text-primary" />
-              ملف المورد: {selectedSupplier?.name}
+              {t("suppliers_dialog_title", { name: selectedSupplier?.name || "" })}
             </DialogTitle>
             <DialogDescription>
-              التفاصيل، الشهادات، ومعلومات العمل الخاصة بالمورد
+              {t("suppliers_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
           
           {selectedSupplier && (
             <div className="space-y-6 py-4">
               <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">مناطق التغطية</h4>
+                <h4 className="font-bold text-slate-800">{t("suppliers_coverage")}</h4>
                 <div className="flex flex-wrap gap-2">
                   <Badge className="bg-accent text-white flex items-center gap-1.5 px-3 py-1">
                     <MapPin size={14} />
-                    المقر: {selectedSupplier.city}
+                    {t("suppliers_hq")}: {selectedSupplier.city}
                   </Badge>
                   {selectedSupplier.coverageCities?.map((city: string) => (
                     <Badge key={city} variant="outline" className="border-accent/30 text-accent bg-accent/5 flex items-center gap-1.5 px-3 py-1">
@@ -467,27 +472,27 @@ export default function SuppliersDirectory() {
               </div>
 
               <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">التخصصات</h4>
+                <h4 className="font-bold text-slate-800">{t("suppliers_specs")}</h4>
                 <div className="flex flex-wrap gap-2">
                   {selectedSupplier.specializations?.length ? selectedSupplier.specializations.map((spec: string) => (
                     <Badge key={spec} className="bg-primary/10 text-primary border-none">{spec}</Badge>
                   )) : (
-                    <span className="text-sm text-slate-500">لا توجد تخصصات مسجلة</span>
+                    <span className="text-sm text-slate-500">{t("suppliers_no_specs_registered")}</span>
                   )}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">نبذة عن المورد</h4>
+                <h4 className="font-bold text-slate-800">{t("suppliers_about")}</h4>
                 <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  {selectedSupplier.description || "لم يقم المورد بإضافة نبذة تعريفية بعد."}
+                  {selectedSupplier.description || t("suppliers_no_description")}
                 </p>
               </div>
 
               <div className="flex flex-col gap-3">
                 <h4 className="font-bold text-slate-800 flex items-center gap-2">
                   <ShieldCheck size={18} className="text-success" />
-                  الشهادات والاعتمادات
+                  {t("suppliers_certificates")}
                 </h4>
                 {selectedSupplier.certificates?.length > 0 ? (
                   <div className="grid gap-3">
@@ -495,10 +500,10 @@ export default function SuppliersDirectory() {
                       <div key={cert.id} className="p-3 bg-white border border-slate-200 rounded-lg flex items-start justify-between shadow-sm">
                         <div>
                           <p className="font-bold text-sm text-slate-800">{cert.name}</p>
-                          <p className="text-xs text-slate-500 mt-1">جهة الإصدار: {cert.issuer}</p>
+                          <p className="text-xs text-slate-500 mt-1">{t("suppliers_cert_issuer")}: {cert.issuer}</p>
                           {(cert.issueDate || cert.expiryDate) && (
                             <p className="text-[10px] text-slate-400 mt-1">
-                              صالح لغاية: {cert.expiryDate || "غير محدد"}
+                              {t("suppliers_cert_valid_until")}: {cert.expiryDate || t("suppliers_unknown")}
                             </p>
                           )}
                         </div>
@@ -509,7 +514,7 @@ export default function SuppliersDirectory() {
                             rel="noopener noreferrer"
                             className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-full font-medium transition-colors"
                           >
-                            عرض المستند
+                            {t("suppliers_view_doc")}
                           </a>
                         )}
                       </div>
@@ -517,7 +522,7 @@ export default function SuppliersDirectory() {
                   </div>
                 ) : (
                   <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
-                    لا توجد شهادات مسجلة لهذا المورد.
+                    {t("suppliers_no_certificates")}
                   </div>
                 )}
               </div>
@@ -525,7 +530,7 @@ export default function SuppliersDirectory() {
               <div className="flex flex-col gap-3">
                 <h4 className="font-bold text-slate-800 flex items-center gap-2">
                   <Star size={18} className="text-amber-400 fill-amber-400" />
-                  تقييمات المورد ({supplierReviews?.length || 0})
+                  {t("suppliers_reviews_title", { count: supplierReviews?.length || 0 })}
                 </h4>
                 {supplierReviews && supplierReviews.length > 0 ? (
                   <div className="grid gap-3">
@@ -543,15 +548,15 @@ export default function SuppliersDirectory() {
                             "{review.comment}"
                           </p>
                         )}
-                        <p className="text-[10px] text-slate-400 text-left">
-                          {new Date(review.createdAt).toLocaleDateString("ar-SA")}
+                        <p className={cn("text-[10px] text-slate-400", locale === 'ar' ? 'text-left' : 'text-right')}>
+                          {new Date(review.createdAt).toLocaleDateString(locale)}
                         </p>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
-                    لا توجد تقييمات مسجلة لهذا المورد حتى الآن.
+                    {t("suppliers_no_reviews_registered")}
                   </div>
                 )}
               </div>

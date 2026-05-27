@@ -25,16 +25,19 @@ export interface ValidationResult {
   errors: string[]
 }
 
-export function validateProducts(products: Product[]): ValidationResult {
+export function validateProducts(
+  products: Product[],
+  t?: (key: string) => string
+): ValidationResult {
   const errors: string[] = []
   const validProducts = products.filter(p => p.name && p.quantity && p.unit)
   
   if (products.length === 0) {
-    errors.push('يجب إضافة منتج واحد على الأقل')
+    errors.push(t ? t('rfq_validation_add_product') : 'يجب إضافة منتج واحد على الأقل')
   }
   
   if (validProducts.length === 0 && products.length > 0) {
-    errors.push('يرجى إكمال بيانات المنتجات المطلوبة')
+    errors.push(t ? t('rfq_validation_complete_data') : 'يرجى إكمال بيانات المنتجات المطلوبة')
   }
   
   return {

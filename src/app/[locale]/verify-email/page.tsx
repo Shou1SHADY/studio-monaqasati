@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
 import { useFirebase } from "@/firebase"
 import { sendEmailVerification, signOut } from "firebase/auth"
 import { doc, getDoc } from "firebase/firestore"
@@ -164,7 +164,7 @@ export default function VerifyEmailPage() {
         <div className="flex justify-between items-center w-full">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">M</div>
-            <span className="text-lg font-bold text-foreground font-headline tracking-tight">Monaqasati</span>
+            <span className="text-lg font-bold text-foreground font-headline tracking-tight">Mdmak Tech</span>
           </div>
           <div className="flex gap-4 items-center">
             <LanguageSwitcher className="text-xs" />

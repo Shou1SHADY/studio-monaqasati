@@ -1,6 +1,7 @@
 
 "use client"
 
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 export default function SupplierOrdersPage() {
+  const t = useTranslations("Portal.Supplier")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const userDocRef = useMemoFirebase(() => {
@@ -27,7 +31,7 @@ export default function SupplierOrdersPage() {
 
   const exportToCSV = () => {
     if (!orders || orders.length === 0) {
-      toast({ title: "تنبيه", description: "لا توجد طلبات لتصديرها.", variant: "destructive" });
+      toast({ title: t("export_warning_title"), description: t("export_warning_desc"), variant: "destructive" });
       return;
     }
     
@@ -55,7 +59,7 @@ export default function SupplierOrdersPage() {
     link.click();
     document.body.removeChild(link);
     
-    toast({ title: "تم التصدير", description: "تم تصدير التقرير بنجاح." });
+    toast({ title: t("export_success"), description: t("export_success_desc") });
   }
 
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
@@ -89,11 +93,11 @@ export default function SupplierOrdersPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "جاري التوصيل": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">جاري التوصيل</Badge>
-      case "تم التسليم": return <Badge className="bg-success/10 text-success border-success/20">تم التسليم</Badge>
-      case "قيد التجهيز": return <Badge className="bg-amber-50 text-amber-600 border-amber-100">قيد التجهيز</Badge>
+      case "جاري التوصيل": return <Badge className="bg-blue-50 text-blue-600 border-blue-100">{t("in_delivery_status")}</Badge>
+      case "تم التسليم": return <Badge className="bg-success/10 text-success border-success/20">{t("delivered_status")}</Badge>
+      case "قيد التجهيز": return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("processing_status")}</Badge>
       case "مقبول":
-      case "Accepted": return <Badge className="bg-green-50 text-green-600 border-green-100">مقبول</Badge>
+      case "Accepted": return <Badge className="bg-green-50 text-green-600 border-green-100">{t("accepted_status")}</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
     }
   }
@@ -105,15 +109,15 @@ export default function SupplierOrdersPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">طلباتي (العقود)</h1>
-            <p className="text-muted-foreground mt-1">إدارة الطلبات المؤكدة والعمليات اللوجستية</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("orders_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("orders_page_desc")}</p>
           </div>
           <Button className="gap-2" onClick={exportToCSV}>
             <ClipboardList size={18} />
-            تصدير تقرير
+            {t("export_report")}
           </Button>
         </div>
 
@@ -124,7 +128,7 @@ export default function SupplierOrdersPage() {
                 <PackageCheck size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">بانتظار التجهيز</p>
+                <p className="text-sm text-muted-foreground">{t("in_preparation")}</p>
                 <p className="text-2xl font-bold">{preparingCount}</p>
               </div>
             </CardContent>
@@ -135,7 +139,7 @@ export default function SupplierOrdersPage() {
                 <Truck size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">جاري توصيلها</p>
+                <p className="text-sm text-muted-foreground">{t("in_delivery")}</p>
                 <p className="text-2xl font-bold">{shippingCount}</p>
               </div>
             </CardContent>
@@ -146,7 +150,7 @@ export default function SupplierOrdersPage() {
                 <ClipboardList size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">مكتملة</p>
+                <p className="text-sm text-muted-foreground">{t("completed")}</p>
                 <p className="text-2xl font-bold">{completedCount}</p>
               </div>
             </CardContent>
@@ -155,47 +159,47 @@ export default function SupplierOrdersPage() {
 
         <Card className="border-none shadow-sm">
           <CardHeader className="border-b bg-white">
-            <CardTitle className="text-lg">الطلبات النشطة</CardTitle>
+            <CardTitle className="text-lg">{t("active_orders_title")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="text-right">رقم الطلب</TableHead>
-                  <TableHead className="text-right">العميل</TableHead>
-                  <TableHead className="text-right">المنتج والكمية</TableHead>
-                  <TableHead className="text-right">الموقع</TableHead>
-                  <TableHead className="text-right">الحالة</TableHead>
-                  <TableHead className="text-right">إجراءات</TableHead>
+                  <TableHead className="text-right">{t("order_id_header")}</TableHead>
+                  <TableHead className="text-right">{t("client_header")}</TableHead>
+                  <TableHead className="text-right">{t("product_quantity_header")}</TableHead>
+                  <TableHead className="text-right">{t("location_header")}</TableHead>
+                  <TableHead className="text-right">{t("status_header")}</TableHead>
+                  <TableHead className="text-right">{t("actions_header")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                      جاري التحميل...
+                      {t("loading")}
                     </TableCell>
                   </TableRow>
                 ) : orders.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                      لا توجد طلبات نشطة حالياً.
+                      {t("no_active_orders")}
                     </TableCell>
                   </TableRow>
                 ) : orders.map((order: any) => (
                   <TableRow key={order.id} className="hover:bg-slate-50/50">
                     <TableCell className="font-mono text-xs font-bold text-right">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell className="text-right">{order.contractorName || "عميل"}</TableCell>
+                    <TableCell className="text-right">{order.contractorName || t("client_value")}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-col items-start">
                         <span className="font-medium">{order.rfqTitle}</span>
-                        <span className="text-xs text-muted-foreground">{order.price} ر.س</span>
+                        <span className="text-xs text-muted-foreground">{order.price} {t("sar")}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center gap-1 text-xs text-muted-foreground justify-start">
                         <MapPin size={12} />
-                        {order.deliveryLocation || "غير محدد"}
+                        {order.deliveryLocation || t("not_specified_label")}
                       </div>
                     </TableCell>
                     <TableCell className="text-right">{getStatusBadge(order.status)}</TableCell>
@@ -205,7 +209,7 @@ export default function SupplierOrdersPage() {
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8 text-secondary hover:bg-slate-100" 
-                          title="عرض التفاصيل"
+                          title={t("view_order_tooltip")}
                           onClick={() => setSelectedOrder(order)}
                         >
                           <Eye size={16} />
@@ -213,7 +217,7 @@ export default function SupplierOrdersPage() {
                         {order.status === "تم التسليم" && (
                           order.supplierRated ? (
                             <Badge className="bg-slate-100 text-slate-400 border-none text-[10px] py-1.5 font-bold">
-                              تم التقييم ⭐
+                              {t("rated_badge")}
                             </Badge>
                           ) : (
                             <Button
@@ -222,7 +226,7 @@ export default function SupplierOrdersPage() {
                               size="sm"
                             >
                               <Star size={12} className="fill-white" />
-                              تقييم العميل
+                              {t("rate_client")}
                             </Button>
                           )
                         )}
@@ -237,7 +241,7 @@ export default function SupplierOrdersPage() {
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-2xl w-[95vw] p-6 text-right max-h-[90vh] overflow-y-auto rounded-[2rem] border-slate-100 shadow-2xl" dir="rtl">
+        <DialogContent className="sm:max-w-2xl w-[95vw] p-6 text-right max-h-[90vh] overflow-y-auto rounded-[2rem] border-slate-100 shadow-2xl" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className="pb-6 border-b border-slate-100 relative pt-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex items-center gap-3">
@@ -245,7 +249,7 @@ export default function SupplierOrdersPage() {
                   <ClipboardList size={24} />
                 </div>
                 <div>
-                  <DialogTitle className="text-xl sm:text-2xl font-black text-slate-800">تفاصيل الطلب</DialogTitle>
+                  <DialogTitle className="text-xl sm:text-2xl font-black text-slate-800">{t("order_details_title")}</DialogTitle>
                   <DialogDescription className="text-sm font-medium mt-1">
                     #{selectedOrder?.id?.substring(0, 12)}
                   </DialogDescription>
@@ -265,11 +269,11 @@ export default function SupplierOrdersPage() {
               <div className="bg-gradient-to-l from-primary/5 to-blue-50 rounded-2xl p-5 flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground font-medium mb-1 flex items-center gap-1">
-                    <DollarSign size={12} /> قيمة العقد
+                    <DollarSign size={12} /> {t("contract_value")}
                   </p>
                   <p className="text-3xl font-black text-primary leading-none">
                     {selectedOrder.price}
-                    <span className="text-base font-bold text-muted-foreground mr-1">ر.س</span>
+                    <span className="text-base font-bold text-muted-foreground mr-1">{t("sar")}</span>
                   </p>
                 </div>
                 <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
@@ -281,21 +285,21 @@ export default function SupplierOrdersPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
                   <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1">
-                    <Calendar size={10} /> تاريخ العقد
+                    <Calendar size={10} /> {t("contract_date")}
                   </p>
                   <p className="font-bold text-sm" suppressHydrationWarning>
                     {selectedOrder.createdAt
-                      ? new Date(selectedOrder.createdAt).toLocaleDateString("ar-SA")
+                      ? new Date(selectedOrder.createdAt).toLocaleDateString(locale)
                       : "—"}
                   </p>
                 </div>
                 <div className="p-4 bg-slate-50 rounded-xl space-y-1.5 border border-slate-100">
                   <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider flex items-center gap-1">
-                    <Clock size={10} /> آخر تحديث
+                    <Clock size={10} /> {t("last_updated")}
                   </p>
                   <p className="font-bold text-sm" suppressHydrationWarning>
                     {selectedOrder.updatedAt
-                      ? new Date(selectedOrder.updatedAt).toLocaleDateString("ar-SA")
+                      ? new Date(selectedOrder.updatedAt).toLocaleDateString(locale)
                       : "—"}
                   </p>
                 </div>
@@ -308,7 +312,7 @@ export default function SupplierOrdersPage() {
                     <Tag size={14} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">المناقصة</p>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">{t("tender_info")}</p>
                     <p className="font-bold text-sm leading-snug">{selectedOrder.rfqTitle || "—"}</p>
                   </div>
                 </div>
@@ -318,8 +322,8 @@ export default function SupplierOrdersPage() {
                     <User size={14} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">العميل (المقاول)</p>
-                    <p className="font-bold text-sm">{selectedOrder.contractorName || "عميل"}</p>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">{t("client_info")}</p>
+                    <p className="font-bold text-sm">{selectedOrder.contractorName || t("client_value")}</p>
                   </div>
                 </div>
 
@@ -328,15 +332,15 @@ export default function SupplierOrdersPage() {
                     <MapPinned size={14} />
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">موقع التسليم</p>
-                    <p className="text-sm font-medium">{selectedOrder.deliveryLocation || "غير محدد"}</p>
+                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">{t("delivery_location")}</p>
+                    <p className="text-sm font-medium">{selectedOrder.deliveryLocation || t("not_specified_label")}</p>
                   </div>
                 </div>
               </div>
 
               {/* ID */}
               <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                <p className="text-[10px] text-muted-foreground mb-1">المعرف الرقمي للطلب</p>
+                <p className="text-[10px] text-muted-foreground mb-1">{t("order_id_label")}</p>
                 <p className="font-mono text-xs text-slate-400 break-all">{selectedOrder.id}</p>
               </div>
             </div>
@@ -346,7 +350,7 @@ export default function SupplierOrdersPage() {
             {selectedOrder && selectedOrder.status === "تم التسليم" && (
               selectedOrder.supplierRated ? (
                 <div className="text-center text-xs text-muted-foreground bg-slate-50 py-2.5 rounded-xl border border-dashed w-full font-bold">
-                  لقد قمت بتقييم المقاول مسبقاً ✓
+                  {t("already_rated")}
                 </div>
               ) : (
                 <Button
@@ -357,12 +361,12 @@ export default function SupplierOrdersPage() {
                   className="w-full bg-amber-500 hover:bg-amber-600 gap-2 h-11 rounded-xl transition-all font-bold text-white shadow-lg shadow-amber-500/20"
                 >
                   <Star size={16} className="fill-white" />
-                  تقييم تجربة المقاول
+                  {t("rate_contractor")}
                 </Button>
               )
             )}
             <Button variant="outline" className="w-full h-11 rounded-xl font-bold" onClick={() => setSelectedOrder(null)}>
-              إغلاق
+              {t("close")}
             </Button>
           </DialogFooter>
         </DialogContent>

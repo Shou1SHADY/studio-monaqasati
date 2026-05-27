@@ -34,6 +34,7 @@ import {
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useTranslations, useLocale } from 'next-intl'
 
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
@@ -44,6 +45,15 @@ const DOC_LABELS: Record<string, string> = {
 }
 
 export default function AdminSuppliersPage() {
+  const t = useTranslations("Portal.Admin.Suppliers")
+  const locale = useLocale()
+  const docLabels: Record<string, string> = {
+    cr: t("doc_cr"),
+    vat: t("doc_vat"),
+    zakat: t("doc_zakat"),
+    gosi: t("doc_gosi"),
+    chamber: t("doc_chamber"),
+  }
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
@@ -74,17 +84,17 @@ export default function AdminSuppliersPage() {
         )
         return {
           id: s.id,
-          name: s.name || "غير محدد",
-          contact: s.phone || "غير محدد",
+          name: s.name || t("unspecified"),
+          contact: s.phone || t("unspecified"),
           email: s.email || "",
           city: s.city || "",
           crNumber: s.crNumber || "",
           taxNumber: s.taxNumber || "",
-          category: s.specializations?.[0] || "غير محدد",
+          category: s.specializations?.[0] || t("unspecified"),
           specializations: s.specializations || [],
           verified: s.isVerified || false,
           verificationRequested: s.verificationRequested || false,
-          status: s.isVerified ? "نشط" : s.verificationRequested ? "بانتظار التوثيق" : "قيد المراجعة",
+          status: s.isVerified ? t("status_active") : s.verificationRequested ? t("status_pending") : t("status_review"),
           // Legal documents — the actual uploaded PDFs
           legalDocuments: legalDocs,
           uploadedDocKeys,
@@ -108,24 +118,24 @@ export default function AdminSuppliersPage() {
       })
       setLocalSuppliers(prev =>
         prev.map(s => s.id === id
-          ? { ...s, verified: verify, verificationRequested: false, status: verify ? "نشط" : "قيد المراجعة" }
+          ? { ...s, verified: verify, verificationRequested: false, status: verify ? t("status_active") : t("status_review") }
           : s
         )
       )
       if (selectedSupplier?.id === id) {
-        setSelectedSupplier((prev: any) => prev ? { ...prev, verified: verify, verificationRequested: false, status: verify ? "نشط" : "قيد المراجعة" } : prev)
+        setSelectedSupplier((prev: any) => prev ? { ...prev, verified: verify, verificationRequested: false, status: verify ? t("status_active") : t("status_review") } : prev)
       }
-      toast({ title: verify ? "✅ تم التوثيق بنجاح" : "تم إلغاء التوثيق", description: "تم تحديث حالة المورد" })
+      toast({ title: verify ? t("verified_success") : t("unverified_success"), description: t("update_desc") })
     } catch (e: any) {
-      toast({ title: "خطأ", description: e.message, variant: "destructive" })
+      toast({ title: t("error"), description: e.message, variant: "destructive" })
     }
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "نشط": return <Badge className="bg-success/10 text-success border-success/20">نشط</Badge>
-      case "بانتظار التوثيق": return <Badge className="bg-amber-50 text-amber-600 border-amber-100">بانتظار التوثيق</Badge>
-      case "قيد المراجعة": return <Badge variant="secondary">قيد المراجعة</Badge>
+      case t("status_active"): return <Badge className="bg-success/10 text-success border-success/20">{t("status_active")}</Badge>
+      case t("status_pending"): return <Badge className="bg-amber-50 text-amber-600 border-amber-100">{t("status_pending")}</Badge>
+      case t("status_review"): return <Badge variant="secondary">{t("status_review")}</Badge>
       default: return <Badge variant="secondary">{status}</Badge>
     }
   }
@@ -141,14 +151,14 @@ export default function AdminSuppliersPage() {
       <div className="space-y-6 text-right">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">إدارة الموردين</h1>
-            <p className="text-muted-foreground mt-1">التحقق من الموردين الجدد وإدارة حساباتهم ومستنداتهم</p>
+            <h1 className="text-3xl font-bold text-secondary font-headline">{t("page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
           </div>
           <div className="flex gap-2">
             <div className="relative w-full sm:w-64">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="بحث بالاسم أو البريد..."
+                placeholder={t("search_placeholder")}
                 className="pr-10"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -156,7 +166,7 @@ export default function AdminSuppliersPage() {
             </div>
             <Button variant="outline" className="gap-2 shrink-0">
               <Filter size={18} />
-              تصفية
+              {t("filter")}
             </Button>
           </div>
         </div>
@@ -169,7 +179,7 @@ export default function AdminSuppliersPage() {
                 <Users size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">إجمالي الموردين</p>
+                <p className="text-sm text-muted-foreground">{t("total_count")}</p>
                 <p className="text-2xl font-bold">{localSuppliers.length}</p>
               </div>
             </CardContent>
@@ -180,7 +190,7 @@ export default function AdminSuppliersPage() {
                 <ShieldCheck size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">موثقون</p>
+                <p className="text-sm text-muted-foreground">{t("verified_count")}</p>
                 <p className="text-2xl font-bold">{localSuppliers.filter(s => s.verified).length}</p>
               </div>
             </CardContent>
@@ -191,7 +201,7 @@ export default function AdminSuppliersPage() {
                 <ShieldAlert size={24} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">بانتظار التحقق</p>
+                <p className="text-sm text-muted-foreground">{t("pending_count")}</p>
                 <p className="text-2xl font-bold">{localSuppliers.filter(s => s.verificationRequested).length}</p>
               </div>
             </CardContent>
@@ -201,7 +211,7 @@ export default function AdminSuppliersPage() {
         {/* Table */}
         <Card className="border-none shadow-sm overflow-hidden">
           <CardHeader className="border-b bg-white">
-            <CardTitle className="text-lg">قائمة الموردين</CardTitle>
+            <CardTitle className="text-lg">{t("suppliers_list")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             {isLoading ? (
@@ -211,19 +221,19 @@ export default function AdminSuppliersPage() {
             ) : filteredSuppliers.length === 0 ? (
               <div className="p-16 text-center text-muted-foreground">
                 <Users className="mx-auto h-12 w-12 opacity-20 mb-3" />
-                <p className="font-medium">لا يوجد موردون مطابقون</p>
+                <p className="font-medium">{t("no_suppliers_found")}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
-                    <TableHead className="text-right">اسم المورد</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">التخصص</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">المستندات</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">طلب التوثيق</TableHead>
-                    <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-left">إجراءات</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">{t("id")}</TableHead>
+                    <TableHead className="text-right">{t("supplier_name")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("specialization")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("documents")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("verification_req")}</TableHead>
+                    <TableHead className="text-right">{t("status")}</TableHead>
+                    <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -239,21 +249,21 @@ export default function AdminSuppliersPage() {
                       <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex gap-1 flex-wrap">
-                          {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">CR رقم</Badge>}
+                          {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{t("cr_badge")}</Badge>}
                           {s.uploadedDocKeys.length > 0 && (
                             <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
-                              {s.uploadedDocKeys.length} ملف PDF
+                              {t("pdf_badge", { count: s.uploadedDocKeys.length })}
                             </Badge>
                           )}
-                          {s.hasCerts && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">شهادات</Badge>}
+                          {s.hasCerts && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">{t("certs_badge")}</Badge>}
                           {!s.hasCr && s.uploadedDocKeys.length === 0 && (
-                            <span className="text-xs text-muted-foreground">لا يوجد</span>
+                            <span className="text-xs text-muted-foreground">{t("not_available")}</span>
                           )}
                         </div>
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         {s.verificationRequested ? (
-                          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">طلب مقدم</Badge>
+                          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">{t("request_submitted")}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
@@ -268,7 +278,7 @@ export default function AdminSuppliersPage() {
                             className="gap-1"
                           >
                             <Eye size={14} />
-                            عرض
+                            {t("view")}
                           </Button>
                           {s.verified ? (
                             <Button
@@ -277,7 +287,7 @@ export default function AdminSuppliersPage() {
                               onClick={() => handleVerify(s.id, false)}
                               className="text-destructive border-destructive/20 hover:bg-destructive/5"
                             >
-                              إلغاء
+                              {t("unverify")}
                             </Button>
                           ) : (
                             <Button
@@ -287,7 +297,7 @@ export default function AdminSuppliersPage() {
                               className="gap-1"
                             >
                               <CheckCircle2 size={14} />
-                              توثيق
+                              {t("verify")}
                             </Button>
                           )}
                         </div>
@@ -300,7 +310,7 @@ export default function AdminSuppliersPage() {
             {suppliers && suppliers.length >= limitCount && (
               <div className="p-4 text-center border-t">
                 <Button variant="outline" onClick={() => setLimitCount(limitCount + 20)}>
-                  عرض المزيد
+                  {t("show_more")}
                 </Button>
               </div>
             )}
@@ -309,14 +319,14 @@ export default function AdminSuppliersPage() {
 
         {/* Detail Dialog */}
         <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir="rtl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Building size={22} className="text-primary" />
-                تفاصيل المورد
+                {t("supplier_details")}
               </DialogTitle>
               <DialogDescription>
-                مراجعة وثائق المورد قبل منح أو رفض التوثيق
+                {t("details_subtitle")}
               </DialogDescription>
             </DialogHeader>
 
@@ -329,12 +339,12 @@ export default function AdminSuppliersPage() {
                     {getStatusBadge(selectedSupplier.status)}
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <div><span className="text-muted-foreground">البريد الإلكتروني:</span><span className="mr-2 font-medium text-xs">{selectedSupplier.email || "—"}</span></div>
-                    <div><span className="text-muted-foreground">رقم الجوال:</span><span className="mr-2 font-medium">{selectedSupplier.contact || "—"}</span></div>
-                    <div><span className="text-muted-foreground">المدينة:</span><span className="mr-2 font-medium">{selectedSupplier.city || "—"}</span></div>
-                    <div><span className="text-muted-foreground">رقم السجل التجاري:</span><span className="mr-2 font-medium">{selectedSupplier.crNumber || "—"}</span></div>
-                    <div><span className="text-muted-foreground">الرقم الضريبي:</span><span className="mr-2 font-medium">{selectedSupplier.taxNumber || "—"}</span></div>
-                    <div><span className="text-muted-foreground">التخصص:</span><span className="mr-2 font-medium">{selectedSupplier.category || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("email_label")}</span><span className="mr-2 font-medium text-xs">{selectedSupplier.email || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("phone_label")}</span><span className="mr-2 font-medium">{selectedSupplier.contact || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("city_label")}</span><span className="mr-2 font-medium">{selectedSupplier.city || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("cr_label")}</span><span className="mr-2 font-medium">{selectedSupplier.crNumber || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("tax_label")}</span><span className="mr-2 font-medium">{selectedSupplier.taxNumber || "—"}</span></div>
+                    <div><span className="text-muted-foreground">{t("spec_label")}</span><span className="mr-2 font-medium">{selectedSupplier.category || "—"}</span></div>
                   </div>
                   {selectedSupplier.specializations?.length > 1 && (
                     <div className="flex flex-wrap gap-1 pt-1">
@@ -351,10 +361,10 @@ export default function AdminSuppliersPage() {
                 <div className="space-y-3">
                   <h4 className="font-bold text-slate-800 flex items-center gap-2">
                     <FileText size={18} className="text-primary" />
-                    المستندات الرسمية المرفوعة
+                    {t("legal_docs_title")}
                   </h4>
 
-                  {Object.entries(DOC_LABELS).map(([key, label]) => {
+                  {Object.entries(docLabels).map(([key, label]) => {
                     const docData = selectedSupplier.legalDocuments?.[key]
                     const hasUrl = docData?.url && docData.url.length > 0
                     return (
@@ -370,11 +380,11 @@ export default function AdminSuppliersPage() {
                             <p className="font-bold text-sm text-slate-800">{label}</p>
                             {hasUrl ? (
                               <p className="text-xs text-emerald-700 font-medium mt-0.5">
-                                مرفوع ✓
-                                {docData.expiryDate && <span className="text-slate-500 mr-2">• تنتهي: {docData.expiryDate}</span>}
+                                {t("uploaded")}
+                                {docData.expiryDate && <span className="text-slate-500 mr-2">{t("expires", { date: docData.expiryDate })}</span>}
                               </p>
                             ) : (
-                              <p className="text-xs text-slate-400 mt-0.5">لم يُرفع بعد</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{t("not_uploaded")}</p>
                             )}
                           </div>
                         </div>
@@ -387,11 +397,11 @@ export default function AdminSuppliersPage() {
                           >
                             <Button size="sm" variant="outline" className="gap-1.5 text-xs font-bold border-emerald-300 hover:bg-emerald-50">
                               <ExternalLink size={13} />
-                              فتح الملف
+                              {t("open_file")}
                             </Button>
                           </a>
                         ) : (
-                          <Badge variant="secondary" className="text-xs shrink-0">غير موجود</Badge>
+                          <Badge variant="secondary" className="text-xs shrink-0">{t("not_found_doc")}</Badge>
                         )}
                       </div>
                     )
@@ -405,20 +415,20 @@ export default function AdminSuppliersPage() {
                     <div className="space-y-3">
                       <h4 className="font-bold text-slate-800 flex items-center gap-2">
                         <Award size={18} className="text-purple-500" />
-                        الشهادات والاعتمادات ({selectedSupplier.certificates.length})
+                        {t("certificates_title", { count: selectedSupplier.certificates.length })}
                       </h4>
                       <div className="space-y-2">
                         {selectedSupplier.certificates.map((cert: any, idx: number) => (
                           <div key={idx} className="p-3 rounded-xl border bg-purple-50/40 border-purple-100 flex items-center justify-between">
                             <div>
                               <p className="font-bold text-sm">{cert.name}</p>
-                              <p className="text-xs text-muted-foreground">{cert.issuer}{cert.expiryDate && ` • تنتهي: ${cert.expiryDate}`}</p>
+                              <p className="text-xs text-muted-foreground">{cert.issuer}{cert.expiryDate && ` • ${t("expires", { date: cert.expiryDate })}`}</p>
                             </div>
                             {cert.documentUrl && (
                               <a href={cert.documentUrl} target="_blank" rel="noopener noreferrer">
-                                <Button size="sm" variant="outline" className="gap-1 text-xs">
+                                  <Button size="sm" variant="outline" className="gap-1 text-xs">
                                   <ExternalLink size={12} />
-                                  عرض
+                                  {t("view")}
                                 </Button>
                               </a>
                             )}
@@ -434,7 +444,7 @@ export default function AdminSuppliersPage() {
                   <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
                     <AlertCircle className="text-destructive shrink-0 mt-0.5" size={18} />
                     <p className="text-sm text-destructive font-bold">
-                      لا يمكن توثيق الحساب حتى يكمل المورد رفع المستندات الرسمية (السجل التجاري والشهادة الضريبية).
+                      {t("cannot_verify")}
                     </p>
                   </div>
                 )}
@@ -444,7 +454,7 @@ export default function AdminSuppliersPage() {
                 {/* Actions */}
                 <div className="flex gap-3 pt-1">
                   <Button variant="outline" className="flex-1" onClick={() => setShowDetailDialog(false)}>
-                    إغلاق
+                    {t("close")}
                   </Button>
                   {selectedSupplier.verified ? (
                     <Button
@@ -452,7 +462,7 @@ export default function AdminSuppliersPage() {
                       className="flex-1 text-destructive border-destructive/20 hover:bg-destructive/5"
                       onClick={() => { handleVerify(selectedSupplier.id, false); setShowDetailDialog(false) }}
                     >
-                      إلغاء التوثيق
+                      {t("unverify_account")}
                     </Button>
                   ) : (
                     <Button
@@ -461,7 +471,7 @@ export default function AdminSuppliersPage() {
                       onClick={() => { handleVerify(selectedSupplier.id, true); setShowDetailDialog(false) }}
                     >
                       <CheckCircle2 size={16} />
-                      توثيق الحساب
+                      {t("verify_account")}
                     </Button>
                   )}
                 </div>

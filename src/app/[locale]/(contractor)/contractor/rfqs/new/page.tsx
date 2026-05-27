@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -39,7 +40,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCity } from "@/lib/constants"
+import { cn } from "@/lib/utils"
 
 const SAUDI_CITIES = [
   "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
@@ -76,6 +78,8 @@ function RequiredStar() {
 }
 
 export default function NewRfqPage() {
+  const t = useTranslations("Portal.Contractor")
+  const locale = useLocale()
   const [step, setStep] = useState(1)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -137,16 +141,16 @@ export default function NewRfqPage() {
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
             <AlertCircle size={32} />
           </div>
-          <h2 className="text-2xl font-black text-slate-800 font-headline">استكمال البيانات مطلوب</h2>
+          <h2 className="text-2xl font-black text-slate-800 font-headline">{t("newrfq_profile_incomplete")}</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
-            لا يمكنك طرح مناقصات لأن ملفك الشخصي غير مكتمل. يرجى إكمال بياناتك الأساسية للتمكن من إضافة المناقصات واستقبال العروض.
+            {t("newrfq_profile_incomplete_desc")}
           </p>
           <div className="pt-4">
             <Button
               onClick={() => router.push("/contractor/profile")}
               className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
             >
-              استكمال الملف الشخصي
+              {t("newrfq_go_to_profile")}
             </Button>
           </div>
         </div>
@@ -161,16 +165,16 @@ export default function NewRfqPage() {
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
             <AlertCircle size={32} />
           </div>
-          <h2 className="text-2xl font-black text-slate-800 font-headline">توثيق الحساب مطلوب</h2>
+          <h2 className="text-2xl font-black text-slate-800 font-headline">{t("newrfq_verification_required")}</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
-            لا يمكنك طرح مناقصات حتى يتم توثيق حسابك من قبل الإدارة. يرجى التأكد من رفع مستنداتك الرسمية <strong className="text-primary">(السجل التجاري والشهادة الضريبية)</strong> في ملفك الشخصي وانتظار التوثيق.
+            {t("newrfq_verification_required_desc")}
           </p>
           <div className="pt-4">
             <Button
               onClick={() => router.push("/contractor/profile")}
               className="w-full h-12 bg-primary hover:bg-secondary text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
             >
-              الذهاب إلى الملف الشخصي
+              {t("newrfq_go_to_profile_verify")}
             </Button>
           </div>
         </div>
@@ -198,7 +202,7 @@ export default function NewRfqPage() {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.type !== "application/pdf") {
-      toast({ title: "خطأ", description: "يرجى رفع ملف PDF فقط", variant: "destructive" })
+      toast({ title: t("newrfq_upload_error"), variant: "destructive" })
       return
     }
     setIsUploadingPdf(true)
@@ -209,10 +213,10 @@ export default function NewRfqPage() {
       await uploadBytes(fileRef, file)
       const downloadUrl = await getDownloadURL(fileRef)
       setFormData(prev => ({ ...prev, pdfUrl: downloadUrl, pdfStoragePath: storagePath }))
-      toast({ title: "تم الرفع", description: "تم إرفاق الملف بنجاح" })
+      toast({ title: t("newrfq_upload_success"), description: t("newrfq_upload_success_desc") })
     } catch (error) {
       console.error("PDF upload failed:", error)
-      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+      toast({ title: t("newrfq_incomplete_data"), description: t("newrfq_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingPdf(false)
     }
@@ -239,7 +243,7 @@ export default function NewRfqPage() {
     const errors: ValidationError[] = []
     
     if (!formData.title.trim()) {
-      errors.push({ field: "title", message: "يرجى إدخال عنوان للمناقصة" })
+      errors.push({ field: "title", message: t("newrfq_val_title_required") })
     }
 
     const validProducts = products.filter(p => 
@@ -250,7 +254,7 @@ export default function NewRfqPage() {
       (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
     )
     if (validProducts.length === 0) {
-      errors.push({ field: "products", message: "يرجى إدخال منتج واحد على الأقل مع تحديد الكمية والوحدة" })
+      errors.push({ field: "products", message: t("newrfq_val_product_required") })
     }
     
     return errors
@@ -260,11 +264,11 @@ export default function NewRfqPage() {
     const errors: ValidationError[] = []
     
     if (!formData.city) {
-      errors.push({ field: "city", message: "يرجى اختيار المدينة" })
+      errors.push({ field: "city", message: t("newrfq_val_city_required") })
     }
     
     if (!formData.deadline) {
-      errors.push({ field: "deadline", message: "يرجى تحديد الموعد النهائي للعروض" })
+      errors.push({ field: "deadline", message: t("newrfq_val_deadline_required") })
     }
     
     return errors
@@ -280,7 +284,7 @@ export default function NewRfqPage() {
       }
       
       toast({
-        title: "بيانات ناقصة",
+        title: t("newrfq_incomplete_data"),
         description: errors[0].message,
         variant: "destructive"
       })
@@ -309,8 +313,8 @@ export default function NewRfqPage() {
     const firstProduct = products[0]
     if (!formData.title || !firstProduct?.category) {
       toast({
-        title: "بيانات ناقصة",
-        description: "يرجى إدخال العنوان واختيار فئة للمنتج الأول ليتمكن الذكاء الاصطناعي من مساعدتك.",
+        title: t("newrfq_incomplete_data"),
+        description: t("newrfq_ai_not_available_desc"),
         variant: "destructive"
       })
       return
@@ -333,21 +337,21 @@ export default function NewRfqPage() {
       }))
 
       toast({
-        title: "تم التحسين!",
-        description: "قام الذكاء الاصطناعي بصياغة طلب احترافي لك.",
+        title: t("newrfq_ai_enhanced"),
+        description: t("newrfq_ai_enhanced_desc"),
       })
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error)
       if (errorMessage.includes('API key') || errorMessage.includes('GEMINI_API_KEY') || errorMessage.includes('GOOGLE_API_KEY')) {
         toast({
-          title: "الذكاء الاصطناعي غير متاح",
-          description: "يرجى إضافة مفتاح API للذكاء الاصطناعي في إعدادات المشروع.",
+          title: t("newrfq_ai_not_available"),
+          description: t("newrfq_ai_not_available_desc"),
           variant: "destructive"
         })
       } else {
         toast({
-          title: "خطأ",
-          description: "فشل إنشاء الوصف بالذكاء الاصطناعي.",
+          title: t("newrfq_incomplete_data"),
+          description: t("newrfq_ai_draft_failed"),
           variant: "destructive"
         })
       }
@@ -431,8 +435,8 @@ export default function NewRfqPage() {
 
     if (status === "Draft") {
       toast({
-        title: "تم الحفظ!",
-        description: "تم حفظ المناقصة كمسودة. يمكنك نشرها لاحقاً من قائمة المناقصات.",
+        title: t("newrfq_toast_saved"),
+        description: t("newrfq_toast_saved_desc"),
       })
       setFormData({
         title: "",
@@ -448,8 +452,8 @@ export default function NewRfqPage() {
       setIsSubmitting(false)
     } else {
       toast({
-        title: "تم النشر!",
-        description: "تم نشر المناقصة بنجاح وهي الآن متاحة للموردين.",
+        title: t("newrfq_toast_published"),
+        description: t("newrfq_toast_published_desc"),
       })
       router.push("/contractor/rfqs")
     }
@@ -459,16 +463,16 @@ export default function NewRfqPage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-4xl mx-auto py-8 text-right">
+      <div className={cn("max-w-4xl mx-auto py-8", locale === 'ar' ? 'text-right' : 'text-left')}>
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-secondary font-headline">طرح مناقصة جديدة</h1>
-          <p className="text-muted-foreground mt-2">املأ البيانات التالية للوصول إلى أفضل الموردين</p>
+          <h1 className="text-3xl font-bold text-secondary font-headline">{t("newrfq_page_title")}</h1>
+          <p className="text-muted-foreground mt-2">{t("newrfq_page_desc")}</p>
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-8">
           {[
-            { step: 1, label: "تفاصيل الطلب", icon: FileText },
-            { step: 2, label: "الموقع والموعد", icon: MapPin },
+            { step: 1, label: t("newrfq_step_request_details"), icon: FileText },
+            { step: 2, label: t("newrfq_step_location_date"), icon: MapPin },
           ].map(({ step: s, label, icon: Icon }, idx) => (
             <div key={s} className="flex items-center">
               <button
@@ -496,7 +500,7 @@ export default function NewRfqPage() {
           <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start gap-3">
             <AlertCircle className="text-destructive shrink-0 mt-0.5" size={20} />
             <div className="flex-1">
-              <p className="font-bold text-destructive text-sm">يرجى إصلاح الأخطاء التالية:</p>
+              <p className="font-bold text-destructive text-sm">{t("newrfq_errors_title")}</p>
               <ul className="mt-2 space-y-1 text-sm text-destructive/80">
                 {validationErrors.map((error, idx) => (
                   <li key={idx} className="flex items-center gap-2">
@@ -516,7 +520,7 @@ export default function NewRfqPage() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <Label className="text-base font-bold text-slate-700">
-                      عنوان المناقصة<RequiredStar />
+                      {t("newrfq_tender_title")}<RequiredStar />
                     </Label>
                     {isAiEnabled && (
                       <Button
@@ -527,14 +531,14 @@ export default function NewRfqPage() {
                         className={`text-xs h-8 gap-2 border border-amber-400 bg-amber-50 text-amber-700 rounded-lg transition-all duration-200 ${isGenerating ? 'opacity-50 cursor-not-allowed' : 'hover:bg-amber-500 hover:text-white hover:border-amber-500 cursor-pointer'}`}
                       >
                         <Zap size={14} className={isGenerating ? "animate-pulse" : ""} />
-                        تحسين بالذكاء الاصطناعي
+                        {t("newrfq_ai_enhance")}
                       </Button>
                     )}
                   </div>
                   <div className="relative">
                     <Input
                       id="title"
-                      placeholder="مثال: توريد حديد تسليح لمشروع في الرياض"
+                      placeholder={t("newrfq_tender_title_placeholder")}
                       value={formData.title}
                       onChange={e => {
                         setFormData({ ...formData, title: e.target.value })
@@ -543,7 +547,7 @@ export default function NewRfqPage() {
                       className={`h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl ${hasError("title") ? 'border-destructive ring-1 ring-destructive' : ''}`}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">عنوان واضح يسهل على الموردين البحث والفرز</p>
+                  <p className="text-xs text-muted-foreground">{t("newrfq_tender_title_help")}</p>
                 </div>
 
                 <div className="relative">
@@ -562,9 +566,9 @@ export default function NewRfqPage() {
                       </div>
                       <div>
                         <Label className="text-lg font-bold text-slate-800">
-                          المنتجات المطلوبة<RequiredStar />
+                          {t("newrfq_requested_products")}<RequiredStar />
                         </Label>
-                        <p className="text-xs text-slate-500 mt-0.5">أضف كل المنتجات التي تحتاجها في هذه المناقصة</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{t("newrfq_products_help")}</p>
                       </div>
                     </div>
                   </div>
@@ -582,7 +586,7 @@ export default function NewRfqPage() {
                             <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
                               {index + 1}
                             </div>
-                            <span className="text-base font-bold text-slate-700">المنتج</span>
+                            <span className="text-base font-bold text-slate-700">{t("newrfq_product_label")}</span>
                           </div>
                           {products.length > 1 && (
                             <Button 
@@ -592,21 +596,21 @@ export default function NewRfqPage() {
                               className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8 px-3 rounded-lg cursor-pointer transition-colors"
                             >
                               <Trash2 size={16} />
-                              <span className="mr-1 text-xs">حذف</span>
+                              <span className="mr-1 text-xs">{t("newrfq_delete_label")}</span>
                             </Button>
                           )}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
-                              الفئة الرئيسية<RequiredStar />
+                              {t("newrfq_main_category")}<RequiredStar />
                             </Label>
                             <Select 
                               value={product.category}
                               onValueChange={v => updateProduct(product.id, "category", v)}
                             >
                               <SelectTrigger className="h-11 rounded-xl border-slate-200">
-                                <SelectValue placeholder="اختر الفئة" />
+                                <SelectValue placeholder={t("newrfq_select_category")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {Object.keys(CATEGORIES_DATA).map(cat => (
@@ -617,25 +621,25 @@ export default function NewRfqPage() {
                           </div>
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
-                              الفئة الفرعية<RequiredStar />
+                              {t("newrfq_sub_category")}<RequiredStar />
                             </Label>
                             <Select 
                               value={product.subCategory}
                               onValueChange={v => updateProduct(product.id, "subCategory", v)}
                             >
                               <SelectTrigger className="h-11 rounded-xl border-slate-200">
-                                <SelectValue placeholder="اختر الفئة الفرعية" />
+                                <SelectValue placeholder={t("newrfq_select_sub_category")} />
                               </SelectTrigger>
                               <SelectContent>
                                 {product.category && CATEGORIES_DATA[product.category]?.map(sub => (
                                   <SelectItem key={sub} value={sub}>{sub}</SelectItem>
                                 ))}
-                                <SelectItem value="أخرى">أخرى</SelectItem>
+                                <SelectItem value="أخرى">{t("newrfq_other_category")}</SelectItem>
                               </SelectContent>
                             </Select>
                             {product.subCategory === "أخرى" && (
                               <Input
-                                placeholder="ادخل الفئة الفرعية..."
+                                placeholder={t("newrfq_other_category_placeholder")}
                                 value={product.otherSubCategory || ""}
                                 onChange={e => updateProduct(product.id, "otherSubCategory", e.target.value)}
                                 className="h-11 rounded-xl border-slate-200 mt-2"
@@ -647,10 +651,10 @@ export default function NewRfqPage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
-                              اسم المنتج<RequiredStar />
+                              {t("newrfq_product_name")}<RequiredStar />
                             </Label>
                             <Input
-                              placeholder="مثال: حديد تسليح طولي"
+                              placeholder={t("newrfq_product_name_placeholder")}
                               value={product.name}
                               onChange={e => updateProduct(product.id, "name", e.target.value)}
                               className="h-11 rounded-xl border-slate-200"
@@ -658,7 +662,7 @@ export default function NewRfqPage() {
                           </div>
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
-                              الكمية المطلوبة<RequiredStar />
+                              {t("newrfq_quantity")}<RequiredStar />
                             </Label>
                             <Input
                               type="number"
@@ -670,10 +674,10 @@ export default function NewRfqPage() {
                           </div>
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
-                              وحدة القياس<RequiredStar />
+                              {t("newrfq_unit_of_measure")}<RequiredStar />
                             </Label>
                             <Input
-                              placeholder="طن - متر - قطعة"
+                              placeholder={t("newrfq_unit_placeholder")}
                               value={product.unit}
                               onChange={e => updateProduct(product.id, "unit", e.target.value)}
                               className="h-11 rounded-xl border-slate-200"
@@ -681,9 +685,9 @@ export default function NewRfqPage() {
                           </div>
                         </div>
                         <div className="mt-5">
-                          <Label className="text-xs font-semibold text-slate-600">المواصفات التقنية (اختياري)</Label>
+                          <Label className="text-xs font-semibold text-slate-600">{t("newrfq_specifications")}</Label>
                           <Textarea
-                            placeholder="اكتب أي مواصفات فنية، معايير، أو متطلبات خاصة..."
+                            placeholder={t("newrfq_spec_placeholder")}
                             rows={2}
                             value={product.description}
                             onChange={e => updateProduct(product.id, "description", e.target.value)}
@@ -697,16 +701,16 @@ export default function NewRfqPage() {
                   <div className="mt-8 flex justify-center">
                     <Button variant="outline" size="sm" onClick={addProduct} className="gap-2 border-slate-300 bg-white hover:bg-primary hover:text-white hover:border-primary rounded-xl h-11 px-8 cursor-pointer transition-all shadow-sm">
                       <Plus size={18} />
-                      إضافة منتج آخر للطلب
+                      {t("newrfq_add_product")}
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                  <Label className="text-base font-bold text-slate-700">ملاحظات إضافية</Label>
+                  <Label className="text-base font-bold text-slate-700">{t("newrfq_additional_notes")}</Label>
                   <Textarea
                     rows={3}
-                    placeholder="أي ملاحظات عامة، شروط خاصة، أو معلومات إضافية للموردين..."
+                    placeholder={t("newrfq_notes_placeholder")}
                     value={formData.notes}
                     onChange={e => setFormData({ ...formData, notes: e.target.value })}
                     className="rounded-xl border-slate-200 bg-white"
@@ -718,7 +722,7 @@ export default function NewRfqPage() {
                     <div className="h-9 w-9 rounded-xl bg-blue-50 flex items-center justify-center">
                       <FileText size={18} className="text-blue-600" />
                     </div>
-                    <Label className="text-base font-bold text-slate-700">ملفات PDF مرفقة (اختياري)</Label>
+                    <Label className="text-base font-bold text-slate-700">{t("newrfq_pdf_files")}</Label>
                   </div>
                   {formData.pdfUrl ? (
                     <div className="flex items-center gap-4 p-5 bg-blue-50/50 border border-blue-200/50 rounded-2xl">
@@ -726,8 +730,8 @@ export default function NewRfqPage() {
                         <File size={24} className="text-blue-600" />
                       </div>
                       <div className="flex-1">
-                        <span className="text-sm font-semibold text-blue-800">تم إرفاق ملف PDF</span>
-                        <p className="text-xs text-blue-600/70 mt-0.5">ملف PDF جاهز للإرسال مع المناقصة</p>
+                        <span className="text-sm font-semibold text-blue-800">{t("newrfq_pdf_attached")}</span>
+                        <p className="text-xs text-blue-600/70 mt-0.5">{t("newrfq_pdf_attached_desc")}</p>
                       </div>
                       <Button 
                         variant="ghost" 
@@ -757,8 +761,8 @@ export default function NewRfqPage() {
                               <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />
                             </div>
                             <div className="text-right">
-                              <span className="text-sm font-semibold text-slate-700 block">اضغط لرفع ملف PDF</span>
-                              <span className="text-xs text-slate-400">الرسومات والمواصفات الفنية</span>
+                              <span className="text-sm font-semibold text-slate-700 block">{t("newrfq_click_upload_pdf")}</span>
+                              <span className="text-xs text-slate-400">{t("newrfq_pdf_technical_desc")}</span>
                             </div>
                           </>
                         )}
@@ -774,7 +778,7 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
-                      المدينة
+                      {t("newrfq_city_label")}
                     </Label>
                     <Select 
                       value={formData.city} 
@@ -784,11 +788,11 @@ export default function NewRfqPage() {
                       }}
                     >
                       <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("city") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                        <SelectValue placeholder="اختر المدينة" />
+                        <SelectValue placeholder={t("newrfq_select_city")} />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="max-h-72 overflow-y-auto">
                         {SAUDI_CITIES.map(city => (
-                          <SelectItem key={city} value={city}>{city}</SelectItem>
+                          <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -796,7 +800,7 @@ export default function NewRfqPage() {
                   {formData.city && CITIES_DISTRICTS[formData.city] && (
                     <div className="space-y-3">
                       <Label className="text-sm font-semibold text-slate-700">
-                        الحي / المنطقة
+                        {t("newrfq_district_label")}
                       </Label>
                       <Select 
                         value={formData.district} 
@@ -806,7 +810,7 @@ export default function NewRfqPage() {
                         }}
                       >
                         <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("district") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                          <SelectValue placeholder="اختر الحي" />
+                          <SelectValue placeholder={t("newrfq_select_district")} />
                         </SelectTrigger>
                         <SelectContent>
                           {CITIES_DISTRICTS[formData.city].map(dist => (
@@ -824,14 +828,14 @@ export default function NewRfqPage() {
                       <MapPin size={18} className="text-amber-600" />
                     </div>
                     <div>
-                      <Label className="text-base font-bold text-slate-700">معلومات التوريد</Label>
-                      <p className="text-xs text-slate-500 mt-0.5">سيتمكن الموردون من رؤية المدينة والمنطقة فقط</p>
+                      <Label className="text-base font-bold text-slate-700">{t("newrfq_supply_info")}</Label>
+                      <p className="text-xs text-slate-500 mt-0.5">{t("newrfq_supply_info_help")}</p>
                     </div>
                   </div>
                   <div className="p-4 bg-amber-50/50 rounded-xl border border-amber-200/50">
                     <p className="text-sm text-amber-800 flex items-center gap-2">
                       <AlertCircle size={16} className="shrink-0" />
-                      <span>يتم عرض موقع التوريد على مستوى المدينة فقط للحفاظ على خصوصية المشروع</span>
+                      <span>{t("newrfq_supply_info_note")}</span>
                     </p>
                   </div>
                 </div>
@@ -839,7 +843,7 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
-                      الموعد النهائي للعروض<RequiredStar />
+                      {t("newrfq_deadline_label")}<RequiredStar />
                     </Label>
                     <input
                       type="date"
@@ -855,7 +859,7 @@ export default function NewRfqPage() {
                     />
                     {formData.deadline && (
                       <p className="text-xs text-muted-foreground">
-                        الموعد النهائي: {new Date(formData.deadline).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        {t("newrfq_deadline_display", { date: new Date(formData.deadline).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
                       </p>
                     )}
                   </div>
@@ -873,12 +877,12 @@ export default function NewRfqPage() {
               className={`gap-2 px-6 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             >
               <ChevronRight size={18} />
-              السابق
+              {t("newrfq_prev")}
             </Button>
 
             {step === 1 ? (
               <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
-                التالي
+                {t("newrfq_next")}
                 <ChevronLeft size={18} />
               </Button>
             ) : (
@@ -890,7 +894,7 @@ export default function NewRfqPage() {
                   className={`gap-2 px-8 rounded-xl ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-primary/5'}`}
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                  حفظ كمسودة
+                  {t("newrfq_save_draft")}
                 </Button>
                 <Button
                   onClick={() => handleSubmit("New")}
@@ -898,7 +902,7 @@ export default function NewRfqPage() {
                   className={`bg-success hover:bg-success/90 gap-2 px-10 rounded-xl shadow-lg shadow-success/25 ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                  نشر المناقصة الآن
+                  {t("newrfq_publish_now")}
                 </Button>
               </div>
             )}

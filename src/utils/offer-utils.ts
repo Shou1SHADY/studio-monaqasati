@@ -23,17 +23,20 @@ export interface BatchValidationResult {
   errors: string[]
 }
 
-export function validateOfferBatches(batches: DeliveryBatch[]): BatchValidationResult {
+export function validateOfferBatches(
+  batches: DeliveryBatch[],
+  t?: (key: string) => string
+): BatchValidationResult {
   const errors: string[] = []
   
   if (!batches || batches.length === 0) {
-    errors.push('يرجى إضافة شحنة واحدة على الأقل')
+    errors.push(t ? t('offer_validation_add_batch') : 'يرجى إضافة شحنة واحدة على الأقل')
     return { isValid: false, errors }
   }
   
   const incompleteBatches = batches.filter(b => !b.location || !b.deliveryDate || !b.price)
   if (incompleteBatches.length > 0) {
-    errors.push('يرجى إكمال بيانات جميع الشحنات')
+    errors.push(t ? t('offer_validation_complete_batches') : 'يرجى إكمال بيانات جميع الشحنات')
   }
   
   return {
@@ -42,16 +45,20 @@ export function validateOfferBatches(batches: DeliveryBatch[]): BatchValidationR
   }
 }
 
-export function formatOfferSummary(offer: Offer): string {
-  let summary = `السعر: ${offer.price.toLocaleString('ar-SA')} ر.س`
-  summary += ` | الطريقة: ${offer.deliveryMethod}`
-  summary += ` | الوتيرة: ${offer.deliveryFrequency}`
+export function formatOfferSummary(offer: Offer, locale: string = 'ar'): string {
+  const isAr = locale.startsWith('ar')
+  const localeStr = isAr ? 'ar-SA' : 'en-US'
+  let summary = isAr
+    ? `السعر: ${offer.price.toLocaleString(localeStr)} ر.س`
+    : `Price: SAR ${offer.price.toLocaleString(localeStr)}`
+  summary += isAr ? ` | الطريقة: ${offer.deliveryMethod}` : ` | Method: ${offer.deliveryMethod}`
+  summary += isAr ? ` | الوتيرة: ${offer.deliveryFrequency}` : ` | Frequency: ${offer.deliveryFrequency}`
   
   if (offer.isFreeShipping) {
-    summary += ' | توصيل مجاني'
+    summary += isAr ? ' | توصيل مجاني' : ' | Free Shipping'
   }
   if (offer.includesSample) {
-    summary += ' | يتضمن عينة'
+    summary += isAr ? ' | يتضمن عينة' : ' | Includes Sample'
   }
   
   return summary

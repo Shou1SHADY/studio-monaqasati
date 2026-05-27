@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -29,10 +30,13 @@ import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Tras
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
+import { cn } from "@/lib/utils"
 
 export default function SupplierOffersPage() {
+  const t = useTranslations("Portal.Supplier")
+  const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const userDocRef = useMemoFirebase(() => {
@@ -90,25 +94,25 @@ export default function SupplierOffersPage() {
       case "مقبول":   
         return (
           <Badge className="bg-success/10 text-success border-success/20 gap-1">
-            <Check size={12} />مقبول
+            <Check size={12} />{t("accepted_status")}
           </Badge>
         )
       case "مرفوض":  
         return (
           <Badge variant="destructive" className="bg-destructive/10 text-destructive border-none gap-1">
-            <XCircle size={12} />مرفوض
+            <XCircle size={12} />{t("rejected_status")}
           </Badge>
         )
       case "مطلوب تخفيض": 
         return (
           <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
-            <AlertCircle size={12} />مطلوب تخفيض
+            <AlertCircle size={12} />{t("price_reduction_requested")}
           </Badge>
         )
       default:        
         return (
           <Badge className="bg-amber-50 text-amber-600 border-amber-100 gap-1">
-            <CircleDot size={12} />قيد المراجعة
+            <CircleDot size={12} />{t("pending_review")}
           </Badge>
         )
     }
@@ -119,9 +123,9 @@ export default function SupplierOffersPage() {
     setDeletingId(offerId)
     try {
       await deleteDoc(doc(firestore, "offers", offerId))
-      toast({ title: "تم سحب العرض", description: "تم حذف عرضك بنجاح." })
+      toast({ title: t("withdraw_success"), description: t("withdraw_success_desc") })
     } catch {
-      toast({ title: "خطأ", description: "فشل سحب العرض، حاول مجدداً.", variant: "destructive" })
+      toast({ title: t("error_title"), description: t("withdraw_failed"), variant: "destructive" })
     } finally {
       setDeletingId(null)
     }
@@ -136,11 +140,11 @@ export default function SupplierOffersPage() {
         status: "قيد المراجعة",
         updatedAt: new Date().toISOString()
       });
-      toast({ title: "تم التحديث", description: "تم تحديث السعر وإعادة إرسال العرض للمقاول." });
+      toast({ title: t("price_updated"), description: t("price_updated_desc") });
       setUpdatePriceOffer(null);
       setNewPrice("");
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل تحديث السعر، يرجى المحاولة مجدداً.", variant: "destructive" });
+      toast({ title: t("error_title"), description: t("price_update_failed"), variant: "destructive" });
     } finally {
       setIsUpdatingPrice(false);
     }
@@ -171,12 +175,12 @@ export default function SupplierOffersPage() {
         });
       }
 
-      toast({ title: "تم تأكيد الإرسال", description: "تم إشعار المقاول بأنه تم إرسال العينة." });
+      toast({ title: t("sample_confirmed_title"), description: t("sample_confirmed_desc") });
       setConfirmSampleOffer(null);
       // Open chat dialog after sending
       setOpeningChat(offerId);
     } catch (error) {
-      toast({ title: "خطأ", description: "حدث خطأ أثناء تحديث حالة العينة.", variant: "destructive" });
+      toast({ title: t("error_title"), description: t("sample_error"), variant: "destructive" });
     } finally {
       setDeletingId(null);
     }
@@ -184,11 +188,11 @@ export default function SupplierOffersPage() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">عروضي المقدمة</h1>
-          <p className="text-muted-foreground mt-1">تتبع حالة عروض السعر التي قمت بتقديمها للمقاولين</p>
+          <h1 className="text-3xl font-bold text-secondary font-headline">{t("offers_page_title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("offers_page_desc")}</p>
         </div>
 
         {/* Stats */}
@@ -199,7 +203,7 @@ export default function SupplierOffersPage() {
                 <Clock size={20} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">عروض معلقة</p>
+                <p className="text-xs text-muted-foreground">{t("offers_pending")}</p>
                 <p className="text-xl font-bold text-slate-800">{pendingCount}</p>
               </div>
             </CardContent>
@@ -210,7 +214,7 @@ export default function SupplierOffersPage() {
                 <CheckCircle2 size={20} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">عروض مقبولة</p>
+                <p className="text-xs text-muted-foreground">{t("offers_accepted")}</p>
                 <p className="text-xl font-bold text-slate-800">{acceptedCount}</p>
               </div>
             </CardContent>
@@ -221,7 +225,7 @@ export default function SupplierOffersPage() {
                 <XCircle size={20} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">عروض مرفوضة</p>
+                <p className="text-xs text-muted-foreground">{t("offers_rejected")}</p>
                 <p className="text-xl font-bold text-slate-800">{rejectedCount}</p>
               </div>
             </CardContent>
@@ -233,53 +237,53 @@ export default function SupplierOffersPage() {
           <CardHeader className="bg-white border-b">
             <CardTitle className="text-lg flex items-center gap-2">
               <History className="text-primary" size={20} />
-              سجل العروض
+              {t("offers_history")}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
               <div className="p-10 flex flex-col items-center justify-center gap-3 text-muted-foreground">
                 <Loader2 className="animate-spin" size={36} />
-                <p>جاري تحميل العروض...</p>
+                <p>{t("loading_offers")}</p>
               </div>
             ) : offers.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                 <div className="h-20 w-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
                   <FileText size={36} className="text-slate-300" />
                 </div>
-                <h3 className="font-semibold text-lg text-slate-700 mb-2">لا توجد عروض مقدمة</h3>
+                <h3 className="font-semibold text-lg text-slate-700 mb-2">{t("no_offers")}</h3>
                 <p className="text-muted-foreground text-sm mb-6 max-w-sm">
-                  لم تقم بتقديم أي عروض سعر بعد.تصفح المناقصات المتاحة وقدم عروضك الأولى!
+                  {t("no_offers_desc")}
                 </p>
                 <Link href="/supplier/rfqs">
-                  <Button size="sm">تصفح المناقصات</Button>
+                  <Button size="sm">{t("browse_tenders")}</Button>
                 </Link>
               </div>
             ) : (
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">المعرف</TableHead>
-                    <TableHead className="text-right">المناقصة</TableHead>
-                    <TableHead className="text-right">السعر</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">التاريخ</TableHead>
-                    <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-right">إجراءات</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">{t("offers_id")}</TableHead>
+                    <TableHead className="text-right">{t("offers_tender")}</TableHead>
+                    <TableHead className="text-right">{t("offers_price")}</TableHead>
+                    <TableHead className="text-right hidden sm:table-cell">{t("offers_date")}</TableHead>
+                    <TableHead className="text-right">{t("offers_status")}</TableHead>
+                    <TableHead className="text-right">{t("offers_actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {offers.map((offer: any) => (
                     <TableRow key={offer.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-mono text-xs hidden md:table-cell text-right">{offer.id.substring(0, 8)}</TableCell>
-                      <TableCell className="font-bold text-right">{offer.rfqTitle || "مناقصة غير محددة"}</TableCell>
+                      <TableCell className="font-bold text-right">{offer.rfqTitle || t("offer_undefined")}</TableCell>
                       <TableCell className="font-bold text-right">
                         <div className="flex items-center justify-start gap-1">
-                          <span className="text-primary font-bold">{offer.price ? `${offer.price}` : "غير متوفر"}</span>
-                          {offer.price && <span className="text-xs text-muted-foreground">ر.س</span>}
+                          <span className="text-primary font-bold">{offer.price ? `${offer.price}` : t("price_not_available")}</span>
+                          {offer.price && <span className="text-xs text-muted-foreground">{t("sar")}</span>}
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground hidden sm:table-cell text-right" suppressHydrationWarning>
-                        {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString("ar-SA") : "-"}
+                        {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col gap-1 items-start">
@@ -290,7 +294,7 @@ export default function SupplierOffersPage() {
                               offer.sampleStatus === "تم الإرسال" ? "border-amber-200 bg-amber-50 text-amber-700" :
                               "border-success/30 bg-success/10 text-success"
                             }`}>
-                              العينة: {offer.sampleStatus}
+                              {t("sample_label")} {offer.sampleStatus}
                             </Badge>
                           )}
                         </div>
@@ -302,7 +306,7 @@ export default function SupplierOffersPage() {
                             variant="ghost"
                             size="icon"
                             className="hover:bg-slate-100 hover text-secondary transition-colors cursor-pointer"
-                            title="عرض التفاصيل"
+                            title={t("view_details_tooltip")}
                             onClick={() => setViewOffer(offer)}
                           >
                             <Eye size={16} />
@@ -315,7 +319,7 @@ export default function SupplierOffersPage() {
                                 variant="ghost"
                                 size="icon"
                                 className="hover:bg-primary/10 text-primary hover:text-primary transition-colors cursor-pointer"
-                                title="فتح المحادثة مع المقاول"
+                                title={t("chat_tooltip")}
                                 onClick={() => openChat(offer)}
                                 disabled={openingChat === offer.id}
                               >
@@ -333,7 +337,7 @@ export default function SupplierOffersPage() {
                               variant="ghost"
                               size="icon"
                               className="hover:bg-amber-100 text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
-                              title="تحديث السعر"
+                              title={t("update_price_tooltip")}
                               onClick={() => { setUpdatePriceOffer(offer); setNewPrice(offer.price || ""); }}
                             >
                               <ArrowDown size={16} />
@@ -346,7 +350,7 @@ export default function SupplierOffersPage() {
                               variant="ghost"
                               size="icon"
                               className="hover:bg-blue-100 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                              title="تأكيد إرسال العينة"
+                              title={t("confirm_sample_tooltip")}
                               onClick={() => setConfirmSampleOffer(offer)}
                               disabled={deletingId === offer.id}
                             >
@@ -364,13 +368,13 @@ export default function SupplierOffersPage() {
                                     : <MoreVertical size={16} />}
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="text-right" dir="rtl">
+                              <DropdownMenuContent align="end" className="text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                                 <DropdownMenuItem
                                   className="text-destructive cursor-pointer gap-2 focus:bg-destructive/10"
                                   onClick={() => handleWithdraw(offer.id)}
                                 >
                                   <Trash2 size={14} />
-                                  سحب العرض
+                                  {t("withdraw_offer")}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -388,57 +392,57 @@ export default function SupplierOffersPage() {
 
       {/* Offer Detail Dialog */}
       <Dialog open={!!viewOffer} onOpenChange={(open) => !open && setViewOffer(null)}>
-        <DialogContent className="sm:max-w-md text-right" dir="rtl">
+        <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>تفاصيل العرض</DialogTitle>
-            <DialogDescription>معلومات عرض السعر المقدم</DialogDescription>
+            <DialogTitle>{t("offer_details_title")}</DialogTitle>
+            <DialogDescription>{t("offer_details_desc")}</DialogDescription>
           </DialogHeader>
           {viewOffer && (
             <div className="space-y-4 py-2">
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                <span className="text-muted-foreground text-sm">حالة العرض</span>
+                <span className="text-muted-foreground text-sm">{t("offer_status_label")}</span>
                 {getStatusBadge(viewOffer.status || "قيد المراجعة")}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-primary/5 rounded-lg space-y-1">
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <DollarSign size={12} />
-                    السعر المقدم
+                    {t("offer_price_label")}
                   </div>
                   <p className="font-bold text-2xl text-primary">
-                    {viewOffer.price} <span className="text-sm font-normal text-muted-foreground">ر.س</span>
+                    {viewOffer.price} <span className="text-sm font-normal text-muted-foreground">{t("sar")}</span>
                   </p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-lg space-y-1">
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <Calendar size={12} />
-                    تاريخ التقديم
+                    {t("offer_date_label")}
                   </div>
                   <p className="font-bold text-sm" suppressHydrationWarning>
-                    {viewOffer.createdAt ? new Date(viewOffer.createdAt).toLocaleDateString("ar-SA") : "-"}
+                    {viewOffer.createdAt ? new Date(viewOffer.createdAt).toLocaleDateString(locale) : "-"}
                   </p>
                 </div>
               </div>
               <div className="p-3 bg-slate-50 rounded-lg space-y-1">
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Tag size={12} />
-                  المناقصة
+                  {t("offer_tender")}
                 </div>
-                <p className="font-bold">{viewOffer.rfqTitle || "مناقصة غير محددة"}</p>
+                <p className="font-bold">{viewOffer.rfqTitle || t("offer_undefined")}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-lg space-y-1">
-                <p className="text-xs text-muted-foreground">معرف العرض</p>
+                <p className="text-xs text-muted-foreground">{t("offer_id_label")}</p>
                 <p className="font-mono text-xs text-slate-500">{viewOffer.id}</p>
               </div>
               {viewOffer.offerPdfUrl && (
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText size={16} className="text-blue-600" />
-                    <span className="text-sm font-bold text-slate-700">ملف العرض المرفق</span>
+                    <span className="text-sm font-bold text-slate-700">{t("attached_file_label")}</span>
                   </div>
                   <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-xs">
                     <a href={viewOffer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                      عرض الملف
+                      {t("view_file")}
                     </a>
                   </Button>
                 </div>
@@ -446,42 +450,42 @@ export default function SupplierOffersPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setViewOffer(null)}>إغلاق</Button>
+            <Button variant="outline" onClick={() => setViewOffer(null)}>{t("close")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Update Price Dialog */}
       <Dialog open={!!updatePriceOffer} onOpenChange={(open) => !open && setUpdatePriceOffer(null)}>
-        <DialogContent className="sm:max-w-md text-right" dir="rtl">
+        <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
-            <DialogTitle>تحديث سعر العرض</DialogTitle>
+            <DialogTitle>{t("update_price_title")}</DialogTitle>
             <DialogDescription>
-              طلب المقاول تخفيض السعر لهذا العرض. يرجى إدخال السعر الجديد أدناه لإعادة تقديمه.
+              {t("update_price_desc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>السعر السابق</Label>
+              <Label>{t("previous_price")}</Label>
               <div className="p-3 bg-slate-50 text-slate-500 rounded-md font-bold">
-                {updatePriceOffer?.price} ر.س
+                {updatePriceOffer?.price} {t("sar")}
               </div>
             </div>
             <div className="space-y-2">
-              <Label>السعر الجديد (ر.س)</Label>
+              <Label>{t("new_price_label")}</Label>
               <Input 
                 type="number" 
                 value={newPrice} 
                 onChange={(e) => setNewPrice(e.target.value)} 
-                placeholder="أدخل السعر المخفض"
+                placeholder={t("new_price_placeholder")}
                 autoFocus
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>{t("cancel")}</Button>
             <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || !newPrice || newPrice === updatePriceOffer?.price}>
               {isUpdatingPrice ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
-              تأكيد السعر الجديد
+              {t("confirm_new_price")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -489,16 +493,15 @@ export default function SupplierOffersPage() {
 
       {/* Confirm Sample Sending Alert */}
       <AlertDialog open={!!confirmSampleOffer} onOpenChange={(open) => !open && setConfirmSampleOffer(null)}>
-        <AlertDialogContent className="text-right" dir="rtl">
+        <AlertDialogContent className="text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <AlertDialogHeader>
-            <AlertDialogTitle>تأكيد إرسال العينة</AlertDialogTitle>
+            <AlertDialogTitle>{t("confirm_sample_title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              هل أنت متأكد أنك قمت بإرسال العينة المطلوبة للمقاول للمناقصة "{confirmSampleOffer?.rfqTitle}"؟ 
-              سيتم إشعار المقاول بذلك ليتمكن من تأكيد الاستلام.
+              {t("confirm_sample_desc", { title: confirmSampleOffer?.rfqTitle || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-row-reverse sm:justify-start">
-            <AlertDialogCancel className="mt-0 sm:mt-0">إلغاء</AlertDialogCancel>
+            <AlertDialogCancel className="mt-0 sm:mt-0">{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-primary text-white hover:bg-primary/90"
               onClick={(e) => {
@@ -509,7 +512,7 @@ export default function SupplierOffersPage() {
               }}
             >
               {deletingId === confirmSampleOffer?.id ? <Loader2 size={16} className="animate-spin mr-2" /> : null}
-              نعم، تم الإرسال
+              {t("yes_sent")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -517,21 +520,21 @@ export default function SupplierOffersPage() {
 
       {/* Chat Redirect Dialog after sample sent - must be sibling, NOT nested */}
       <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
-        <AlertDialogContent dir="rtl" className="text-right">
+        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'} className="text-right">
           <AlertDialogHeader>
-            <AlertDialogTitle>تم إرسال العينة بنجاح!</AlertDialogTitle>
+            <AlertDialogTitle>{t("sample_sent_title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟
+              {t("sample_sent_desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex gap-2">
-            <AlertDialogCancel onClick={() => setOpeningChat(null)}>لاحقاً</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setOpeningChat(null)}>{t("later")}</AlertDialogCancel>
             <AlertDialogAction onClick={() => {
               const id = openingChat;
               setOpeningChat(null);
               router.push(`/supplier/chat/${id}`);
             }}>
-              فتح المحادثة
+              {t("open_chat")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -541,6 +544,7 @@ export default function SupplierOffersPage() {
 }
 
 function ContractorWhatsAppButton({ contractorId }: { contractorId?: string }) {
+  const t = useTranslations("Portal.Supplier")
   const firestore = useFirestore()
   const docRef = useMemoFirebase(() => {
     if (!firestore || !contractorId) return null
@@ -559,7 +563,7 @@ function ContractorWhatsAppButton({ contractorId }: { contractorId?: string }) {
       href={`https://wa.me/${waNumber}`}
       target="_blank"
       rel="noopener noreferrer"
-      title="واتسآب المقاول"
+      title={t("wa_tooltip")}
       className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-[#25D366]/10 text-[#25D366] transition-colors"
     >
       <Phone size={16} />

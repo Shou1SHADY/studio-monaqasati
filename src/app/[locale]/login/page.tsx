@@ -1,24 +1,32 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
 import { useFirebase } from "@/firebase"
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
+import { getAuth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth"
 import { doc, getDoc, setDoc, deleteDoc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowRight, Building2, CheckCircle2, ShieldCheck, Lock } from "lucide-react"
+import { Loader2, ArrowRight, Building2, CheckCircle2, ShieldCheck, Lock, Mail } from "lucide-react"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 export default function LoginPage() {
   const router = useRouter()
   const { auth, firestore } = useFirebase()
   const { toast } = useToast()
   const t = useTranslations("Auth.Login")
+  const locale = useLocale()
 
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState("")
@@ -32,6 +40,29 @@ export default function LoginPage() {
   const [twoFactorCode, setTwoFactorCode] = useState("")
   const [twoFactorLoading, setTwoFactorLoading] = useState(false)
   const [tempUserData, setTempUserData] = useState<{ uid: string; role: string; name: string; phone: string } | null>(null)
+
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [resetEmail, setResetEmail] = useState("")
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetSent, setResetSent] = useState(false)
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resetEmail.trim() || !auth) return
+    setResetLoading(true)
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim())
+      setResetSent(true)
+      toast({ title: t("forgot_password_title"), description: t("forgot_password_success_desc") })
+    } catch (err: any) {
+      const msg = err.code === 'auth/user-not-found' 
+        ? t("forgot_password_no_user") 
+        : t("forgot_password_error")
+      toast({ title: t("forgot_password_error_title"), description: msg, variant: "destructive" })
+    } finally {
+      setResetLoading(false)
+    }
+  }
 
   const sendTwoFactorCode = async (uid: string, phone: string) => {
     if (!firestore) return false
@@ -172,6 +203,9 @@ export default function LoginPage() {
       }
     } catch (error: any) {
       console.error("❌ Google Login error:", error)
+      if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user") {
+        return
+      }
       setLoginError(error.message || t("err_google_login"))
     } finally {
       setIsLoading(false)
@@ -265,7 +299,7 @@ export default function LoginPage() {
             <LanguageSwitcher />
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base">M</div>
-              <span className="text-xl font-bold text-foreground font-headline tracking-normal">Monaqasati</span>
+              <span className="text-xl font-bold text-foreground font-headline tracking-normal">Mdmak Tech</span>
             </div>
           </div>
         </div>
@@ -358,9 +392,9 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
-                    <Link href="#" className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
+                    <button type="button" onClick={() => { setResetEmail(formData.email); setResetSent(false); setShowForgotPassword(true) }} className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
                       {t("forgot_password")}
-                    </Link>
+                    </button>
                   </div>
                   <Input
                     id="password"
@@ -428,7 +462,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex flex-1 relative overflow-hidden">
         <img
           src="/images/loading-dock.jpg"
-          alt="Monaqasati Platform"
+          alt="Mdmak Tech Platform"
           className="w-full h-full object-cover ltr:-scale-x-100"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
@@ -441,6 +475,50 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      <Dialog open={showForgotPassword} onOpenChange={setShowForgotPassword}>
+        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail size={20} className="text-primary" />
+              {t("forgot_password_title")}
+            </DialogTitle>
+            <DialogDescription>
+              {resetSent ? t("forgot_password_sent_desc") : t("forgot_password_desc")}
+            </DialogDescription>
+          </DialogHeader>
+          {resetSent ? (
+            <div className="py-4 text-center space-y-4">
+              <div className="mx-auto w-12 h-12 rounded-full bg-success/10 flex items-center justify-center">
+                <CheckCircle2 size={24} className="text-success" />
+              </div>
+              <p className="text-sm text-muted-foreground">{t("forgot_password_check_email")}</p>
+              <Button variant="outline" onClick={() => setShowForgotPassword(false)} className="w-full">
+                {t("forgot_password_close")}
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">{t("email")}</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={e => setResetEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  required
+                  className="dir-ltr text-left"
+                />
+              </div>
+              <Button type="submit" disabled={resetLoading || !resetEmail.trim()} className="w-full gap-2">
+                {resetLoading ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                {t("forgot_password_send")}
+              </Button>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

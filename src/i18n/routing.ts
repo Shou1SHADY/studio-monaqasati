@@ -9,7 +9,11 @@ export const routing = defineRouting({
   defaultLocale: 'ar',
   
   // Do not prefix the default locale (Arabic)
-  localePrefix: 'as-needed'
+  localePrefix: 'as-needed',
+
+  // Disable browser locale detection so Arabic is always the default,
+  // regardless of the user's browser Accept-Language header.
+  localeDetection: false
 });
 
 // Lightweight wrappers around Next.js' navigation APIs

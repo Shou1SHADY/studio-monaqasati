@@ -1,5 +1,7 @@
 /**
  * Pure utility functions for review and rating system.
+ * Status values ('تم التسليم', fallback names 'مستخدم') are Firestore data values,
+ * not UI strings. Display translation is handled by calling components.
  */
 
 export interface ReviewData {

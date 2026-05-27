@@ -3,10 +3,12 @@
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { MessageSquare, Loader2, ChevronLeft, Clock } from "lucide-react"
+import { MessageSquare, Loader2, ChevronLeft, ChevronRight, Clock } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import { collection, query, where, doc } from "firebase/firestore"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
+import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
 
 interface ChatsListPageProps {
   role: "contractor" | "supplier"
@@ -21,6 +23,8 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
   const router = useRouter()
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
 
   const chatsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -44,13 +48,13 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 text-right">
+      <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">محادثاتي</h1>
+          <h1 className="text-3xl font-bold text-secondary font-headline">{t("chat_list_title")}</h1>
           <p className="text-muted-foreground mt-1">
             {role === "contractor"
-              ? "تواصل مع الموردين الذين قبلت عروضهم"
-              : "تواصل مع المقاولين الذين قبلوا عروضك"}
+              ? t("chat_list_desc_contractor")
+              : t("chat_list_desc_supplier")}
           </p>
         </div>
 
@@ -58,17 +62,17 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
           {isLoading ? (
             <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
               <Loader2 className="animate-spin" size={40} />
-              <p>جاري تحميل المحادثات...</p>
+              <p>{t("chat_list_loading")}</p>
             </div>
           ) : !chats || chats.length === 0 ? (
             <Card className="border-dashed border-2 border-slate-200 shadow-none">
               <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                 <MessageSquare size={48} className="opacity-20" />
-                <p className="font-bold text-lg">لا توجد محادثات حالياً</p>
+                <p className="font-bold text-lg">{t("chat_list_empty_title")}</p>
                 <p className="text-sm">
                   {role === "contractor"
-                    ? "ستظهر المحادثات هنا بعد قبول عرض من أحد الموردين."
-                    : "ستظهر المحادثات هنا بعد قبول المقاول لأحد عروضك."}
+                    ? t("chat_list_empty_desc_contractor")
+                    : t("chat_list_empty_desc_supplier")}
                 </p>
               </CardContent>
             </Card>
@@ -91,7 +95,7 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
                     }`}>
                       <MessageSquare size={22} />
                       {hasUnread && (
-                        <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center">
+                        <span className={cn("absolute -top-1 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? '-right-1' : '-left-1')}>
                           !
                         </span>
                       )}
@@ -99,11 +103,11 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <p className={`font-bold truncate ${hasUnread ? "text-primary" : "text-foreground"}`}>
-                          {chat.rfqTitle || "محادثة عقد"}
+                          {chat.rfqTitle || t("chat_list_contract_chat")}
                         </p>
                         {hasUnread && (
                           <Badge className="bg-primary text-white border-none text-[10px] px-2 py-0 shrink-0">
-                            جديد
+                            {t("chat_list_new")}
                           </Badge>
                         )}
                       </div>
@@ -113,17 +117,21 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
                             {chat.lastMessage}
                           </p>
                         ) : (
-                          <Badge className="bg-success/10 text-success border-success/20 text-xs">مقبول ✅</Badge>
+                          <Badge className="bg-success/10 text-success border-success/20 text-xs">{t("chat_list_accepted")}</Badge>
                         )}
-                        <span className="text-xs text-muted-foreground flex items-center gap-1 shrink-0 mr-auto" suppressHydrationWarning>
+                        <span className={cn("text-xs text-muted-foreground flex items-center gap-1 shrink-0", locale === 'ar' ? 'mr-auto' : 'ml-auto')} suppressHydrationWarning>
                           <Clock size={10} />
                           {(chat.lastMessageAt || chat.createdAt)
-                            ? new Date(chat.lastMessageAt || chat.createdAt).toLocaleDateString("ar-SA")
+                            ? new Date(chat.lastMessageAt || chat.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US')
                             : ""}
                         </span>
                       </div>
                     </div>
-                    <ChevronLeft size={18} className={`shrink-0 transition-colors ${hasUnread ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`} />
+                    {locale === 'ar' ? (
+                      <ChevronLeft size={18} className={`shrink-0 transition-colors ${hasUnread ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`} />
+                    ) : (
+                      <ChevronRight size={18} className={`shrink-0 transition-colors ${hasUnread ? "text-primary" : "text-muted-foreground group-hover:text-primary"}`} />
+                    )}
                   </CardContent>
                 </Card>
               )

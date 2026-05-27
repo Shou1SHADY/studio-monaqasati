@@ -10,7 +10,7 @@ import {
 import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare, ShieldCheck, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -20,9 +20,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
+import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
 import { getAuth, signOut } from "firebase/auth"
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
+import { useRouter, usePathname } from "@/i18n/routing"
+import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 
@@ -39,6 +42,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   
   const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
   
+  const t = useTranslations("Portal.Layout")
+  const tErr = useTranslations("Portal.Errors")
+  const locale = useLocale()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -343,13 +349,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex flex-col h-screen w-full items-center justify-center bg-slate-50/50 p-6 text-center">
         <ShieldCheck className="h-16 w-16 text-destructive mb-4" />
-        <h2 className="text-2xl font-bold text-slate-800 mb-2">عفواً، لا تملك الصلاحيات الكافية</h2>
+        <h2 className="text-2xl font-bold text-slate-800 mb-2">{tErr("access_denied_title")}</h2>
         <p className="text-muted-foreground mb-6 max-w-md">
-          لا يمكنك الدخول إلى لوحة تحكم الإدارة لأن حسابك ليس مسجلاً كمسؤول (Admin).
-          يرجى التأكد من تعديل دورك في قاعدة البيانات (Firestore) إلى Admin.
+          {tErr("access_denied_desc")}
         </p>
         <Button onClick={handleLogout} variant="outline">
-          تسجيل الخروج
+          {tErr("access_denied_logout")}
         </Button>
       </div>
     )
@@ -367,42 +372,42 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
                   <form onSubmit={handleSearch} className="relative w-full">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
                     <Input 
-                      placeholder="بحث سريع..." 
-                      className="pr-10 bg-muted border-none focus-visible:ring-1"
+                      placeholder={t("search_placeholder")}
+                      className={cn("bg-muted border-none focus-visible:ring-1", locale === 'ar' ? 'pr-10' : 'pl-10')}
                       value={searchQuery}
                       onChange={handleSearchChange}
                     />
                   </form>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start" className="bg-primary text-primary-foreground border-none">
-                  <p className="text-xs font-medium">اكتب كلمة البحث (اسم، فئة، أو مكان) واضغط Enter للبحث ↵</p>
+                  <p className="text-xs font-medium">{t("search_tooltip")}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
 
-          <div className="flex items-center gap-3 mr-auto">
+          <div className={cn("flex items-center gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <LanguageSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground">
                   <Bell size={20} />
                   {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center">
+                    <span className={cn("absolute top-1.5 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-1.5' : 'left-1.5')}>
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80 p-0" dir="rtl">
+              <DropdownMenuContent align="end" className="w-80 p-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b">
-                  <span className="font-bold text-sm">الإشعارات</span>
+                  <span className="font-bold text-sm">{t("notifications")}</span>
                   {unreadCount > 0 && (
                     <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full font-medium">
-                      {unreadCount} جديد
+                      {t("new_count", { count: unreadCount })}
                     </span>
                   )}
                 </div>
@@ -411,7 +416,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 {notifications.length === 0 ? (
                   <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground py-8">
                     <Bell size={28} className="opacity-20" />
-                    <p className="text-sm">لا توجد إشعارات</p>
+                    <p className="text-sm">{t("no_notifications")}</p>
                   </div>
                 ) : (
                   <div className="divide-y max-h-72 overflow-y-auto">
@@ -458,30 +463,28 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
                               {isSupplier
-                                ? isNewRfq ? "🆕 مناقصة جديدة متطابقة!"
-                                  : isSampleReceived ? "✅ تم استلام العينة!"
-                                  : isSampleRequest ? "📦 مطلوب عينة للعرض"
-                                  : isPending ? "⏳ عرض قيد المراجعة"
-                                  : isPriceReduction ? "📉 مطلوب تخفيض السعر"
-                                  : isAccepted ? "✅ تم قبول عرضك!"
-                                  : isInvitation ? (notif.title || "🔔 دعوة للفريق")
-                                  : isInquiryReply ? "💬 رد على استفسارك"
-                                  : "❌ تم رفض العرض"
-                                : isInvitation ? (notif.title || "🔔 دعوة للفريق")
-                                : "🔔 عرض سعر جديد"}
+                                ? isNewRfq ? t("notification_new_rfq")
+                                  : isSampleReceived ? t("notification_sample_received")
+                                  : isSampleRequest ? t("notification_sample_requested")
+                                  : isPending ? t("notification_pending")
+                                  : isPriceReduction ? t("notification_price_reduction")
+                                  : isAccepted ? t("notification_accepted")
+                                  : isInvitation ? (notif.title || t("notification_invitation"))
+                                  : isInquiryReply ? t("notification_inquiry_reply")
+                                  : t("notification_rejected")
+                                : isInvitation ? (notif.title || t("notification_invitation"))
+                                : t("notification_new_offer")}
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                               {isNewRfq 
-                                ? `تم طرح مناقصة في قسم ${notif.category}`
+                                ? t("notification_rfq_in_category", { category: notif.category })
                                 : isInvitation
-                                  ? (notif.message || "لقد تلقيت دعوة للانضمام إلى فريق عمل جديد.")
+                                  ? (notif.message || "")
                                   : isSampleRequest && notif.type === "sample_requested"
-                                    ? (notif.message || "طلب المقاول عينة للعرض المقدم.")
+                                    ? (notif.message || "")
                                     : isInquiryReply
-                                      ? (notif.description || notif.message || "رد المقاول على استفسارك.")
-                                      : isSupplier
-                                        ? `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
-                                        : `${notif.price} ر.س - ${notif.rfqTitle || "مناقصة"}`
+                                      ? (notif.description || notif.message || "")
+                                      : t("notification_offer_detail", { price: notif.price, title: notif.rfqTitle || "" })
                               }
                             </p>
                           </div>
@@ -505,9 +508,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                           <MessageSquare size={14} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-foreground truncate">💬 رسالة جديدة</p>
+                          <p className="text-xs font-bold text-foreground truncate">{t("notification_new_message")}</p>
                           <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                            {chat.lastMessage || "رسالة جديدة في المحادثة"} — {chat.rfqTitle || "محادثة عقد"}
+                            {chat.lastMessage || t("notification_message_in")} — {chat.rfqTitle || t("contract")}
                           </p>
                         </div>
                         <div className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />
@@ -521,7 +524,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <div className="p-2">
                   <Link href={`/${basePath}/notifications`}>
                     <Button variant="ghost" size="sm" className="w-full text-primary hover:text-primary/80 hover:bg-primary/5">
-                      عرض كل الإشعارات
+                      {t("view_all")}
                     </Button>
                   </Link>
                 </div>
@@ -537,9 +540,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
-                      <span className="text-sm font-bold text-foreground">{profile?.name || (user ? "مستخدم جديد" : "ضيف")}</span>
+                      <span className="text-sm font-bold text-foreground">{profile?.name || (user ? t("new_user") : "")}</span>
                       <span className="text-xs text-muted-foreground">
-                        {profile?.role === "Contractor" ? "مقاول" : profile?.role === "Supplier" ? "مورد" : profile?.role || "بانتظار التهيئة..."}
+                        {profile?.role === "Contractor" ? t("role_contractor") : profile?.role === "Supplier" ? t("role_supplier") : profile?.role || t("waiting_setup")}
                       </span>
                     </div>
                     <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -548,9 +551,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>الملف الشخصي</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/settings`)}>الإعدادات</DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>تسجيل الخروج</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("profile")}</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push(`/${basePath}/settings`)}>{t("settings")}</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>{t("logout")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -559,21 +562,21 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         
         <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-[100vw]">
           <div className="mx-auto max-w-7xl">
-            {profile && profile.role !== "Admin" && profile.profileCompleted === false && pathname !== `/${profile.role.toLowerCase()}/profile` && (
-              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir="rtl">
+            {profile && profile.role !== "Admin" && (profile.profileCompleted !== true || !profile.legalDocuments?.cr?.url || !profile.legalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">
                   <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
                   <div>
-                    <h4 className="font-bold text-sm">تنبيه: ملفك الشخصي غير مكتمل</h4>
-                    <p className="text-xs text-amber-700 mt-1">يرجى استكمال بيانات شركتك (مثل السجل التجاري وطرق التواصل) لتتمكن من تقديم العروض أو إضافة المناقصات.</p>
+                    <h4 className="font-bold text-sm">{t("profile_banner_title")}</h4>
+                    <p className="text-xs text-amber-700 mt-1">{t("profile_banner_desc")}</p>
                   </div>
                 </div>
                 <Button 
-                  onClick={() => router.push(`/${profile.role.toLowerCase()}/profile`)}
+                  onClick={() => router.push(`/${profile.role.toLowerCase()}/profile?tour=true`)}
                   className="bg-amber-500 hover:bg-amber-600 text-white font-bold whitespace-nowrap"
                   size="sm"
                 >
-                  استكمال البيانات الآن
+                  {t("profile_banner_cta")}
                 </Button>
               </div>
             )}

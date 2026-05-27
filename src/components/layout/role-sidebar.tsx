@@ -1,17 +1,18 @@
 "use client"
 
 import * as React from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Package, 
-  Users, 
-  Settings, 
-  Bell, 
-  PlusCircle, 
-  UserCircle, 
+import { Link } from "@/i18n/routing"
+import { usePathname } from "@/i18n/routing"
+import { useLocale, useTranslations } from "next-intl"
+import {
+  LayoutDashboard,
+  FileText,
+  Package,
+  Users,
+  Settings,
+  Bell,
+  PlusCircle,
+  UserCircle,
   Search,
   ClipboardList,
   History,
@@ -32,92 +33,98 @@ import {
 } from "@/components/ui/sidebar"
 
 interface NavItem {
-  title: string
+  titleKey: string
   href: string
   icon: React.ElementType
 }
 
-const supplierItems: NavItem[] = [
-  { title: "لوحة التحكم", href: "/supplier", icon: LayoutDashboard },
-  { title: "طلباتي", href: "/supplier/orders", icon: ClipboardList },
-  { title: "المناقصات المتاحة", href: "/supplier/rfqs", icon: Search },
-  { title: "عروضي المقدمة", href: "/supplier/offers", icon: History },
-  { title: "محادثاتي", href: "/supplier/chats", icon: MessageSquare },
-  { title: "إدارة الفريق", href: "/supplier/team", icon: Users },
-  { title: "التنبيهات", href: "/supplier/notifications", icon: Bell },
-  { title: "الملف الشخصي", href: "/supplier/profile", icon: UserCircle },
+const supplierItemKeys: NavItem[] = [
+  { titleKey: "supplier_dashboard", href: "/supplier", icon: LayoutDashboard },
+  { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
+  { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
+  { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
+  { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
+  { titleKey: "supplier_team", href: "/supplier/team", icon: Users },
+  { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
+  { titleKey: "supplier_profile", href: "/supplier/profile", icon: UserCircle },
 ]
 
-const contractorItems: NavItem[] = [
-  { title: "لوحة التحكم", href: "/contractor", icon: LayoutDashboard },
-  { title: "مناقصاتي", href: "/contractor/rfqs", icon: FileText },
-  { title: "طرح مناقصة جديدة", href: "/contractor/rfqs/new", icon: PlusCircle },
-  { title: "دليل الموردين", href: "/contractor/suppliers", icon: Users },
-  { title: "محادثاتي", href: "/contractor/chats", icon: MessageSquare },
-  { title: "إدارة الفريق", href: "/contractor/team", icon: Users },
-  { title: "التنبيهات", href: "/contractor/notifications", icon: Bell },
-  { title: "الملف الشخصي", href: "/contractor/profile", icon: UserCircle },
+const contractorItemKeys: NavItem[] = [
+  { titleKey: "contractor_dashboard", href: "/contractor", icon: LayoutDashboard },
+  { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
+  { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: PlusCircle },
+  { titleKey: "contractor_suppliers", href: "/contractor/suppliers", icon: Users },
+  { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
+  { titleKey: "contractor_team", href: "/contractor/team", icon: Users },
+  { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
+  { titleKey: "contractor_profile", href: "/contractor/profile", icon: UserCircle },
 ]
 
-const adminItems: NavItem[] = [
-  { title: "الرئيسية", href: "/admin", icon: LayoutDashboard },
-  { title: "الموردين", href: "/admin/suppliers", icon: Users },
-  { title: "المقاولين", href: "/admin/contractors", icon: Users },
-  { title: "كافة المناقصات", href: "/admin/rfqs", icon: Package },
-  { title: "سجل الإشعارات", href: "/admin/notifications", icon: Bell },
-  { title: "الإحصائيات", href: "/admin/stats", icon: TrendingUp },
-  { title: "الإعدادات", href: "/admin/settings", icon: Settings },
-  { title: "الملف الشخصي", href: "/admin/profile", icon: UserCircle },
+const adminItemKeys: NavItem[] = [
+  { titleKey: "admin_home", href: "/admin", icon: LayoutDashboard },
+  { titleKey: "admin_suppliers", href: "/admin/suppliers", icon: Users },
+  { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
+  { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },
+  { titleKey: "admin_notifications", href: "/admin/notifications", icon: Bell },
+  { titleKey: "admin_stats", href: "/admin/stats", icon: TrendingUp },
+  { titleKey: "admin_settings", href: "/admin/settings", icon: Settings },
+  { titleKey: "admin_profile", href: "/admin/profile", icon: UserCircle },
 ]
 
 export function RoleSidebar() {
+  const t = useTranslations("Portal.Sidebar")
+  const locale = useLocale()
+
   const pathname = usePathname()
-  
+
   let items: NavItem[] = []
-  let portalTitle = ""
+  let portalTitleKey = ""
   let roleColor = ""
 
   if (pathname.startsWith("/supplier")) {
-    items = supplierItems
-    portalTitle = "بوابة الموردين"
+    items = supplierItemKeys
+    portalTitleKey = "supplier_portal"
     roleColor = "text-success"
   } else if (pathname.startsWith("/contractor")) {
-    items = contractorItems
-    portalTitle = "بوابة المقاولين"
+    items = contractorItemKeys
+    portalTitleKey = "contractor_portal"
     roleColor = "text-accent"
   } else if (pathname.startsWith("/admin")) {
-    items = adminItems
-    portalTitle = "بوابة الإدارة"
+    items = adminItemKeys
+    portalTitleKey = "admin_portal"
     roleColor = "text-purple-400"
+  } else {
+    return null
   }
+  if (!portalTitleKey) return null
 
   return (
-    <Sidebar side="right" className="border-l bg-sidebar">
+    <Sidebar side={locale === 'ar' ? 'right' : 'left'} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
       <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex flex-col gap-2">
           <Link href="/" className="text-2xl font-bold text-white font-headline">مدماك تيك</Link>
           <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
-            {portalTitle}
+            {t(portalTitleKey)}
           </span>
         </div>
       </SidebarHeader>
       <SidebarContent className="py-4">
         <SidebarMenu className="px-3 gap-2">
           {items.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton 
-                asChild 
+            <SidebarMenuItem key={item.titleKey}>
+              <SidebarMenuButton
+                asChild
                 isActive={pathname === item.href}
                 className={cn(
                   "h-11 transition-all",
-                  pathname === item.href 
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm" 
+                  pathname === item.href
+                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                     : "text-sidebar-foreground hover:bg-sidebar-accent"
                 )}
               >
                 <Link href={item.href} className="flex items-center gap-3">
                   <item.icon className="h-5 w-5" />
-                  <span className="text-sm font-medium">{item.title}</span>
+                  <span className="text-sm font-medium">{t(item.titleKey)}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -130,7 +137,7 @@ export function RoleSidebar() {
             <SidebarMenuButton asChild className="text-red-400 hover:bg-red-950/20 hover:text-red-300">
               <Link href="/" className="flex items-center gap-3">
                 <LogOut className="h-5 w-5" />
-                <span className="text-sm font-medium">تسجيل الخروج</span>
+                <span className="text-sm font-medium">{t("logout")}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

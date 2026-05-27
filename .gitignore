@@ -48,6 +48,22 @@ firestore-debug.log
 # test outputs
 playwright-report/
 test-results/
+.playwright-mcp/
+
+# AI screenshots and debug artifacts
+*.ai-screenshot.png
+mobile-login.png
+landing-mobile-*.png
 
 # next.js backup
 .next-backup/
+
+# agent
+.agents/
+
+#opencode json
+opencode.json
+
+#opencode skills json
+skills-lock.json
+

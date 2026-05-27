@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -35,13 +36,15 @@ import {
   Loader2
 } from "lucide-react"
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
-import Link from "next/link"
+import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, addDoc, doc, orderBy } from "firebase/firestore"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
 
 export default function SupplierDashboard() {
+   const t = useTranslations("Portal.Supplier")
+   const locale = useLocale()
    const router = useRouter()
    const { toast } = useToast()
    const firestore = useFirestore();
@@ -69,13 +72,13 @@ export default function SupplierDashboard() {
      const now = new Date();
      const diffMs = now.getTime() - date.getTime();
      const diffMins = Math.floor(diffMs / 60000);
-     if (diffMins < 1) return "الآن";
-     if (diffMins < 60) return `منذ ${diffMins} دقيقة`;
+     if (diffMins < 1) return t("now");
+     if (diffMins < 60) return t("minutes_ago", { count: diffMins });
      const diffHours = Math.floor(diffMins / 60);
-     if (diffHours < 24) return `منذ ${diffHours} ساعة`;
+     if (diffHours < 24) return t("hours_ago", { count: diffHours });
      const diffDays = Math.floor(diffHours / 24);
-     if (diffDays < 7) return `منذ ${diffDays} يوم`;
-     return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' });
+     if (diffDays < 7) return t("days_ago", { count: diffDays });
+     return date.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
    }
 
    const getLastActivityDate = () => {
@@ -142,9 +145,9 @@ export default function SupplierDashboard() {
         repliedAt: null
       })
       setNewQuestion("")
-      toast({ title: "تم الإرسال", description: "تم إرسال سؤالك للمقاول ينتظر الرد." })
+      toast({ title: t("question_sent_title"), description: t("question_sent_desc") })
     } catch (error) {
-      toast({ title: "خطأ", description: "فشل إرسال السؤال", variant: "destructive" })
+      toast({ title: t("error_title"), description: t("question_failed"), variant: "destructive" })
     } finally {
       setIsSubmittingQuestion(false)
     }
@@ -159,16 +162,16 @@ export default function SupplierDashboard() {
   const lastActivityDate = getLastActivityDate();
 
   const stats = [
-    { title: "الطلبات النشطة", value: activeRfqsCount.toString(), icon: Activity, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", actionUrl: "/supplier/rfqs" },
-    { title: "عروض قيد الانتظار", value: pendingCount.toString(), icon: Send, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", actionUrl: "/supplier/offers" },
-    { title: "عروض تم قبولها", value: acceptedCount.toString(), icon: Handshake, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", actionUrl: "/supplier/offers?status=Accepted" },
-    { title: "إجمالي العقود", value: totalValue > 1000 ? `${(totalValue/1000).toFixed(1)}k` : totalValue.toString(), icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", actionUrl: "/supplier/offers" },
+    { title: t("active_orders"), value: activeRfqsCount.toString(), icon: Activity, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", actionUrl: "/supplier/rfqs" },
+    { title: t("pending_offers"), value: pendingCount.toString(), icon: Send, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", actionUrl: "/supplier/offers" },
+    { title: t("accepted_offers"), value: acceptedCount.toString(), icon: Handshake, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", actionUrl: "/supplier/offers?status=Accepted" },
+    { title: t("total_contracts"), value: totalValue > 1000 ? `${(totalValue/1000).toFixed(1)}k` : totalValue.toString(), icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", actionUrl: "/supplier/offers" },
   ]
 
   const recommendedRfqs = rfqs?.slice(0, 3) || []
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right max-w-7xl mx-auto pb-10">
+      <div className={cn("space-y-8 max-w-7xl mx-auto pb-10", locale === 'ar' ? 'text-right' : 'text-left')}>
         {/* Animated Header Section */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 sm:p-10 text-white shadow-xl">
           {!prefersReducedMotion && (
@@ -182,23 +185,23 @@ export default function SupplierDashboard() {
             <div className="space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
-                  أهلاً بك، <span className="text-transparent bg-clip-text bg-gradient-to-l from-accent to-cyan-300">{userData?.companyName || userData?.name || "شريكنا المورد"}</span>
+                  {t("welcome")}، <span className="text-transparent bg-clip-text bg-gradient-to-l from-accent to-cyan-300">{userData?.companyName || userData?.name || t("partner_name")}</span>
                 </h1>
                 {lastActivityDate && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs font-medium text-white/80">
                     <Clock className="h-3 w-3" />
-                    آخر نشاط: {formatActivityDate(new Date(lastActivityDate))}
+                    {t("last_activity")}: {formatActivityDate(new Date(lastActivityDate))}
                   </span>
                 )}
               </div>
               <p className="text-slate-200 text-lg font-medium max-w-xl leading-relaxed">
-                لوحة التحكم الذكية للموردين. تتبع عروضك، اكتشف مناقصات جديدة، وقم بتنمية أعمالك بكل سهولة واحترافية.
+                {t("dashboard_desc")}
               </p>
             </div>
             <Link href="/supplier/rfqs" className="shrink-0">
               <Button className="bg-white text-secondary hover:bg-slate-100 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_rgba(255,255,255,0.5)] transition-all duration-300 h-12 px-6 rounded-xl font-bold text-base group">
                 <Search className={cn("ml-2 h-5 w-5", !prefersReducedMotion && "transition-transform group-hover:scale-110")} />
-                تصفح المناقصات
+                {t("browse_tenders")}
               </Button>
             </Link>
           </div>
@@ -235,12 +238,12 @@ export default function SupplierDashboard() {
                   <Search size={20} />
                 </div>
                 <div>
-                  <CardTitle className="text-lg font-bold">مناقصات في تخصصك</CardTitle>
-                  <p className="text-xs text-muted-foreground">بناءً على تخصصاتك ومناطق الخدمة</p>
+                  <CardTitle className="text-lg font-bold">{t("rfqs_in_your_specialization")}</CardTitle>
+                  <p className="text-xs text-muted-foreground">{t("rfqs_based_on_specialization")}</p>
                 </div>
               </div>
               <Link href="/supplier/rfqs">
-                <Button variant="outline" size="sm">تصفح الكل</Button>
+                <Button variant="outline" size="sm">{t("browse_all")}</Button>
               </Link>
             </CardHeader>
             <CardContent className="p-0">
@@ -262,7 +265,7 @@ export default function SupplierDashboard() {
                       <div className="flex flex-col items-end gap-3 shrink-0">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground" suppressHydrationWarning>
                           <Calendar size={16} />
-                          <span>الموعد النهائي: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString('ar-SA') : "-"}</span>
+                          <span>{t("deadline")}: {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : "-"}</span>
                         </div>
                         <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
                           <Button 
@@ -289,7 +292,7 @@ export default function SupplierDashboard() {
                             className="flex-1 md:flex-none gap-2 rounded-full h-9 text-slate-700 bg-transparent hover:bg-transparent hover:text-primary transition-all border-slate-200 hover:border-primary/50 text-xs px-4"
                           >
                             <Eye size={14} />
-                            التفاصيل
+                            {t("details")}
                           </Button>
                           <Button 
                             onClick={() => {
@@ -313,7 +316,7 @@ export default function SupplierDashboard() {
                             }}
                             className="flex-[2] md:flex-none bg-primary hover:bg-primary/90 rounded-full h-9 px-6 text-xs gap-2 group"
                           >
-                            تقديم عرض
+                            {t("submit_offer")}
                             <ChevronLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
                           </Button>
                         </div>
@@ -321,7 +324,7 @@ export default function SupplierDashboard() {
                     </div>
                   </div>
                 )) : (
-                  <div className="p-10 text-center text-muted-foreground">لا توجد مناقصات مقترحة حالياً.</div>
+                  <div className="p-10 text-center text-muted-foreground">{t("no_suggested_rfqs")}</div>
                 )}
               </div>
             </CardContent>
@@ -330,7 +333,7 @@ export default function SupplierDashboard() {
           {/* Profile Completion / Specializations */}
           <Card className="shadow-sm border-slate-100">
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-bold">تخصصاتك المسجلة</CardTitle>
+              <CardTitle className="text-lg font-bold">{t("your_specializations")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-wrap gap-2">
@@ -339,12 +342,12 @@ export default function SupplierDashboard() {
                     {spec}
                   </Badge>
                 )) : (
-                  <p className="text-sm text-muted-foreground">لم تقم بإضافة تخصصات بعد.</p>
+                  <p className="text-sm text-muted-foreground">{t("no_specializations_yet")}</p>
                 )}
               </div>
               <div className="h-px bg-slate-100" />
               <div className="space-y-3">
-                <p className="text-sm font-bold text-slate-700">مناطق التغطية:</p>
+                <p className="text-sm font-bold text-slate-700">{t("coverage_areas")}</p>
                 <div className="flex flex-wrap gap-2">
                   {userData?.coverageCities?.length > 0 ? (
                     userData.coverageCities.slice(0, 6).map((city: string) => (
@@ -354,16 +357,16 @@ export default function SupplierDashboard() {
                       </span>
                     ))
                   ) : (
-                    <span className="text-xs text-muted-foreground italic">لم تتم إضافة مدن بعد</span>
+                    <span className="text-xs text-muted-foreground italic">{t("no_cities_added")}</span>
                   )}
                   {userData?.coverageCities && userData.coverageCities.length > 6 && (
-                    <span className="text-xs text-primary font-medium">+{userData.coverageCities.length - 6} مدن أخرى</span>
+                    <span className="text-xs text-primary font-medium">{t("other_cities", { count: userData.coverageCities.length - 6 })}</span>
                   )}
                 </div>
               </div>
               <Link href="/supplier/profile" className="block pt-4">
                 <Button variant="ghost" className="w-full text-primary font-bold hover:bg-primary/5">
-                  تعديل الملف الشخصي
+                  {t("edit_profile")}
                   <ChevronLeft className="mr-1 h-4 w-4" />
                 </Button>
               </Link>
@@ -384,8 +387,8 @@ export default function SupplierDashboard() {
 
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false) } }}>
-        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir="rtl">
-          <DialogTitle className="sr-only">تفاصيل المناقصة</DialogTitle>
+        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogTitle className="sr-only">{t("rfq_details_title")}</DialogTitle>
           
           <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
             <div className="flex items-center justify-between">
@@ -403,7 +406,7 @@ export default function SupplierDashboard() {
               <div className="space-y-3">
                 <h3 className="font-bold text-slate-700 flex items-center gap-2">
                   <Package size={16} className="text-primary" />
-                  المنتجات المطلوبة
+                  {t("required_products")}
                 </h3>
                 <div className="space-y-2">
                   {selectedRfq.products.map((prod: any, idx: number) => (
@@ -427,7 +430,7 @@ export default function SupplierDashboard() {
             {/* Notes */}
             {selectedRfq?.notes && (
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <h3 className="font-bold text-amber-800 text-sm mb-1">ملاحظات إضافية</h3>
+                <h3 className="font-bold text-amber-800 text-sm mb-1">{t("additional_notes")}</h3>
                 <p className="text-sm text-amber-900">{selectedRfq.notes}</p>
               </div>
             )}
@@ -436,11 +439,11 @@ export default function SupplierDashboard() {
             {selectedRfq?.pdfUrl && (
               <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <File size={20} className="text-blue-600" />
-                <span className="flex-1 text-sm font-medium text-blue-800">ملف PDF مرفق</span>
+                <span className="flex-1 text-sm font-medium text-blue-800">{t("pdf_attached")}</span>
                 <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer" download>
                   <Button variant="outline" size="sm" className="gap-1">
                     <Download size={14} />
-                    تحميل
+                    {t("download")}
                   </Button>
                 </a>
               </div>
@@ -454,7 +457,7 @@ export default function SupplierDashboard() {
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Calendar size={14} className="text-amber-600" />
-                <span>الموعد: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString('ar-SA') : 'غير محدد'}</span>
+                <span>{t("deadline_label")}: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString(locale) : t("not_specified")}</span>
               </div>
             </div>
 
@@ -467,7 +470,7 @@ export default function SupplierDashboard() {
               >
                 <span className="font-bold text-slate-700 flex items-center gap-2">
                   <MessageCircle size={16} className="text-primary" />
-                  الاستفسارات والأسئلة
+                  {t("inquiries")}
                 </span>
                 {showInquiries ? <ChevronLeft size={16} className="-rotate-90 transition-transform" /> : <ChevronLeft size={16} className="transition-transform" />}
               </Button>
@@ -477,7 +480,7 @@ export default function SupplierDashboard() {
                   {/* Question Form */}
                   <div className="flex gap-2">
                     <Input 
-                      placeholder="اكتب سؤالك للمقاول..." 
+                      placeholder={t("ask_question_placeholder")} 
                       value={newQuestion}
                       onChange={(e) => setNewQuestion(e.target.value)}
                       className="flex-1"
@@ -501,7 +504,7 @@ export default function SupplierDashboard() {
                               <p className="text-sm text-slate-600">{inq.question}</p>
                               {inq.reply && (
                                 <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
-                                  <p className="text-xs font-bold text-green-700">رد المقاول:</p>
+                                  <p className="text-xs font-bold text-green-700">{t("reply_from_contractor")}</p>
                                   <p className="text-sm text-green-800">{inq.reply}</p>
                                 </div>
                               )}
@@ -511,7 +514,7 @@ export default function SupplierDashboard() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">لا توجد استفسارات بعد. كن أول من يسأل!</p>
+                    <p className="text-sm text-muted-foreground text-center py-4">{t("no_inquiries_yet")}</p>
                   )}
                 </div>
               )}
@@ -520,10 +523,10 @@ export default function SupplierDashboard() {
 
           <div className="px-5 py-4 border-t bg-white shrink-0 flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false) }}>
-              إغلاق
+              {t("close")}
             </Button>
             <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
-              تقديم عرض سعر
+              {t("submit_price_offer")}
               <ChevronLeft size={16} />
             </Button>
           </div>

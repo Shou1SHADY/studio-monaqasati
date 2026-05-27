@@ -1,8 +1,12 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { cn } from "@/lib/utils"
+import { ProfileTour } from "@/components/profile-tour"
+import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,7 +37,7 @@ import {
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { sendEmailVerification } from "firebase/auth"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog"
 import {
   DropdownMenu,
@@ -58,7 +62,6 @@ import { useToast } from "@/hooks/use-toast"
 import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection, useStorage } from "@/firebase"
 import { doc, updateDoc, collection, query as firestoreQuery, orderBy } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { useEffect } from "react"
 
 interface Certificate {
   id: string
@@ -84,6 +87,8 @@ interface CompanyFile {
 }
 
 export default function SupplierProfilePage() {
+  const t = useTranslations("Portal.Supplier")
+  const locale = useLocale()
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
   const [showCertForm, setShowCertForm] = useState(false)
@@ -218,12 +223,12 @@ export default function SupplierProfilePage() {
       })
       
       if (!isProfileComplete) {
-        toast({ title: "تم الحفظ", description: "تم الحفظ بنجاح، يرجى تعبئة الحقول الإلزامية (*) لتفعيل حسابك بالكامل" })
+        toast({ title: t("save_success"), description: t("save_success_incomplete") })
       } else {
-        toast({ title: "تم الحفظ", description: "تم تحديث بيانات الملف الشخصي بنجاح." })
+        toast({ title: t("save_success"), description: t("save_success_complete") })
       }
     } catch (e: any) {
-      toast({ title: "خطأ", description: e.message, variant: "destructive" })
+      toast({ title: t("save_error"), description: e.message, variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
@@ -232,7 +237,7 @@ export default function SupplierProfilePage() {
   const requestVerification = async () => {
     if (!user || !firestore) return
     if (profile.isVerified || profile.verificationRequested) {
-      toast({ title: "تنبيه", description: "لقد قمت بالطلب مسبقاً أو أنك موثق بالفعل" })
+      toast({ title: t("verification_notice"), description: t("verification_notice_desc") })
       return
     }
     const hasCR = profile.legalDocuments?.cr?.url && profile.legalDocuments?.cr?.expiryDate
@@ -240,8 +245,8 @@ export default function SupplierProfilePage() {
 
     if (!profile.crNumber || !hasCR || !hasVAT) {
       toast({ 
-        title: "بيانات ناقصة", 
-        description: "يجب رفع السجل التجاري وشهادة ضريبة القيمة المضافة مع تواريخ الانتهاء للتوثيق", 
+        title: t("incomplete_data"), 
+        description: t("incomplete_data_desc"), 
         variant: "destructive" 
       })
       return
@@ -251,17 +256,17 @@ export default function SupplierProfilePage() {
         verificationRequested: true
       })
       setProfile(prev => ({ ...prev, verificationRequested: true }))
-      toast({ title: "تم إرسال الطلب", description: "سيتم مراجعة وثائقك من قبل الإدارة" })
+      toast({ title: t("verification_requested"), description: t("verification_requested_desc") })
     } catch (e: any) {
-      toast({ title: "خطأ", description: e.message, variant: "destructive" })
+      toast({ title: t("save_error"), description: e.message, variant: "destructive" })
     }
   }
 
   const handleAiSuggest = async () => {
     if (!profile.description) {
       toast({
-        title: "وصف مفقود",
-        description: "يرجى كتابة وصف عملك ليتمكن الذكاء الاصطناعي من اقتراح التخصصات.",
+        title: t("missing_description"),
+        description: t("missing_description_desc"),
         variant: "destructive"
       })
       return
@@ -289,13 +294,13 @@ export default function SupplierProfilePage() {
       }
       
       toast({
-        title: "اقتراحات ناجحة",
-        description: "تم تحديث تخصصاتك بناءً على وصف العمل الخاص بك وحفظها.",
+        title: t("ai_success"),
+        description: t("ai_success_desc"),
       })
     } catch (error) {
       toast({
-        title: "خطأ",
-        description: "فشل الحصول على اقتراحات من الذكاء الاصطناعي.",
+        title: t("save_error"),
+        description: t("ai_failed_desc"),
         variant: "destructive"
       })
     } finally {
@@ -344,7 +349,7 @@ export default function SupplierProfilePage() {
 
   const addCertificate = async () => {
     if (!newCert.name || !newCert.issuer) {
-      toast({ title: "خطأ", description: "يرجى تعبئة الحقول المطلوبة", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("required_fields"), variant: "destructive" })
       return
     }
     const updatedCerts = [...profile.certificates, { ...newCert, id: Date.now().toString() }]
@@ -366,7 +371,7 @@ export default function SupplierProfilePage() {
 
     setNewCert({ name: "", issuer: "", issueDate: "", expiryDate: "", documentUrl: "" })
     setShowCertForm(false)
-    toast({ title: "تم الحفظ", description: "تمت إضافة الشهادة وحفظها بنجاح" })
+    toast({ title: t("save_success"), description: t("cert_added_desc") })
   }
 
   const storage = useStorage()
@@ -386,9 +391,9 @@ export default function SupplierProfilePage() {
     try {
       const url = await uploadToStorage(file, "certificates")
       setNewCert(prev => ({ ...prev, documentUrl: url }))
-      toast({ title: "تم الرفع", description: "تم إرفاق مستند الشهادة بنجاح" })
+      toast({ title: t("cert_uploaded"), description: t("cert_uploaded_desc") })
     } catch (err) {
-      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("cert_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingCert(false)
     }
@@ -418,7 +423,7 @@ export default function SupplierProfilePage() {
           }
         }
         
-        toast({ title: "تم الحذف", description: "تم حذف الشهادة وحفظ التغييرات" })
+        toast({ title: t("cert_deleted"), description: t("cert_deleted_desc") })
       } catch (err) {
         console.error("Auto-save failed:", err)
       }
@@ -427,7 +432,7 @@ export default function SupplierProfilePage() {
 
   const addProject = async () => {
     if (!newProject.name) {
-      toast({ title: "خطأ", description: "يرجى كتابة اسم المشروع", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("project_required"), variant: "destructive" })
       return
     }
     const updatedProjects = [...profile.projects, { ...newProject, id: Date.now().toString() }]
@@ -449,7 +454,7 @@ export default function SupplierProfilePage() {
     
     setNewProject({ name: "", description: "", images: [] })
     setShowProjectForm(false)
-    toast({ title: "تم الحفظ", description: "تمت إضافة المشروع وحفظه بنجاح" })
+    toast({ title: t("save_success"), description: t("project_added_desc") })
   }
 
   const handleProjectImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -460,7 +465,7 @@ export default function SupplierProfilePage() {
       const url = await uploadToStorage(file, "projects")
       setNewProject(prev => ({ ...prev, images: [...prev.images, url] }))
     } catch (err) {
-      toast({ title: "خطأ", description: "فشل رفع الصورة", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("image_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingProjImg(false)
     }
@@ -499,7 +504,7 @@ export default function SupplierProfilePage() {
           }
         }
 
-        toast({ title: "تم الحذف", description: "تم حذف المشروع وحفظ التغييرات" })
+        toast({ title: t("cert_deleted"), description: t("project_deleted_desc") })
       } catch (err) {
         console.error("Auto-save failed:", err)
       }
@@ -534,9 +539,9 @@ export default function SupplierProfilePage() {
         }
       }
 
-      toast({ title: "تم الحفظ", description: "تم رفع الملف وحفظه بنجاح." })
+      toast({ title: t("save_success"), description: t("file_saved_desc") })
     } catch (err) {
-      toast({ title: "خطأ", description: "فشل رفع الملف", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("cert_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingFile(false)
     }
@@ -566,7 +571,7 @@ export default function SupplierProfilePage() {
           }
         }
 
-        toast({ title: "تم الحذف", description: "تم حذف الملف وحفظ التغييرات" })
+        toast({ title: t("cert_deleted"), description: t("file_deleted_desc") })
       } catch (err) {
         console.error("Auto-save failed:", err)
       }
@@ -577,7 +582,7 @@ export default function SupplierProfilePage() {
     const file = e.target.files?.[0]
     if (!file) return
     
-    toast({ title: "جاري الرفع...", description: "يتم رفع المستند الآن" })
+    toast({ title: t("legal_uploading"), description: t("legal_uploading_desc") })
     
     try {
       const url = await uploadToStorage(file, "legalDocuments")
@@ -604,9 +609,9 @@ export default function SupplierProfilePage() {
         }
       }
 
-      toast({ title: "تم الرفع", description: "تم تحديث المستند وحفظه بنجاح" })
+      toast({ title: t("cert_uploaded"), description: t("legal_updated_desc") })
     } catch (err) {
-      toast({ title: "خطأ", description: "فشل رفع المستند القانوني", variant: "destructive" })
+      toast({ title: t("save_error"), description: t("legal_upload_failed"), variant: "destructive" })
     }
   }
 
@@ -660,7 +665,7 @@ export default function SupplierProfilePage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-6xl mx-auto py-8 text-right space-y-8">
+      <div className={cn("max-w-6xl mx-auto py-8 space-y-8", locale === 'ar' ? 'text-right' : 'text-left')}>
         {/* Header Section - Clean SaaS Redesign */}
         <div className="bg-white rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/40 p-8 relative overflow-hidden group">
           {/* Subtle Decorative Gradient */}
@@ -687,9 +692,9 @@ export default function SupplierProfilePage() {
               <div className="text-center md:text-right space-y-4">
                 <div className="space-y-1">
                   <Badge className={`px-4 py-1 rounded-full text-[10px] font-black border-none shadow-sm mb-2 ${profile.isVerified ? "bg-success/10 text-success" : "bg-amber-100 text-amber-700"}`}>
-                    {profile.isVerified ? "موثق معتمد لدى مدماك" : "في انتظار مراجعة التوثيق"}
+                    {profile.isVerified ? t("profile_verified_badge") : t("profile_pending_badge")}
                   </Badge>
-                  <h1 className="text-4xl lg:text-5xl font-black text-slate-900 font-headline tracking-tighter leading-none">{profile.name || "اسم الشركة"}</h1>
+                  <h1 className="text-4xl lg:text-5xl font-black text-slate-900 font-headline tracking-tighter leading-none">{profile.name || t("company_name_placeholder")}</h1>
                 </div>
                 <div className="flex flex-wrap justify-center md:justify-start items-center gap-4 text-slate-500">
                   <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-sm">
@@ -699,7 +704,7 @@ export default function SupplierProfilePage() {
                   {profile.isPremium && (
                     <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-100 text-sm text-amber-700 font-bold">
                       <Award size={14} className="text-amber-500" />
-                      <span>عضوية بريميوم</span>
+                      <span>{t("premium_membership")}</span>
                     </div>
                   )}
                 </div>
@@ -709,16 +714,16 @@ export default function SupplierProfilePage() {
             {/* Stats Dashboard */}
             <div className="w-full lg:w-80 grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">نسبة الإكمال</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{t("completion_percentage")}</span>
                 <span className="text-3xl font-black text-primary leading-none">{completionPercentage}%</span>
                 <div className="w-full h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
                   <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${completionPercentage}%` }} />
                 </div>
               </div>
               <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">المشاريع</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{t("projects_label")}</span>
                 <span className="text-3xl font-black text-slate-800 leading-none">{profile.projects.length}</span>
-                <span className="text-[10px] text-slate-400 font-medium mt-1">مشروع منجز</span>
+                <span className="text-[10px] text-slate-400 font-medium mt-1">{t("completed_project")}</span>
               </div>
             </div>
           </div>
@@ -728,39 +733,39 @@ export default function SupplierProfilePage() {
         <div className="sticky top-6 z-40 flex justify-end gap-3 bg-white/40 backdrop-blur-2xl p-4 rounded-[2rem] border border-white/20 shadow-xl shadow-slate-200/20 max-w-fit mr-auto">
           <Button variant="ghost" onClick={() => window.location.reload()} className="h-12 px-6 rounded-2xl hover:bg-white/50 text-slate-600 transition-all font-bold">
             <X size={18} className="ml-2" />
-            إلغاء
+            {t("cancel")}
           </Button>
           <Button className="gap-2 h-12 px-10 rounded-2xl shadow-xl shadow-primary/30 bg-primary hover:bg-secondary hover:text-white hover:scale-105 active:scale-95 transition-all duration-300 font-bold text-white ring-offset-2 ring-primary/20 hover:ring-4" onClick={handleSave} disabled={isLoading}>
             {isLoading ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
-            حفظ التغييرات
+            {t("save_changes")}
           </Button>
         </div>
 
-        <Tabs defaultValue="basic" className="space-y-8" dir="rtl">
+        <Tabs defaultValue="basic" className="space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <TabsList className="w-full justify-start h-14 p-1 bg-slate-100/50 rounded-2xl border mb-8 overflow-x-auto overflow-y-hidden no-scrollbar">
             <TabsTrigger value="basic" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <User size={18} />
-              البيانات الأساسية
+              {t("basic_info_tab")}
             </TabsTrigger>
             <TabsTrigger value="specializations" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <Zap size={18} />
-              التخصصات
+              {t("specializations_tab")}
             </TabsTrigger>
             <TabsTrigger value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <ShieldCheck size={18} />
-              التوثيق القانوني
+              {t("legal_tab")}
             </TabsTrigger>
             <TabsTrigger value="portfolio" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <Award size={18} />
-              سجل الأعمال
+              {t("portfolio_tab")}
             </TabsTrigger>
             <TabsTrigger value="files" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <FolderOpen size={18} />
-              المرفقات العامة
+              {t("files_tab")}
             </TabsTrigger>
             <TabsTrigger value="security" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <Lock size={18} />
-              الأمان والخصوصية
+              {t("security_tab")}
             </TabsTrigger>
           </TabsList>
 
@@ -770,15 +775,15 @@ export default function SupplierProfilePage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold flex items-center gap-2">
                   <User size={22} className="text-primary" />
-                  معلومات التواصل والمقر
+                  {t("contact_info_title")}
                 </CardTitle>
-                <CardDescription>البيانات التي تظهر للمقاولين عند التواصل معك</CardDescription>
+                <CardDescription>{t("contact_info_desc")}</CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="name" className="text-slate-700 font-bold">اسم الشركة التجاري <span className="text-destructive mx-1">*</span></Label>
+                      <Label htmlFor="name" className="text-slate-700 font-bold">{t("company_name_label")} <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="name" 
                         value={profile.name}
@@ -787,7 +792,7 @@ export default function SupplierProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone" className="text-slate-700 font-bold">رقم الجوال المعتمد <span className="text-destructive mx-1">*</span></Label>
+                      <Label htmlFor="phone" className="text-slate-700 font-bold">{t("phone_label")} <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="phone" 
                         value={profile.phone}
@@ -800,7 +805,7 @@ export default function SupplierProfilePage() {
                   
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="crNumber-input" className="text-slate-700 font-bold">رقم السجل التجاري <span className="text-destructive mx-1">*</span></Label>
+                      <Label htmlFor="crNumber-input" className="text-slate-700 font-bold">{t("cr_number_label")} <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="crNumber-input" 
                         value={profile.crNumber}
@@ -810,7 +815,7 @@ export default function SupplierProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="taxNumber-input" className="text-slate-700 font-bold">الرقم الضريبي / رقم البطاقة الضريبية <span className="text-destructive mx-1">*</span></Label>
+                      <Label htmlFor="taxNumber-input" className="text-slate-700 font-bold">{t("tax_number_label")} <span className="text-destructive mx-1">*</span></Label>
                       <Input 
                         id="taxNumber-input" 
                         value={profile.taxNumber || ""}
@@ -820,7 +825,7 @@ export default function SupplierProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email" className="text-slate-700 font-bold opacity-70">البريد الإلكتروني (حساب النظام)</Label>
+                      <Label htmlFor="email" className="text-slate-700 font-bold opacity-70">{t("email_label")}</Label>
                       <Input 
                         id="email" 
                         value={profile.email}
@@ -835,23 +840,23 @@ export default function SupplierProfilePage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">
-                      <Label className="text-slate-700 font-bold">المدينة <span className="text-destructive mx-1">*</span></Label>
+                      <Label className="text-slate-700 font-bold">{t("city_label")} <span className="text-destructive mx-1">*</span></Label>
                       <Select 
                         value={profile.city}
                         onValueChange={(v) => setProfile({ ...profile, city: v })}
                       >
                         <SelectTrigger className="h-11">
-                          <SelectValue placeholder="اختر المدينة" />
+                          <SelectValue placeholder={t("city_placeholder")} />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-72 overflow-y-auto">
                           {SAUDI_CITIES.map((city) => (
-                            <SelectItem key={city} value={city}>{city}</SelectItem>
+                            <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div className="space-y-4">
-                      <Label htmlFor="loc" className="text-slate-700 font-bold">الحي / العنوان التفصيلي <span className="text-destructive mx-1">*</span></Label>
+                      <Label htmlFor="loc" className="text-slate-700 font-bold">{t("location_label")} <span className="text-destructive mx-1">*</span></Label>
                       <div className="relative">
                         <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input 
@@ -859,7 +864,7 @@ export default function SupplierProfilePage() {
                           className="pr-10 h-11"
                           value={profile.location}
                           onChange={e => setProfile({...profile, location: e.target.value})}
-                          placeholder="اسم الحي أو الشارع..."
+                          placeholder={t("location_placeholder")}
                         />
                       </div>
                     </div>
@@ -867,10 +872,10 @@ export default function SupplierProfilePage() {
 
                   <div className="grid grid-cols-1 gap-8 mt-8">
                     <div className="space-y-4">
-                      <Label className="text-slate-700 font-bold">مدن التغطية والعمل <span className="text-slate-400 text-xs font-normal mx-1">(اختياري)</span></Label>
+                      <Label className="text-slate-700 font-bold">{t("coverage_cities_label")} <span className="text-slate-400 text-xs font-normal mx-1">({t("optional")})</span></Label>
                       <div className="flex gap-2">
                         <Input 
-                          placeholder="أضف مدينة..."
+                          placeholder={t("add_city_placeholder")}
                           className="h-11 flex-1 bg-white"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
@@ -888,13 +893,13 @@ export default function SupplierProfilePage() {
                           <DropdownMenuTrigger asChild>
                             <Button variant="outline" className="h-11 px-4 gap-2 border-slate-200">
                               <ChevronDown size={16} />
-                              القائمة
+                              {t("city_list")}
                             </Button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" className="w-56 text-right max-h-72 overflow-y-auto" dir="rtl">
+                          <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                             {cities.filter(c => !profile.coverageCities.includes(c)).map(city => (
                               <DropdownMenuItem key={city} onClick={() => setProfile(prev => ({ ...prev, coverageCities: [...prev.coverageCities, city] }))} className="cursor-pointer">
-                                {city}
+                                {displayCity(city, locale)}
                               </DropdownMenuItem>
                             ))}
                           </DropdownMenuContent>
@@ -903,7 +908,7 @@ export default function SupplierProfilePage() {
                       <div className="flex flex-wrap gap-2 mt-2">
                         {profile.coverageCities.map(city => (
                           <Badge key={city} className="bg-primary/5 text-primary border-primary/20 px-3 py-1.5 flex items-center gap-2 hover:bg-primary/10 transition-colors">
-                            {city}
+                            {displayCity(city, locale)}
                             <X size={14} className="cursor-pointer" onClick={() => setProfile(prev => ({ ...prev, coverageCities: prev.coverageCities.filter(c => c !== city) }))} />
                           </Badge>
                         ))}
@@ -912,11 +917,11 @@ export default function SupplierProfilePage() {
                   </div>
 
                   <div className="space-y-4 pt-4">
-                    <Label htmlFor="desc" className="text-slate-700 font-bold">وصف الشركة (البروفايل التعريفي) <span className="text-slate-400 text-xs font-normal mx-1">(اختياري)</span></Label>
+                    <Label htmlFor="desc" className="text-slate-700 font-bold">{t("company_desc_label")} <span className="text-slate-400 text-xs font-normal mx-1">({t("optional")})</span></Label>
                     <Textarea 
                       id="desc" 
                       rows={5}
-                      placeholder="اكتب نبذة عن تاريخ الشركة، خبراتها، وما يميزها عن المنافسين..."
+                      placeholder={t("company_desc_placeholder")}
                       value={profile.description}
                       onChange={e => setProfile({...profile, description: e.target.value})}
                       className="bg-white resize-none text-md leading-relaxed"
@@ -932,19 +937,19 @@ export default function SupplierProfilePage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold flex items-center gap-2">
                   <Zap size={22} className="text-primary" />
-                  تخصصات العمل والمطابقة
+                  {t("spec_title")}
                 </CardTitle>
-                <CardDescription>تساعد هذه البيانات في إظهار شركتك في نتائج البحث المناسبة وتقديم مناقصات مطابقة</CardDescription>
+                <CardDescription>{t("spec_desc")}</CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-8">
                 <div className="p-6 bg-gradient-to-br from-primary/5 to-transparent rounded-2xl border border-primary/10 space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                        المساعد الذكي (AI Analyzer)
+                        {t("ai_assistant")}
                         <Badge className="bg-primary/20 text-primary border-none text-[10px]">BETA</Badge>
                       </h3>
-                      <p className="text-sm text-muted-foreground">سيقوم الذكاء الاصطناعي بتحليل وصف شركتك واقتراح أفضل التخصصات لك</p>
+                      <p className="text-sm text-muted-foreground">{t("ai_desc")}</p>
                     </div>
                     <Button 
                       onClick={handleAiSuggest}
@@ -953,25 +958,25 @@ export default function SupplierProfilePage() {
                       variant="outline"
                     >
                       {isGenerating ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} />}
-                      تحليل الوصف الآن
+                      {t("analyze_now")}
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <Label className="text-lg font-bold text-slate-700">التخصصات الحالية</Label>
+                    <Label className="text-lg font-bold text-slate-700">{t("current_specializations")}</Label>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="rounded-full h-9 border-dashed px-4">
                           <Plus size={16} className="ml-2" />
-                          إضافة تخصص يدوياً
+                          {t("add_manually")}
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-56 text-right max-h-72 overflow-y-auto" dir="rtl">
+                      <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                         {PREDEFINED_CATEGORIES.filter(c => !profile.specializations.includes(c)).map(cat => (
                           <DropdownMenuItem key={cat} onClick={() => addSpec(cat)} className="cursor-pointer">
-                            {cat}
+                            {displayCategory(cat, locale)}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
@@ -981,7 +986,7 @@ export default function SupplierProfilePage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {profile.specializations.length > 0 ? profile.specializations.map(spec => (
                       <div key={spec} className="p-4 bg-white rounded-xl border border-slate-100 flex items-center justify-between hover:border-primary/30 transition-all shadow-sm group">
-                        <span className="font-medium text-slate-700">{spec}</span>
+                        <span className="font-medium text-slate-700">{displayCategory(spec, locale)}</span>
                         <button onClick={() => removeSpec(spec)} className="text-slate-300 hover:text-destructive transition-colors">
                           <X size={18} />
                         </button>
@@ -989,7 +994,7 @@ export default function SupplierProfilePage() {
                     )) : (
                       <div className="col-span-full py-12 flex flex-col items-center justify-center text-muted-foreground bg-slate-50 rounded-2xl border border-dashed">
                         <Zap size={32} className="opacity-20 mb-2" />
-                        <p>لم تقم بإضافة أي تخصصات بعد</p>
+                        <p>{t("no_specializations")}</p>
                       </div>
                     )}
                   </div>
@@ -1006,18 +1011,18 @@ export default function SupplierProfilePage() {
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
                       <ShieldCheck size={22} className="text-primary" />
-                      الوثائق الرسمية والتوثيق
+                      {t("legal_docs_title")}
                     </CardTitle>
-                    <CardDescription>الوثائق المطلوبة للتحقق من هوية المنشأة</CardDescription>
+                    <CardDescription>{t("legal_docs_desc")}</CardDescription>
                   </CardHeader>
                   <CardContent className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {[
-                        { id: 'cr', label: 'السجل التجاري', icon: FileText },
-                        { id: 'vat', label: 'شهادة ضريبة القيمة المضافة', icon: Award },
-                        { id: 'zakat', label: 'شهادة الزكاة', icon: ShieldCheck },
-                        { id: 'gosi', label: 'شهادة التأمينات الاجتماعية (GOSI)', icon: CheckCircle2 },
-                        { id: 'chamber', label: 'شهادة الغرفة التجارية', icon: Building2 }
+                        { id: 'cr', label: t("cr_doc"), icon: FileText },
+                        { id: 'vat', label: t("vat_doc"), icon: Award },
+                        { id: 'zakat', label: t("zakat_doc"), icon: ShieldCheck },
+                        { id: 'gosi', label: t("gosi_doc"), icon: CheckCircle2 },
+                        { id: 'chamber', label: t("chamber_doc"), icon: Building2 }
                       ].map((doc) => {
                         const data = profile.legalDocuments[doc.id as keyof typeof profile.legalDocuments]
                         return (
@@ -1031,10 +1036,10 @@ export default function SupplierProfilePage() {
 
                             <div className="space-y-3 pt-2">
                               <div className="flex items-center justify-between text-xs">
-                                <span className="text-muted-foreground">تاريخ الانتهاء</span>
+                                <span className="text-muted-foreground">{t("expiry_date")}</span>
                                 {data?.expiryDate && (
                                   <Badge variant="outline" className="text-[10px] font-normal">
-                                    {new Date(data.expiryDate) < new Date() ? "منتهي" : "ساري"}
+                                    {new Date(data.expiryDate) < new Date() ? t("expired_status") : t("valid_status")}
                                   </Badge>
                                 )}
                               </div>
@@ -1054,7 +1059,7 @@ export default function SupplierProfilePage() {
                                     onChange={(e) => handleLegalDocUpload(doc.id, e)}
                                   />
                                   <Upload size={14} className="ml-2 transition-transform group-hover/upload:-translate-y-1" />
-                                  <span className="text-xs font-bold">{data?.url ? 'تحديث' : 'رفع'}</span>
+                                  <span className="text-xs font-bold">{data?.url ? t("update") : t("upload")}</span>
                                 </Button>
                                 {data?.url && (
                                   <Button variant="ghost" size="sm" className="h-9 w-9 p-0" asChild>
@@ -1074,7 +1079,7 @@ export default function SupplierProfilePage() {
               <div className="space-y-6">
                 <Card className="shadow-sm border-primary/20 bg-primary/5">
                   <CardHeader>
-                    <CardTitle className="text-lg">حالة التوثيق</CardTitle>
+                    <CardTitle className="text-lg">{t("verification_status")}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex flex-col items-center text-center p-4 bg-white rounded-2xl border shadow-inner">
@@ -1083,41 +1088,41 @@ export default function SupplierProfilePage() {
                           <div className="h-16 w-16 rounded-full bg-success/10 flex items-center justify-center text-success mb-3">
                             <ShieldCheck size={32} />
                           </div>
-                          <h4 className="font-bold text-success text-xl">حساب موثق بالكامل</h4>
-                          <p className="text-sm text-muted-foreground mt-2">تتمتع شركتك بكامل المزايا وتظهر كشريك معتمد لدى جميع المقاولين</p>
+                          <h4 className="font-bold text-success text-xl">{t("fully_verified")}</h4>
+                          <p className="text-sm text-muted-foreground mt-2">{t("verified_desc")}</p>
                         </>
                       ) : profile.verificationRequested ? (
                         <>
                           <div className="h-16 w-16 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-3 animate-pulse">
                             <Loader2 size={32} />
                           </div>
-                          <h4 className="font-bold text-amber-700">الطلب قيد المراجعة</h4>
-                          <p className="text-sm text-muted-foreground mt-2">يتم الآن مراجعة وثائقك من قبل فريق الإدارة. سيتم إشعارك فور اكتمال التوثيق.</p>
+                          <h4 className="font-bold text-amber-700">{t("pending_review")}</h4>
+                          <p className="text-sm text-muted-foreground mt-2">{t("pending_review_desc")}</p>
                         </>
                       ) : (
                         <>
                           <div className="h-16 w-16 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                             <ShieldCheck size={32} />
                           </div>
-                          <h4 className="font-bold text-slate-800">الحساب غير موثق</h4>
-                          <p className="text-sm text-muted-foreground mt-2">يرجى رفع السجل التجاري وشهادة القيمة المضافة لطلب التوثيق الرسمي</p>
+                          <h4 className="font-bold text-slate-800">{t("not_verified")}</h4>
+                          <p className="text-sm text-muted-foreground mt-2">{t("not_verified_desc")}</p>
                           <Button 
                             className="mt-4 w-full h-11" 
                             onClick={requestVerification}
                             disabled={profile.verificationRequested}
                           >
-                            إرسال طلب التوثيق
+                            {t("request_verification")}
                           </Button>
                         </>
                       )}
                     </div>
                     
                     <div className="p-4 rounded-xl bg-white/50 space-y-2 border">
-                      <h5 className="font-bold text-sm">مزايا التوثيق:</h5>
+                      <h5 className="font-bold text-sm">{t("verification_benefits")}</h5>
                       <ul className="text-xs text-muted-foreground space-y-2">
-                        <li className="flex items-center gap-2">✓ ظهور شعار "موثق" بجانب اسم الشركة</li>
-                        <li className="flex items-center gap-2">✓ ترتيب أعلى في نتائج البحث لدى المقاولين</li>
-                        <li className="flex items-center gap-2">✓ إمكانية التقديم على المناقصات الحكومية والضخمة</li>
+                        <li className="flex items-center gap-2">{t("benefit_1")}</li>
+                        <li className="flex items-center gap-2">{t("benefit_2")}</li>
+                        <li className="flex items-center gap-2">{t("benefit_3")}</li>
                       </ul>
                     </div>
                   </CardContent>
@@ -1135,16 +1140,16 @@ export default function SupplierProfilePage() {
                   <div>
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
                       <FolderOpen size={22} className="text-primary" />
-                      معرض المشاريع والمنجزات
+                      {t("portfolio_title")}
                     </CardTitle>
-                    <CardDescription>أبرز مشاريعك السابقة لتعزيز ثقة المقاولين</CardDescription>
+                    <CardDescription>{t("portfolio_desc")}</CardDescription>
                   </div>
                   <Button 
                     onClick={() => setShowProjectForm(true)}
                     className="gap-2 rounded-full h-10 px-6"
                   >
                     <Plus size={18} />
-                    إضافة مشروع
+                    {t("add_project")}
                   </Button>
                 </CardHeader>
                 <CardContent className="p-6">
@@ -1152,16 +1157,16 @@ export default function SupplierProfilePage() {
                     <div className="p-6 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 mb-8 space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label className="font-bold">اسم المشروع</Label>
+                          <Label className="font-bold">{t("project_name")}</Label>
                           <Input 
                             value={newProject.name}
                             onChange={e => setNewProject({...newProject, name: e.target.value})}
-                            placeholder="مثال: توريد مواد لمشروع القدية"
+                            placeholder={t("project_name_placeholder")}
                             className="bg-white"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="font-bold">صور المشروع</Label>
+                          <Label className="font-bold">{t("project_images")}</Label>
                           <div className="flex gap-2">
                             <Button variant="outline" className="relative overflow-hidden h-11 flex-1 bg-white">
                               <input 
@@ -1172,16 +1177,16 @@ export default function SupplierProfilePage() {
                                 disabled={isUploadingProjImg}
                               />
                               {isUploadingProjImg ? <Loader2 className="animate-spin ml-2" size={16} /> : <ImageIcon size={16} className="ml-2" />}
-                              رفع صورة
+                              {t("upload_image")}
                             </Button>
                           </div>
                         </div>
                         <div className="md:col-span-2 space-y-2">
-                          <Label className="font-bold">وصف المنجزات</Label>
+                          <Label className="font-bold">{t("project_desc")}</Label>
                           <Textarea 
                             value={newProject.description}
                             onChange={e => setNewProject({...newProject, description: e.target.value})}
-                            placeholder="اشرح طبيعة العمل المنفذ والكميات..."
+                            placeholder={t("project_desc_placeholder")}
                             className="bg-white"
                           />
                         </div>
@@ -1204,8 +1209,8 @@ export default function SupplierProfilePage() {
                       )}
 
                       <div className="flex justify-end gap-3 pt-4 border-t">
-                        <Button variant="ghost" onClick={() => setShowProjectForm(false)}>إلغاء</Button>
-                        <Button onClick={addProject}>حفظ وإضافة للملف</Button>
+                        <Button variant="ghost" onClick={() => setShowProjectForm(false)}>{t("cancel")}</Button>
+                        <Button onClick={addProject}>{t("save_add")}</Button>
                       </div>
                     </div>
                   ) : null}
@@ -1238,8 +1243,8 @@ export default function SupplierProfilePage() {
                     )) : !showProjectForm && (
                       <div className="col-span-full py-16 flex flex-col items-center justify-center text-muted-foreground bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                         <FolderOpen size={48} className="opacity-10 mb-4" />
-                        <p>لا توجد مشاريع مضافة حالياً</p>
-                        <Button variant="link" onClick={() => setShowProjectForm(true)}>ابدأ بإضافة مشروعك الأول</Button>
+                        <p>{t("no_projects")}</p>
+                        <Button variant="link" onClick={() => setShowProjectForm(true)}>{t("start_first_project")}</Button>
                       </div>
                     )}
                   </div>
@@ -1252,9 +1257,9 @@ export default function SupplierProfilePage() {
                   <div>
                     <CardTitle className="text-xl font-bold flex items-center gap-2">
                       <Award size={22} className="text-primary" />
-                      الشهادات المهنية والاعتمادات
+                      {t("certificates_title")}
                     </CardTitle>
-                    <CardDescription>شهادات الأيزو، الجودة، والاعتمادات الصناعية</CardDescription>
+                    <CardDescription>{t("certificates_desc")}</CardDescription>
                   </div>
                   <Button 
                     variant="outline"
@@ -1262,7 +1267,7 @@ export default function SupplierProfilePage() {
                     className="gap-2 rounded-full h-10 px-6 bg-white"
                   >
                     <Plus size={18} />
-                    إضافة شهادة
+                    {t("add_certificate")}
                   </Button>
                 </CardHeader>
                 <CardContent className="p-6">
@@ -1270,25 +1275,25 @@ export default function SupplierProfilePage() {
                     <div className="p-6 bg-blue-50/50 rounded-2xl border border-blue-100 mb-8 space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label className="font-bold">اسم الشهادة</Label>
+                          <Label className="font-bold">{t("cert_name")}</Label>
                           <Input 
                             value={newCert.name}
                             onChange={e => setNewCert({...newCert, name: e.target.value})}
-                            placeholder="مثال: ISO 9001"
+                            placeholder={t("cert_name_placeholder")}
                             className="bg-white"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="font-bold">جهة الإصدار</Label>
+                          <Label className="font-bold">{t("cert_issuer")}</Label>
                           <Input 
                             value={newCert.issuer}
                             onChange={e => setNewCert({...newCert, issuer: e.target.value})}
-                            placeholder="الهيئة السعودية للمواصفات..."
+                            placeholder={t("cert_issuer_placeholder")}
                             className="bg-white"
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="font-bold">تاريخ الانتهاء</Label>
+                          <Label className="font-bold">{t("cert_expiry")}</Label>
                           <Input 
                             type="date"
                             value={newCert.expiryDate}
@@ -1297,7 +1302,7 @@ export default function SupplierProfilePage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="font-bold">المستند (PDF/Image)</Label>
+                          <Label className="font-bold">{t("cert_document")}</Label>
                           <Button variant="outline" className="relative overflow-hidden w-full h-11 bg-white">
                             <input 
                               type="file" 
@@ -1306,13 +1311,13 @@ export default function SupplierProfilePage() {
                               disabled={isUploadingCert}
                             />
                             {isUploadingCert ? <Loader2 className="animate-spin ml-2" size={16} /> : <FileText size={16} className="ml-2" />}
-                            {newCert.documentUrl ? "تم إرفاق الملف ✓" : "اختر ملف..."}
+                            {newCert.documentUrl ? t("file_attached") : t("choose_file")}
                           </Button>
                         </div>
                       </div>
                       <div className="flex justify-end gap-3 pt-4 border-t border-blue-100">
-                        <Button variant="ghost" onClick={() => setShowCertForm(false)}>إلغاء</Button>
-                        <Button onClick={addCertificate}>حفظ الشهادة</Button>
+                        <Button variant="ghost" onClick={() => setShowCertForm(false)}>{t("cancel")}</Button>
+                        <Button onClick={addCertificate}>{t("save_certificate")}</Button>
                       </div>
                     </div>
                   ) : null}
@@ -1327,7 +1332,7 @@ export default function SupplierProfilePage() {
                           <div>
                             <h5 className="font-bold text-slate-800 text-md leading-tight">{cert.name}</h5>
                             <p className="text-xs text-muted-foreground mt-1">{cert.issuer}</p>
-                            {cert.expiryDate && <p className="text-[10px] text-amber-600 mt-1">صالحة حتى: {cert.expiryDate}</p>}
+                            {cert.expiryDate && <p className="text-[10px] text-amber-600 mt-1">{t("valid_until", { date: cert.expiryDate })}</p>}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1355,9 +1360,9 @@ export default function SupplierProfilePage() {
                 <div>
                   <CardTitle className="text-xl font-bold flex items-center gap-2">
                     <FolderOpen size={22} className="text-primary" />
-                    المرفقات العامة والمستندات
+                    {t("files_title")}
                   </CardTitle>
-                  <CardDescription>أي ملفات إضافية ترغب في مشاركتها مع المقاولين (مثل كتالوجات، بروفايل الشركة PDF، إلخ)</CardDescription>
+                  <CardDescription>{t("files_desc")}</CardDescription>
                 </div>
                 <Button className="relative overflow-hidden rounded-full h-10 px-6 gap-2 shadow-md">
                   <input 
@@ -1367,7 +1372,7 @@ export default function SupplierProfilePage() {
                     disabled={isUploadingFile}
                   />
                   {isUploadingFile ? <Loader2 className="animate-spin" size={18} /> : <Upload size={18} />}
-                  رفع ملف جديد
+                  {t("upload_new_file")}
                 </Button>
               </CardHeader>
               <CardContent className="p-8">
@@ -1407,8 +1412,8 @@ export default function SupplierProfilePage() {
                       <div className="h-20 w-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
                         <Upload size={32} className="opacity-20" />
                       </div>
-                      <p className="font-medium">لا توجد ملفات مرفوعة</p>
-                      <p className="text-xs mt-1">ابدأ برفع ملفات التعريف الخاصة بشركتك لتعزيز حضورك</p>
+                      <p className="font-medium">{t("no_files")}</p>
+                      <p className="text-xs mt-1">{t("no_files_desc")}</p>
                     </div>
                   )}
                 </div>
@@ -1422,28 +1427,28 @@ export default function SupplierProfilePage() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold flex items-center gap-2">
                   <Lock size={22} className="text-primary" />
-                  إعدادات الأمان والخصوصية
+                  {t("security_title")}
                 </CardTitle>
-                <CardDescription>إدارة أمان حسابك، وتوثيق البريد الإلكتروني، والتحقق بخطوتين</CardDescription>
+                <CardDescription>{t("security_desc")}</CardDescription>
               </CardHeader>
               <CardContent className="p-6 space-y-6">
                 
                 {/* 1. Account Provider Details */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-1 text-right">
-                    <h4 className="font-bold text-slate-800 text-sm">طريقة تسجيل الدخول</h4>
-                    <p className="text-xs text-muted-foreground">نوع حساب تسجيل الدخول النشط حالياً</p>
+                    <h4 className="font-bold text-slate-800 text-sm">{t("login_method")}</h4>
+                    <p className="text-xs text-muted-foreground">{t("login_method_desc")}</p>
                   </div>
                   <Badge variant="outline" className="px-4 py-1.5 rounded-xl font-bold text-xs bg-white shadow-sm flex items-center gap-1.5">
                     {user?.providerData.some(p => p.providerId === "google.com") ? (
                       <>
                         <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                        حساب Google متصل
+                        {t("google_connected")}
                       </>
                     ) : (
                       <>
                         <span className="h-2 w-2 rounded-full bg-primary" />
-                        بريد إلكتروني وكلمة مرور
+                        {t("email_password")}
                       </>
                     )}
                   </Badge>
@@ -1454,19 +1459,19 @@ export default function SupplierProfilePage() {
                 {/* 2. Email Verification Control */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div className="space-y-1 text-right">
-                    <h4 className="font-bold text-slate-800 text-sm">حالة تفعيل البريد الإلكتروني</h4>
+                    <h4 className="font-bold text-slate-800 text-sm">{t("email_verification")}</h4>
                     <p className="text-xs text-muted-foreground font-semibold">{profile.email}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     {user?.emailVerified ? (
                       <Badge className="px-4 py-1.5 rounded-xl font-bold text-xs bg-success/10 text-success border-none shadow-sm flex items-center gap-1.5">
                         <CheckCircle2 size={14} />
-                        مفعل ونشط
+                        {t("verified_active")}
                       </Badge>
                     ) : (
                       <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                         <Badge className="px-4 py-1.5 rounded-xl font-bold text-xs bg-amber-100 text-amber-700 border-none shadow-sm flex items-center justify-center gap-1.5">
-                          غير مفعل
+                          {t("not_verified_label")}
                         </Badge>
                         <Button 
                           size="sm" 
@@ -1477,20 +1482,20 @@ export default function SupplierProfilePage() {
                               if (user) {
                                 await sendEmailVerification(user);
                                 toast({
-                                  title: "تم إرسال رابط التفعيل",
-                                  description: "تم إرسال رابط التفعيل إلى بريدك الإلكتروني بنجاح. يرجى مراجعة البريد الوارد."
+                                  title: t("verification_link_sent"),
+                                  description: t("verification_link_sent_desc")
                                 });
                               }
                             } catch (e: any) {
                               toast({
-                                title: "خطأ",
-                                description: e.message || "فشل إرسال الرابط",
+                                title: t("save_error"),
+                                description: e.message || t("verification_link_failed"),
                                 variant: "destructive"
                               });
                             }
                           }}
                         >
-                          إرسال رابط تفعيل جديد
+                          {t("send_verification")}
                         </Button>
                       </div>
                     )}
@@ -1503,11 +1508,11 @@ export default function SupplierProfilePage() {
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
                   <div className="space-y-1 flex-1 text-right">
                     <div className="flex items-center gap-2 justify-start">
-                      <h4 className="font-bold text-slate-800 text-sm">التحقق بخطوتين (2-Step Verification)</h4>
-                      <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black">جوال SMS</Badge>
+                      <h4 className="font-bold text-slate-800 text-sm">{t("two_step")}</h4>
+                      <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black">{t("sms_badge")}</Badge>
                     </div>
                     <p className="text-xs text-muted-foreground max-w-xl leading-relaxed mt-1">
-                      عند تفعيل هذه الميزة، سيطلب منك النظام إدخال رمز تحقق OTP مؤلف من 6 أرقام يتم إرساله إلى جوالك المعتمد ({profile.phone || "يرجى إضافة رقم جوال أولاً"}) عند كل عملية تسجيل دخول لتأمين حسابك.
+                      {t("two_step_desc", { phone: profile.phone || t("phone_required") })}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -1516,8 +1521,8 @@ export default function SupplierProfilePage() {
                       onCheckedChange={(checked) => {
                         if (checked && !profile.phone) {
                           toast({
-                            title: "رقم جوال مطلوب",
-                            description: "يرجى إضافة رقم جوال معتمد وحفظه في البيانات الأساسية أولاً لتتمكن من تفعيل ميزة التحقق بخطوتين.",
+                            title: t("phone_required_title"),
+                            description: t("phone_required_desc"),
                             variant: "destructive"
                           });
                           return;
@@ -1533,9 +1538,9 @@ export default function SupplierProfilePage() {
                 {/* 4. Change Password */}
                 <div className="p-5 rounded-2xl border bg-slate-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
                   <div className="space-y-1 flex-1 text-right">
-                    <h4 className="font-bold text-slate-800 text-sm">تغيير كلمة المرور</h4>
+                    <h4 className="font-bold text-slate-800 text-sm">{t("change_password")}</h4>
                     <p className="text-xs text-muted-foreground mt-1">
-                      قم بتحديث كلمة المرور الخاصة بحسابك بشكل دوري لضمان أمان حسابك.
+                      {t("change_password_desc")}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -1544,7 +1549,7 @@ export default function SupplierProfilePage() {
                       className="bg-white"
                       onClick={() => setIsPasswordDialogOpen(true)}
                     >
-                      تغيير كلمة المرور
+                      {t("change_password_btn")}
                     </Button>
                   </div>
                 </div>
