@@ -25,8 +25,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const { locale } = await params;
   const titleAr = 'مدماك تيك - منصة التقنية للمقاولين والموردين';
   const titleEn = 'Mdmak Tech - Smart Procurement Platform for Contractors & Suppliers';
-  const descAr = 'منصة B2B سعودية رائدة لقطاع الإنشاءات. نربط المقاولين بموردين معتمدين لجميع مواد البناء، مع ميزات لطلب عروض الأسعار وإدارة المشتريات بذكاء.';
-  const descEn = "Saudi Arabia's premier B2B platform for construction. We connect contractors with verified suppliers, offering smart RFQ and procurement management.";
+  const descAr = 'منصة B2B سعودية رائدة لقطاع الإنشاءات تربط المقاولين بموردين معتمدين لمواد البناء. أطلب عروض أسعار حديد، أسمنت، كهرباء، دهانات، أدوات صحية، تكييف، عزل، أرضيات وأبواب — وأدر مشتريات مشروعك بذكاء وسهولة.';
+  const descEn = "Saudi Arabia's leading B2B procurement platform connecting contractors with trusted suppliers for steel, cement, electrical, HVAC, paints, sanitary ware, insulation, flooring, and doors. Streamline RFQ, compare quotes, and manage construction sourcing intelligently.";
 
   return {
     metadataBase: new URL('https://mdmaktech.sa'),
@@ -46,9 +46,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'max-video-preview': -1,
     },
     icons: {
-      icon: '/logo.png?v=2',
-      shortcut: '/logo.png?v=2',
-      apple: '/logo.png?v=2',
+      icon: '/favicon.svg',
+      shortcut: '/favicon.svg',
+      apple: '/logo.png',
     },
     openGraph: {
       type: 'website',
