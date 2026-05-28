@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
+import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -137,9 +138,9 @@ export default function SupplierDashboard() {
         supplierId: user.uid,
         organizationId: userData?.organizationId || user.uid,
         userId: user.uid,
-        supplierName: userData?.companyName || userData?.name || "مورد",
+        supplierName: userData?.companyName || userData?.name || t("generic_supplier"),
         submittedByUserId: user.uid,
-        submittedByUserName: userData?.name || user.email || "عضو الفريق",
+        submittedByUserName: userData?.name || user.email || t("generic_team_member"),
         createdAt: new Date().toISOString(),
         reply: null,
         repliedAt: null
@@ -255,10 +256,10 @@ export default function SupplierDashboard() {
                         <h3 className="font-bold text-lg text-slate-800">{rfq.title}</h3>
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary" className="bg-blue-50 text-blue-600 border-none px-3">
-                            {rfq.category || rfq.categoryId}
+                            {displayCategory(rfq.category || rfq.categoryId, locale)}
                           </Badge>
                           <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-none px-3">
-                            {rfq.city} - {rfq.district}
+                            {displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}
                           </Badge>
                         </div>
                       </div>
@@ -353,7 +354,7 @@ export default function SupplierDashboard() {
                     userData.coverageCities.slice(0, 6).map((city: string) => (
                       <span key={city} className="text-xs text-muted-foreground bg-slate-100 px-2 py-1 rounded hover:bg-slate-200 transition-colors cursor-default">
                         <MapPin size={10} className="inline ml-1" />
-                        {city}
+                        {displayCity(city, locale)}
                       </span>
                     ))
                   ) : (
@@ -417,7 +418,7 @@ export default function SupplierDashboard() {
                       </div>
                       {prod.subCategory && (
                         <div className="mt-1">
-                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{prod.subCategory}</span>
+                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{displaySubcategory(prod.subCategory, locale)}</span>
                         </div>
                       )}
                       {prod.description && <p className="text-sm text-slate-600 mt-1">{prod.description}</p>}

@@ -33,7 +33,7 @@ import {
   Star,
   Award
 } from "lucide-react"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
@@ -205,9 +205,9 @@ export default function AvailableRfqsPage() {
         supplierId: user.uid,
         organizationId: profile?.organizationId || user.uid,
         userId: user.uid,
-        supplierName: profile?.companyName || profile?.name || "مورد",
+        supplierName: profile?.companyName || profile?.name || t("generic_supplier"),
         submittedByUserId: user.uid,
-        submittedByUserName: profile?.name || user.email || "عضو الفريق",
+        submittedByUserName: profile?.name || user.email || t("generic_team_member"),
         createdAt: new Date().toISOString(),
         reply: null,
         repliedAt: null
@@ -321,11 +321,11 @@ export default function AvailableRfqsPage() {
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
-                        {rfq.category}
+                        {displayCategory(rfq.category, locale)}
                       </Badge>
                       {rfq.subCategory && (
                         <Badge variant="outline" className="text-slate-600 border-slate-200 bg-white/50 px-2.5 py-1">
-                          {rfq.subCategory}
+                          {displaySubcategory(rfq.subCategory, locale)}
                         </Badge>
                       )}
                     </div>
@@ -350,7 +350,7 @@ export default function AvailableRfqsPage() {
                       <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                         <MapPin size={12} className="text-blue-600" />
                       </div>
-                      <span className="truncate">{rfq.city} - {rfq.district}</span>
+                      <span className="truncate">{displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}</span>
                       {rfq.locationCoords && (
                         <a 
                           href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
@@ -495,7 +495,7 @@ export default function AvailableRfqsPage() {
                       </div>
                       {prod.subCategory && (
                         <div className="mt-1">
-                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{prod.subCategory}</span>
+                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{displaySubcategory(prod.subCategory, locale)}</span>
                         </div>
                       )}
                       {prod.description && <p className="text-sm text-slate-600 mt-1">{prod.description}</p>}

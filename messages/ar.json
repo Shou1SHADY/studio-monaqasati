@@ -695,6 +695,8 @@
       "rejected_status": "مرفوض",
       "offer_tender": "المناقصة",
       "optional": "اختياري",
+      "generic_supplier": "مورد",
+      "generic_team_member": "عضو الفريق",
       "project_name_placeholder": "مثال: توريد مواد لمشروع قدية",
       "cert_name_placeholder": "مثال: ISO 9001",
       "cert_issuer_placeholder": "هيئة المواصفات السعودية..."

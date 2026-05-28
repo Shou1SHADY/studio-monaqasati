@@ -209,8 +209,8 @@ export default function Home() {
                       <s.icon size={20} className="md:size-6" />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
-                      <div className="text-base md:text-xl font-black text-white leading-tight">{s.val}</div>
-                      <div className="text-slate-500 text-[7px] md:text-[10px] font-bold uppercase tracking-normal mt-1 whitespace-nowrap">{s.label}</div>
+                      <div className="text-lg md:text-xl font-black text-white leading-tight">{s.val}</div>
+                      <div className="text-slate-500 text-[9px] md:text-[11px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
                     </div>
                   </div>
                 ))}

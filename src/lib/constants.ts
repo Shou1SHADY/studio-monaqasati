@@ -466,16 +466,16 @@ export const getSubcategoryName = (subcategoryAr: string, locale: string) => {
 }
 
 export const displayCategory = (catAr: string, locale: string) => {
-  if (locale === 'en') return `${catAr} (${CATEGORIES_EN[catAr] || catAr})`;
+  if (locale === 'en') return CATEGORIES_EN[catAr] || catAr;
   return catAr;
 }
 
 export const displayCity = (cityAr: string, locale: string) => {
-  if (locale === 'en') return `${cityAr} (${CITIES_EN[cityAr] || cityAr})`;
+  if (locale === 'en') return CITIES_EN[cityAr] || cityAr;
   return cityAr;
 }
 
 export const displaySubcategory = (subAr: string, locale: string) => {
-  if (locale === 'en') return `${subAr} (${SUBCATEGORIES_EN[subAr] || subAr})`;
+  if (locale === 'en') return SUBCATEGORIES_EN[subAr] || subAr;
   return subAr;
 }

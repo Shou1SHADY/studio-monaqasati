@@ -25,16 +25,16 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const { locale } = await params;
   const titleAr = 'مدماك تيك - منصة التقنية للمقاولين والموردين';
   const titleEn = 'Mdmak Tech - Smart Procurement Platform for Contractors & Suppliers';
-  const descAr = 'منصة B2B متكاملة لربط المقاولين بالموردين في قطاع الإنشاءات — طلبات عروض أسعار، تقييم موردين، وإدارة مشتريات ذكية.';
-  const descEn = 'A leading B2B platform connecting contractors with suppliers in the construction sector — RFQs, supplier evaluation, and smart procurement management.';
+  const descAr = 'منصة B2B سعودية تربط المقاولين بالموردين في الحديد، الأسمنت، الكهرباء، الدهانات، الأدوات الصحية، الأبواب، الأرضيات، التكييف، العزل وأكثر — عروض أسعار، تقييم موردين، وإدارة مشتريات ذكية.';
+  const descEn = 'Saudi B2B platform connecting contractors with suppliers across steel, cement, electrical, paints, sanitary ware, doors, flooring, HVAC, insulation & more — RFQs, supplier evaluation, and smart procurement.';
 
   return {
     metadataBase: new URL('https://mdmaktech.sa'),
     title: locale === 'ar' ? titleAr : titleEn,
     description: locale === 'ar' ? descAr : descEn,
     keywords: locale === 'ar'
-      ? ['مدماك تيك', 'مقاولين', 'موردين', 'مشتريات', 'إنشاءات', 'عروض أسعار', 'منصة B2B', 'السعودية']
-      : ['Mdmak Tech', 'contractors', 'suppliers', 'procurement', 'construction', 'RFQ', 'B2B platform', 'Saudi Arabia'],
+      ? ['مدماك تيك', 'مقاولين', 'موردين', 'مشتريات', 'حديد', 'أسمنت', 'كهرباء', 'دهانات', 'أدوات صحية', 'عروض أسعار', 'منصة B2B', 'السعودية', 'بناء', 'توريد', 'تكييف', 'عزل', 'أرضيات', 'أبواب']
+      : ['Mdmak Tech', 'contractors', 'suppliers', 'procurement', 'steel', 'cement', 'electrical', 'paints', 'sanitary ware', 'RFQ', 'B2B platform', 'Saudi Arabia', 'construction', 'supply', 'HVAC', 'insulation', 'flooring', 'doors'],
     authors: [{ name: 'Mdmak Tech' }],
     creator: 'Mdmak Tech',
     publisher: 'Mdmak Tech',

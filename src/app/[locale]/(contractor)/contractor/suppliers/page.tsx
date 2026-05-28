@@ -376,7 +376,7 @@ export default function SuppliersDirectory() {
                     <div className="flex flex-col gap-1 mt-2">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin size={14} className="text-primary" />
-                        <span className="font-medium">{supplier.city}</span>
+                        <span className="font-medium">{displayCity(supplier.city, locale)}</span>
                         <span className="text-[10px] bg-slate-100 px-1.5 rounded-sm">{t("suppliers_hq")}</span>
                       </div>
                       {supplier.coverageCities?.length > 0 && (
@@ -384,7 +384,7 @@ export default function SuppliersDirectory() {
                           <MapPin size={12} className="text-accent" />
                           <div className="flex flex-wrap gap-1">
                             {supplier.coverageCities.slice(0, 2).map((city: string) => (
-                              <span key={city} className="bg-accent/10 text-accent px-1.5 py-0.5 rounded text-[10px]">{city}</span>
+                              <span key={city} className="bg-accent/10 text-accent px-1.5 py-0.5 rounded text-[10px]">{displayCity(city, locale)}</span>
                             ))}
                             {supplier.coverageCities.length > 2 && (
                               <span className="text-accent">+{supplier.coverageCities.length - 2}</span>
@@ -417,7 +417,7 @@ export default function SuppliersDirectory() {
                     {supplier.specializations?.length > 0 ? (
                       supplier.specializations.slice(0, 3).map((spec: string) => (
                         <Badge key={spec} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 px-2 font-normal">
-                          {spec}
+                          {displayCategory(spec, locale)}
                         </Badge>
                       ))
                     ) : (
@@ -460,12 +460,12 @@ export default function SuppliersDirectory() {
                 <div className="flex flex-wrap gap-2">
                   <Badge className="bg-accent text-white flex items-center gap-1.5 px-3 py-1">
                     <MapPin size={14} />
-                    {t("suppliers_hq")}: {selectedSupplier.city}
+                    {t("suppliers_hq")}: {displayCity(selectedSupplier.city, locale)}
                   </Badge>
                   {selectedSupplier.coverageCities?.map((city: string) => (
                     <Badge key={city} variant="outline" className="border-accent/30 text-accent bg-accent/5 flex items-center gap-1.5 px-3 py-1">
                       <MapPin size={14} />
-                      {city}
+                      {displayCity(city, locale)}
                     </Badge>
                   ))}
                 </div>

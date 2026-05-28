@@ -16,7 +16,7 @@ import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc 
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 
 export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
@@ -351,11 +351,11 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             />
                           )}
                           <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
-                            {rfq.category}
+                            {displayCategory(rfq.category, locale)}
                           </Badge>
                           {rfq.subCategory && (
                             <Badge variant="outline" className="text-slate-600 border-slate-200 bg-white/50 px-2.5 py-1">
-                              {rfq.subCategory}
+                              {displaySubcategory(rfq.subCategory, locale)}
                             </Badge>
                           )}
                         </div>
@@ -388,7 +388,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                             <MapPin size={12} className="text-blue-600" />
                           </div>
-                          <span className="truncate">{rfq.city} - {rfq.district}</span>
+                          <span className="truncate">{displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-slate-600" suppressHydrationWarning>
                           <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">

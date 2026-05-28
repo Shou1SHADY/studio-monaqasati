@@ -698,7 +698,9 @@
       "offer_undefined": "Undefined Tender",
       "rejected_status": "Rejected",
       "offer_tender": "Tender",
-      "optional": "Optional"
+      "optional": "Optional",
+      "generic_supplier": "Supplier",
+      "generic_team_member": "Team Member"
     },
     "Errors": {
       "access_denied_title": "Sorry, you don't have sufficient permissions",

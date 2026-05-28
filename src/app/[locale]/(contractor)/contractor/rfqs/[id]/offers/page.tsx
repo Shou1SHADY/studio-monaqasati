@@ -15,6 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { Star } from "lucide-react"
+import { displayCategory, displaySubcategory, displayCity } from "@/lib/constants"
 
 
 import {
@@ -275,11 +276,11 @@ export default function RfqOffersPage() {
                 <div className="space-y-4 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
-                      {rfq.category}
+                      {displayCategory(rfq.category, locale)}
                     </Badge>
                     {rfq.subCategory && (
                       <Badge variant="outline" className="text-muted-foreground border-slate-200">
-                        {rfq.subCategory}
+                        {displaySubcategory(rfq.subCategory, locale)}
                       </Badge>
                     )}
                     {rfq.pdfUrl && (
@@ -305,7 +306,7 @@ export default function RfqOffersPage() {
                   <div className="flex flex-wrap items-center gap-6 text-sm text-slate-600">
                     <div className="flex items-center gap-2">
                       <MapPin size={16} className="text-primary" />
-                      {rfq.city} - {rfq.district}
+                      {displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}
                       {rfq.locationCoords && (
                         <a
                           href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
@@ -335,7 +336,7 @@ export default function RfqOffersPage() {
                               <p className="font-bold text-sm text-slate-800">{product.name}</p>
                               {product.subCategory && (
                                 <div className="mt-1">
-                                  <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">{product.subCategory}</span>
+                                  <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">{displaySubcategory(product.subCategory, locale)}</span>
                                 </div>
                               )}
                               {product.description && (

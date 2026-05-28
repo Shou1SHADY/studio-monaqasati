@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { displayCategory, displaySubcategory } from "@/lib/constants"
 import { 
   FileText, 
   Search, 
@@ -123,8 +124,8 @@ export default function AdminRfqsPage() {
                       <TableCell className="font-bold">{rfq.title}</TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold">{rfq.category}</span>
-                          <span className="text-[10px] text-muted-foreground">{rfq.subCategory}</span>
+                          <span className="text-sm font-bold">{displayCategory(rfq.category, locale)}</span>
+                          <span className="text-[10px] text-muted-foreground">{displaySubcategory(rfq.subCategory, locale)}</span>
                         </div>
                       </TableCell>
                       <TableCell>{getStatusBadge(rfq.status)}</TableCell>
