@@ -133,7 +133,7 @@ export default function Home() {
       <main className="relative">
 
         {/* HERO - Full bleed architectural design */}
-        <section className="relative h-screen min-h-[600px] md:min-h-[800px] flex flex-col">
+        <section className="relative h-screen min-h-[800px] md:min-h-[700px] flex flex-col">
           {/* Slides */}
           {heroSlides.map((s, i) => (
             <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
@@ -149,12 +149,12 @@ export default function Home() {
             style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
 
           {/* Hero Text Content */}
-          <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24">
+          <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24 md:pt-16 pb-4 md:pb-0">
             <div className={`max-w-2xl space-y-6 animate-in fade-in duration-1000 ${locale === 'ar' ? 'slide-in-from-right-10' : 'slide-in-from-left-10'}`}>
 
               <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col gap-2 md:gap-3">
-                <span>{heroSlides[slide].title}</span>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200">
+                <span className="whitespace-nowrap">{heroSlides[slide].title}</span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-nowrap pb-2 md:pb-3">
                   {heroSlides[slide].titleAccent}
                 </span>
               </h1>
@@ -204,13 +204,13 @@ export default function Home() {
                   { val: tStats('saving_70'), label: tStats('time_saving'), icon: Zap },
                   { val: tStats('improvement_15'), label: tStats('cost_improvement'), icon: TrendingUp },
                 ].map((s, i) => (
-                  <div key={i} className="shrink-0 snap-center bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-4 md:p-6 flex items-center gap-3 md:gap-5 group hover:bg-white/[0.06] transition-all">
-                    <div className="w-12 h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
-                      <s.icon size={24} />
+                  <div key={i} className="shrink-0 snap-center bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-3 md:p-6 flex items-center gap-2 md:gap-5 group hover:bg-white/[0.06] transition-all min-h-[100px] md:min-h-0">
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
+                      <s.icon size={20} className="md:size-6" />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
-                      <div className="text-lg md:text-xl font-black text-white leading-tight">{s.val}</div>
-                      <div className="text-slate-500 text-[9px] md:text-[10px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
+                      <div className="text-base md:text-xl font-black text-white leading-tight">{s.val}</div>
+                      <div className="text-slate-500 text-[7px] md:text-[10px] font-bold uppercase tracking-normal mt-1 whitespace-nowrap">{s.label}</div>
                     </div>
                   </div>
                 ))}
@@ -226,7 +226,7 @@ export default function Home() {
             {tLanding('Partners')}
             <div className="w-12 h-[1px] bg-white/10" />
           </div>
-          
+
           <div className="w-full overflow-hidden py-6">
             <div className="flex items-center gap-16 md:gap-20 animate-scroll-x-logos min-w-max px-8 md:px-16">
               {[
@@ -235,14 +235,14 @@ export default function Home() {
                 '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
                 '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
               ].map((src, i) => (
-                <div 
-                  key={i} 
+                <div
+                  key={i}
                   className="flex items-center justify-center w-32 md:w-44 h-16 md:h-20 p-2 md:p-3 shrink-0 bg-white/5 rounded-xl border border-white/10"
                 >
-                  <img 
-                    src={src} 
-                    alt="Partner Logo" 
-                    className="max-w-full max-h-full object-contain opacity-70 hover:opacity-100 transition-all duration-300" 
+                  <img
+                    src={src}
+                    alt="Partner Logo"
+                    className="max-w-full max-h-full object-contain opacity-70 hover:opacity-100 transition-all duration-300"
                   />
                 </div>
               ))}
