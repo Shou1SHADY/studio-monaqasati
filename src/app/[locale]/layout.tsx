@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const titleAr = 'مدماك تيك - منصة التقنية للمقاولين والموردين';
   const titleEn = 'Mdmak Tech - Smart Procurement Platform for Contractors & Suppliers';
   const descAr = 'منصة B2B سعودية رائدة لقطاع الإنشاءات. نربط المقاولين بموردين معتمدين لجميع مواد البناء، مع ميزات لطلب عروض الأسعار وإدارة المشتريات بذكاء.';
-  const descEn = 'Saudi Arabia\\'s premier B2B platform for construction. We connect contractors with verified suppliers, offering smart RFQ and procurement management.';
+  const descEn = "Saudi Arabia's premier B2B platform for construction. We connect contractors with verified suppliers, offering smart RFQ and procurement management.";
 
   return {
     metadataBase: new URL('https://mdmaktech.sa'),
