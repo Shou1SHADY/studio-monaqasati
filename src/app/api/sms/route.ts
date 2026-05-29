@@ -12,9 +12,17 @@ export async function POST(req: Request) {
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const fromPhone = process.env.TWILIO_PHONE_NUMBER;
 
-    if (!accountSid || !authToken || !fromPhone) {
-      console.error("Missing Twilio credentials in environment variables.");
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    const isConfigured =
+      accountSid &&
+      authToken &&
+      fromPhone &&
+      !accountSid.startsWith("ACxxx") &&
+      authToken !== "your_auth_token_here" &&
+      !fromPhone.startsWith("+15551");
+
+    if (!isConfigured) {
+      console.warn("Twilio credentials not configured — SMS skipped.");
+      return NextResponse.json({ success: true, skipped: true, message: "SMS skipped — Twilio credentials not configured" }, { status: 200 });
     }
 
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {

@@ -219,7 +219,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const mergedContractorNotifs = React.useMemo(() => {
     const offers = (contractorOffers || []).map((o: any) => ({ ...o, type: "new_offer" }))
-    const generic = (userNotifications || []).map((n: any) => ({ ...n, type: n.type || "generic" }))
+    const generic = (userNotifications || [])
+      .filter((n: any) => n.type !== "new_offer")
+      .map((n: any) => ({ ...n, type: n.type || "generic" }))
     
     return [...offers, ...generic].sort((a: any, b: any) => 
       new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()

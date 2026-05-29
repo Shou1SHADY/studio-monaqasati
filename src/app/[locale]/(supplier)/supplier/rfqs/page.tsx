@@ -460,12 +460,19 @@ export default function AvailableRfqsPage() {
           setShowSubmitOffer(false)
           if (!showRfqDetails) setSelectedRfq(null)
         }} 
-        onSuccess={() => router.push("/supplier/offers")}
+        onSuccess={() => {
+          setShowSubmitOffer(false)
+          setSelectedRfq(null)
+        }}
       />
 
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); } }}>
-        <DialogContent className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          dir={locale === 'ar' ? 'rtl' : 'ltr'}
+          aria-describedby={undefined}
+        >
           <DialogTitle className="sr-only">{t("rfq_details_title")}</DialogTitle>
           
           <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">

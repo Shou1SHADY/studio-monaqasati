@@ -612,7 +612,7 @@ export default function NewRfqPage() {
                               <SelectTrigger className="h-11 rounded-xl border-slate-200">
                                 <SelectValue placeholder={t("newrfq_select_category")} />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent side="bottom" avoidCollisions={false} className="max-h-60 overflow-y-auto">
                                 {Object.keys(CATEGORIES_DATA).map(cat => (
                                   <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
                                 ))}
@@ -630,7 +630,7 @@ export default function NewRfqPage() {
                               <SelectTrigger className="h-11 rounded-xl border-slate-200">
                                 <SelectValue placeholder={t("newrfq_select_sub_category")} />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent side="bottom" avoidCollisions={false} className="max-h-60 overflow-y-auto">
                                 {product.category && CATEGORIES_DATA[product.category]?.map(sub => (
                                   <SelectItem key={sub} value={sub}>{displaySubcategory(sub, locale)}</SelectItem>
                                 ))}
