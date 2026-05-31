@@ -85,10 +85,12 @@ export default function ContractorNotificationsPage() {
   // Build merged notifications list
   const notifications = useMemoFirebase(() => {
     const offersList = (offers || []).map((o: any) => ({ ...o, type: "offer" }))
-    const genericList = (userNotifications || []).map((n: any) => ({ 
-      ...n, 
-      type: n.type || "generic" 
-    }))
+    const genericList = (userNotifications || [])
+      .filter((n: any) => n.type !== "new_offer")
+      .map((n: any) => ({ 
+        ...n, 
+        type: n.type || "generic" 
+      }))
     
     return [...offersList, ...genericList].sort((a: any, b: any) => {
       const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0

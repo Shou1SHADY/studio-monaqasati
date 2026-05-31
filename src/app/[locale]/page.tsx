@@ -228,8 +228,15 @@ export default function Home() {
           </div>
 
           <div className="w-full overflow-hidden py-6">
-            <div className="flex items-center gap-16 md:gap-20 animate-scroll-x-logos min-w-max px-8 md:px-16">
+            <div className={cn(
+              "flex items-center gap-16 md:gap-20 min-w-max px-8 md:px-16",
+              locale === 'ar' ? "animate-scroll-x-logos-rtl" : "animate-scroll-x-logos-ltr"
+            )}>
               {[
+                '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
+                '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
+                '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
+                '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
                 '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
                 '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
                 '/images/logo-qudra.png', '/images/logo-naya.jpeg', '/images/logo-itc.png',
@@ -622,17 +629,21 @@ export default function Home() {
           0% { transform: translateX(0); }
           100% { transform: translateX(50%); }
         }
-        @keyframes scroll-x-logos {
+        @keyframes scroll-x-logos-ltr {
           0% { transform: translateX(0); }
-          100% { transform: translateX(-25%); }
+          100% { transform: translateX(-50%); }
         }
-        .animate-scroll-x {
-          animation: scroll-x 40s linear infinite;
+        @keyframes scroll-x-logos-rtl {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(50%); }
+        }
+        .animate-scroll-x-logos-ltr {
+          animation: scroll-x-logos-ltr 60s linear infinite;
           width: max-content;
         }
-        .animate-scroll-x-logos {
-          animation: scroll-x-logos 15s linear infinite;
-          min-width: 100%;
+        .animate-scroll-x-logos-rtl {
+          animation: scroll-x-logos-rtl 60s linear infinite;
+          width: max-content;
         }
         @keyframes float {
           0%, 100% { transform: translateY(0); }

@@ -24,7 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
-import { collection, addDoc, doc, getDoc, updateDoc } from "firebase/firestore"
+import { collection, addDoc, doc, getDoc, updateDoc, increment } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 
 interface DeliveryBatch {
@@ -221,7 +221,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               if (!formattedPhone.startsWith("+")) formattedPhone = "+" + formattedPhone;
 
               try {
-                await fetch("/api/sms", {
+                const smsRes = await fetch("/api/sms", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
@@ -229,6 +229,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                     body: `منصة مناقصتي: وصلك عرض سعر جديد بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على مناقصة: ${selectedRfq.title}. قم بتسجيل الدخول للمراجعة.`
                   })
                 });
+                if (!smsRes.ok) {
+                  console.error("SMS API returned error:", smsRes.status);
+                }
               } catch (smsError) {
                 console.error("Failed to call SMS API:", smsError);
               }
@@ -240,11 +243,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       }
       try {
         const rfqRef = doc(firestore, "rfqs", selectedRfq.id);
-        const rfqSnap = await getDoc(rfqRef);
-        if (rfqSnap.exists()) {
-          const currentCount = rfqSnap.data().offersCount || 0;
-          await updateDoc(rfqRef, { offersCount: currentCount + 1 });
-        }
+        await updateDoc(rfqRef, { offersCount: increment(1) });
       } catch (err) {
         console.error("Failed to update offersCount:", err);
       }
@@ -267,6 +266,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         <DialogContent
           className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
+          aria-describedby={undefined}
         >
           <DialogTitle className="sr-only">{t("offer_submit_title")}</DialogTitle>
 

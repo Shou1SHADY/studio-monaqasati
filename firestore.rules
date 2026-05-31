@@ -76,8 +76,15 @@ service cloud.firestore {
       allow create: if isAdmin()
         || isContractor()
         || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
+      // Org members / admins can update everything.
+      // Any signed-in user (e.g. a supplier submitting an offer) may increment
+      // only the offersCount counter — no other field may change.
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId())
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offersCount'])
+        );
       allow delete: if isAdmin();
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
