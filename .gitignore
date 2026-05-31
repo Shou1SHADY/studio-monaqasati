@@ -73,3 +73,6 @@ supplier-rfqs-snapshot.yml
 rfq-form-snapshot.yml
 contractor-offers-snapshot.yml
 landing-en-mobile.png
+
+# mobile app (separate repo — https://github.com/Shou1SHADY/mdmak-mob.git)
+mdmak-mob/

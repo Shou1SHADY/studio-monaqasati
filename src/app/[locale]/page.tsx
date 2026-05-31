@@ -152,7 +152,7 @@ export default function Home() {
           <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24 md:pt-16 pb-4 md:pb-0">
             <div className={`max-w-2xl space-y-6 animate-in fade-in duration-1000 ${locale === 'ar' ? 'slide-in-from-right-10' : 'slide-in-from-left-10'}`}>
 
-              <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col gap-2 md:gap-3">
+              <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col gap-2 md:gap-3 !leading-[1.2]">
                 <span className="whitespace-nowrap">{heroSlides[slide].title}</span>
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-nowrap pb-2 md:pb-3">
                   {heroSlides[slide].titleAccent}
