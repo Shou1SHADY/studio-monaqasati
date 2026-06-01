@@ -7,6 +7,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { notFound } from 'next/navigation';
+import StructuredData from '@/components/StructuredData';
 
 const notoSansArabic = Noto_Sans_Arabic({
   subsets: ['arabic'],
@@ -23,9 +24,9 @@ const notoNaskhArabic = { variable: '--font-headline' };
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
-  const titleAr = 'مدماك تيك - منصة التقنية للمقاولين والموردين';
-  const titleEn = 'Mdmak Tech - Smart Procurement Platform for Contractors & Suppliers';
-  const descAr = 'منصة B2B سعودية رائدة لقطاع الإنشاءات تربط المقاولين بموردين معتمدين لمواد البناء. أطلب عروض أسعار حديد، أسمنت، كهرباء، دهانات، أدوات صحية، تكييف، عزل، أرضيات وأبواب — وأدر مشتريات مشروعك بذكاء وسهولة.';
+  const titleAr = 'مدماك تيك | منصة إدارة المناقصات والمشتريات الإنشائية في السعودية';
+  const titleEn = 'Mdmak Tech — Smart B2B Procurement & RFQ Platform for Saudi Construction';
+  const descAr = 'منصة مدماك تيك تربط المقاولين بأفضل موردي مواد البناء في المملكة. قدّم طلب عروض أسعار للحديد، الأسمنت، الكهرباء، الدهانات، الأدوات الصحية، التكييف، العزل، والأرضيات — وقارن العروض بذكاء لتوفير الوقت والتكاليف.';
   const descEn = "Saudi Arabia's leading B2B procurement platform connecting contractors with trusted suppliers for steel, cement, electrical, HVAC, paints, sanitary ware, insulation, flooring, and doors. Streamline RFQ, compare quotes, and manage construction sourcing intelligently.";
 
   return {
@@ -46,8 +47,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'max-video-preview': -1,
     },
     icons: {
-      icon: '/favicon.svg',
-      shortcut: '/favicon.svg',
+      icon: '/logo.png',
+      shortcut: '/logo.png',
       apple: '/logo.png',
     },
     openGraph: {
@@ -98,6 +99,7 @@ export default async function RootLayout({
       >
         <NextIntlClientProvider messages={messages}>
           <FirebaseClientProvider>
+            <StructuredData />
             {children}
             <Toaster />
           </FirebaseClientProvider>

@@ -1196,7 +1196,7 @@ export default function SupplierProfilePage() {
                         <div className="flex flex-wrap gap-3">
                           {newProject.images.map((img, idx) => (
                             <div key={idx} className="relative h-20 w-20 rounded-xl overflow-hidden shadow-sm group">
-                              <img src={img} className="w-full h-full object-cover" alt="" />
+                              <img src={img} className="w-full h-full object-cover" alt={`Project image ${idx + 1}`} />
                               <button 
                                 onClick={() => removeProjectImage(idx)}
                                 className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
@@ -1220,7 +1220,7 @@ export default function SupplierProfilePage() {
                       <Card key={project.id} className="overflow-hidden group hover:shadow-lg transition-all border-slate-100">
                         <div className="h-44 bg-slate-100 relative overflow-hidden">
                           {project.images?.[0] ? (
-                            <img src={project.images[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="" />
+                            <img src={project.images[0]} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt={project.name || 'Project'} />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-slate-300">
                               <ImageIcon size={48} />

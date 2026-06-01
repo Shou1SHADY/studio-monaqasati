@@ -1,8 +1,26 @@
 import React from 'react';
 import { ArrowRight, Building2 } from 'lucide-react';
-import Link from 'next/link';
+import { Link } from '@/i18n/routing';
 import { useTranslations } from "next-intl";
+import { getTranslations } from 'next-intl/server';
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
+import { buildPageMetadata } from '@/lib/seo';
+import type { Metadata } from 'next';
+
+type Props = {
+  params: Promise<{ locale: string }>;
+};
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: 'About' });
+  return buildPageMetadata({
+    locale,
+    title: t('title'),
+    description: t('subtitle'),
+    path: '/about',
+  });
+}
 
 export default function AboutUs() {
   const t = useTranslations("About");
