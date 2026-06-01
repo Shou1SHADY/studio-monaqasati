@@ -620,6 +620,7 @@
       "not_verified_label": "Not Verified",
       "send_verification": "Send New Verification Link",
       "two_step": "Two-Step Verification (2-Step Verification)",
+      "sms_badge": "SMS",
       "two_step_desc": "When enabled, you will be asked to enter a 6-digit OTP code sent to your registered mobile ({phone}) at each login to secure your account.",
       "phone_required": "Please add a mobile number first",
       "change_password": "Change Password",

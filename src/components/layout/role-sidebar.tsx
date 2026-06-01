@@ -267,7 +267,10 @@ export function RoleSidebar() {
       <SidebarContent className="py-4">
         {sections.map((section) => (
           <SidebarGroup key={section.labelKey} className="px-0 py-1">
-            <SidebarGroupLabel className="px-6 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/40">
+            <SidebarGroupLabel className={cn(
+              "px-6 font-bold text-sidebar-foreground/40",
+              locale === 'ar' ? 'text-[11px] tracking-normal' : 'text-[10px] uppercase tracking-widest'
+            )}>
               {t(section.labelKey)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
