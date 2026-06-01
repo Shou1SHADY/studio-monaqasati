@@ -9,13 +9,16 @@ import { Bell, MessageSquare, TrendingUp, CheckCircle2, Clock, Loader2, Eye } fr
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { Link } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
 
 export default function ContractorNotificationsPage() {
+  const router = useRouter()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
   const t = useTranslations("Portal.Contractor")
+  const tSupplier = useTranslations("Portal.Supplier")
+  const tLayout = useTranslations("Portal.Layout")
   const locale = useLocale()
 
   // Fetch all offers for RFQs owned by this contractor
@@ -50,16 +53,21 @@ export default function ContractorNotificationsPage() {
       })
     : []
 
-  // Fetch offers for the contractor's first 10 RFQs
-  const rfqIds = rfqs?.slice(0, 10).map((r: any) => r.id) || []
-
+  // Fetch all offers directed to this contractor
   const offersQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore || rfqIds.length === 0) return null
-    return query(
-      collection(firestore, "offers"),
-      where("rfqId", "in", rfqIds)
-    )
-  }, [firestore, user, isUserLoading, rfqIds.join(",")])
+    if (isUserLoading || !user || !firestore) return null
+    if (profile?.organizationId) {
+      return query(
+        collection(firestore, "offers"),
+        where("contractorOrgId", "==", profile.organizationId)
+      )
+    } else {
+      return query(
+        collection(firestore, "offers"),
+        where("contractorId", "==", user.uid)
+      )
+    }
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const { data: offers, isLoading: offersLoading } = useCollection(offersQuery)
 
@@ -82,6 +90,26 @@ export default function ContractorNotificationsPage() {
     }
   }, [notifsError, toast])
 
+  // Fetch chats for unread chat notifications
+  const chatsUnreadQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    const orgValue = profile?.organizationId || user.uid
+    return query(
+      collection(firestore, "chats"),
+      where("contractorOrgId", "==", orgValue)
+    )
+  }, [firestore, user, isUserLoading, profile?.organizationId])
+
+  const { data: allMyChats } = useCollection(chatsUnreadQuery)
+
+  // Chats that have an unread message for this specific user
+  const unreadChats = React.useMemo(() => {
+    if (!allMyChats || !user) return []
+    return allMyChats.filter((chat: any) =>
+      Array.isArray(chat.unreadFor) && chat.unreadFor.includes(user.uid)
+    )
+  }, [allMyChats, user])
+
   // Build merged notifications list
   const notifications = useMemoFirebase(() => {
     const offersList = (offers || []).map((o: any) => ({ ...o, type: "offer" }))
@@ -92,11 +120,20 @@ export default function ContractorNotificationsPage() {
         type: n.type || "generic" 
       }))
     
-    return [...offersList, ...genericList].sort((a: any, b: any) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      return bTime - aTime
-    })
+    const getEventTime = (n: any) => {
+      const dates = [
+        n.createdAt,
+        n.updatedAt,
+        n.decidedAt,
+        n.sampleUpdatedAt,
+        n.completedAt
+      ].filter(Boolean).map((d: any) => new Date(d).getTime());
+      return dates.length > 0 ? Math.max(...dates) : 0;
+    };
+
+    return [...offersList, ...genericList].sort((a: any, b: any) => 
+      getEventTime(b) - getEventTime(a)
+    )
   }, [offers, userNotifications])
 
   const markAsRead = async (offerId: string) => {
@@ -104,6 +141,17 @@ export default function ContractorNotificationsPage() {
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         contractorReadAt: new Date().toISOString()
+      })
+    } catch {
+      // non-critical, silently fail
+    }
+  }
+
+  const markNotifAsRead = async (notifId: string) => {
+    if (!firestore || !user) return
+    try {
+      await updateDoc(doc(firestore, "users", user.uid, "notifications", notifId), {
+        read: true
       })
     } catch {
       // non-critical, silently fail
@@ -142,7 +190,7 @@ export default function ContractorNotificationsPage() {
               <Loader2 className="animate-spin" size={40} />
               <p>{t("notif_loading")}</p>
             </div>
-          ) : !notifications || notifications.length === 0 ? (
+          ) : (!notifications || notifications.length === 0) && (!unreadChats || unreadChats.length === 0) ? (
             <Card className="border-dashed border-2 border-slate-200 shadow-none">
               <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                 <Bell size={48} className="opacity-20" />
@@ -151,7 +199,34 @@ export default function ContractorNotificationsPage() {
               </CardContent>
             </Card>
           ) : (
-            notifications.map((notif: any) => {
+            <>
+            {/* Unread Chat Messages */}
+            {unreadChats?.map((chat: any) => (
+              <Card
+                key={chat.id}
+                onClick={() => router.push(`/contractor/chat/${chat.id}`)}
+                className="border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden bg-primary/5 ring-2 ring-primary/20 hover:shadow-md mb-4"
+              >
+                <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <MessageSquare size={22} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                      <h3 className="font-bold text-slate-900">
+                        {tLayout("notification_new_message")}
+                      </h3>
+                    </div>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      {chat.lastMessage || tLayout("notification_message_in")} — {chat.rfqTitle || tLayout("contract")}
+                    </p>
+                  </div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-primary shrink-0 animate-pulse" />
+                </CardContent>
+              </Card>
+            ))}
+
+            {notifications.map((notif: any) => {
               if (notif.type === "offer") {
                 const offer = notif
                 const relatedRfq = rfqs?.find((r: any) => r.id === offer.rfqId)
@@ -210,10 +285,13 @@ export default function ContractorNotificationsPage() {
 
               // Handle Invitation or other notification types
               const isInvitation = notif.type === "invitation"
+              const isSampleSent = notif.type === "sample_sent"
               const isUnread = !notif.read
-              return (
+              
+              const CardContentWrapper = (
                 <Card
                   key={notif.id}
+                  onClick={() => isUnread && markNotifAsRead(notif.id)}
                   className={`transition-shadow border-none cursor-pointer ${
                     isUnread
                       ? "bg-white shadow-sm ring-1 ring-primary/10 hover:shadow-md"
@@ -222,24 +300,41 @@ export default function ContractorNotificationsPage() {
                 >
                   <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${isInvitation ? "bg-primary/10 text-primary" : "bg-blue-50 text-blue-600"}`}>
-                      {isInvitation ? <Bell size={22} /> : <MessageSquare size={22} />}
+                      {isInvitation ? <Bell size={22} /> : isSampleSent ? <CheckCircle2 size={22} /> : <MessageSquare size={22} />}
                     </div>
                     <div className="flex-1">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
-                        <p className="font-bold text-slate-900">{notif.title || t("notif_new")}</p>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
-                          <Clock size={11} />
-                          {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString(locale) : ""}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-500 mt-1">{notif.message || notif.description}</p>
+                       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
+                         <p className="font-bold text-slate-900">
+                           {isSampleSent
+                             ? tSupplier("sample_sent_notif_title")
+                             : notif.title || t("notif_new")}
+                         </p>
+                         <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
+                           <Clock size={11} />
+                           {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString(locale) : ""}
+                         </span>
+                       </div>
+                       <p className="text-sm text-slate-500 mt-1">
+                         {isSampleSent && notif.rfqId
+                           ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "Tender" })
+                           : notif.message || notif.description}
+                       </p>
                       {isInvitation && isUnread && (
                         <div className="pt-2">
                           <Link href="/contractor/team">
-                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
+                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
                               {t("notif_go_to_team")}
                             </Button>
                           </Link>
+                        </div>
+                      )}
+                      {!isInvitation && notif.rfqId && (
+                        <div className="pt-2">
+                           <Link href={`/contractor/rfqs/${notif.rfqId}/offers`} onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
+                            <Button size="sm" variant="outline" className="h-8 text-xs">
+                              {t("notif_review")}
+                            </Button>
+                           </Link>
                         </div>
                       )}
                     </div>
@@ -249,7 +344,10 @@ export default function ContractorNotificationsPage() {
                   </CardContent>
                 </Card>
               )
-            })
+              
+              return CardContentWrapper;
+            })}
+            </>
           )}
         </div>
       </div>

@@ -61,6 +61,9 @@ export default function RfqOffersPage() {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
+  const [reductionOffer, setReductionOffer] = useState<any | null>(null)
+  const [reductionNote, setReductionNote] = useState("")
+  const [targetPrice, setTargetPrice] = useState("")
   const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
   const [reviewOffer, setReviewOffer] = useState<any | null>(null)
 
@@ -110,7 +113,7 @@ export default function RfqOffersPage() {
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
 
-  const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض" | "مطلوب تخفيض") => {
+  const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض" | "مطلوب تخفيض", note?: string, requestedPrice?: string) => {
     if (!firestore || !user) return
     setProcessingId(offerId)
 
@@ -118,13 +121,18 @@ export default function RfqOffersPage() {
 
     // Step 1: Update offer status
     try {
-      await updateDoc(doc(firestore, "offers", offerId), {
+      const updateData: any = {
         status: decision,
         decidedByUserId: user.uid,
         decidedByUserName: profile?.name || user.email || "عضو الإدارة",
         decidedAt: new Date().toISOString(),
         readAt: null // reset read status for supplier
-      })
+      }
+      if (decision === "مطلوب تخفيض" && requestedPrice) {
+        updateData.targetPrice = Number(requestedPrice)
+      }
+      
+      await updateDoc(doc(firestore, "offers", offerId), updateData)
     } catch (error: any) {
       console.error("❌ updateDoc offer failed:", error?.code, error?.message)
       toast({ title: t("offers_toast_error"), description: t("offers_toast_error_desc", { message: error?.code || error?.message }), variant: "destructive" })
@@ -158,6 +166,41 @@ export default function RfqOffersPage() {
       }
     }
 
+    // Step 3: Write notification to supplier's subcollection
+    if (offer?.supplierId) {
+      try {
+        let notifType = "offer_rejected"
+        let notifTitle = t("offers_notif_rejected_title")
+        let notifMessage = t("offers_notif_rejected_msg", { title: offer.rfqTitle || "" })
+        if (decision === "مقبول") {
+          notifType = "offer_accepted"
+          notifTitle = t("offers_notif_accepted_title")
+          notifMessage = t("offers_notif_accepted_msg", { title: offer.rfqTitle || "" })
+        } else if (decision === "مطلوب تخفيض") {
+          notifType = "price_reduction"
+          notifTitle = t("offers_notif_reduction_title")
+          let baseMsg = t("offers_notif_reduction_msg", { title: offer.rfqTitle || "" })
+          if (requestedPrice) baseMsg += `\nالسعر المستهدف: ${requestedPrice} ${t("offers_currency_sar")}`
+          if (note) baseMsg += `\nملاحظة: ${note}`
+          notifMessage = baseMsg
+        }
+        await addDoc(collection(firestore, "users", offer.supplierId, "notifications"), {
+          userId: offer.supplierId,
+          organizationId: offer.organizationId || offer.supplierId,
+          type: notifType,
+          title: notifTitle,
+          message: notifMessage,
+          offerId: offerId,
+          rfqId: rfqId,
+          rfqTitle: offer.rfqTitle || "",
+          createdAt: new Date().toISOString(),
+          read: false
+        })
+      } catch (notifErr) {
+        console.warn("⚠️ Failed to write supplier notification (non-critical):", notifErr)
+      }
+    }
+
     toast({
       title: decision === "مقبول" ? t("offers_toast_accepted_title") : decision === "مرفوض" ? t("offers_toast_rejected_title") : t("offers_toast_reduction_title"),
       description: decision === "مقبول"
@@ -173,11 +216,10 @@ export default function RfqOffersPage() {
     if (!firestore || !user) return;
     setProcessingId(offerId);
     try {
-      await updateDoc(doc(firestore, "offers", offerId), {
-        sampleStatus: action,
-        sampleUpdatedAt: new Date().toISOString(),
-        readAt: null // reset read status for supplier
-      });
+       await updateDoc(doc(firestore, "offers", offerId), {
+         sampleStatus: action,
+         sampleUpdatedAt: new Date().toISOString()
+       });
 
       if (action === "مطلوبة") {
         const offerSnap = await getDoc(doc(firestore, "offers", offerId));
@@ -201,8 +243,9 @@ export default function RfqOffersPage() {
         title: action === "مطلوبة" ? t("offers_toast_sample_req") : t("offers_toast_sample_rcv"),
         description: action === "مطلوبة" ? t("offers_toast_sample_req_desc") : t("offers_toast_sample_rcv_desc")
       });
-    } catch (error) {
-      toast({ title: t("offers_toast_error"), description: t("offers_toast_sample_error"), variant: "destructive" });
+    } catch (error: any) {
+      console.error("❌ handleSampleAction failed:", error);
+      toast({ title: t("offers_toast_error"), description: `${t("offers_toast_sample_error")} ${error?.message || ""}`, variant: "destructive" });
     } finally {
       setProcessingId(null);
     }
@@ -464,8 +507,8 @@ export default function RfqOffersPage() {
 
                 return (
                   <Card key={offer.id} className={`border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative ${offer.status === "مقبول" ? "border-success/30 bg-success/5" :
-                      offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" :
-                        isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
+                    offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" :
+                      isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
                     }`}>
                     {isBestOffer && offer.status === "قيد المراجعة" && (
                       <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
@@ -485,7 +528,7 @@ export default function RfqOffersPage() {
                                 <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</p>
                                 {offer.submittedByUserName && (
                                   <p className="text-[11px] text-slate-500 mt-0.5">
-                                    {t("offers_submitted_by")} <span className="font-semibold">{offer.submittedByUserName}</span>
+                                    {t("offers_submitted_by", { name: offer.submittedByUserName })}
                                   </p>
                                 )}
                                 <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
@@ -509,68 +552,68 @@ export default function RfqOffersPage() {
                             <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
                               <span className="text-muted-foreground font-medium">{t("offers_proposed_price")}</span>
                               <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
-                                  {offer.price} <span className="text-sm font-normal">{t("offers_currency_sar")}</span>
+                                {offer.price} <span className="text-sm font-normal">{t("offers_currency_sar")}</span>
                               </span>
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
                               <Calendar size={14} />
                               <span>                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : "-"}</span>
                             </div>
-                                {offer.deliveryFrequency && (
-                                  <div className="flex items-center gap-2 sm:col-span-2">
-                                    <Calendar size={14} className="text-muted-foreground" />
-                                    <span className="text-slate-600">{t("offers_delivery_frequency")}</span>
-                                    <span className="font-medium">{offer.deliveryFrequency}</span>
-                                  </div>
-                                )}
+                            {offer.deliveryFrequency && (
+                              <div className="flex items-center gap-2 sm:col-span-2">
+                                <Calendar size={14} className="text-muted-foreground" />
+                                <span className="text-slate-600">{t("offers_delivery_frequency")}</span>
+                                <span className="font-medium">{offer.deliveryFrequency}</span>
                               </div>
+                            )}
+                          </div>
 
-                              {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
-                                <div className="mt-3 pt-3 border-t border-slate-200">
-                                  <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_batches")}</p>
-                                  <div className="space-y-2">
-                                    {offer.deliveryBatches.map((batch: any, idx: number) => (
-                                      <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
-                                        <div className="flex items-center gap-2">
-                                          <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
-                                            {t("offers_batch_no", { number: idx + 1 })}
-                                          </span>
-                                          <span className="text-slate-600">{batch.quantity}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <Calendar size={12} className="text-muted-foreground" />
-                                          <span className="text-slate-600">{batch.deliveryDate}</span>
-                                          <span className="font-bold text-success">{batch.price} {t("offers_currency_sar")}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {offer.totalBatchesPrice && (
-                                    <div className="mt-2 flex justify-end">
-                                      <span className="text-xs text-muted-foreground">
-                                        {t("offers_total_batches_price")} <span className="font-bold text-success">{offer.totalBatchesPrice} {t("offers_currency_sar")}</span>
+                          {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-slate-200">
+                              <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_batches")}</p>
+                              <div className="space-y-2">
+                                {offer.deliveryBatches.map((batch: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between bg-white p-2 rounded border border-slate-100 text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
+                                        {t("offers_batch_no", { number: idx + 1 })}
                                       </span>
+                                      <span className="text-slate-600">{batch.quantity}</span>
                                     </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {offer.offerPdfUrl && (
-                                <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    <File size={18} className="text-blue-600" />
-                                    <span className="text-sm font-bold text-slate-700">{t("offers_attached_file")}</span>
+                                    <div className="flex items-center gap-2">
+                                      <Calendar size={12} className="text-muted-foreground" />
+                                      <span className="text-slate-600">{batch.deliveryDate}</span>
+                                      <span className="font-bold text-success">{batch.price} {t("offers_currency_sar")}</span>
+                                    </div>
                                   </div>
-                                  <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
-                                    <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                                      <Download size={12} className="ml-1" />
-                                      {t("offers_view_file")}
-                                    </a>
-                                  </Button>
+                                ))}
+                              </div>
+                              {offer.totalBatchesPrice && (
+                                <div className="mt-2 flex justify-end">
+                                  <span className="text-xs text-muted-foreground">
+                                    {t("offers_total_batches_price")} <span className="font-bold text-success">{offer.totalBatchesPrice} {t("offers_currency_sar")}</span>
+                                  </span>
                                 </div>
                               )}
                             </div>
-                        
+                          )}
+
+                          {offer.offerPdfUrl && (
+                            <div className="mt-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <File size={18} className="text-blue-600" />
+                                <span className="text-sm font-bold text-slate-700">{t("offers_attached_file")}</span>
+                              </div>
+                              <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
+                                <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
+                                  <Download size={12} className="ml-1" />
+                                  {t("offers_view_file")}
+                                </a>
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Action Buttons - Pending */}
                         {offer.status === "قيد المراجعة" && (
                           <div className="bg-slate-50/70 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
@@ -584,7 +627,7 @@ export default function RfqOffersPage() {
                               {t("offers_accept")}
                             </Button>
                             <Button
-                              onClick={() => handleDecision(offer.id, "مطلوب تخفيض")}
+                              onClick={() => setReductionOffer(offer)}
                               disabled={processingId === offer.id}
                               variant="outline"
                               className="w-full gap-2 rounded-full border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 hover:text-amber-800 transition-all font-medium"
@@ -615,7 +658,7 @@ export default function RfqOffersPage() {
                                 {offer.sampleStatus ? t("offers_request_another_sample") : t("offers_request_sample")}
                               </Button>
                             )}
-                             {offer.sampleStatus === "تم الإرسال" && (
+                            {offer.sampleStatus === "تم الإرسال" && (
                               <div className="w-full space-y-2">
                                 <Button
                                   onClick={() => handleSampleAction(offer.id, "تم الاستلام")}
@@ -894,6 +937,79 @@ export default function RfqOffersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Price Reduction Dialog */}
+      <Dialog open={!!reductionOffer} onOpenChange={(open) => {
+        if (!open) {
+          setReductionOffer(null);
+          setReductionNote("");
+        }
+      }}>
+        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
+            <DialogTitle>{t("offers_request_reduction")}</DialogTitle>
+            <DialogDescription className="text-right mt-2 text-slate-600">
+              {t("offers_reduction_dialog_desc", { supplier: reductionOffer?.supplierName || reductionOffer?.companyName || t("offers_registered_supplier") })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="flex items-center justify-between bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
+              <span className="text-sm font-medium text-amber-800">{t("offers_proposed_price")}</span>
+              <span className="font-bold text-lg text-amber-700">{reductionOffer?.price} {t("offers_currency_sar")}</span>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                السعر المستهدف ({t("offers_currency_sar")}) <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
+              </label>
+              <input
+                type="number"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
+                placeholder="أدخل السعر المطلوب..."
+                value={targetPrice}
+                onChange={(e) => setTargetPrice(e.target.value)}
+              />
+            </div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              {t("offers_reduction_note_label")} <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
+            </label>
+            <textarea
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 min-h-[100px] resize-y"
+              placeholder={t("offers_reduction_note_placeholder")}
+              value={reductionNote}
+              onChange={(e) => setReductionNote(e.target.value)}
+            />
+          </div>
+          <DialogFooter className={cn("flex flex-row gap-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setReductionOffer(null);
+                setReductionNote("");
+                setTargetPrice("");
+              }}
+              disabled={!!processingId}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={async () => {
+                if (reductionOffer) {
+                  await handleDecision(reductionOffer.id, "مطلوب تخفيض", reductionNote, targetPrice);
+                  setReductionOffer(null);
+                  setReductionNote("");
+                  setTargetPrice("");
+                }
+              }}
+              disabled={!!processingId}
+            >
+              {processingId === reductionOffer?.id ? <Loader2 size={14} className="animate-spin ms-2" /> : <ArrowDown size={14} className="ms-2" />}
+              {t("offers_send_request")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
 
       {/* Review Dialog */}
       {reviewOffer && (
