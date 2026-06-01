@@ -303,6 +303,11 @@
       "admin_stats": "Statistics",
       "admin_settings": "Settings",
       "admin_profile": "Profile",
+      "section_workspace": "Workspace",
+      "section_communication": "Communication",
+      "section_settings": "Settings",
+      "section_management": "Management",
+      "section_monitoring": "Monitoring",
       "logout": "Logout"
     },
     "Layout": {
@@ -918,7 +923,7 @@
       "view_contracts": "View Contracts",
       "how_calculated": "How is it calculated?",
       "browse_suppliers": "Browse Suppliers",
-      "rfq_created": "Tender '{title}' created",
+      "rfq_created": "Tender ''{title}'' created",
       "view_and_negotiate": "View & Negotiate",
       "view_details": "View Details",
       "recent_activities": "Recent Activities",

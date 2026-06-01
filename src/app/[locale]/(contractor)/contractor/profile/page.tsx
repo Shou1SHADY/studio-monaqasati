@@ -765,7 +765,7 @@ export default function ContractorProfilePage() {
                     {user?.providerData.some(p => p.providerId === "google.com") ? (
                       <>
                         <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-                        {t("google_connected")}
+                        {t("profile_google_connected")}
                       </>
                     ) : (
                       <>

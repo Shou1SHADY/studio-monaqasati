@@ -303,6 +303,11 @@
       "admin_stats": "الإحصائيات",
       "admin_settings": "الإعدادات",
       "admin_profile": "الملف الشخصي",
+      "section_workspace": "مساحة العمل",
+      "section_communication": "التواصل",
+      "section_settings": "الإعدادات",
+      "section_management": "الإدارة",
+      "section_monitoring": "المراقبة",
       "logout": "تسجيل الخروج"
     },
     "Layout": {
@@ -917,7 +922,7 @@
       "view_contracts": "عرض العقود",
       "how_calculated": "كيف يُحسب؟",
       "browse_suppliers": "تصفح الموردين",
-      "rfq_created": "تم طرح مناقصة '{title}'",
+      "rfq_created": "تم طرح مناقصة ''{title}''",
       "view_and_negotiate": "عرض والتفاوض",
       "view_details": "عرض التفاصيل",
       "recent_activities": "آخر النشاطات",

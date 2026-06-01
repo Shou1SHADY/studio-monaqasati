@@ -303,9 +303,9 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 items-start">
               <div className="space-y-2">
-                <Label htmlFor="crNumber" className="text-slate-700 font-bold">{t("cr_number")}</Label>
+                <Label htmlFor="crNumber" className="text-slate-700 font-bold min-h-[2.5rem] flex items-end">{t("cr_number")}</Label>
                 <Input
                   id="crNumber"
                   required
@@ -320,7 +320,7 @@ export default function RegisterPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxNumber" className="text-slate-700 font-bold">{t("tax_number")}</Label>
+                <Label htmlFor="taxNumber" className="text-slate-700 font-bold min-h-[2.5rem] flex items-end">{t("tax_number")}</Label>
                 <Input
                   id="taxNumber"
                   required
