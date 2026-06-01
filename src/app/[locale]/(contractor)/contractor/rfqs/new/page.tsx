@@ -778,7 +778,7 @@ export default function NewRfqPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
-                      {t("newrfq_city_label")}
+                      {t("newrfq_city_label")}<RequiredStar />
                     </Label>
                     <Select 
                       value={formData.city} 
