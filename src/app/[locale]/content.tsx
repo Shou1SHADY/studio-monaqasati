@@ -138,7 +138,7 @@ export default function HomeContent() {
           {/* Slides */}
           {heroSlides.map((s, i) => (
             <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
-              <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" />
+              <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" priority />
               <div className={`absolute inset-0 ${locale === 'ar' ? 'bg-gradient-to-l' : 'bg-gradient-to-r'} from-[#020617] via-[#020617]/70 to-transparent`} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-[#020617]/30" />
@@ -316,7 +316,7 @@ export default function HomeContent() {
         <section className="relative overflow-hidden border-y border-white/5 bg-[#020617]">
           <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
             <div className="relative overflow-hidden group">
-              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" />
+              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" priority />
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-cta/10 mix-blend-overlay" />
 
