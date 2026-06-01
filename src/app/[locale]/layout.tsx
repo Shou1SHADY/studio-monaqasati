@@ -24,9 +24,9 @@ const notoNaskhArabic = { variable: '--font-headline' };
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
-  const titleAr = 'مدماك تيك | منصة إدارة المناقصات والمشتريات الإنشائية في السعودية';
+  const titleAr = 'مدماك تيك — ربط المقاولين بالموردين وإدارة المناقصات وعروض الأسعار';
   const titleEn = 'Mdmak Tech — Smart B2B Procurement & RFQ Platform for Saudi Construction';
-  const descAr = 'منصة مدماك تيك تربط المقاولين بأفضل موردي مواد البناء في المملكة. قدّم طلب عروض أسعار للحديد، الأسمنت، الكهرباء، الدهانات، الأدوات الصحية، التكييف، العزل، والأرضيات — وقارن العروض بذكاء لتوفير الوقت والتكاليف.';
+  const descAr = 'اربط مقاوليك بأفضل موردي مواد البناء في السعودية. منصة ذكية لطرح المناقصات، استقبال عروض الأسعار، ومقارنة العروض لتوفير الوقت وخفض التكاليف. سجّل مجاناً.';
   const descEn = "Saudi Arabia's leading B2B procurement platform connecting contractors with trusted suppliers for steel, cement, electrical, HVAC, paints, sanitary ware, insulation, flooring, and doors. Streamline RFQ, compare quotes, and manage construction sourcing intelligently.";
 
   return {

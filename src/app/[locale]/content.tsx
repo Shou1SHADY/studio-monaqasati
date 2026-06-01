@@ -29,6 +29,7 @@ export default function HomeContent() {
   const tPartnership = useTranslations('Landing.Partnership');
   const tCTA = useTranslations('Landing.CTA');
   const tFooter = useTranslations('Landing.Footer');
+  const tFAQ = useTranslations('Landing.FAQ');
   const tLanding = useTranslations('Landing');
   const locale = useLocale();
 
@@ -527,6 +528,55 @@ export default function HomeContent() {
             </div>
           </div>
         </section>
+
+        {/* FAQ Section */}
+        <section className="py-16 md:py-24 bg-[#0F172A] border-t border-white/5">
+          <div className="max-w-4xl mx-auto px-6">
+            <div className="text-center mb-14 space-y-3">
+              <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tFAQ('heading')}</div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white tracking-normal">{tFAQ('heading')}</h2>
+              <p className="text-slate-400 max-w-xl mx-auto text-base leading-relaxed">{tFAQ('subtitle')}</p>
+            </div>
+            <div className="space-y-4">
+              {[
+                { q: tFAQ('q1'), a: tFAQ('a1') },
+                { q: tFAQ('q2'), a: tFAQ('a2') },
+                { q: tFAQ('q3'), a: tFAQ('a3') },
+                { q: tFAQ('q4'), a: tFAQ('a4') },
+                { q: tFAQ('q5'), a: tFAQ('a5') },
+                { q: tFAQ('q6'), a: tFAQ('a6') },
+              ].map((faq, i) => (
+                <details key={i} className="group bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
+                  <summary className="flex items-center justify-between p-6 cursor-pointer hover:bg-white/[0.04] transition-colors list-none">
+                    <span className="text-white font-bold text-base md:text-lg pr-4">{faq.q}</span>
+                    <span className="shrink-0 text-sky-400 text-xl group-open:rotate-45 transition-transform duration-300">+</span>
+                  </summary>
+                  <div className="px-6 pb-6">
+                    <p className="text-slate-400 text-sm md:text-base leading-relaxed">{faq.a}</p>
+                  </div>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'FAQPage',
+              mainEntity: [
+                { '@type': 'Question', name: tFAQ('q1'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a1') } },
+                { '@type': 'Question', name: tFAQ('q2'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a2') } },
+                { '@type': 'Question', name: tFAQ('q3'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a3') } },
+                { '@type': 'Question', name: tFAQ('q4'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a4') } },
+                { '@type': 'Question', name: tFAQ('q5'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a5') } },
+                { '@type': 'Question', name: tFAQ('q6'), acceptedAnswer: { '@type': 'Answer', text: tFAQ('a6') } },
+              ],
+            }),
+          }}
+        />
 
       </main>
 

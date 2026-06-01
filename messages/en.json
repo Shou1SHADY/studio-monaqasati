@@ -150,6 +150,22 @@
       "l_privacy": "Privacy Policy",
       "l_terms": "Terms & Conditions",
       "l_contact": "Contact Us"
+    },
+    "FAQ": {
+      "heading": "Frequently Asked Questions",
+      "subtitle": "Everything you need to know about Mdmak Tech",
+      "q1": "How does Mdmak Tech connect contractors with suppliers in Saudi Arabia?",
+      "a1": "Mdmak Tech is a B2B procurement platform where contractors post tenders and RFQs, and verified suppliers submit competitive quotes. The platform streamlines the entire sourcing process — from posting requirements to comparing offers and awarding contracts — all in one place.",
+      "q2": "Is Mdmak Tech free to use?",
+      "a2": "Yes, contractors and suppliers can register and start using the platform for free. The Starter plan includes up to 5 tenders per month with basic quotation features. For higher volumes and advanced features, we offer Pro and Enterprise plans.",
+      "q3": "What construction materials can I source through the platform?",
+      "a3": "You can request quotes for a wide range of construction materials including steel, cement, electrical supplies, paints, sanitary ware, HVAC systems, insulation, flooring, doors, and more. The platform supports all major categories used in Saudi construction projects.",
+      "q4": "How quickly do suppliers respond to RFQs?",
+      "a4": "Suppliers are notified instantly when a new tender is published. Response times vary, but most suppliers submit their offers within 24-48 hours. The platform sends automatic reminders as the deadline approaches to ensure competitive participation.",
+      "q5": "Can Mdmak Tech handle large-scale construction projects?",
+      "a5": "Absolutely. Mdmak Tech is built for projects of all sizes — from small renovations to large-scale commercial and infrastructure developments. The Enterprise plan includes ERP integration, dedicated account management, and advanced reporting for complex procurement needs.",
+      "q6": "How does Mdmak Tech ensure supplier quality?",
+      "a6": "All suppliers undergo a verification process including commercial registration (CR) and tax certificate validation. The platform also features a rating and review system where contractors rate suppliers after each completed order, building a transparent reputation system."
     }
   },
   "About": {
