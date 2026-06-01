@@ -443,7 +443,7 @@ export default function AvailableRfqsPage() {
                       className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
                     >
                       {t("submit_offer")}
-                      <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+                      <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
                     </Button>
                   </div>
                 </CardContent>

@@ -35,29 +35,51 @@ export default function SupplierOrdersPage() {
       return;
     }
     
-    const headers = ["رقم الطلب", "تاريخ العقد", "المقاول", "المدينة", "قيمة العقد", "الحالة"];
+    const escapeCsv = (val: string | number) => `"${String(val).replace(/"/g, '""')}"`
+
+    const headers = [
+      t("order_id_header"),
+      t("contract_date"),
+      t("client_header"),
+      t("city"),
+      t("contract_value"),
+      t("status_header"),
+    ]
     
+    const translateStatus = (status: string) => {
+      switch (status) {
+        case "مقبول": case "Accepted": case "accepted": return t("accepted_status")
+        case "جاري التوصيل": return t("in_delivery_status")
+        case "تم التسليم": return t("delivered_status")
+        case "قيد التجهيز": return t("processing_status")
+        default: return status
+      }
+    }
+
+    const fallback = "—"
     const rows = orders.map((o: any) => {
-      const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString("ar-SA") : "غير محدد";
+      const date = o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale) : fallback;
       return [
-        o.id,
-        date,
-        o.contractorName || "غير محدد",
-        o.rfqCity || "غير محدد",
-        o.price || 0,
-        o.status || "غير محدد"
+        escapeCsv(o.id),
+        escapeCsv(date),
+        escapeCsv(o.contractorName || fallback),
+        escapeCsv(o.deliveryLocation || o.rfqCity || fallback),
+        escapeCsv(o.price ?? fallback),
+        escapeCsv(translateStatus(o.status)),
       ].join(",");
     });
-    
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + headers.join(",") + "\n" + rows.join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
+
+    const bom = '\uFEFF'
+    const csvString = bom + headers.map(escapeCsv).join(",") + "\n" + rows.join("\n")
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `orders_report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     
     toast({ title: t("export_success"), description: t("export_success_desc") });
   }
@@ -165,12 +187,12 @@ export default function SupplierOrdersPage() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="text-right">{t("order_id_header")}</TableHead>
-                  <TableHead className="text-right">{t("client_header")}</TableHead>
-                  <TableHead className="text-right">{t("product_quantity_header")}</TableHead>
-                  <TableHead className="text-right">{t("location_header")}</TableHead>
-                  <TableHead className="text-right">{t("status_header")}</TableHead>
-                  <TableHead className="text-right">{t("actions_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("order_id_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("client_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("product_quantity_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("location_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("status_header")}</TableHead>
+                  <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("actions_header")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,22 +210,22 @@ export default function SupplierOrdersPage() {
                   </TableRow>
                 ) : orders.map((order: any) => (
                   <TableRow key={order.id} className="hover:bg-slate-50/50">
-                    <TableCell className="font-mono text-xs font-bold text-right">{order.id.substring(0, 8)}</TableCell>
-                    <TableCell className="text-right">{order.contractorName || t("client_value")}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={cn("font-mono text-xs font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>{order.id.substring(0, 8)}</TableCell>
+                    <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>{order.contractorName || t("client_value")}</TableCell>
+                    <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
                       <div className="flex flex-col items-start">
                         <span className="font-medium">{order.rfqTitle}</span>
                         <span className="text-xs text-muted-foreground">{order.price} {t("sar")}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground justify-start">
                         <MapPin size={12} />
                         {order.deliveryLocation || t("not_specified_label")}
                       </div>
                     </TableCell>
-                    <TableCell className="text-right">{getStatusBadge(order.status)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>{getStatusBadge(order.status)}</TableCell>
+                    <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
                       <div className="flex items-center gap-2 justify-start">
                         <Button 
                           variant="ghost" 
@@ -241,7 +263,7 @@ export default function SupplierOrdersPage() {
       </div>
 
       <Dialog open={!!selectedOrder} onOpenChange={(open) => !open && setSelectedOrder(null)}>
-        <DialogContent className="sm:max-w-2xl w-[95vw] p-6 text-right max-h-[90vh] overflow-y-auto rounded-[2rem] border-slate-100 shadow-2xl" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent className={cn("sm:max-w-2xl w-[95vw] p-6 max-h-[90vh] overflow-y-auto rounded-[2rem] border-slate-100 shadow-2xl", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className="pb-6 border-b border-slate-100 relative pt-2">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex items-center gap-3">

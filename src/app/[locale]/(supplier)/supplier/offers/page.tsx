@@ -291,29 +291,29 @@ export default function SupplierOffersPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">{t("offers_id")}</TableHead>
-                    <TableHead className="text-right">{t("offers_tender")}</TableHead>
-                    <TableHead className="text-right">{t("offers_price")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("offers_date")}</TableHead>
-                    <TableHead className="text-right">{t("offers_status")}</TableHead>
-                    <TableHead className="text-right">{t("offers_actions")}</TableHead>
+                    <TableHead className={cn("hidden md:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{t("offers_id")}</TableHead>
+                    <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_tender")}</TableHead>
+                    <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_price")}</TableHead>
+                    <TableHead className={cn("hidden sm:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{t("offers_date")}</TableHead>
+                    <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_status")}</TableHead>
+                    <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {offers.map((offer: any) => (
                     <TableRow key={offer.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-mono text-xs hidden md:table-cell text-right">{offer.id.substring(0, 8)}</TableCell>
-                      <TableCell className="font-bold text-right">{offer.rfqTitle || t("offer_undefined")}</TableCell>
-                      <TableCell className="font-bold text-right">
-                        <div className="flex items-center justify-start gap-1">
+                      <TableCell className={cn("font-mono text-xs hidden md:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.id.substring(0, 8)}</TableCell>
+                      <TableCell className={cn("font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.rfqTitle || t("offer_undefined")}</TableCell>
+                      <TableCell className={cn("font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>
+                        <div className="flex items-center gap-1 justify-start">
                           <span className="text-primary font-bold">{offer.price ? `${offer.price}` : t("price_not_available")}</span>
                           {offer.price && <span className="text-xs text-muted-foreground">{t("sar")}</span>}
                         </div>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground hidden sm:table-cell text-right" suppressHydrationWarning>
+                      <TableCell className={cn("text-xs text-muted-foreground hidden sm:table-cell", locale === 'ar' ? 'text-right' : 'text-left')} suppressHydrationWarning>
                         {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : "-"}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
                         <div className="flex flex-col gap-1 items-start">
                           {getStatusBadge(offer.status || "قيد المراجعة")}
                           {offer.sampleStatus && (
@@ -327,8 +327,8 @@ export default function SupplierOffersPage() {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-start gap-1">
+                      <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'}>
+                        <div className="flex items-center gap-1 justify-start">
                           {/* View Details */}
                           <Button
                             variant="ghost"
@@ -396,7 +396,7 @@ export default function SupplierOffersPage() {
                                     : <MoreVertical size={16} />}
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+                              <DropdownMenuContent align="end" className={locale === 'ar' ? 'text-right' : 'text-left'} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                                 <DropdownMenuItem
                                   className="text-destructive cursor-pointer gap-2 focus:bg-destructive/10"
                                   onClick={() => handleWithdraw(offer.id)}
@@ -420,7 +420,7 @@ export default function SupplierOffersPage() {
 
       {/* Offer Detail Dialog */}
       <Dialog open={!!viewOffer} onOpenChange={(open) => !open && setViewOffer(null)}>
-        <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("offer_details_title")}</DialogTitle>
             <DialogDescription>{t("offer_details_desc")}</DialogDescription>
@@ -484,7 +484,7 @@ export default function SupplierOffersPage() {
       </Dialog>
       {/* Update Price Dialog */}
       <Dialog open={!!updatePriceOffer} onOpenChange={(open) => !open && setUpdatePriceOffer(null)}>
-        <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("update_price_title")}</DialogTitle>
             <DialogDescription>
@@ -521,7 +521,7 @@ export default function SupplierOffersPage() {
 
       {/* Confirm Sample Sending Alert */}
       <AlertDialog open={!!confirmSampleOffer} onOpenChange={(open) => !open && setConfirmSampleOffer(null)}>
-        <AlertDialogContent className="text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <AlertDialogContent className={locale === 'ar' ? 'text-right' : 'text-left'} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <AlertDialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <AlertDialogTitle>{t("confirm_sample_title")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -548,7 +548,7 @@ export default function SupplierOffersPage() {
 
       {/* Chat Redirect Dialog after sample sent - must be sibling, NOT nested */}
       <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
-        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'} className="text-right">
+        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'} className={locale === 'ar' ? 'text-right' : 'text-left'}>
           <AlertDialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <AlertDialogTitle>{t("sample_sent_title")}</AlertDialogTitle>
             <AlertDialogDescription>
