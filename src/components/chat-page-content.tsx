@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Send, Loader2, MessageSquare } from "lucide-react"
-import { useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
+import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import {
   doc, getDoc, collection, addDoc, updateDoc,
   query, orderBy
@@ -33,18 +33,15 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const locale = useLocale()
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
-  const [chatMeta, setChatMeta] = useState<any>(null)
-  const [metaLoading, setMetaLoading] = useState(true)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Load chat metadata(one-time get; real-time not needed for meta)
-  useEffect(() => {
-    if (!firestore || !chatId) return
-    getDoc(doc(firestore, "chats", chatId)).then((snap) => {
-      if (snap.exists()) setChatMeta({ id: snap.id, ...snap.data() })
-      setMetaLoading(false)
-    }).catch(() => setMetaLoading(false))
+  // Real-time chat metadata
+  const chatDocQuery = useMemoFirebase(() => {
+    if (!firestore || !chatId) return null
+    return doc(firestore, "chats", chatId)
   }, [firestore, chatId])
+  
+  const { data: chatMeta, isLoading: metaLoading } = useDoc(chatDocQuery)
 
   // Real-time messages
   const messagesQuery = useMemoFirebase(() => {
@@ -118,9 +115,6 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
           }
         ).catch(() => { }) // non-blocking — unread dot on chat is the primary signal
       }
-
-      // Refresh local chatMeta to reflect updated unreadFor
-      setChatMeta((prev: any) => prev ? { ...prev, unreadFor: newUnread } : prev)
 
     } catch (err: any) {
       console.error("send message failed:", err?.code, err?.message)

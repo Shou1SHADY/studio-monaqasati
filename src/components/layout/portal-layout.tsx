@@ -125,12 +125,19 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   // --- Notifications: fetch recent offers and RFQs relevant to current role ---
   // Supplier: their own submitted offers + NEW RFQs matching their specializations
   const supplierOffersQuery = useMemoFirebase(() => {
-    if (!isSupplier || isUserLoading || !user || !firestore || !profile?.organizationId) return null
-    return query(
-      collection(firestore, "offers"),
-      where("organizationId", "==", profile.organizationId),
-      limit(20)
-    )
+    if (!isSupplier || isUserLoading || !user || !firestore) return null
+    // Fall back to supplierId if no organizationId (matches supplier/offers/page.tsx pattern)
+    if (profile?.organizationId) {
+      return query(
+        collection(firestore, "offers"),
+        where("organizationId", "==", profile.organizationId)
+      )
+    } else {
+      return query(
+        collection(firestore, "offers"),
+        where("supplierId", "==", user.uid)
+      )
+    }
   }, [firestore, user, isUserLoading, isSupplier, profile?.organizationId])
 
   const supplierMatchingRfqsQuery = useMemoFirebase(() => {
@@ -157,16 +164,22 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { data: supplierRfqs } = useCollection(supplierMatchingRfqsQuery)
   const { data: contractorRfqs } = useCollection(contractorRfqsQuery)
 
-  const contractorRfqIds = contractorRfqs?.slice(0, 10).map((r: any) => r.id) || []
-
   const contractorOffersQuery = useMemoFirebase(() => {
-    if (!isContractor || isUserLoading || !user || !firestore || contractorRfqIds.length === 0) return null
-    return query(
-      collection(firestore, "offers"),
-      where("rfqId", "in", contractorRfqIds),
-      limit(20)
-    )
-  }, [firestore, user, isUserLoading, isContractor, contractorRfqIds.join(",")])
+    if (!isContractor || isUserLoading || !user || !firestore) return null
+    if (profile?.organizationId) {
+      return query(
+        collection(firestore, "offers"),
+        where("contractorOrgId", "==", profile.organizationId),
+        limit(20)
+      )
+    } else {
+      return query(
+        collection(firestore, "offers"),
+        where("contractorId", "==", user.uid),
+        limit(20)
+      )
+    }
+  }, [firestore, user, isUserLoading, isContractor, profile?.organizationId])
 
   const { data: contractorOffers } = useCollection(contractorOffersQuery)
 
@@ -203,59 +216,120 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   // Merge and sort notifications
   const mergedSupplierNotifs = React.useMemo(() => {
-    const offers = (supplierOffers || []).map((o: any) => ({ ...o, type: "offer_update" }))
+    const offers = (supplierOffers || [])
+      .map((o: any) => ({ ...o, type: "offer_update" }))
+      .filter((offer: any) => {
+        // Prevent duplicate notifications if a subcollection notification already exists for this event
+        const hasAccepted = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "offer_accepted");
+        const hasRejected = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "offer_rejected");
+        const hasReduction = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "price_reduction");
+        const hasSampleRequested = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "sample_requested");
+        
+        if (offer.status === "مقبول" && hasAccepted) return false;
+        if (offer.status === "مرفوض" && hasRejected) return false;
+        if (offer.status === "مطلوب تخفيض" && hasReduction) return false;
+        if (offer.sampleStatus === "مطلوبة" && hasSampleRequested) return false;
+        
+        return true;
+      });
     
     // Filter RFQs by supplier's specializations and map to notification format
     const newRfqs = (supplierRfqs || [])
       .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
       .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
     
-    const generic = (userNotifications || []).map((n: any) => ({ ...n, type: n.type || "generic" }))
+    const generic = (userNotifications || []).map((n: any) => ({ ...n, type: n.type || "generic", isSubcollection: true }))
     
-    return [...offers, ...newRfqs, ...generic].sort((a: any, b: any) => 
-      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-    ).slice(0, 10)
+    const getEventTime = (n: any) => {
+      const dates = [
+        n.createdAt,
+        n.updatedAt,
+        n.decidedAt,
+        n.sampleUpdatedAt,
+        n.completedAt
+      ].filter(Boolean).map((d: any) => new Date(d).getTime());
+      return dates.length > 0 ? Math.max(...dates) : 0;
+    };
+
+    const allSupplierNotifs = [...offers, ...newRfqs, ...generic].sort((a: any, b: any) => 
+      getEventTime(b) - getEventTime(a)
+    )
+    return {
+      all: allSupplierNotifs,
+      sliced: allSupplierNotifs.slice(0, 10)
+    }
   }, [supplierOffers, supplierRfqs, profile, userNotifications])
 
   const mergedContractorNotifs = React.useMemo(() => {
     const offers = (contractorOffers || []).map((o: any) => ({ ...o, type: "new_offer" }))
     const generic = (userNotifications || [])
       .filter((n: any) => n.type !== "new_offer")
-      .map((n: any) => ({ ...n, type: n.type || "generic" }))
+      .map((n: any) => ({ ...n, type: n.type || "generic", isSubcollection: true }))
     
-    return [...offers, ...generic].sort((a: any, b: any) => 
-      new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-    ).slice(0, 10)
+    const getEventTime = (n: any) => {
+      const dates = [
+        n.createdAt,
+        n.updatedAt,
+        n.decidedAt,
+        n.sampleUpdatedAt,
+        n.completedAt
+      ].filter(Boolean).map((d: any) => new Date(d).getTime());
+      return dates.length > 0 ? Math.max(...dates) : 0;
+    };
+
+    const allContractorNotifs = [...offers, ...generic].sort((a: any, b: any) => 
+      getEventTime(b) - getEventTime(a)
+    )
+    return {
+      all: allContractorNotifs,
+      sliced: allContractorNotifs.slice(0, 10)
+    }
   }, [contractorOffers, userNotifications])
 
-  // Determine which notifications list to show
-  const notifications: any[] = isSupplier
+  const mergedSupplierSubcollectionNotifs = React.useMemo(() => {
+    // These are supplier-specific notifications from the users/{uid}/notifications subcollection
+    // Types: offer_accepted, price_reduction, offer_rejected, sample_requested, inquiry_reply, invitation
+    return (userNotifications || []).map((n: any) => ({ ...n, type: n.type || "generic", isSubcollection: true }))
+  }, [userNotifications])
+
+  const notificationsObj = isSupplier
     ? mergedSupplierNotifs
     : isContractor
     ? mergedContractorNotifs
-    : []
+    : { all: [], sliced: [] }
+
+  const allNotifications = notificationsObj.all
+  const notifications = notificationsObj.sliced
 
   // Use localStorage to track read RFQs since they are shared documents
   const [readRfqIds, setReadRfqIds] = React.useState<string[]>([])
   React.useEffect(() => {
-    try {
-      const stored = localStorage.getItem("readRfqIds")
-      if (stored) setReadRfqIds(JSON.parse(stored))
-    } catch (e) {}
+    const loadIds = () => {
+      try {
+        const stored = localStorage.getItem("readRfqIds")
+        if (stored) setReadRfqIds(JSON.parse(stored))
+      } catch (e) {}
+    }
+    loadIds()
+    window.addEventListener('readRfqIdsUpdated', loadIds)
+    return () => window.removeEventListener('readRfqIdsUpdated', loadIds)
   }, [])
 
   const markRfqAsRead = (rfqId: string) => {
     const updated = [...new Set([...readRfqIds, rfqId])]
     setReadRfqIds(updated)
     localStorage.setItem("readRfqIds", JSON.stringify(updated))
+    window.dispatchEvent(new Event('readRfqIdsUpdated'))
   }
 
-  // Unread count (offers + invitations + unread chats)
-  const unreadCount = notifications.filter((n: any) => {
+  // Unread count (offers + invitations + unread chats) calculated over ALL notifications
+  const unreadCount = allNotifications.filter((n: any) => {
     if (n.type === "new_rfq") return !readRfqIds.includes(n.id)
     if (n.type === "new_offer") return n.status === "قيد المراجعة" && !n.contractorReadAt
     if (n.type === "offer_update") return (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
-    return !n.read // for invitations and generic
+    // Subcollection-based notifications (offer_accepted, price_reduction, offer_rejected, offer_withdrawn, sample_requested, etc.)
+    if (n.type === "offer_accepted" || n.type === "price_reduction" || n.type === "offer_rejected" || n.type === "offer_withdrawn") return !n.read
+    return !n.read // for invitations, generic, and all other subcollection types
   }).length + unreadChats.length
 
   const handleSearch = (e: React.FormEvent) => {
@@ -292,7 +366,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (isSupplier) {
       if (notif.type === "new_rfq") {
         markRfqAsRead(notif.id)
-      } else if ((notif.type === "sample_requested" || notif.type === "inquiry_reply" || notif.type === "invitation") && !notif.read && firestore && user) {
+      } else if (notif.isSubcollection && !notif.read && firestore && user) {
         try {
           await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), { read: true, readAt: new Date().toISOString() })
         } catch (e) {
@@ -303,6 +377,20 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
         } catch (e) {
           // ignore errors
+        }
+      }
+    } else if (isContractor) {
+      if (notif.isSubcollection && !notif.read && firestore && user) {
+        try {
+          await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), { read: true, readAt: new Date().toISOString() })
+        } catch (e) {
+          // ignore
+        }
+      } else if (!notif.contractorReadAt && firestore && notif.type === "new_offer") {
+        try {
+          await updateDoc(doc(firestore, "offers", notif.id), { contractorReadAt: new Date().toISOString() })
+        } catch (e) {
+          // ignore
         }
       }
     }
@@ -321,6 +409,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
       }
     } else if (isContractor) {
       if (notif.type === "new_offer") {
+        router.push(`/contractor/rfqs/${notif.rfqId}/offers`)
+      } else if (notif.rfqId) {
+        // Fallback for sample_sent and other generic notifications
         router.push(`/contractor/rfqs/${notif.rfqId}/offers`)
       } else {
         router.push(`/contractor/notifications`)
@@ -394,10 +485,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             <LanguageSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-muted-foreground">
+                <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible">
                   <Bell size={20} />
                   {unreadCount > 0 && (
-                    <span className={cn("absolute top-1.5 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-1.5' : 'left-1.5')}>
+                    <span className={cn("absolute top-0 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-0' : 'left-0')}>
                       {unreadCount}
                     </span>
                   )}
@@ -424,22 +515,26 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                   <div className="divide-y max-h-72 overflow-y-auto">
                     {notifications.map((notif: any) => {
                       const isNewRfq = notif.type === "new_rfq"
-                      const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq"
-                      const isAccepted = notif.status === "مقبول" && notif.type !== "new_rfq"
-                      const isPriceReduction = notif.status === "مطلوب تخفيض" && notif.type !== "new_rfq"
+                      // Subcollection-based notification types (written by server-side actions)
+                      const isSubcollectionNotif = ["offer_accepted", "price_reduction", "offer_rejected", "offer_withdrawn", "sample_requested", "sample_sent", "inquiry_reply", "invitation"].includes(notif.type)
+                      const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq" && !isSubcollectionNotif
+                      // price_reduction can come from offer status OR from subcollection type
+                      const isPriceReduction = (notif.status === "مطلوب تخفيض" || notif.type === "price_reduction") && notif.type !== "new_rfq"
+                      const isAccepted = (notif.status === "مقبول" || notif.type === "offer_accepted") && notif.type !== "new_rfq"
+                      const isRejected = (notif.status === "مرفوض" || notif.type === "offer_rejected") && notif.type !== "new_rfq"
+                      const isWithdrawn = notif.type === "offer_withdrawn"
                       const isSampleRequest = (notif.sampleStatus === "مطلوبة" || notif.type === "sample_requested") && notif.type !== "new_rfq"
                       const isSampleReceived = notif.sampleStatus === "تم الاستلام" && notif.type !== "new_rfq"
+                      const isSampleSent = notif.type === "sample_sent"
                       const isInvitation = notif.type === "invitation"
                       const isInquiryReply = notif.type === "inquiry_reply"
                       const isUnread = isNewRfq 
                         ? !readRfqIds.includes(notif.id)
-                        : isInvitation
+                        : isSubcollectionNotif
                           ? !notif.read
-                          : notif.type === "sample_requested" || notif.type === "inquiry_reply"
-                            ? !notif.read
-                            : isSupplier 
-                              ? !notif.readAt && (isAccepted || notif.status === "مرفوض" || isPriceReduction || isSampleRequest || isSampleReceived)
-                              : isPending || (notif.type === "new_offer" && !notif.contractorReadAt);
+                          : isSupplier 
+                            ? !notif.readAt && (isAccepted || isRejected || isPriceReduction || isSampleRequest || isSampleReceived)
+                            : notif.type === "new_offer" ? !notif.contractorReadAt : isPending;
                       
                       return (
                         <div
@@ -460,7 +555,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             isInquiryReply ? "bg-success/10 text-success" :
                             "bg-muted text-muted-foreground"
                           }`}>
-                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isSampleSent ? <CheckCircle2 size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isWithdrawn ? <AlertCircle size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
@@ -468,14 +563,17 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                 ? isNewRfq ? t("notification_new_rfq")
                                   : isSampleReceived ? t("notification_sample_received")
                                   : isSampleRequest ? t("notification_sample_requested")
-                                  : isPending ? t("notification_pending")
                                   : isPriceReduction ? t("notification_price_reduction")
                                   : isAccepted ? t("notification_accepted")
+                                  : isRejected ? t("notification_rejected")
                                   : isInvitation ? (notif.title || t("notification_invitation"))
                                   : isInquiryReply ? t("notification_inquiry_reply")
-                                  : t("notification_rejected")
+                                  : isPending ? t("notification_pending")
+                                  : (notif.title || t("notification_pending"))
+                                : isWithdrawn ? t("notification_offer_withdrawn")
+                                : isSampleSent ? t("notification_sample_sent")
                                 : isInvitation ? (notif.title || t("notification_invitation"))
-                                : t("notification_new_offer")}
+                                : (notif.title || t("notification_new_offer"))}
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                                {isNewRfq 

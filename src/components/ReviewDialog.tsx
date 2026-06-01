@@ -93,10 +93,10 @@ export function ReviewDialog({
         const reviewsSnap = await getDocs(reviewsQuery)
         const reviewsList = reviewsSnap.docs.map(doc => doc.data())
         
-        // Include the newly added review in the calculation if needed
-        const totalReviews = reviewsList.length
-        const totalRatingSum = reviewsList.reduce((sum, r) => sum + (r.rating || 0), 0)
-        const newAverage = totalReviews > 0 ? parseFloat((totalRatingSum / totalReviews).toFixed(1)) : rating
+        // Include the newly added review in the calculation
+        const totalReviews = reviewsList.length + 1
+        const totalRatingSum = reviewsList.reduce((sum, r) => sum + (r.rating || 0), 0) + rating
+        const newAverage = parseFloat((totalRatingSum / totalReviews).toFixed(1))
 
         // Update user profile with rating
         const userRef = doc(firestore, "users", revieweeId)

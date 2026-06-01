@@ -122,7 +122,33 @@ export default function SupplierOffersPage() {
     if (!firestore) return
     setDeletingId(offerId)
     try {
+      // Fetch offer data before deleting so we can notify the contractor
+      let contractorId: string | null = null
+      let rfqTitle = ""
+      try {
+        const snap = await getDoc(doc(firestore, "offers", offerId))
+        if (snap.exists()) {
+          contractorId = snap.data()?.contractorId || null
+          rfqTitle = snap.data()?.rfqTitle || ""
+        }
+      } catch {}
+
       await deleteDoc(doc(firestore, "offers", offerId))
+
+      // Notify contractor of withdrawal
+      if (contractorId) {
+        try {
+          await addDoc(collection(firestore, "users", contractorId, "notifications"), {
+            userId: contractorId,
+            type: "offer_withdrawn",
+            title: t("withdraw_notif_title"),
+            message: t("withdraw_notif_msg", { title: rfqTitle }),
+            createdAt: new Date().toISOString(),
+            read: false
+          })
+        } catch {}
+      }
+
       toast({ title: t("withdraw_success"), description: t("withdraw_success_desc") })
     } catch {
       toast({ title: t("error_title"), description: t("withdraw_failed"), variant: "destructive" })
@@ -161,13 +187,15 @@ export default function SupplierOffersPage() {
       
       const offerSnap = await getDoc(doc(firestore, "offers", offerId));
       const offerData = offerSnap.data();
-      if (offerData) {
-        await addDoc(collection(firestore, "notifications"), {
+      if (offerData?.contractorId) {
+        // Use hardcoded strings — never use t() for Firestore writes, keys may fail
+        const rfqTitle = offerData.rfqTitle || ""
+        await addDoc(collection(firestore, "users", offerData.contractorId, "notifications"), {
           userId: offerData.contractorId,
           organizationId: offerData.contractorOrgId || offerData.contractorId,
           type: "sample_sent",
-          title: "تم إرسال عينة",
-          message: `قام المورد بإرسال العينة المطلوبة لمناقصة: ${offerData.rfqTitle}`,
+          title: "📦 تم إرسال العينة من المورد",
+          message: `قام المورد بإرسال العينة لمناقصة: ${rfqTitle}. يرجى تأكيد الاستلام.`,
           offerId: offerId,
           rfqId: offerData.rfqId,
           createdAt: new Date().toISOString(),
@@ -393,7 +421,7 @@ export default function SupplierOffersPage() {
       {/* Offer Detail Dialog */}
       <Dialog open={!!viewOffer} onOpenChange={(open) => !open && setViewOffer(null)}>
         <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader>
+          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("offer_details_title")}</DialogTitle>
             <DialogDescription>{t("offer_details_desc")}</DialogDescription>
           </DialogHeader>
@@ -457,7 +485,7 @@ export default function SupplierOffersPage() {
       {/* Update Price Dialog */}
       <Dialog open={!!updatePriceOffer} onOpenChange={(open) => !open && setUpdatePriceOffer(null)}>
         <DialogContent className="sm:max-w-md text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader>
+          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("update_price_title")}</DialogTitle>
             <DialogDescription>
               {t("update_price_desc")}
@@ -481,7 +509,7 @@ export default function SupplierOffersPage() {
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className={cn("flex flex-row gap-2 mt-4", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
             <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>{t("cancel")}</Button>
             <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || !newPrice || newPrice === updatePriceOffer?.price}>
               {isUpdatingPrice ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
@@ -494,7 +522,7 @@ export default function SupplierOffersPage() {
       {/* Confirm Sample Sending Alert */}
       <AlertDialog open={!!confirmSampleOffer} onOpenChange={(open) => !open && setConfirmSampleOffer(null)}>
         <AlertDialogContent className="text-right" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <AlertDialogHeader>
+          <AlertDialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <AlertDialogTitle>{t("confirm_sample_title")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("confirm_sample_desc", { title: confirmSampleOffer?.rfqTitle || "" })}
@@ -521,7 +549,7 @@ export default function SupplierOffersPage() {
       {/* Chat Redirect Dialog after sample sent - must be sibling, NOT nested */}
       <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>
         <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'} className="text-right">
-          <AlertDialogHeader>
+          <AlertDialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <AlertDialogTitle>{t("sample_sent_title")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("sample_sent_desc")}
