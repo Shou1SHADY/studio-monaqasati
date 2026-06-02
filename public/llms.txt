@@ -1,0 +1,94 @@
+# Mdmak Tech — مدماك تيك
+
+> Mdmak Tech (مدماك تيك) is a B2B digital procurement platform that automates
+> supply chain operations and connects contractors with verified suppliers
+> through a smart tendering system. Currently serving Saudi Arabia with
+> global expansion planned.
+
+## About
+- Founded: 2026
+- Headquarters: Saudi Arabia 🇸🇦
+- Domain: https://mdmaktech.sa
+- Language: Arabic (primary), English
+- Aligned with: Saudi Vision 2030
+- Current Market: Saudi Arabia (KSA)
+- Expansion Markets: Global (planned)
+
+## What is Mdmak Tech?
+Mdmak Tech is a SaaS B2B marketplace platform that digitises and automates
+the procurement process between contractors and suppliers. The platform
+eliminates manual tendering, reduces costs, and brings full transparency
+to supply chain operations — starting in Saudi Arabia and expanding globally.
+
+## Platform Features
+- Smart digital tendering and RFQ (Request for Quotation) system
+- Automated price comparison between verified suppliers
+- Digital contract awarding and approval workflows
+- Payment tracking and delivery follow-up
+- Real-time analytics and supplier performance reporting
+- Verified supplier network (CR and VAT certified)
+- ERP integration (Enterprise plan)
+- Multi-language support: Arabic and English
+- Mobile-compatible web platform
+
+## Business Impact
+- Up to 70% reduction in procurement time
+- Up to 15% savings on procurement budgets
+- Free to start — up to 5 tenders/month on Starter plan
+- Target: 500+ registered companies
+
+## Who Uses Mdmak Tech
+
+### Contractors (مقاولين)
+- Post tenders and material requests with exact specs
+- Receive competitive quotes from verified suppliers instantly
+- Compare offers with smart automated scoring
+- Approve orders and track delivery — all in one place
+
+### Suppliers (موردين)
+- Receive direct purchase requests from major contractors
+- Submit digital price quotes easily
+- Track payments and delivery status
+- Build reputation through verified review system
+
+## Pricing Plans
+- Starter: Free (up to 5 tenders/month, basic features)
+- Professional Growth: Paid (higher volume + advanced features)
+- Enterprise: Custom pricing (ERP integration + dedicated account manager
+  + advanced reporting)
+
+## Partners & Clients
+- Qudra
+- Naya
+- ITC
+
+## Verification & Trust
+- All suppliers verified via Saudi Commercial Registration (CR)
+- VAT certificate verification required
+- Transparent rating and review system after every completed order
+- Supplier response time: 24–48 hours average
+
+## FAQ Summary
+- Is it free? Yes — free registration for contractors and suppliers
+- Supplier response time: 24–48 hours
+- Handles projects of all sizes — from small renovations to large infrastructure
+- Enterprise plan includes ERP integration and dedicated account manager
+
+## Geographic Coverage
+- Primary market: Saudi Arabia (all regions)
+- Planned expansion: Global markets
+
+## Key URLs
+- Homepage:             https://mdmaktech.sa
+- Register (Contractor): https://mdmaktech.sa/register?role=Contractor
+- Register (Supplier):   https://mdmaktech.sa/register?role=Supplier
+- Features:              https://mdmaktech.sa/#features
+- Pricing:               https://mdmaktech.sa/pricing
+- About:                 https://mdmaktech.sa/about
+- Contact:               https://mdmaktech.sa/contact
+- Privacy Policy:        https://mdmaktech.sa/privacy
+- Terms & Conditions:    https://mdmaktech.sa/terms
+
+## Social & Professional Profiles
+- LinkedIn: https://www.linkedin.com/company/mdmaktech
+- Twitter/X: https://twitter.com/mdmaktech
