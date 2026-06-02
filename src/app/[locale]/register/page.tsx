@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
+import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
@@ -240,9 +241,15 @@ export default function RegisterPage() {
           </Link>
           <div className="flex items-center gap-4">
             <LanguageSwitcher />
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-primary text-white rounded-lg flex items-center justify-center font-bold text-base shadow-lg shadow-primary/20">M</div>
-              <span className="text-xl font-bold text-slate-800 font-headline tracking-normal">Mdmak Tech</span>
+            <div className="flex items-center">
+              <Image 
+                src="/logo2.png" 
+                alt="Mdmak Tech" 
+                width={120} 
+                height={41} 
+                className="h-8 w-auto object-contain" 
+                priority 
+              />
             </div>
           </div>
         </div>

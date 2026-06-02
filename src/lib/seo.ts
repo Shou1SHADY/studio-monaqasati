@@ -28,15 +28,15 @@ interface PageMetaParams {
 export function buildPageMetadata({ locale, title, description, path, ogImage }: PageMetaParams): Metadata {
   const siteName = locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'
   const fullTitle = `${title} | ${siteName}`
-  const ogImg = ogImage || '/logo.png'
+  const ogImg = ogImage || '/logo17.jpg'
 
   return {
     title: fullTitle,
     description,
     icons: {
-      icon: '/logo.png',
-      shortcut: '/logo.png',
-      apple: '/logo.png',
+      icon: '/logo17.jpg',
+      shortcut: '/logo17.jpg',
+      apple: '/logo17.jpg',
     },
     alternates: alternatesForPath(path, locale),
     openGraph: {

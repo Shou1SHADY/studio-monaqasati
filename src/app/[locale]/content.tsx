@@ -93,13 +93,16 @@ export default function HomeContent() {
       {/* Premium Navigation - Aligned with App Primary Navy & CTA Blue */}
       <nav className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${scrolled ? 'bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer group">
-            <div className="w-10 h-10 bg-cta rounded-xl flex items-center justify-center font-bold text-xl text-white transition-transform group-hover:scale-110 shadow-lg shadow-cta/20">{locale === 'ar' ? 'م' : 'M'}</div>
-            <div className="flex flex-col">
-              <span className="text-xl font-bold text-white tracking-normal leading-none">{locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}</span>
-              <span className="text-[10px] text-sky-400/80 font-bold uppercase tracking-widest mt-1">{locale === 'ar' ? 'Mdmak Tech' : 'مدماك تيك'}</span>
-            </div>
-          </div>
+          <Link href="/" className="flex items-center cursor-pointer group">
+            <Image
+              src="/logo1.png"
+              alt={locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}
+              width={140}
+              height={48}
+              className="h-10 w-auto object-contain transition-transform group-hover:scale-105"
+              priority
+            />
+          </Link>
 
           <div className="hidden lg:flex items-center gap-10 text-slate-400 font-bold text-sm tracking-normal">
             <Link href="#features" className="hover:text-white transition-colors relative group">
@@ -584,13 +587,15 @@ export default function HomeContent() {
       <footer className="bg-[#020617] border-t border-white/5 py-16 md:py-24 relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-10 md:gap-20 mb-12 md:mb-20 relative z-10">
           <div className="col-span-1 md:col-span-2 space-y-10">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-cta text-white rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg shadow-cta/20">{locale === 'ar' ? 'م' : 'M'}</div>
-              <div className="flex flex-col">
-                <span className="text-2xl font-bold text-white leading-none">{locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}</span>
-                <span className="text-xs text-sky-400/70 font-bold uppercase tracking-widest mt-1">{locale === 'ar' ? 'Mdmak Tech' : 'مدماك تيك'}</span>
-              </div>
-            </div>
+            <Link href="/" className="flex items-center">
+              <Image
+                src="/logo1.png"
+                alt={locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}
+                width={140}
+                height={48}
+                className="h-10 w-auto object-contain"
+              />
+            </Link>
             <p className="text-slate-500 text-lg leading-relaxed max-w-sm font-medium">
               {tFooter('desc')}
             </p>

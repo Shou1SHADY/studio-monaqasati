@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Link } from "@/i18n/routing"
 import { usePathname } from "@/i18n/routing"
 import { useLocale, useTranslations } from "next-intl"
+import Image from "next/image"
 import {
   LayoutDashboard,
   FileText,
@@ -257,8 +258,17 @@ export function RoleSidebar() {
   return (
     <Sidebar side={locale === 'ar' ? 'right' : 'left'} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
       <SidebarHeader className="p-6 border-b border-sidebar-border">
-        <div className="flex flex-col gap-2">
-          <Link href="/" className="text-2xl font-bold text-white font-headline">مدماك تيك</Link>
+        <div className="flex flex-col gap-3">
+          <Link href="/" className="block">
+            <Image 
+              src="/logo1.png" 
+              alt="مدماك تيك" 
+              width={130} 
+              height={45} 
+              className="h-9 w-auto object-contain" 
+              priority 
+            />
+          </Link>
           <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
             {t(portalTitleKey)}
           </span>

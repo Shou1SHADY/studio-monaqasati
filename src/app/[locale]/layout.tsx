@@ -47,9 +47,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'max-video-preview': -1,
     },
     icons: {
-      icon: '/logo.png',
-      shortcut: '/logo.png',
-      apple: '/logo.png',
+      icon: '/logo17.jpg',
+      shortcut: '/logo17.jpg',
+      apple: '/logo17.jpg',
     },
     openGraph: {
       type: 'website',
@@ -60,9 +60,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       url: locale === 'ar' ? 'https://mdmaktech.sa' : `https://mdmaktech.sa/${locale}`,
       images: [
         {
-          url: '/logo.png',
-          width: 512,
-          height: 512,
+          url: '/logo17.jpg',
+          width: 4501,
+          height: 4501,
           alt: locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech',
         },
       ],
@@ -71,7 +71,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       card: 'summary_large_image',
       title: locale === 'ar' ? titleAr : titleEn,
       description: locale === 'ar' ? descAr : descEn,
-      images: ['/logo.png'],
+      images: ['/logo17.jpg'],
     },
   };
 }
