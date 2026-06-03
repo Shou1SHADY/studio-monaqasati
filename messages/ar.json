@@ -1179,6 +1179,7 @@
       "offers_toast_chat_alert_desc": "تم قبول العرض لكن فشل إنشاء المحادثة. تحقق من قواعد Firestore.",
       "offers_toast_error": "خطأ",
       "offers_toast_error_desc": "فشل تحديث العرض: {message}",
+      "offers_toast_rfq_update_failed": "تم قبول العرض ولكن فشل تحديث حالة المناقصة. يرجى التواصل مع الدعم.",
       "offers_toast_sample_error": "حدث خطأ أثناء تحديث حالة العينة.",
       "offers_currency_sar": "ر.س",
       "offers_reduction_dialog_desc": "طلب تخفيض السعر من المورد {supplier}. يمكنك إضافة ملاحظة اختيارية لتوضيح السبب أو توجيه المورد.",

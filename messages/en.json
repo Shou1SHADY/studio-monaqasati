@@ -1181,6 +1181,7 @@
       "offers_toast_chat_alert_desc": "Offer accepted but chat creation failed. Check Firestore rules.",
       "offers_toast_error": "Error",
       "offers_toast_error_desc": "Failed to update offer: {message}",
+      "offers_toast_rfq_update_failed": "Offer accepted but failed to update tender status. Please contact support.",
       "offers_toast_sample_error": "An error occurred while updating the sample status.",
       "offers_reduction_dialog_desc": "Request a price reduction from supplier {supplier}. You can add an optional note to explain the reason or guide the supplier.",
       "offers_reduction_note_label": "Note to Supplier",

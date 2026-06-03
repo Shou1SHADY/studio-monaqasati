@@ -173,7 +173,12 @@ export default function RfqOffersPage() {
           awardedAt: new Date().toISOString()
         })
       } catch (rfqErr) {
-        console.warn("⚠️ Failed to update RFQ status (non-critical):", rfqErr)
+        console.warn("⚠️ Failed to update RFQ status:", rfqErr)
+        toast({
+          title: t("offers_toast_error"),
+          description: t("offers_toast_rfq_update_failed"),
+          variant: "destructive"
+        })
       }
     }
 

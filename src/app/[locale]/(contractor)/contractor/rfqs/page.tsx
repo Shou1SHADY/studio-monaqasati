@@ -31,7 +31,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw } from "lucide-react"
 import { Link } from "@/i18n/routing"
-import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
@@ -182,6 +182,18 @@ const handleBatchPublish = async () => {
     return q;
   }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, profile?.organizationId])
 
+  const acceptedOffersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "offers"),
+      where("contractorId", "==", user.uid),
+      where("status", "==", "مقبول")
+    )
+  }, [firestore, user, isUserLoading])
+
+  const { data: acceptedOffers } = useCollection(acceptedOffersQuery)
+  const acceptedRfqIds = new Set((acceptedOffers || []).map((o: any) => o.rfqId))
+
   const { data: rfqs, isLoading: isCollectionLoading, hasMore, loadMore, error } = useCollectionPaginated(rfqsQuery)
   const isLoading = isUserLoading || (isCollectionLoading && !rfqs && !error)
   const isLoadingMore = isCollectionLoading && !!rfqs
@@ -228,6 +240,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     const now = new Date()
     now.setHours(0, 0, 0, 0)
     return deadline < now
+  }
+
+  const canEditOrDelete = (rfq: any) => {
+    if (rfq.status === "Awarded") return false
+    if (acceptedRfqIds.has(rfq.id)) return false
+    return true
   }
 
   const getStatusBadge = (rfq: any) => {
@@ -502,7 +520,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </Button>
                         </Link>
                       </div>
-                      {rfq.status !== "Awarded" && (
+                      {canEditOrDelete(rfq) && (
                         <div className="flex gap-2 mt-2">
                           <Link href={`/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
                             <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
@@ -521,7 +539,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </Button>
                         </div>
                       )}
-                      {isExpired(rfq) && (
+                      {isExpired(rfq) && canEditOrDelete(rfq) && (
                         <div className="mt-2">
                           <Button
                             variant="outline"
