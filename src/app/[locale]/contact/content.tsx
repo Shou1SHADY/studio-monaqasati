@@ -47,6 +47,20 @@ export default function ContactUs() {
                 <p className="text-slate-400 text-sm mb-3">{t("hq_desc")}</p>
                 <p className="text-lg font-bold" dangerouslySetInnerHTML={{ __html: t.raw("hq_address") }}></p>
               </div>
+              
+              <div className="mt-2 rounded-xl overflow-hidden border border-white/10 h-[250px] w-full relative group">
+                <iframe
+                  src="https://maps.google.com/maps?q=Prince%20Sultan%20Ibn%20Abdulaziz%20Road,%20North%20Mathar%20District,%20Riyadh&t=&z=14&ie=UTF8&iwloc=&output=embed"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Google Maps"
+                  className="absolute inset-0 grayscale contrast-125 opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-500"
+                />
+              </div>
             </div>
           </div>
 

@@ -14,6 +14,36 @@ import {
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useTranslations, useLocale } from 'next-intl';
 import { cn } from "@/lib/utils";
+import { motion, useScroll, useTransform, animate, useMotionValue } from 'framer-motion';
+
+function AnimatedStat({ value }: { value: string }) {
+  const match = value.match(/^.*?(\d+)(.*)$/);
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, (latest) => Math.round(latest));
+  const [hasAnimated, setHasAnimated] = useState(false);
+  
+  if (!match) return <span>{value}</span>;
+  
+  const numValue = parseInt(match[1]);
+  const suffix = match[2];
+  const prefix = value.substring(0, match.index);
+  
+  const display = useTransform(rounded, (latest) => `${prefix}${latest}${suffix}`);
+  
+  return (
+    <motion.span
+      onViewportEnter={() => {
+        if (!hasAnimated) {
+          setHasAnimated(true);
+          animate(count, numValue, { duration: 1.5, ease: "easeOut" });
+        }
+      }}
+      viewport={{ once: true, margin: "-50px" }}
+    >
+      {hasAnimated ? display : `${prefix}0${suffix}`}
+    </motion.span>
+  );
+}
 
 
 
@@ -32,6 +62,8 @@ export default function HomeContent() {
   const tFAQ = useTranslations('Landing.FAQ');
   const tLanding = useTranslations('Landing');
   const locale = useLocale();
+  const { scrollY } = useScroll();
+  const yHeroBg = useTransform(scrollY, [0, 1000], [0, 50]);
 
   const heroSlides = [
     {
@@ -141,12 +173,12 @@ export default function HomeContent() {
         <section className="relative h-screen min-h-[800px] md:min-h-[700px] flex flex-col">
           {/* Slides */}
           {heroSlides.map((s, i) => (
-            <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
+            <motion.div key={i} style={{ y: i === slide ? yHeroBg : 0 }} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
               <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" priority />
               <div className={`absolute inset-0 ${locale === 'ar' ? 'bg-gradient-to-l' : 'bg-gradient-to-r'} from-[#020617] via-[#020617]/70 to-transparent`} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-[#020617]/30" />
-            </div>
+            </motion.div>
           ))}
 
           {/* Decorative Mesh */}
@@ -214,7 +246,7 @@ export default function HomeContent() {
                       <s.icon size={20} className="md:size-6" />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
-                      <div className="text-lg md:text-xl font-black text-white leading-tight">{s.val}</div>
+                      <div className="text-lg md:text-xl font-black text-white leading-tight"><AnimatedStat value={s.val} /></div>
                       <div className="text-slate-500 text-[9px] md:text-[11px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
                     </div>
                   </div>
@@ -300,7 +332,14 @@ export default function HomeContent() {
                 { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, color: "blue" },
                 { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, color: "purple" }
               ].map((f, i) => (
-                <div key={i} className="p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-cta/30 transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden">
+                <motion.div 
+                  initial={{ opacity: 0, y: 30 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: i * 0.1 }}
+                  key={i} 
+                  className="p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-cta/30 transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden"
+                >
                   <div className="absolute -top-10 -left-10 w-32 h-32 bg-cta/5 rounded-full blur-3xl group-hover:bg-cta/10 transition-all" />
                   <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-sky-400 mb-8 group-hover:bg-cta group-hover:text-white transition-all duration-500 shadow-xl">
                     <f.icon size={28} />
@@ -310,7 +349,7 @@ export default function HomeContent() {
                   <div className="mt-8 flex items-center gap-2 text-sky-400 text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all rtl:translate-x-2 ltr:-translate-x-2 group-hover:translate-x-0">
                     {tFeatures('learn_more')} <ArrowLeft size={14} className="rtl:rotate-0 ltr:rotate-180" />
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -331,7 +370,7 @@ export default function HomeContent() {
                   </div>
                   <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
                 </div>
-                <div className="text-3xl md:text-5xl font-black text-white leading-none">{tContractor('stat_val')}</div>
+                <div className="text-3xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tContractor('stat_val')} /></div>
                 <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
               </div>
             </div>
@@ -405,7 +444,7 @@ export default function HomeContent() {
                   </div>
                   <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
                 </div>
-                <div className="text-3xl md:text-5xl font-black text-white leading-none">{tSupplier('stat_val')}</div>
+                <div className="text-3xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tSupplier('stat_val')} /></div>
                 <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
               </div>
             </div>
@@ -439,7 +478,14 @@ export default function HomeContent() {
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 lg:gap-12 relative" key={activeFlow}>
               {activeSteps.map((s, i) => (
-                <div key={i} className="flex flex-col items-center text-center space-y-6 group relative">
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
+                  viewport={{ once: true, margin: "-50px" }}
+                  transition={{ duration: 0.5, delay: i * 0.1 }}
+                  key={i} 
+                  className="flex flex-col items-center text-center space-y-6 group relative"
+                >
                   {i < 3 && (
                     <div className="hidden md:block absolute top-10 rtl:-left-1/2 ltr:-right-1/2 w-full h-[2px] bg-gradient-to-r from-transparent via-white/5 to-transparent z-0" />
                   )}
@@ -451,7 +497,7 @@ export default function HomeContent() {
                     <h4 className="text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h4>
                     <p className="text-slate-400 text-sm leading-relaxed px-4">{s.desc}</p>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -599,10 +645,18 @@ export default function HomeContent() {
             <p className="text-slate-500 text-lg leading-relaxed max-w-sm font-medium">
               {tFooter('desc')}
             </p>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col items-start gap-6">
               <Link href="/contact" className="px-6 py-3 rounded-xl bg-white/5 font-bold text-sm text-slate-300 hover:text-sky-400 hover:bg-white/10 transition-all border border-white/5">
                 {tFooter('support')}
               </Link>
+              
+              <div className="space-y-3">
+                <h4 className="text-white font-black text-xs uppercase tracking-normal">{tFooter('address_title')}</h4>
+                <div className="flex items-start gap-3 text-slate-400">
+                  <MapPin size={18} className="mt-0.5 shrink-0 text-sky-400" />
+                  <p className="text-sm font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: tFooter.raw('address_value') }} />
+                </div>
+              </div>
             </div>
           </div>
 
