@@ -17,7 +17,8 @@ import {
   Briefcase,
   Loader2,
   X,
-  Heart
+  Heart,
+  FolderOpen
 } from "lucide-react"
 import { 
   Popover,
@@ -487,6 +488,42 @@ export default function SuppliersDirectory() {
                 <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
                   {selectedSupplier.description || t("suppliers_no_description")}
                 </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                  <FolderOpen size={18} className="text-primary" />
+                  {t("suppliers_projects")}
+                </h4>
+                {selectedSupplier.projects?.length > 0 ? (
+                  <div className="grid gap-3">
+                    {selectedSupplier.projects.map((project: any) => (
+                      <div key={project.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+                        <p className="font-bold text-sm text-slate-800">{project.name}</p>
+                        {project.description && (
+                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">{project.description}</p>
+                        )}
+                        {project.images?.length > 0 && (
+                          <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
+                            {project.images.map((img: string, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img}
+                                alt={`${project.name} ${idx + 1}`}
+                                className="h-20 w-28 object-cover rounded-lg border border-slate-200 shrink-0 hover:scale-105 transition-transform cursor-pointer"
+                                onClick={() => window.open(img, '_blank')}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
+                    {t("suppliers_no_projects")}
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-3">

@@ -136,7 +136,16 @@ export default function SupplierNotificationsPage() {
       });
 
     const rfqsList = (rfqs || [])
-      .filter((rfq: any) => profile?.specializations?.includes(rfq.category))
+      .filter((rfq: any) => {
+        if (!profile?.specializations?.includes(rfq.category)) return false
+        if (rfq.deadline) {
+          const deadline = new Date(rfq.deadline)
+          const now = new Date()
+          now.setHours(0, 0, 0, 0)
+          if (deadline < now) return false
+        }
+        return true
+      })
       .map((rfq: any) => ({ ...rfq, type: "new_rfq" }))
       
     const inquiryList = (userNotifications || []).map((n: any) => ({ 

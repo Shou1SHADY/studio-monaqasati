@@ -498,6 +498,14 @@ export default function SupplierOffersPage() {
                 {updatePriceOffer?.price} {t("sar")}
               </div>
             </div>
+            {updatePriceOffer?.targetPrice != null && (
+              <div className="space-y-2">
+                <Label>{t("contractor_suggested_price")}</Label>
+                <div className="p-3 bg-amber-50 text-amber-700 rounded-md font-bold border border-amber-200">
+                  {updatePriceOffer.targetPrice} {t("sar")}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>{t("new_price_label")}</Label>
               <Input 

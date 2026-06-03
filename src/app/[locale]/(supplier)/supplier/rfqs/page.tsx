@@ -164,6 +164,14 @@ export default function AvailableRfqsPage() {
     : [];
 
   const filteredRfqs = rfqs.filter((rfq: any) => {
+    // Always exclude expired tenders
+    if (rfq.deadline) {
+      const deadline = new Date(rfq.deadline);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      if (deadline < now) return false;
+    }
+
     // Search query filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();

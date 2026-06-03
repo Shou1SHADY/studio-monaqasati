@@ -159,7 +159,15 @@ export default function SupplierDashboard() {
   const totalValue = offers?.filter((o: any) => o.status === "مقبول" || o.status === "Accepted")
     .reduce((sum: number, o: any) => sum + (parseFloat(o.price?.replace(/,/g, '')) || 0), 0) || 0
 
-  const activeRfqsCount = rfqs?.length || 0
+  const activeRfqs = rfqs?.filter((rfq: any) => {
+    if (!rfq.deadline) return true
+    const deadline = new Date(rfq.deadline)
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    return deadline >= now
+  }) || []
+
+  const activeRfqsCount = activeRfqs.length
   const lastActivityDate = getLastActivityDate();
 
   const stats = [
@@ -169,7 +177,7 @@ export default function SupplierDashboard() {
     { title: t("total_contracts"), value: totalValue > 1000 ? `${(totalValue/1000).toFixed(1)}k` : totalValue.toString(), icon: DollarSign, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", actionUrl: "/supplier/offers" },
   ]
 
-  const recommendedRfqs = rfqs?.slice(0, 3) || []
+  const recommendedRfqs = activeRfqs.slice(0, 3)
   return (
     <PortalLayout>
       <div className={cn("space-y-8 max-w-7xl mx-auto pb-10", locale === 'ar' ? 'text-right' : 'text-left')}>

@@ -159,10 +159,21 @@ export default function RfqOffersPage() {
         }
       } catch (error: any) {
         console.error("❌ setDoc chat failed:", error?.code, error?.message)
-        // Don't block the accept flow — offer is already updated
         toast({ title: t("offers_toast_chat_alert"), description: t("offers_toast_chat_alert_desc"), variant: "destructive" })
         setProcessingId(null)
         return
+      }
+    }
+
+    // Step 2b: Update RFQ status to Awarded when accepting
+    if (decision === "مقبول") {
+      try {
+        await updateDoc(doc(firestore, "rfqs", rfqId), {
+          status: "Awarded",
+          awardedAt: new Date().toISOString()
+        })
+      } catch (rfqErr) {
+        console.warn("⚠️ Failed to update RFQ status (non-critical):", rfqErr)
       }
     }
 
@@ -257,6 +268,10 @@ export default function RfqOffersPage() {
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         status: "تم التسليم",
+        completedAt: new Date().toISOString()
+      })
+      await updateDoc(doc(firestore, "rfqs", rfqId), {
+        status: "Awarded",
         completedAt: new Date().toISOString()
       })
       toast({

@@ -254,7 +254,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               />
             </div>
           </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
+          <CardContent className="p-0 overflow-x-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
             {isLoading ? (
               <div className="p-20 flex flex-col items-center justify-center gap-4 text-muted-foreground">
                 <Loader2 className="animate-spin" size={40} />
@@ -270,17 +270,17 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead>{t("team_name")}</TableHead>
-                    <TableHead>{t("team_email")}</TableHead>
-                    <TableHead>{t("team_role")}</TableHead>
-                    <TableHead>{t("team_join_date")}</TableHead>
-                    {isOwner && <TableHead>{t("team_actions")}</TableHead>}
+                    <TableHead className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{t("team_name")}</TableHead>
+                    <TableHead className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{t("team_email")}</TableHead>
+                    <TableHead className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{t("team_role")}</TableHead>
+                    <TableHead className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{t("team_join_date")}</TableHead>
+                    {isOwner && <TableHead className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{t("team_actions")}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredMembers.map((member: any) => (
                     <TableRow key={member.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="font-bold">
+                      <TableCell className={cn("font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>
                         <div className="flex items-center gap-3">
                           <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xs">
                             {member.name?.substring(0, 1) || "U"}
@@ -288,8 +288,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                           {member.name || t("team_new_user")}
                         </div>
                       </TableCell>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>
+                      <TableCell className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>{member.email}</TableCell>
+                      <TableCell className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>
                         {member.organizationRole === "owner" ? (
                           <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
                             <Shield size={12} /> {t("team_ceo")}
@@ -300,11 +300,11 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground" suppressHydrationWarning>
+                      <TableCell className={cn("text-xs text-muted-foreground", locale === 'ar' ? 'text-right' : 'text-left')} suppressHydrationWarning>
                         {member.createdAt ? new Date(member.createdAt).toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US') : "-"}
                       </TableCell>
                       {isOwner && (
-                        <TableCell>
+                        <TableCell className={cn(locale === 'ar' ? 'text-right' : 'text-left')}>
                           {member.id !== user?.uid && (
                             <Button 
                               variant="ghost" 

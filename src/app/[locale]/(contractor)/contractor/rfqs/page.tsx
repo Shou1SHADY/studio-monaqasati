@@ -10,10 +10,29 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
@@ -24,6 +43,11 @@ export default function ContractorRfqsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
   const [selectedRfqs, setSelectedRfqs] = useState<string[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<any>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [republishTarget, setRepublishTarget] = useState<any>(null)
+  const [republishDeadline, setRepublishDeadline] = useState("")
+  const [isRepublishing, setIsRepublishing] = useState(false)
   const [deadlineFilter, setDeadlineFilter] = useState<"all" | "week" | "month" | "custom">("all")
   const [customDeadline, setCustomDeadline] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -92,6 +116,50 @@ const handleBatchPublish = async () => {
     setSelectedRfqs(draftRfqs);
   };
 
+  const handleDelete = async () => {
+    if (!firestore || !deleteTarget) return
+    setIsDeleting(true)
+    try {
+      await deleteDoc(doc(firestore, "rfqs", deleteTarget.id))
+      toast({
+        title: t("rfq_delete_success"),
+      })
+      setDeleteTarget(null)
+    } catch (error) {
+      toast({
+        title: t("rfq_delete_failed"),
+        variant: "destructive"
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleRepublish = async () => {
+    if (!firestore || !republishTarget || !republishDeadline) return
+    setIsRepublishing(true)
+    try {
+      await updateDoc(doc(firestore, "rfqs", republishTarget.id), {
+        deadline: republishDeadline,
+        status: "New",
+        visibility: "public",
+        publishedAt: new Date().toISOString()
+      })
+      toast({
+        title: t("rfq_republish_success"),
+      })
+      setRepublishTarget(null)
+      setRepublishDeadline("")
+    } catch (error) {
+      toast({
+        title: t("rfq_republish_failed"),
+        variant: "destructive"
+      })
+    } finally {
+      setIsRepublishing(false)
+    }
+  }
+
   // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null;
@@ -153,6 +221,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return timeB - timeA;
   }) || [];
+
+  const isExpired = (rfq: any) => {
+    if (rfq.status !== "New" || !rfq.deadline) return false
+    const deadline = new Date(rfq.deadline)
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    return deadline < now
+  }
 
   const getStatusBadge = (rfq: any) => {
     if (rfq.status === "Draft") {
@@ -426,6 +502,38 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </Button>
                         </Link>
                       </div>
+                      {rfq.status !== "Awarded" && (
+                        <div className="flex gap-2 mt-2">
+                          <Link href={`/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
+                            <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                              <Pencil size={14} />
+                              {t("rfq_edit_tender")}
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
+                            onClick={() => setDeleteTarget(rfq)}
+                          >
+                            <Trash2 size={14} />
+                            {t("rfq_delete_tender")}
+                          </Button>
+                        </div>
+                      )}
+                      {isExpired(rfq) && (
+                        <div className="mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-1 text-sm h-8 rounded-lg text-amber-600 border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-400 transition-all"
+                            onClick={() => { setRepublishTarget(rfq); setRepublishDeadline("") }}
+                          >
+                            <RotateCw size={14} />
+                            {t("rfq_republish")}
+                          </Button>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -447,6 +555,58 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         </CardContent>
         </Card>
       </div>
+
+      <Dialog open={!!republishTarget} onOpenChange={(open) => { if (!open) { setRepublishTarget(null); setRepublishDeadline("") } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("rfq_republish_title")}</DialogTitle>
+            <DialogDescription>
+              {t("rfq_republish_desc", { title: republishTarget?.title || "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("rfq_republish_deadline_label")}</Label>
+              <input
+                type="date"
+                value={republishDeadline}
+                onChange={e => setRepublishDeadline(e.target.value)}
+                className="h-10 w-full px-3 rounded-xl border border-input bg-white text-sm"
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRepublishTarget(null); setRepublishDeadline("") }} disabled={isRepublishing}>{t("cancel")}</Button>
+            <Button onClick={handleRepublish} disabled={!republishDeadline || isRepublishing}>
+              {isRepublishing ? <Loader2 className="animate-spin" size={14} /> : <RotateCw size={14} />}
+              {t("rfq_republish_confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("rfq_delete_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("rfq_delete_confirm_desc", { title: deleteTarget?.title || "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDeleting ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("rfq_delete_tender")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PortalLayout>
   )
 }

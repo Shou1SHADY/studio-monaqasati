@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "@/i18n/routing"
+import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
@@ -38,7 +39,7 @@ import {
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
-import { collection, doc } from "firebase/firestore"
+import { collection, doc, getDoc, updateDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -86,6 +87,11 @@ export default function NewRfqPage() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const { toast } = useToast()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const editId = searchParams.get("edit")
+  const isEditing = !!editId
+  const [editRfqData, setEditRfqData] = useState<any>(null)
+  const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const storage = useStorage()
@@ -123,6 +129,54 @@ export default function NewRfqPage() {
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!editId || !firestore) return
+    const loadEditData = async () => {
+      try {
+        const snap = await getDoc(doc(firestore, "rfqs", editId))
+        if (snap.exists()) {
+          const data = snap.data()
+          setEditRfqData(data)
+          setFormData({
+            title: data.title || "",
+            city: data.city || "",
+            district: data.district || "",
+            deadline: data.deadline || "",
+            notes: data.notes || "",
+            pdfUrl: data.pdfUrl || null,
+            pdfStoragePath: data.pdfStoragePath || null
+          })
+          if (data.products?.length) {
+            setProducts(data.products.map((p: any, idx: number) => ({
+              id: (idx + 1).toString(),
+              name: p.name || "",
+              quantity: String(p.quantity || ""),
+              unit: p.unitOfMeasure || p.unit || "",
+              description: p.description || "",
+              category: p.category || "",
+              subCategory: p.subCategory || ""
+            })))
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load RFQ for editing:", err)
+      } finally {
+        setIsLoadingEdit(false)
+      }
+    }
+    loadEditData()
+  }, [editId, firestore])
+
+  if (isLoadingEdit) {
+    return (
+      <PortalLayout>
+        <div className="flex justify-center items-center h-[60vh]">
+          <Loader2 className="animate-spin text-primary" size={32} />
+        </div>
+      </PortalLayout>
+    )
+  }
 
   if (isUserLoading || isProfileLoading) {
     return (
@@ -384,6 +438,52 @@ export default function NewRfqPage() {
     )
 
     setIsSubmitting(true)
+
+    if (isEditing && editId) {
+      // Edit mode: update the single existing RFQ
+      const rfqData: any = {
+        title: formData.title,
+        category: validProducts[0]?.category || editRfqData?.category || "",
+        subCategory: validProducts.every(p => p.subCategory === validProducts[0].subCategory)
+          ? (validProducts[0].subCategory === "أخرى" ? validProducts[0].otherSubCategory : validProducts[0].subCategory)
+          : "متعدد",
+        products: validProducts.map(p => ({
+          name: p.name,
+          quantity: Number(p.quantity),
+          unitOfMeasure: p.unit,
+          description: p.description,
+          category: p.category,
+          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
+        })),
+        deadline: formData.deadline,
+        city: formData.city,
+        district: formData.district,
+        notes: formData.notes,
+        pdfUrl: formData.pdfUrl,
+        pdfStoragePath: formData.pdfStoragePath,
+        status: status,
+        visibility: "public",
+        updatedAt: new Date().toISOString()
+      }
+
+      try {
+        await updateDoc(doc(firestore, "rfqs", editId), rfqData)
+        toast({
+          title: t("newrfq_toast_updated"),
+          description: t("newrfq_toast_updated_desc"),
+        })
+        router.push("/contractor/rfqs")
+      } catch (err) {
+        toast({
+          title: t("newrfq_toast_update_failed"),
+          variant: "destructive"
+        })
+      }
+      setIsSubmitting(false)
+      return
+    }
+
+    // Create mode: group products by category and create separate RFQs
     const rfqsRef = collection(firestore, "rfqs")
 
     // Group products by their main category
@@ -465,8 +565,8 @@ export default function NewRfqPage() {
     <PortalLayout>
       <div className={cn("max-w-4xl mx-auto py-8", locale === 'ar' ? 'text-right' : 'text-left')}>
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-secondary font-headline">{t("newrfq_page_title")}</h1>
-          <p className="text-muted-foreground mt-2">{t("newrfq_page_desc")}</p>
+          <h1 className="text-3xl font-bold text-secondary font-headline">{isEditing ? t("newrfq_edit_title") : t("newrfq_page_title")}</h1>
+          <p className="text-muted-foreground mt-2">{isEditing ? t("newrfq_edit_desc") : t("newrfq_page_desc")}</p>
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-8">
