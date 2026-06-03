@@ -31,9 +31,6 @@ export default function RegisterPage() {
     email: "",
     password: "",
     phone: "",
-    crNumber: "",
-    taxNumber: "",
-    city: "",
     role: "Contractor" as "Contractor" | "Supplier",
     specializations: [] as string[]
   })
@@ -108,9 +105,6 @@ export default function RegisterPage() {
         name: formData.name,
         email: emailLower,
         phone: formData.phone,
-        crNumber: formData.crNumber,
-        taxNumber: formData.taxNumber,
-        city: formData.city,
         role: role,
         organizationId: organizationId,
         organizationRole: organizationRole,
@@ -188,9 +182,6 @@ export default function RegisterPage() {
         name: formData.name || user.displayName || "مستخدم جديد",
         email: emailLower,
         phone: formData.phone || "",
-        crNumber: formData.crNumber || "",
-        taxNumber: formData.taxNumber || "",
-        city: formData.city || "",
         role: role,
         organizationId: organizationId,
         organizationRole: organizationRole,
@@ -307,49 +298,6 @@ export default function RegisterPage() {
                 className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
                 value={formData.name}
                 onChange={e => setFormData({ ...formData, name: e.target.value })}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 items-start">
-              <div className="space-y-2">
-                <Label htmlFor="crNumber" className="text-slate-700 font-bold min-h-[2.5rem] flex items-end">{t("cr_number")}</Label>
-                <Input
-                  id="crNumber"
-                  required
-                  placeholder={t("cr_number_ph")}
-                  className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                  value={formData.crNumber}
-                  onChange={e => {
-                    const val = e.target.value.replace(/\D/g, '')
-                    setFormData({ ...formData, crNumber: val })
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="taxNumber" className="text-slate-700 font-bold min-h-[2.5rem] flex items-end">{t("tax_number")}</Label>
-                <Input
-                  id="taxNumber"
-                  required
-                  placeholder={t("tax_number_ph")}
-                  className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                  value={formData.taxNumber || ""}
-                  onChange={e => {
-                    const val = e.target.value.replace(/\D/g, '')
-                    setFormData({ ...formData, taxNumber: val })
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="city" className="text-slate-700 font-bold">{t("city")}</Label>
-              <Input
-                id="city"
-                placeholder={t("city_ph")}
-                className="h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                value={formData.city}
-                onChange={e => setFormData({ ...formData, city: e.target.value })}
               />
             </div>
 
