@@ -64,7 +64,7 @@ export default function ContactUs() {
             </div>
           </div>
 
-          <form className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6 text-start" onSubmit={(e) => e.preventDefault()}>
+          <form className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-6 text-start h-fit" onSubmit={(e) => e.preventDefault()}>
             <div>
               <label className="block text-sm font-bold text-slate-300 mb-2">{t("form_name")}</label>
               <input type="text" className="w-full h-12 bg-white/5 border border-white/10 rounded-xl px-4 text-white focus:outline-none focus:border-sky-400 transition-colors" placeholder={t("form_name_ph")} />
