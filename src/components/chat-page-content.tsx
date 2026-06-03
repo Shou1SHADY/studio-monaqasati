@@ -143,7 +143,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
 
   return (
     <PortalLayout>
-      <div className="max-w-3xl mx-auto text-right space-y-4">
+      <div className={`max-w-3xl mx-auto space-y-4 ${locale === 'ar' ? 'text-right' : 'text-left'}`}>
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <Button
@@ -197,13 +197,13 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
                   >
                     <div
                       className={`max-w-[75%] px-4 py-2.5 rounded-2xl shadow-sm ${isMine
-                          ? "bg-primary text-white rounded-tr-sm"
-                          : "bg-white text-slate-800 rounded-tl-sm border border-slate-100"
+                          ? locale === 'ar' ? "bg-primary text-white rounded-tl-sm" : "bg-primary text-white rounded-tr-sm"
+                          : locale === 'ar' ? "bg-white text-slate-800 rounded-tr-sm border border-slate-100" : "bg-white text-slate-800 rounded-tl-sm border border-slate-100"
                         }`}
                     >
                       <p className="text-sm leading-relaxed">{msg.text}</p>
                       <p
-                        className={`text-[10px] mt-1 text-left ${isMine ? "text-white/60" : "text-muted-foreground"}`}
+                        className={`text-[10px] mt-1 ${locale === 'ar' ? 'text-right' : 'text-left'} ${isMine ? "text-white/60" : "text-muted-foreground"}`}
                         suppressHydrationWarning
                       >
                         {formatTime(msg.createdAt)}
@@ -231,7 +231,7 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder={t("chat_send_placeholder")}
-              className="flex-1 rounded-full bg-slate-50 border-none focus-visible:ring-1 text-right"
+              className={`flex-1 rounded-full bg-slate-50 border-none focus-visible:ring-1 ${locale === 'ar' ? 'text-right' : 'text-left'}`}
               dir={locale === 'ar' ? 'rtl' : 'ltr'}
               disabled={sending}
             />
