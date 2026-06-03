@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import Image from "next/image"
@@ -52,6 +52,20 @@ export default function RegisterPage() {
 
   const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
   const [specSearch, setSpecSearch] = useState("")
+  const specDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (specDropdownRef.current && !specDropdownRef.current.contains(e.target as Node)) {
+        setSpecDropdownOpen(false)
+        setSpecSearch("")
+      }
+    }
+    if (specDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [specDropdownOpen])
 
   const toggleSpec = (spec: string) => {
     setFormData(prev => ({
@@ -323,7 +337,7 @@ export default function RegisterPage() {
                 <Label className="text-slate-700 font-bold">{t("specializations")}</Label>
 
                 {/* Multiselect Dropdown */}
-                <div className="relative">
+                <div className="relative" ref={specDropdownRef}>
                   <button
                     type="button"
                     onClick={() => { setSpecDropdownOpen(prev => !prev); setSpecSearch("") }}
