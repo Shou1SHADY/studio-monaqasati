@@ -874,7 +874,7 @@ export default function NewRfqPage() {
               variant="outline"
               onClick={prevStep}
               disabled={step === 1 || isSubmitting}
-              className={`gap-2 px-6 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+              className={`gap-2 px-6 rounded-xl bg-white hover:bg-slate-100 hover:text-slate-700 border border-slate-300 text-slate-700 ${step === 1 || isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
             >
               {locale === 'ar' ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
               {t("newrfq_prev")}
@@ -891,7 +891,7 @@ export default function NewRfqPage() {
                   onClick={() => handleSubmit("Draft")}
                   disabled={isSubmitting}
                   variant="outline"
-                  className={`gap-2 px-8 rounded-xl ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-primary/5'}`}
+                  className={`gap-2 px-8 rounded-xl ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                   {t("newrfq_save_draft")}
