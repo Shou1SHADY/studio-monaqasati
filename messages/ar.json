@@ -1697,6 +1697,8 @@
       "tax_number_ph": "مثال: 3XXXXXXXXXXXXXX",
       "city": "المدينة (اختياري)",
       "city_ph": "مثال: الرياض",
+      "search_specializations": "ابحث عن تخصص...",
+      "no_specializations_found": "لا توجد تخصصات مطابقة",
       "phone": "رقم الجوال للتواصل",
       "phone_ph": "05XXXXXXXX",
       "specializations": "تخصصات التوريد (اختر تخصصاً واحداً على الأقل)",

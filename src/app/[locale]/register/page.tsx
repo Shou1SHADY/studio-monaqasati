@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check } from "lucide-react"
+import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search } from "lucide-react"
 import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 
 export default function RegisterPage() {
@@ -51,6 +51,7 @@ export default function RegisterPage() {
   }, [])
 
   const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
+  const [specSearch, setSpecSearch] = useState("")
 
   const toggleSpec = (spec: string) => {
     setFormData(prev => ({
@@ -325,7 +326,7 @@ export default function RegisterPage() {
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setSpecDropdownOpen(prev => !prev)}
+                    onClick={() => { setSpecDropdownOpen(prev => !prev); setSpecSearch("") }}
                     className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-start transition-colors ${formData.specializations.length === 0
                         ? "border-slate-200 text-slate-400"
                         : "border-primary/40 text-slate-800"
@@ -341,8 +342,23 @@ export default function RegisterPage() {
 
                   {specDropdownOpen && (
                     <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                      <div className="px-3 pt-3 pb-2">
+                        <div className="relative">
+                          <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <Input
+                            autoFocus
+                            value={specSearch}
+                            onChange={e => setSpecSearch(e.target.value)}
+                            placeholder={t("search_specializations")}
+                            className="h-9 pl-3 pr-9 text-sm rounded-lg bg-slate-100 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
+                          />
+                        </div>
+                      </div>
                       <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                        {PREDEFINED_CATEGORIES.map(cat => {
+                        {PREDEFINED_CATEGORIES.filter(cat => {
+                          if (!specSearch.trim()) return true
+                          return displayCategory(cat, locale).toLowerCase().includes(specSearch.toLowerCase().trim())
+                        }).map(cat => {
                           const isSelected = formData.specializations.includes(cat)
                           return (
                             <button
@@ -362,6 +378,12 @@ export default function RegisterPage() {
                             </button>
                           )
                         })}
+                        {PREDEFINED_CATEGORIES.filter(cat => {
+                          if (!specSearch.trim()) return true
+                          return displayCategory(cat, locale).toLowerCase().includes(specSearch.toLowerCase().trim())
+                        }).length === 0 && (
+                          <p className="px-4 py-3 text-sm text-slate-400">{t("no_specializations_found")}</p>
+                        )}
                       </div>
                     </div>
                   )}

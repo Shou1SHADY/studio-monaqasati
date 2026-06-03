@@ -1697,6 +1697,8 @@
       "tax_number_ph": "Example: 3XXXXXXXXXXXXXX",
       "city": "City (Optional)",
       "city_ph": "Example: Riyadh",
+      "search_specializations": "Search specializations...",
+      "no_specializations_found": "No matching specializations",
       "phone": "Contact Phone Number",
       "phone_ph": "05XXXXXXXX",
       "specializations": "Supply Specializations (Select at least one)",
