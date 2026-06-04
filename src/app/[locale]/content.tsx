@@ -21,15 +21,15 @@ function AnimatedStat({ value }: { value: string }) {
   const count = useMotionValue(0);
   const rounded = useTransform(count, (latest) => Math.round(latest));
   const [hasAnimated, setHasAnimated] = useState(false);
-  
+
   if (!match) return <span>{value}</span>;
-  
+
   const numValue = parseInt(match[1]);
   const suffix = match[2];
   const prefix = value.substring(0, match.index);
-  
+
   const display = useTransform(rounded, (latest) => `${prefix}${latest}${suffix}`);
-  
+
   return (
     <motion.span
       onViewportEnter={() => {
@@ -189,14 +189,14 @@ export default function HomeContent() {
           <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24 md:pt-16 pb-4 md:pb-0">
             <div className={`max-w-2xl space-y-6 animate-in fade-in duration-1000 ${locale === 'ar' ? 'slide-in-from-right-10' : 'slide-in-from-left-10'}`}>
 
-              <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col gap-2 md:gap-3 !leading-[1.2]">
+              <h1 className={`text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col ${locale === 'ar' ? 'gap-0 md:gap-0 !leading-[1.6]' : 'gap-2 md:gap-3 !leading-[1.3]'}`}>
                 <span className="whitespace-nowrap">{heroSlides[slide].title}</span>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-nowrap pb-2 md:pb-3">
+                <span className={`text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-nowrap ${locale === 'ar' ? '' : 'pb-2 md:pb-3'}`}>
                   {heroSlides[slide].titleAccent}
                 </span>
               </h1>
 
-              <p className="text-slate-300 text-base md:text-lg leading-relaxed font-medium max-w-xl">
+              <p className={`text-slate-300 text-base md:text-lg font-medium max-w-xl ${locale === 'ar' ? '!leading-[1.6]' : '!leading-[1.6]'}`}>
                 {heroSlides[slide].sub}
               </p>
 
@@ -264,7 +264,9 @@ export default function HomeContent() {
             <div className="w-12 h-[1px] bg-white/10" />
           </div>
 
-          <div className="w-full overflow-hidden py-6">
+          <div className="w-full overflow-hidden py-6 relative">
+            <div className="absolute inset-y-0 left-0 w-16 md:w-40 bg-gradient-to-r from-[#020617] to-transparent z-10 pointer-events-none" />
+            <div className="absolute inset-y-0 right-0 w-16 md:w-40 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none" />
             <div className={cn(
               "flex items-center gap-16 md:gap-20 min-w-max px-8 md:px-16",
               locale === 'ar' ? "animate-scroll-x-logos-rtl" : "animate-scroll-x-logos-ltr"
@@ -332,13 +334,13 @@ export default function HomeContent() {
                 { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, color: "blue" },
                 { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, color: "purple" }
               ].map((f, i) => (
-                <motion.div 
+                <motion.div
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  key={i} 
-                  className="p-6 md:p-10 rounded-[2rem] md:rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-cta/30 transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden"
+                  transition={{ duration: 0.5, delay: i * 0.1, ease: "easeOut" }}
+                  key={i}
+                  className="p-8 md:p-10 rounded-[2rem] md:rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-sky-400/40 hover:bg-white/[0.04] transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden hover:shadow-[0_0_40px_-10px_rgba(56,189,248,0.15)]"
                 >
                   <div className="absolute -top-10 -left-10 w-32 h-32 bg-cta/5 rounded-full blur-3xl group-hover:bg-cta/10 transition-all" />
                   <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-sky-400 mb-8 group-hover:bg-cta group-hover:text-white transition-all duration-500 shadow-xl">
@@ -358,24 +360,34 @@ export default function HomeContent() {
         {/* CONTRACTOR EXPERIENCE - Premium Visual Split */}
         <section className="relative overflow-hidden border-y border-white/5 bg-[#020617]">
           <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
-            <div className="relative overflow-hidden group">
+            <motion.div
+              initial={{ opacity: 0, x: locale === 'ar' ? 50 : -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="relative overflow-hidden group">
               <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" priority />
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-cta/10 mix-blend-overlay" />
 
-              <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 p-4 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-2 md:gap-4 mb-2 md:mb-4">
-                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-cta flex items-center justify-center text-white shrink-0">
-                    <TrendingUp size={16} className="md:size-5" />
+              <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 p-5 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
+                <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-4">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-sky-500/20">
+                    <TrendingUp size={20} className="md:size-6" />
                   </div>
-                  <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
+                  <div className="text-[10px] md:text-xs font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
                 </div>
-                <div className="text-3xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tContractor('stat_val')} /></div>
-                <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
+                <div className="text-4xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tContractor('stat_val')} /></div>
+                <div className="text-slate-400 text-xs md:text-sm mt-3 md:mt-4 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
               </div>
-            </div>
+            </motion.div>
 
-            <div className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative bg-[#0F172A]/50">
+            <motion.div
+              initial={{ opacity: 0, x: locale === 'ar' ? -50 : 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+              className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative bg-[#0F172A]/50">
               <div className="space-y-10 max-w-xl">
                 <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
                   <div className="w-10 h-0.5 bg-cta" /> {tContractor('tagline')}
@@ -399,14 +411,19 @@ export default function HomeContent() {
                   </Link>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </section>
 
         {/* SUPPLIER EXPERIENCE - Symmetric Reverse */}
         <section className="relative overflow-hidden bg-[#020617]">
           <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
-            <div className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative order-2 lg:order-1 bg-[#0F172A]/30">
+            <motion.div
+              initial={{ opacity: 0, x: locale === 'ar' ? 50 : -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
+              className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative order-2 lg:order-1 bg-[#0F172A]/30">
               <div className="space-y-10 max-w-xl">
                 <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
                   <div className="w-10 h-0.5 bg-sky-400" /> {tSupplier('tagline')}
@@ -430,32 +447,50 @@ export default function HomeContent() {
                   </Link>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            <div className="relative overflow-hidden group order-1 lg:order-2">
+            <motion.div
+              initial={{ opacity: 0, x: locale === 'ar' ? -50 : 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+              className="relative overflow-hidden group order-1 lg:order-2">
               <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" />
               <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay" />
 
-              <div className="absolute top-6 left-6 md:top-12 md:left-12 p-4 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-2 md:gap-4 mb-2 md:mb-4">
-                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0">
-                    <LayoutDashboard size={16} className="md:size-5" />
+              <div className="absolute top-6 left-6 md:top-12 md:left-12 p-5 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
+                <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-4">
+                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-sky-500/20">
+                    <LayoutDashboard size={20} className="md:size-6" />
                   </div>
-                  <div className="text-[8px] md:text-[10px] font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
+                  <div className="text-[10px] md:text-xs font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
                 </div>
-                <div className="text-3xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tSupplier('stat_val')} /></div>
-                <div className="text-slate-400 text-xs md:text-sm mt-2 md:mt-3 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
+                <div className="text-4xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tSupplier('stat_val')} /></div>
+                <div className="text-slate-400 text-xs md:text-sm mt-3 md:mt-4 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
               </div>
-            </div>
+            </motion.div>
           </div>
         </section>
 
 
 
         {/* HOW IT WORKS - Step Architecture */}
-        <section id="how" className="py-16 md:py-24 lg:py-32 relative bg-[#0F172A]">
-          <div className="max-w-7xl mx-auto px-6">
+        <section id="how" className="py-16 md:py-24 lg:py-32 relative bg-[#0F172A] overflow-hidden">
+
+          {/* Pencil drawing overlay — inverted + screen-blended for light watermark on dark bg */}
+          <img
+            src="/pencilbg.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
+            style={{ filter: 'invert(1) contrast(1.2)', opacity: 0.06, mixBlendMode: 'screen' }}
+          />
+
+          {/* Soft vignette so content stays readable */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,transparent_30%,rgba(15,23,42,0.65)_100%)] pointer-events-none" />
+
+          {/* ── Content ── */}
+          <div className="max-w-7xl mx-auto px-6 relative z-10">
             <div className="text-center mb-20 space-y-4">
               <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tHow('tagline')}</div>
               <h2 className="text-3xl md:text-5xl font-bold text-white tracking-normal">{tHow('title')}</h2>
@@ -477,22 +512,32 @@ export default function HomeContent() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 lg:gap-12 relative" key={activeFlow}>
+
+              {/* Dashed connectors — extend close to step icons */}
+              <div className="hidden md:block absolute top-10 left-[17%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+              <div className="hidden md:block absolute top-10 left-[42%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+              <div className="hidden md:block absolute top-10 left-[67%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+
               {activeSteps.map((s, i) => (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  whileInView={{ opacity: 1 }}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1 }}
-                  key={i} 
+                  transition={{ duration: 0.5, delay: i * 0.12, ease: "easeOut" }}
+                  key={i}
                   className="flex flex-col items-center text-center space-y-6 group relative"
                 >
-                  {i < 3 && (
-                    <div className="hidden md:block absolute top-10 rtl:-left-1/2 ltr:-right-1/2 w-full h-[2px] bg-gradient-to-r from-transparent via-white/5 to-transparent z-0" />
-                  )}
-                  <div className="w-20 h-20 rounded-[2.5rem] bg-white/[0.02] border border-white/5 flex items-center justify-center text-slate-300 relative group-hover:bg-cta group-hover:border-cta group-hover:text-white transition-all duration-500 z-10 shadow-xl group-hover:scale-110">
-                    <s.icon size={36} />
-                    <div className="absolute -top-3 rtl:-right-3 ltr:-left-3 w-8 h-8 rounded-full bg-cta text-white text-xs font-black flex items-center justify-center border-4 border-[#0F172A]">{s.step}</div>
+                  {/* Step icon */}
+                  <div className="relative z-10">
+                    <svg className="absolute inset-[-6px] w-[calc(100%+12px)] h-[calc(100%+12px)] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-500" viewBox="0 0 88 88" xmlns="http://www.w3.org/2000/svg">
+                      <ellipse cx="44" cy="44" rx="40" ry="40" fill="none" stroke="rgba(56,189,248,0.5)" strokeWidth="1.5" strokeDasharray="6 5" strokeLinecap="round" />
+                    </svg>
+                    <div className="w-20 h-20 rounded-[2.5rem] bg-white/[0.03] border border-white/10 flex items-center justify-center text-slate-300 relative group-hover:bg-cta group-hover:border-cta group-hover:text-white transition-all duration-500 z-10 shadow-xl group-hover:scale-110">
+                      <s.icon size={36} />
+                      <div className="absolute -top-3 rtl:-right-3 ltr:-left-3 w-8 h-8 rounded-full bg-cta text-white text-xs font-black flex items-center justify-center border-4 border-[#0F172A]">{s.step}</div>
+                    </div>
                   </div>
+
                   <div className="space-y-3 z-10">
                     <h4 className="text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h4>
                     <p className="text-slate-400 text-sm leading-relaxed px-4">{s.desc}</p>
@@ -502,6 +547,9 @@ export default function HomeContent() {
             </div>
           </div>
         </section>
+
+
+
 
         {/* PARTNERSHIP HIGHLIGHT - Depth Image */}
         <section className="relative py-24 md:py-40 overflow-hidden border-t border-white/5">
@@ -649,7 +697,7 @@ export default function HomeContent() {
               <Link href="/contact" className="px-6 py-3 rounded-xl bg-white/5 font-bold text-sm text-slate-300 hover:text-sky-400 hover:bg-white/10 transition-all border border-white/5">
                 {tFooter('support')}
               </Link>
-              
+
               <div className="space-y-3">
                 <h4 className="text-white font-black text-xs uppercase tracking-normal">{tFooter('address_title')}</h4>
                 <div className="flex items-start gap-3 text-slate-400">
