@@ -42,7 +42,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
           <span>{locale === 'ar' ? 'English' : 'العربية'}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
+      <DropdownMenuContent align={locale === 'ar' ? 'start' : 'end'} className="w-40">
         <DropdownMenuRadioGroup value={locale} onValueChange={switchTo}>
           <DropdownMenuRadioItem value="ar">العربية</DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="en">English</DropdownMenuRadioItem>
