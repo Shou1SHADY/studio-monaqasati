@@ -95,7 +95,7 @@ export default function HomeContent() {
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     const t = setInterval(() => setSlide(s => (s + 1) % heroSlides.length), 6000);
     return () => {
       window.removeEventListener('scroll', handleScroll);
@@ -174,7 +174,7 @@ export default function HomeContent() {
           {/* Slides */}
           {heroSlides.map((s, i) => (
             <motion.div key={i} style={{ y: i === slide ? yHeroBg : 0 }} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
-              <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" priority />
+              <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" priority={i === 0} loading={i === 0 ? undefined : "lazy"} />
               <div className={`absolute inset-0 ${locale === 'ar' ? 'bg-gradient-to-l' : 'bg-gradient-to-r'} from-[#020617] via-[#020617]/70 to-transparent`} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-[#020617]/30" />
@@ -284,18 +284,6 @@ export default function HomeContent() {
                 { src: '/images/logo-qudra.png', alt: 'Qudra' },
                 { src: '/images/logo-naya.jpeg', alt: 'Naya' },
                 { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
               ].map((item, i) => (
                 <div
                   key={i}
@@ -366,7 +354,7 @@ export default function HomeContent() {
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="relative overflow-hidden group">
-              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" priority />
+              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-cta/10 mix-blend-overlay" />
 
@@ -455,7 +443,7 @@ export default function HomeContent() {
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="relative overflow-hidden group order-1 lg:order-2">
-              <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" />
+              <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" loading="lazy" />
               <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-[#020617]" />
               <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay" />
 
@@ -482,6 +470,7 @@ export default function HomeContent() {
           <img
             src="/pencilbg.png"
             alt=""
+            loading="lazy"
             className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
             style={{ filter: 'invert(1) contrast(1.2)', opacity: 0.06, mixBlendMode: 'screen' }}
           />
@@ -553,7 +542,7 @@ export default function HomeContent() {
 
         {/* PARTNERSHIP HIGHLIGHT - Depth Image */}
         <section className="relative py-24 md:py-40 overflow-hidden border-t border-white/5">
-          <Image fill src="/images/loading-dock.jpg" alt="Partnership" className="absolute inset-0 w-full h-full object-cover grayscale opacity-30" sizes="100vw" />
+          <Image fill src="/images/loading-dock.jpg" alt="Partnership" className="absolute inset-0 w-full h-full object-cover grayscale opacity-30" sizes="100vw" loading="lazy" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#020617] via-transparent to-[#020617]" />
 
           <div className="relative z-10 max-w-4xl mx-auto px-6 text-center space-y-8">
@@ -768,17 +757,23 @@ export default function HomeContent() {
         .animate-scroll-x-logos-ltr {
           animation: scroll-x-logos-ltr 60s linear infinite;
           width: max-content;
+          will-change: transform;
+          backface-visibility: hidden;
         }
         .animate-scroll-x-logos-rtl {
           animation: scroll-x-logos-rtl 60s linear infinite;
           width: max-content;
+          will-change: transform;
+          backface-visibility: hidden;
         }
         @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-20px); }
+          0%, 100% { transform: translateY(0) translateZ(0); }
+          50% { transform: translateY(-20px) translateZ(0); }
         }
         .animate-float {
           animation: float 6s ease-in-out infinite;
+          will-change: transform;
+          backface-visibility: hidden;
         }
         html { scroll-behavior: smooth; }
         ::-webkit-scrollbar { width: 8px; }

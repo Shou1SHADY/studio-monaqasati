@@ -1,5 +1,6 @@
 "use client"
 
+import { redirect } from 'next/navigation'
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -48,6 +49,8 @@ import { displayCategory, displayCity } from "@/lib/constants"
 export default function SuppliersDirectory() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
+
+  redirect(`/${locale}/contractor`)
   const { user, isUserLoading } = useUser()
   const firestore = useFirestore()
   const { toast } = useToast()
