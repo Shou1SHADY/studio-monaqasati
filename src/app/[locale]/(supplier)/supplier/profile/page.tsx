@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -33,7 +33,9 @@ import {
   Upload,
   Link as LinkIcon,
   Mail,
-  Lock
+  Lock,
+  Star,
+  StarHalf
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { sendEmailVerification } from "firebase/auth"
@@ -60,7 +62,7 @@ import {
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection, useStorage } from "@/firebase"
-import { doc, updateDoc, collection, query as firestoreQuery, orderBy } from "firebase/firestore"
+import { doc, updateDoc, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 
 interface Certificate {
@@ -84,6 +86,29 @@ interface CompanyFile {
   name: string
   type: 'image' | 'document'
   url: string
+}
+
+function RatingStars({ value, size = 16, className = "" }: { value: number; size?: number; className?: string }) {
+  const safeValue = Math.max(0, Math.min(5, Number(value) || 0))
+  const fullStars = Math.floor(safeValue)
+  const hasHalf = safeValue - fullStars >= 0.25 && safeValue - fullStars < 0.75
+  const emptyOffset = safeValue - fullStars >= 0.75 ? 1 : 0
+  return (
+    <div className={cn("inline-flex items-center gap-0.5 direction-ltr", className)}>
+      {[1, 2, 3, 4, 5].map((star) => {
+        if (star <= fullStars) {
+          return <Star key={star} size={size} className="fill-amber-400 text-amber-400" />
+        }
+        if (star === fullStars + 1 && hasHalf) {
+          return <StarHalf key={star} size={size} className="fill-amber-400 text-amber-400" />
+        }
+        if (star <= fullStars + emptyOffset) {
+          return <Star key={star} size={size} className="fill-amber-400 text-amber-400" />
+        }
+        return <Star key={star} size={size} className="text-slate-200 fill-slate-200" />
+      })}
+    </div>
+  )
 }
 
 export default function SupplierProfilePage() {
@@ -136,6 +161,37 @@ export default function SupplierProfilePage() {
   }, [firestore, user, isUserLoading])
   
   const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+
+  // Fetch reviews for this supplier to show live rating & reviews
+  const reviewsQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return firestoreQuery(
+      collection(firestore, "reviews"),
+      where("revieweeId", "==", user.uid)
+    )
+  }, [firestore, user])
+  const { data: reviews } = useCollection(reviewsQuery)
+
+  const computedRating = useMemo(() => {
+    if (!reviews || reviews.length === 0) {
+      return {
+        avg: Number(userData?.rating) || 0,
+        count: Number(userData?.reviewsCount) || 0,
+        distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
+      }
+    }
+    const sum = reviews.reduce((acc: number, r: any) => acc + (r.rating || 0), 0)
+    const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 } as Record<number, number>
+    reviews.forEach((r: any) => {
+      const star = Math.max(1, Math.min(5, Math.round(Number(r.rating) || 0)))
+      distribution[star] = (distribution[star] || 0) + 1
+    })
+    return {
+      avg: parseFloat((sum / reviews.length).toFixed(1)),
+      count: reviews.length,
+      distribution
+    }
+  }, [reviews, userData?.rating, userData?.reviewsCount])
 
   // Fetch cities from Firestore (temporary fallback to hardcoded if Firebase not ready)
   const citiesQuery = useMemoFirebase(() => {
@@ -725,6 +781,18 @@ export default function SupplierProfilePage() {
                 <span className="text-3xl font-black text-slate-800 leading-none">{profile.projects.length}</span>
                 <span className="text-[10px] text-slate-400 font-medium mt-1">{t("completed_project")}</span>
               </div>
+              <div className="col-span-2 bg-gradient-to-br from-amber-50 to-amber-100/40 p-5 rounded-3xl border border-amber-100 flex items-center justify-between gap-3 group/stat hover:shadow-lg transition-all duration-300">
+                <div className="min-w-0">
+                  <span className="text-[10px] font-bold text-amber-700 uppercase tracking-tighter">{t("supplier_my_rating_label")}</span>
+                  <div className="mt-1.5">
+                    <RatingStars value={computedRating.avg} size={14} />
+                  </div>
+                  <p className="text-[10px] text-amber-700/80 mt-1 font-medium">{t("suppliers_rating_count", { count: computedRating.count })}</p>
+                </div>
+                <div className="font-black text-3xl text-amber-700 leading-none" dir="ltr">
+                  {computedRating.count > 0 ? computedRating.avg.toFixed(1) : "0.0"}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -759,6 +827,10 @@ export default function SupplierProfilePage() {
               <Award size={18} />
               {t("portfolio_tab")}
             </TabsTrigger>
+            <TabsTrigger value="reviews" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
+              <Star size={18} />
+              {t("supplier_profile_tab_reviews", { count: computedRating.count })}
+            </TabsTrigger>
             <TabsTrigger value="files" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
               <FolderOpen size={18} />
               {t("files_tab")}
@@ -768,6 +840,87 @@ export default function SupplierProfilePage() {
               {t("security_tab")}
             </TabsTrigger>
           </TabsList>
+
+          {/* REVIEWS TAB - Anonymous */}
+          <TabsContent value="reviews" className="m-0 focus-visible:outline-none">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold flex items-center gap-2">
+                  <Star size={22} className="text-amber-400 fill-amber-400" />
+                  {t("suppliers_reviews_title", { count: computedRating.count })}
+                </CardTitle>
+                <CardDescription>{t("supplier_profile_reviews_anonymous_notice")}</CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                {/* Rating Hero */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-6 bg-gradient-to-br from-amber-50 to-amber-100/40 rounded-2xl border border-amber-100 flex flex-col items-center justify-center gap-2">
+                    <p className="text-5xl font-black text-amber-700 leading-none" dir="ltr">
+                      {computedRating.count > 0 ? computedRating.avg.toFixed(1) : "0.0"}
+                    </p>
+                    <RatingStars value={computedRating.avg} size={22} />
+                    <p className="text-xs text-amber-700/80 font-medium">{t("suppliers_rating_count", { count: computedRating.count })}</p>
+                  </div>
+                  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
+                    {[5, 4, 3, 2, 1].map((star) => {
+                      const total = computedRating.count || 0
+                      const count = computedRating.distribution?.[star] || 0
+                      const pct = total > 0 ? Math.round((count / total) * 100) : 0
+                      return (
+                        <div key={star} className="flex items-center gap-2 text-xs">
+                          <div className="flex items-center gap-0.5 w-12 shrink-0">
+                            <span className="font-bold text-slate-700 w-3 text-left" dir="ltr">{star}</span>
+                            <Star size={11} className="fill-amber-400 text-amber-400" />
+                          </div>
+                          <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-amber-400 transition-all duration-500"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="font-bold text-slate-600 w-10 text-left" dir="ltr">{count}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Reviews List - Anonymous */}
+                {reviews && reviews.length > 0 ? (
+                  <div className="grid gap-3">
+                    {reviews.map((review: any) => (
+                      <div key={review.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-full bg-slate-200 flex items-center justify-center">
+                              <Star size={14} className="text-slate-500" />
+                            </div>
+                            <p className="font-bold text-sm text-slate-700">{t("suppliers_anonymous_reviewer")}</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-100">
+                            <RatingStars value={Number(review.rating) || 0} size={11} />
+                            <span className="text-xs font-bold text-amber-700" dir="ltr">{(Number(review.rating) || 0).toFixed(1)}</span>
+                          </div>
+                        </div>
+                        {review.comment && (
+                          <p className="text-sm text-slate-700 leading-relaxed bg-white p-3 rounded-lg border border-slate-100">
+                            "{review.comment}"
+                          </p>
+                        )}
+                        <p className={cn("text-[10px] text-slate-400", locale === 'ar' ? 'text-left' : 'text-right')}>
+                          {review.createdAt ? new Date(review.createdAt).toLocaleDateString(locale) : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-slate-500 p-8 border border-dashed rounded-xl text-center bg-slate-50">
+                    {t("suppliers_no_reviews_registered")}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* BASIC INFO TAB */}
           <TabsContent value="basic" className="m-0 focus-visible:outline-none">

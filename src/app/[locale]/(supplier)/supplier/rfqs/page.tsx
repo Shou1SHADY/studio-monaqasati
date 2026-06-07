@@ -31,7 +31,12 @@ import {
   Upload,
   X,
   Star,
-  Award
+  Award,
+  Tag,
+  ShieldCheck,
+  Globe,
+  CheckCircle2,
+  TrendingUp
 } from "lucide-react"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -55,7 +60,7 @@ export default function AvailableRfqsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
   const [customDeadline, setCustomDeadline] = useState("")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string} | null>(null)
 
   const hasActiveFilters = searchQuery || deadlineFilter !== "all" || selectedCategory !== "all" || selectedCity !== "all"
   const clearFilters = () => {
@@ -418,7 +423,11 @@ export default function AvailableRfqsPage() {
                           city: rfq.city,
                           district: rfq.district,
                           deadline: rfq.deadline,
-                          locationCoords: rfq.locationCoords
+                          locationCoords: rfq.locationCoords,
+                          offersCount: rfq.offersCount,
+                          status: rfq.status,
+                          paymentTerms: rfq.paymentTerms,
+                          createdAt: rfq.createdAt
                         })
                         setShowRfqDetails(true)
                       }}
@@ -444,7 +453,11 @@ export default function AvailableRfqsPage() {
                           city: rfq.city,
                           district: rfq.district,
                           deadline: rfq.deadline,
-                          locationCoords: rfq.locationCoords
+                          locationCoords: rfq.locationCoords,
+                          offersCount: rfq.offersCount,
+                          status: rfq.status,
+                          paymentTerms: rfq.paymentTerms,
+                          createdAt: rfq.createdAt
                         })
                         setShowSubmitOffer(true)
                       }}
@@ -477,43 +490,136 @@ export default function AvailableRfqsPage() {
       {/* RFQ Details Dialog */}
       <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); } }}>
         <DialogContent
-          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-3xl text-right rounded-2xl p-0 overflow-hidden max-h-[94dvh] flex flex-col gap-0 border-none shadow-2xl"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >
           <DialogTitle className="sr-only">{t("rfq_details_title")}</DialogTitle>
-          
-          <div className="px-5 pt-5 pb-3 border-b bg-gradient-to-bl from-primary/5 to-white shrink-0">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800">{selectedRfq?.title}</h2>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <Badge variant="secondary" className="bg-primary/10 text-primary">{selectedRfq?.category}</Badge>
-              {selectedRfq?.subCategory && <Badge variant="outline">{selectedRfq?.subCategory}</Badge>}
+
+          {/* HERO HEADER */}
+          <div className="relative px-5 pl-12 pt-5 pb-5 border-b bg-gradient-to-bl from-primary/8 via-primary/3 to-white shrink-0 overflow-hidden">
+            <div className="absolute -top-8 -end-8 w-32 h-32 bg-primary/5 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative flex items-start gap-2.5">
+              <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Tag size={16} className="text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                  <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {t("rfq_status_new")}
+                  </span>
+                  {selectedRfq?.id && (
+                    <span className="text-[10px] text-slate-400 font-mono bg-white/70 px-2 py-0.5 rounded-md border border-slate-200">
+                      #{selectedRfq.id.substring(0, 8).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-slate-800 leading-tight">{selectedRfq?.title}</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                  {selectedRfq?.category && (
+                    <Badge variant="secondary" className="bg-primary/10 text-primary border-none font-bold text-xs">
+                      {displayCategory(selectedRfq.category, locale)}
+                    </Badge>
+                  )}
+                  {selectedRfq?.subCategory && (
+                    <Badge variant="outline" className="text-slate-600 border-slate-200 bg-white/70 font-medium text-xs">
+                      {displaySubcategory(selectedRfq.subCategory, locale)}
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+          <div className="overflow-y-auto flex-1 px-5 py-5 space-y-4">
+            {/* HERO STATS: Location & Deadline + Offers Count */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 to-transparent">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                  <MapPin size={11} className="text-primary" />
+                  <span>{t("city_label")}</span>
+                </div>
+                <p className="text-sm font-bold text-slate-800 leading-tight">
+                  {selectedRfq?.city && selectedRfq?.district
+                    ? `${displayCity(selectedRfq.city, locale)} - ${displayCity(selectedRfq.district, locale)}`
+                    : selectedRfq?.city
+                      ? displayCity(selectedRfq.city, locale)
+                      : t("not_specified")}
+                </p>
+                {selectedRfq?.locationCoords && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${selectedRfq.locationCoords.lat},${selectedRfq.locationCoords.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-primary underline hover:text-primary/70 transition-colors font-medium w-fit mt-0.5"
+                  >
+                    {t("view_on_map")}
+                  </a>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/60 to-transparent">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+                  <Calendar size={11} className="text-amber-600" />
+                  <span>{t("deadline_label")}</span>
+                </div>
+                <p className="text-sm font-bold text-slate-800 leading-tight" suppressHydrationWarning>
+                  {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString(locale) : t("not_specified")}
+                </p>
+                {selectedRfq?.deadline && (
+                  <span className="text-[11px] text-amber-700 font-bold mt-0.5">
+                    {getRemainingTime(selectedRfq.deadline)}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-transparent">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  <TrendingUp size={11} className="text-slate-500" />
+                  <span>{t("offers_count_label")}</span>
+                </div>
+                <p className="text-sm font-bold text-slate-800 leading-tight" dir="ltr">
+                  <span className="text-2xl font-black text-primary">{selectedRfq?.offersCount || 0}</span>
+                  <span className="text-[11px] text-slate-500 font-medium ms-1">/ {t("offers_count_offers")}</span>
+                </p>
+                <span className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  {selectedRfq?.offersCount ? t("offers_competing") : t("offers_no_competition")}
+                </span>
+              </div>
+            </div>
+
             {/* Products */}
             {selectedRfq?.products && selectedRfq.products.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                  <Package size={16} className="text-primary" />
-                  {t("required_products")}
-                </h3>
-                <div className="space-y-2">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <h3 className={`font-bold text-slate-700 flex items-center gap-2 text-sm ${locale === 'ar' ? 'text-right' : ''}`}>
+                    <Package size={15} className="text-primary" />
+                    {t("required_products")}
+                  </h3>
+                  <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20 font-bold">
+                    {selectedRfq.products.length}
+                  </Badge>
+                </div>
+                <div className="grid gap-2">
                   {selectedRfq.products.map((prod: any, idx: number) => (
-                    <div key={idx} className="p-3 bg-slate-50 rounded-lg border">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-slate-800">{prod.name}</span>
-                        <span className="text-sm text-primary font-bold">{prod.quantity} {prod.unitOfMeasure}</span>
-                      </div>
-                      {prod.subCategory && (
-                        <div className="mt-1">
-                          <span className="inline-block px-2 py-0.5 bg-slate-200 text-slate-600 text-[10px] font-bold rounded">{displaySubcategory(prod.subCategory, locale)}</span>
+                    <div key={idx} className="p-3 bg-white rounded-xl border border-slate-200 shadow-sm hover:border-primary/30 hover:shadow-md transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span className="bg-primary text-white text-[10px] font-black w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5">{idx + 1}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-sm text-slate-800">{prod.name}</p>
+                            {prod.subCategory && (
+                              <div className="mt-1">
+                                <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">{displaySubcategory(prod.subCategory, locale)}</span>
+                              </div>
+                            )}
+                            {prod.description && <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">{prod.description}</p>}
+                          </div>
                         </div>
-                      )}
-                      {prod.description && <p className="text-sm text-slate-600 mt-1">{prod.description}</p>}
+                        <div className="flex flex-col items-end gap-0.5 bg-primary/5 px-3 py-2 rounded-lg shrink-0 min-w-[80px]">
+                          <span className="font-black text-primary text-base leading-none" dir="ltr">{prod.quantity}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">{prod.unitOfMeasure}</span>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -522,19 +628,26 @@ export default function AvailableRfqsPage() {
 
             {/* Notes */}
             {selectedRfq?.notes && (
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <h3 className="font-bold text-amber-800 text-sm mb-1">{t("additional_notes")}</h3>
-                <p className="text-sm text-amber-900">{selectedRfq.notes}</p>
+              <div className="p-4 bg-gradient-to-br from-amber-50/60 to-white rounded-xl border border-amber-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageCircle size={14} className="text-amber-700" />
+                  <h3 className={`font-bold text-amber-800 text-sm ${locale === 'ar' ? 'text-right' : ''}`}>
+                    {t("additional_notes")}
+                  </h3>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{selectedRfq.notes}</p>
               </div>
             )}
 
             {/* PDF */}
             {selectedRfq?.pdfUrl && (
-              <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <File size={20} className="text-blue-600" />
-                <span className="flex-1 text-sm font-medium text-blue-800">{t("pdf_attached")}</span>
+              <div className="flex items-center gap-3 p-4 bg-blue-50/60 rounded-xl border border-blue-100 shadow-sm">
+                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                  <File size={20} className="text-blue-600" />
+                </div>
+                <span className="flex-1 text-sm font-bold text-slate-700">{t("pdf_attached")}</span>
                 <a href={selectedRfq.pdfUrl} target="_blank" rel="noopener noreferrer" download>
-                  <Button variant="outline" size="sm" className="gap-1">
+                  <Button variant="outline" size="sm" className="gap-1 bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all">
                     <Download size={14} />
                     {t("download")}
                   </Button>
@@ -542,63 +655,64 @@ export default function AvailableRfqsPage() {
               </div>
             )}
 
-            {/* Location & Deadline */}
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center gap-2 text-slate-600">
-                <MapPin size={14} className="text-primary" />
-                <span>{selectedRfq?.city} - {selectedRfq?.district}</span>
-              </div>
-              <div className="flex items-center gap-2 text-slate-600">
-                <Calendar size={14} className="text-amber-600" />
-                <span>{t("deadline_label")}: {selectedRfq?.deadline ? new Date(selectedRfq.deadline).toLocaleDateString(locale) : t("not_specified")}</span>
-              </div>
-            </div>
-
             {/* Inquiries Section */}
-            <div className="border-t pt-4">
-              <Button 
-                variant="ghost" 
-                onClick={() => setShowInquiries(!showInquiries)} 
-                className="w-full justify-between hover:bg-slate-50"
+            <div className="border-t border-slate-100 pt-3">
+              <Button
+                variant="ghost"
+                onClick={() => setShowInquiries(!showInquiries)}
+                className="w-full justify-between hover:bg-slate-50 h-11 rounded-xl px-3"
               >
-                <span className="font-bold text-slate-700 flex items-center gap-2">
-                  <MessageCircle size={16} className="text-primary" />
+                <span className={`font-bold text-slate-700 flex items-center gap-2 text-sm ${locale === 'ar' ? 'text-right' : ''}`}>
+                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <MessageCircle size={14} className="text-primary" />
+                  </div>
                   {t("inquiries")}
+                  {inquiries && inquiries.length > 0 && (
+                    <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/20 font-bold h-5">
+                      {inquiries.length}
+                    </Badge>
+                  )}
                 </span>
-                {showInquiries ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                {showInquiries ? <ChevronRight size={16} className="text-slate-400" /> : <ChevronLeft size={16} className="text-slate-400" />}
               </Button>
 
               {showInquiries && (
-                <div className="mt-3 space-y-3">
+                <div className="mt-2.5 space-y-2.5">
                   {/* Question Form */}
-                  <div className="flex gap-2">
-                    <Input 
-                      placeholder={t("ask_question_placeholder")} 
+                  <div className="flex gap-2 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <Input
+                      placeholder={t("ask_question_placeholder")}
                       value={newQuestion}
                       onChange={(e) => setNewQuestion(e.target.value)}
-                      className="flex-1"
+                      onKeyDown={(e) => { if (e.key === "Enter" && newQuestion.trim() && !isSubmittingQuestion) submitQuestion() }}
+                      className="flex-1 h-10 rounded-lg bg-white border-slate-200"
                     />
-                    <Button onClick={submitQuestion} disabled={!newQuestion.trim() || isSubmittingQuestion} size="icon">
+                    <Button onClick={submitQuestion} disabled={!newQuestion.trim() || isSubmittingQuestion} size="icon" className="h-10 w-10 rounded-lg shadow-sm">
                       {isSubmittingQuestion ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                     </Button>
                   </div>
 
                   {/* Questions List */}
                   {inquiriesLoading ? (
-                    <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
+                    <div className="flex justify-center py-6"><Loader2 size={20} className="animate-spin text-muted-foreground" /></div>
                   ) : inquiries && inquiries.length > 0 ? (
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                       {inquiries.map((inq: any) => (
-                        <div key={inq.id} className={`p-3 rounded-lg ${inq.supplierId === user?.uid ? 'bg-primary/5 border border-primary/20' : 'bg-slate-50'}`}>
+                        <div key={inq.id} className={`p-3 rounded-xl ${inq.supplierId === user?.uid ? 'bg-primary/5 border border-primary/20' : 'bg-slate-50 border border-slate-100'}`}>
                           <div className="flex items-start gap-2">
-                            <MessageCircle size={14} className="text-primary mt-1 shrink-0" />
-                            <div className="flex-1">
+                            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                              <MessageCircle size={12} className="text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
                               <p className="text-sm font-bold text-slate-700">{inq.supplierName}</p>
-                              <p className="text-sm text-slate-600">{inq.question}</p>
+                              <p className="text-sm text-slate-600 leading-relaxed">{inq.question}</p>
                               {inq.reply && (
-                                <div className="mt-2 p-2 bg-green-50 rounded border border-green-200">
-                                  <p className="text-xs font-bold text-green-700">{t("reply_from_contractor")}</p>
-                                  <p className="text-sm text-green-800">{inq.reply}</p>
+                                <div className="mt-2 p-2.5 bg-green-50 rounded-lg border border-green-200">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <CheckCircle2 size={12} className="text-green-600" />
+                                    <p className="text-xs font-bold text-green-700">{t("reply_from_contractor")}</p>
+                                  </div>
+                                  <p className="text-sm text-green-800 leading-relaxed">{inq.reply}</p>
                                 </div>
                               )}
                             </div>
@@ -607,49 +721,67 @@ export default function AvailableRfqsPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4">{t("no_inquiries_yet")}</p>
+                    <p className="text-sm text-muted-foreground text-center py-6 bg-slate-50 rounded-xl border border-dashed">{t("no_inquiries_yet")}</p>
                   )}
                 </div>
               )}
             </div>
 
             {/* Contractor Info & Reviews */}
-            <div className="border-t pt-4">
-              <Button 
-                variant="ghost" 
-                onClick={() => setShowContractorReviews(!showContractorReviews)} 
-                className="w-full justify-between hover:bg-slate-50"
+            <div className="border-t border-slate-100 pt-3">
+              <Button
+                variant="ghost"
+                onClick={() => setShowContractorReviews(!showContractorReviews)}
+                className="w-full justify-between hover:bg-slate-50 h-11 rounded-xl px-3"
               >
-                <span className="font-bold text-slate-700 flex items-center gap-2">
-                  <Award size={16} className="text-primary" />
+                <span className={`font-bold text-slate-700 flex items-center gap-2 text-sm ${locale === 'ar' ? 'text-right' : ''}`}>
+                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Award size={14} className="text-primary" />
+                  </div>
                   {t("contractor_info_label", { rating: (contractorInfo as any)?.rating || 0 })}
                 </span>
-                {showContractorReviews ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+                {showContractorReviews ? <ChevronRight size={16} className="text-slate-400" /> : <ChevronLeft size={16} className="text-slate-400" />}
               </Button>
 
               {showContractorReviews && (
-                <div className="mt-3 space-y-4 px-2">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
-                    <div>
-                      <h4 className="font-bold text-slate-800">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || t("approved_contractor")}</h4>
-                      <p className="text-sm text-slate-500 mt-1">{t("contractor_desc")}</p>
+                <div className="mt-2.5 space-y-2.5">
+                  <div className="p-3.5 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                        <Award size={18} className="text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="font-bold text-slate-800 truncate">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || t("approved_contractor")}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">{t("contractor_desc")}</p>
+                      </div>
                     </div>
                     {((contractorInfo as any)?.rating || 0) > 0 && (
-                      <div className="flex items-center gap-1 text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
-                        <span className="font-bold text-sm">{(contractorInfo as any)?.rating}</span>
-                        <Star size={14} className="fill-amber-400" />
-                        <span className="text-[10px] text-amber-600/70 mr-1">{t("reviews_count", { count: contractorReviews?.length || 0 })}</span>
+                      <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-100 shrink-0">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={10}
+                              className={star <= Math.round(Number((contractorInfo as any)?.rating) || 0) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-xs font-bold text-amber-700">{(contractorInfo as any)?.rating}</span>
+                        <span className="text-[10px] text-amber-600/80 font-medium">({contractorReviews?.length || 0})</span>
                       </div>
                     )}
                   </div>
 
                   {contractorReviews && contractorReviews.length > 0 ? (
-                    <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-                      <h4 className="font-bold text-sm text-slate-700">{t("supplier_opinions")}</h4>
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      <h4 className="font-bold text-sm text-slate-700 flex items-center gap-2">
+                        <Star size={14} className="text-amber-400 fill-amber-400" />
+                        {t("supplier_opinions")}
+                      </h4>
                       {contractorReviews.map((review: any) => (
-                        <div key={review.id} className="p-3 bg-white border border-slate-100 rounded-lg shadow-sm">
+                        <div key={review.id} className="p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold text-slate-700">{review.reviewerName}</span>
+                            <span className="text-xs font-bold text-slate-700">{t("suppliers_anonymous_reviewer")}</span>
                             <div className="flex items-center gap-0.5 text-amber-500">
                               <span className="text-xs font-bold">{review.rating}</span>
                               <Star size={10} className="fill-amber-400" />
@@ -667,7 +799,7 @@ export default function AvailableRfqsPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground text-center py-4 bg-slate-50 rounded-lg border border-dashed">
+                    <p className="text-sm text-muted-foreground text-center py-6 bg-slate-50 rounded-xl border border-dashed">
                       {t("no_previous_reviews")}
                     </p>
                   )}
@@ -676,13 +808,15 @@ export default function AvailableRfqsPage() {
             </div>
           </div>
 
-          <div className="px-5 py-4 border-t bg-white shrink-0 flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); }}>
+          {/* Sticky Bottom CTA */}
+          <div className="px-5 py-3.5 border-t bg-gradient-to-t from-slate-50/50 to-white shrink-0 flex gap-2.5 shadow-[0_-4px_20px_rgba(15,23,42,0.04)]">
+            <Button variant="outline" className="flex-1 h-11 rounded-xl border-slate-200 hover:bg-slate-50 font-bold" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); }}>
               {t("close")}
             </Button>
-            <Button className="flex-1 bg-success hover:bg-success/90 gap-2" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
+            <Button className="flex-[2.5] bg-gradient-to-l from-success to-emerald-600 hover:from-success/90 hover:to-emerald-600/90 gap-2 h-11 rounded-xl shadow-lg shadow-success/25 hover:shadow-xl hover:shadow-success/30 transition-all font-black text-white group active:scale-[0.98]" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>
+              <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
               {t("submit_price_offer")}
-              <ChevronLeft size={16} />
+              <ChevronLeft size={16} className="rtl:rotate-0 ltr:rotate-180 group-hover:-translate-x-1 transition-transform" />
             </Button>
           </div>
         </DialogContent>

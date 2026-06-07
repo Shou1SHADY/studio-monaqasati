@@ -574,7 +574,7 @@ export default function SuppliersDirectory() {
                     {supplierReviews.map((review: any) => (
                       <div key={review.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
-                          <p className="font-bold text-sm text-slate-800">{review.reviewerName}</p>
+                          <p className="font-bold text-sm text-slate-800">{t("suppliers_anonymous_reviewer")}</p>
                           <div className="flex items-center gap-1">
                             <span className="text-sm font-bold text-amber-600">{review.rating}</span>
                             <Star size={12} className="fill-amber-400 text-amber-400" />

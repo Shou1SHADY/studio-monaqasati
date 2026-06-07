@@ -13,6 +13,8 @@ import {
   Package, 
   MapPin, 
   Calendar,
+  CalendarClock,
+  Banknote,
   File,
   Upload,
   Loader2,
@@ -350,19 +352,56 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
           </div>
 
           <div className="overflow-y-auto flex-1 px-5 py-5 space-y-5">
-            <div className="hidden">
-              {deliveryBatches.map((batch, index) => (
-                <div key={batch.id} className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 border-b border-slate-200">
-                    <span className="text-sm font-bold text-primary flex items-center gap-1.5">
-                      <Package size={14} />
-                      {t("offer_delivery_location")} {index + 1}
-                    </span>
-                  </div>
+            {/* HERO STATS: Execution Period & Total Price as the first two items */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 via-primary/3 to-transparent">
+              {/* Execution Period */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                  <CalendarClock size={12} className="text-primary" />
+                  <span>{t("offer_execution_duration")}</span>
                 </div>
-              ))}
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    placeholder={t("offer_duration_placeholder")}
+                    value={executionDuration}
+                    onChange={(e) => setExecutionDuration(e.target.value)}
+                    className="h-12 text-lg font-black rounded-xl border-2 border-input focus:border-primary transition-colors bg-white"
+                  />
+                  <Select value={executionDurationUnit} onValueChange={setExecutionDurationUnit}>
+                    <SelectTrigger className="w-28 h-12 text-sm font-bold rounded-xl border-2 border-input bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="أيام">{t("offer_days")}</SelectItem>
+                      <SelectItem value="أسابيع">{t("offer_weeks")}</SelectItem>
+                      <SelectItem value="أشهر">{t("offer_months")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {/* Total Price */}
+              <div className="flex flex-col gap-2 sm:border-s sm:border-slate-200/70 sm:ps-4">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                  <Banknote size={12} className="text-primary" />
+                  <span>{t("offer_total_price")}</span>
+                  <span className="text-red-500 normal-case">*</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={offerPrice}
+                    onChange={(e) => setOfferPrice(e.target.value)}
+                    className="w-full h-12 px-4 ps-4 pe-12 rounded-xl border-2 border-input bg-white text-xl font-black text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    placeholder="0"
+                    min="0"
+                  />
+                  <span className="absolute end-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{t("offer_sar")}</span>
+                </div>
+              </div>
             </div>
 
+            {/* Delivery Location */}
             <div className="space-y-1.5 flex-1">
               <Label className="text-sm font-semibold">{t("offer_delivery_location")}</Label>
               <div className="flex gap-2">
@@ -383,6 +422,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               </div>
             </div>
 
+            {/* PDF Upload */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold">{t("offer_upload_pdf")}</Label>
               {offerPdfUrl ? (
@@ -421,57 +461,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
               )}
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">{t("offer_website_label")}</Label>
-                <div className="relative">
-                  <Globe className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <Input
-                    placeholder={t("offer_website_placeholder")}
-                    value={supplierWebsite}
-                    onChange={(e) => setSupplierWebsite(e.target.value)}
-                    className="h-11 pl-4 pr-10 rounded-xl border-2 border-input focus:border-primary transition-colors text-left"
-                    dir="ltr"
-                  />
-                </div>
-                <p className="text-xs text-slate-500">{t("offer_website_help")}</p>
+            {/* Website */}
+            <div className="space-y-1.5">
+              <Label className="text-sm font-semibold text-slate-700">{t("offer_website_label")}</Label>
+              <div className="relative">
+                <Globe className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Input
+                  placeholder={t("offer_website_placeholder")}
+                  value={supplierWebsite}
+                  onChange={(e) => setSupplierWebsite(e.target.value)}
+                  className="h-11 pl-4 pr-10 rounded-xl border-2 border-input focus:border-primary transition-colors text-left"
+                  dir="ltr"
+                />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold text-slate-700">{t("offer_execution_duration")}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    placeholder={t("offer_duration_placeholder")}
-                    value={executionDuration}
-                    onChange={(e) => setExecutionDuration(e.target.value)}
-                    className="h-11 rounded-xl border-2 border-input focus:border-primary transition-colors"
-                  />
-                  <Select value={executionDurationUnit} onValueChange={setExecutionDurationUnit}>
-                    <SelectTrigger className="w-24 h-11 rounded-xl border-2 border-input">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="أيام">{t("offer_days")}</SelectItem>
-                      <SelectItem value="أسابيع">{t("offer_weeks")}</SelectItem>
-                      <SelectItem value="أشهر">{t("offer_months")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-semibold">{t("offer_total_price")} <span className="text-red-500">*</span></Label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    value={offerPrice}
-                    onChange={(e) => setOfferPrice(e.target.value)}
-                    className="w-full h-11 px-4 pl-12 rounded-xl border-2 border-input bg-white text-base font-bold focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                    placeholder="0"
-                    min="0"
-                  />
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">{t("offer_sar")}</span>
-                </div>
-              </div>
+              <p className="text-xs text-slate-500">{t("offer_website_help")}</p>
             </div>
           </div>
 

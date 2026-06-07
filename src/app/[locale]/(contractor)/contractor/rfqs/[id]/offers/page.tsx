@@ -37,7 +37,9 @@ import {
   File,
   Send,
   Globe,
-  Download
+  Download,
+  Briefcase,
+  ChevronLeft
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc } from "firebase/firestore"
@@ -539,15 +541,25 @@ export default function RfqOffersPage() {
                       <div className="flex flex-col md:flex-row">
                         {/* Offer Details */}
                         <div className="p-6 flex-1 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500">
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
                                 <User size={18} />
                               </div>
-                              <div>
-                                <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</p>
+                              <div className="min-w-0">
+                                {offer.supplierId ? (
+                                  <Link
+                                    href={`/contractor/supplier/profile/${offer.supplierId}`}
+                                    className="font-bold text-sm text-slate-800 hover:text-primary transition-colors inline-flex items-center gap-1 group"
+                                  >
+                                    <span className="truncate">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</span>
+                                    <ChevronLeft size={12} className="opacity-0 -mx-1 group-hover:opacity-100 group-hover:mx-0 transition-all rtl:rotate-0 ltr:rotate-180 shrink-0" />
+                                  </Link>
+                                ) : (
+                                  <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</p>
+                                )}
                                 {offer.submittedByUserName && (
-                                  <p className="text-[11px] text-slate-500 mt-0.5">
+                                  <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                                     {t("offers_submitted_by", { name: offer.submittedByUserName })}
                                   </p>
                                 )}
@@ -565,7 +577,22 @@ export default function RfqOffersPage() {
                                 )}
                               </div>
                             </div>
-                            {getStatusBadge(offer.status || "قيد المراجعة")}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {offer.supplierId && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  asChild
+                                  className="h-8 px-3 rounded-lg text-xs font-bold text-primary hover:text-primary hover:bg-primary/10 gap-1"
+                                >
+                                  <Link href={`/contractor/supplier/profile/${offer.supplierId}`}>
+                                    <Briefcase size={12} />
+                                    {t("offers_view_supplier_profile")}
+                                  </Link>
+                                </Button>
+                              )}
+                              {getStatusBadge(offer.status || "قيد المراجعة")}
+                            </div>
                           </div>
 
                           <div className="flex flex-wrap gap-4 text-sm mt-2">
@@ -821,7 +848,16 @@ export default function RfqOffersPage() {
                               <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
                                 <User size={16} className="text-primary" />
                               </div>
-                              <span className="font-bold text-slate-800">{o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}</span>
+                              {o.supplierId ? (
+                                <Link
+                                  href={`/contractor/supplier/profile/${o.supplierId}`}
+                                  className="font-bold text-slate-800 hover:text-primary transition-colors text-sm"
+                                >
+                                  {o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}
+                                </Link>
+                              ) : (
+                                <span className="font-bold text-slate-800">{o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}</span>
+                              )}
                               {o.price === lowestPrice && (
                                 <div className="text-[10px] text-amber-600 font-bold">{t("offers_best_price")} ⭐</div>
                               )}
