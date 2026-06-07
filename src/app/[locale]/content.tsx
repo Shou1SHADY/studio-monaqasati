@@ -693,6 +693,12 @@ export default function HomeContent() {
                   <MapPin size={18} className="mt-0.5 shrink-0 text-sky-400" />
                   <p className="text-sm font-medium leading-relaxed" dangerouslySetInnerHTML={{ __html: tFooter.raw('address_value') }} />
                 </div>
+                <div className="flex items-center gap-3 text-slate-400 pt-2">
+                  <Phone size={18} className="shrink-0 text-emerald-400" />
+                  <a href="https://wa.me/966550013416" target="_blank" rel="noopener noreferrer" className="text-sm font-bold leading-relaxed hover:text-white transition-colors" dir="ltr">
+                    {tFooter('support_phone')}
+                  </a>
+                </div>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { ArrowRight, Mail, MapPin } from 'lucide-react';
+import { ArrowRight, Mail, MapPin, Phone } from 'lucide-react';
 import { Link } from '@/i18n/routing';
 import { useTranslations } from "next-intl";
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
@@ -34,6 +34,19 @@ export default function ContactUs() {
                 <p className="text-slate-400 text-sm mb-3">{t("email_desc")}</p>
                 <a href="mailto:info.mdmak@mdmaktech.sa" className="text-xl font-bold text-sky-400 hover:text-sky-300 transition-colors" dir="ltr">
                   info.mdmak@mdmaktech.sa
+                </a>
+              </div>
+            </div>
+
+            <div className="bg-white/5 border border-white/10 rounded-3xl p-8 flex flex-col gap-4">
+              <div className="w-12 h-12 bg-cta/20 text-emerald-400 rounded-xl flex items-center justify-center">
+                <Phone size={24} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold mb-1">{t("phone_title")}</h3>
+                <p className="text-slate-400 text-sm mb-3">{t("phone_desc")}</p>
+                <a href="https://wa.me/966550013416" target="_blank" rel="noopener noreferrer" className="text-xl font-bold text-emerald-400 hover:text-emerald-300 transition-colors" dir="ltr">
+                  +966550013416
                 </a>
               </div>
             </div>
