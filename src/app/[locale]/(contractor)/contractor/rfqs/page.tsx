@@ -460,12 +460,18 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
                           {rfq.title}
                         </h3>
-                        <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md mt-2">
-                          <Package size={14} className="text-primary" />
-                          {rfq.products && rfq.products.length > 0 
-                            ? t("rfq_products_count", { count: rfq.products.length })
-                            : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
-                          }
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md">
+                            <Package size={14} className="text-primary" />
+                            {rfq.products && rfq.products.length > 0 
+                              ? t("rfq_products_count", { count: rfq.products.length })
+                              : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
+                            }
+                          </div>
+                          <div className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 w-fit px-2 py-1 rounded-md border border-emerald-100">
+                            <FileText size={14} className="text-emerald-500" />
+                            {rfq.offersCount || 0} {locale === 'ar' ? 'عروض' : 'Offers'}
+                          </div>
                         </div>
                       </div>
 

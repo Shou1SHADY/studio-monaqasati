@@ -18,12 +18,14 @@ import {
   Activity,
   CheckCircle,
   Clock,
-  Loader2
+  Loader2,
+  Eye
 } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, orderBy } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
+import { Link } from "@/i18n/routing"
 
 export default function AdminRfqsPage() {
   const t = useTranslations("Portal.Admin.Rfqs")
@@ -136,9 +138,11 @@ export default function AdminRfqsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-left">
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical size={18} />
-                        </Button>
+                        <Link href={`/admin/rfqs/${rfq.id}`}>
+                          <Button variant="ghost" size="icon">
+                            <Eye size={18} />
+                          </Button>
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}

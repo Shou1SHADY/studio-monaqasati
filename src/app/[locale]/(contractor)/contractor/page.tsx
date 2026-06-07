@@ -120,7 +120,7 @@ export default function ContractorDashboard() {
     { title: t("active_tenders"), value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: t("browse_tenders"), actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? t("active_tenders_empty") : t("active_tenders_count", { count: activeRfqsCount }) },
     { title: t("awarded_contracts"), value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: t("view_contracts"), actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: t("awarded_contracts_context") },
     { title: t("commitment_rate"), value: "90%", icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", action: t("how_calculated"), actionUrl: "#", trend: { value: 2, isPositive: true }, context: t("commitment_rate_context") },
-    // { title: t("connected_suppliers"), value: suppliersCount.toString(), icon: Users, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("browse_suppliers"), actionUrl: "/contractor/suppliers", context: t("connected_suppliers_context") }, {/* Hidden temporarily */}
+    // { title: t("connected_suppliers"), value: suppliersCount.toString(), icon: Users, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("browse_suppliers"), actionUrl: "/contractor/suppliers", context: t("connected_suppliers_context") },
   ]
 
   const recentActivity = [
@@ -361,7 +361,6 @@ export default function ContractorDashboard() {
               </h2>
               <p className="text-sm text-slate-500 mt-1">{t("favorite_suppliers_desc")}</p>
             </div>
-            {/* Hidden temporarily */}
             {/* <Link href="/contractor/suppliers">
               <Button variant="outline" className="rounded-xl font-bold bg-white hover:bg-primary hover:text-white hover:border-primary border-slate-200 shadow-sm transition-all duration-300">{t("manage_favorites")}</Button>
             </Link> */}
