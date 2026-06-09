@@ -34,7 +34,7 @@ export default function PrivacyPolicy() {
           </Link>
           <LanguageSwitcher />
         </div>
-        
+
         <div className="flex items-center gap-4 mb-8">
           <div className="w-16 h-16 bg-cta/10 rounded-2xl flex items-center justify-center text-sky-400">
             <ShieldCheck size={32} />
@@ -47,7 +47,7 @@ export default function PrivacyPolicy() {
 
         <div className="prose prose-invert prose-lg max-w-none prose-headings:text-sky-400 prose-a:text-cta hover:prose-a:text-sky-300 text-start">
           <p dangerouslySetInnerHTML={{ __html: t.raw("intro") }}></p>
-          
+
           <h3>{t("sec1_title")}</h3>
           <p>{t("sec1_desc")}</p>
           <ul>
@@ -81,7 +81,7 @@ export default function PrivacyPolicy() {
           <p>
             {t("sec5_desc")}
             <br />
-            {t("email")} <a href="mailto:info.mdmak@mdmaktech.sa">info.mdmak@mdmaktech.sa</a>
+            {t("email")} <a href="mailto:info@mdmaktech.sa">info@mdmaktech.sa</a>
           </p>
         </div>
       </div>

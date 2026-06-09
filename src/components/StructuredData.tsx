@@ -101,7 +101,7 @@ export default function StructuredData() {
       contactPoint: {
         '@type': 'ContactPoint',
         contactType: 'customer support',
-        email: 'info.mdmak@mdmaktech.sa',
+        email: 'info@mdmaktech.sa',
         url: 'https://mdmaktech.sa/contact',
         availableLanguage: ['Arabic', 'English'],
       },

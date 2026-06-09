@@ -17,7 +17,7 @@ export default function ContactUs() {
           </Link>
           <LanguageSwitcher />
         </div>
-        
+
         <div className="mb-12">
           <h1 className="text-4xl font-black tracking-tight mb-4">{t("title")}</h1>
           <p className="text-slate-400 text-lg">{t("subtitle")}</p>
@@ -32,8 +32,8 @@ export default function ContactUs() {
               <div>
                 <h3 className="text-xl font-bold mb-1">{t("email_title")}</h3>
                 <p className="text-slate-400 text-sm mb-3">{t("email_desc")}</p>
-                <a href="mailto:info.mdmak@mdmaktech.sa" className="text-xl font-bold text-sky-400 hover:text-sky-300 transition-colors" dir="ltr">
-                  info.mdmak@mdmaktech.sa
+                <a href="mailto:info@mdmaktech.sa" className="text-xl font-bold text-sky-400 hover:text-sky-300 transition-colors" dir="ltr">
+                  info@mdmaktech.sa
                 </a>
               </div>
             </div>
@@ -60,7 +60,7 @@ export default function ContactUs() {
                 <p className="text-slate-400 text-sm mb-3">{t("hq_desc")}</p>
                 <p className="text-lg font-bold" dangerouslySetInnerHTML={{ __html: t.raw("hq_address") }}></p>
               </div>
-              
+
               <div className="mt-2 rounded-xl overflow-hidden border border-white/10 h-[250px] w-full relative group">
                 <iframe
                   src="https://maps.google.com/maps?q=Prince%20Sultan%20Ibn%20Abdulaziz%20Road,%20North%20Mathar%20District,%20Riyadh&t=&z=14&ie=UTF8&iwloc=&output=embed"
