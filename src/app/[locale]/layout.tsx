@@ -1,4 +1,4 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
 import { Inter, Noto_Sans_Arabic } from 'next/font/google';
 import '../globals.css';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
@@ -46,15 +46,15 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'max-image-preview': 'large',
       'max-video-preview': -1,
     },
-    manifest: '/favicon/site.webmanifest',
+    manifest: '/site.webmanifest',
     icons: {
       icon: [
-        { url: '/favicon/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-        { url: '/favicon/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-        { url: '/favicon/favicon.ico', sizes: '48x48' },
+        { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+        { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon.ico', sizes: '48x48' },
       ],
-      shortcut: '/favicon/favicon.ico',
-      apple: { url: '/favicon/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+      shortcut: '/favicon.ico',
+      apple: { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     },
     openGraph: {
       type: 'website',
@@ -89,7 +89,7 @@ export default async function RootLayout({
   params: Promise<{ locale: string }>;
 }>) {
   const { locale } = await params;
-  
+
   if (!routing.locales.includes(locale as any)) {
     notFound();
   }
@@ -98,8 +98,8 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'} suppressHydrationWarning>
-      <body 
-        className={`${locale === 'ar' ? notoSansArabic.variable : inter.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground overflow-x-hidden`} 
+      <body
+        className={`${locale === 'ar' ? notoSansArabic.variable : inter.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground overflow-x-hidden`}
         suppressHydrationWarning
       >
         <NextIntlClientProvider messages={messages}>
