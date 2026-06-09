@@ -28,15 +28,20 @@ interface PageMetaParams {
 export function buildPageMetadata({ locale, title, description, path, ogImage }: PageMetaParams): Metadata {
   const siteName = locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'
   const fullTitle = `${title} | ${siteName}`
-  const ogImg = ogImage || '/logo17.jpg'
+  const ogImg = ogImage || '/og-image.jpg'
 
   return {
     title: fullTitle,
     description,
+    manifest: '/favicon/site.webmanifest',
     icons: {
-      icon: '/logo17.jpg',
-      shortcut: '/logo17.jpg',
-      apple: '/logo17.jpg',
+      icon: [
+        { url: '/favicon/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+        { url: '/favicon/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon/favicon.ico', sizes: '48x48' },
+      ],
+      shortcut: '/favicon/favicon.ico',
+      apple: { url: '/favicon/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     },
     alternates: alternatesForPath(path, locale),
     openGraph: {
@@ -45,7 +50,7 @@ export function buildPageMetadata({ locale, title, description, path, ogImage }:
       siteName,
       title: fullTitle,
       description,
-      images: [{ url: ogImg, width: 512, height: 512, alt: siteName }],
+      images: [{ url: ogImg, width: 1200, height: 630, alt: siteName }],
     },
     twitter: {
       card: 'summary_large_image',

@@ -20,10 +20,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
+    manifest: '/favicon/site.webmanifest',
     icons: {
-      icon: '/logo17.jpg',
-      shortcut: '/logo17.jpg',
-      apple: '/logo17.jpg',
+      icon: [
+        { url: '/favicon/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+        { url: '/favicon/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon/favicon.ico', sizes: '48x48' },
+      ],
+      shortcut: '/favicon/favicon.ico',
+      apple: { url: '/favicon/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     },
     keywords: locale === 'ar'
       ? ['مدماك تيك', 'مقاولين', 'موردين', 'مشتريات', 'حديد', 'أسمنت', 'كهرباء', 'دهانات', 'أدوات صحية', 'عروض أسعار', 'منصة B2B', 'السعودية', 'بناء', 'توريد', 'تكييف', 'عزل', 'أرضيات', 'أبواب']
@@ -38,9 +43,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: locale === 'ar' ? 'https://mdmaktech.sa' : `https://mdmaktech.sa/${locale}`,
       images: [
         {
-          url: '/logo17.jpg',
-          width: 512,
-          height: 512,
+          url: '/og-image.jpg',
+          width: 1200,
+          height: 630,
           alt: siteName,
         },
       ],
@@ -49,7 +54,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       card: 'summary_large_image',
       title,
       description,
-      images: ['/logo17.jpg'],
+      images: ['/og-image.jpg'],
     },
   };
 }

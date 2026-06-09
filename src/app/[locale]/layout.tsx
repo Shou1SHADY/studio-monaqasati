@@ -46,10 +46,15 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       'max-image-preview': 'large',
       'max-video-preview': -1,
     },
+    manifest: '/favicon/site.webmanifest',
     icons: {
-      icon: '/logo17.jpg',
-      shortcut: '/logo17.jpg',
-      apple: '/logo17.jpg',
+      icon: [
+        { url: '/favicon/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+        { url: '/favicon/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+        { url: '/favicon/favicon.ico', sizes: '48x48' },
+      ],
+      shortcut: '/favicon/favicon.ico',
+      apple: { url: '/favicon/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
     },
     openGraph: {
       type: 'website',
@@ -60,9 +65,9 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       url: locale === 'ar' ? 'https://mdmaktech.sa' : `https://mdmaktech.sa/${locale}`,
       images: [
         {
-          url: '/logo17.jpg',
-          width: 4501,
-          height: 4501,
+          url: '/og-image.jpg',
+          width: 1200,
+          height: 630,
           alt: locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech',
         },
       ],
@@ -71,7 +76,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       card: 'summary_large_image',
       title: locale === 'ar' ? titleAr : titleEn,
       description: locale === 'ar' ? descAr : descEn,
-      images: ['/logo17.jpg'],
+      images: ['/og-image.jpg'],
     },
   };
 }
