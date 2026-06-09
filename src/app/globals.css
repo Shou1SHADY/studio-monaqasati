@@ -75,6 +75,24 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     overflow-x: hidden;
   }
+
+  /* Hide scrollbar on mobile (below md: 768px) */
+  @media (max-width: 767px) {
+    body::-webkit-scrollbar {
+      display: none;
+    }
+    body {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  }
+
+  /* On desktop, reserve scrollbar space so content doesn't shift */
+  @media (min-width: 768px) {
+    html {
+      scrollbar-gutter: stable;
+    }
+  }
   img {
     max-width: 100%;
     height: auto;
