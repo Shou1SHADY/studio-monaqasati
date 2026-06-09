@@ -8,7 +8,7 @@ const withNextIntl = createNextIntlPlugin(
 
 /** @type {import('next').NextConfig} */
 const nextConfig: NextConfig = {
-  /* config options here */
+  trailingSlash: false,
   typescript: {
     ignoreBuildErrors: true,
   },
