@@ -123,7 +123,7 @@ export default function HomeContent() {
     <div className="min-h-screen bg-[#020617] flex flex-col font-body text-foreground overflow-x-hidden selection:bg-cta/30">
 
       {/* Premium Navigation - Aligned with App Primary Navy & CTA Blue */}
-      <nav className={`fixed top-0 left-0 right-0 z-[9999] transition-all duration-500 ${scrolled ? 'bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled ? 'bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 py-3' : 'bg-transparent py-5'}`}>
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
           <Link href="/" className="flex items-center cursor-pointer group">
             <Image
@@ -302,42 +302,81 @@ export default function HomeContent() {
           </div>
         </section>
 
-        {/* FEATURES - Dark depth architecture with Blue app colors */}
-        <section id="features" className="py-16 md:py-24 lg:py-32 relative bg-[#0F172A]">
-          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-cta/30 to-transparent" />
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-20">
-              <div className="space-y-4">
-                <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tFeatures('tagline')}</div>
-                <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white tracking-normal leading-snug md:leading-tight" dangerouslySetInnerHTML={{ __html: tFeatures.raw('title') }} />
+        {/* FEATURES - Premium dark architecture */}
+        <section id="features" className="relative bg-[#030712] overflow-hidden md:flex md:flex-col md:justify-center md:min-h-screen py-12 md:py-0">
+          {/* Grid background */}
+          <div
+            className="absolute inset-0 pointer-events-none animate-grid-drift"
+            style={{
+              backgroundImage: `
+                linear-gradient(to right, rgba(56,189,248,0.08) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(56,189,248,0.08) 1px, transparent 1px)
+              `,
+              backgroundSize: '80px 80px',
+            }}
+          />
+          {/* Subtle ambient glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-sky-500/[0.03] rounded-full blur-[120px] pointer-events-none" />
+          {/* Top border line */}
+          <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-sky-500/20 to-transparent" />
+          {/* Bottom border line */}
+          <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+
+          <div className="max-w-7xl mx-auto px-6 relative z-10 w-full">
+            {/* Centered Header */}
+            <div className="text-center mb-8 md:mb-12 max-w-3xl mx-auto">
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white tracking-normal leading-[1.5] md:leading-[1.5]" dangerouslySetInnerHTML={{ __html: tFeatures.raw('title') }} />
+              {/* Decorative line */}
+              <div className="mt-8 flex items-center justify-center gap-3">
+                <div className="h-px w-10 bg-gradient-to-r from-transparent to-sky-500/40" />
+                <div className="w-1.5 h-1.5 rounded-full bg-sky-500/60" />
+                <div className="h-px w-10 bg-gradient-to-l from-transparent to-sky-500/40" />
               </div>
-              <p className="text-slate-400 max-w-md text-lg leading-relaxed border-s-2 border-cta/30 ps-6">
-                {tFeatures('desc')}
-              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
               {[
-                { title: tFeatures('f1_title'), desc: tFeatures('f1_desc'), icon: ShieldCheck, color: "cta" },
-                { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, color: "blue" },
-                { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, color: "purple" }
+                { title: tFeatures('f1_title'), desc: tFeatures('f1_desc'), icon: ShieldCheck, gradient: "from-sky-500/20 to-blue-600/10", iconBg: "bg-sky-500/10 text-sky-400" },
+                { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, gradient: "from-amber-500/10 to-orange-600/5", iconBg: "bg-amber-500/10 text-amber-400" },
+                { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, gradient: "from-violet-500/10 to-purple-600/5", iconBg: "bg-violet-500/10 text-violet-400" }
               ].map((f, i) => (
                 <motion.div
-                  initial={{ opacity: 0, y: 30 }}
+                  initial={{ opacity: 0, y: 40 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
-                  transition={{ duration: 0.5, delay: i * 0.1, ease: "easeOut" }}
+                  transition={{ duration: 0.6, delay: i * 0.15, ease: "easeOut" }}
                   key={i}
-                  className="p-8 md:p-10 rounded-[2rem] md:rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-sky-400/40 hover:bg-white/[0.04] transition-all group hover:-translate-y-2 duration-500 relative overflow-hidden hover:shadow-[0_0_40px_-10px_rgba(56,189,248,0.15)]"
+                  className="group relative p-8 md:p-10 rounded-3xl bg-[#080c18] border border-white/[0.04] hover:border-white/[0.08] transition-all duration-500 hover:-translate-y-1"
                 >
-                  <div className="absolute -top-10 -left-10 w-32 h-32 bg-cta/5 rounded-full blur-3xl group-hover:bg-cta/10 transition-all" />
-                  <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-sky-400 mb-8 group-hover:bg-cta group-hover:text-white transition-all duration-500 shadow-xl">
-                    <f.icon size={28} />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-4 group-hover:text-sky-400 transition-colors">{f.title}</h3>
-                  <p className="text-slate-400 text-base leading-relaxed">{f.desc}</p>
-                  <div className="mt-8 flex items-center gap-2 text-sky-400 text-xs font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all rtl:translate-x-2 ltr:-translate-x-2 group-hover:translate-x-0">
-                    {tFeatures('learn_more')} <ArrowLeft size={14} className="rtl:rotate-0 ltr:rotate-180" />
+                  {/* Gradient glow on hover */}
+                  <div className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${f.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-700`} />
+                  {/* Subtle top highlight */}
+                  <div className="absolute top-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+                  <div className="relative z-10">
+                    {/* Icon with enhanced styling */}
+                    <div className={`w-14 h-14 rounded-2xl ${f.iconBg} flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500 border border-white/5`}>
+                      <f.icon size={26} strokeWidth={1.5} />
+                    </div>
+
+                    {/* Title */}
+                    <h3 className="text-xl md:text-2xl font-bold text-white mb-4 group-hover:text-sky-300 transition-colors duration-300">
+                      {f.title}
+                    </h3>
+
+                    {/* Description */}
+                    <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-8">
+                      {f.desc}
+                    </p>
+
+                    {/* Learn more link */}
+                    <div className="flex items-center gap-2 text-sky-400/80 text-xs font-bold uppercase tracking-wider group-hover:text-sky-400 transition-colors">
+                      <span className="relative">
+                        {tFeatures('learn_more')}
+                        <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-sky-400 group-hover:w-full transition-all duration-300" />
+                      </span>
+                      <ArrowLeft size={14} className="rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 transition-transform" />
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -345,118 +384,122 @@ export default function HomeContent() {
           </div>
         </section>
 
-        {/* CONTRACTOR EXPERIENCE - Premium Visual Split */}
-        <section className="relative overflow-hidden border-y border-white/5 bg-[#020617]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
+        {/* CONTRACTOR EXPERIENCE - Clean layout */}
+        <section className="relative bg-[#020617] border-y border-white/5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 items-center">
+            {/* Image side */}
             <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? 50 : -50 }}
+              initial={{ opacity: 0, x: locale === 'ar' ? 30 : -30 }}
               whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative overflow-hidden group">
-              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" loading="lazy" />
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-[#020617]" />
-              <div className="absolute inset-0 bg-cta/10 mix-blend-overlay" />
-
-              <div className="absolute bottom-6 right-6 md:bottom-12 md:right-12 p-5 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-4">
-                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-sky-500/20">
-                    <TrendingUp size={20} className="md:size-6" />
-                  </div>
-                  <div className="text-[10px] md:text-xs font-black text-sky-400 uppercase tracking-widest">{tContractor('stat_label')}</div>
-                </div>
-                <div className="text-4xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tContractor('stat_val')} /></div>
-                <div className="text-slate-400 text-xs md:text-sm mt-3 md:mt-4 font-medium" dangerouslySetInnerHTML={{ __html: tContractor.raw('stat_desc') }} />
-              </div>
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="relative h-72 md:h-96 lg:h-full min-h-[320px] overflow-hidden"
+            >
+              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="object-cover" sizes="50vw" loading="lazy" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/80 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:to-[#020617]/60" />
             </motion.div>
 
+            {/* Text side */}
             <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? -50 : 50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-              className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative bg-[#0F172A]/50">
-              <div className="space-y-10 max-w-xl">
-                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
-                  <div className="w-10 h-0.5 bg-cta" /> {tContractor('tagline')}
-                </div>
-                <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.6] tracking-normal" dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }} />
-                <p className="text-slate-400 text-base md:text-xl leading-relaxed">{tContractor('desc')}</p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
-                    <div key={i} className="flex items-center gap-4 text-slate-300 text-sm font-bold bg-white/5 p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all">
-                      <CheckCircle2 size={20} className="text-sky-400 shrink-0" /> {item}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-6">
-                  <Link href="/register?role=Contractor">
-                    <Button className="h-16 px-12 text-lg font-black rounded-2xl bg-cta hover:bg-sky-600 text-white shadow-2xl shadow-cta/20 border-none transition-all hover:scale-105">
-                      {tContractor('cta')}
-                    </Button>
-                  </Link>
-                </div>
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+              className="px-6 md:px-12 lg:px-20 xl:px-28 py-12 md:py-16 max-w-2xl mx-auto lg:mx-0 lg:max-w-none"
+            >
+              {/* Tagline with accent */}
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-px bg-sky-500/60" />
+                <span className="text-xs font-bold text-sky-400 uppercase tracking-widest">
+                  {tContractor('tagline')}
+                </span>
               </div>
+
+              {/* Title */}
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-[1.5] tracking-tight mb-6" dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }} />
+
+              {/* Description */}
+              <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-8 max-w-md">
+                {tContractor('desc')}
+              </p>
+
+              {/* Feature pills */}
+              <div className="flex flex-wrap gap-2.5 mb-10">
+                {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/[0.03] border border-white/[0.06] px-4 py-2 rounded-full">
+                    <CheckCircle2 size={13} className="text-sky-400 shrink-0" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA */}
+              <Link href="/register?role=Contractor" className="inline-block">
+                <Button className="group h-12 px-7 text-sm font-bold rounded-xl bg-cta hover:bg-sky-500 text-white transition-all hover:shadow-lg hover:shadow-cta/25">
+                  {tContractor('cta')}
+                  <ArrowLeft size={14} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
+                </Button>
+              </Link>
             </motion.div>
           </div>
         </section>
 
-        {/* SUPPLIER EXPERIENCE - Symmetric Reverse */}
-        <section className="relative overflow-hidden bg-[#020617]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 items-stretch min-h-[700px]">
+        {/* SUPPLIER EXPERIENCE - Clean layout */}
+        <section className="relative bg-[#020617]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 items-center">
+            {/* Text side */}
             <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? 50 : -50 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-              className="flex items-center px-6 md:px-10 lg:px-24 py-16 md:py-24 relative order-2 lg:order-1 bg-[#0F172A]/30">
-              <div className="space-y-10 max-w-xl">
-                <div className="inline-flex items-center gap-3 text-sky-400 font-black text-xs uppercase tracking-normal">
-                  <div className="w-10 h-0.5 bg-sky-400" /> {tSupplier('tagline')}
-                </div>
-                <h2 className="text-4xl md:text-6xl font-bold text-white leading-[1.6] tracking-normal" dangerouslySetInnerHTML={{ __html: tSupplier.raw('title') }} />
-                <p className="text-slate-400 text-xl leading-relaxed">{tSupplier('desc')}</p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {[tSupplier('access'), tSupplier('digital'), tSupplier('tracking'), tSupplier('rating')].map((item, i) => (
-                    <div key={i} className="flex items-center gap-4 text-slate-300 text-sm font-bold bg-white/5 p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition-all">
-                      <CheckCircle2 size={20} className="text-sky-400 shrink-0" /> {item}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-6">
-                  <Link href="/register?role=Supplier">
-                    <Button className="h-16 px-12 text-lg font-black rounded-2xl bg-sky-600 hover:bg-sky-500 text-white shadow-2xl shadow-sky-500/20 border-none transition-all hover:scale-105">
-                      {tSupplier('cta')}
-                    </Button>
-                  </Link>
-                </div>
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
+              className="px-6 md:px-12 lg:px-20 xl:px-28 py-12 md:py-16 order-2 lg:order-1 max-w-2xl mx-auto lg:mx-0 lg:max-w-none"
+            >
+              {/* Tagline with accent */}
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-px bg-sky-500/60" />
+                <span className="text-xs font-bold text-sky-400 uppercase tracking-widest">
+                  {tSupplier('tagline')}
+                </span>
               </div>
+
+              {/* Title */}
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-[1.5] tracking-tight mb-6" dangerouslySetInnerHTML={{ __html: tSupplier.raw('title') }} />
+
+              {/* Description */}
+              <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-8 max-w-md">
+                {tSupplier('desc')}
+              </p>
+
+              {/* Feature pills */}
+              <div className="flex flex-wrap gap-2.5 mb-10">
+                {[tSupplier('access'), tSupplier('digital'), tSupplier('tracking'), tSupplier('rating')].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/[0.03] border border-white/[0.06] px-4 py-2 rounded-full">
+                    <CheckCircle2 size={13} className="text-sky-400 shrink-0" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+
+              {/* CTA */}
+              <Link href="/register?role=Supplier" className="inline-block">
+                <Button className="group h-12 px-7 text-sm font-bold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-all hover:shadow-lg hover:shadow-sky-500/25">
+                  {tSupplier('cta')}
+                  <ArrowLeft size={14} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
+                </Button>
+              </Link>
             </motion.div>
 
+            {/* Image side */}
             <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? -50 : 50 }}
+              initial={{ opacity: 0, x: locale === 'ar' ? -30 : 30 }}
               whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="relative overflow-hidden group order-1 lg:order-2">
-              <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="w-full h-full object-cover transition-transform duration-3000 group-hover:scale-110" sizes="50vw" loading="lazy" />
-              <div className="absolute inset-0 bg-gradient-to-l from-transparent via-transparent to-[#020617]" />
-              <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay" />
-
-              <div className="absolute top-6 left-6 md:top-12 md:left-12 p-5 md:p-8 bg-white/5 backdrop-blur-2xl rounded-2xl md:rounded-[2rem] border border-white/10 shadow-2xl animate-float">
-                <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-4">
-                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-sky-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-sky-500/20">
-                    <LayoutDashboard size={20} className="md:size-6" />
-                  </div>
-                  <div className="text-[10px] md:text-xs font-black text-sky-400 uppercase tracking-normal">{tSupplier('stat_label')}</div>
-                </div>
-                <div className="text-4xl md:text-5xl font-black text-white leading-none"><AnimatedStat value={tSupplier('stat_val')} /></div>
-                <div className="text-slate-400 text-xs md:text-sm mt-3 md:mt-4 font-medium" dangerouslySetInnerHTML={{ __html: tSupplier.raw('stat_desc') }} />
-              </div>
+              viewport={{ once: true, margin: "-50px" }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="relative h-72 md:h-96 lg:h-full min-h-[320px] overflow-hidden order-1 lg:order-2"
+            >
+              <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="object-cover" sizes="50vw" loading="lazy" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/80 via-transparent to-transparent lg:bg-gradient-to-l lg:from-transparent lg:to-[#020617]/60" />
             </motion.div>
           </div>
         </section>

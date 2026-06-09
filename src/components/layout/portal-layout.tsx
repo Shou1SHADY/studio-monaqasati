@@ -457,7 +457,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-[9999] flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
+        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
           <SidebarTrigger />
           
           <div className="flex-1 max-w-md flex">

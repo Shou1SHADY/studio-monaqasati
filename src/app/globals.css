@@ -156,3 +156,13 @@
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
 }
+
+/* Animated grid background for Features section */
+@keyframes grid-drift {
+  0% { background-position: 0 0; }
+  100% { background-position: 80px 80px; }
+}
+
+.animate-grid-drift {
+  animation: grid-drift 20s linear infinite;
+}
