@@ -500,16 +500,16 @@ export default function HomeContent() {
                     <div className="self-start max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tr-[4px] bg-white/[0.045] border border-white/[0.06] text-slate-400 text-[12.5px] leading-[1.55]">
                       <span className="block text-[10px] font-bold mb-[3px] text-[#f0a3a3]">{tCompare('chat_msg1_sender')}</span>
                       {tCompare('chat_msg1_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">١١:٠٢</span>
+                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg1_time')}</span>
                     </div>
                     <div className="self-end max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tl-[4px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[12.5px] leading-[1.55]">
                       {tCompare('chat_msg2_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">١١:٢٠ ✓✓</span>
+                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg2_time')}</span>
                     </div>
                     <div className="self-start max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tr-[4px] bg-white/[0.045] border border-white/[0.06] text-slate-400 text-[12.5px] leading-[1.55]">
                       <span className="block text-[10px] font-bold mb-[3px] text-[#e9c46a]">{tCompare('chat_msg3_sender')}</span>
                       {tCompare('chat_msg3_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">أمس</span>
+                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg3_time')}</span>
                     </div>
                     <div className="self-start inline-flex items-center gap-2 text-[11px] text-red-400/80 font-semibold bg-red-500/[0.07] border border-red-500/[0.16] px-[11px] py-[6px] rounded-[10px]">
                       <Phone size={13} />
@@ -517,7 +517,7 @@ export default function HomeContent() {
                     </div>
                     <div className="self-end max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tl-[4px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[12.5px] leading-[1.55]">
                       {tCompare('chat_msg4_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">٠٩:٤١ ✓</span>
+                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg4_time')}</span>
                     </div>
                   </div>
 
@@ -527,7 +527,7 @@ export default function HomeContent() {
                       {tCompare('chat_placeholder')}
                     </span>
                     <span className="w-[30px] h-[30px] rounded-full bg-white/[0.05] flex items-center justify-center text-slate-500 shrink-0">
-                      <ArrowRight size={15} className="rtl-flip" />
+                      <ArrowRight size={15} className={cn(locale === 'ar' && "rtl-flip")} />
                     </span>
                   </div>
                 </div>
@@ -561,7 +561,7 @@ export default function HomeContent() {
                   style={{ willChange: "transform" }}
                   className="w-[42px] h-[42px] rounded-full bg-[rgba(14,165,233,0.08)] border border-sky-500/25 flex items-center justify-center shadow-[0_0_24px_-6px_rgba(56,189,248,0.55)]"
                 >
-                  <ArrowRight size={17} className="text-sky-400 rtl-flip" />
+                  <ArrowRight size={17} className={cn("text-sky-400", locale === 'ar' && "rtl-flip")} />
                 </motion.div>
               </div>
 
