@@ -159,7 +159,7 @@ export default function ContractorSupplierProfilePage() {
               </div>
               <div className="flex-1 space-y-3 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-3xl font-black text-slate-900 font-headline tracking-tight">{name}</h1>
+                  <h1 className={cn("text-3xl font-black text-slate-900 font-headline", locale !== 'ar' && "tracking-tight")}>{name}</h1>
                   {supplier.isVerified && (
                     <Badge className="bg-success/10 text-success border-none gap-1 font-bold">
                       <ShieldCheck size={12} />

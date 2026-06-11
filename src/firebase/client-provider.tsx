@@ -18,23 +18,41 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
   useEffect(() => {
     if (!services.auth) return;
 
-    // اشتراك لمراقبة حالة المستخدم ومحاولة تسجيل الدخول إذا لم يوجد
+    // Firebase can briefly fire onAuthStateChanged(null) during its async
+    // IndexedDB session read even when a real user is persisted (e.g. after a
+    // locale-switch tree remount). Delaying sign-in gives Firebase ~600 ms to
+    // resolve the persisted session before falling back to anonymous auth.
+    let anonTimer: ReturnType<typeof setTimeout> | null = null;
+
     const unsubscribe = onAuthStateChanged(services.auth, async (user) => {
+      // Cancel any pending anonymous sign-in if auth just resolved
+      if (anonTimer) {
+        clearTimeout(anonTimer);
+        anonTimer = null;
+      }
+
       if (!user) {
-        try {
-          await signInAnonymously(services.auth);
-          console.log("Firebase: Anonymous login successful.");
-        } catch (error: any) {
-          if (error.code === 'auth/operation-not-allowed') {
-            console.error("Firebase: Anonymous Auth is not enabled in the Firebase Console.");
-          } else {
-            console.error("Firebase: Anonymous login failed:", error);
+        anonTimer = setTimeout(async () => {
+          // Only sign in anonymously when no real user has appeared
+          if (!services.auth.currentUser) {
+            try {
+              await signInAnonymously(services.auth);
+            } catch (error: any) {
+              if (error.code === 'auth/operation-not-allowed') {
+                console.error("Firebase: Anonymous Auth is not enabled in the Firebase Console.");
+              } else {
+                console.error("Firebase: Anonymous login failed:", error);
+              }
+            }
           }
-        }
+        }, 600);
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (anonTimer) clearTimeout(anonTimer);
+    };
   }, [services.auth]);
 
   return (

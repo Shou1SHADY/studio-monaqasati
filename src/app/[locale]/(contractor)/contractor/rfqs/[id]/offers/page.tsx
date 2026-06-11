@@ -46,6 +46,15 @@ import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addD
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 
+function fmtDate(val: any, locale: string) {
+  if (!val) return '-'
+  const d = new Date(val)
+  if (isNaN(d.getTime())) return '-'
+  return d.toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US', {
+    year: 'numeric', month: 'short', day: 'numeric',
+  })
+}
+
 export default function RfqOffersPage() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
@@ -323,182 +332,98 @@ export default function RfqOffersPage() {
   return (
     <PortalLayout>
       <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <Button variant="ghost" size="sm" onClick={() => router.back()} className="mb-2 gap-1 text-muted-foreground">
-              <ArrowRight size={16} />
-              {t("offers_back_to_tenders")}
+
+        {/* ── Unified Hero Banner ── */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl shadow-primary/20">
+          <div className={cn("absolute top-0 -mt-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl pointer-events-none", locale === 'ar' ? '-mr-20 right-0' : '-ml-20 left-0')} />
+          <div className={cn("absolute bottom-0 -mb-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none", locale === 'ar' ? '-ml-20 left-0' : '-mr-20 right-0')} />
+
+          <div className="relative z-10 space-y-5">
+            {/* Back */}
+            <Button variant="ghost" size="sm" onClick={() => router.back()} className="gap-1.5 text-white/60 hover:text-white hover:bg-white/10 -ms-2 h-8 rounded-xl px-3">
+              <ArrowRight size={14} className="rotate-180 rtl:rotate-0 shrink-0" />
+              <span className="text-sm">{t("offers_back_to_tenders")}</span>
             </Button>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("offers_page_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("offers_page_desc")}</p>
+
+            {/* Title + stat chips */}
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
+              <div className="space-y-1.5 flex-1">
+                <h1 className={cn("text-3xl font-black text-white", locale !== 'ar' && "tracking-tight")}>
+                  {t("offers_page_title")}
+                </h1>
+                {rfq && (
+                  <p className={cn("text-white/75 text-lg font-semibold", locale === 'ar' ? "leading-[1.6]" : "leading-snug")}>
+                    {rfq.title}
+                  </p>
+                )}
+                <p className="text-white/50 text-sm">{t("offers_page_desc")}</p>
+              </div>
+
+              {!isLoading && (
+                <div className="flex flex-wrap items-start gap-3 shrink-0">
+                  <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-5 py-3 text-center min-w-[84px]">
+                    <p className="text-[10px] font-bold text-white/50 mb-1">{t("offers_total")}</p>
+                    <p className="text-3xl font-black text-white leading-none">{offers?.length || 0}</p>
+                  </div>
+                  <div className="bg-success/20 backdrop-blur-sm border border-success/20 rounded-2xl px-5 py-3 text-center min-w-[84px]">
+                    <p className="text-[10px] font-bold text-success/70 mb-1">{t("offers_accepted_count")}</p>
+                    <p className="text-3xl font-black text-success leading-none">{offers?.filter((o: any) => o.status === "مقبول").length || 0}</p>
+                  </div>
+                  <div className="bg-amber-500/20 backdrop-blur-sm border border-amber-500/20 rounded-2xl px-5 py-3 text-center min-w-[84px]">
+                    <p className="text-[10px] font-bold text-amber-300/70 mb-1">{t("offers_under_review_count")}</p>
+                    <p className="text-3xl font-black text-amber-300 leading-none">{offers?.filter((o: any) => o.status === "قيد المراجعة").length || 0}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* RFQ metadata strip */}
+            {rfq && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-4 border-t border-white/10 text-sm text-white/60">
+                <Badge className="bg-white/10 text-white/80 border-white/10 font-medium rounded-lg hover:bg-white/20">
+                  {displayCategory(rfq.category, locale)}
+                </Badge>
+                {rfq.subCategory && (
+                  <span className="text-white/40 text-xs">{displaySubcategory(rfq.subCategory, locale)}</span>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <MapPin size={13} className="shrink-0" />
+                  <span>{displayCity(rfq.city, locale)}{rfq.district ? ` · ${displayCity(rfq.district, locale)}` : ''}</span>
+                </div>
+                {rfq.deadline && (
+                  <div className="flex items-center gap-1.5 bg-red-500/20 text-red-300 rounded-lg px-2.5 py-1 text-xs font-medium">
+                    <Calendar size={12} className="shrink-0" />
+                    {t("offers_deadline_label", { date: fmtDate(rfq.deadline, locale) })}
+                  </div>
+                )}
+                {rfq.products && rfq.products.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <Package size={13} className="shrink-0" />
+                    <span>{rfq.products.length} {locale === 'ar' ? 'منتج' : 'products'}</span>
+                  </div>
+                )}
+                {rfq.pdfUrl && (
+                  <a href={rfq.pdfUrl} target="_blank" rel="noopener noreferrer" download
+                    className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white/80 rounded-lg px-3 py-1 text-xs transition-colors">
+                    <File size={12} className="shrink-0" />
+                    {t("offers_download_pdf")}
+                  </a>
+                )}
+                {rfq.notes && (
+                  <div className="flex items-center gap-1.5 bg-blue-500/15 text-blue-200 rounded-lg px-2.5 py-1 text-xs">
+                    <Tag size={11} className="shrink-0" />
+                    {locale === 'ar' ? 'يوجد ملاحظات' : 'Has notes'}
+                  </div>
+                )}
+                <div className="ms-auto font-mono text-white/25 text-[11px] bg-white/5 border border-white/5 px-2 py-1 rounded-lg hidden sm:block">
+                  #{rfqId.substring(0, 10)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        {rfq && (
-          <Card className="border-none shadow-sm bg-white overflow-hidden">
-            <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row justify-between gap-6">
-                <div className="space-y-4 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
-                      {displayCategory(rfq.category, locale)}
-                    </Badge>
-                    {rfq.subCategory && (
-                      <Badge variant="outline" className="text-muted-foreground border-slate-200">
-                        {displaySubcategory(rfq.subCategory, locale)}
-                      </Badge>
-                    )}
-                    {rfq.pdfUrl && (
-                      <a
-                        href={rfq.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download
-                        className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-2.5 py-1 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <File size={12} />
-                        {t("offers_download_pdf")}
-                      </a>
-                    )}
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground mr-auto bg-slate-50 px-2 py-1 rounded">
-                      <Calendar size={12} />
-                      {t("offers_created_date", { date: rfq.createdAt ? new Date(rfq.createdAt).toLocaleDateString(locale) : '-' })}
-                    </div>
-                  </div>
 
-                  <h2 className="text-2xl font-bold text-slate-800">{rfq.title}</h2>
-
-                  <div className="flex flex-wrap items-center gap-6 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <MapPin size={16} className="text-primary" />
-                      {displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}
-                      {rfq.locationCoords && (
-                        <a
-                          href={`https://www.google.com/maps/search/?api=1&query=${rfq.locationCoords.lat},${rfq.locationCoords.lng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary underline mr-2 hover:text-primary/70 transition-colors"
-                        >
-                          {t("offers_view_location")}
-                        </a>
-                      )}
-                    </div>
-                    {rfq.isQualityCertificateRequired && (
-                      <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">
-                        {t("offers_quality_cert")}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Products List */}
-                  {rfq.products && rfq.products.length > 0 && (
-                    <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
-                      <p className="text-xs font-bold text-slate-600 mb-3">{t("offers_requested_products")}</p>
-                      <div className="space-y-2">
-                        {rfq.products.map((product: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between bg-white p-3 rounded border border-slate-100">
-                            <div className="flex-1">
-                              <p className="font-bold text-sm text-slate-800">{product.name}</p>
-                              {product.subCategory && (
-                                <div className="mt-1">
-                                  <span className="inline-block px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">{displaySubcategory(product.subCategory, locale)}</span>
-                                </div>
-                              )}
-                              {product.description && (
-                                <p className="text-xs text-muted-foreground mt-1">{product.description}</p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-sm">
-                              <span className="font-bold text-primary">{product.quantity}</span>
-                              <span className="text-muted-foreground">{product.unitOfMeasure}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Notes */}
-                  {rfq.notes && (
-                    <div className="mt-4 p-4 bg-blue-50/50 rounded-lg border border-blue-100">
-                      <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_notes_label")}</p>
-                      <p className="text-sm text-slate-700">{rfq.notes}</p>
-                    </div>
-                  )}
-
-                  {/* PDF Attachment */}
-                  {rfq.pdfUrl && (
-                    <div className="mt-4">
-                      <a
-                        href={rfq.pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
-                      >
-                        <File size={16} />
-                        {t("offers_view_pdf")}
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                <div className="md:w-px md:h-24 bg-slate-100 hidden md:block" />
-
-                <div className="space-y-2 min-w-[200px]">
-                  <p className="text-xs text-muted-foreground">{t("offers_tender_number")}</p>
-                  <p className="font-mono text-sm font-bold text-primary bg-primary/5 px-3 py-2 rounded-lg border border-primary/10">
-                    {rfqId}
-                  </p>
-                  {rfq.deadline && (
-                    <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/5 px-3 py-2 rounded-lg border border-destructive/10">
-                      <Calendar size={14} />
-                      {t("offers_deadline_label", { date: new Date(rfq.deadline).toLocaleDateString(locale) })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
-                <TrendingUp size={18} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("offers_total")}</p>
-                <p className="text-xl font-bold">{offers?.length || 0}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-success/10 flex items-center justify-center text-success">
-                <CheckCircle2 size={18} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("offers_accepted_count")}</p>
-                <p className="text-xl font-bold">{offers?.filter((o: any) => o.status === "مقبول").length || 0}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-sm">
-            <CardContent className="p-5 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
-                <Loader2 size={18} />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t("offers_under_review_count")}</p>
-                <p className="text-xl font-bold">{offers?.filter((o: any) => o.status === "قيد المراجعة").length || 0}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Offers and Compare Tabs */}
+        {/* ── Tabs ── */}
         <Tabs defaultValue="list" className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg text-slate-800">{t("offers_title")}</h3>
@@ -528,23 +453,36 @@ export default function RfqOffersPage() {
                 const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
 
                 return (
-                  <Card key={offer.id} className={`border shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden relative ${offer.status === "مقبول" ? "border-success/30 bg-success/5" :
-                    offer.status === "مرفوض" ? "opacity-50 grayscale-[50%]" :
-                      isBestOffer ? "border-amber-300 bg-amber-50/20" : "border-slate-100 bg-white"
-                    }`}>
+                  <Card key={offer.id} className={cn(
+                    "shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative",
+                    offer.status === "مقبول" ? "border-success/30" :
+                    offer.status === "مرفوض" ? "border-slate-200 opacity-65" :
+                    isBestOffer ? "border-amber-300/70 shadow-amber-50" : "border-slate-100"
+                  )} style={{
+                    borderInlineStart: `3px solid ${
+                      offer.status === "مقبول" ? "hsl(155 80% 35%)" :
+                      offer.status === "مرفوض" ? "hsl(215 16% 75%)" :
+                      isBestOffer ? "hsl(35 92% 50%)" : "hsl(214 32% 88%)"
+                    }`
+                  }}>
                     {isBestOffer && offer.status === "قيد المراجعة" && (
-                      <div className="absolute top-0 left-0 bg-amber-400 text-amber-950 text-[10px] font-black px-3 py-1 rounded-br-lg rounded-tl-lg z-10 shadow-sm flex items-center gap-1">
-                        <TrendingUp size={12} /> {t("offers_best_price")}
+                      <div className={cn("absolute top-3 z-10 flex items-center gap-1 bg-amber-400 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm", locale === 'ar' ? 'left-3' : 'right-3')}>
+                        <TrendingUp size={11} /> {t("offers_best_price")}
                       </div>
                     )}
                     <CardContent className="p-0">
                       <div className="flex flex-col md:flex-row">
                         {/* Offer Details */}
-                        <div className="p-6 flex-1 space-y-3">
-                          <div className="flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 shrink-0">
-                                <User size={18} />
+                        <div className="p-6 flex-1 space-y-4">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={cn(
+                                "h-11 w-11 rounded-xl flex items-center justify-center text-white font-black text-lg shrink-0 shadow-sm select-none",
+                                offer.status === "مقبول" ? "bg-success" :
+                                offer.status === "مرفوض" ? "bg-slate-400" :
+                                isBestOffer ? "bg-amber-500" : "bg-primary/80"
+                              )}>
+                                {((offer.companyName || offer.supplierName) || "؟").trim().charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
                                 {offer.supplierId ? (
@@ -595,16 +533,20 @@ export default function RfqOffersPage() {
                             </div>
                           </div>
 
-                          <div className="flex flex-wrap gap-4 text-sm mt-2">
-                            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isBestOffer ? "bg-amber-100/50" : "bg-primary/5"}`}>
-                              <span className="text-muted-foreground font-medium">{t("offers_proposed_price")}</span>
-                              <span className={`font-black text-xl ${isBestOffer ? "text-amber-600" : "text-primary"}`}>
-                                {offer.price} <span className="text-sm font-normal">{t("offers_currency_sar")}</span>
+                          <div className="flex flex-wrap gap-3 text-sm mt-1">
+                            <div className={cn(
+                              "flex items-baseline gap-2 px-4 py-2.5 rounded-2xl border",
+                              isBestOffer ? "bg-amber-50 border-amber-200/60" : "bg-primary/5 border-primary/10"
+                            )}>
+                              <span className="text-xs text-muted-foreground me-0.5">{t("offers_proposed_price")}:</span>
+                              <span className={cn("font-black text-2xl tabular-nums", isBestOffer ? "text-amber-600" : "text-primary")}>
+                                {offer.price}
                               </span>
+                              <span className="text-sm font-medium text-muted-foreground">{t("offers_currency_sar")}</span>
                             </div>
                             <div className="flex items-center gap-2 text-muted-foreground" suppressHydrationWarning>
                               <Calendar size={14} />
-                              <span>                            {offer.createdAt ? new Date(offer.createdAt).toLocaleDateString(locale) : "-"}</span>
+                              <span suppressHydrationWarning>{fmtDate(offer.createdAt, locale)}</span>
                             </div>
                             {offer.deliveryFrequency && (
                               <div className="flex items-center gap-2 sm:col-span-2">
@@ -663,7 +605,7 @@ export default function RfqOffersPage() {
 
                         {/* Action Buttons - Pending */}
                         {offer.status === "قيد المراجعة" && (
-                          <div className="bg-slate-50/70 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                          <div className="bg-slate-50/60 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-slate-100">
                             <Button
                               onClick={() => handleDecision(offer.id, "مقبول")}
                               disabled={processingId === offer.id}
@@ -733,7 +675,7 @@ export default function RfqOffersPage() {
 
                         {/* Action Buttons - Accepted */}
                         {offer.status === "مقبول" && (
-                          <div className="bg-success/5 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                          <div className="bg-success/5 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-success/15">
                             <Button
                               onClick={() => openChat(offer)}
                               disabled={openingChat === offer.id}
@@ -758,7 +700,7 @@ export default function RfqOffersPage() {
 
                         {/* Action Buttons - Completed */}
                         {offer.status === "تم التسليم" && (
-                          <div className="bg-blue-50/20 p-6 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-3 md:border-r border-t md:border-t-0 min-w-[180px]">
+                          <div className="bg-blue-50/30 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-blue-100">
                             <Button
                               onClick={() => openChat(offer)}
                               disabled={openingChat === offer.id}
@@ -800,154 +742,332 @@ export default function RfqOffersPage() {
 
           <TabsContent value="compare" className="m-0 mt-6">
             {!sortedOffers || sortedOffers.length < 2 ? (
-              <Card className="border-dashed border-2 border-slate-200 shadow-none">
-                <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
-                  <TrendingUp size={48} className="opacity-20" />
-                  <p className="font-bold text-lg">{t("offers_need_two")}</p>
-                  <p className="text-sm">{t("offers_need_two_desc")}</p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-none shadow-sm overflow-hidden bg-white">
-                {/* Sorting Buttons */}
-                <div className="p-4 border-b flex items-center gap-2 flex-wrap bg-slate-50/50">
-                  <span className="text-xs font-bold text-slate-500 ml-2">{t("offers_sort")}</span>
-                  <Button
-                    variant={sortBy === "price" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSortBy("price")}
-                    className="h-8 text-xs rounded-lg"
-                  >
-                    {t("offers_sort_price")}
-                  </Button>
-                  <Button
-                    variant={sortBy === "date" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSortBy("date")}
-                    className="h-8 text-xs rounded-lg"
-                  >
-                    {t("offers_sort_date")}
-                  </Button>
-                  <Button
-                    variant={sortBy === "duration" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSortBy("duration")}
-                    className="h-8 text-xs rounded-lg"
-                  >
-                    {t("offers_sort_duration")}
-                  </Button>
+              <div className="rounded-2xl border-2 border-dashed border-slate-200 p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
+                <TrendingUp size={40} className="opacity-20" />
+                <p className="font-bold text-base">{t("offers_need_two")}</p>
+                <p className="text-sm">{t("offers_need_two_desc")}</p>
+              </div>
+            ) : (() => {
+              const allPrices      = sortedOffers.map((o: any) => parseFloat(o.price) || 0)
+              const allDurDays     = sortedOffers.map((o: any) => {
+                const n = parseInt(o.executionDuration) || 0
+                if (!n) return Infinity
+                const u = o.executionDurationUnit
+                return n * (u === "أشهر" ? 30 : u === "أسابيع" ? 7 : 1)
+              })
+              const allDates       = sortedOffers.map((o: any) => o.createdAt ? new Date(o.createdAt).getTime() : 0)
+              const lowestPrice    = Math.min(...allPrices)
+              const highestPrice   = Math.max(...allPrices)
+              const fastestDur     = Math.min(...allDurDays)
+              const latestDate     = Math.max(...allDates)
+
+              const wp   = (o: any)            => (parseFloat(o.price) || 0) === lowestPrice
+              const wd   = (o: any, i: number) => allDurDays[i] === fastestDur && allDurDays[i] !== Infinity
+              const wdat = (o: any)            => o.createdAt ? new Date(o.createdAt).getTime() === latestDate : false
+              const sc   = (o: any, i: number) => [wp(o), wd(o, i), wdat(o)].filter(Boolean).length
+
+              const bestIdx = sortedOffers.reduce((best: number, o: any, i: number) => {
+                const a = sc(o, i), b = sc(sortedOffers[best], best)
+                if (a > b) return i
+                if (a === b && (parseFloat(o.price)||0) < (parseFloat(sortedOffers[best].price)||0)) return i
+                return best
+              }, 0)
+
+              /* ─── palette ─── */
+              const NAVY   = "hsl(220 56% 11%)"
+              const NAVY2  = "hsl(217 25% 27%)"
+              const TEAL   = "hsl(184 74% 48%)"
+              const GREEN  = "hsl(155 80% 35%)"
+              const BLUE   = "hsl(202 96% 32%)"
+              const INK    = "hsl(224 40% 14%)"
+              const MUTED  = "hsl(215 16% 47%)"
+              const LINE   = "hsl(214 32% 91%)"
+              const LINESO = "hsl(214 32% 94%)"
+              const SL50   = "hsl(210 40% 98%)"
+              const SL100  = "hsl(210 40% 96%)"
+              const SL400  = "hsl(215 20% 65%)"
+
+              /* ─── criteria config ─── */
+              const CRIT: Record<string, { color: string; tint: string; soft: string; wash: string; label: string; sub: string; win: string }> = {
+                price: { color: GREEN, tint: "hsl(155 80% 35% / 0.10)", soft: "hsl(155 50% 40%)", wash: "linear-gradient(90deg, hsl(155 80% 35% / 0.06), transparent 80%)", label: t("offers_price_col"), sub: locale === 'ar' ? 'ريال سعودي' : 'SAR', win: locale === 'ar' ? 'الأوفر' : 'Cheapest' },
+                dur:   { color: BLUE,  tint: "hsl(202 96% 32% / 0.10)", soft: "hsl(202 60% 40%)", wash: "linear-gradient(90deg, hsl(202 96% 32% / 0.05), transparent 80%)", label: t("offers_duration_col"), sub: locale === 'ar' ? 'وقت التنفيذ' : 'Execution', win: locale === 'ar' ? 'الأسرع' : 'Fastest' },
+                date:  { color: TEAL,  tint: "hsl(184 74% 40% / 0.14)", soft: "hsl(184 60% 32%)", wash: "linear-gradient(90deg, hsl(184 74% 40% / 0.07), transparent 80%)", label: t("offers_date_col"), sub: locale === 'ar' ? 'تاريخ التقديم' : 'Submitted', win: locale === 'ar' ? 'الأحدث' : 'Newest' },
+              }
+
+              /* ─── Eastern Arabic-Indic numeral converter ─── */
+              const toAr = (n: number | string) => String(n).replace(/[0-9]/g, (d: string) => "٠١٢٣٤٥٦٧٨٩"[Number(d)])
+
+              /* ─── win chip atom ─── */
+              const WinChip = ({ type }: { type: string }) => {
+                const c = CRIT[type]
+                return (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, width: "fit-content", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "3px 10px", color: c.color, background: c.tint }}>
+                    <CheckCircle2 size={10} />
+                    {c.win}
+                  </span>
+                )
+              }
+
+              /* ─── score bar atom ─── */
+              const ScoreBar = ({ wins }: { wins: { price: boolean; dur: boolean; date: boolean } }) => {
+                const dots = [{ on: wins.price, c: GREEN }, { on: wins.dur, c: BLUE }, { on: wins.date, c: TEAL }]
+                const n = dots.filter(d => d.on).length
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {dots.map((d, di) => <span key={di} style={{ height: 6, width: d.on ? 22 : 11, borderRadius: 999, background: d.on ? d.c : LINE, transition: "width .3s ease" }} />)}
+                    <span style={{ fontSize: 11, fontWeight: 800, color: SL400, marginInlineStart: 3 }}>{toAr(n)}/٣</span>
+                  </div>
+                )
+              }
+
+              /* ─── grid cell factory — composites column-card styling per cell ─── */
+              const makeCell = (props: { key: string; row: number; col: number; kind: 'rail' | 'offer'; best?: boolean; last?: boolean; first?: boolean; wash?: string; children: React.ReactNode }): React.ReactElement => {
+                const { key, row, col, kind, best = false, last = false, first = false, wash, children } = props
+                const base: Record<string, unknown> = { gridColumn: col, gridRow: row, position: "relative", ...(!last && { borderBottom: `1px solid ${LINESO}` }) }
+                let style: Record<string, unknown>
+                if (kind === "rail") {
+                  style = { ...base, background: `linear-gradient(180deg, ${SL50}, #fff)`, borderInlineStart: `1px solid ${LINE}`, borderStartStartRadius: first ? 20 : 0, borderEndStartRadius: last ? 20 : 0 }
+                } else {
+                  style = { ...base, background: wash ?? (best ? "hsl(220 56% 11% / 0.018)" : "#fff"), borderTop: best ? "1.5px solid hsl(220 56% 11% / 0.16)" : `1px solid ${LINE}`, borderInlineEnd: best ? "1.5px solid hsl(220 56% 11% / 0.16)" : `1px solid ${LINE}`, borderInlineStart: "none" }
+                  if (first) { style.borderTopLeftRadius = 20; style.borderTopRightRadius = 20; style.borderTop = "none" }
+                  if (last)  { style.borderBottomLeftRadius = 20; style.borderBottomRightRadius = 20; style.borderBottom = best ? "1.5px solid hsl(220 56% 11% / 0.16)" : `1px solid ${LINE}` }
+                }
+                return <div key={key} style={style as React.CSSProperties}>{children}</div>
+              }
+
+              const N = sortedOffers.length
+              const PAD = "0 24px"
+              const cells: React.ReactElement[] = []
+
+              /* per-offer wins */
+              const offerWins = sortedOffers.map((o: any, i: number) => ({ price: wp(o), dur: wd(o, i), date: wdat(o) })) as Array<{ price: boolean; dur: boolean; date: boolean }>
+
+              /* ===== ROW 1: header ===== */
+              cells.push(makeCell({ key: "rh", row: 1, col: 1, kind: "rail", first: true,
+                children: (
+                  <div style={{ padding: "24px 24px 22px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", minHeight: 200 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, ...(locale !== 'ar' && { letterSpacing: ".08em" }), color: SL400 }}>{locale === 'ar' ? 'المعيار' : 'Criteria'}</span>
+                    <span style={{ fontSize: 19, fontWeight: 800, color: INK, marginTop: 4 }}>{locale === 'ar' ? 'تفاصيل العرض' : 'Offer Details'}</span>
+                  </div>
+                ),
+              }))
+
+              sortedOffers.forEach((offer: any, i: number) => {
+                const best = i === bestIdx
+                const wins = offerWins[i]
+                const initials = (offer.supplierName || "S").trim().charAt(0).toUpperCase()
+                cells.push(makeCell({ key: "h" + offer.id, row: 1, col: 2 + i, kind: "offer", best, first: true,
+                  children: (
+                    <div style={{ position: "relative" }}>
+                      {best && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 5, borderTopLeftRadius: 20, borderTopRightRadius: 20, background: `linear-gradient(90deg, ${NAVY}, ${NAVY2} 70%, ${TEAL})` }} />}
+                      <div style={{ padding: "26px 20px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 11, minHeight: 200, justifyContent: "center" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "5px 13px", color: best ? "#fff" : SL400, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 6px 16px -6px hsl(220 56% 11% / 0.55)" : "none" }}>
+                          {best && <Star size={11} className="fill-white text-white shrink-0" />}
+                          {best ? (locale === 'ar' ? 'الأفضل شاملاً' : 'Overall Best') : `#${toAr(i + 1)}`}
+                        </span>
+                        <span style={{ width: 60, height: 60, borderRadius: 18, display: "grid", placeItems: "center", fontSize: 24, fontWeight: 900, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(140deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 12px 26px -10px hsl(220 56% 11% / 0.6)" : `inset 0 0 0 1px ${LINE}` }}>
+                          {initials}
+                        </span>
+                        {offer.supplierId ? (
+                          <Link href={`/contractor/supplier/profile/${offer.supplierId}`} style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, textDecoration: "none", color: best ? NAVY : INK }}>
+                            {offer.supplierName || t("offers_registered_supplier")}
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: best ? NAVY : INK }}>
+                            {offer.supplierName || t("offers_registered_supplier")}
+                          </span>
+                        )}
+                        <ScoreBar wins={wins} />
+                        {getStatusBadge(offer.status || "قيد المراجعة")}
+                      </div>
+                    </div>
+                  ),
+                }))
+              })
+
+              /* ===== value row builder ===== */
+              const valueRow = (rowNum: number, type: 'price' | 'dur' | 'date', renderCell: (offer: any, best: boolean, isW: boolean, c: { color: string; tint: string; soft: string; wash: string; label: string; sub: string; win: string }) => React.ReactNode) => {
+                const c = CRIT[type]
+                cells.push(makeCell({ key: "r" + type, row: rowNum, col: 1, kind: "rail",
+                  children: (
+                    <div style={{ padding: "0 22px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: 7 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                        <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: c.color, background: c.tint }}>
+                          {type === 'price' && <Tag size={16} />}
+                          {type === 'dur'   && <Truck size={16} />}
+                          {type === 'date'  && <Calendar size={16} />}
+                        </span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: INK }}>{c.label}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: MUTED, paddingInlineStart: 45 }}>{c.sub}</span>
+                    </div>
+                  ),
+                }))
+                sortedOffers.forEach((offer: any, i: number) => {
+                  const best = i === bestIdx
+                  const isW = offerWins[i][type]
+                  cells.push(makeCell({ key: type + offer.id, row: rowNum, col: 2 + i, kind: "offer", best, wash: isW ? c.wash : undefined,
+                    children: (
+                      <div style={{ position: "relative", height: "100%", padding: PAD, display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minHeight: type === 'price' ? 120 : type === 'dur' ? 108 : 100 }}>
+                        {isW && <span style={{ position: "absolute", insetInlineStart: 0, top: "22%", bottom: "22%", width: 3, borderRadius: 999, background: c.color, opacity: 0.6 }} />}
+                        {renderCell(offer, best, isW, c)}
+                      </div>
+                    ),
+                  }))
+                })
+              }
+
+              /* ===== ROW 2: price ===== */
+              valueRow(2, 'price', (offer, _best, isW, c) => {
+                const price = parseFloat(offer.price) || 0
+                const savings = highestPrice > 0 && price < highestPrice ? Math.round(((highestPrice - price) / highestPrice) * 100) : 0
+                return (
+                  <>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                      <span style={{ fontWeight: 900, lineHeight: 1, letterSpacing: "-.01em", fontSize: isW ? 38 : 26, color: isW ? c.color : SL400 }}>
+                        {locale === 'ar' ? toAr(price.toLocaleString('en-US')) : price.toLocaleString('en-US')}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isW ? c.soft : SL400 }}>{t("offers_currency_sar")}</span>
+                    </div>
+                    {isW && savings > 0 && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 800, color: c.color }}>
+                        <ArrowDown size={12} />
+                        {locale === 'ar' ? `أقل من الأعلى بنسبة ${toAr(savings)}٪` : `${savings}% below highest`}
+                      </span>
+                    )}
+                    {isW && <WinChip type="price" />}
+                  </>
+                )
+              })
+
+              /* ===== ROW 3: duration ===== */
+              valueRow(3, 'dur', (offer, _best, isW, c) => (
+                <>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                    <span style={{ fontWeight: 900, lineHeight: 1, fontSize: isW ? 30 : 24, color: isW ? c.color : SL400 }}>
+                      {offer.executionDuration ? (locale === 'ar' ? toAr(offer.executionDuration) : offer.executionDuration) : "—"}
+                    </span>
+                    {offer.executionDuration && <span style={{ fontSize: 12.5, fontWeight: 600, color: isW ? c.soft : SL400 }}>{offer.executionDurationUnit || 'أيام'}</span>}
+                  </div>
+                  {isW && <WinChip type="dur" />}
+                </>
+              ))
+
+              /* ===== ROW 4: date ===== */
+              valueRow(4, 'date', (offer, _best, isW, c) => (
+                <>
+                  <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.4, color: isW ? c.soft : SL400 }} suppressHydrationWarning>
+                    {fmtDate(offer.createdAt, locale)}
+                  </span>
+                  {isW && <WinChip type="date" />}
+                </>
+              ))
+
+              /* ===== ROW 5: file ===== */
+              cells.push(makeCell({ key: "rfile", row: 5, col: 1, kind: "rail",
+                children: (
+                  <div style={{ padding: "0 22px", height: "100%", minHeight: 70, display: "flex", alignItems: "center", gap: 11 }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: SL400, background: SL100 }}><File size={16} /></span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: INK }}>{t("offers_file_col")}</span>
+                  </div>
+                ),
+              }))
+              sortedOffers.forEach((offer: any, i: number) => {
+                const best = i === bestIdx
+                cells.push(makeCell({ key: "file" + offer.id, row: 5, col: 2 + i, kind: "offer", best,
+                  children: (
+                    <div style={{ height: "100%", minHeight: 70, padding: PAD, display: "flex", alignItems: "center" }}>
+                      {offer.offerPdfUrl ? (
+                        <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, color: BLUE, textDecoration: "none" }}>
+                          <Download size={14} />{t("offers_view_file")}
+                        </a>
+                      ) : (
+                        <span style={{ fontSize: 18, color: "hsl(213 27% 84%)" }}>—</span>
+                      )}
+                    </div>
+                  ),
+                }))
+              })
+
+              /* ===== ROW 6: CTA ===== */
+              cells.push(makeCell({ key: "rcta", row: 6, col: 1, kind: "rail", last: true,
+                children: (
+                  <div style={{ padding: "0 22px", height: "100%", minHeight: 92, display: "flex", alignItems: "center" }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: NAVY2 }}>{t("offers_decision_col")}</span>
+                  </div>
+                ),
+              }))
+              sortedOffers.forEach((offer: any, i: number) => {
+                const best = i === bestIdx
+                const isDecided = offer.status === "مقبول" || offer.status === "مرفوض"
+                cells.push(makeCell({ key: "cta" + offer.id, row: 6, col: 2 + i, kind: "offer", best, last: true,
+                  children: (
+                    <div style={{ height: "100%", minHeight: 92, padding: PAD, display: "flex", alignItems: "center" }}>
+                      {isDecided ? (
+                        <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>{getStatusBadge(offer.status)}</div>
+                      ) : (
+                        <Button
+                          onClick={() => handleDecision(offer.id, "مقبول")}
+                          disabled={processingId === offer.id}
+                          style={{ width: "100%", height: 50, borderRadius: 14, border: "none", cursor: processingId === offer.id ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, fontSize: 15, fontWeight: 800, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : "#fff", boxShadow: best ? "0 14px 30px -12px hsl(220 56% 11% / 0.55)" : `inset 0 0 0 1.5px ${LINE}`, transition: "transform .15s ease, box-shadow .2s ease", opacity: processingId === offer.id ? 0.7 : 1 }}>
+                          {processingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                          {processingId === offer.id ? (locale === 'ar' ? 'جارٍ القبول…' : 'Processing…') : t("offers_accept_btn")}
+                        </Button>
+                      )}
+                    </div>
+                  ),
+                }))
+              })
+
+              /* ─── render ─── */
+              return (
+                <div dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+                  {/* heading + toolbar */}
+                  <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 800, color: TEAL, background: "hsl(184 74% 40% / 0.12)", padding: "5px 12px", borderRadius: 999, marginBottom: 12 }}>
+                        <Star size={12} />{locale === 'ar' ? 'مقارنة ذكية' : 'Smart Compare'}
+                      </div>
+                      <h2 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: NAVY, ...(locale !== 'ar' && { letterSpacing: "-.01em" }), lineHeight: 1.6 }}>
+                        {locale === 'ar' ? 'مقارنة العروض المقدّمة' : 'Submitted Offer Comparison'}
+                      </h2>
+                      <p style={{ margin: "6px 0 0", fontSize: 14.5, color: MUTED }}>
+                        {locale === 'ar' ? 'راجع العروض جنباً إلى جنب واتخذ قرارك بثقة.' : 'Review offers side by side and decide with confidence.'}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: MUTED }}>{locale === 'ar' ? 'ترتيب حسب' : 'Sort by'}</span>
+                      <div style={{ display: "inline-flex", background: SL100, borderRadius: 14, padding: 5, gap: 3 }}>
+                        {([
+                          { k: "price",    label: locale === 'ar' ? 'الأقل سعراً'    : 'Lowest Price' },
+                          { k: "date",     label: locale === 'ar' ? 'الأحدث'         : 'Newest' },
+                          { k: "duration", label: locale === 'ar' ? 'الأسرع تنفيذاً' : 'Fastest' },
+                        ] as const).map(tb => (
+                          <button key={tb.k} onClick={() => setSortBy(tb.k)} style={{ border: "none", outline: "none", cursor: "pointer", fontFamily: "inherit", padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 800, color: sortBy === tb.k ? NAVY : SL400, background: sortBy === tb.k ? "#fff" : "transparent", boxShadow: sortBy === tb.k ? "0 4px 12px -6px hsl(220 30% 20% / 0.35)" : "none", transition: "all .18s ease" }}>
+                            {tb.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* comparison surface */}
+                  <div style={{ overflowX: "auto" }}>
+                    <div style={{ minWidth: `${236 + N * 248}px` }}>
+                      <div style={{ borderRadius: 24, background: "#fff", boxShadow: "0 40px 90px -50px hsl(220 40% 20% / 0.4)", padding: 18 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: `236px repeat(${N}, minmax(248px,1fr))`, columnGap: 16, rowGap: 0, alignItems: "stretch" }}>
+                          {cells}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p style={{ textAlign: "center", fontSize: 12.5, color: SL400, marginTop: 18 }}>
+                    {locale === 'ar' ? 'العمود المميّز يُحدَّد تلقائياً وفق أعلى عدد من نقاط التفوّق (السعر · المدة · التاريخ).' : 'The highlighted column is auto-selected based on the highest number of wins across all criteria.'}
+                  </p>
                 </div>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader className="bg-gradient-to-r from-slate-50 to-white border-b-2 border-slate-100">
-                      <TableRow>
-                        <TableHead className="text-right font-bold text-slate-700 whitespace-nowrap w-40">{t("offers_criteria")}</TableHead>
-                        {sortedOffers.map((o: any, i: number) => (
-                          <TableHead key={o.id} className={`text-center min-w-[160px] ${o.price === lowestPrice ? 'bg-amber-50/50' : ''}`}>
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                                <User size={16} className="text-primary" />
-                              </div>
-                              {o.supplierId ? (
-                                <Link
-                                  href={`/contractor/supplier/profile/${o.supplierId}`}
-                                  className="font-bold text-slate-800 hover:text-primary transition-colors text-sm"
-                                >
-                                  {o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}
-                                </Link>
-                              ) : (
-                                <span className="font-bold text-slate-800">{o.supplierName || `${t("offers_registered_supplier")} ${i + 1}`}</span>
-                              )}
-                              {o.price === lowestPrice && (
-                                <div className="text-[10px] text-amber-600 font-bold">{t("offers_best_price")} ⭐</div>
-                              )}
-                            </div>
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_price_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className={`text-center font-bold ${o.price === lowestPrice ? 'text-success text-lg' : 'text-slate-800'}`}>
-                            <div className="flex flex-col">
-                              <span>{Number(o.price).toLocaleString('ar-SA')}</span>
-                              <span className="text-xs text-muted-foreground">{t("offers_currency_sar")}</span>
-                            </div>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      {/* Removed Location, Delivery, and Sample rows for simplicity */}
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_duration_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600">
-                            {o.executionDuration ? `${o.executionDuration} ${o.executionDurationUnit || 'أيام'}` : "—"}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_notes_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600 max-w-[150px]">
-                            <p className="truncate">{o.notes || "—"}</p>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      {/* Removed Products Count row for simplicity */}
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_date_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center text-sm text-slate-600" suppressHydrationWarning>
-                            <div className="flex items-center justify-center gap-1">
-                              <Calendar size={12} className="text-muted-foreground" />
-                              {o.createdAt ? new Date(o.createdAt).toLocaleDateString(locale) : "—"}
-                            </div>
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_file_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center">
-                            {o.offerPdfUrl ? (
-                              <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all text-[10px]">
-                                <a href={o.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                                  <Download size={10} className="ml-1" />
-                                  {t("offers_view_file")}
-                                </a>
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-muted-foreground italic">{t("offers_not_available")}</span>
-                            )}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                      <TableRow className="hover:bg-slate-50/50">
-                        <TableCell className="font-bold text-slate-700 bg-slate-50/50">{t("offers_decision_col")}</TableCell>
-                        {sortedOffers.map((o: any) => (
-                          <TableCell key={o.id} className="text-center">
-                            <div className="flex justify-center">{getStatusBadge(o.status || "قيد المراجعة")}</div>
-                            {o.status !== "مقبول" && o.status !== "مرفوض" && (
-                              <Button
-                                onClick={() => handleDecision(o.id, "مقبول")}
-                                disabled={processingId === o.id}
-                                className="mt-3 w-full bg-success hover:bg-success/90 gap-2 rounded-full text-xs h-8"
-                                size="sm"
-                              >
-                                {processingId === o.id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                                {t("offers_accept_btn")}
-                              </Button>
-                            )}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              </Card>
-            )}
+              )
+            })()}
           </TabsContent>
 
           <TabsContent value="inquiries" className="m-0 mt-6">
@@ -1201,7 +1321,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                       {inq.submittedByUserName && <span className="text-[11px] font-normal text-slate-500 mr-2">({inq.submittedByUserName})</span>}
                     </span>
                     <span className="text-xs text-muted-foreground" suppressHydrationWarning>
-                      {new Date(inq.createdAt).toLocaleDateString(locale)}
+                      {fmtDate(inq.createdAt, locale)}
                     </span>
                   </div>
                   <p className="text-slate-600 text-sm leading-relaxed">{inq.question}</p>
@@ -1213,7 +1333,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                         <span className="text-xs font-bold text-success">{t("offers_inq_reply_label")}</span>
                         {inq.repliedByUserName && <span className="text-[11px] text-success/80">({inq.repliedByUserName})</span>}
                         <span className="text-xs text-success/70" suppressHydrationWarning>
-                          {new Date(inq.repliedAt).toLocaleDateString(locale)}
+                          {fmtDate(inq.repliedAt, locale)}
                         </span>
                       </div>
                       <p className="text-sm text-slate-700">{inq.reply}</p>

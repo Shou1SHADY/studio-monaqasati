@@ -432,7 +432,7 @@ export default function ContractorProfilePage() {
                       {t("profile_certified_badge")}
                     </Badge>
                   )}
-                  <h1 className="text-4xl lg:text-5xl font-black text-slate-900 font-headline tracking-tighter leading-none">{profile.name || t("profile_company_fallback")}</h1>
+                  <h1 className={cn("text-4xl lg:text-5xl font-black text-slate-900 font-headline", locale !== 'ar' && "tracking-tighter", locale === 'ar' ? "leading-[1.6]" : "leading-none")}>{profile.name || t("profile_company_fallback")}</h1>
                 </div>
                 <div className="flex flex-wrap justify-center md:justify-start items-center gap-4 text-slate-500">
                   <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100 text-sm">
@@ -446,14 +446,14 @@ export default function ContractorProfilePage() {
             {/* Stats Dashboard */}
             <div className="w-full lg:w-80 grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{t("profile_completion")}</span>
+                <span className={cn("text-[10px] font-bold text-slate-400 uppercase", locale !== 'ar' && "tracking-tighter")}>{t("profile_completion")}</span>
                 <span className="text-3xl font-black text-primary leading-none">{completionPercentage}%</span>
                 <div className="w-full h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
                   <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${completionPercentage}%` }} />
                 </div>
               </div>
               <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col items-center justify-center text-center space-y-1 group/stat hover:bg-white hover:shadow-lg transition-all duration-300">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{t("profile_certificates_label")}</span>
+                <span className={cn("text-[10px] font-bold text-slate-400 uppercase", locale !== 'ar' && "tracking-tighter")}>{t("profile_certificates_label")}</span>
                 <span className="text-3xl font-black text-slate-800 leading-none">{profile.certificates.length}</span>
                 <span className="text-[10px] text-slate-400 font-medium mt-1">{t("profile_certificates_unit")}</span>
               </div>

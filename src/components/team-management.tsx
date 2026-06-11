@@ -186,7 +186,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("team_page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("team_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{profile?.role === "Contractor" ? t("team_page_desc_contractor") : t("team_page_desc_supplier")}</p>
           </div>
           {isOwner && (

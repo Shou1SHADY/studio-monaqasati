@@ -274,11 +274,11 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("rfq_page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
           </div>
           <Link href="/contractor/rfqs/new">
-            <Button className="w-full sm:w-auto gap-2">
+            <Button className="w-full sm:w-auto gap-2 font-bold">
               <PlusCircle size={18} />
               {t("rfq_new_tender")}
             </Button>

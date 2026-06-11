@@ -121,7 +121,7 @@ export default function AdminDashboard() {
     <PortalLayout>
       <div className="space-y-8 text-right">
         <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">{t("title")}</h1>
+          <h1 className="text-3xl font-black text-foreground font-headline">{t("title")}</h1>
           <p className="text-muted-foreground mt-1">{t("subtitle")}</p>
         </div>
 

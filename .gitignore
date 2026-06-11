@@ -77,3 +77,6 @@ landing-en-mobile.png
 # mobile app (separate repo — https://github.com/Shou1SHADY/mdmak-mob.git)
 mdmak-mob/
 mdmak-demo/
+
+# Claude personal settings (team rules in .claude/settings.json ARE committed)
+.claude/settings.local.json

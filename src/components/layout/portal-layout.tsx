@@ -397,6 +397,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     // 2. Navigate
     if (notif.type === "invitation") {
       router.push(`/${basePath}/team`)
+    } else if (notif.type === "new_chat_message" && notif.chatId) {
+      router.push(`/${basePath}/chat/${notif.chatId}`)
     } else if (notif.type === "sample_requested") {
       router.push(`/supplier/offers`)
     } else if (notif.type === "inquiry_reply") {
@@ -485,7 +487,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             <LanguageSwitcher />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible">
+                <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
                   <Bell size={20} />
                   {unreadCount > 0 && (
                     <span className={cn("absolute top-0 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? 'right-0' : 'left-0')}>
@@ -528,6 +530,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isSampleSent = notif.type === "sample_sent"
                       const isInvitation = notif.type === "invitation"
                       const isInquiryReply = notif.type === "inquiry_reply"
+                      const isNewChatMessage = notif.type === "new_chat_message"
                       const isUnread = isNewRfq 
                         ? !readRfqIds.includes(notif.id)
                         : isSubcollectionNotif
@@ -568,11 +571,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                   : isRejected ? t("notification_rejected")
                                   : isInvitation ? (notif.title || t("notification_invitation"))
                                   : isInquiryReply ? t("notification_inquiry_reply")
+                                  : isNewChatMessage ? t("notification_new_message")
                                   : isPending ? t("notification_pending")
                                   : (notif.title || t("notification_pending"))
                                 : isWithdrawn ? t("notification_offer_withdrawn")
                                 : isSampleSent ? t("notification_sample_sent")
                                 : isInvitation ? (notif.title || t("notification_invitation"))
+                                : isNewChatMessage ? t("notification_new_message")
                                 : (notif.title || t("notification_new_offer"))}
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
@@ -640,7 +645,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             ) : (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted">
+                  <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
                       <span className="text-sm font-bold text-foreground">{profile?.name || (user ? t("new_user") : "")}</span>
                       <span className="text-xs text-muted-foreground">
@@ -662,7 +667,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto overflow-x-hidden w-full max-w-[100vw]">
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto overflow-x-hidden w-full max-w-[100vw]">
           <div className="mx-auto max-w-7xl">
             {profile && profile.role !== "Admin" && (profile.profileCompleted !== true || !profile.legalDocuments?.cr?.url || !profile.legalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>

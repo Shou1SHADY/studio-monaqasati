@@ -179,7 +179,7 @@ export default function ContractorNotificationsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("notif_page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("notif_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("notif_page_desc")}</p>
           </div>
         </div>
@@ -286,6 +286,7 @@ export default function ContractorNotificationsPage() {
               // Handle Invitation or other notification types
               const isInvitation = notif.type === "invitation"
               const isSampleSent = notif.type === "sample_sent"
+              const isNewChatMessage = notif.type === "new_chat_message"
               const isUnread = !notif.read
               
               const CardContentWrapper = (
@@ -299,15 +300,17 @@ export default function ContractorNotificationsPage() {
                   }`}
                 >
                   <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${isInvitation ? "bg-primary/10 text-primary" : "bg-blue-50 text-blue-600"}`}>
-                      {isInvitation ? <Bell size={22} /> : isSampleSent ? <CheckCircle2 size={22} /> : <MessageSquare size={22} />}
+                    <div className={`h-12 w-12 rounded-2xl flex items-center justify-center shrink-0 ${isInvitation ? "bg-primary/10 text-primary" : isNewChatMessage ? "bg-primary/10 text-primary" : "bg-blue-50 text-blue-600"}`}>
+                      {isInvitation ? <Bell size={22} /> : isSampleSent ? <CheckCircle2 size={22} /> : isNewChatMessage ? <MessageSquare size={22} /> : <MessageSquare size={22} />}
                     </div>
                     <div className="flex-1">
                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                          <p className="font-bold text-slate-900">
                            {isSampleSent
                              ? tSupplier("sample_sent_notif_title")
-                             : notif.title || t("notif_new")}
+                             : isNewChatMessage
+                               ? tLayout("notification_new_message")
+                               : notif.title || t("notif_new")}
                          </p>
                          <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
                            <Clock size={11} />
@@ -317,13 +320,24 @@ export default function ContractorNotificationsPage() {
                        <p className="text-sm text-slate-500 mt-1">
                          {isSampleSent && notif.rfqId
                            ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "Tender" })
-                           : notif.message || notif.description}
+                           : isNewChatMessage
+                             ? (notif.message || tLayout("notification_message_in"))
+                             : notif.message || notif.description}
                        </p>
                       {isInvitation && isUnread && (
                         <div className="pt-2">
                           <Link href="/contractor/team">
                             <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
                               {t("notif_go_to_team")}
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+                      {isNewChatMessage && notif.chatId && (
+                        <div className="pt-2">
+                          <Link href={`/contractor/chat/${notif.chatId}`}>
+                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90" onClick={(e) => { e.stopPropagation(); markNotifAsRead(notif.id) }}>
+                              {t("notif_review")}
                             </Button>
                           </Link>
                         </div>

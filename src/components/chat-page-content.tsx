@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ArrowRight, Send, Loader2, MessageSquare } from "lucide-react"
+import { ArrowRight, Send, Loader2, MessageSquare, Shield, Clock, User } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import {
   doc, getDoc, collection, addDoc, updateDoc,
@@ -16,11 +16,42 @@ import {
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
 
 interface ChatPageContentProps {
   backPath: string
 }
 
+interface ChatMessage {
+  id: string
+  senderId: string
+  text: string
+  createdAt: any
+}
+
+function getInitials(name: string) {
+  if (!name) return "?"
+  return name.split(" ").map((n) => n.charAt(0).toUpperCase()).join("").slice(0, 2)
+}
+
+function formatDateSeparator(date: Date, locale: string, t: any) {
+  const now = new Date()
+  const isToday = date.toDateString() === now.toDateString()
+  const isYesterday = new Date(now.getTime() - 86400000).toDateString() === date.toDateString()
+
+  if (isToday) return t("chat_today")
+  if (isYesterday) return t("chat_yesterday")
+  return date.toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function shouldShowDateSeparator(prev: Date | null, curr: Date) {
+  if (!prev) return true
+  return prev.toDateString() !== curr.toDateString()
+}
 
 export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const params = useParams()
@@ -31,16 +62,18 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
   const { user, isUserLoading } = useUser()
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
+  const isRTL = locale === 'ar'
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Real-time chat metadata
   const chatDocQuery = useMemoFirebase(() => {
     if (!firestore || !chatId) return null
     return doc(firestore, "chats", chatId)
   }, [firestore, chatId])
-  
+
   const { data: chatMeta, isLoading: metaLoading } = useDoc(chatDocQuery)
 
   // Real-time messages
@@ -56,10 +89,10 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Mark chat as read when opened — remove current user's UID from unreadFor
+  // Mark chat as read when opened
   useEffect(() => {
     if (!firestore || !chatId || !user || metaLoading || !chatMeta) return
     const unreadFor: string[] = chatMeta.unreadFor || []
@@ -70,56 +103,92 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     }
   }, [firestore, chatId, user, chatMeta, metaLoading])
 
+  // Fetch partner user profile
+  const partnerId = useMemo(() => {
+    if (!chatMeta || !user) return null
+    return chatMeta.contractorId === user.uid ? chatMeta.supplierId : chatMeta.contractorId
+  }, [chatMeta, user])
+
+  const partnerDocRef = useMemoFirebase(() => {
+    if (!firestore || !partnerId) return null
+    return doc(firestore, "users", partnerId)
+  }, [firestore, partnerId])
+
+  const { data: partnerProfile } = useDoc(partnerDocRef)
+
+  // Determine partner info
+  const partnerInfo = useMemo(() => {
+    if (!chatMeta || !user) return null
+    const isContractor = chatMeta.contractorId === user.uid
+
+    const partnerName = partnerProfile?.name
+      || partnerProfile?.displayName
+      || chatMeta.supplierName
+      || chatMeta.contractorName
+      || chatMeta.supplierOrgName
+      || chatMeta.contractorOrgName
+      || (isContractor ? t("chat_supplier") : t("chat_contractor"))
+
+    const partnerCompany = partnerProfile?.companyName
+      || partnerProfile?.orgName
+      || chatMeta.supplierOrgName
+      || chatMeta.contractorOrgName
+      || chatMeta.supplierName
+      || chatMeta.contractorName
+      || ""
+
+    const partnerRole = isContractor ? t("chat_supplier") : t("chat_contractor")
+    return { partnerName, partnerCompany, partnerRole, isContractor }
+  }, [chatMeta, user, partnerProfile, t])
+
   const handleSend = async () => {
     if (!message.trim() || !firestore || !user || !chatId || !chatMeta) return
     setSending(true)
     const msgText = message.trim()
-    setMessage("") // optimistic clear
+    setMessage("")
     try {
-      // Determine the other party's UID
       const otherId = chatMeta.contractorId === user.uid
         ? chatMeta.supplierId
         : chatMeta.contractorId
 
-      // Write message
+      // Critical: add the message itself — any error here surfaces to the user
       await addDoc(collection(firestore, "chats", chatId, "messages"), {
         senderId: user.uid,
         text: msgText,
         createdAt: new Date().toISOString()
       })
 
-      // Update chat doc with last message preview and mark unread for other party
+      // Non-critical: update chat metadata — errors are swallowed so the send
+      // still feels successful even if the rules deny this secondary write
       const currentUnread: string[] = chatMeta.unreadFor || []
       const newUnread = otherId && !currentUnread.includes(otherId)
         ? [...currentUnread, otherId]
         : currentUnread
 
-      await updateDoc(doc(firestore, "chats", chatId), {
+      updateDoc(doc(firestore, "chats", chatId), {
         lastMessage: msgText,
         lastMessageAt: new Date().toISOString(),
         unreadFor: newUnread
-      })
+      }).catch((err) => console.warn("chat metadata update:", err?.code))
 
-      // Also write a notification to the other user's sub-collection for the bell icon
       if (otherId) {
-        await addDoc(
+        addDoc(
           collection(firestore, "users", otherId, "notifications"),
           {
             type: "new_chat_message",
-            title: t("chat_new_message"),
             message: msgText.length > 80 ? msgText.substring(0, 80) + "..." : msgText,
             chatId: chatId,
             rfqTitle: chatMeta.rfqTitle || "",
             createdAt: new Date().toISOString(),
             read: false
           }
-        ).catch(() => { }) // non-blocking — unread dot on chat is the primary signal
+        ).catch(() => { })
       }
 
     } catch (err: any) {
       console.error("send message failed:", err?.code, err?.message)
       toast({ title: t("chat_error"), description: t("chat_send_failed"), variant: "destructive" })
-      setMessage(msgText) // restore on error
+      setMessage(msgText)
     } finally {
       setSending(false)
     }
@@ -141,100 +210,200 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
 
   const isLoading = isUserLoading || metaLoading || messagesLoading
 
+  // Build messages with date separators
+  const messagesWithDates = useMemo(() => {
+    if (!messages) return []
+    const result: (ChatMessage & { isDateSeparator?: boolean; dateLabel?: string })[] = []
+    let prevDate: Date | null = null
+
+    messages.forEach((msg: ChatMessage) => {
+      const msgDate = msg.createdAt?.toDate ? msg.createdAt.toDate() : new Date(msg.createdAt)
+      if (shouldShowDateSeparator(prevDate, msgDate)) {
+        result.push({
+          id: `date-${msg.id}`,
+          senderId: "",
+          text: "",
+          createdAt: msg.createdAt,
+          isDateSeparator: true,
+          dateLabel: formatDateSeparator(msgDate, locale, t),
+        })
+      }
+      prevDate = msgDate
+      result.push(msg)
+    })
+
+    return result
+  }, [messages, locale, t])
+
   return (
     <PortalLayout>
-      <div className={`max-w-3xl mx-auto space-y-4 ${locale === 'ar' ? 'text-right' : 'text-left'}`}>
-        {/* Header */}
+      <div className={cn("max-w-3xl mx-auto space-y-4", isRTL ? "text-right" : "text-left")}>
+        {/* Header Card */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => router.push(backPath)}
-            className="gap-1 text-muted-foreground"
+            className="gap-1 text-muted-foreground hover:text-foreground hover:bg-muted/80 shrink-0"
           >
-            <ArrowRight size={16} />
+            <ArrowRight size={16} className="ltr:rotate-180 rtl:rotate-0" />
             {t("chat_back_to_chats")}
           </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                <MessageSquare size={18} />
+
+          <div className="flex-1 min-w-0">
+            <div className={cn("flex items-center gap-3", isRTL ? "flex-row-reverse" : "flex-row")}>
+              {/* Partner Avatar */}
+              <div className="shrink-0">
+                <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary/15 to-primary/5 border border-primary/10 flex items-center justify-center text-primary shadow-sm">
+                  <span className="font-semibold text-sm">
+                    {getInitials(partnerInfo?.partnerName || "")}
+                  </span>
+                </div>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-secondary">
-                  {chatMeta?.rfqTitle || t("chat_contract_chat")}
-                </h1>
-                <div className="flex items-center gap-2">
-                  <Badge className="bg-success/10 text-success border-success/20 text-xs">{t("chat_accepted")}</Badge>
-                  <span className="text-xs text-muted-foreground">{t("chat_private_channel")}</span>
+
+              {/* Partner Info */}
+              <div className="min-w-0 flex-1">
+                <div className={cn("flex items-center gap-2 flex-wrap", isRTL ? "flex-row-reverse" : "flex-row")}>
+                  <h1 className="text-lg font-bold text-foreground truncate">
+                    {partnerInfo?.partnerName || t("chat_partner")}
+                  </h1>
+                  {partnerInfo?.partnerCompany && (
+                    <span className="text-xs text-muted-foreground truncate">
+                      — {partnerInfo.partnerCompany}
+                    </span>
+                  )}
+                </div>
+                <div className={cn("flex items-center gap-2 mt-0.5 flex-wrap", isRTL ? "flex-row-reverse" : "flex-row")}>
+                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 text-[10px] px-1.5 py-0 h-4 font-medium">
+                    <Shield size={10} className="mr-0.5" />
+                    {t("chat_accepted")}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-medium">
+                    <Clock size={10} className="mr-0.5" />
+                    {t("chat_private_channel")}
+                  </Badge>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* RFQ Context Card */}
+        {chatMeta?.rfqTitle && (
+          <div className={cn("flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50 border border-border/50 text-sm", isRTL ? "flex-row-reverse" : "flex-row")}>
+            <MessageSquare size={14} className="text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground font-medium">{t("chat_contract_chat")}:</span>
+            <span className="text-foreground font-semibold truncate">{chatMeta.rfqTitle}</span>
+          </div>
+        )}
+
         {/* Chat Window */}
-        <Card className="border-none shadow-md overflow-hidden flex flex-col" style={{ height: "65vh" }}>
+        <Card className="border border-border/60 shadow-sm overflow-hidden flex flex-col bg-card" style={{ height: "65vh" }}>
           {/* Messages Area */}
-          <CardContent className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+          <CardContent className="flex-1 overflow-y-auto p-4 space-y-3 bg-gradient-to-b from-muted/30 to-background/50">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
-                <Loader2 className="animate-spin text-muted-foreground" size={32} />
+                <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                  <Loader2 className="animate-spin" size={32} />
+                  <p className="text-sm">{t("chat_list_loading")}</p>
+                </div>
               </div>
             ) : !messages || messages.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground gap-3">
-                <MessageSquare size={40} className="opacity-20" />
-                <p className="font-bold">{t("chat_start_chat")}</p>
-                <p className="text-sm">{t("chat_start_chat_desc")}</p>
+                <div className="h-16 w-16 rounded-2xl bg-primary/5 flex items-center justify-center">
+                  <MessageSquare size={32} className="text-primary/30" />
+                </div>
+                <p className="font-bold text-foreground">{t("chat_start_chat")}</p>
+                <p className="text-sm max-w-xs">{t("chat_start_chat_desc")}</p>
               </div>
             ) : (
-              messages.map((msg: any) => {
+              messagesWithDates.map((msg: any) => {
+                if (msg.isDateSeparator) {
+                  return (
+                    <div key={msg.id} className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-border/50" />
+                      <span className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider px-2">
+                        {msg.dateLabel}
+                      </span>
+                      <div className="flex-1 h-px bg-border/50" />
+                    </div>
+                  )
+                }
+
                 const isMine = msg.senderId === user?.uid
                 return (
                   <div
                     key={msg.id}
-                    className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                    className={cn("flex", isMine ? "justify-end" : "justify-start")}
                   >
-                    <div
-                      className={`max-w-[75%] px-4 py-2.5 rounded-2xl shadow-sm ${isMine
-                          ? locale === 'ar' ? "bg-primary text-white rounded-tl-sm" : "bg-primary text-white rounded-tr-sm"
-                          : locale === 'ar' ? "bg-white text-slate-800 rounded-tr-sm border border-slate-100" : "bg-white text-slate-800 rounded-tl-sm border border-slate-100"
-                        }`}
-                    >
-                      <p className="text-sm leading-relaxed">{msg.text}</p>
-                      <p
-                        className={`text-[10px] mt-1 ${locale === 'ar' ? 'text-right' : 'text-left'} ${isMine ? "text-white/60" : "text-muted-foreground"}`}
-                        suppressHydrationWarning
+                    <div className={cn("flex items-end gap-2 max-w-[80%]", isMine ? "flex-row-reverse" : "flex-row")}>
+                      {/* Avatar for received messages */}
+                      {!isMine && (
+                        <div className="shrink-0 mb-1">
+                          <div className="h-7 w-7 rounded-full bg-muted border border-border/50 flex items-center justify-center text-muted-foreground">
+                            <User size={12} />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Message Bubble */}
+                      <div
+                        className={cn(
+                          "px-4 py-2.5 rounded-2xl shadow-sm transition-all",
+                          isMine
+                            ? "bg-primary text-primary-foreground rounded-tl-sm"
+                            : "bg-card text-card-foreground rounded-tr-sm border border-border/80"
+                        )}
                       >
-                        {formatTime(msg.createdAt)}
-                      </p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+                        <p
+                          className={cn(
+                            "text-[10px] mt-1",
+                            isMine ? "text-primary-foreground/60" : "text-muted-foreground",
+                            isRTL ? "text-left" : "text-right"
+                          )}
+                          suppressHydrationWarning
+                        >
+                          {formatTime(msg.createdAt)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )
               })
             )}
-            <div ref={bottomRef} />
+            <div ref={messagesEndRef} />
           </CardContent>
 
           {/* Input Area */}
-          <div className="border-t bg-white p-3 flex items-center gap-2">
-            <Button
-              onClick={handleSend}
-              disabled={!message.trim() || sending}
-              size="icon"
-              className="shrink-0 rounded-full h-10 w-10"
-            >
-              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </Button>
-            <Input
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t("chat_send_placeholder")}
-              className={`flex-1 rounded-full bg-slate-50 border-none focus-visible:ring-1 ${locale === 'ar' ? 'text-right' : 'text-left'}`}
-              dir={locale === 'ar' ? 'rtl' : 'ltr'}
-              disabled={sending}
-            />
+          <div className="border-t border-border/60 bg-background/80 backdrop-blur-sm p-3">
+            <div className={cn("flex items-end gap-2", isRTL ? "flex-row-reverse" : "flex-row")}>
+              <Input
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t("chat_send_placeholder")}
+                className={cn(
+                  "flex-1 rounded-2xl bg-muted border-none focus-visible:ring-1 focus-visible:ring-primary/30 px-4 py-3 min-h-[44px] max-h-[120px]",
+                  isRTL ? "text-right" : "text-left"
+                )}
+                dir={isRTL ? 'rtl' : 'ltr'}
+                disabled={sending}
+              />
+              <Button
+                onClick={handleSend}
+                disabled={!message.trim() || sending}
+                size="icon"
+                className={cn(
+                  "shrink-0 rounded-full h-10 w-10 transition-all",
+                  message.trim()
+                    ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              </Button>
+            </div>
           </div>
         </Card>
       </div>

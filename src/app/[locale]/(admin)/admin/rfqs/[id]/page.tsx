@@ -94,7 +94,7 @@ export default function AdminRfqDetailsPage() {
               <ArrowRight size={16} />
               {t("offers_back_to_tenders")}
             </Button>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("offers_page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("offers_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("offers_page_desc")}</p>
           </div>
         </div>

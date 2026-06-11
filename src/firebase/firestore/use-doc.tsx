@@ -1,6 +1,6 @@
 'use client';
     
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   DocumentReference,
   onSnapshot,
@@ -47,7 +47,22 @@ export function useDoc<T = any>(
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<FirestoreError | Error | null>(null);
 
+  // When the ref transitions null → non-null the effect hasn't run yet, so
+  // isLoading is stale-false from the previous null-ref phase.  We need to
+  // report isLoading:true for that render cycle so auth guards don't fire.
+  //
+  // prevRefRef is only updated INSIDE useEffect (never during render).
+  // Mutating a ref during render is broken by React 18 Strict Mode's
+  // double-invoke: the first (discarded) render would update the ref, making
+  // the second (real) render see the already-updated value and skip the flag.
+  const prevRefRef = useRef(memoizedDocRef);
+  const refJustChangedToNonNull = prevRefRef.current !== memoizedDocRef && !!memoizedDocRef;
+  const effectiveIsLoading = isLoading || refJustChangedToNonNull;
+
   useEffect(() => {
+    // Sync prevRef at start of effect so subsequent renders detect further changes.
+    prevRefRef.current = memoizedDocRef;
+
     if (!memoizedDocRef) {
       setData(null);
       setIsLoading(false);
@@ -96,5 +111,5 @@ export function useDoc<T = any>(
     return () => unsubscribe();
   }, [memoizedDocRef]); // Re-run if the memoizedDocRef changes.
 
-  return { data, isLoading, error };
+  return { data, isLoading: effectiveIsLoading, error };
 }

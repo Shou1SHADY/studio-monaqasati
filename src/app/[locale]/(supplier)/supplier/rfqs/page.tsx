@@ -240,7 +240,7 @@ export default function AvailableRfqsPage() {
       <div className={cn("space-y-8", locale === 'ar' ? 'text-right' : 'text-left')}>
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("rfqs_page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("rfqs_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfqs_page_desc")}</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">

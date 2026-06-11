@@ -140,19 +140,22 @@ service cloud.firestore {
       // 'get' (single document): only parties to the chat
       allow get: if isSignedIn() && (
         resource == null ||
-        resource.data.contractorOrgId == getOrganizationId() ||
-        resource.data.supplierOrgId == getOrganizationId() ||
         resource.data.contractorId == request.auth.uid ||
         resource.data.supplierId == request.auth.uid ||
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId() ||
         isAdmin()
       );
       // 'list' (collection query): allow any signed-in user; app 'where' clause filters by orgId
       allow list: if isSignedIn();
+      // Direct UID checks are evaluated first (no extra get() call) so they short-circuit
+      // before getOrganizationId() is called — avoids a null-org denial.
       allow update: if isSignedIn() && (
+        resource.data.contractorId == request.auth.uid ||
+        resource.data.supplierId == request.auth.uid ||
         resource.data.contractorOrgId == getOrganizationId() ||
         resource.data.supplierOrgId == getOrganizationId() ||
-        resource.data.contractorId == request.auth.uid ||
-        resource.data.supplierId == request.auth.uid
+        isAdmin()
       );
 
       match /messages/{messageId} {

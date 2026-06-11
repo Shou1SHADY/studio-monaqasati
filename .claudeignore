@@ -1,0 +1,98 @@
+# Dependencies — Claude does not need to read these
+node_modules/
+.next/
+.next-backup/
+out/
+dist/
+build/
+
+# Package locks — too large, not useful for Claude
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Binary assets — Claude can't process these
+public/images/
+public/fonts/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.webp
+*.avif
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# SVGs — all SVGs in this project are public assets (none in src/)
+# If you ever add SVG icon components to src/, un-ignore with: !src/components/icons/*.svg
+*.svg
+
+# Source maps — large, useless for code editing
+*.map
+
+# TypeScript build artifacts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Test coverage & reports
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+*.code-workspace
+
+# Env files — security
+.env
+.env.*
+!.env.example
+
+# Firebase emulator data
+.firebase/
+firebase-debug.log
+
+# Large snapshot files — NOT using *.yml (negation after wildcard is unreliable)
+# Only block the specific known-large files:
+contractor-offers-snapshot.yml
+rfq-form-snapshot.yml
+supplier-rfqs-snapshot.yml
+
+# Python scripts — not part of the Next.js app
+*.py
+inspect_favicon.py
+replace_arabic.py
+
+# Temporary files
+temp_check.js
+build-output.txt
+
+# Old/deprecated code
+src/lol/
+
+# Design files
+design-system/
+; mdmak-demo/
+; mdmak-mob/
+landing-*.png
+mobile-*.png
+rfq-new-page.png
+
+# Turbopack cache
+.turbo/
+
+# Playwright MCP config
+.playwright-mcp/
+
+# OpenCode config — separate tool, not Claude
+.opencode/
+opencode.json

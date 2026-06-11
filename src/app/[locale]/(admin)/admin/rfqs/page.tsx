@@ -22,7 +22,7 @@ import {
   Eye
 } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { collection, query, orderBy } from "firebase/firestore"
+import { collection, query, orderBy, where } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from "@/i18n/routing"
@@ -44,17 +44,30 @@ export default function AdminRfqsPage() {
     return query(collection(firestore, "rfqs"), orderBy("createdAt", "desc"))
   }, [firestore, user, isUserLoading])
 
+  const contractorsQuery = useMemoFirebase(() => {
+    if (!firestore) return null
+    return query(collection(firestore, "users"), where("role", "==", "Contractor"))
+  }, [firestore])
+
   const { data: rfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
+  const { data: contractors } = useCollection(contractorsQuery)
+
+  const contractorsMap = contractors?.reduce((acc: Record<string, string>, c: any) => {
+    acc[c.id] = c.name || ""
+    return acc
+  }, {}) ?? {}
   const isLoading = isUserLoading || isCollectionLoading
 
   const filteredRfqs = rfqs?.filter((rfq: any) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
+    const contractorName = contractorsMap[rfq.contractorId] || ""
     return (
       rfq.title?.toLowerCase().includes(q) ||
       rfq.category?.toLowerCase().includes(q) ||
       rfq.subCategory?.toLowerCase().includes(q) ||
-      rfq.id?.toLowerCase().includes(q)
+      rfq.id?.toLowerCase().includes(q) ||
+      contractorName.toLowerCase().includes(q)
     );
   }) || [];
 
@@ -72,7 +85,7 @@ export default function AdminRfqsPage() {
       <div className="space-y-6 text-right">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-secondary font-headline">{t("page_title")}</h1>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
@@ -113,6 +126,7 @@ export default function AdminRfqsPage() {
                   <TableRow>
                     <TableHead className="text-right hidden md:table-cell">{t("id_col")}</TableHead>
                     <TableHead className="text-right">{t("tender")}</TableHead>
+                    <TableHead className="text-right hidden md:table-cell">{t("contractor")}</TableHead>
                     <TableHead className="text-right hidden sm:table-cell">{t("category")}</TableHead>
                     <TableHead className="text-right">{t("status")}</TableHead>
                     <TableHead className="text-right hidden sm:table-cell">{t("date")}</TableHead>
@@ -124,6 +138,9 @@ export default function AdminRfqsPage() {
                     <TableRow key={rfq.id}>
                       <TableCell className="font-mono text-xs hidden md:table-cell">{rfq.id}</TableCell>
                       <TableCell className="font-bold">{rfq.title}</TableCell>
+                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                        {contractorsMap[rfq.contractorId] || "-"}
+                      </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex flex-col">
                           <span className="text-sm font-bold">{displayCategory(rfq.category, locale)}</span>

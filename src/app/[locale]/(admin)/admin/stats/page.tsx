@@ -31,7 +31,7 @@ export default function AdminStatsPage() {
     <PortalLayout>
       <div className="space-y-8 text-right">
         <div>
-          <h1 className="text-3xl font-bold text-secondary font-headline">{t("page_title")}</h1>
+          <h1 className="text-3xl font-black text-foreground font-headline">{t("page_title")}</h1>
           <p className="text-muted-foreground mt-1">{t("page_subtitle")}</p>
         </div>
 

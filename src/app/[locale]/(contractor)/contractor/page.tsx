@@ -98,12 +98,14 @@ export default function ContractorDashboard() {
   const myRfqIds = rfqs?.map((r: any) => r.id) || [];
   const acceptedOffersQuery = useMemoFirebase(() => {
     if (!firestore || !profile || !user) return null
-    return query(collection(firestore, "offers"), 
+    return query(collection(firestore, "offers"),
       where("contractorOrgId", "==", profile.organizationId || user.uid)
     )
   }, [firestore, profile?.organizationId, user?.uid])
-  
+
   const { data: offersData } = useCollection(acceptedOffersQuery)
+  const totalOffersCount = offersData?.length || 0;
+  const pendingOffersCount = offersData?.filter((o: any) => o.status === "قيد المراجعة").length || 0;
   
   const implicitFavoriteIds = offersData
     ?.filter((o: any) => o.status === "مقبول")
@@ -120,7 +122,7 @@ export default function ContractorDashboard() {
     { title: t("active_tenders"), value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: t("browse_tenders"), actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? t("active_tenders_empty") : t("active_tenders_count", { count: activeRfqsCount }) },
     { title: t("awarded_contracts"), value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: t("view_contracts"), actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: t("awarded_contracts_context") },
     { title: t("commitment_rate"), value: "90%", icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", action: t("how_calculated"), actionUrl: "#", trend: { value: 2, isPositive: true }, context: t("commitment_rate_context") },
-    // { title: t("connected_suppliers"), value: suppliersCount.toString(), icon: Users, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("browse_suppliers"), actionUrl: "/contractor/suppliers", context: t("connected_suppliers_context") },
+    { title: t("offers_received"), value: totalOffersCount.toString(), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("review_offers"), actionUrl: "/contractor/rfqs", context: totalOffersCount === 0 ? t("offers_received_empty") : pendingOffersCount > 0 ? t("offers_received_pending", { count: pendingOffersCount }) : t("connected_suppliers_context") },
   ]
 
   const recentActivity = [
@@ -164,7 +166,7 @@ export default function ContractorDashboard() {
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+                <h1 className={cn("text-3xl sm:text-4xl font-black text-white", locale !== 'ar' && "tracking-tight")}>
                   {t("welcome")}{locale === 'ar' ? '،' : ','} <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>{profile?.companyName || profile?.name || t("welcome_fallback")}</span>
                 </h1>
                 {lastActivityDate && (
@@ -221,7 +223,7 @@ export default function ContractorDashboard() {
                     <div className="mt-4 pt-4 border-t border-border/50">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-primary group-hover:underline">
                         {stat.action}
-                        {locale === 'ar' ? <ArrowRight className="h-3 w-3" /> : <ArrowRight className="h-3 w-3 rotate-180" />}
+                        <ArrowRight className={cn("h-3 w-3", locale === 'ar' && "rtl-flip")} />
                       </span>
                     </div>
                   )}
@@ -270,7 +272,7 @@ export default function ContractorDashboard() {
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline-flex items-center gap-1">
                         {activity.actionLabel}
-                        {locale === 'ar' ? <ArrowRight className="h-3 w-3" /> : <ArrowRight className="h-3 w-3 rotate-180" />}
+                        <ArrowRight className={cn("h-3 w-3", locale === 'ar' && "rtl-flip")} />
                       </span>
 <Badge variant="secondary" className="bg-accent/10 text-accent font-bold px-3 py-1 rounded-full border-none">
                           {activity.status}
