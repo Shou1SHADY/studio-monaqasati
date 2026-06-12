@@ -9,11 +9,13 @@ service cloud.firestore {
     }
 
     function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc.data != null ? userDoc.data : {};
     }
 
     function getOrganizationId() {
-      return getUserData().organizationId;
+      let userData = getUserData();
+      return userData.organizationId != null ? userData.organizationId : "";
     }
 
     function hasRole(role) {
@@ -161,6 +163,13 @@ service cloud.firestore {
       match /messages/{messageId} {
         allow read, create: if isSignedIn();
       }
+    }
+
+    // Top-level messages collection (used by mobile app)
+    match /messages/{messageId} {
+      allow read, list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.senderId == request.auth.uid);
     }
 
     match /reviews/{reviewId} {
