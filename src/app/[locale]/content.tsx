@@ -411,12 +411,9 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.08 }}
-                className="text-[clamp(28px,4vw,48px)] font-extrabold leading-[1.32] max-w-[20ch] text-white"
+                className="text-[clamp(28px,4vw,48px)] font-extrabold leading-[1.32] text-white md:whitespace-nowrap"
               >
-                {tCompare('title_prefix')}{' '}
-                <b className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">
-                  {tCompare('title_highlight')}
-                </b>
+                {tCompare('title_prefix')}{' '}<span className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">{tCompare('title_highlight')}</span>
               </motion.h2>
               <motion.p
                 initial={{ opacity: 0, y: 10 }}
@@ -429,27 +426,15 @@ export default function HomeContent() {
               </motion.p>
 
               {/* Benefit chips */}
-              <motion.div
+              <motion.p
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.45, delay: 0.22 }}
-                className="flex flex-wrap gap-2 mb-[40px] md:mb-[72px]"
+                className="mb-[40px] md:mb-[72px] text-slate-300 text-[15px] md:text-base leading-[1.9] max-w-[56ch]"
               >
-                {([
-                  { key: 'benefit_1', icon: '⚡' },
-                  { key: 'benefit_2', icon: '📊' },
-                  { key: 'benefit_3', icon: '✅' },
-                ] as const).map(({ key, icon }) => (
-                  <span
-                    key={key}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-300 text-[15px] font-medium"
-                  >
-                    <span>{icon}</span>
-                    {tCompare(key)}
-                  </span>
-                ))}
-              </motion.div>
+                {tCompare('benefit_1')} — {tCompare('benefit_2')} — {tCompare('benefit_3')}
+              </motion.p>
             </div>
 
             {/* Stage: before | after */}
@@ -903,7 +888,7 @@ export default function HomeContent() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.55, delay: 0.08 }}
-              className="text-[clamp(32px,6vw,72px)] font-black text-white leading-[1.18] tracking-tight mb-6"
+              className={cn("text-[clamp(32px,6vw,72px)] font-black text-white mb-6", locale === 'ar' ? 'tracking-normal leading-[1.6]' : 'tracking-tight leading-[1.18]')}
               dangerouslySetInnerHTML={{ __html: tCTA.raw('title') }}
             />
 

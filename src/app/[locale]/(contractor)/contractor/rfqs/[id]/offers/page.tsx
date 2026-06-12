@@ -466,7 +466,7 @@ export default function RfqOffersPage() {
                     }`
                   }}>
                     {isBestOffer && offer.status === "قيد المراجعة" && (
-                      <div className={cn("absolute top-3 z-10 flex items-center gap-1 bg-amber-400 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm", locale === 'ar' ? 'left-3' : 'right-3')}>
+                      <div className="absolute top-1 start-3 z-10 flex items-center gap-1 bg-amber-400 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm whitespace-nowrap">
                         <TrendingUp size={11} /> {t("offers_best_price")}
                       </div>
                     )}
@@ -801,7 +801,7 @@ export default function RfqOffersPage() {
               const WinChip = ({ type }: { type: string }) => {
                 const c = CRIT[type]
                 return (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5, width: "fit-content", fontSize: 11, fontWeight: 800, borderRadius: 999, padding: "3px 10px", color: c.color, background: c.tint }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, width: "fit-content", fontSize: 10, fontWeight: 800, borderRadius: 999, padding: "2px 8px", color: c.color, background: c.tint }}>
                     <CheckCircle2 size={10} />
                     {c.win}
                   </span>
@@ -836,7 +836,7 @@ export default function RfqOffersPage() {
               }
 
               const N = sortedOffers.length
-              const PAD = "0 24px"
+              const PAD = "0 16px"
               const cells: React.ReactElement[] = []
 
               /* per-offer wins */
@@ -845,9 +845,9 @@ export default function RfqOffersPage() {
               /* ===== ROW 1: header ===== */
               cells.push(makeCell({ key: "rh", row: 1, col: 1, kind: "rail", first: true,
                 children: (
-                  <div style={{ padding: "24px 24px 22px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", minHeight: 200 }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, ...(locale !== 'ar' && { letterSpacing: ".08em" }), color: SL400 }}>{locale === 'ar' ? 'المعيار' : 'Criteria'}</span>
-                    <span style={{ fontSize: 19, fontWeight: 800, color: INK, marginTop: 4 }}>{locale === 'ar' ? 'تفاصيل العرض' : 'Offer Details'}</span>
+                  <div style={{ padding: "16px 18px 14px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", minHeight: 140 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, ...(locale !== 'ar' && { letterSpacing: ".08em" }), color: SL400 }}>{locale === 'ar' ? 'المعيار' : 'Criteria'}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 3 }}>{locale === 'ar' ? 'تفاصيل العرض' : 'Offer Details'}</span>
                   </div>
                 ),
               }))
@@ -859,21 +859,21 @@ export default function RfqOffersPage() {
                 cells.push(makeCell({ key: "h" + offer.id, row: 1, col: 2 + i, kind: "offer", best, first: true,
                   children: (
                     <div style={{ position: "relative" }}>
-                      {best && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 5, borderTopLeftRadius: 20, borderTopRightRadius: 20, background: `linear-gradient(90deg, ${NAVY}, ${NAVY2} 70%, ${TEAL})` }} />}
-                      <div style={{ padding: "26px 20px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 11, minHeight: 200, justifyContent: "center" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800, borderRadius: 999, padding: "5px 13px", color: best ? "#fff" : SL400, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 6px 16px -6px hsl(220 56% 11% / 0.55)" : "none" }}>
-                          {best && <Star size={11} className="fill-white text-white shrink-0" />}
+                      {best && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, borderTopLeftRadius: 20, borderTopRightRadius: 20, background: `linear-gradient(90deg, ${NAVY}, ${NAVY2} 70%, ${TEAL})` }} />}
+                      <div style={{ padding: "18px 14px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, minHeight: 140, justifyContent: "center" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "3px 10px", color: best ? "#fff" : SL400, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 4px 12px -4px hsl(220 56% 11% / 0.5)" : "none" }}>
+                          {best && <Star size={10} className="fill-white text-white shrink-0" />}
                           {best ? (locale === 'ar' ? 'الأفضل شاملاً' : 'Overall Best') : `#${toAr(i + 1)}`}
                         </span>
-                        <span style={{ width: 60, height: 60, borderRadius: 18, display: "grid", placeItems: "center", fontSize: 24, fontWeight: 900, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(140deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 12px 26px -10px hsl(220 56% 11% / 0.6)" : `inset 0 0 0 1px ${LINE}` }}>
+                        <span style={{ width: 44, height: 44, borderRadius: 14, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 900, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(140deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 8px 20px -8px hsl(220 56% 11% / 0.6)" : `inset 0 0 0 1px ${LINE}` }}>
                           {initials}
                         </span>
                         {offer.supplierId ? (
-                          <Link href={`/contractor/supplier/profile/${offer.supplierId}`} style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, textDecoration: "none", color: best ? NAVY : INK }}>
+                          <Link href={`/contractor/supplier/profile/${offer.supplierId}`} style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.3, textDecoration: "none", color: best ? NAVY : INK, textAlign: "center" }}>
                             {offer.supplierName || t("offers_registered_supplier")}
                           </Link>
                         ) : (
-                          <span style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2, color: best ? NAVY : INK }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.3, color: best ? NAVY : INK, textAlign: "center" }}>
                             {offer.supplierName || t("offers_registered_supplier")}
                           </span>
                         )}
@@ -890,16 +890,16 @@ export default function RfqOffersPage() {
                 const c = CRIT[type]
                 cells.push(makeCell({ key: "r" + type, row: rowNum, col: 1, kind: "rail",
                   children: (
-                    <div style={{ padding: "0 22px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: 7 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                        <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: c.color, background: c.tint }}>
-                          {type === 'price' && <Tag size={16} />}
-                          {type === 'dur'   && <Truck size={16} />}
-                          {type === 'date'  && <Calendar size={16} />}
+                    <div style={{ padding: "0 16px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: 5 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", color: c.color, background: c.tint }}>
+                          {type === 'price' && <Tag size={13} />}
+                          {type === 'dur'   && <Truck size={13} />}
+                          {type === 'date'  && <Calendar size={13} />}
                         </span>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: INK }}>{c.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>{c.label}</span>
                       </div>
-                      <span style={{ fontSize: 12, color: MUTED, paddingInlineStart: 45 }}>{c.sub}</span>
+                      <span style={{ fontSize: 11, color: MUTED, paddingInlineStart: 36 }}>{c.sub}</span>
                     </div>
                   ),
                 }))
@@ -908,7 +908,7 @@ export default function RfqOffersPage() {
                   const isW = offerWins[i][type]
                   cells.push(makeCell({ key: type + offer.id, row: rowNum, col: 2 + i, kind: "offer", best, wash: isW ? c.wash : undefined,
                     children: (
-                      <div style={{ position: "relative", height: "100%", padding: PAD, display: "flex", flexDirection: "column", justifyContent: "center", gap: 8, minHeight: type === 'price' ? 120 : type === 'dur' ? 108 : 100 }}>
+                      <div style={{ position: "relative", height: "100%", padding: PAD, display: "flex", flexDirection: "column", justifyContent: "center", gap: 6, minHeight: type === 'price' ? 84 : type === 'dur' ? 72 : 64 }}>
                         {isW && <span style={{ position: "absolute", insetInlineStart: 0, top: "22%", bottom: "22%", width: 3, borderRadius: 999, background: c.color, opacity: 0.6 }} />}
                         {renderCell(offer, best, isW, c)}
                       </div>
@@ -923,15 +923,15 @@ export default function RfqOffersPage() {
                 const savings = highestPrice > 0 && price < highestPrice ? Math.round(((highestPrice - price) / highestPrice) * 100) : 0
                 return (
                   <>
-                    <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-                      <span style={{ fontWeight: 900, lineHeight: 1, letterSpacing: "-.01em", fontSize: isW ? 38 : 26, color: isW ? c.color : SL400 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                      <span style={{ fontWeight: 900, lineHeight: 1, letterSpacing: "-.01em", fontSize: isW ? 21 : 19, color: isW ? c.color : SL400 }}>
                         {locale === 'ar' ? toAr(price.toLocaleString('en-US')) : price.toLocaleString('en-US')}
                       </span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isW ? c.soft : SL400 }}>{t("offers_currency_sar")}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: isW ? c.soft : SL400 }}>{t("offers_currency_sar")}</span>
                     </div>
                     {isW && savings > 0 && (
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 800, color: c.color }}>
-                        <ArrowDown size={12} />
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 800, color: c.color }}>
+                        <ArrowDown size={11} />
                         {locale === 'ar' ? `أقل من الأعلى بنسبة ${toAr(savings)}٪` : `${savings}% below highest`}
                       </span>
                     )}
@@ -941,13 +941,19 @@ export default function RfqOffersPage() {
               })
 
               /* ===== ROW 3: duration ===== */
+              const durUnitMap: Record<string, string> = { 'أيام': 'days', 'أسابيع': 'weeks', 'أشهر': 'months' }
+              const fmtDurUnit = (unit?: string) => {
+                const raw = unit || 'أيام'
+                if (locale === 'ar') return raw
+                return durUnitMap[raw] ?? raw
+              }
               valueRow(3, 'dur', (offer, _best, isW, c) => (
                 <>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
-                    <span style={{ fontWeight: 900, lineHeight: 1, fontSize: isW ? 30 : 24, color: isW ? c.color : SL400 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
+                    <span style={{ fontWeight: 900, lineHeight: 1, fontSize: isW ? 22 : 17, color: isW ? c.color : SL400 }}>
                       {offer.executionDuration ? (locale === 'ar' ? toAr(offer.executionDuration) : offer.executionDuration) : "—"}
                     </span>
-                    {offer.executionDuration && <span style={{ fontSize: 12.5, fontWeight: 600, color: isW ? c.soft : SL400 }}>{offer.executionDurationUnit || 'أيام'}</span>}
+                    {offer.executionDuration && <span style={{ fontSize: 11, fontWeight: 600, color: isW ? c.soft : SL400 }}>{fmtDurUnit(offer.executionDurationUnit)}</span>}
                   </div>
                   {isW && <WinChip type="dur" />}
                 </>
@@ -956,7 +962,7 @@ export default function RfqOffersPage() {
               /* ===== ROW 4: date ===== */
               valueRow(4, 'date', (offer, _best, isW, c) => (
                 <>
-                  <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.4, color: isW ? c.soft : SL400 }} suppressHydrationWarning>
+                  <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.4, color: isW ? c.soft : SL400 }} suppressHydrationWarning>
                     {fmtDate(offer.createdAt, locale)}
                   </span>
                   {isW && <WinChip type="date" />}
@@ -966,9 +972,9 @@ export default function RfqOffersPage() {
               /* ===== ROW 5: file ===== */
               cells.push(makeCell({ key: "rfile", row: 5, col: 1, kind: "rail",
                 children: (
-                  <div style={{ padding: "0 22px", height: "100%", minHeight: 70, display: "flex", alignItems: "center", gap: 11 }}>
-                    <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", color: SL400, background: SL100 }}><File size={16} /></span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: INK }}>{t("offers_file_col")}</span>
+                  <div style={{ padding: "0 16px", height: "100%", minHeight: 52, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", color: SL400, background: SL100 }}><File size={13} /></span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>{t("offers_file_col")}</span>
                   </div>
                 ),
               }))
@@ -976,9 +982,9 @@ export default function RfqOffersPage() {
                 const best = i === bestIdx
                 cells.push(makeCell({ key: "file" + offer.id, row: 5, col: 2 + i, kind: "offer", best,
                   children: (
-                    <div style={{ height: "100%", minHeight: 70, padding: PAD, display: "flex", alignItems: "center" }}>
+                    <div style={{ height: "100%", minHeight: 52, padding: PAD, display: "flex", alignItems: "center" }}>
                       {offer.offerPdfUrl ? (
-                        <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 13.5, fontWeight: 700, color: BLUE, textDecoration: "none" }}>
+                        <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: BLUE, textDecoration: "none" }}>
                           <Download size={14} />{t("offers_view_file")}
                         </a>
                       ) : (
@@ -992,8 +998,8 @@ export default function RfqOffersPage() {
               /* ===== ROW 6: CTA ===== */
               cells.push(makeCell({ key: "rcta", row: 6, col: 1, kind: "rail", last: true,
                 children: (
-                  <div style={{ padding: "0 22px", height: "100%", minHeight: 92, display: "flex", alignItems: "center" }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: NAVY2 }}>{t("offers_decision_col")}</span>
+                  <div style={{ padding: "0 16px", height: "100%", minHeight: 68, display: "flex", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: NAVY2 }}>{t("offers_decision_col")}</span>
                   </div>
                 ),
               }))
@@ -1002,14 +1008,14 @@ export default function RfqOffersPage() {
                 const isDecided = offer.status === "مقبول" || offer.status === "مرفوض"
                 cells.push(makeCell({ key: "cta" + offer.id, row: 6, col: 2 + i, kind: "offer", best, last: true,
                   children: (
-                    <div style={{ height: "100%", minHeight: 92, padding: PAD, display: "flex", alignItems: "center" }}>
+                    <div style={{ height: "100%", minHeight: 68, padding: PAD, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {isDecided ? (
                         <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>{getStatusBadge(offer.status)}</div>
                       ) : (
                         <Button
                           onClick={() => handleDecision(offer.id, "مقبول")}
                           disabled={processingId === offer.id}
-                          style={{ width: "100%", height: 50, borderRadius: 14, border: "none", cursor: processingId === offer.id ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 9, fontSize: 15, fontWeight: 800, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : "#fff", boxShadow: best ? "0 14px 30px -12px hsl(220 56% 11% / 0.55)" : `inset 0 0 0 1.5px ${LINE}`, transition: "transform .15s ease, box-shadow .2s ease", opacity: processingId === offer.id ? 0.7 : 1 }}>
+                          style={{ width: "auto", minWidth: 130, height: 38, borderRadius: 10, border: "none", cursor: processingId === offer.id ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 13, fontWeight: 800, paddingLeft: 28, paddingRight: 28, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : "#fff", boxShadow: best ? "0 10px 22px -10px hsl(220 56% 11% / 0.55)" : `inset 0 0 0 1.5px ${LINE}`, transition: "transform .15s ease, box-shadow .2s ease", opacity: processingId === offer.id ? 0.7 : 1 }}>
                           {processingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                           {processingId === offer.id ? (locale === 'ar' ? 'جارٍ القبول…' : 'Processing…') : t("offers_accept_btn")}
                         </Button>
@@ -1028,7 +1034,7 @@ export default function RfqOffersPage() {
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 800, color: TEAL, background: "hsl(184 74% 40% / 0.12)", padding: "5px 12px", borderRadius: 999, marginBottom: 12 }}>
                         <Star size={12} />{locale === 'ar' ? 'مقارنة ذكية' : 'Smart Compare'}
                       </div>
-                      <h2 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: NAVY, ...(locale !== 'ar' && { letterSpacing: "-.01em" }), lineHeight: 1.6 }}>
+                      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: NAVY, ...(locale !== 'ar' && { letterSpacing: "-.01em" }), lineHeight: 1.6 }}>
                         {locale === 'ar' ? 'مقارنة العروض المقدّمة' : 'Submitted Offer Comparison'}
                       </h2>
                       <p style={{ margin: "6px 0 0", fontSize: 14.5, color: MUTED }}>
@@ -1053,9 +1059,9 @@ export default function RfqOffersPage() {
 
                   {/* comparison surface */}
                   <div style={{ overflowX: "auto" }}>
-                    <div style={{ minWidth: `${236 + N * 248}px` }}>
-                      <div style={{ borderRadius: 24, background: "#fff", boxShadow: "0 40px 90px -50px hsl(220 40% 20% / 0.4)", padding: 18 }}>
-                        <div style={{ display: "grid", gridTemplateColumns: `236px repeat(${N}, minmax(248px,1fr))`, columnGap: 16, rowGap: 0, alignItems: "stretch" }}>
+                    <div style={{ minWidth: `${190 + N * 200}px` }}>
+                      <div style={{ borderRadius: 20, background: "#fff", boxShadow: "0 30px 70px -40px hsl(220 40% 20% / 0.35)", padding: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: `190px repeat(${N}, minmax(200px,1fr))`, columnGap: 10, rowGap: 0, alignItems: "stretch" }}>
                           {cells}
                         </div>
                       </div>
