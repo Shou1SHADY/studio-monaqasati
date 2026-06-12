@@ -61,6 +61,7 @@
   .glass-card {
     @apply bg-background/80 backdrop-blur-md border border-border/20 shadow-sm;
   }
+
   .dark .glass-card {
     @apply bg-card/80 border-border/10;
   }
@@ -70,6 +71,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -81,6 +83,7 @@
     body::-webkit-scrollbar {
       display: none;
     }
+
     body {
       -ms-overflow-style: none;
       scrollbar-width: none;
@@ -93,10 +96,12 @@
       scrollbar-gutter: stable;
     }
   }
+
   img {
     max-width: 100%;
     height: auto;
   }
+
   * {
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -116,7 +121,10 @@
    ============================================================ */
 
 /* Enforce safe line-height on ALL headings in Arabic context */
-[dir="rtl"] h1,
+[dir="rtl"] h1 {
+  line-height: 1.42 !important;
+}
+
 [dir="rtl"] h2,
 [dir="rtl"] h3,
 [dir="rtl"] h4,
@@ -153,14 +161,21 @@
 }
 
 [data-sidebar="content"] {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }
 
 /* Animated grid background for Features section */
 @keyframes grid-drift {
-  0% { background-position: 0 0; }
-  100% { background-position: 80px 80px; }
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 80px 80px;
+  }
 }
 
 .animate-grid-drift {
