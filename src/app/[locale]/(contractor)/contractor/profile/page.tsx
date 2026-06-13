@@ -322,8 +322,8 @@ export default function ContractorProfilePage() {
   const completionPercentage = Math.round([
     profile.name,
     profile.phone,
+    profile.city,
     profile.location,
-    profile.description,
     profile.crNumber,
     profile.taxNumber,
     profile.legalDocuments.cr.url,
