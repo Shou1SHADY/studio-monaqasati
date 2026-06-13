@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { Link } from "@/i18n/routing";
+import { LandingChatWidget } from '@/components/rag/LandingChatWidget';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -1208,6 +1209,7 @@ export default function HomeContent() {
         ::-webkit-scrollbar-thumb { background: #1A1D26; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #2A2D36; }
       `}</style>
+      <LandingChatWidget />
     </div>
   );
 }

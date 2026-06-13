@@ -1,4 +1,20 @@
 {
+  "extraKnownMarketplaces": {
+    "local": {
+      "source": {
+        "source": "directory",
+        "path": "C:\\Users\\HP\\claude-code-toolkit\\plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "system@local": true,
+    "workflow@local": true,
+    "development@local": true,
+    "transition@local": true,
+    "memory@local": true,
+    "setup@local": true
+  },
   "permissions": {
     "allow": [
       "Bash(*)",

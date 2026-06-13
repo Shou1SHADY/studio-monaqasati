@@ -1844,5 +1844,16 @@
       "resend_failed_title": "Failed to send link",
       "resend_failed_desc": "Please try again in a moment."
     }
+  },
+  "RagChat": {
+    "title": "AI Assistant",
+    "subtitle": "Powered by Gemini AI",
+    "open": "Open AI Assistant",
+    "close": "Close AI Assistant",
+    "clear": "Clear chat",
+    "placeholder": "Ask about your data...",
+    "send": "Send",
+    "thinking": "Thinking...",
+    "error": "An error occurred. Please try again."
   }
 }
