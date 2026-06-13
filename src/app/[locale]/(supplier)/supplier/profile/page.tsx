@@ -699,8 +699,8 @@ export default function SupplierProfilePage() {
   const completionPercentage = Math.round([
     profile.name,
     profile.phone,
+    profile.city,
     profile.location,
-    profile.description,
     profile.crNumber,
     profile.taxNumber,
     profile.specializations.length > 0,
