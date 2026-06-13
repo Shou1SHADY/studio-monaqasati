@@ -182,6 +182,17 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Team invitations — org owners invite members by email
+    match /invitations/{invitationId} {
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow get: if isSignedIn() && resource.data.email == request.auth.token.email;
+      allow delete: if isSignedIn() && (
+        resource.data.email == request.auth.token.email ||
+        resource.data.invitedBy == request.auth.uid
+      );
+    }
+
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
