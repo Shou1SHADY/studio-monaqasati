@@ -5,13 +5,13 @@ import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import Image from "next/image"
 import { useFirebase } from "@/firebase"
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth"
-import { doc, getDoc, setDoc, deleteDoc, updateDoc } from "firebase/firestore"
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, fetchSignInMethodsForEmail, linkWithCredential } from "firebase/auth"
+import { doc, getDoc, setDoc, deleteDoc, updateDoc, query, where, collection, getDocs, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowRight, Building2, CheckCircle2, ShieldCheck, Lock, Mail } from "lucide-react"
+import { Loader2, ArrowRight, CheckCircle2, ShieldCheck, Mail } from "lucide-react"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useTranslations, useLocale } from "next-intl"
 import {
@@ -47,17 +47,38 @@ export default function LoginPage() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSent, setResetSent] = useState(false)
 
+  // Provider-aware auth
+  const [emailProviders, setEmailProviders] = useState<string[]>([])
+  const [providerCheckDone, setProviderCheckDone] = useState(false)
+  const [pendingGoogleCred, setPendingGoogleCred] = useState<any>(null)
+  const [showGooglePrompt, setShowGooglePrompt] = useState(false)
+
+  const handleEmailBlur = async () => {
+    if (!auth || !formData.email.trim()) return
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, formData.email.trim().toLowerCase())
+      setEmailProviders(methods)
+      setProviderCheckDone(true)
+    } catch { /* ignore */ }
+  }
+
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!resetEmail.trim() || !auth) return
     setResetLoading(true)
     try {
+      // Block reset for Google-only accounts — they have no password to reset
+      const methods = await fetchSignInMethodsForEmail(auth, resetEmail.trim().toLowerCase()).catch(() => [])
+      if (methods.includes("google.com") && !methods.includes("password")) {
+        toast({ title: t("forgot_password_error_title"), description: t("err_use_google"), variant: "destructive" })
+        return
+      }
       await sendPasswordResetEmail(auth, resetEmail.trim())
       setResetSent(true)
       toast({ title: t("forgot_password_title"), description: t("forgot_password_success_desc") })
     } catch (err: any) {
-      const msg = err.code === 'auth/user-not-found' 
-        ? t("forgot_password_no_user") 
+      const msg = err.code === 'auth/user-not-found'
+        ? t("forgot_password_no_user")
         : t("forgot_password_error")
       toast({ title: t("forgot_password_error_title"), description: msg, variant: "destructive" })
     } finally {
@@ -169,6 +190,9 @@ export default function LoginPage() {
         const userData = userDoc.data()
         const role = userData.role
 
+        // Update lastLoginAt on every Google login
+        await updateDoc(doc(firestore, "users", user.uid), { lastLoginAt: serverTimestamp() }).catch(() => {})
+
         if (userData.twoFactorEnabled && userData.phone) {
           setTempUserData({
             uid: user.uid,
@@ -199,15 +223,71 @@ export default function LoginPage() {
           throw new Error(t("err_unknown_role"))
         }
       } else {
-        await auth.signOut()
-        setLoginError(t("err_google_no_acc"))
+        // Google sign-in succeeded but no Firestore doc by this UID
+        // Check if user exists with this email (different auth provider)
+        const emailQuery = query(
+          collection(firestore, "users"),
+          where("email", "==", user.email?.toLowerCase())
+        )
+        const emailSnapshot = await getDocs(emailQuery)
+
+        if (!emailSnapshot.empty) {
+          // Account exists with email/password — don't create duplicate
+          // Sign out Google user and prompt password sign-in for linking
+          await auth.signOut()
+          setFormData(prev => ({ ...prev, email: user.email?.toLowerCase() || prev.email }))
+          setLoginError(t("err_existing_password_account"))
+          setIsLoading(false)
+          return
+        }
+
+        // Truly new user — create Firestore doc
+        await setDoc(doc(firestore, "users", user.uid), {
+          id: user.uid,
+          email: user.email?.toLowerCase(),
+          name: user.displayName || "",
+          role: "Contractor",
+          organizationId: "",
+          organizationRole: "",
+          phone: "",
+          specializations: [],
+          providers: ["google.com"] as string[],
+          isVerified: false,
+          profileCompleted: false,
+          joinedAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+        })
+
+        toast({
+          title: t("success_register"),
+          description: t("welcome_user", { name: user.displayName || t("dear_user") }),
+        })
+
+        router.push("/register?role=Contractor")
       }
     } catch (error: any) {
-      console.error("❌ Google Login error:", error)
-      if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user") {
+      // Silently stop loading when user dismisses the popup — no error shown
+      if (
+        error.code === "auth/cancelled-popup-request" ||
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/user-cancelled" ||
+        error.message?.includes("popup-closed-by-user") ||
+        error.message?.includes("cancelled-popup-request")
+      ) {
         return
       }
-      setLoginError(error.message || t("err_google_login"))
+      // Handle: email already used with password provider
+      if (error.code === "auth/account-exists-with-different-credential") {
+        const email = error.customData?.email || ""
+        const credential = GoogleAuthProvider.credentialFromError(error)
+        setFormData(prev => ({ ...prev, email }))
+        setPendingGoogleCred(credential)
+        setShowGooglePrompt(true)
+        setLoginError(t("err_link_google"))
+        return
+      }
+      // Never surface raw Firebase error messages to users
+      setLoginError(t("err_google_login"))
     } finally {
       setIsLoading(false)
     }
@@ -220,7 +300,39 @@ export default function LoginPage() {
     setIsLoading(true)
     setLoginError("")
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password)
+      // If we have a pending Google credential, first sign in with password,
+      // then link the Google credential (account linking flow)
+      if (pendingGoogleCred) {
+        const userCredential = await signInWithEmailAndPassword(auth, formData.email.trim().toLowerCase(), formData.password)
+        await linkWithCredential(userCredential.user, pendingGoogleCred)
+        setPendingGoogleCred(null)
+        setShowGooglePrompt(false)
+
+        const userDoc = await getDoc(doc(firestore, "users", userCredential.user.uid))
+        if (!userDoc.exists()) throw new Error(t("err_user_not_found"))
+
+        const userData = userDoc.data()
+
+        // Update Firestore to reflect linked providers and last login
+        await updateDoc(doc(firestore, "users", userCredential.user.uid), {
+          providers: ["password", "google.com"] as string[],
+          lastLoginAt: serverTimestamp(),
+        })
+
+        toast({
+          title: t("success_link"),
+          description: t("welcome_user", { name: userData.name || t("dear_user") }),
+        })
+
+        const role = userData.role
+        if (role === "Admin") router.push("/admin")
+        else if (role === "Contractor") router.push("/contractor")
+        else if (role === "Supplier") router.push("/supplier")
+        else throw new Error(t("err_unknown_role"))
+        return
+      }
+
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email.trim().toLowerCase(), formData.password)
       const user = userCredential.user
 
       const userDoc = await getDoc(doc(firestore, "users", user.uid))
@@ -231,6 +343,9 @@ export default function LoginPage() {
 
       const userData = userDoc.data()
       let role = userData.role
+
+      // Update lastLoginAt on every email login
+      await updateDoc(doc(firestore, "users", user.uid), { lastLoginAt: serverTimestamp() }).catch(() => {})
 
       // Auto-promote admin@munaqasati.sa to Admin
       if (user.email === "admin@munaqasati.sa" && role !== "Admin") {
@@ -275,8 +390,19 @@ export default function LoginPage() {
 
     } catch (error: any) {
       let errorMsg = t("err_login")
-      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
-        errorMsg = t("err_invalid_creds")
+
+      // Check if this email uses Google Sign-In (no password set)
+      if (error.code === "auth/user-not-found" || error.code === "auth/invalid-credential") {
+        const methods = await fetchSignInMethodsForEmail(auth, formData.email.trim().toLowerCase()).catch(() => [])
+        if (methods.includes("google.com") && !methods.includes("password")) {
+          // This account uses Google — prompt user to sign in with Google
+          setShowGooglePrompt(true)
+          errorMsg = t("err_use_google")
+        } else if (methods.length === 0) {
+          errorMsg = t("err_no_account")
+        } else {
+          errorMsg = t("err_invalid_creds")
+        }
       } else if (error.code === "auth/invalid-email") {
         errorMsg = t("err_invalid_email")
       } else if (error.code === "auth/user-disabled") {
@@ -392,6 +518,18 @@ export default function LoginPage() {
                     <span>{loginError}</span>
                   </div>
                 )}
+                {showGooglePrompt && (
+                  <div className="bg-sky-500/10 text-sky-600 text-sm font-medium p-3 rounded-lg border border-sky-500/20 flex items-center gap-2">
+                    <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    <span>{pendingGoogleCred ? t("err_link_google") : t("err_use_google")}</span>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-start block text-slate-700 font-bold">{t("email")}</Label>
                   <Input
@@ -401,33 +539,73 @@ export default function LoginPage() {
                     placeholder="name@company.com"
                     className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
                     value={formData.email}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
+                    onChange={e => { setFormData({ ...formData, email: e.target.value }); setProviderCheckDone(false); setShowGooglePrompt(false); setPendingGoogleCred(null) }}
+                    onBlur={handleEmailBlur}
                   />
+                  {/* Provider indicator */}
+                  {providerCheckDone && emailProviders.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-400" />
+                      {emailProviders.includes("google.com") && emailProviders.includes("password")
+                        ? t("providers_both")
+                        : emailProviders.includes("password")
+                          ? t("providers_password")
+                          : emailProviders.includes("google.com")
+                            ? t("providers_google")
+                            : ""}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
-                    <button type="button" onClick={() => { setResetEmail(formData.email); setResetSent(false); setShowForgotPassword(true) }} className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
-                      {t("forgot_password")}
-                    </button>
+                {/* Password — hidden when email only has Google provider */}
+                {!showGooglePrompt && (!providerCheckDone || !emailProviders.includes("google.com") || emailProviders.includes("password")) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
+                      <button type="button" onClick={() => { setResetEmail(formData.email); setResetSent(false); setShowForgotPassword(true) }} className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
+                        {t("forgot_password")}
+                      </button>
+                    </div>
+                    <Input
+                      id="password"
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
+                      value={formData.password}
+                      onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    />
                   </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
-                    value={formData.password}
-                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  />
-                </div>
+                )}
 
-                <Button type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all" disabled={isLoading}>
-                  {isLoading ? <Loader2 className="animate-spin" /> : t('submit_login')}
-                </Button>
+                {showGooglePrompt && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-12 rounded-lg border border-border bg-transparent text-foreground hover:bg-muted hover:text-foreground font-bold transition-all flex items-center justify-center gap-3"
+                    onClick={handleGoogleLogin}
+                    disabled={isLoading}
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    {t("login_google")}
+                  </Button>
+                )}
+
+                {/* Submit button — visible whenever the password field is visible */}
+                {!showGooglePrompt && (!providerCheckDone || !emailProviders.includes("google.com") || emailProviders.includes("password")) && (
+                  <Button type="submit" className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="animate-spin" /> : t('submit_login')}
+                  </Button>
+                )}
               </form>
 
+              {!showGooglePrompt && (
+              <>
               <div className="relative my-6 text-center">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t border-border" />
@@ -462,6 +640,8 @@ export default function LoginPage() {
                 </svg>
                 {t("login_google")}
               </Button>
+              </>
+              )}
             </>
           )}
 
