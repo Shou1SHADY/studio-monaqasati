@@ -151,7 +151,7 @@ export default function HomeContent() {
       <main className="relative">
 
         {/* HERO - Full bleed architectural design */}
-        <section className="relative h-screen min-h-[800px] md:min-h-[700px] flex flex-col">
+        <section className="relative h-screen min-h-[640px] md:min-h-[700px] flex flex-col">
           {/* Slides */}
           {heroSlides.map((s, i) => (
             <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
@@ -209,19 +209,19 @@ export default function HomeContent() {
           {/* Bottom Floating Stats - now in normal flow */}
           <div className="relative z-20 px-6 pb-4 md:pb-6">
             <div className="max-w-4xl mx-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6 w-full">
+              <div className="grid grid-cols-3 gap-2 md:gap-6 w-full">
                 {[
                   { val: tStats('response_val'), label: tStats('response_label'), icon: Clock },
                   { val: tStats('saving_70'), label: tStats('time_saving'), icon: Zap },
                   { val: tStats('improvement_15'), label: tStats('cost_improvement'), icon: TrendingUp },
                 ].map((s, i) => (
-                  <div key={i} className="shrink-0 bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-3 md:p-6 flex items-center gap-2 md:gap-5 group hover:bg-white/[0.06] transition-all min-h-[80px] md:min-h-0">
-                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
-                      <s.icon size={20} className="md:size-6" />
+                  <div key={i} className="shrink-0 bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-xl md:rounded-2xl p-2.5 md:p-6 flex flex-col sm:flex-row items-center sm:items-start gap-1.5 md:gap-5 group hover:bg-white/[0.06] transition-all">
+                    <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
+                      <s.icon size={16} className="md:size-6" />
                     </div>
-                    <div className="flex flex-col justify-center min-w-0">
-                      <div className="text-lg md:text-xl font-black text-white leading-tight tracking-latin"><AnimatedStat value={s.val} /></div>
-                      <div className="text-slate-500 text-[9px] md:text-[11px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
+                    <div className="flex flex-col justify-center min-w-0 items-center sm:items-start text-center sm:text-start">
+                      <div className="text-sm md:text-xl font-black text-white leading-tight tracking-latin"><AnimatedStat value={s.val} /></div>
+                      <div className="text-slate-500 text-[8px] md:text-[11px] font-bold uppercase tracking-normal mt-0.5 leading-tight">{s.label}</div>
                     </div>
                   </div>
                 ))}
@@ -305,7 +305,7 @@ export default function HomeContent() {
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.6, delay: i * 0.15, ease: "easeOut" }}
                   key={i}
-                  className="group relative p-8 md:p-10 rounded-3xl bg-[#080c18] border border-white/[0.04] hover:border-white/[0.08] transition-all duration-500 hover:-translate-y-1"
+                  className="group relative p-5 sm:p-7 md:p-10 rounded-3xl bg-[#080c18] border border-white/[0.04] hover:border-white/[0.08] transition-all duration-500 hover:-translate-y-1"
                 >
                   {/* Gradient glow on hover */}
                   <div className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${f.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-700`} />
@@ -314,7 +314,7 @@ export default function HomeContent() {
 
                   <div className="relative z-10">
                     {/* Icon with enhanced styling */}
-                    <div className={`w-14 h-14 rounded-2xl ${f.iconBg} flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-500 border border-white/5`}>
+                    <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl ${f.iconBg} flex items-center justify-center mb-5 md:mb-8 group-hover:scale-110 transition-transform duration-500 border border-white/5`}>
                       <f.icon size={26} strokeWidth={1.5} />
                     </div>
 
@@ -376,7 +376,7 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.08 }}
-                className="text-[clamp(30px,4.5vw,56px)] font-extrabold leading-[1.22] text-white mb-5"
+                className="text-[clamp(24px,4.5vw,56px)] font-extrabold leading-[1.22] text-white mb-5"
               >
                 {tCompare('title_prefix')}{' '}
                 <span className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">{tCompare('title_highlight')}</span>
@@ -393,7 +393,7 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.65, ease: "easeOut" }}
-                className="flex flex-col relative lg:pe-10"
+                className="flex flex-col relative lg:pe-10 max-w-[300px] sm:max-w-sm mx-auto lg:max-w-none lg:mx-0"
               >
                 {/* Label row */}
                 <div className="flex items-center gap-3 mb-5">
@@ -516,7 +516,7 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.65, delay: 0.1, ease: "easeOut" }}
-                className="flex flex-col relative lg:ps-10"
+                className="flex flex-col relative lg:ps-10 max-w-[300px] sm:max-w-sm mx-auto lg:max-w-none lg:mx-0"
               >
                 {/* Label row */}
                 <div className="flex items-center gap-3 mb-5">
@@ -609,7 +609,7 @@ export default function HomeContent() {
         </section>
 
         {/* CONTRACTOR EXPERIENCE — device-mockup redesign */}
-        <section className="relative bg-[#020617] border-y border-white/5 py-24 lg:py-[110px] overflow-hidden">
+        <section className="relative bg-[#020617] border-y border-white/5 py-14 sm:py-20 lg:py-[110px] overflow-hidden">
 
           {/* Ambient glows */}
           <div aria-hidden className="absolute -top-40 -start-28 w-[620px] h-[620px] rounded-full bg-[#0369A1]/20 blur-[140px] pointer-events-none" />
@@ -627,7 +627,7 @@ export default function HomeContent() {
             }}
           />
 
-          {/* Corner geometry */}
+          {/* Corner geometry — desktop only */}
           <div aria-hidden className="absolute -top-10 end-0 opacity-40 pointer-events-none hidden lg:block">
             {[
               'w-[150px] h-[120px] top-0 left-0',
@@ -637,16 +637,13 @@ export default function HomeContent() {
               <span
                 key={i}
                 className={cn('absolute block rounded-[18px] border border-white/[0.04]', cls)}
-                style={{
-                  transform: 'skewX(-22deg)',
-                  background: 'linear-gradient(135deg, rgba(56,189,248,.07), rgba(56,189,248,0))',
-                }}
+                style={{ transform: 'skewX(-22deg)', background: 'linear-gradient(135deg, rgba(56,189,248,.07), rgba(56,189,248,0))' }}
               />
             ))}
           </div>
 
-          <div className="relative z-10 max-w-[1240px] mx-auto px-6 md:px-10">
-            <div className="grid grid-cols-1 lg:grid-cols-[0.84fr_1.16fr] items-center gap-16 lg:gap-14" dir="ltr">
+          <div className="relative z-10 max-w-[1240px] mx-auto px-5 sm:px-8 md:px-10">
+            <div className="grid grid-cols-1 lg:grid-cols-[0.84fr_1.16fr] items-center gap-10 sm:gap-14 lg:gap-14" dir="ltr">
 
               {/* TEXT COLUMN */}
               <motion.div
@@ -658,40 +655,40 @@ export default function HomeContent() {
                 dir="rtl"
               >
                 {/* Tagline */}
-                <div className="inline-flex items-center gap-3 mb-7">
+                <div className="inline-flex items-center gap-3 mb-5 sm:mb-7">
                   <span className="w-[34px] h-px bg-sky-400/60" />
-                  <span className="text-[11.5px] font-extrabold text-sky-400 uppercase tracking-[.18em]">
+                  <span className="text-[11px] sm:text-[11.5px] font-extrabold text-sky-400 uppercase tracking-[.18em]">
                     {tContractor('tagline')}
                   </span>
                 </div>
 
                 {/* Title */}
                 <h2
-                  className="text-[clamp(28px,3.4vw,46px)] font-extrabold text-white leading-[1.4] tracking-tight mb-6 [&>span]:bg-gradient-to-r [&>span]:from-sky-400 [&>span]:to-sky-200 [&>span]:bg-clip-text [&>span]:text-transparent"
+                  className="text-[26px] sm:text-[32px] lg:text-[clamp(32px,3.4vw,46px)] font-extrabold text-white leading-[1.45] tracking-tight mb-4 sm:mb-6 [&>span]:bg-gradient-to-r [&>span]:from-sky-400 [&>span]:to-sky-200 [&>span]:bg-clip-text [&>span]:text-transparent"
                   dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }}
                 />
 
                 {/* Description */}
-                <p className="text-[16.5px] leading-[1.85] text-slate-400 mb-8 max-w-[480px] ms-auto lg:ms-0">
+                <p className="text-[15px] sm:text-[16.5px] leading-[1.8] sm:leading-[1.85] text-slate-400 mb-6 sm:mb-8 max-w-[480px] ms-auto lg:ms-0">
                   {tContractor('desc')}
                 </p>
 
                 {/* Feature pills */}
-                <div className="flex flex-wrap gap-2.5 mb-9 justify-end lg:justify-start">
+                <div className="flex flex-wrap gap-2 sm:gap-2.5 mb-7 sm:mb-9 justify-end lg:justify-start">
                   {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
-                    <div key={i} className="inline-flex items-center gap-2 text-slate-300 text-[13px] font-semibold bg-white/[0.03] border border-white/[0.07] px-4 py-[9px] rounded-full">
-                      <CheckCircle2 size={14} className="text-sky-400 shrink-0" />
+                    <div key={i} className="inline-flex items-center gap-1.5 sm:gap-2 text-slate-300 text-[12px] sm:text-[13px] font-semibold bg-white/[0.03] border border-white/[0.07] px-3 sm:px-4 py-2 sm:py-[9px] rounded-full">
+                      <CheckCircle2 size={13} className="text-sky-400 shrink-0" />
                       {item}
                     </div>
                   ))}
                 </div>
 
                 {/* CTA */}
-                <div className="flex items-center gap-6 flex-wrap justify-end lg:justify-start">
+                <div className="flex items-center gap-4 flex-wrap justify-end lg:justify-start">
                   <Link href="/register?role=Contractor">
-                    <Button className="group h-[54px] px-8 text-[15.5px] font-extrabold rounded-[15px] bg-cta hover:bg-sky-500 text-white transition-all shadow-[0_18px_40px_-16px_rgba(3,105,161,.7)] hover:shadow-[0_22px_48px_-16px_rgba(14,165,233,.7)] hover:-translate-y-0.5">
+                    <Button className="group h-12 sm:h-[54px] px-6 sm:px-8 text-[14.5px] sm:text-[15.5px] font-extrabold rounded-[13px] sm:rounded-[15px] bg-cta hover:bg-sky-500 text-white transition-all shadow-[0_18px_40px_-16px_rgba(3,105,161,.7)] hover:shadow-[0_22px_48px_-16px_rgba(14,165,233,.7)] hover:-translate-y-0.5">
                       {tContractor('cta')}
-                      <ArrowLeft size={16} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
+                      <ArrowLeft size={15} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
                     </Button>
                   </Link>
                 </div>
@@ -703,55 +700,56 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ duration: 0.65, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="relative flex justify-center items-center min-h-[520px]"
+                className="relative flex justify-center items-center"
               >
-                <div className="relative w-full max-w-[660px] h-[520px] flex justify-center items-center">
+                {/* Stage — height scales per breakpoint, chips need room at bottom */}
+                <div className="relative w-full max-w-[500px] sm:max-w-[580px] lg:max-w-[660px] flex justify-center items-center h-[240px] sm:h-[360px] lg:h-[520px]">
 
-                  {/* Floating stat chip — top */}
+                  {/* Floating stat chip — top: hidden on mobile, inside bounds on sm+ */}
                   <motion.div
                     animate={{ y: -10 }}
                     transition={{ duration: 2, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
-                    className="absolute top-1.5 start-[-12px] z-10 flex items-center gap-3 px-[15px] py-[11px] rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
+                    className="hidden sm:flex absolute top-2 start-0 lg:start-[-12px] z-10 items-center gap-2.5 sm:gap-3 px-3 sm:px-[15px] py-2 sm:py-[11px] rounded-xl sm:rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
                     style={{ background: 'rgba(5,12,26,.82)', boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)', willChange: 'transform' }}
                     dir="rtl"
                   >
-                    <span className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center shrink-0 border border-emerald-500/30 bg-emerald-500/[0.16]">
-                      <TrendingUp size={16} className="text-emerald-400" />
+                    <span className="w-7 h-7 sm:w-[34px] sm:h-[34px] rounded-[8px] sm:rounded-[10px] flex items-center justify-center shrink-0 border border-emerald-500/30 bg-emerald-500/[0.16]">
+                      <TrendingUp size={14} className="text-emerald-400" />
                     </span>
                     <span>
-                      <b className="block text-base font-black text-white leading-none tracking-wide">90%</b>
-                      <small className="block text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_compliance')}</small>
+                      <b className="block text-sm sm:text-base font-black text-white leading-none tracking-wide">90%</b>
+                      <small className="block text-[10px] sm:text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_compliance')}</small>
                     </span>
                   </motion.div>
 
-                  {/* Floating stat chip — bottom */}
+                  {/* Floating stat chip — bottom: hidden on mobile */}
                   <motion.div
                     animate={{ y: 10 }}
                     transition={{ duration: 2.4, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
-                    className="absolute bottom-6 start-[-26px] z-10 flex items-center gap-3 px-[15px] py-[11px] rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
+                    className="hidden sm:flex absolute bottom-4 lg:bottom-6 start-0 lg:start-[-26px] z-10 items-center gap-2.5 sm:gap-3 px-3 sm:px-[15px] py-2 sm:py-[11px] rounded-xl sm:rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
                     style={{ background: 'rgba(5,12,26,.82)', boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)', willChange: 'transform' }}
                     dir="rtl"
                   >
-                    <span className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center shrink-0 border border-sky-400/30 bg-sky-400/[0.14]">
-                      <BarChart3 size={16} className="text-sky-400" />
+                    <span className="w-7 h-7 sm:w-[34px] sm:h-[34px] rounded-[8px] sm:rounded-[10px] flex items-center justify-center shrink-0 border border-sky-400/30 bg-sky-400/[0.14]">
+                      <BarChart3 size={14} className="text-sky-400" />
                     </span>
                     <span>
-                      <b className="block text-base font-black text-white leading-none tracking-wide">15%</b>
-                      <small className="block text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_performance')}</small>
+                      <b className="block text-sm sm:text-base font-black text-white leading-none tracking-wide">15%</b>
+                      <small className="block text-[10px] sm:text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_performance')}</small>
                     </span>
                   </motion.div>
 
-                  {/* Laptop */}
-                  <div className="relative w-[560px] z-[2] max-[640px]:w-full max-[640px]:max-w-[420px]">
+                  {/* Laptop — scales at each breakpoint */}
+                  <div className="relative z-[2] w-[82%] sm:w-[420px] lg:w-[560px]">
                     {/* Lid */}
                     <div
-                      className="relative rounded-[20px] p-[11px]"
+                      className="relative rounded-[14px] sm:rounded-[18px] lg:rounded-[20px] p-[7px] sm:p-[9px] lg:p-[11px]"
                       style={{
                         background: 'linear-gradient(160deg,#26334a,#0f1726)',
                         boxShadow: '0 2px 0 rgba(255,255,255,.06) inset, 0 40px 90px -34px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.05)',
                       }}
                     >
-                      <div className="relative rounded-[11px] overflow-hidden bg-[#020617] leading-none" style={{ boxShadow: '0 0 0 1px rgba(0,0,0,.6) inset' }}>
+                      <div className="relative rounded-[8px] sm:rounded-[10px] lg:rounded-[11px] overflow-hidden bg-[#020617] leading-none" style={{ boxShadow: '0 0 0 1px rgba(0,0,0,.6) inset' }}>
                         <Image
                           src="/images/contractor-desktop.png"
                           alt={tContractor('screen_alt_desktop')}
@@ -760,46 +758,46 @@ export default function HomeContent() {
                           className="block w-full h-auto"
                           loading="lazy"
                         />
-                        {/* screen glare */}
                         <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(115deg, rgba(255,255,255,.05), rgba(255,255,255,0) 26%)' }} />
                       </div>
                     </div>
                     {/* Base / deck */}
                     <div
-                      className="relative h-4 mt-[-3px] rounded-b-[14px]"
+                      className="relative mt-[-2px] rounded-b-[10px] lg:rounded-b-[14px]"
                       style={{
-                        width: '118%',
-                        left: '-9%',
+                        width: '118%', left: '-9%',
+                        height: '10px',
                         background: 'linear-gradient(180deg,#aeb8c6 0%,#7e8a9b 55%,#5d6678 100%)',
                         boxShadow: '0 18px 30px -14px rgba(0,0,0,.8)',
                       }}
                     >
-                      {/* notch */}
-                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[120px] h-2 rounded-b-[9px]" style={{ background: 'linear-gradient(180deg,#4a5160,#3a414e)' }} />
-                      {/* shine */}
-                      <div className="absolute top-[3px] left-[6%] right-[6%] h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent)' }} />
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80px] sm:w-[100px] lg:w-[120px] h-[6px] sm:h-[7px] lg:h-2 rounded-b-[7px] lg:rounded-b-[9px]" style={{ background: 'linear-gradient(180deg,#4a5160,#3a414e)' }} />
+                      <div className="absolute top-[2px] left-[6%] right-[6%] h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent)' }} />
                     </div>
                   </div>
 
-                  {/* Phone */}
+                  {/* Phone — scales at each breakpoint, always absolute-overlapping */}
                   <motion.div
                     animate={{ y: 8 }}
                     transition={{ duration: 2.8, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
-                    className="absolute end-[-6px] bottom-[-46px] z-[4] w-[188px] h-[392px] rounded-[34px] p-2 max-[640px]:relative max-[640px]:end-auto max-[640px]:bottom-auto max-[640px]:mt-[-26px] max-[640px]:w-[166px] max-[640px]:h-[346px]"
+                    className="absolute z-[4]
+                      end-[2%] bottom-[-14px] w-[72px] h-[148px] rounded-[18px] p-[4px]
+                      sm:end-[1%] sm:bottom-[-28px] sm:w-[116px] sm:h-[242px] sm:rounded-[26px] sm:p-[5px]
+                      lg:end-[-6px] lg:bottom-[-46px] lg:w-[188px] lg:h-[392px] lg:rounded-[34px] lg:p-2"
                     style={{
                       background: 'linear-gradient(160deg,#2a3346,#0d1422)',
                       boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 36px 70px -26px rgba(0,0,0,.92)',
                     }}
                   >
                     {/* notch */}
-                    <div className="absolute top-[9px] left-1/2 -translate-x-1/2 w-[54px] h-[15px] rounded-full bg-[#05080f] z-[3]" />
-                    <div className="relative w-full h-full rounded-[27px] overflow-hidden bg-[#0a1530] leading-none">
+                    <div className="absolute top-[5px] sm:top-[7px] lg:top-[9px] left-1/2 -translate-x-1/2 w-[32px] sm:w-[44px] lg:w-[54px] h-[8px] sm:h-[11px] lg:h-[15px] rounded-full bg-[#05080f] z-[3]" />
+                    <div className="relative w-full h-full rounded-[15px] sm:rounded-[22px] lg:rounded-[27px] overflow-hidden bg-[#0a1530] leading-none">
                       <Image
                         src="/images/contractor-mobile.png"
                         alt={tContractor('screen_alt_mobile')}
                         width={390}
                         height={844}
-                        className="block w-full h-auto"
+                        className="block w-full h-full object-cover object-top"
                         loading="lazy"
                       />
                       <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(120deg,rgba(255,255,255,.12),rgba(255,255,255,0) 30%)' }} />
@@ -834,7 +832,7 @@ export default function HomeContent() {
           <div aria-hidden className="absolute inset-x-0 top-0    h-[140px] bg-gradient-to-b from-[#020617] to-transparent pointer-events-none" />
           <div aria-hidden className="absolute inset-x-0 bottom-0 h-[140px] bg-gradient-to-t from-[#020617] to-transparent pointer-events-none" />
 
-          <div className="max-w-7xl mx-auto px-6 md:px-16 relative z-10">
+          <div className="max-w-7xl mx-auto px-5 md:px-16 relative z-10">
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)] items-center gap-12 lg:gap-10">
 
               {/* LEFT — copy */}
@@ -907,7 +905,7 @@ export default function HomeContent() {
                 whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
                 transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
-                className="relative flex items-center justify-center min-h-[380px] lg:min-h-[560px]"
+                className="relative flex items-center justify-center min-h-[220px] sm:min-h-[380px] lg:min-h-[560px]"
               >
                 {/* Browser frame wrapper — status pill anchors to this */}
                 <div className="relative w-full max-w-[580px]">
@@ -1027,7 +1025,7 @@ export default function HomeContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 lg:gap-12 relative" key={activeFlow}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 md:gap-8 lg:gap-12 relative" key={activeFlow}>
 
               {/* Dashed connectors — extend close to step icons */}
               <div className="hidden md:block absolute top-10 start-[17%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
@@ -1041,7 +1039,7 @@ export default function HomeContent() {
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.5, delay: i * 0.12, ease: "easeOut" }}
                   key={i}
-                  className="flex flex-col items-center text-center space-y-6 group relative"
+                  className="flex flex-row sm:flex-col items-start sm:items-center text-start sm:text-center gap-5 sm:gap-0 sm:space-y-6 group relative"
                 >
                   {/* Step icon */}
                   <div className="relative z-10">
@@ -1054,9 +1052,9 @@ export default function HomeContent() {
                     </div>
                   </div>
 
-                  <div className="space-y-3 z-10">
-                    <h4 className="text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h4>
-                    <p className="text-slate-400 text-sm leading-relaxed px-4">{s.desc}</p>
+                  <div className="space-y-2 z-10 flex-1 sm:flex-none">
+                    <h4 className="text-base sm:text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h4>
+                    <p className="text-slate-400 text-sm leading-relaxed sm:px-4">{s.desc}</p>
                   </div>
                 </motion.div>
               ))}
@@ -1106,7 +1104,7 @@ export default function HomeContent() {
         */}
 
         {/* PARTNERSHIP HIGHLIGHT - Depth Image */}
-        <section className="relative py-24 md:py-40 overflow-hidden border-t border-white/5">
+        <section className="relative py-14 md:py-40 overflow-hidden border-t border-white/5">
           <Image fill src="/images/loading-dock.jpg" alt="Partnership" className="absolute inset-0 w-full h-full object-cover grayscale opacity-30" sizes="100vw" loading="lazy" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#020617] via-transparent to-[#020617]" />
 
@@ -1114,7 +1112,7 @@ export default function HomeContent() {
             <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full bg-cta/10 border border-cta/20 text-sky-400 text-xs font-black uppercase tracking-normal">
               {tPartnership('tagline')}
             </div>
-            <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-white tracking-normal leading-[1.6]" dangerouslySetInnerHTML={{ __html: tPartnership.raw('title') }} />
+            <h2 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-bold text-white tracking-normal leading-[1.6]" dangerouslySetInnerHTML={{ __html: tPartnership.raw('title') }} />
             <p className="text-slate-400 text-base md:text-xl leading-relaxed font-medium">
               {tPartnership('desc')}
             </p>
