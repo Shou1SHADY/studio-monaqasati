@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, Box, MessageSquare, ShieldCheck, AlertCircle } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
@@ -224,11 +224,15 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         const hasRejected = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "offer_rejected");
         const hasReduction = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "price_reduction");
         const hasSampleRequested = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "sample_requested");
-        
+        const hasSampleReceived = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "sample_received");
+        const hasSupplyCompleted = (userNotifications || []).some((n: any) => n.offerId === offer.id && n.type === "supply_completed");
+
         if (offer.status === "مقبول" && hasAccepted) return false;
         if (offer.status === "مرفوض" && hasRejected) return false;
         if (offer.status === "مطلوب تخفيض" && hasReduction) return false;
         if (offer.sampleStatus === "مطلوبة" && hasSampleRequested) return false;
+        if (offer.sampleStatus === "تم الاستلام" && hasSampleReceived) return false;
+        if (offer.status === "تم التسليم" && hasSupplyCompleted) return false;
         
         return true;
       });
@@ -298,8 +302,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     ? mergedContractorNotifs
     : { all: [], sliced: [] }
 
-  const allNotifications = notificationsObj.all
-  const notifications = notificationsObj.sliced
+  // Exclude new_chat_message — they are counted separately via unreadChats to avoid double-counting
+  const allNotifications = notificationsObj.all.filter((n: any) => n.type !== "new_chat_message")
 
   // Use localStorage to track read RFQs since they are shared documents
   const [readRfqIds, setReadRfqIds] = React.useState<string[]>([])
@@ -322,15 +326,33 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     window.dispatchEvent(new Event('readRfqIdsUpdated'))
   }
 
-  // Unread count (offers + invitations + unread chats) calculated over ALL notifications
-  const unreadCount = allNotifications.filter((n: any) => {
+  // Single source-of-truth for whether a notification contributes to the badge count
+  const isNotifUnread = (n: any): boolean => {
     if (n.type === "new_rfq") return !readRfqIds.includes(n.id)
     if (n.type === "new_offer") return n.status === "قيد المراجعة" && !n.contractorReadAt
     if (n.type === "offer_update") return (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
-    // Subcollection-based notifications (offer_accepted, price_reduction, offer_rejected, offer_withdrawn, sample_requested, etc.)
     if (n.type === "offer_accepted" || n.type === "price_reduction" || n.type === "offer_rejected" || n.type === "offer_withdrawn") return !n.read
-    return !n.read // for invitations, generic, and all other subcollection types
-  }).length + unreadChats.length
+    return !n.read
+  }
+
+  // Sum of unread message counts across all unread chats (uses the unreadCounts map on each chat doc).
+  // Falls back to 1 per chat for older chats written before this field was introduced.
+  const totalUnreadMessages = React.useMemo(() => {
+    if (!user || !unreadChats.length) return 0
+    return unreadChats.reduce((sum: number, chat: any) => {
+      const count = chat.unreadCounts?.[user.uid]
+      return sum + (typeof count === 'number' && count > 0 ? count : 1)
+    }, 0)
+  }, [unreadChats, user])
+
+  // Unread count: non-chat notifications + total unread message count (not just chat count)
+  const unreadCount = allNotifications.filter(isNotifUnread).length + totalUnreadMessages
+
+  // Dropdown shows every unread item first (so each counted notif is always visible),
+  // then up to 5 recent read items for context
+  const _unreadNotifs = allNotifications.filter(isNotifUnread)
+  const _readNotifs = allNotifications.filter((n: any) => !isNotifUnread(n))
+  const notifications = [..._unreadNotifs, ..._readNotifs.slice(0, 5)]
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -518,7 +540,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                     {notifications.map((notif: any) => {
                       const isNewRfq = notif.type === "new_rfq"
                       // Subcollection-based notification types (written by server-side actions)
-                      const isSubcollectionNotif = ["offer_accepted", "price_reduction", "offer_rejected", "offer_withdrawn", "sample_requested", "sample_sent", "inquiry_reply", "invitation"].includes(notif.type)
+                      const isSubcollectionNotif = ["offer_accepted", "price_reduction", "offer_rejected", "offer_withdrawn", "sample_requested", "sample_sent", "sample_received", "supply_completed", "inquiry_reply", "invitation", "price_updated"].includes(notif.type)
                       const isPending = notif.status === "قيد المراجعة" && notif.type !== "new_rfq" && !isSubcollectionNotif
                       // price_reduction can come from offer status OR from subcollection type
                       const isPriceReduction = (notif.status === "مطلوب تخفيض" || notif.type === "price_reduction") && notif.type !== "new_rfq"
@@ -526,18 +548,14 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isRejected = (notif.status === "مرفوض" || notif.type === "offer_rejected") && notif.type !== "new_rfq"
                       const isWithdrawn = notif.type === "offer_withdrawn"
                       const isSampleRequest = (notif.sampleStatus === "مطلوبة" || notif.type === "sample_requested") && notif.type !== "new_rfq"
-                      const isSampleReceived = notif.sampleStatus === "تم الاستلام" && notif.type !== "new_rfq"
+                      const isSampleReceived = (notif.sampleStatus === "تم الاستلام" || notif.type === "sample_received") && notif.type !== "new_rfq"
                       const isSampleSent = notif.type === "sample_sent"
+                      const isPriceUpdated = notif.type === "price_updated"
+                      const isSupplyCompleted = notif.type === "supply_completed"
                       const isInvitation = notif.type === "invitation"
                       const isInquiryReply = notif.type === "inquiry_reply"
                       const isNewChatMessage = notif.type === "new_chat_message"
-                      const isUnread = isNewRfq 
-                        ? !readRfqIds.includes(notif.id)
-                        : isSubcollectionNotif
-                          ? !notif.read
-                          : isSupplier 
-                            ? !notif.readAt && (isAccepted || isRejected || isPriceReduction || isSampleRequest || isSampleReceived)
-                            : notif.type === "new_offer" ? !notif.contractorReadAt : isPending;
+                      const isUnread = isNotifUnread(notif)
                       
                       return (
                         <div
@@ -552,13 +570,15 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             isSampleRequest ? "bg-blue-100 text-blue-600" :
                             isPending ? "bg-amber-100 text-amber-600" :
                             isPriceReduction ? "bg-amber-100 text-amber-700" :
+                            isPriceUpdated ? "bg-success/10 text-success" :
+                            isSupplyCompleted ? "bg-blue-100 text-blue-600" :
                             isNewRfq ? "bg-blue-100 text-blue-600" :
                             isAccepted ? "bg-success/10 text-success" :
                             isInvitation ? "bg-primary/10 text-primary" :
                             isInquiryReply ? "bg-success/10 text-success" :
                             "bg-muted text-muted-foreground"
                           }`}>
-                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isSampleSent ? <CheckCircle2 size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isWithdrawn ? <AlertCircle size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isSampleSent ? <CheckCircle2 size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isPriceUpdated ? <TrendingDown size={14} /> : isSupplyCompleted ? <CheckCircle2 size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isWithdrawn ? <AlertCircle size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
@@ -567,6 +587,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                   : isSampleReceived ? t("notification_sample_received")
                                   : isSampleRequest ? t("notification_sample_requested")
                                   : isPriceReduction ? t("notification_price_reduction")
+                                  : isSupplyCompleted ? t("notification_supply_completed")
                                   : isAccepted ? t("notification_accepted")
                                   : isRejected ? t("notification_rejected")
                                   : isInvitation ? (notif.title || t("notification_invitation"))
@@ -576,6 +597,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                   : (notif.title || t("notification_pending"))
                                 : isWithdrawn ? t("notification_offer_withdrawn")
                                 : isSampleSent ? t("notification_sample_sent")
+                                : isPriceUpdated ? t("notification_price_updated")
                                 : isInvitation ? (notif.title || t("notification_invitation"))
                                 : isNewChatMessage ? t("notification_new_message")
                                 : (notif.title || t("notification_new_offer"))}
@@ -602,27 +624,26 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                   </div>
                 )}
 
-                {/* Unread Chat Messages */}
+                {/* Unread Chat Messages — grouped into one row */}
                 {unreadChats.length > 0 && (
                   <div className="border-t">
-                    {unreadChats.map((chat: any) => (
-                      <div
-                        key={chat.id}
-                        onClick={() => router.push(`/${basePath}/chat/${chat.id}`)}
-                        className="flex items-start gap-3 px-4 py-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer select-none"
-                      >
-                        <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                          <MessageSquare size={14} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold text-foreground truncate">{t("notification_new_message")}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                            {chat.lastMessage || t("notification_message_in")} — {chat.rfqTitle || t("contract")}
-                          </p>
-                        </div>
-                        <div className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />
+                    <div
+                      onClick={() => unreadChats.length === 1
+                        ? router.push(`/${basePath}/chat/${unreadChats[0].id}`)
+                        : router.push(`/${basePath}/notifications`)}
+                      className="flex items-center gap-3 px-4 py-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer select-none"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <MessageSquare size={14} />
                       </div>
-                    ))}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-foreground">{t("notification_messages_grouped", { count: totalUnreadMessages })}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{t("notification_message_in")}</p>
+                      </div>
+                      <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-white text-[9px] font-bold flex items-center justify-center shrink-0">
+                        {totalUnreadMessages}
+                      </span>
+                    </div>
                   </div>
                 )}
 

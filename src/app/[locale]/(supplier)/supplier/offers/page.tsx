@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle } from "lucide-react"
+import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -53,10 +53,28 @@ export default function SupplierOffersPage() {
   const [newPrice, setNewPrice] = useState("")
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
   const [confirmSampleOffer, setConfirmSampleOffer] = useState<any | null>(null)
+  const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const openChat = async (offer: any) => {
     if (!user) return
     router.push(`/supplier/chat/${offer.id}`)
+  }
+
+  const handleArchive = async (offerId: string) => {
+    if (!firestore) return
+    setArchivingId(offerId)
+    try {
+      await updateDoc(doc(firestore, "offers", offerId), {
+        archived: true,
+        archivedAt: new Date().toISOString()
+      })
+      toast({ title: t("archive_success"), description: t("archive_success_desc") })
+    } catch {
+      toast({ title: t("error_title"), description: t("archive_failed"), variant: "destructive" })
+    } finally {
+      setArchivingId(null)
+    }
   }
 
   const offersQuery = useMemoFirebase(() => {
@@ -76,13 +94,28 @@ export default function SupplierOffersPage() {
 
   const { data: rawOffers, isLoading: isCollectionLoading } = useCollection(offersQuery)
   const isLoading = isUserLoading || isCollectionLoading
-  const offers = rawOffers
+
+  // Auto-delete archived offers older than 30 days
+  useEffect(() => {
+    if (!firestore || !rawOffers) return
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+    const expired = rawOffers.filter((o: any) => {
+      if (!o.archived || !o.archivedAt) return false
+      return Date.now() - new Date(o.archivedAt).getTime() > THIRTY_DAYS
+    })
+    expired.forEach((o: any) => {
+      deleteDoc(doc(firestore, "offers", o.id)).catch(() => {})
+    })
+  }, [firestore, rawOffers])
+  const allOffers = rawOffers
     ? [...rawOffers].sort((a: any, b: any) => {
         const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
         const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
         return bTime - aTime
       })
     : []
+  const offers = allOffers.filter((o: any) => !o.archived)
+  const archivedOffers = allOffers.filter((o: any) => o.archived)
 
   // Stats
   const pendingCount = offers.filter((o: any) => o.status === "قيد المراجعة").length
@@ -103,13 +136,19 @@ export default function SupplierOffersPage() {
             <XCircle size={12} />{t("rejected_status")}
           </Badge>
         )
-      case "مطلوب تخفيض": 
+      case "مطلوب تخفيض":
         return (
           <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
             <AlertCircle size={12} />{t("price_reduction_requested")}
           </Badge>
         )
-      default:        
+      case "تم التسليم":
+        return (
+          <Badge className="bg-blue-50 text-blue-600 border-blue-100 gap-1">
+            <CheckCircle2 size={12} />{t("delivered_status")}
+          </Badge>
+        )
+      default:
         return (
           <Badge className="bg-amber-50 text-amber-600 border-amber-100 gap-1">
             <CircleDot size={12} />{t("pending_review")}
@@ -166,6 +205,23 @@ export default function SupplierOffersPage() {
         status: "قيد المراجعة",
         updatedAt: new Date().toISOString()
       });
+
+      // Notify the contractor that the supplier submitted a new lower price
+      if (updatePriceOffer.contractorId) {
+        await addDoc(collection(firestore, "users", updatePriceOffer.contractorId, "notifications"), {
+          userId: updatePriceOffer.contractorId,
+          organizationId: updatePriceOffer.contractorOrgId || updatePriceOffer.contractorId,
+          type: "price_updated",
+          title: "💰 قام المورد بتحديث سعر عرضه",
+          message: `تم تحديث السعر لمناقصة: ${updatePriceOffer.rfqTitle || ""}. السعر الجديد: ${newPrice} ر.س`,
+          offerId: updatePriceOffer.id,
+          rfqId: updatePriceOffer.rfqId,
+          rfqTitle: updatePriceOffer.rfqTitle || "",
+          createdAt: new Date().toISOString(),
+          read: false
+        });
+      }
+
       toast({ title: t("price_updated"), description: t("price_updated_desc") });
       setUpdatePriceOffer(null);
       setNewPrice("");
@@ -301,7 +357,7 @@ export default function SupplierOffersPage() {
                 </TableHeader>
                 <TableBody>
                   {offers.map((offer: any) => (
-                    <TableRow key={offer.id} className="hover:bg-slate-50/50">
+                    <TableRow key={offer.id} className={cn("hover:bg-slate-50/50", offer.status === "مطلوب تخفيض" && "bg-amber-50/60 hover:bg-amber-50")}>
                       <TableCell className={cn("font-mono text-xs hidden md:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.id.substring(0, 8)}</TableCell>
                       <TableCell className={cn("font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.rfqTitle || t("offer_undefined")}</TableCell>
                       <TableCell className={cn("font-bold", locale === 'ar' ? 'text-right' : 'text-left')}>
@@ -362,13 +418,27 @@ export default function SupplierOffersPage() {
                           {/* Action for Price Reduction */}
                           {offer.status === "مطلوب تخفيض" && (
                             <Button
-                              variant="ghost"
-                              size="icon"
-                              className="hover:bg-amber-100 text-amber-600 hover:text-amber-700 transition-colors cursor-pointer"
-                              title={t("update_price_tooltip")}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 transition-colors cursor-pointer font-bold text-xs gap-1.5"
                               onClick={() => { setUpdatePriceOffer(offer); setNewPrice(offer.price || ""); }}
                             >
-                              <ArrowDown size={16} />
+                              <ArrowDown size={13} />
+                              {t("update_price_btn")}
+                            </Button>
+                          )}
+
+                          {/* Archive for completed offers */}
+                          {offer.status === "تم التسليم" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                              title={t("archive_tooltip")}
+                              onClick={() => handleArchive(offer.id)}
+                              disabled={archivingId === offer.id}
+                            >
+                              {archivingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <Archive size={16} />}
                             </Button>
                           )}
 
@@ -417,6 +487,66 @@ export default function SupplierOffersPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Archived Offers Section */}
+      {archivedOffers.length > 0 && (
+        <div className="max-w-5xl">
+          <button
+            onClick={() => setShowArchived(v => !v)}
+            className={cn("flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3", locale === 'ar' ? 'flex-row-reverse' : '')}
+          >
+            {showArchived ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <Archive size={14} />
+            {t("archived_offers_title")} ({archivedOffers.length})
+          </button>
+          {showArchived && (
+            <Card className="border-dashed border-slate-200 shadow-none">
+              <CardContent className="p-0">
+                <p className={cn("text-xs text-muted-foreground px-4 pt-3 pb-2", locale === 'ar' ? 'text-right' : 'text-left')}>
+                  {t("archived_offers_desc")}
+                </p>
+                <Table>
+                  <TableHeader className="bg-slate-50">
+                    <TableRow>
+                      <TableHead className={cn("hidden md:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{t("offers_id")}</TableHead>
+                      <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_tender")}</TableHead>
+                      <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("offers_price")}</TableHead>
+                      <TableHead className={cn("hidden sm:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{t("archived_on")}</TableHead>
+                      <TableHead className={locale === 'ar' ? 'text-right' : 'text-left'}>{t("auto_delete_on")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {archivedOffers.map((offer: any) => {
+                      const archivedDate = offer.archivedAt ? new Date(offer.archivedAt) : null
+                      const deleteDate = archivedDate ? new Date(archivedDate.getTime() + 30 * 24 * 60 * 60 * 1000) : null
+                      const daysLeft = deleteDate ? Math.max(0, Math.ceil((deleteDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : null
+                      return (
+                        <TableRow key={offer.id} className="opacity-60">
+                          <TableCell className={cn("font-mono text-xs hidden md:table-cell", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.id.substring(0, 8)}</TableCell>
+                          <TableCell className={cn("font-bold text-sm", locale === 'ar' ? 'text-right' : 'text-left')}>{offer.rfqTitle || t("offer_undefined")}</TableCell>
+                          <TableCell className={cn("text-sm", locale === 'ar' ? 'text-right' : 'text-left')}>
+                            {offer.price ? `${offer.price} ${t("sar")}` : "-"}
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground hidden sm:table-cell", locale === 'ar' ? 'text-right' : 'text-left')} suppressHydrationWarning>
+                            {archivedDate ? archivedDate.toLocaleDateString(locale) : "-"}
+                          </TableCell>
+                          <TableCell className={locale === 'ar' ? 'text-right' : 'text-left'} suppressHydrationWarning>
+                            {daysLeft !== null ? (
+                              <span className={`text-xs font-medium ${daysLeft <= 7 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                {t("days_left", { count: daysLeft })}
+                              </span>
+                            ) : "-"}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
 
       {/* Offer Detail Dialog */}
       <Dialog open={!!viewOffer} onOpenChange={(open) => !open && setViewOffer(null)}>
@@ -506,6 +636,14 @@ export default function SupplierOffersPage() {
                 </div>
               </div>
             )}
+            {updatePriceOffer?.reductionNote && (
+              <div className="space-y-2">
+                <Label>{t("contractor_reduction_note")}</Label>
+                <div className="p-3 bg-slate-50 text-slate-700 rounded-md text-sm border border-slate-200 leading-relaxed">
+                  {updatePriceOffer.reductionNote}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>{t("new_price_label")}</Label>
               <Input 
@@ -536,7 +674,7 @@ export default function SupplierOffersPage() {
               {t("confirm_sample_desc", { title: confirmSampleOffer?.rfqTitle || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-row-reverse sm:justify-start">
+          <AlertDialogFooter className="flex flex-row gap-3 justify-end sm:justify-end mt-2">
             <AlertDialogCancel className="mt-0 sm:mt-0">{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-primary text-white hover:bg-primary/90"

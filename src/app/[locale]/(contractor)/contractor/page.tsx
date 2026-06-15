@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -154,39 +155,86 @@ export default function ContractorDashboard() {
   return (
     <PortalLayout>
       <div className="space-y-8 max-w-7xl mx-auto pb-10">
-        {/* Animated Header Section */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 sm:p-10 text-white shadow-xl">
-          {!prefersReducedMotion && (
-            <>
-              <div className={cn("absolute top-0 -mt-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl mix-blend-screen", locale === 'ar' ? '-mr-20 right-0' : '-ml-20 left-0')} />
-              <div className={cn("absolute bottom-0 -mb-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl mix-blend-screen", locale === 'ar' ? '-ml-20 left-0' : '-mr-20 right-0')} />
-            </>
-          )}
-          
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className={cn("text-3xl sm:text-4xl font-black text-white", locale !== 'ar' && "tracking-tight")}>
-                  {t("welcome")}{locale === 'ar' ? '،' : ','} <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>{profile?.companyName || profile?.name || t("welcome_fallback")}</span>
-                </h1>
-                {lastActivityDate && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-xs font-medium text-white/80">
-                    <Clock className="h-3 w-3" />
-                    {t("last_activity")}: {formatActivityDate(lastActivityDate)}
-                  </span>
-                )}
-              </div>
-              <p className="text-slate-200 text-lg font-medium max-w-xl leading-relaxed">
-                {t("smart_dashboard_desc")}
-              </p>
-            </div>
-            <Link href="/contractor/rfqs/new" className="shrink-0">
-              <Button className="bg-white text-secondary hover:bg-slate-100 shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:shadow-[0_0_25px_rgba(255,255,255,0.5)] transition-all duration-300 h-12 px-6 rounded-xl font-bold text-base group">
-                <PlusCircle className={cn("h-5 w-5", locale === 'ar' ? 'ml-2' : 'mr-2', !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
-                {t("new_tender_cta")}
-              </Button>
-            </Link>
+        {/* Welcome Banner */}
+        <div
+          className="relative overflow-hidden rounded-[22px] isolate flex flex-col sm:flex-row items-start sm:items-center gap-8 p-[30px_28px] sm:p-[38px_44px] text-white"
+          style={{
+            background: `
+              radial-gradient(110% 140% at ${locale === 'ar' ? '35%' : '65%'} 10%, rgba(37,99,235,.30) 0%, transparent 55%),
+              radial-gradient(80% 110% at ${locale === 'ar' ? '65%' : '35%'} 100%, rgba(30,58,138,.35) 0%, transparent 58%),
+              linear-gradient(115deg, #0b1a33 0%, #0a1426 46%, #060d1c 100%)
+            `,
+            boxShadow: '0 10px 28px -10px rgba(3,8,22,.30), inset 0 1px 0 rgba(255,255,255,.06), inset 0 0 0 1px rgba(255,255,255,.05)',
+          }}
+        >
+          {/* Blueprint crane illustration — centered between text and CTA */}
+          <div
+            className="absolute pointer-events-none select-none max-sm:opacity-20"
+            style={{
+              left: locale === 'ar' ? '20%' : '34%',
+              right: locale === 'ar' ? '40%' : '22%',
+              top: '-4%',
+              bottom: '0',
+              WebkitMaskImage: locale === 'ar'
+                ? 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.3) 8%, rgba(0,0,0,.85) 20%, #000 30%, #000 82%, rgba(0,0,0,.6) 92%, transparent 100%)'
+                : 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.6) 8%, #000 18%, #000 70%, rgba(0,0,0,.85) 80%, rgba(0,0,0,.3) 92%, transparent 100%)',
+              maskImage: locale === 'ar'
+                ? 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.3) 8%, rgba(0,0,0,.85) 20%, #000 30%, #000 82%, rgba(0,0,0,.6) 92%, transparent 100%)'
+                : 'linear-gradient(to right, transparent 0%, rgba(0,0,0,.6) 8%, #000 18%, #000 70%, rgba(0,0,0,.85) 80%, rgba(0,0,0,.3) 92%, transparent 100%)',
+            }}
+          >
+            <Image
+              src="/images/blueprint-crane-trim.png"
+              alt=""
+              fill
+              className={locale === 'ar' ? 'object-cover' : 'object-contain'}
+              style={{ objectPosition: locale === 'ar' ? '55% 40%' : '50% 35%', opacity: 0.95 }}
+              sizes="1024px"
+              priority={false}
+            />
           </div>
+
+          {/* Dual-edge fade: keeps text and CTA readable over dark navy */}
+          <div
+            className="absolute inset-0 pointer-events-none z-[1]"
+            style={{
+              background: locale === 'ar'
+                ? 'linear-gradient(to right, #0a1426 0%, rgba(10,20,38,.85) 12%, rgba(10,20,38,.2) 28%, transparent 48%, rgba(10,20,38,.2) 68%, rgba(10,20,38,.85) 85%, #0a1426 100%)'
+                : 'linear-gradient(to right, #0a1426 0%, rgba(10,20,38,.85) 15%, rgba(10,20,38,.2) 32%, transparent 52%, rgba(10,20,38,.2) 72%, rgba(10,20,38,.85) 88%, #0a1426 100%)',
+            }}
+          />
+
+          {/* Text content */}
+          <div className="relative z-[2] flex-1 min-w-0">
+            <div className="flex items-center gap-4 flex-wrap">
+              <h1 className={cn("text-[27px] sm:text-[34px] font-black text-white leading-[1.05]", locale !== 'ar' && "tracking-[-0.02em]")}>
+                {t("welcome")}{locale === 'ar' ? '،' : ','}{' '}
+                <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
+                  {profile?.companyName || profile?.name || t("welcome_fallback")}
+                </span>
+              </h1>
+              {lastActivityDate && (
+                <span className="inline-flex items-center gap-2 px-3.5 py-[7px] rounded-full bg-white/[0.06] backdrop-blur-md border border-white/[0.14] text-[13.5px] font-semibold text-slate-300 whitespace-nowrap">
+                  <Clock className="h-[15px] w-[15px] text-blue-300" />
+                  {t("last_activity")}: {formatActivityDate(lastActivityDate)}
+                </span>
+              )}
+            </div>
+            <p className={cn("mt-4 text-[15.5px] sm:text-[17px] leading-[1.7] text-[#9fb2cd] font-medium whitespace-pre-line", locale === 'ar' ? 'max-w-[400px]' : 'max-w-[560px]')}>
+              {t("smart_dashboard_desc")}
+            </p>
+          </div>
+
+          {/* CTA Button */}
+          <Link href="/contractor/rfqs/new" className="relative z-[2] shrink-0 w-full sm:w-auto">
+            <Button
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 h-[52px] rounded-[13px] bg-white text-[#0b1a33] text-[15.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
+              style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
+            >
+              <PlusCircle className={cn("h-[18px] w-[18px]", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
+              {t("new_tender_cta")}
+            </Button>
+          </Link>
         </div>
 
         {/* Stats Grid - Primary KPIs per 5-second rule */}

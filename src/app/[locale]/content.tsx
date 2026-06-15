@@ -6,6 +6,7 @@ import { Link } from "@/i18n/routing";
 import { LandingChatWidget } from '@/components/rag/LandingChatWidget';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import {
   Building2, ShoppingCart, ArrowLeft, CheckCircle2, FileCheck,
   MapPin, Phone, Mail, Zap, ShieldCheck, Users, BarChart3,
@@ -15,33 +16,32 @@ import {
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useTranslations, useLocale } from 'next-intl';
 import { cn } from "@/lib/utils";
-import { motion, useScroll, useTransform, animate, useMotionValue } from 'framer-motion';
+import { motion, useTransform, animate, useMotionValue } from 'framer-motion';
 
 function AnimatedStat({ value }: { value: string }) {
   const match = value.match(/^.*?(\d+)(.*)$/);
-  const count = useMotionValue(0);
-  const rounded = useTransform(count, (latest) => Math.round(latest));
-  const [hasAnimated, setHasAnimated] = useState(false);
-
   if (!match) return <span>{value}</span>;
-
   const numValue = parseInt(match[1]);
   const suffix = match[2];
-  const prefix = value.substring(0, match.index);
-
+  const prefix = value.substring(0, match.index ?? 0);
+  const count = useMotionValue(numValue);
+  const rounded = useTransform(count, (latest) => Math.round(latest));
+  const [hasAnimated, setHasAnimated] = useState(false);
   const display = useTransform(rounded, (latest) => `${prefix}${latest}${suffix}`);
 
   return (
     <motion.span
       onViewportEnter={() => {
-        if (!hasAnimated) {
-          setHasAnimated(true);
-          animate(count, numValue, { duration: 1.5, ease: "easeOut" });
-        }
+        if (hasAnimated) return;
+        const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (prefersReduced) return;
+        setHasAnimated(true);
+        count.set(0);
+        animate(count, numValue, { duration: 1.5, ease: "easeOut" });
       }}
       viewport={{ once: true, margin: "-50px" }}
     >
-      {hasAnimated ? display : `${prefix}0${suffix}`}
+      {display}
     </motion.span>
   );
 }
@@ -64,31 +64,10 @@ export default function HomeContent() {
   const tCompare = useTranslations('Landing.Comparison');
   const tLanding = useTranslations('Landing');
   const locale = useLocale();
-  const { scrollY } = useScroll();
-  const yHeroBg = useTransform(scrollY, [0, 1000], [0, 50]);
-
   const heroSlides = [
-    {
-      img: '/images/warehouse-desk.jpg',
-      badge: tHero('slide1_badge'),
-      title: tHero('slide1_title'),
-      titleAccent: tHero('slide1_accent'),
-      sub: tHero('slide1_sub'),
-    },
-    {
-      img: '/images/construction-site.jpg',
-      badge: tHero('slide2_badge'),
-      title: tHero('slide2_title'),
-      titleAccent: tHero('slide2_accent'),
-      sub: tHero('slide2_sub'),
-    },
-    {
-      img: '/images/loading-dock.jpg',
-      badge: tHero('slide3_badge'),
-      title: tHero('slide3_title'),
-      titleAccent: tHero('slide3_accent'),
-      sub: tHero('slide3_sub'),
-    },
+    { img: '/images/warehouse-desk.jpg' },
+    { img: '/images/construction-site.jpg' },
+    { img: '/images/loading-dock.jpg' },
   ];
 
   const [activeFlow, setActiveFlow] = useState<'contractor' | 'supplier'>('contractor');
@@ -175,12 +154,12 @@ export default function HomeContent() {
         <section className="relative h-screen min-h-[800px] md:min-h-[700px] flex flex-col">
           {/* Slides */}
           {heroSlides.map((s, i) => (
-            <motion.div key={i} style={{ y: i === slide ? yHeroBg : 0 }} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
-              <Image fill src={s.img} alt={s.title} className="w-full h-full object-cover object-center" sizes="100vw" priority={i === 0} loading={i === 0 ? undefined : "lazy"} />
+            <div key={i} className={`absolute inset-0 overflow-hidden transition-all duration-1500 ease-in-out ${i === slide ? 'opacity-100 scale-100' : 'opacity-0 scale-110'}`}>
+              <Image fill src={s.img} alt="" className="w-full h-full object-cover object-center" sizes="100vw" priority={i === 0} loading={i === 0 ? undefined : "lazy"} />
               <div className={`absolute inset-0 ${locale === 'ar' ? 'bg-gradient-to-l' : 'bg-gradient-to-r'} from-[#020617] via-[#020617]/70 to-transparent`} />
               <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent" />
               <div className="absolute inset-0 bg-[#020617]/30" />
-            </motion.div>
+            </div>
           ))}
 
           {/* Decorative Mesh */}
@@ -192,28 +171,22 @@ export default function HomeContent() {
             <div className={`max-w-2xl space-y-6 animate-in fade-in duration-1000 ${locale === 'ar' ? 'slide-in-from-right-10' : 'slide-in-from-left-10'}`}>
 
               <h1 className={`text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col ${locale === 'ar' ? 'gap-0 md:gap-0 !leading-[1.4]' : 'gap-0 md:gap-1 !leading-[1.2]'}`}>
-                <span className="whitespace-normal sm:whitespace-nowrap">{heroSlides[slide].title}</span>
+                <span className="whitespace-normal sm:whitespace-nowrap">{tHero('slide1_title')}</span>
                 <span className={`text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-normal sm:whitespace-nowrap ${locale === 'ar' ? '' : 'pb-2 md:pb-3'}`}>
-                  {heroSlides[slide].titleAccent}
+                  {tHero('slide1_accent')}
                 </span>
               </h1>
 
-              <p className={`text-slate-300 text-base md:text-lg font-medium max-w-xl ${locale === 'ar' ? '!leading-[1.6]' : '!leading-[1.6]'}`}>
-                {heroSlides[slide].sub}
+              <p className="text-slate-300 text-base md:text-lg font-medium max-w-xl !leading-[1.6]">
+                {tHero('slide1_sub')}
               </p>
 
-              <div className="flex flex-col sm:flex-row items-center gap-5 pt-2">
+              <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
                 <Link href="/register" className="w-full sm:w-auto">
                   <Button className="w-full h-14 px-8 text-base font-black rounded-2xl bg-cta hover:bg-sky-600 text-white gap-3 transition-all hover:scale-105 shadow-2xl shadow-cta/30 border-none">
                     {tAction('register_now')} <ArrowLeft size={18} className="rtl:rotate-0 ltr:rotate-180" />
                   </Button>
                 </Link>
-                <div className="flex items-center gap-4 py-2">
-                  <div className="flex flex-col">
-                    <span className="text-white font-black text-sm tracking-normal">{tAction('join_early')}</span>
-                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-normal mt-1">{tAction('exclusive_opportunities')}</span>
-                  </div>
-                </div>
               </div>
               <div className="flex flex-wrap items-center gap-6 text-[10px] font-bold text-slate-500">
                 <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-sky-400" /> {tAction('setup')}</span>
@@ -235,20 +208,19 @@ export default function HomeContent() {
 
           {/* Bottom Floating Stats - now in normal flow */}
           <div className="relative z-20 px-6 pb-4 md:pb-6">
-            <div className="max-w-7xl mx-auto">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 w-full">
+            <div className="max-w-4xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-6 w-full">
                 {[
-                  { val: tStats('goal_500'), label: tStats('registered_company'), icon: Building2 },
-                  { val: tStats('full_automation'), label: tStats('construction_tenders'), icon: FileCheck },
+                  { val: tStats('response_val'), label: tStats('response_label'), icon: Clock },
                   { val: tStats('saving_70'), label: tStats('time_saving'), icon: Zap },
                   { val: tStats('improvement_15'), label: tStats('cost_improvement'), icon: TrendingUp },
                 ].map((s, i) => (
-                  <div key={i} className="shrink-0 snap-center bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-3 md:p-6 flex items-center gap-2 md:gap-5 group hover:bg-white/[0.06] transition-all min-h-[100px] md:min-h-0">
+                  <div key={i} className="shrink-0 bg-white/[0.03] backdrop-blur-md border border-white/5 rounded-2xl p-3 md:p-6 flex items-center gap-2 md:gap-5 group hover:bg-white/[0.06] transition-all min-h-[80px] md:min-h-0">
                     <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-cta/10 flex items-center justify-center text-sky-400 group-hover:scale-110 transition-transform shrink-0">
                       <s.icon size={20} className="md:size-6" />
                     </div>
                     <div className="flex flex-col justify-center min-w-0">
-                      <div className="text-lg md:text-xl font-black text-white leading-tight"><AnimatedStat value={s.val} /></div>
+                      <div className="text-lg md:text-xl font-black text-white leading-tight tracking-latin"><AnimatedStat value={s.val} /></div>
                       <div className="text-slate-500 text-[9px] md:text-[11px] font-bold uppercase tracking-normal mt-1">{s.label}</div>
                     </div>
                   </div>
@@ -258,45 +230,30 @@ export default function HomeContent() {
           </div>
         </section>
 
-        {/* TRUSTED BY LOGOS - Enhanced B2B Social Proof */}
-        <section className="py-16 md:py-20 border-b border-white/5 bg-[#020617] overflow-hidden relative flex flex-col items-center">
-          <div className="text-slate-400 text-xs font-black uppercase tracking-normal mb-8 relative z-10 flex items-center gap-4">
-            <div className="w-12 h-[1px] bg-white/10" />
-            {tLanding('Partners')}
-            <div className="w-12 h-[1px] bg-white/10" />
-          </div>
-
-          <div className="w-full overflow-hidden py-6 relative">
-            <div className="absolute inset-y-0 left-0 w-16 md:w-40 bg-gradient-to-r from-[#020617] to-transparent z-10 pointer-events-none" />
-            <div className="absolute inset-y-0 right-0 w-16 md:w-40 bg-gradient-to-l from-[#020617] to-transparent z-10 pointer-events-none" />
-            <div className={cn(
-              "flex items-center gap-16 md:gap-20 min-w-max px-8 md:px-16",
-              locale === 'ar' ? "animate-scroll-x-logos-rtl" : "animate-scroll-x-logos-ltr"
-            )}>
+        {/* EARLY PARTNERS LOGOS */}
+        <section className="py-12 md:py-16 border-b border-white/5 bg-[#020617]">
+          <div className="max-w-3xl mx-auto px-6 flex flex-col items-center gap-8">
+            <div className="text-slate-400 text-xs font-black uppercase tracking-normal flex items-center gap-4">
+              <div className="w-12 h-[1px] bg-white/10" />
+              {tLanding('Partners')}
+              <div className="w-12 h-[1px] bg-white/10" />
+            </div>
+            <div className="flex items-center justify-center gap-6 md:gap-10 flex-wrap">
               {[
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
-                { src: '/images/logo-qudra.png', alt: 'Qudra' },
-                { src: '/images/logo-naya.jpeg', alt: 'Naya' },
-                { src: '/images/logo-itc.png', alt: 'ITC' },
                 { src: '/images/logo-qudra.png', alt: 'Qudra' },
                 { src: '/images/logo-naya.jpeg', alt: 'Naya' },
                 { src: '/images/logo-itc.png', alt: 'ITC' },
               ].map((item, i) => (
                 <div
                   key={i}
-                  className="relative flex items-center justify-center w-32 md:w-44 h-16 md:h-20 p-2 md:p-3 shrink-0 bg-white/5 rounded-xl border border-white/10"
+                  className="relative flex items-center justify-center w-32 md:w-40 h-16 md:h-20 p-2 md:p-3 bg-white/5 rounded-xl border border-white/10"
                 >
                   <Image
                     fill
                     src={item.src}
                     alt={item.alt}
-                    className="object-contain p-2 opacity-70 hover:opacity-100 transition-all duration-300"
-                    sizes="176px"
+                    className="object-contain p-2 opacity-60 hover:opacity-90 transition-opacity duration-300"
+                    sizes="160px"
                   />
                 </div>
               ))}
@@ -387,143 +344,144 @@ export default function HomeContent() {
         </section>
 
         {/* WHY DIGITAL - Before & After Mdmak */}
-        <section className="pt-8 md:pt-0 pb-[120px] md:pb-[160px] bg-[#020617] border-b border-white/5 relative overflow-hidden">
-          {/* Atmospheric gradients */}
+        <section className="py-16 md:py-28 bg-[#020617] border-b border-white/5 relative overflow-hidden">
+
+          {/* Split atmospheric gradients */}
           <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_52%_64%_at_30%_48%,rgba(14,165,233,0.12),transparent_64%)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_44%_58%_at_84%_52%,rgba(239,68,68,0.05),transparent_70%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_70%_at_10%_55%,rgba(239,68,68,0.09),transparent_65%)]" />
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_70%_at_90%_55%,rgba(14,165,233,0.11),transparent_65%)]" />
+            <div className="absolute inset-0" style={{
+              backgroundImage: 'linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px)',
+              backgroundSize: '56px 56px',
+              maskImage: 'radial-gradient(ellipse 80% 65% at 50% 50%,#000 20%,transparent 80%)',
+            }} />
           </div>
-          {/* Subtle grid texture */}
-          <div
-            className="absolute inset-0 pointer-events-none opacity-50"
-            style={{
-              backgroundImage: 'linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px)',
-              backgroundSize: '54px 54px',
-              maskImage: 'radial-gradient(ellipse 72% 62% at 50% 42%,#000 30%,transparent 80%)',
-            }}
-          />
 
           <div className="relative z-10 max-w-[1200px] mx-auto px-4 md:px-8">
 
-            {/* Section header */}
-            <div className="text-start pt-[6px] mb-[36px]">
+            {/* ── Section header (centered) ── */}
+            <div className="text-center mb-10 md:mb-14">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4 }}
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-slate-400 text-[11px] font-black uppercase tracking-widest mb-6"
+              >
+                {tCompare('tagline')}
+              </motion.div>
+
               <motion.h2
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: 0.08 }}
-                className="text-[clamp(28px,4vw,48px)] font-extrabold leading-[1.32] text-white md:whitespace-nowrap"
+                className="text-[clamp(30px,4.5vw,56px)] font-extrabold leading-[1.22] text-white mb-5"
               >
-                {tCompare('title_prefix')}{' '}<span className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">{tCompare('title_highlight')}</span>
+                {tCompare('title_prefix')}{' '}
+                <span className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">{tCompare('title_highlight')}</span>
               </motion.h2>
-              <motion.p
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: 0.15 }}
-                className="mt-[18px] mb-[20px] max-w-[52ch] text-slate-400 text-[17px] leading-[1.8]"
-              >
-                {tCompare('subtitle')}
-              </motion.p>
 
-              {/* Benefit chips */}
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.45, delay: 0.22 }}
-                className="mb-[40px] md:mb-[72px] text-slate-300 text-[15px] md:text-base leading-[1.9] max-w-[56ch]"
-              >
-                {tCompare('benefit_1')} — {tCompare('benefit_2')} — {tCompare('benefit_3')}
-              </motion.p>
             </div>
 
-            {/* Stage: before | after */}
-            <div className="grid grid-cols-1 lg:grid-cols-[4fr_48px_8fr] gap-8 lg:gap-6 items-start lg:items-stretch">
+            {/* ── Cards grid ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-[0.58fr_60px_1.42fr] items-start gap-8 lg:gap-0">
 
               {/* ── BEFORE ── */}
               <motion.div
-                initial={{ opacity: 0, y: 22 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, x: locale === 'ar' ? 24 : -24 }}
+                whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.7 }}
-                className="flex flex-col min-w-0 relative lg:self-center"
+                transition={{ duration: 0.65, ease: "easeOut" }}
+                className="flex flex-col relative lg:pe-10"
               >
-                {/* Column label */}
-                <div className="flex items-center gap-[13px] mb-5 self-start">
-                  <span className="inline-flex items-center gap-[6px] h-[30px] px-[13px] rounded-full font-bold text-xs tracking-[.03em] bg-red-500/10 border border-red-500/30 text-red-300 shrink-0">
+                {/* Label row */}
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="inline-flex items-center gap-[6px] h-8 px-4 rounded-full font-bold text-xs bg-red-500/10 border border-red-500/25 text-red-300 shrink-0">
                     <X size={11} strokeWidth={3.2} />
                     {tCompare('before_label')}
                   </span>
-                  <span className="flex flex-col gap-[3px] leading-[1.15]">
-                    <b className="text-base font-extrabold tracking-tight text-slate-200/80">{tCompare('before_title')}</b>
-                    <small className="text-[11.5px] font-semibold text-red-400/70">{tCompare('before_subtitle')}</small>
-                  </span>
+                  <div className="leading-tight">
+                    <p className="text-sm font-bold text-slate-200">{tCompare('before_title')}</p>
+                    <p className="text-[11px] text-red-400/60 mt-0.5">{tCompare('before_subtitle')}</p>
+                  </div>
                 </div>
 
-                {/* Chat window */}
-                <div className="flex flex-col rounded-2xl overflow-hidden bg-gradient-to-b from-[#12141c] to-[#0c0e16] border border-white/[0.08] shadow-[0_36px_80px_-42px_rgba(0,0,0,.9)]">
+                {/* Chat window — red tinted */}
+                <div className="flex flex-col rounded-2xl overflow-hidden bg-gradient-to-b from-[#140d0d] to-[#0d0909] border border-red-500/[0.14] shadow-[0_0_56px_-16px_rgba(239,68,68,0.22),0_36px_80px_-42px_rgba(0,0,0,.9)]">
                   {/* Title bar */}
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.07] bg-white/[0.018]">
-                    <div className="flex gap-[6px]">
-                      <span className="block w-[11px] h-[11px] rounded-full bg-red-400/55" />
-                      <span className="block w-[11px] h-[11px] rounded-full bg-yellow-400/55" />
-                      <span className="block w-[11px] h-[11px] rounded-full bg-green-400/55" />
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-red-500/[0.08] bg-red-500/[0.03]">
+                    <div className="flex gap-[5px]">
+                      <span className="block w-[9px] h-[9px] rounded-full bg-red-400/55" />
+                      <span className="block w-[9px] h-[9px] rounded-full bg-yellow-400/55" />
+                      <span className="block w-[9px] h-[9px] rounded-full bg-green-400/55" />
                     </div>
-                    <div className="ms-auto flex items-center gap-[10px]">
+                    <div className="ms-auto flex items-center gap-[8px]">
                       <div className="text-end leading-[1.25]">
-                        <b className="block text-xs font-bold text-slate-400">{tCompare('chat_group')}</b>
-                        <small className="block text-[9.5px] text-slate-600">{tCompare('chat_members')} · {tCompare('chat_typing')}</small>
+                        <b className="block text-[11px] font-bold text-slate-400">{tCompare('chat_group')}</b>
+                        <small className="block text-[8.5px] text-slate-600">{tCompare('chat_members')} · {tCompare('chat_typing')}</small>
                       </div>
-                      <span className="w-[26px] h-[26px] rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400/80 shrink-0">
-                        <Users size={14} />
+                      <span className="w-[22px] h-[22px] rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400/80 shrink-0">
+                        <Users size={12} />
                       </span>
                     </div>
                   </div>
 
                   {/* Messages */}
-                  <div className="flex flex-col gap-[10px] p-[18px_16px] bg-[radial-gradient(circle_at_20%_0%,rgba(248,113,113,.04),transparent_60%)]">
-                    <div className="self-start max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tr-[4px] bg-white/[0.045] border border-white/[0.06] text-slate-400 text-[12.5px] leading-[1.55]">
-                      <span className="block text-[10px] font-bold mb-[3px] text-[#f0a3a3]">{tCompare('chat_msg1_sender')}</span>
+                  <div className="flex flex-col gap-[7px] p-[12px_11px] bg-[radial-gradient(circle_at_20%_0%,rgba(248,113,113,.06),transparent_60%)]">
+                    <div className="self-start max-w-[78%] py-[6px] px-[10px] rounded-[11px] rounded-tr-[3px] bg-white/[0.04] border border-white/[0.06] text-slate-400 text-[11px] leading-[1.5]">
+                      <span className="block text-[9px] font-bold mb-[2px] text-[#f0a3a3]">{tCompare('chat_msg1_sender')}</span>
                       {tCompare('chat_msg1_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg1_time')}</span>
+                      <span className="flex gap-[5px] mt-[4px] text-[8.5px] text-slate-600">{tCompare('chat_msg1_time')}</span>
                     </div>
-                    <div className="self-end max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tl-[4px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[12.5px] leading-[1.55]">
+                    <div className="self-end max-w-[78%] py-[6px] px-[10px] rounded-[11px] rounded-tl-[3px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[11px] leading-[1.5]">
                       {tCompare('chat_msg2_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg2_time')}</span>
+                      <span className="flex gap-[5px] mt-[4px] text-[8.5px] text-slate-600">{tCompare('chat_msg2_time')}</span>
                     </div>
-                    <div className="self-start max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tr-[4px] bg-white/[0.045] border border-white/[0.06] text-slate-400 text-[12.5px] leading-[1.55]">
-                      <span className="block text-[10px] font-bold mb-[3px] text-[#e9c46a]">{tCompare('chat_msg3_sender')}</span>
+                    <div className="self-start max-w-[78%] py-[6px] px-[10px] rounded-[11px] rounded-tr-[3px] bg-white/[0.04] border border-white/[0.06] text-slate-400 text-[11px] leading-[1.5]">
+                      <span className="block text-[9px] font-bold mb-[2px] text-[#e9c46a]">{tCompare('chat_msg3_sender')}</span>
                       {tCompare('chat_msg3_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg3_time')}</span>
+                      <span className="flex gap-[5px] mt-[4px] text-[8.5px] text-slate-600">{tCompare('chat_msg3_time')}</span>
                     </div>
-                    <div className="self-start inline-flex items-center gap-2 text-[11px] text-red-400/80 font-semibold bg-red-500/[0.07] border border-red-500/[0.16] px-[11px] py-[6px] rounded-[10px]">
-                      <Phone size={13} />
+                    <div className="self-start inline-flex items-center gap-2 text-[10px] text-red-400/80 font-semibold bg-red-500/[0.07] border border-red-500/[0.16] px-[9px] py-[5px] rounded-[8px]">
+                      <Phone size={11} />
                       {tCompare('chat_missed')}
                     </div>
-                    <div className="self-end max-w-[78%] py-[9px] px-3 rounded-[13px] rounded-tl-[4px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[12.5px] leading-[1.55]">
+                    <div className="self-end max-w-[78%] py-[6px] px-[10px] rounded-[11px] rounded-tl-[3px] bg-green-500/[0.05] border border-green-500/10 text-slate-400 text-[11px] leading-[1.5]">
                       {tCompare('chat_msg4_text')}
-                      <span className="flex gap-[5px] mt-[5px] text-[9px] text-slate-600">{tCompare('chat_msg4_time')}</span>
+                      <span className="flex gap-[5px] mt-[4px] text-[8.5px] text-slate-600">{tCompare('chat_msg4_time')}</span>
                     </div>
                   </div>
 
                   {/* Chat footer */}
-                  <div className="flex items-center gap-[9px] px-[14px] py-[11px] border-t border-white/[0.06] bg-white/[0.012]">
-                    <span className="flex-1 h-[30px] rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center px-[13px] text-[11.5px] text-slate-600">
+                  <div className="flex items-center gap-[7px] px-[11px] py-[8px] border-t border-red-500/[0.06] bg-red-500/[0.02]">
+                    <span className="flex-1 h-[26px] rounded-full bg-white/[0.04] border border-white/[0.06] flex items-center px-[11px] text-[10.5px] text-slate-600">
                       {tCompare('chat_placeholder')}
                     </span>
-                    <span className="w-[30px] h-[30px] rounded-full bg-white/[0.05] flex items-center justify-center text-slate-500 shrink-0">
-                      <ArrowRight size={15} className={cn(locale === 'ar' && "rtl-flip")} />
+                    <span className="w-[26px] h-[26px] rounded-full bg-white/[0.05] flex items-center justify-center text-slate-500 shrink-0">
+                      <ArrowRight size={13} className={cn(locale === 'ar' && "rtl-flip")} />
                     </span>
                   </div>
                 </div>
 
-                {/* Problem chips — positioned on the column (not the window) to avoid clipping */}
+                {/* Problem chips — inline on mobile */}
+                <div className="flex flex-wrap gap-2 mt-4 lg:hidden">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-red-500/[0.08] border border-red-500/20 text-red-300 text-xs font-bold">
+                    <AlertTriangle size={12} className="text-red-400 shrink-0" />
+                    {tCompare('problem_chip1')}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-red-500/[0.08] border border-red-500/20 text-red-300 text-xs font-bold">
+                    <X size={12} className="text-red-400 shrink-0" />
+                    {tCompare('problem_chip2')}
+                  </span>
+                </div>
+
+                {/* Floating chips (desktop only) */}
                 <motion.span
                   animate={{ y: 7 }}
                   transition={{ duration: 3.4, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: 0 }}
                   style={{ willChange: "transform" }}
-                  className="absolute top-[34px] [inset-inline-end:6px] lg:[inset-inline-end:-14px] z-[4] inline-flex items-center gap-[7px] text-[11.5px] font-bold text-[#fde2e2] bg-[rgba(40,16,20,.85)] border border-red-500/30 backdrop-blur-[8px] px-3 py-[7px] rounded-[11px] shadow-[0_14px_30px_-14px_rgba(0,0,0,.8)]"
+                  className="absolute top-[34px] [inset-inline-end:6px] lg:[inset-inline-end:-14px] z-[4] hidden lg:inline-flex items-center gap-[7px] text-[11.5px] font-bold text-[#fde2e2] bg-[rgba(40,16,20,.88)] border border-red-500/30 backdrop-blur-[8px] px-3 py-[7px] rounded-[11px] shadow-[0_14px_30px_-14px_rgba(0,0,0,.8)]"
                 >
                   <AlertTriangle size={13} className="text-red-400 shrink-0" />
                   {tCompare('problem_chip1')}
@@ -532,49 +490,50 @@ export default function HomeContent() {
                   animate={{ y: -8 }}
                   transition={{ duration: 3.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: 1.4 }}
                   style={{ willChange: "transform" }}
-                  className="absolute bottom-[62px] [inset-inline-start:6px] lg:[inset-inline-start:-16px] z-[4] inline-flex items-center gap-[7px] text-[11.5px] font-bold text-[#fde2e2] bg-[rgba(40,16,20,.85)] border border-red-500/30 backdrop-blur-[8px] px-3 py-[7px] rounded-[11px] shadow-[0_14px_30px_-14px_rgba(0,0,0,.8)]"
+                  className="absolute bottom-[62px] [inset-inline-start:6px] lg:[inset-inline-start:-16px] z-[4] hidden lg:inline-flex items-center gap-[7px] text-[11.5px] font-bold text-[#fde2e2] bg-[rgba(40,16,20,.88)] border border-red-500/30 backdrop-blur-[8px] px-3 py-[7px] rounded-[11px] shadow-[0_14px_30px_-14px_rgba(0,0,0,.8)]"
                 >
                   <X size={13} className="text-red-400 shrink-0" />
                   {tCompare('problem_chip2')}
                 </motion.span>
               </motion.div>
 
-              {/* ── ARROW CONNECTOR (desktop only) ── */}
-              <div className="hidden lg:flex flex-col items-center justify-center self-center">
+              {/* ── VS CONNECTOR (desktop only) ── */}
+              <div className="hidden lg:flex flex-col items-center justify-center self-stretch gap-0 pt-[52px]">
+                <div className="flex-1 w-px bg-gradient-to-b from-transparent via-white/[0.07] to-transparent" />
                 <motion.div
-                  animate={{ scale: 1.18 }}
-                  transition={{ duration: 1.8, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: 0.6 }}
-                  style={{ willChange: "transform" }}
-                  className="w-[42px] h-[42px] rounded-full bg-[rgba(14,165,233,0.08)] border border-sky-500/25 flex items-center justify-center shadow-[0_0_24px_-6px_rgba(56,189,248,0.55)]"
+                  animate={{ y: [0, 4, 0] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  className="my-3 w-8 h-8 rounded-full bg-sky-500/10 border border-sky-500/20 flex items-center justify-center"
                 >
-                  <ArrowRight size={17} className={cn("text-sky-400", locale === 'ar' && "rtl-flip")} />
+                  <ArrowRight size={15} className={cn("text-sky-400", locale === 'ar' && "rtl-flip")} />
                 </motion.div>
+                <div className="flex-1 w-px bg-gradient-to-b from-transparent via-white/[0.07] to-transparent" />
               </div>
 
               {/* ── AFTER ── */}
               <motion.div
-                initial={{ opacity: 0, y: 22 }}
-                whileInView={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, x: locale === 'ar' ? -24 : 24 }}
+                whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.7, delay: 0.12 }}
-                className="flex flex-col relative mt-8 lg:mt-0 lg:self-start"
+                transition={{ duration: 0.65, delay: 0.1, ease: "easeOut" }}
+                className="flex flex-col relative lg:ps-10"
               >
-                {/* Column label */}
-                <div className="flex items-center gap-[13px] mb-5 self-start">
-                  <span className="inline-flex items-center gap-[6px] h-[30px] px-[13px] rounded-full font-bold text-xs tracking-[.03em] bg-gradient-to-b from-sky-500/22 to-sky-500/10 border border-sky-500/40 text-sky-300 shadow-[0_0_20px_-7px_rgba(56,189,248,.6)] shrink-0">
+                {/* Label row */}
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="inline-flex items-center gap-[6px] h-8 px-4 rounded-full font-bold text-xs bg-sky-500/10 border border-sky-500/30 text-sky-300 shadow-[0_0_18px_-7px_rgba(56,189,248,0.55)] shrink-0">
                     <CheckCircle size={12} strokeWidth={3.2} />
                     {tCompare('after_label')}
                   </span>
-                  <span className="flex flex-col gap-[3px] leading-[1.15]">
-                    <b className="text-base font-extrabold tracking-tight text-white">{tCompare('after_title')}</b>
-                    <small className="text-[11.5px] font-semibold text-sky-400">{tCompare('after_subtitle')}</small>
-                  </span>
+                  <div className="leading-tight">
+                    <p className="text-sm font-bold text-white">{tCompare('after_title')}</p>
+                    <p className="text-[11px] text-sky-400/70 mt-0.5">{tCompare('after_subtitle')}</p>
+                  </div>
                 </div>
 
-                {/* Browser window */}
-                <div className="relative flex flex-col rounded-2xl overflow-hidden bg-[#0a1020] border border-sky-500/[0.24] shadow-[0_44px_100px_-42px_rgba(0,0,0,.92),0_0_70px_-28px_rgba(14,165,233,.4)]">
+                {/* Browser window — teal themed */}
+                <div className="relative flex flex-col rounded-2xl overflow-hidden bg-[#060d1c] border border-sky-500/[0.22] shadow-[0_0_80px_-18px_rgba(14,165,233,0.38),0_44px_100px_-42px_rgba(0,0,0,.92)]">
                   {/* Browser bar */}
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.07] bg-gradient-to-b from-[rgba(20,30,52,.96)] to-[rgba(12,19,36,.96)]">
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-sky-500/[0.08] bg-gradient-to-b from-[rgba(12,22,44,.98)] to-[rgba(6,13,28,.98)]">
                     <div className="flex gap-[6px] shrink-0">
                       <span className="block w-[11px] h-[11px] rounded-full bg-red-400/55" />
                       <span className="block w-[11px] h-[11px] rounded-full bg-yellow-400/55" />
@@ -589,7 +548,7 @@ export default function HomeContent() {
                       LIVE
                     </div>
                   </div>
-                  {/* Real platform screenshot */}
+                  {/* Platform screenshot */}
                   <div className="leading-[0]">
                     <Image
                       src="/images/platform-comparison.png"
@@ -601,12 +560,24 @@ export default function HomeContent() {
                   </div>
                 </div>
 
-                {/* Value chips — positioned on the column */}
+                {/* Value chips — inline on mobile */}
+                <div className="flex flex-wrap gap-2 mt-4 lg:hidden">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-green-500/[0.08] border border-green-500/20 text-green-300 text-xs font-bold">
+                    <CheckCircle size={12} className="text-green-400 shrink-0" />
+                    {tCompare('value_chip1_title')} · {tCompare('value_chip1_sub')}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-sky-500/[0.08] border border-sky-500/20 text-sky-300 text-xs font-bold">
+                    <Clock size={12} className="text-sky-400 shrink-0" />
+                    {tCompare('value_chip2_title')} · {tCompare('value_chip2_sub')}
+                  </span>
+                </div>
+
+                {/* Floating chips (desktop only) */}
                 <motion.span
                   animate={{ y: -8 }}
                   transition={{ duration: 3.2, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: 0.8 }}
                   style={{ willChange: "transform" }}
-                  className="absolute top-[66px] [inset-inline-end:6px] lg:[inset-inline-end:-22px] z-[4] inline-flex items-center gap-2 px-[14px] py-[9px] rounded-[12px] text-[13px] font-bold text-white bg-[rgba(7,13,28,.88)] border border-sky-500/30 backdrop-blur-[10px] shadow-[0_16px_36px_-16px_rgba(0,0,0,.85)]"
+                  className="absolute top-[66px] [inset-inline-end:6px] lg:[inset-inline-end:-22px] z-[4] hidden lg:inline-flex items-center gap-2 px-[14px] py-[9px] rounded-[12px] text-[13px] font-bold text-white bg-[rgba(5,12,26,.9)] border border-sky-500/30 backdrop-blur-[10px] shadow-[0_16px_36px_-16px_rgba(0,0,0,.85)]"
                 >
                   <span className="w-6 h-6 rounded-[7px] flex items-center justify-center shrink-0 bg-green-500/[0.14] border border-green-500/30 text-green-400">
                     <CheckCircle size={13} strokeWidth={2.4} />
@@ -620,7 +591,7 @@ export default function HomeContent() {
                   animate={{ y: 7 }}
                   transition={{ duration: 3.6, repeat: Infinity, repeatType: "mirror", ease: "easeInOut", delay: 2.2 }}
                   style={{ willChange: "transform" }}
-                  className="absolute bottom-[30px] [inset-inline-end:6px] lg:[inset-inline-end:-18px] z-[4] inline-flex items-center gap-2 px-[14px] py-[9px] rounded-[12px] text-[13px] font-bold text-white bg-[rgba(7,13,28,.88)] border border-sky-500/30 backdrop-blur-[10px] shadow-[0_16px_36px_-16px_rgba(0,0,0,.85)]"
+                  className="absolute bottom-[30px] [inset-inline-end:6px] lg:[inset-inline-end:-18px] z-[4] hidden lg:inline-flex items-center gap-2 px-[14px] py-[9px] rounded-[12px] text-[13px] font-bold text-white bg-[rgba(5,12,26,.9)] border border-sky-500/30 backdrop-blur-[10px] shadow-[0_16px_36px_-16px_rgba(0,0,0,.85)]"
                 >
                   <span className="w-6 h-6 rounded-[7px] flex items-center justify-center shrink-0 bg-sky-500/[0.14] border border-sky-500/30 text-sky-300">
                     <Clock size={13} strokeWidth={2.2} />
@@ -637,123 +608,378 @@ export default function HomeContent() {
           </div>
         </section>
 
-        {/* CONTRACTOR EXPERIENCE - Clean layout */}
-        <section className="relative bg-[#020617] border-y border-white/5">
-          <div className="grid grid-cols-1 lg:grid-cols-2 items-center">
-            {/* Image side */}
-            <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? 30 : -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-              className="relative h-72 md:h-96 lg:h-full min-h-[320px] overflow-hidden"
-            >
-              <Image fill src="/images/warehouse-standing.jpg" alt="Contractor" className="object-cover" sizes="50vw" loading="lazy" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/80 via-transparent to-transparent lg:bg-gradient-to-r lg:from-transparent lg:to-[#020617]/60" />
-            </motion.div>
+        {/* CONTRACTOR EXPERIENCE — device-mockup redesign */}
+        <section className="relative bg-[#020617] border-y border-white/5 py-24 lg:py-[110px] overflow-hidden">
 
-            {/* Text side */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
-              className="px-6 md:px-12 lg:px-20 xl:px-28 py-12 md:py-16 max-w-2xl mx-auto lg:mx-0 lg:max-w-none"
-            >
-              {/* Tagline with accent */}
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-px bg-sky-500/60" />
-                <span className="text-xs font-bold text-sky-400 uppercase tracking-widest">
-                  {tContractor('tagline')}
-                </span>
-              </div>
+          {/* Ambient glows */}
+          <div aria-hidden className="absolute -top-40 -start-28 w-[620px] h-[620px] rounded-full bg-[#0369A1]/20 blur-[140px] pointer-events-none" />
+          <div aria-hidden className="absolute -bottom-48 -end-20 w-[520px] h-[520px] rounded-full bg-sky-400/10 blur-[140px] pointer-events-none" />
 
-              {/* Title */}
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-[1.5] tracking-tight mb-6" dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }} />
+          {/* Dot grid */}
+          <div
+            aria-hidden
+            className="absolute inset-0 pointer-events-none opacity-50"
+            style={{
+              backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,.16) 1px, transparent 0)',
+              backgroundSize: '42px 42px',
+              WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 50% 45%, #000 30%, transparent 85%)',
+              maskImage: 'radial-gradient(ellipse 90% 80% at 50% 45%, #000 30%, transparent 85%)',
+            }}
+          />
 
-              {/* Description */}
-              <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-8 max-w-md">
-                {tContractor('desc')}
-              </p>
+          {/* Corner geometry */}
+          <div aria-hidden className="absolute -top-10 end-0 opacity-40 pointer-events-none hidden lg:block">
+            {[
+              'w-[150px] h-[120px] top-0 left-0',
+              'w-[150px] h-[120px] top-[90px] left-[120px] opacity-70',
+              'w-[110px] h-[90px] top-[18px] left-[200px] opacity-50',
+            ].map((cls, i) => (
+              <span
+                key={i}
+                className={cn('absolute block rounded-[18px] border border-white/[0.04]', cls)}
+                style={{
+                  transform: 'skewX(-22deg)',
+                  background: 'linear-gradient(135deg, rgba(56,189,248,.07), rgba(56,189,248,0))',
+                }}
+              />
+            ))}
+          </div>
 
-              {/* Feature pills */}
-              <div className="flex flex-wrap gap-2.5 mb-10">
-                {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/[0.03] border border-white/[0.06] px-4 py-2 rounded-full">
-                    <CheckCircle2 size={13} className="text-sky-400 shrink-0" />
-                    {item}
+          <div className="relative z-10 max-w-[1240px] mx-auto px-6 md:px-10">
+            <div className="grid grid-cols-1 lg:grid-cols-[0.84fr_1.16fr] items-center gap-16 lg:gap-14" dir="ltr">
+
+              {/* TEXT COLUMN */}
+              <motion.div
+                initial={{ opacity: 0, x: -24 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                className="text-right"
+                dir="rtl"
+              >
+                {/* Tagline */}
+                <div className="inline-flex items-center gap-3 mb-7">
+                  <span className="w-[34px] h-px bg-sky-400/60" />
+                  <span className="text-[11.5px] font-extrabold text-sky-400 uppercase tracking-[.18em]">
+                    {tContractor('tagline')}
+                  </span>
+                </div>
+
+                {/* Title */}
+                <h2
+                  className="text-[clamp(28px,3.4vw,46px)] font-extrabold text-white leading-[1.4] tracking-tight mb-6 [&>span]:bg-gradient-to-r [&>span]:from-sky-400 [&>span]:to-sky-200 [&>span]:bg-clip-text [&>span]:text-transparent"
+                  dangerouslySetInnerHTML={{ __html: tContractor.raw('title') }}
+                />
+
+                {/* Description */}
+                <p className="text-[16.5px] leading-[1.85] text-slate-400 mb-8 max-w-[480px] ms-auto lg:ms-0">
+                  {tContractor('desc')}
+                </p>
+
+                {/* Feature pills */}
+                <div className="flex flex-wrap gap-2.5 mb-9 justify-end lg:justify-start">
+                  {[tContractor('network'), tContractor('comparison'), tContractor('savings'), tContractor('reports')].map((item, i) => (
+                    <div key={i} className="inline-flex items-center gap-2 text-slate-300 text-[13px] font-semibold bg-white/[0.03] border border-white/[0.07] px-4 py-[9px] rounded-full">
+                      <CheckCircle2 size={14} className="text-sky-400 shrink-0" />
+                      {item}
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <div className="flex items-center gap-6 flex-wrap justify-end lg:justify-start">
+                  <Link href="/register?role=Contractor">
+                    <Button className="group h-[54px] px-8 text-[15.5px] font-extrabold rounded-[15px] bg-cta hover:bg-sky-500 text-white transition-all shadow-[0_18px_40px_-16px_rgba(3,105,161,.7)] hover:shadow-[0_22px_48px_-16px_rgba(14,165,233,.7)] hover:-translate-y-0.5">
+                      {tContractor('cta')}
+                      <ArrowLeft size={16} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                </div>
+              </motion.div>
+
+              {/* DEVICE COLUMN */}
+              <motion.div
+                initial={{ opacity: 0, x: 24 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.65, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="relative flex justify-center items-center min-h-[520px]"
+              >
+                <div className="relative w-full max-w-[660px] h-[520px] flex justify-center items-center">
+
+                  {/* Floating stat chip — top */}
+                  <motion.div
+                    animate={{ y: -10 }}
+                    transition={{ duration: 2, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
+                    className="absolute top-1.5 start-[-12px] z-10 flex items-center gap-3 px-[15px] py-[11px] rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
+                    style={{ background: 'rgba(5,12,26,.82)', boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)', willChange: 'transform' }}
+                    dir="rtl"
+                  >
+                    <span className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center shrink-0 border border-emerald-500/30 bg-emerald-500/[0.16]">
+                      <TrendingUp size={16} className="text-emerald-400" />
+                    </span>
+                    <span>
+                      <b className="block text-base font-black text-white leading-none tracking-wide">90%</b>
+                      <small className="block text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_compliance')}</small>
+                    </span>
+                  </motion.div>
+
+                  {/* Floating stat chip — bottom */}
+                  <motion.div
+                    animate={{ y: 10 }}
+                    transition={{ duration: 2.4, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
+                    className="absolute bottom-6 start-[-26px] z-10 flex items-center gap-3 px-[15px] py-[11px] rounded-[14px] border border-sky-400/[0.28] backdrop-blur-md"
+                    style={{ background: 'rgba(5,12,26,.82)', boxShadow: '0 18px 40px -18px rgba(0,0,0,.85)', willChange: 'transform' }}
+                    dir="rtl"
+                  >
+                    <span className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center shrink-0 border border-sky-400/30 bg-sky-400/[0.14]">
+                      <BarChart3 size={16} className="text-sky-400" />
+                    </span>
+                    <span>
+                      <b className="block text-base font-black text-white leading-none tracking-wide">15%</b>
+                      <small className="block text-[11px] font-semibold text-slate-400 mt-0.5">{tContractor('stat_performance')}</small>
+                    </span>
+                  </motion.div>
+
+                  {/* Laptop */}
+                  <div className="relative w-[560px] z-[2] max-[640px]:w-full max-[640px]:max-w-[420px]">
+                    {/* Lid */}
+                    <div
+                      className="relative rounded-[20px] p-[11px]"
+                      style={{
+                        background: 'linear-gradient(160deg,#26334a,#0f1726)',
+                        boxShadow: '0 2px 0 rgba(255,255,255,.06) inset, 0 40px 90px -34px rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.05)',
+                      }}
+                    >
+                      <div className="relative rounded-[11px] overflow-hidden bg-[#020617] leading-none" style={{ boxShadow: '0 0 0 1px rgba(0,0,0,.6) inset' }}>
+                        <Image
+                          src="/images/contractor-desktop.png"
+                          alt={tContractor('screen_alt_desktop')}
+                          width={1280}
+                          height={800}
+                          className="block w-full h-auto"
+                          loading="lazy"
+                        />
+                        {/* screen glare */}
+                        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(115deg, rgba(255,255,255,.05), rgba(255,255,255,0) 26%)' }} />
+                      </div>
+                    </div>
+                    {/* Base / deck */}
+                    <div
+                      className="relative h-4 mt-[-3px] rounded-b-[14px]"
+                      style={{
+                        width: '118%',
+                        left: '-9%',
+                        background: 'linear-gradient(180deg,#aeb8c6 0%,#7e8a9b 55%,#5d6678 100%)',
+                        boxShadow: '0 18px 30px -14px rgba(0,0,0,.8)',
+                      }}
+                    >
+                      {/* notch */}
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[120px] h-2 rounded-b-[9px]" style={{ background: 'linear-gradient(180deg,#4a5160,#3a414e)' }} />
+                      {/* shine */}
+                      <div className="absolute top-[3px] left-[6%] right-[6%] h-px" style={{ background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent)' }} />
+                    </div>
                   </div>
-                ))}
-              </div>
 
-              {/* CTA */}
-              <Link href="/register?role=Contractor" className="inline-block">
-                <Button className="group h-12 px-7 text-sm font-bold rounded-xl bg-cta hover:bg-sky-500 text-white transition-all hover:shadow-lg hover:shadow-cta/25">
-                  {tContractor('cta')}
-                  <ArrowLeft size={14} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
-                </Button>
-              </Link>
-            </motion.div>
+                  {/* Phone */}
+                  <motion.div
+                    animate={{ y: 8 }}
+                    transition={{ duration: 2.8, repeat: Infinity, repeatType: 'mirror', ease: [0.37, 0, 0.63, 1] }}
+                    className="absolute end-[-6px] bottom-[-46px] z-[4] w-[188px] h-[392px] rounded-[34px] p-2 max-[640px]:relative max-[640px]:end-auto max-[640px]:bottom-auto max-[640px]:mt-[-26px] max-[640px]:w-[166px] max-[640px]:h-[346px]"
+                    style={{
+                      background: 'linear-gradient(160deg,#2a3346,#0d1422)',
+                      boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 36px 70px -26px rgba(0,0,0,.92)',
+                    }}
+                  >
+                    {/* notch */}
+                    <div className="absolute top-[9px] left-1/2 -translate-x-1/2 w-[54px] h-[15px] rounded-full bg-[#05080f] z-[3]" />
+                    <div className="relative w-full h-full rounded-[27px] overflow-hidden bg-[#0a1530] leading-none">
+                      <Image
+                        src="/images/contractor-mobile.png"
+                        alt={tContractor('screen_alt_mobile')}
+                        width={390}
+                        height={844}
+                        className="block w-full h-auto"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(120deg,rgba(255,255,255,.12),rgba(255,255,255,0) 30%)' }} />
+                    </div>
+                  </motion.div>
+
+                </div>
+              </motion.div>
+
+            </div>
           </div>
         </section>
 
-        {/* SUPPLIER EXPERIENCE - Clean layout */}
-        <section className="relative bg-[#020617]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 items-center">
-            {/* Text side */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
-              className="px-6 md:px-12 lg:px-20 xl:px-28 py-12 md:py-16 order-2 lg:order-1 max-w-2xl mx-auto lg:mx-0 lg:max-w-none"
-            >
-              {/* Tagline with accent */}
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-8 h-px bg-sky-500/60" />
-                <span className="text-xs font-bold text-sky-400 uppercase tracking-widest">
-                  {tSupplier('tagline')}
-                </span>
-              </div>
+        {/* SUPPLIER EXPERIENCE */}
+        <section className="relative bg-[#020617] py-16 lg:py-[72px]">
 
-              {/* Title */}
-              <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-white leading-[1.5] tracking-tight mb-6" dangerouslySetInnerHTML={{ __html: tSupplier.raw('title') }} />
+          {/* Mesh atmosphere — clipped inside section */}
+          <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute -top-[22%] -start-[8%]  w-[58%] h-[78%] rounded-full blur-[150px] bg-teal-500/[0.12]" />
+            <div className="absolute top-[18%]  -end-[14%]   w-[52%] h-[66%] rounded-full blur-[130px] bg-sky-400/[0.10]" />
+            <div className="absolute -bottom-[18%] start-[28%] w-[46%] h-[56%] rounded-full blur-[120px] bg-indigo-600/[0.06]" />
+          </div>
 
-              {/* Description */}
-              <p className="text-slate-400 text-sm md:text-base leading-relaxed mb-8 max-w-md">
-                {tSupplier('desc')}
-              </p>
+          {/* Dot grid */}
+          <div
+            aria-hidden
+            className="absolute inset-0 pointer-events-none opacity-[0.22]"
+            style={{ backgroundImage: 'radial-gradient(circle, rgba(148,163,184,0.25) 1px, transparent 1px)', backgroundSize: '34px 34px' }}
+          />
 
-              {/* Feature pills */}
-              <div className="flex flex-wrap gap-2.5 mb-10">
-                {[tSupplier('access'), tSupplier('digital'), tSupplier('tracking'), tSupplier('rating')].map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 text-slate-300 text-xs font-medium bg-white/[0.03] border border-white/[0.06] px-4 py-2 rounded-full">
-                    <CheckCircle2 size={13} className="text-sky-400 shrink-0" />
-                    {item}
+          {/* Edge fades */}
+          <div aria-hidden className="absolute inset-x-0 top-0    h-[140px] bg-gradient-to-b from-[#020617] to-transparent pointer-events-none" />
+          <div aria-hidden className="absolute inset-x-0 bottom-0 h-[140px] bg-gradient-to-t from-[#020617] to-transparent pointer-events-none" />
+
+          <div className="max-w-7xl mx-auto px-6 md:px-16 relative z-10">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)] items-center gap-12 lg:gap-10">
+
+              {/* LEFT — copy */}
+              <motion.div
+                initial={{ opacity: 0, x: locale === 'ar' ? 30 : -30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {/* Tagline chip */}
+                <div className="inline-flex items-center gap-2 mb-6 px-[15px] py-[7px] rounded-full bg-teal-500/[0.08] border border-teal-500/[0.22]">
+                  <ShoppingCart size={13} className="text-teal-400 shrink-0" />
+                  <span className="text-[11.5px] font-extrabold text-teal-300 uppercase tracking-[.22em] whitespace-nowrap">{tSupplier('tagline')}</span>
+                </div>
+
+                {/* h2 — gradient applied to inner <span> via arbitrary variant */}
+                <h2
+                  className="m-0 mb-5 text-[28px] md:text-[36px] lg:text-[47px] font-extrabold leading-[1.13] tracking-tight text-white [&>span]:bg-gradient-to-r [&>span]:from-sky-400 [&>span]:to-teal-300 [&>span]:bg-clip-text [&>span]:text-transparent"
+                  dangerouslySetInnerHTML={{ __html: tSupplier.raw('title') }}
+                />
+
+                {/* desc */}
+                <p className="mt-0 mb-8 text-base lg:text-[16.5px] leading-relaxed text-slate-400 max-w-[430px]">
+                  {tSupplier('desc')}
+                </p>
+
+                {/* 2×2 compact feature grid — icon + label only */}
+                <div className="grid grid-cols-2 gap-x-[22px] gap-y-[18px] mb-9">
+                  {([
+                    { icon: Globe,       label: tSupplier('access'),   accent: 'teal' },
+                    { icon: FileCheck,   label: tSupplier('digital'),  accent: 'sky'  },
+                    { icon: Truck,       label: tSupplier('tracking'), accent: 'teal' },
+                    { icon: ShieldCheck, label: tSupplier('rating'),   accent: 'sky'  },
+                  ] as const).map((f, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className={cn(
+                        'shrink-0 grid place-items-center w-[38px] h-[38px] rounded-[11px]',
+                        f.accent === 'teal'
+                          ? 'text-teal-400 bg-teal-500/[0.10] shadow-[inset_0_0_0_1px_rgba(20,184,166,0.22)]'
+                          : 'text-sky-400 bg-sky-500/[0.10] shadow-[inset_0_0_0_1px_rgba(56,189,248,0.22)]'
+                      )}>
+                        <f.icon size={19} />
+                      </span>
+                      <span className="text-[14.5px] font-bold text-white leading-tight">{f.label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTAs */}
+                <div className="flex items-center gap-4 flex-wrap">
+                  <Link href="/register?role=Supplier">
+                    <Button className="group h-12 px-8 text-sm font-bold rounded-xl bg-cta hover:bg-sky-500 text-white border-none transition-all hover:shadow-lg hover:shadow-cta/20">
+                      {tSupplier('cta')}
+                      <ArrowLeft size={13} className="rtl:me-2 ltr:ms-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
+                    </Button>
+                  </Link>
+                  <Link
+                    href="#how"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-slate-400 hover:text-white transition-colors duration-200"
+                  >
+                    {tSupplier('ghost_cta')}
+                    <ChevronRight size={14} className="rtl:rotate-180 opacity-60 shrink-0" />
+                  </Link>
+                </div>
+              </motion.div>
+
+              {/* RIGHT — product proof */}
+              <motion.div
+                initial={{ opacity: 0, x: locale === 'ar' ? -30 : 30 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: '-60px' }}
+                transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+                className="relative flex items-center justify-center min-h-[380px] lg:min-h-[560px]"
+              >
+                {/* Browser frame wrapper — status pill anchors to this */}
+                <div className="relative w-full max-w-[580px]">
+
+                  {/* macOS-style browser chrome */}
+                  <div
+                    className="rounded-[14px] overflow-hidden"
+                    style={{ background: '#0b1220', boxShadow: '0 50px 100px -34px rgba(3,8,22,0.92), inset 0 0 0 1px rgba(255,255,255,0.09)' }}
+                  >
+                    {/* Title bar */}
+                    <div
+                      className="flex items-center gap-[7px] px-[13px] py-[9px]"
+                      style={{ background: '#111c2e', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+                    >
+                      <span className="w-[10px] h-[10px] rounded-full bg-[#ff5f57] shrink-0" />
+                      <span className="w-[10px] h-[10px] rounded-full bg-[#febc2e] shrink-0" />
+                      <span className="w-[10px] h-[10px] rounded-full bg-[#28c840] shrink-0" />
+                      <div className="flex-1 flex justify-center">
+                        <span
+                          className="text-[11px] font-semibold text-slate-500 px-4 py-1 rounded-full"
+                          style={{ background: 'rgba(255,255,255,0.05)', letterSpacing: '.01em' }}
+                        >
+                          app.mdmaktech.sa/suppliers
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dashboard screenshot */}
+                    <Image
+                      src="/images/supplier-desktop-clean.png"
+                      alt={tSupplier('dashboard_alt')}
+                      width={580}
+                      height={380}
+                      className="block w-full h-auto"
+                      priority={false}
+                    />
                   </div>
-                ))}
-              </div>
 
-              {/* CTA */}
-              <Link href="/register?role=Supplier" className="inline-block">
-                <Button className="group h-12 px-7 text-sm font-bold rounded-xl bg-sky-600 hover:bg-sky-500 text-white transition-all hover:shadow-lg hover:shadow-sky-500/25">
-                  {tSupplier('cta')}
-                  <ArrowLeft size={14} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
-                </Button>
-              </Link>
-            </motion.div>
+                  {/* Status pill — top-end of browser frame */}
+                  <div
+                    className="absolute top-[54px] end-4 inline-flex items-center gap-2 px-3 py-[7px] rounded-full z-[5]"
+                    style={{ background: 'rgba(2,6,23,0.72)', backdropFilter: 'blur(8px)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.14)' }}
+                  >
+                    <span className="w-[7px] h-[7px] rounded-full bg-emerald-400 shrink-0" />
+                    <span className="text-[12px] font-bold text-white">{tSupplier('dashboard_caption')}</span>
+                  </div>
+                </div>
 
-            {/* Image side */}
-            <motion.div
-              initial={{ opacity: 0, x: locale === 'ar' ? -30 : 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, margin: "-50px" }}
-              transition={{ duration: 0.6, ease: "easeOut" }}
-              className="relative h-72 md:h-96 lg:h-full min-h-[320px] overflow-hidden order-1 lg:order-2"
-            >
-              <Image fill src="/images/supplier-dashboard.jpg" alt="Supplier" className="object-cover" sizes="50vw" loading="lazy" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#020617]/80 via-transparent to-transparent lg:bg-gradient-to-l lg:from-transparent lg:to-[#020617]/60" />
-            </motion.div>
+                {/* Phone frame — floating bottom-start */}
+                <div className="absolute -bottom-[2%] -start-[3%] z-[6]">
+                  <div
+                    className="p-[5px] rounded-[24px]"
+                    style={{
+                      width: 150,
+                      background: 'linear-gradient(160deg, #1e293b, #0b1220)',
+                      boxShadow: '0 34px 70px -22px rgba(3,8,22,0.85), inset 0 0 0 1px rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    <div className="rounded-[19px] overflow-hidden bg-white">
+                      <Image
+                        src="/images/supplier-mobile-clean.png"
+                        alt="Mdmak supplier mobile app"
+                        width={140}
+                        height={280}
+                        className="block w-full h-auto"
+                        priority={false}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
           </div>
         </section>
 
@@ -762,13 +988,18 @@ export default function HomeContent() {
         {/* HOW IT WORKS - Step Architecture */}
         <section id="how" className="py-16 md:py-24 lg:py-32 relative bg-[#0F172A] overflow-hidden">
 
-          {/* Pencil drawing overlay — inverted + screen-blended for light watermark on dark bg */}
-          <img
-            src="/pencilbg.png"
-            alt=""
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none"
-            style={{ filter: 'invert(1) contrast(1.2)', opacity: 0.06, mixBlendMode: 'screen' }}
+          {/* Pencil drawing overlay */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full pointer-events-none select-none"
+            style={{
+              backgroundImage: 'url(/pencilbg.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'invert(1) contrast(1.2)',
+              opacity: 0.06,
+              mixBlendMode: 'screen',
+            }}
           />
 
           {/* Soft vignette so content stays readable */}
@@ -784,7 +1015,7 @@ export default function HomeContent() {
 
             <div className="flex justify-center mb-16">
               <div className="bg-white/5 p-1.5 rounded-2xl inline-flex border border-white/10 relative overflow-hidden group">
-                <div className={`absolute inset-y-1.5 w-[calc(50%-6px)] bg-cta rounded-xl transition-all duration-500 ease-out z-0 ${activeFlow === 'contractor' ? 'rtl:translate-x-0 ltr:translate-x-0' : 'rtl:-translate-x-[100%] ltr:translate-x-[100%]'}`} />
+                <div className={`absolute left-1.5 inset-y-1.5 w-[calc(50%-6px)] bg-cta rounded-xl transition-all duration-500 ease-out z-0 ${locale === 'ar' ? (activeFlow === 'supplier' ? 'translate-x-0' : 'translate-x-full') : (activeFlow === 'contractor' ? 'translate-x-0' : 'translate-x-full')}`} />
                 <button onClick={() => setActiveFlow('contractor')}
                   className={`relative z-10 px-6 md:px-10 py-3 md:py-3.5 text-sm font-black rounded-xl transition-all duration-300 ${activeFlow === 'contractor' ? 'text-white' : 'text-slate-400 hover:text-white'}`}>
                   {tHow('contractors_tab')}
@@ -799,9 +1030,9 @@ export default function HomeContent() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 lg:gap-12 relative" key={activeFlow}>
 
               {/* Dashed connectors — extend close to step icons */}
-              <div className="hidden md:block absolute top-10 left-[17%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
-              <div className="hidden md:block absolute top-10 left-[42%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
-              <div className="hidden md:block absolute top-10 left-[67%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+              <div className="hidden md:block absolute top-10 start-[17%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+              <div className="hidden md:block absolute top-10 start-[42%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
+              <div className="hidden md:block absolute top-10 start-[67%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
 
               {activeSteps.map((s, i) => (
                 <motion.div
@@ -836,6 +1067,44 @@ export default function HomeContent() {
 
 
 
+        {/* TESTIMONIALS — commented out for now
+        <section className="py-16 md:py-24 bg-[#020617] border-t border-white/5">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="text-center mb-12 space-y-3">
+              <div className="text-sky-400 font-black text-xs uppercase tracking-normal">{tLanding('Testimonials')}</div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white tracking-normal">{tLanding('TestimonialsTitle')}</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+              {[
+                { text: tLanding('Testimonial1Text'), initial: tLanding('Testimonial1Initial'), name: tLanding('Testimonial1Name'), role: tLanding('Testimonial1Role') },
+                { text: tLanding('Testimonial2Text'), initial: tLanding('Testimonial2Initial'), name: tLanding('Testimonial2Name'), role: tLanding('Testimonial2Role') },
+              ].map((t, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: i * 0.12 }}
+                  className="bg-white/[0.03] border border-white/[0.07] rounded-3xl p-8 flex flex-col gap-6 hover:bg-white/[0.05] transition-colors"
+                >
+                  <div className="flex gap-1 text-amber-400 text-sm">{'★★★★★'}</div>
+                  <p className="text-slate-300 text-base leading-relaxed flex-1">{t.text}</p>
+                  <div className="flex items-center gap-4 pt-2 border-t border-white/[0.05]">
+                    <div className="w-10 h-10 rounded-full bg-cta/20 border border-cta/30 flex items-center justify-center text-sky-400 font-bold text-base shrink-0" aria-hidden="true">
+                      {t.initial}
+                    </div>
+                    <div>
+                      <div className="text-white font-bold text-sm">{t.name}</div>
+                      <div className="text-slate-500 text-xs mt-0.5">{t.role}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+        */}
+
         {/* PARTNERSHIP HIGHLIGHT - Depth Image */}
         <section className="relative py-24 md:py-40 overflow-hidden border-t border-white/5">
           <Image fill src="/images/loading-dock.jpg" alt="Partnership" className="absolute inset-0 w-full h-full object-cover grayscale opacity-30" sizes="100vw" loading="lazy" />
@@ -849,10 +1118,15 @@ export default function HomeContent() {
             <p className="text-slate-400 text-base md:text-xl leading-relaxed font-medium">
               {tPartnership('desc')}
             </p>
-            <div className="pt-4">
-              <Link href="/about">
-                <Button variant="outline" className="h-12 md:h-16 px-7 md:px-12 text-base md:text-lg font-black rounded-2xl border-white/10 text-white hover:bg-white/5 transition-all">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+              <Link href="/register">
+                <Button className="h-12 md:h-16 px-8 md:px-12 text-base font-black rounded-2xl bg-cta hover:bg-sky-500 text-white border-none transition-all hover:scale-[1.02] shadow-xl shadow-cta/20">
                   {tPartnership('cta')}
+                </Button>
+              </Link>
+              <Link href="/about">
+                <Button variant="outline" className="h-12 md:h-16 px-8 md:px-12 text-base font-black rounded-2xl border-white/10 text-white hover:bg-white/5 transition-all">
+                  {tFooter('l_about')}
                 </Button>
               </Link>
             </div>
@@ -904,26 +1178,6 @@ export default function HomeContent() {
               {tCTA('desc')}
             </motion.p>
 
-            {/* Stats strip */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="flex flex-wrap items-center justify-center gap-6 md:gap-12 py-8 mb-12 border-y border-white/[0.07]"
-            >
-              {[
-                { val: tStats('goal_500'), label: tStats('registered_company') },
-                { val: tStats('saving_70'), label: tStats('time_saving') },
-                { val: tStats('improvement_15'), label: tStats('cost_improvement') },
-              ].map((stat, i) => (
-                <div key={i} className="text-center min-w-[80px]">
-                  <div className="text-2xl md:text-3xl font-black text-white mb-1 tracking-tight">{stat.val}</div>
-                  <div className="text-slate-500 text-[11px] font-bold uppercase tracking-wide">{stat.label}</div>
-                </div>
-              ))}
-            </motion.div>
-
             {/* Buttons */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -964,7 +1218,7 @@ export default function HomeContent() {
               <h2 className="text-3xl md:text-4xl font-bold text-white tracking-normal">{tFAQ('heading')}</h2>
               <p className="text-slate-400 max-w-xl mx-auto text-base leading-relaxed">{tFAQ('subtitle')}</p>
             </div>
-            <div className="space-y-4">
+            <Accordion type="single" collapsible className="space-y-3">
               {[
                 { q: tFAQ('q1'), a: tFAQ('a1') },
                 { q: tFAQ('q2'), a: tFAQ('a2') },
@@ -973,17 +1227,20 @@ export default function HomeContent() {
                 { q: tFAQ('q5'), a: tFAQ('a5') },
                 { q: tFAQ('q6'), a: tFAQ('a6') },
               ].map((faq, i) => (
-                <details key={i} className="group bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden">
-                  <summary className="flex items-center justify-between p-4 md:p-6 cursor-pointer hover:bg-white/[0.04] transition-colors list-none">
-                    <span className="text-white font-bold text-sm md:text-base lg:text-lg pr-4">{faq.q}</span>
-                    <span className="shrink-0 text-sky-400 text-xl group-open:rotate-45 transition-transform duration-300">+</span>
-                  </summary>
-                  <div className="px-6 pb-6">
-                    <p className="text-slate-400 text-sm md:text-base leading-relaxed">{faq.a}</p>
-                  </div>
-                </details>
+                <AccordionItem
+                  key={i}
+                  value={`faq-${i}`}
+                  className="bg-white/[0.02] border border-white/5 rounded-2xl overflow-hidden px-4 md:px-6 data-[state=open]:border-white/10"
+                >
+                  <AccordionTrigger className="text-white font-bold text-sm md:text-base lg:text-lg py-4 md:py-6 hover:no-underline hover:text-sky-300 transition-colors text-start">
+                    {faq.q}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-slate-400 text-sm md:text-base leading-relaxed pb-6">
+                    {faq.a}
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </div>
+            </Accordion>
           </div>
         </section>
 

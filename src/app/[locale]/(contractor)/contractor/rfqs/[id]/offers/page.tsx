@@ -139,8 +139,9 @@ export default function RfqOffersPage() {
         decidedAt: new Date().toISOString(),
         readAt: null // reset read status for supplier
       }
-      if (decision === "مطلوب تخفيض" && requestedPrice) {
-        updateData.targetPrice = Number(requestedPrice)
+      if (decision === "مطلوب تخفيض") {
+        if (requestedPrice) updateData.targetPrice = Number(requestedPrice)
+        updateData.reductionNote = note || null
       }
       
       await updateDoc(doc(firestore, "offers", offerId), updateData)
@@ -248,9 +249,9 @@ export default function RfqOffersPage() {
          sampleUpdatedAt: new Date().toISOString()
        });
 
+      const offerSnap = await getDoc(doc(firestore, "offers", offerId));
+      const offerData = offerSnap.data();
       if (action === "مطلوبة") {
-        const offerSnap = await getDoc(doc(firestore, "offers", offerId));
-        const offerData = offerSnap.data();
         if (offerData?.supplierId) {
           await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
             userId: offerData.supplierId,
@@ -258,6 +259,20 @@ export default function RfqOffersPage() {
             type: "sample_requested",
             title: "طلب عينة جديد",
             message: `قام المقاول بطلب عينة لمناقصة: ${offerData.rfqTitle || ""}`,
+            offerId: offerId,
+            rfqId: rfqId,
+            createdAt: new Date().toISOString(),
+            read: false
+          });
+        }
+      } else if (action === "تم الاستلام") {
+        if (offerData?.supplierId) {
+          await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
+            userId: offerData.supplierId,
+            organizationId: offerData.organizationId || offerData.supplierId,
+            type: "sample_received",
+            title: "✅ تم استلام العينة",
+            message: `قام المقاول بتأكيد استلام العينة لمناقصة: ${offerData.rfqTitle || ""}`,
             offerId: offerId,
             rfqId: rfqId,
             createdAt: new Date().toISOString(),
@@ -290,6 +305,24 @@ export default function RfqOffersPage() {
         status: "Awarded",
         completedAt: new Date().toISOString()
       })
+
+      // Notify the supplier that the supply has been confirmed as complete
+      const offerSnap = await getDoc(doc(firestore, "offers", offerId))
+      const offerData = offerSnap.data()
+      if (offerData?.supplierId) {
+        await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
+          userId: offerData.supplierId,
+          organizationId: offerData.organizationId || offerData.supplierId,
+          type: "supply_completed",
+          title: "🎉 تم تأكيد اكتمال التوريد",
+          message: `قام المقاول بتأكيد اكتمال التوريد لمناقصة: ${offerData.rfqTitle || ""}`,
+          offerId: offerId,
+          rfqId: rfqId,
+          createdAt: new Date().toISOString(),
+          read: false
+        })
+      }
+
       toast({
         title: t("offers_toast_completed_title"),
         description: t("offers_toast_completed_desc")

@@ -34,7 +34,10 @@ import {
   File,
   Save,
   Send,
-  AlertCircle
+  AlertCircle,
+  Search,
+  ChevronDown,
+  Check
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -76,6 +79,118 @@ interface ValidationError {
 
 function RequiredStar() {
   return <span className="text-destructive mr-1">*</span>
+}
+
+interface SearchableSelectOption {
+  value: string
+  label: string
+}
+
+interface SearchableSelectProps {
+  value: string
+  onChange: (v: string) => void
+  options: SearchableSelectOption[]
+  placeholder: string
+  searchPlaceholder: string
+  noResultsText: string
+  disabled?: boolean
+  error?: boolean
+}
+
+function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error }: SearchableSelectProps) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const containerRef = useRef<HTMLDivElement>(null)
+  const locale = useLocale()
+  const isRTL = locale === 'ar'
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setSearch("")
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const filtered = options.filter(opt =>
+    !search.trim() || opt.label.toLowerCase().includes(search.toLowerCase().trim())
+  )
+  const selectedLabel = options.find(o => o.value === value)?.label
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => { if (!disabled) { setOpen(p => !p); setSearch("") } }}
+        className={cn(
+          "w-full flex items-center justify-between h-11 px-4 rounded-xl border bg-white text-start transition-colors",
+          disabled
+            ? "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200"
+            : error
+              ? "border-destructive ring-1 ring-destructive"
+              : open
+                ? "border-primary/60 ring-1 ring-primary/20"
+                : value
+                  ? "border-slate-200 text-slate-800 hover:border-primary/60"
+                  : "border-slate-200 text-slate-400 hover:border-primary/60"
+        )}
+      >
+        <span className="text-sm truncate">{selectedLabel || placeholder}</span>
+        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="px-3 pt-3 pb-2">
+            <div className="relative">
+              <Search size={14} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", isRTL ? "right-3" : "left-3")} />
+              <Input
+                autoFocus
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={searchPlaceholder}
+                dir={isRTL ? "rtl" : "ltr"}
+                className={cn("h-9 text-sm rounded-lg bg-slate-100 border-slate-200 focus-visible:ring-primary focus-visible:border-primary", isRTL ? "pr-9 pl-3" : "pl-9 pr-3")}
+              />
+            </div>
+          </div>
+          <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
+            {filtered.map(opt => {
+              const isSelected = opt.value === value
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => { onChange(opt.value); setOpen(false); setSearch("") }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-primary/5",
+                    isRTL ? "text-right" : "text-left",
+                    isSelected ? "bg-primary/5" : ""
+                  )}
+                >
+                  <div className={cn(
+                    "h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors",
+                    isSelected ? "bg-primary border-primary" : "border-slate-300 bg-white"
+                  )}>
+                    {isSelected && <Check size={8} className="text-white" strokeWidth={3} />}
+                  </div>
+                  <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{opt.label}</span>
+                </button>
+              )
+            })}
+            {filtered.length === 0 && (
+              <p className="px-4 py-3 text-sm text-slate-400 text-center">{noResultsText}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function NewRfqPage() {
@@ -705,38 +820,36 @@ export default function NewRfqPage() {
                             <Label className="text-xs font-semibold text-slate-600">
                               {t("newrfq_main_category")}<RequiredStar />
                             </Label>
-                            <Select 
+                            <SearchableSelect
                               value={product.category}
-                              onValueChange={v => updateProduct(product.id, "category", v)}
-                            >
-                              <SelectTrigger className="h-11 rounded-xl border-slate-200">
-                                <SelectValue placeholder={t("newrfq_select_category")} />
-                              </SelectTrigger>
-                              <SelectContent side="bottom" avoidCollisions={false} className="max-h-60 overflow-y-auto">
-                                {Object.keys(CATEGORIES_DATA).map(cat => (
-                                  <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              onChange={v => {
+                                if (v !== product.category) updateProduct(product.id, "subCategory", "")
+                                updateProduct(product.id, "category", v)
+                              }}
+                              options={Object.keys(CATEGORIES_DATA).map(cat => ({ value: cat, label: displayCategory(cat, locale) }))}
+                              placeholder={t("newrfq_select_category")}
+                              searchPlaceholder={t("newrfq_search_category")}
+                              noResultsText={t("newrfq_no_results")}
+                            />
                           </div>
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
                               {t("newrfq_sub_category")}<RequiredStar />
                             </Label>
-                            <Select 
+                            <SearchableSelect
                               value={product.subCategory}
-                              onValueChange={v => updateProduct(product.id, "subCategory", v)}
-                            >
-                              <SelectTrigger className="h-11 rounded-xl border-slate-200">
-                                <SelectValue placeholder={t("newrfq_select_sub_category")} />
-                              </SelectTrigger>
-                              <SelectContent side="bottom" avoidCollisions={false} className="max-h-60 overflow-y-auto">
-                                {product.category && CATEGORIES_DATA[product.category]?.map(sub => (
-                                  <SelectItem key={sub} value={sub}>{displaySubcategory(sub, locale)}</SelectItem>
-                                ))}
-                                <SelectItem value="أخرى">{t("newrfq_other_category")}</SelectItem>
-                              </SelectContent>
-                            </Select>
+                              onChange={v => updateProduct(product.id, "subCategory", v)}
+                              options={[
+                                ...(product.category && CATEGORIES_DATA[product.category]
+                                  ? CATEGORIES_DATA[product.category].map(sub => ({ value: sub, label: displaySubcategory(sub, locale) }))
+                                  : []),
+                                { value: "أخرى", label: t("newrfq_other_category") }
+                              ]}
+                              placeholder={t("newrfq_select_sub_category")}
+                              searchPlaceholder={t("newrfq_search_sub_category")}
+                              noResultsText={t("newrfq_no_results")}
+                              disabled={!product.category}
+                            />
                             {product.subCategory === "أخرى" && (
                               <Input
                                 placeholder={t("newrfq_other_category_placeholder")}
@@ -880,44 +993,35 @@ export default function NewRfqPage() {
                     <Label className="text-sm font-semibold text-slate-700">
                       {t("newrfq_city_label")}<RequiredStar />
                     </Label>
-                    <Select 
-                      value={formData.city} 
-                      onValueChange={v => {
+                    <SearchableSelect
+                      value={formData.city}
+                      onChange={v => {
                         setFormData({ ...formData, city: v, district: "" })
                         clearError("city")
                       }}
-                    >
-                      <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("city") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                        <SelectValue placeholder={t("newrfq_select_city")} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-72 overflow-y-auto">
-                        {SAUDI_CITIES.map(city => (
-                          <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={SAUDI_CITIES.map(city => ({ value: city, label: displayCity(city, locale) }))}
+                      placeholder={t("newrfq_select_city")}
+                      searchPlaceholder={t("newrfq_search_city")}
+                      noResultsText={t("newrfq_no_results")}
+                      error={hasError("city")}
+                    />
                   </div>
                   {formData.city && CITIES_DISTRICTS[formData.city] && (
                     <div className="space-y-3">
                       <Label className="text-sm font-semibold text-slate-700">
                         {t("newrfq_district_label")}
                       </Label>
-                      <Select 
-                        value={formData.district} 
-                        onValueChange={v => {
+                      <SearchableSelect
+                        value={formData.district}
+                        onChange={v => {
                           setFormData({ ...formData, district: v })
                           clearError("district")
                         }}
-                      >
-                        <SelectTrigger className={`h-12 rounded-xl border-slate-200 cursor-pointer ${hasError("district") ? 'border-destructive ring-1 ring-destructive' : ''}`}>
-                          <SelectValue placeholder={t("newrfq_select_district")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CITIES_DISTRICTS[formData.city].map(dist => (
-                            <SelectItem key={dist} value={dist}>{dist}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        options={CITIES_DISTRICTS[formData.city].map(dist => ({ value: dist, label: dist }))}
+                        placeholder={t("newrfq_select_district")}
+                        searchPlaceholder={t("newrfq_search_district")}
+                        noResultsText={t("newrfq_no_results")}
+                      />
                     </div>
                   )}
                 </div>

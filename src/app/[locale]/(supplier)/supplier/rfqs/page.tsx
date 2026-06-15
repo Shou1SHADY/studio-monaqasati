@@ -12,10 +12,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MapPicker } from "@/components/ui/map-picker"
 import { 
-  Search, 
-  MapPin, 
+  Search,
+  MapPin,
   Calendar,
-  ChevronLeft, 
+  ChevronLeft,
   ChevronRight,
   Filter,
   Loader2,
@@ -36,13 +36,16 @@ import {
   ShieldCheck,
   Globe,
   CheckCircle2,
-  TrendingUp
+  TrendingUp,
+  Archive,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, doc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, addDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { useStorage } from "@/firebase"
@@ -86,6 +89,8 @@ export default function AvailableRfqsPage() {
 
   const [showRfqDetails, setShowRfqDetails] = useState(false)
   const [showSubmitOffer, setShowSubmitOffer] = useState(false)
+  const [archivingRfqId, setArchivingRfqId] = useState<string | null>(null)
+  const [showArchivedRfqs, setShowArchivedRfqs] = useState(false)
   const [showInquiries, setShowInquiries] = useState(false)
   const [showContractorReviews, setShowContractorReviews] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
@@ -137,7 +142,7 @@ export default function AvailableRfqsPage() {
     
     let q = query(
       collection(firestore, "rfqs"),
-      where("status", "==", "New"),
+      where("status", "in", ["New", "Awarded"]),
       where("visibility", "==", "public")
     )
     
@@ -154,8 +159,10 @@ export default function AvailableRfqsPage() {
   const { data: allRfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || isCollectionLoading
 
+  const archivedRfqIds: string[] = (profile as any)?.archivedRfqIds || []
+
   // Client-side filtering by specializations and sorting
-  const rfqs = allRfqs
+  const allMatchingRfqs = allRfqs
     ? [...allRfqs]
         .filter((rfq: any) => {
           if (!profile?.specializations?.length) return false;
@@ -168,9 +175,39 @@ export default function AvailableRfqsPage() {
         })
     : [];
 
+  const rfqs = allMatchingRfqs.filter((rfq: any) => !archivedRfqIds.includes(rfq.id))
+  const archivedRfqsList = allMatchingRfqs.filter((rfq: any) => archivedRfqIds.includes(rfq.id))
+
+  // Auto-archive awarded RFQs
+  useEffect(() => {
+    if (!firestore || !user || !allMatchingRfqs.length) return
+    const toArchive = allMatchingRfqs
+      .filter((rfq: any) => rfq.status === "Awarded" && !archivedRfqIds.includes(rfq.id))
+      .map((rfq: any) => rfq.id)
+    if (!toArchive.length) return
+    updateDoc(doc(firestore, "users", user.uid), {
+      archivedRfqIds: arrayUnion(...toArchive)
+    }).catch(() => {})
+  }, [allMatchingRfqs, archivedRfqIds, firestore, user])
+
+  const handleArchiveRfq = async (rfqId: string) => {
+    if (!firestore || !user) return
+    setArchivingRfqId(rfqId)
+    try {
+      await updateDoc(doc(firestore, "users", user.uid), {
+        archivedRfqIds: arrayUnion(rfqId)
+      })
+      toast({ title: t("rfq_archive_success"), description: t("rfq_archive_success_desc") })
+    } catch {
+      toast({ title: t("error_title"), description: t("rfq_archive_failed"), variant: "destructive" })
+    } finally {
+      setArchivingRfqId(null)
+    }
+  }
+
   const filteredRfqs = rfqs.filter((rfq: any) => {
-    // Always exclude expired tenders
-    if (rfq.deadline) {
+    // Exclude expired tenders only for New status (Awarded ones may have passed deadline)
+    if (rfq.status === "New" && rfq.deadline) {
       const deadline = new Date(rfq.deadline);
       const now = new Date();
       now.setHours(0, 0, 0, 0);
@@ -342,7 +379,20 @@ export default function AvailableRfqsPage() {
                         </Badge>
                       )}
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {rfq.status === "Awarded" ? (
+                        <Badge className="bg-blue-50 text-blue-600 border-blue-200 text-[10px] px-2 py-0.5 gap-1">
+                          <CheckCircle2 size={9} />
+                          {t("rfq_status_awarded")}
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-emerald-50 text-emerald-600 border-emerald-200 text-[10px] px-2 py-0.5 gap-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          {t("rfq_status_new")}
+                        </Badge>
+                      )}
+                      <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
+                    </div>
                   </div>
                   
                   <div className="space-y-1 mb-5 flex-1">
@@ -407,28 +457,9 @@ export default function AvailableRfqsPage() {
                   </div>
                   
                   <div className="flex gap-2">
-                    <Button 
+                    <Button
                       onClick={() => {
-                        setSelectedRfq({
-                          id: rfq.id, 
-                          title: rfq.title,
-                          quantity: rfq.quantity,
-                          unitOfMeasure: rfq.unitOfMeasure,
-                          contractorId: rfq.contractorId,
-                          products: rfq.products,
-                          notes: rfq.notes,
-                          pdfUrl: rfq.pdfUrl,
-                          category: rfq.category,
-                          subCategory: rfq.subCategory,
-                          city: rfq.city,
-                          district: rfq.district,
-                          deadline: rfq.deadline,
-                          locationCoords: rfq.locationCoords,
-                          offersCount: rfq.offersCount,
-                          status: rfq.status,
-                          paymentTerms: rfq.paymentTerms,
-                          createdAt: rfq.createdAt
-                        })
+                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt })
                         setShowRfqDetails(true)
                       }}
                       variant="outline"
@@ -437,41 +468,82 @@ export default function AvailableRfqsPage() {
                       <Eye size={16} />
                       {t("details")}
                     </Button>
-                    <Button 
-                      onClick={() => {
-                        setSelectedRfq({
-                          id: rfq.id, 
-                          title: rfq.title,
-                          quantity: rfq.quantity,
-                          unitOfMeasure: rfq.unitOfMeasure,
-                          contractorId: rfq.contractorId,
-                          products: rfq.products,
-                          notes: rfq.notes,
-                          pdfUrl: rfq.pdfUrl,
-                          category: rfq.category,
-                          subCategory: rfq.subCategory,
-                          city: rfq.city,
-                          district: rfq.district,
-                          deadline: rfq.deadline,
-                          locationCoords: rfq.locationCoords,
-                          offersCount: rfq.offersCount,
-                          status: rfq.status,
-                          paymentTerms: rfq.paymentTerms,
-                          createdAt: rfq.createdAt
-                        })
-                        setShowSubmitOffer(true)
-                      }}
-                      className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
-                    >
-                      {t("submit_offer")}
-                      <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
-                    </Button>
+                    {rfq.status === "Awarded" ? (
+                      <Button
+                        onClick={() => handleArchiveRfq(rfq.id)}
+                        disabled={archivingRfqId === rfq.id}
+                        variant="outline"
+                        className="flex-[2] gap-2 rounded-xl h-11 border-slate-200 text-slate-500 hover:border-slate-400 hover:text-slate-700 transition-all"
+                      >
+                        {archivingRfqId === rfq.id
+                          ? <Loader2 size={15} className="animate-spin" />
+                          : <Archive size={15} />}
+                        {t("rfq_archive_btn")}
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt })
+                          setShowSubmitOffer(true)
+                        }}
+                        className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
+                      >
+                        {t("submit_offer")}
+                        <ChevronLeft size={16} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
             ))
           )}
         </div>
+        {/* Archived RFQs Section */}
+        {archivedRfqsList.length > 0 && (
+          <div>
+            <button
+              onClick={() => setShowArchivedRfqs(v => !v)}
+              className={cn("flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-3", locale === 'ar' ? 'flex-row-reverse' : '')}
+            >
+              {showArchivedRfqs ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <Archive size={14} />
+              {t("archived_rfqs_title")} ({archivedRfqsList.length})
+            </button>
+            {showArchivedRfqs && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {archivedRfqsList.map((rfq: any) => (
+                  <Card key={rfq.id} className="relative overflow-hidden border-dashed border-slate-200 bg-slate-50/50 opacity-60 flex flex-col">
+                    <CardContent className="p-5 flex flex-col flex-1">
+                      <div className="flex items-start justify-between mb-3">
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-xs">
+                          {displayCategory(rfq.category, locale)}
+                        </Badge>
+                        <Badge className="bg-slate-100 text-slate-500 border-none text-[10px] gap-1">
+                          <Archive size={9} />
+                          {t("archived_label")}
+                        </Badge>
+                      </div>
+                      <h3 className="text-sm font-bold text-slate-700 line-clamp-2 flex-1 mb-3">{rfq.title}</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs text-muted-foreground hover:text-destructive gap-1.5"
+                        onClick={async () => {
+                          if (!firestore || !user) return
+                          await updateDoc(doc(firestore, "users", user.uid), {
+                            archivedRfqIds: arrayRemove(rfq.id)
+                          })
+                        }}
+                      >
+                        {t("unarchive_rfq")}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <SubmitOfferDialog 
