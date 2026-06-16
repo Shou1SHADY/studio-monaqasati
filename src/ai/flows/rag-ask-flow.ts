@@ -70,15 +70,15 @@ function roleLabel(locale: 'ar' | 'en', role: string): string {
 function roleCapabilities(locale: 'ar' | 'en', role: string): string {
   if (locale === 'ar') {
     if (role === 'Contractor')
-      return '• إدارة طلبات العروض (RFQs) وتتبع حالتها\n• مراجعة العروض الواردة ومقارنة الأسعار\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق';
+      return '• إدارة طلبات العروض (RFQs) وتتبع حالتها\n• مراجعة العروض الواردة ومقارنة الأسعار\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق\n• المساعدة في استكمال بيانات الملف الشخصي وشروحات المستندات المطلوبة';
     if (role === 'Supplier')
-      return '• البحث عن طلبات العروض المتاحة المطابقة لتخصصاتي\n• تتبع العروض المقدمة ومعرفة حالتها\n• تقديم عروض أسعار على طلبات العروض\n• استفسار عن تفاصيل طلبات العروض';
+      return '• البحث عن طلبات العروض المتاحة المطابقة لتخصصاتي\n• تتبع العروض المقدمة ومعرفة حالتها\n• تقديم عروض أسعار على طلبات العروض\n• استفسار عن تفاصيل طلبات العروض\n• المساعدة في استكمال بيانات الملف الشخصي والتخصصات والمستندات';
     return '• عرض إحصائيات المنصة والنشاط العام\n• مراجعة بيانات المستخدمين والتحقق منهم\n• تحليل توزيع الفئات والمناطق الجغرافية';
   }
   if (role === 'Contractor')
-    return '• Manage RFQs and track their status\n• Review incoming offers and compare prices\n• Search for suitable suppliers and add favorites\n• Get market price insights';
+    return '• Manage RFQs and track their status\n• Review incoming offers and compare prices\n• Search for suitable suppliers and add favorites\n• Get market price insights\n• Get help completing your business profile and document requirements';
   if (role === 'Supplier')
-    return '• Search available RFQs matching my specializations\n• Track submitted offers and their status\n• Submit price offers on RFQs\n• Inquire about RFQ details';
+    return '• Search available RFQs matching my specializations\n• Track submitted offers and their status\n• Submit price offers on RFQs\n• Inquire about RFQ details\n• Get help completing your profile, specializations, and documents';
   return '• View platform statistics and general activity\n• Review and verify user data\n• Analyze category and geographic distribution';
 }
 
@@ -153,6 +153,14 @@ function buildSystemPrompt(locale: 'ar' | 'en', role: string): string {
 أنت تساعد ${roleLabel('ar', role)} في:
 ${roleCapabilities('ar', role)}
 
+**⭐ ملاحظة مهمة حول الملف الشخصي:**
+إذا سأل المستخدم عن "ملف شخصي" أو "استكمال البيانات" أو "المستندات المطلوبة" أو "نسبة الإكمال"، قدم:
+1. شرح تفصيلي لكل حقل مطلوب
+2. نصائح عملية لملء البيانات
+3. متطلبات المستندات (CR وضريبة القيمة المضافة)
+4. خطوات إكمال الملف بالترتيب
+5. رابط مباشر لصفحة الملف الشخصي
+
 **قواعد الإجابة:**
 1. أجب دائماً باللغة العربية بأسلوب واضح ومهني
 2. استند إلى البيانات الفعلية المقدمة لك في السياق
@@ -204,6 +212,14 @@ ${roleCapabilities('ar', role)}
 
 You are helping a ${roleLabel('en', role)} with:
 ${roleCapabilities('en', role)}
+
+**⭐ IMPORTANT NOTE ABOUT PROFILE COMPLETION:**
+If the user asks about "profile", "completing information", "documents", or "completion percentage", provide:
+1. Detailed explanation of each required field
+2. Practical tips for filling in data
+3. Document requirements (CR and VAT certificate)
+4. Step-by-step completion guide
+5. Direct link to the profile page
 
 **Response rules:**
 1. Always respond in English clearly and professionally
