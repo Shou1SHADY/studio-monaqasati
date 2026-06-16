@@ -8,7 +8,7 @@ import { useTranslations, useLocale } from "next-intl"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
 import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification } from "firebase/auth"
-import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore"
+import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -124,9 +124,11 @@ export default function RegisterPage() {
         organizationId: organizationId,
         organizationRole: organizationRole,
         specializations: role === "Supplier" ? formData.specializations : [],
+        providers: ["password"] as string[],
         isVerified: false,
         profileCompleted: false,
-        joinedAt: new Date().toISOString()
+        joinedAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
       })
 
       if (inviteSnap.exists()) {
@@ -201,9 +203,11 @@ export default function RegisterPage() {
         organizationId: organizationId,
         organizationRole: organizationRole,
         specializations: role === "Supplier" ? formData.specializations : [],
+        providers: ["google.com"] as string[],
         isVerified: false,
         profileCompleted: false,
-        joinedAt: new Date().toISOString()
+        joinedAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
       })
 
       if (inviteSnap.exists()) {
@@ -223,6 +227,11 @@ export default function RegisterPage() {
     } catch (error: any) {
       console.error("❌ Google Registration error:", error)
       if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user") {
+        return
+      }
+      // Account with this email already exists under a different provider (password)
+      if (error.code === "auth/account-exists-with-different-credential") {
+        setRegisterError(t("error_email_in_use"))
         return
       }
       toast({

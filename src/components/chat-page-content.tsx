@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Send, Loader2, MessageSquare, Shield, Clock, User } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import {
-  doc, getDoc, collection, addDoc, updateDoc,
+  doc, getDoc, setDoc, collection, addDoc, updateDoc, increment,
   query, orderBy
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -98,10 +98,35 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     const unreadFor: string[] = chatMeta.unreadFor || []
     if (unreadFor.includes(user.uid)) {
       updateDoc(doc(firestore, "chats", chatId), {
-        unreadFor: unreadFor.filter((uid: string) => uid !== user.uid)
+        unreadFor: unreadFor.filter((uid: string) => uid !== user.uid),
+        [`unreadCounts.${user.uid}`]: 0
       }).catch(() => { })
     }
   }, [firestore, chatId, user, chatMeta, metaLoading])
+
+  // Auto-create chat document when it doesn't exist yet (e.g. sample flow before offer acceptance)
+  useEffect(() => {
+    if (isUserLoading || metaLoading || chatMeta || !user || !firestore || !chatId) return
+    ;(async () => {
+      try {
+        const offerSnap = await getDoc(doc(firestore, "offers", chatId))
+        if (!offerSnap.exists()) return
+        const offer = offerSnap.data()
+        await setDoc(doc(firestore, "chats", chatId), {
+          offerId: chatId,
+          rfqId: offer.rfqId || "",
+          rfqTitle: offer.rfqTitle || offer.title || "",
+          contractorId: offer.contractorId || "",
+          contractorOrgId: offer.contractorOrgId || offer.contractorId || "",
+          supplierId: offer.supplierId || "",
+          supplierOrgId: offer.organizationId || offer.supplierId || "",
+          createdAt: new Date().toISOString()
+        })
+      } catch (err) {
+        console.warn("chat auto-create:", err)
+      }
+    })()
+  }, [isUserLoading, metaLoading, chatMeta, user, firestore, chatId])
 
   // Fetch partner user profile
   const partnerId = useMemo(() => {
@@ -168,7 +193,8 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
       updateDoc(doc(firestore, "chats", chatId), {
         lastMessage: msgText,
         lastMessageAt: new Date().toISOString(),
-        unreadFor: newUnread
+        unreadFor: newUnread,
+        ...(otherId ? { [`unreadCounts.${otherId}`]: increment(1) } : {})
       }).catch((err) => console.warn("chat metadata update:", err?.code))
 
       if (otherId) {

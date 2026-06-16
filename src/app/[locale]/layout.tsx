@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, Noto_Sans_Arabic } from 'next/font/google';
 import '../globals.css';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
@@ -11,16 +10,23 @@ import StructuredData from '@/components/StructuredData';
 
 const notoSansArabic = Noto_Sans_Arabic({
   subsets: ['arabic'],
-  weight: ['300', '400', '500', '600', '700', '800', '900'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
   variable: '--font-body',
 });
 
 const inter = Inter({
   subsets: ['latin'],
+  display: 'swap',
+  preload: false,
   variable: '--font-inter',
 });
 
 const notoNaskhArabic = { variable: '--font-headline' };
+
+export function generateStaticParams() {
+  return routing.locales.map(locale => ({ locale }));
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
@@ -103,11 +109,9 @@ export default async function RootLayout({
         suppressHydrationWarning
       >
         <NextIntlClientProvider messages={messages}>
-          <FirebaseClientProvider>
-            <StructuredData />
-            {children}
-            <Toaster />
-          </FirebaseClientProvider>
+          <StructuredData />
+          {children}
+          <Toaster />
         </NextIntlClientProvider>
       </body>
     </html>

@@ -79,6 +79,7 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
           ) : (
             chats.map((chat: any) => {
               const hasUnread = Array.isArray(chat.unreadFor) && user && chat.unreadFor.includes(user.uid)
+              const unreadCount = hasUnread ? ((user && chat.unreadCounts?.[user.uid]) || 1) : 0
               return (
                 <Card
                   key={chat.id}
@@ -95,8 +96,8 @@ export function ChatsListPage({ role }: ChatsListPageProps) {
                     }`}>
                       <MessageSquare size={22} />
                       {hasUnread && (
-                        <span className={cn("absolute -top-1 h-4 w-4 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? '-right-1' : '-left-1')}>
-                          !
+                        <span className={cn("absolute -top-1 h-4 min-w-4 px-0.5 rounded-full bg-destructive text-white text-[9px] font-bold flex items-center justify-center", locale === 'ar' ? '-right-1' : '-left-1')}>
+                          {unreadCount}
                         </span>
                       )}
                     </div>
