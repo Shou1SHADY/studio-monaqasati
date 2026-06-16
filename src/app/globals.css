@@ -167,17 +167,89 @@
   /* Firefox */
 }
 
-/* Animated grid background for Features section */
-@keyframes grid-drift {
-  0% {
-    background-position: 0 0;
+/* Stable viewport heights — prevents CLS from browser URL-bar show/hide on mobile.
+   100svh = "small" viewport height = always sized as if chrome is visible = stable. */
+@layer utilities {
+  .h-svh {
+    height: 100vh;
+    height: 100svh;
   }
+  .min-h-svh {
+    min-height: 100vh;
+    min-height: 100svh;
+  }
+}
 
-  100% {
-    background-position: 80px 80px;
-  }
+/* Animated grid background for Features section */
+/* Uses transform instead of background-position so it runs on the GPU compositor */
+@keyframes grid-drift {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(80px, 80px, 0); }
 }
 
 .animate-grid-drift {
   animation: grid-drift 20s linear infinite;
+  will-change: transform;
+}
+
+/* Respect reduced-motion for decorative animations */
+@media (prefers-reduced-motion: reduce) {
+  .animate-grid-drift {
+    animation: none;
+  }
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar — desktop only */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-track { background: #020617; }
+  ::-webkit-scrollbar-thumb { background: #1A1D26; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2A2D36; }
+}
+
+/* Logo marquee animations */
+@keyframes scroll-x-logos-ltr {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes scroll-x-logos-rtl {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(50%); }
+}
+
+.animate-scroll-x-logos-ltr {
+  animation: scroll-x-logos-ltr 60s linear infinite;
+  width: max-content;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+.animate-scroll-x-logos-rtl {
+  animation: scroll-x-logos-rtl 60s linear infinite;
+  width: max-content;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* Float animation */
+@keyframes float {
+  0%, 100% { transform: translateY(0) translateZ(0); }
+  50%       { transform: translateY(-20px) translateZ(0); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scroll-x-logos-ltr,
+  .animate-scroll-x-logos-rtl,
+  .animate-float {
+    animation: none;
+  }
 }
