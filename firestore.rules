@@ -172,16 +172,6 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.senderId == request.auth.uid);
     }
 
-    // Allow any signed-in user to update chats for messaging
-    // (relaxed from strict org checks to avoid null-org edge cases)
-    match /chats/{chatId} {
-      allow create: if isSignedIn();
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow update: if isSignedIn();
-      allow delete: if isAdmin();
-    }
-
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
