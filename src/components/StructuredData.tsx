@@ -116,6 +116,7 @@ export default function StructuredData() {
         sameAs: [
           'https://www.linkedin.com/company/mdmaktech',
           'https://x.com/mdmaktech',
+          'https://www.instagram.com/mdmaktech.sa',
         ],
       },
       {
