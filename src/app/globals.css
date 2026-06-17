@@ -90,6 +90,11 @@
     }
   }
 
+  /* Prevent white flash during fast scroll — landing page is dark-themed */
+  html {
+    background-color: #020617;
+  }
+
   /* On desktop, reserve scrollbar space so content doesn't shift */
   @media (min-width: 768px) {
     html {

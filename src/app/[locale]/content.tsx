@@ -2,14 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import dynamic from 'next/dynamic';
 import { Link } from "@/i18n/routing";
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, CheckCircle2, Clock, Zap, TrendingUp } from 'lucide-react';
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useTranslations, useLocale } from 'next-intl';
-
-const BelowFoldSections = dynamic(() => import('./BelowFoldSections'), { ssr: true });
+import BelowFoldSections from './BelowFoldSections';
 
 function AnimatedStat({ value }: { value: string }) {
   const spanRef = useRef<HTMLSpanElement>(null);
