@@ -1,18 +1,14 @@
 import { MetadataRoute } from 'next'
-import { routing } from '@/i18n/routing'
 
 const BASE_URL = 'https://mdmaktech.sa'
-const defaultLocale = routing.defaultLocale
 
-const publicRoutes = [
-  { path: '/', priority: 1.0, changeFreq: 'weekly' as const },
-  { path: '/about', priority: 0.8, changeFreq: 'monthly' as const },
-  { path: '/pricing', priority: 0.9, changeFreq: 'weekly' as const },
-  { path: '/contact', priority: 0.7, changeFreq: 'monthly' as const },
-  { path: '/terms', priority: 0.4, changeFreq: 'yearly' as const },
-  { path: '/privacy', priority: 0.4, changeFreq: 'yearly' as const },
-  { path: '/login', priority: 0.5, changeFreq: 'monthly' as const },
-  { path: '/register', priority: 0.6, changeFreq: 'monthly' as const },
+const publicRoutes: Array<{ path: string; lastModified: string }> = [
+  { path: '/',        lastModified: '2026-06-17' },
+  { path: '/about',   lastModified: '2026-06-17' },
+  { path: '/pricing', lastModified: '2026-06-17' },
+  { path: '/contact', lastModified: '2026-01-01' },
+  { path: '/terms',   lastModified: '2026-01-01' },
+  { path: '/privacy', lastModified: '2026-01-01' },
 ]
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -32,17 +28,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
     const arEntry: MetadataRoute.Sitemap[number] = {
       url: arUrl,
-      lastModified: new Date(),
-      changeFrequency: route.changeFreq,
-      priority: route.path === '/' ? 1.0 : route.priority * 0.95,
+      lastModified: new Date(route.lastModified),
       alternates: { languages },
     }
 
     const enEntry: MetadataRoute.Sitemap[number] = {
       url: enUrl,
-      lastModified: new Date(),
-      changeFrequency: route.changeFreq,
-      priority: route.priority * 0.85,
+      lastModified: new Date(route.lastModified),
       alternates: { languages },
     }
 

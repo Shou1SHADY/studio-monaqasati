@@ -18,7 +18,6 @@ const notoSansArabic = Noto_Sans_Arabic({
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
-  preload: false,
   variable: '--font-inter',
 });
 
