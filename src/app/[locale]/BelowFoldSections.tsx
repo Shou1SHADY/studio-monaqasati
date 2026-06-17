@@ -116,11 +116,7 @@ export default function BelowFoldSections() {
               { title: tFeatures('f2_title'), desc: tFeatures('f2_desc'), icon: Zap, gradient: "from-amber-500/10 to-orange-600/5", iconBg: "bg-amber-500/10 text-amber-400" },
               { title: tFeatures('f3_title'), desc: tFeatures('f3_desc'), icon: BarChart3, gradient: "from-violet-500/10 to-purple-600/5", iconBg: "bg-violet-500/10 text-violet-400" }
             ].map((f, i) => (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "150px" }}
-                transition={{ duration: 0.45, delay: i * 0.1, ease: "easeOut" }}
+              <div
                 key={i}
                 className="group relative p-5 sm:p-7 md:p-10 rounded-3xl bg-[#080c18] border border-white/[0.04] hover:border-white/[0.08] transition-[transform,border-color,background-color] duration-300 hover:-translate-y-1"
               >
@@ -144,7 +140,7 @@ export default function BelowFoldSections() {
                     <ArrowLeft size={14} className="rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 transition-transform" />
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -164,36 +160,24 @@ export default function BelowFoldSections() {
 
         <div className="relative z-10 max-w-[1200px] mx-auto px-4 md:px-8">
           <div className="text-center mb-10 md:mb-14">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4 }}
+            <div
               className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-slate-400 text-[11px] font-black uppercase tracking-widest mb-6"
             >
               {tCompare('tagline')}
-            </motion.div>
+            </div>
 
-            <motion.h2
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.5, delay: 0.08 }}
+            <h2
               className="text-[clamp(24px,4.5vw,56px)] font-extrabold leading-[1.22] text-white mb-5"
             >
               {tCompare('title_prefix')}{' '}
               <span className="bg-gradient-to-r from-sky-300 to-sky-500 bg-clip-text text-transparent font-black">{tCompare('title_highlight')}</span>
-            </motion.h2>
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[0.58fr_60px_1.42fr] items-start gap-8 lg:gap-0">
 
             {/* BEFORE */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
+            <div
               className="flex flex-col relative lg:pe-10 max-w-[300px] sm:max-w-sm mx-auto lg:max-w-none lg:mx-0"
             >
               <div className="flex items-center gap-3 mb-5">
@@ -289,7 +273,7 @@ export default function BelowFoldSections() {
                 <X size={13} className="text-red-400 shrink-0" />
                 {tCompare('problem_chip2')}
               </motion.span>
-            </motion.div>
+            </div>
 
             {/* VS CONNECTOR (desktop only) */}
             <div className="hidden lg:flex flex-col items-center justify-center self-stretch gap-0 pt-[52px]">
@@ -306,11 +290,7 @@ export default function BelowFoldSections() {
             </div>
 
             {/* AFTER */}
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, delay: 0.06, ease: "easeOut" }}
+            <div
               className="flex flex-col relative lg:ps-10 max-w-[300px] sm:max-w-sm mx-auto lg:max-w-none lg:mx-0"
             >
               <div className="flex items-center gap-3 mb-5">
@@ -392,7 +372,7 @@ export default function BelowFoldSections() {
                   <small className="block text-[10.5px] font-semibold text-slate-400 mt-[1px]">{tCompare('value_chip2_sub')}</small>
                 </span>
               </motion.span>
-            </motion.div>
+            </div>
 
           </div>
         </div>
@@ -429,11 +409,7 @@ export default function BelowFoldSections() {
         <div className="relative z-10 max-w-[1240px] mx-auto px-5 sm:px-8 md:px-10">
           <div className="grid grid-cols-1 lg:grid-cols-[0.84fr_1.16fr] items-center gap-10 sm:gap-14 lg:gap-14" dir="ltr">
 
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            <div
               className="text-right"
               dir="rtl"
             >
@@ -466,13 +442,9 @@ export default function BelowFoldSections() {
                   </Button>
                 </Link>
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+            <div
               className="relative flex justify-center items-center"
             >
               <div className="relative w-full max-w-[500px] sm:max-w-[580px] lg:max-w-[660px] flex justify-center items-center h-[240px] sm:h-[360px] lg:h-[520px]">
@@ -570,7 +542,7 @@ export default function BelowFoldSections() {
                   </div>
                 </motion.div>
               </div>
-            </motion.div>
+            </div>
 
           </div>
         </div>
@@ -594,12 +566,7 @@ export default function BelowFoldSections() {
         <div className="max-w-7xl mx-auto px-5 md:px-16 relative z-10">
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.94fr)_minmax(0,1.06fr)] items-center gap-12 lg:gap-10">
 
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <div>
               <div className="inline-flex items-center gap-2 mb-6 px-[15px] py-[7px] rounded-full bg-teal-500/[0.08] border border-teal-500/[0.22]">
                 <ShoppingCart size={13} className="text-teal-400 shrink-0" />
                 <span className="text-[11.5px] font-extrabold text-teal-300 uppercase tracking-[.22em] whitespace-nowrap">{tSupplier('tagline')}</span>
@@ -646,13 +613,9 @@ export default function BelowFoldSections() {
                   <ChevronRight size={14} className="rtl:rotate-180 opacity-60 shrink-0" />
                 </Link>
               </div>
-            </motion.div>
+            </div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '150px' }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1], delay: 0.06 }}
+            <div
               className="relative flex items-center justify-center min-h-[220px] sm:min-h-[380px] lg:min-h-[560px]"
             >
               <div className="relative w-full max-w-[580px]">
@@ -716,7 +679,7 @@ export default function BelowFoldSections() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </div>
           </div>
         </div>
       </section>
@@ -763,11 +726,7 @@ export default function BelowFoldSections() {
             <div className="hidden md:block absolute top-10 start-[67%] w-[16%] h-px pointer-events-none z-0" style={{ background: 'repeating-linear-gradient(90deg, rgba(56,189,248,0.5) 0px, rgba(56,189,248,0.5) 8px, transparent 8px, transparent 14px)' }} />
 
             {activeSteps.map((s, i) => (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "150px" }}
-                transition={{ duration: 0.35, delay: i * 0.08, ease: "easeOut" }}
+              <div
                 key={i}
                 className="flex flex-row sm:flex-col items-start sm:items-center text-start sm:text-center gap-5 sm:gap-0 sm:space-y-6 group relative"
               >
@@ -784,7 +743,7 @@ export default function BelowFoldSections() {
                   <h3 className="text-base sm:text-xl font-bold text-white group-hover:text-sky-400 transition-colors">{s.title}</h3>
                   <p className="text-slate-400 text-sm leading-relaxed sm:px-4">{s.desc}</p>
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         </div>
@@ -826,41 +785,25 @@ export default function BelowFoldSections() {
         <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-sky-400/50 to-transparent" />
 
         <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '150px' }}
-            transition={{ duration: 0.4 }}
+          <div
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/25 text-sky-400 text-[11px] font-black uppercase tracking-widest mb-7"
           >
             <Zap size={12} />
             {tCTA('setup')}
-          </motion.div>
+          </div>
 
-          <motion.h2
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '150px' }}
-            transition={{ duration: 0.4, delay: 0.06 }}
+          <h2
             className={cn("text-[clamp(32px,6vw,72px)] font-black text-white mb-6", locale === 'ar' ? 'tracking-normal leading-[1.6]' : 'tracking-tight leading-[1.18]')}
             dangerouslySetInnerHTML={{ __html: tCTA.raw('title') }}
           />
 
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '150px' }}
-            transition={{ duration: 0.4, delay: 0.1 }}
+          <p
             className="text-slate-400 max-w-2xl mx-auto text-base md:text-lg leading-relaxed mb-12"
           >
             {tCTA('desc')}
-          </motion.p>
+          </p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '150px' }}
-            transition={{ duration: 0.4, delay: 0.16 }}
+          <div
             className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10"
           >
             <Link href="/register" className="w-full sm:w-auto">
@@ -874,7 +817,7 @@ export default function BelowFoldSections() {
                 {tCTA('contact')}
               </Button>
             </Link>
-          </motion.div>
+          </div>
 
           <div className="flex flex-wrap items-center justify-center gap-5 text-[11px] font-bold text-slate-500">
             <span className="flex items-center gap-1.5"><CheckCircle2 size={13} className="text-sky-400/70" />{tCTA('vision')}</span>
