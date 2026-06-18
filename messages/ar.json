@@ -664,6 +664,7 @@
       "suppliers_rating_count": "({count} تقييم)",
       "suppliers_reviews_title": "تقييمات المورد ({count})",
       "suppliers_no_reviews_registered": "لا توجد تقييمات مسجلة لهذا المورد حتى الآن.",
+      "suppliers_anonymous_reviewer": "مقاول مجهول",
       "supplier_profile_reviews_anonymous_notice": "التقييمات تظهر بشكل مجهول الهوية دون الكشف عن أسماء المقاولين.",
       "files_tab": "المرفقات العامة",
       "security_tab": "الأمان والخصوصية",

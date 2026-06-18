@@ -665,6 +665,7 @@
       "suppliers_rating_count": "({count} review)",
       "suppliers_reviews_title": "Supplier Reviews ({count})",
       "suppliers_no_reviews_registered": "No reviews registered for this supplier yet.",
+      "suppliers_anonymous_reviewer": "Anonymous Contractor",
       "supplier_profile_reviews_anonymous_notice": "Reviews appear anonymously without revealing contractor names.",
       "files_tab": "Public Files",
       "security_tab": "Security & Privacy",

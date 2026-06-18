@@ -443,8 +443,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Block rendering until auth and profile are resolved
-  if (isUserLoading || (user && isProfileLoading)) {
+  // Full-screen block only during the initial Firebase auth check (context persists, so
+  // this is true only once per session — not on every page navigation).
+  if (isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
         <Loader2 className="animate-spin text-primary" size={32} />
@@ -452,7 +453,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // Prevent rendering anything if user is not authenticated and is being redirected
+  // Not authenticated — redirect handled by the useEffect above
   if (!user && pathname !== "/admin/seed") {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
@@ -461,8 +462,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // Prevent rendering if user is authenticated but not an Admin trying to access /admin
-  if (user && pathname.startsWith("/admin") && pathname !== "/admin/seed" && profile?.role !== "Admin") {
+  // Prevent rendering if user is authenticated but not an Admin trying to access /admin.
+  // Gate behind !isProfileLoading so we don't block admin users while their profile loads.
+  if (user && !isProfileLoading && pathname.startsWith("/admin") && pathname !== "/admin/seed" && profile?.role !== "Admin") {
     return (
       <div className="flex flex-col h-screen w-full items-center justify-center bg-slate-50/50 p-6 text-center">
         <ShieldCheck className="h-16 w-16 text-destructive mb-4" />

@@ -65,7 +65,9 @@ export default function AvailableRfqsPage() {
   const [customDeadline, setCustomDeadline] = useState("")
   const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string} | null>(null)
 
-  const hasActiveFilters = searchQuery || deadlineFilter !== "all" || selectedCategory !== "all" || selectedCity !== "all"
+  const [showMobileFilters, setShowMobileFilters] = useState(false)
+  const activeFilterCount = [deadlineFilter !== "all", selectedCategory !== "all", selectedCity !== "all"].filter(Boolean).length
+  const hasActiveFilters = searchQuery || activeFilterCount > 0
   const clearFilters = () => {
     setSearchQuery("")
     setDeadlineFilter("all")
@@ -280,20 +282,45 @@ export default function AvailableRfqsPage() {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("rfqs_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfqs_page_desc")}</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder={t("search_placeholder")} 
-                className="pr-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="flex flex-col gap-2 w-full md:w-auto">
+            {/* Search bar + mobile filter toggle */}
+            <div className="flex gap-2">
+              <div className="relative flex-1 md:w-64">
+                <Search className="absolute end-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder={t("search_placeholder")}
+                  className="pe-10"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              {/* Filter toggle button — mobile only */}
+              <Button
+                variant="outline"
+                onClick={() => setShowMobileFilters(v => !v)}
+                className={cn(
+                  "md:hidden h-10 w-10 rounded-lg p-0 shrink-0 relative",
+                  showMobileFilters && "bg-primary text-white border-primary hover:bg-primary/90 hover:text-white"
+                )}
+                aria-label="filters"
+              >
+                <Filter size={16} />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1.5 -end-1.5 h-4 w-4 rounded-full bg-accent text-white text-[9px] font-black flex items-center justify-center leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
             </div>
-            <div className="flex gap-2 flex-wrap">
+
+            {/* Filter controls — always visible on md+, toggle on mobile */}
+            <div className={cn(
+              "flex-col gap-2 md:flex md:flex-row md:flex-wrap",
+              showMobileFilters ? "flex" : "hidden md:flex"
+            )}>
               {/* Deadline Filter */}
               <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
-                <SelectTrigger className="w-[140px] h-10 text-sm">
+                <SelectTrigger className="w-full md:w-[140px] h-10 text-sm">
                   <SelectValue placeholder={t("deadline_filter")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -304,17 +331,17 @@ export default function AvailableRfqsPage() {
                 </SelectContent>
               </Select>
               {deadlineFilter === "custom" && (
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={customDeadline}
                   onChange={e => setCustomDeadline(e.target.value)}
-                  className="h-10 px-3 rounded-md border border-input bg-white text-sm w-[140px]"
+                  className="h-10 px-3 rounded-md border border-input bg-white text-sm w-full md:w-[140px]"
                 />
               )}
 
               {/* Category Filter */}
               <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="w-[200px] h-10 text-sm">
+                <SelectTrigger className="w-full md:w-[200px] h-10 text-sm">
                   <SelectValue placeholder={t("category")} />
                 </SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
@@ -327,7 +354,7 @@ export default function AvailableRfqsPage() {
 
               {/* City Filter */}
               <Select value={selectedCity} onValueChange={setSelectedCity}>
-                <SelectTrigger className="w-[200px] h-10 text-sm">
+                <SelectTrigger className="w-full md:w-[200px] h-10 text-sm">
                   <SelectValue placeholder={t("city")} />
                 </SelectTrigger>
                 <SelectContent className="max-h-72 overflow-y-auto">
@@ -337,19 +364,20 @@ export default function AvailableRfqsPage() {
                   ))}
                 </SelectContent>
               </Select>
-               {hasActiveFilters && (
-                 <Button 
-                   variant="ghost" 
-                   size="sm" 
-                   onClick={clearFilters}
-                   className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1"
-                 >
-                    <X size={12} />
-                    {t("clear_filters")}
-                 </Button>
-               )}
-             </div>
-           </div>
+
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1 w-full md:w-auto justify-center"
+                >
+                  <X size={12} />
+                  {t("clear_filters")}
+                </Button>
+              )}
+            </div>
+          </div>
          </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
