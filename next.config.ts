@@ -9,6 +9,14 @@ const withNextIntl = createNextIntlPlugin(
 /** @type {import('next').NextConfig} */
 const nextConfig: NextConfig = {
   trailingSlash: false,
+  serverExternalPackages: [
+    'genkit',
+    '@genkit-ai/core',
+    '@genkit-ai/google-genai',
+    'genkit-cli',
+    '@opentelemetry/sdk-node',
+    '@opentelemetry/exporter-jaeger',
+  ],
   async headers() {
     return [
       {
