@@ -662,6 +662,8 @@
       "supplier_profile_tab_reviews": "التقييمات ({count})",
       "supplier_my_rating_label": "تقييمك كمورد",
       "suppliers_rating_count": "({count} تقييم)",
+      "suppliers_reviews_title": "تقييمات المورد ({count})",
+      "suppliers_no_reviews_registered": "لا توجد تقييمات مسجلة لهذا المورد حتى الآن.",
       "supplier_profile_reviews_anonymous_notice": "التقييمات تظهر بشكل مجهول الهوية دون الكشف عن أسماء المقاولين.",
       "files_tab": "المرفقات العامة",
       "security_tab": "الأمان والخصوصية",
