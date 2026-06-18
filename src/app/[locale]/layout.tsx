@@ -18,7 +18,6 @@ const notoSansArabic = Noto_Sans_Arabic({
 const inter = Inter({
   subsets: ['latin'],
   display: 'swap',
-  preload: false,
   variable: '--font-inter',
 });
 
@@ -105,7 +104,7 @@ export default async function RootLayout({
   return (
     <html lang={locale} dir={locale === 'ar' ? 'rtl' : 'ltr'} suppressHydrationWarning>
       <body
-        className={`${locale === 'ar' ? notoSansArabic.variable : inter.variable} ${notoNaskhArabic.variable} font-body antialiased bg-background text-foreground overflow-x-hidden`}
+        className={`${locale === 'ar' ? notoSansArabic.variable : inter.variable} ${notoNaskhArabic.variable} font-body antialiased text-foreground overflow-x-hidden`}
         suppressHydrationWarning
       >
         <NextIntlClientProvider messages={messages}>

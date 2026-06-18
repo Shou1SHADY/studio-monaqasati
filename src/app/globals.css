@@ -73,7 +73,8 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background-color: #020617;
     font-feature-settings: "rlig" 1, "calt" 1;
     overflow-x: hidden;
   }
@@ -88,6 +89,11 @@
       -ms-overflow-style: none;
       scrollbar-width: none;
     }
+  }
+
+  /* Prevent white flash during fast scroll — landing page is dark-themed */
+  html {
+    background-color: #020617;
   }
 
   /* On desktop, reserve scrollbar space so content doesn't shift */

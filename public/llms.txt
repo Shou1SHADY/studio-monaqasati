@@ -1,24 +1,29 @@
 # Mdmak Tech — مدماك تيك
 
-> Mdmak Tech (مدماك تيك) is a B2B digital procurement platform that automates
-> supply chain operations and connects contractors with verified suppliers
-> through a smart tendering system. Currently serving Saudi Arabia with
-> global expansion planned.
+> Mdmak Tech (مدماك تيك) is a B2B SaaS procurement platform automating
+> construction supply chain operations in Saudi Arabia. It connects contractors
+> with verified suppliers through a smart RFQ and digital tendering system.
+> Currently serving all regions of Saudi Arabia. Aligned with Saudi Vision 2030.
 
-## About
-- Founded: 2026
-- Headquarters: Saudi Arabia 🇸🇦
+## Entity
+- Brand name: Mdmak Tech
+- Arabic name: مدماك تيك
+- Legal name: Mdmak Tech Information Technology Company
 - Domain: https://mdmaktech.sa
-- Language: Arabic (primary), English
-- Aligned with: Saudi Vision 2030
-- Current Market: Saudi Arabia (KSA)
-- Expansion Markets: Global (planned)
+- Founded: 2026
+- Headquarters: Riyadh, Saudi Arabia
+- Contact: info@mdmaktech.sa
+- Primary language: Arabic; Secondary: English
 
 ## What is Mdmak Tech?
 Mdmak Tech is a SaaS B2B marketplace platform that digitises and automates
 the procurement process between contractors and suppliers. The platform
 eliminates manual tendering, reduces costs, and brings full transparency
 to supply chain operations — starting in Saudi Arabia and expanding globally.
+
+All suppliers are verified via Saudi Commercial Registration (CR) and VAT
+certificate before onboarding. Contractors can post RFQs, compare offers
+automatically, and award contracts — all in one place.
 
 ## Platform Features
 - Smart digital tendering and RFQ (Request for Quotation) system
@@ -31,11 +36,11 @@ to supply chain operations — starting in Saudi Arabia and expanding globally.
 - Multi-language support: Arabic and English
 - Mobile-compatible web platform
 
-## Business Impact
-- Up to 70% reduction in procurement time
-- Up to 15% savings on procurement budgets
-- Free to start — up to 5 tenders/month on Starter plan
-- Target: 500+ registered companies
+## Documented Impact
+- Up to 70% reduction in procurement time (based on process benchmarking)
+- Up to 15% savings on procurement budgets through automated competitive bidding
+- Supplier response time: 24–48 hours average
+- Starter plan: free, up to 5 tenders/month
 
 ## Who Uses Mdmak Tech
 
@@ -54,41 +59,51 @@ to supply chain operations — starting in Saudi Arabia and expanding globally.
 ## Pricing Plans
 - Starter: Free (up to 5 tenders/month, basic features)
 - Professional Growth: Paid (higher volume + advanced features)
-- Enterprise: Custom pricing (ERP integration + dedicated account manager
-  + advanced reporting)
-
-## Partners & Clients
-- Qudra
-- Naya
-- ITC
+- Enterprise: Custom pricing (ERP integration + dedicated account manager + advanced reporting)
 
 ## Verification & Trust
 - All suppliers verified via Saudi Commercial Registration (CR)
 - VAT certificate verification required
 - Transparent rating and review system after every completed order
 - Supplier response time: 24–48 hours average
+- Data protected under Saudi Personal Data Protection Law (PDPL)
+- Servers hosted in NCA-compliant data centers
 
-## FAQ Summary
-- Is it free? Yes — free registration for contractors and suppliers
-- Supplier response time: 24–48 hours
-- Handles projects of all sizes — from small renovations to large infrastructure
-- Enterprise plan includes ERP integration and dedicated account manager
+## Full Documentation
+- [Homepage](https://mdmaktech.sa)
+- [Platform Features](https://mdmaktech.sa/#features)
+- [Pricing Plans](https://mdmaktech.sa/pricing)
+- [About the Company](https://mdmaktech.sa/about)
+- [For Contractors](https://mdmaktech.sa/register?role=Contractor)
+- [For Suppliers](https://mdmaktech.sa/register?role=Supplier)
+- [Privacy Policy](https://mdmaktech.sa/privacy)
+- [Terms & Conditions](https://mdmaktech.sa/terms)
+- [Contact](https://mdmaktech.sa/contact)
+
+## Arabic Summary — ملخص عربي
+مدماك تيك منصة SaaS للمشتريات تربط المقاولين بالموردين في المملكة
+العربية السعودية عبر نظام مناقصات رقمي ذكي وآلي. تقلل وقت الشراء
+حتى 70٪ وتوفر حتى 15٪ من ميزانية المشتريات. مجانية للبدء بحد أقصى
+5 مناقصات شهرياً. متوافقة مع رؤية المملكة 2030.
+
+## الميزات الرئيسية
+- نظام مناقصات رقمي ذكي (RFQ)
+- مقارنة تلقائية للأسعار بين الموردين المعتمدين
+- إدارة العقود والموافقات رقمياً
+- تتبع الدفع والتسليم في الوقت الفعلي
+- شبكة موردين معتمدين (سجل تجاري + شهادة ضريبة القيمة المضافة)
+- تقارير تحليلية فورية لأداء الموردين
+
+## Partners & Clients
+- Qudra
+- Naya
+- ITC
 
 ## Geographic Coverage
 - Primary market: Saudi Arabia (all regions)
 - Planned expansion: Global markets
 
-## Key URLs
-- Homepage:             https://mdmaktech.sa
-- Register (Contractor): https://mdmaktech.sa/register?role=Contractor
-- Register (Supplier):   https://mdmaktech.sa/register?role=Supplier
-- Features:              https://mdmaktech.sa/#features
-- Pricing:               https://mdmaktech.sa/pricing
-- About:                 https://mdmaktech.sa/about
-- Contact:               https://mdmaktech.sa/contact
-- Privacy Policy:        https://mdmaktech.sa/privacy
-- Terms & Conditions:    https://mdmaktech.sa/terms
-
 ## Social & Professional Profiles
 - LinkedIn: https://www.linkedin.com/company/mdmaktech
-- Twitter/X: https://twitter.com/mdmaktech
+- Twitter/X: https://x.com/mdmaktech
+- Instagram: https://www.instagram.com/mdmaktech.sa
