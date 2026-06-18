@@ -662,6 +662,7 @@
       "portfolio_tab": "Portfolio",
       "supplier_profile_tab_reviews": "Reviews ({count})",
       "supplier_my_rating_label": "Your Rating",
+      "suppliers_rating_count": "({count} review)",
       "supplier_profile_reviews_anonymous_notice": "Reviews appear anonymously without revealing contractor names.",
       "files_tab": "Public Files",
       "security_tab": "Security & Privacy",
