@@ -201,14 +201,6 @@ export default function SupplierProfilePage() {
   
   const { data: citiesFromDB, isLoading: isCitiesLoading } = useCollection(citiesQuery)
   
-  // Debug log
-  console.log("Cities Status:", { 
-    loading: isCitiesLoading, 
-    fromDB: citiesFromDB, 
-    fromDBLength: citiesFromDB?.length, 
-    fallbackLength: SAUDI_CITIES.length 
-  })
-  
   const cities = SAUDI_CITIES
 
   // Sync with user data

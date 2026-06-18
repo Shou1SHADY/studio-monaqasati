@@ -352,7 +352,6 @@ export default function LoginPage() {
         try {
           await updateDoc(doc(firestore, "users", user.uid), { role: "Admin" })
           role = "Admin"
-          console.log("Successfully promoted to Admin automatically.")
         } catch (e) {
           console.error("Failed to promote to Admin:", e)
         }
