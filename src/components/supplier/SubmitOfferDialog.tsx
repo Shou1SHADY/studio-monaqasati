@@ -86,6 +86,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setOfferPdfFile(null)
     setOfferPdfUrl(null)
     setSupplierWebsite(profile?.website || "")
+    setIsSubmitting(false)
     if (offerPdfInputRef.current) offerPdfInputRef.current.value = ""
   }
 
@@ -259,6 +260,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     } catch (error) {
       console.error(error);
       toast({ title: t("offer_error"), description: t("offer_submit_failed"), variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -266,7 +269,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     <>
       <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
         <DialogContent
-          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0"
+          className="w-[calc(100vw-2rem)] sm:w-full sm:max-w-lg text-right rounded-2xl p-0 overflow-hidden max-h-[92dvh] flex flex-col gap-0 [&>button:last-child]:left-4 [&>button:last-child]:right-auto"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
           aria-describedby={undefined}
         >
