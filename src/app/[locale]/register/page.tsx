@@ -115,21 +115,28 @@ export default function RegisterPage() {
         role = inviteData.role || formData.role
       }
 
-      await setDoc(doc(firestore, "users", user.uid), {
-        id: user.uid,
-        name: formData.name,
-        email: emailLower,
-        phone: formData.phone,
-        role: role,
-        organizationId: organizationId,
-        organizationRole: organizationRole,
-        specializations: role === "Supplier" ? formData.specializations : [],
-        providers: ["password"] as string[],
-        isVerified: false,
-        profileCompleted: false,
-        joinedAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-      })
+      // Atomic: if the Firestore write fails, delete the Auth user so no
+      // orphaned account is left that can neither log in nor re-register.
+      try {
+        await setDoc(doc(firestore, "users", user.uid), {
+          id: user.uid,
+          name: formData.name,
+          email: emailLower,
+          phone: formData.phone,
+          role: role,
+          organizationId: organizationId,
+          organizationRole: organizationRole,
+          specializations: role === "Supplier" ? formData.specializations : [],
+          providers: ["password"] as string[],
+          isVerified: false,
+          profileCompleted: false,
+          joinedAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+        })
+      } catch (firestoreError) {
+        await user.delete().catch(() => {})
+        throw firestoreError
+      }
 
       if (inviteSnap.exists()) {
         await deleteDoc(inviteRef)
@@ -168,13 +175,9 @@ export default function RegisterPage() {
       const userDocSnap = await getDoc(userDocRef)
 
       if (userDocSnap.exists()) {
-        toast({
-          title: t("welcome_back"),
-          description: t("welcome_back_desc"),
-        })
-        const existingData = userDocSnap.data()
-        if (existingData.role === "Contractor") router.push("/contractor")
-        else router.push("/supplier")
+        // Registration is explicit — do not silently log in an existing user.
+        await auth.signOut()
+        setRegisterError(t("err_already_registered"))
         return
       }
 
@@ -194,21 +197,28 @@ export default function RegisterPage() {
         role = inviteData.role || formData.role
       }
 
-      await setDoc(userDocRef, {
-        id: user.uid,
-        name: formData.name || user.displayName || "مستخدم جديد",
-        email: emailLower,
-        phone: formData.phone || "",
-        role: role,
-        organizationId: organizationId,
-        organizationRole: organizationRole,
-        specializations: role === "Supplier" ? formData.specializations : [],
-        providers: ["google.com"] as string[],
-        isVerified: false,
-        profileCompleted: false,
-        joinedAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-      })
+      // Atomic: if the Firestore write fails, delete the Auth user so no
+      // orphaned account is left that can neither log in nor re-register.
+      try {
+        await setDoc(userDocRef, {
+          id: user.uid,
+          name: formData.name || user.displayName || "مستخدم جديد",
+          email: emailLower,
+          phone: formData.phone || "",
+          role: role,
+          organizationId: organizationId,
+          organizationRole: organizationRole,
+          specializations: role === "Supplier" ? formData.specializations : [],
+          providers: ["google.com"] as string[],
+          isVerified: false,
+          profileCompleted: false,
+          joinedAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+        })
+      } catch (firestoreError) {
+        await user.delete().catch(() => {})
+        throw firestoreError
+      }
 
       if (inviteSnap.exists()) {
         await deleteDoc(inviteRef)
