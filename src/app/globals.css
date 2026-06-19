@@ -213,9 +213,9 @@ html {
 /* Custom scrollbar — desktop only */
 @media (min-width: 768px) {
   ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-track { background: #020617; }
-  ::-webkit-scrollbar-thumb { background: #1A1D26; border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: #2A2D36; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: #475569; }
 }
 
 /* Utility: hide scrollbar visually while keeping scroll functionality.
