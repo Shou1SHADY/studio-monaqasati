@@ -4,7 +4,7 @@ import { Ratelimit } from "@upstash/ratelimit"
 import { Redis } from "@upstash/redis"
 
 // Adjust these two constants to tune the rate limit.
-const RATE_LIMIT_REQUESTS = 5
+const RATE_LIMIT_REQUESTS = 20
 const RATE_LIMIT_WINDOW = "60 s"
 
 // Lazy singleton — created once, reused across invocations in the same worker.
