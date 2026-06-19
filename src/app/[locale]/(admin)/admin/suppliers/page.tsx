@@ -39,9 +39,6 @@ import { useTranslations, useLocale } from 'next-intl'
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
   vat: "شهادة ضريبة القيمة المضافة (VAT)",
-  zakat: "شهادة الزكاة",
-  gosi: "شهادة التأمينات الاجتماعية (GOSI)",
-  chamber: "عضوية الغرفة التجارية",
 }
 
 export default function AdminSuppliersPage() {
@@ -50,9 +47,6 @@ export default function AdminSuppliersPage() {
   const docLabels: Record<string, string> = {
     cr: t("doc_cr"),
     vat: t("doc_vat"),
-    zakat: t("doc_zakat"),
-    gosi: t("doc_gosi"),
-    chamber: t("doc_chamber"),
   }
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()

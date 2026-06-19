@@ -694,9 +694,6 @@
       "legal_docs_desc": "الوثائق المطلوبة للتحقق من هوية المنشأة",
       "cr_doc": "السجل التجاري",
       "vat_doc": "شهادة ضريبة القيمة المضافة",
-      "zakat_doc": "شهادة الزكاة",
-      "gosi_doc": "شهادة التأمينات الاجتماعية (GOSI)",
-      "chamber_doc": "شهادة الغرفة التجارية",
       "expiry_date": "تاريخ الانتهاء",
       "expired_status": "منتهي",
       "valid_status": "ساري",
@@ -1428,9 +1425,6 @@
       "profile_legal_desc": "الوثائق المطلوبة للتحقق من هوية المقاول",
       "profile_doc_cr": "السجل التجاري",
       "profile_doc_vat": "شهادة ضريبة القيمة المضافة",
-      "profile_doc_zakat": "شهادة الزكاة",
-      "profile_doc_gosi": "شهادة التأمينات الاجتماعية (GOSI)",
-      "profile_doc_chamber": "شهادة الغرفة التجارية",
       "profile_expiry": "تاريخ الانتهاء",
       "profile_expired": "منتهي",
       "profile_valid": "ساري",
@@ -1602,10 +1596,7 @@
         "pdf_badge": "{count} ملف PDF",
         "certs_badge": "شهادات",
         "doc_cr": "السجل التجاري (CR)",
-        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)",
-        "doc_zakat": "شهادة الزكاة",
-        "doc_gosi": "شهادة التأمينات الاجتماعية (GOSI)",
-        "doc_chamber": "عضوية الغرفة التجارية"
+        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)"
       },
       "Contractors": {
         "page_title": "إدارة المقاولين",
@@ -1661,10 +1652,7 @@
         "not_verified_label": "غير موثق",
         "pdf_badge": "{count} ملف PDF",
         "doc_cr": "السجل التجاري (CR)",
-        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)",
-        "doc_zakat": "شهادة الزكاة",
-        "doc_gosi": "شهادة التأمينات الاجتماعية (GOSI)",
-        "doc_chamber": "عضوية الغرفة التجارية"
+        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)"
       },
       "Rfqs": {
         "page_title": "إدارة المناقصات",

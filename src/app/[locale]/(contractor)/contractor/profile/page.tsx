@@ -92,9 +92,6 @@ export default function ContractorProfilePage() {
     legalDocuments: {
       cr: { url: "", expiryDate: "" },
       vat: { url: "", expiryDate: "" },
-      zakat: { url: "", expiryDate: "" },
-      gosi: { url: "", expiryDate: "" },
-      chamber: { url: "", expiryDate: "" },
     },
     twoFactorEnabled: false,
     isVerified: false
@@ -126,9 +123,6 @@ export default function ContractorProfilePage() {
         legalDocuments: userData.legalDocuments || {
           cr: { url: "", expiryDate: "" },
           vat: { url: "", expiryDate: "" },
-          zakat: { url: "", expiryDate: "" },
-          gosi: { url: "", expiryDate: "" },
-          chamber: { url: "", expiryDate: "" },
         },
         twoFactorEnabled: userData.twoFactorEnabled || false
       }))
@@ -624,10 +618,7 @@ export default function ContractorProfilePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {[
                     { id: 'cr', label: t("profile_doc_cr"), icon: Building2 },
-                    { id: 'vat', label: t("profile_doc_vat"), icon: FileCheck },
-                    { id: 'zakat', label: t("profile_doc_zakat"), icon: ShieldCheck },
-                    { id: 'gosi', label: t("profile_doc_gosi"), icon: CheckCircle2 },
-                    { id: 'chamber', label: t("profile_doc_chamber"), icon: Building2 }
+                    { id: 'vat', label: t("profile_doc_vat"), icon: FileCheck }
                   ].map((doc) => {
                     const data = profile.legalDocuments[doc.id as keyof typeof profile.legalDocuments]
                     return (

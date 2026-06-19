@@ -81,6 +81,19 @@ export default function ContractorNotificationsPage() {
 
   const { data: userNotifications, isLoading: userNotifsLoading, error: notifsError } = useCollection(userNotificationsQuery)
 
+  // Lookup map: rfqId → notification {id, read} for new_offer type
+  // Enables bidirectional read-state sync with the mobile app, which tracks read
+  // via the `read` field on users/{uid}/notifications docs (not contractorReadAt on offers)
+  const newOfferNotifByRfqId = React.useMemo(() => {
+    const map: Record<string, { id: string; read: boolean }> = {}
+    if (userNotifications) {
+      ;(userNotifications as any[])
+        .filter((n) => n.type === "new_offer" && n.rfqId)
+        .forEach((n) => { map[n.rfqId] = { id: n.id, read: !!n.read } })
+    }
+    return map
+  }, [userNotifications])
+
   const isLoading = rfqsLoading || offersLoading || userNotifsLoading
 
   useEffect(() => {
@@ -136,12 +149,20 @@ export default function ContractorNotificationsPage() {
     )
   }, [offers, userNotifications])
 
-  const markAsRead = async (offerId: string) => {
-    if (!firestore) return
+  const markAsRead = async (offerId: string, rfqId?: string) => {
+    if (!firestore || !user) return
     try {
       await updateDoc(doc(firestore, "offers", offerId), {
         contractorReadAt: new Date().toISOString()
       })
+      // Also mark the corresponding notification as read so the mobile app
+      // sees the updated state immediately via its onSnapshot listener
+      const notif = rfqId ? newOfferNotifByRfqId[rfqId] : undefined
+      if (notif?.id) {
+        await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), {
+          read: true
+        })
+      }
     } catch {
       // non-critical, silently fail
     }
@@ -230,11 +251,15 @@ export default function ContractorNotificationsPage() {
               if (notif.type === "offer") {
                 const offer = notif
                 const relatedRfq = rfqs?.find((r: any) => r.id === offer.rfqId)
-                const isUnread = offer.status === "قيد المراجعة" && !offer.contractorReadAt
+                // Use notification's `read` field when available — syncs with mobile app.
+                // Falls back to contractorReadAt for offers without a corresponding notification.
+                const notifForOffer = newOfferNotifByRfqId[offer.rfqId]
+                const isUnread = offer.status === "قيد المراجعة" &&
+                  (notifForOffer ? !notifForOffer.read : !offer.contractorReadAt)
                 return (
                   <Card
                     key={offer.id}
-                    onClick={() => isUnread && markAsRead(offer.id)}
+                    onClick={() => isUnread && markAsRead(offer.id, offer.rfqId)}
                     className={`transition-shadow border-none cursor-pointer ${
                       isUnread
                         ? "bg-white shadow-sm ring-1 ring-primary/10 hover:shadow-md"
@@ -264,7 +289,7 @@ export default function ContractorNotificationsPage() {
                       {offer.status === "قيد المراجعة" && (
                         <Link
                           href={`/contractor/rfqs/${offer.rfqId}/offers`}
-                          onClick={(e) => { e.stopPropagation(); markAsRead(offer.id) }}
+                          onClick={(e) => { e.stopPropagation(); markAsRead(offer.id, offer.rfqId) }}
                         >
                           <Button size="sm" className="gap-1 rounded-full shrink-0">
                             <Eye size={14} />

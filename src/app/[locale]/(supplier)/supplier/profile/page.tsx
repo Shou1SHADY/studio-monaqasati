@@ -148,9 +148,6 @@ export default function SupplierProfilePage() {
     legalDocuments: {
       cr: { url: "", expiryDate: "" },
       vat: { url: "", expiryDate: "" },
-      zakat: { url: "", expiryDate: "" },
-      gosi: { url: "", expiryDate: "" },
-      chamber: { url: "", expiryDate: "" },
     },
     twoFactorEnabled: false
   })
@@ -236,9 +233,6 @@ export default function SupplierProfilePage() {
         legalDocuments: userData.legalDocuments || {
           cr: { url: "", expiryDate: "" },
           vat: { url: "", expiryDate: "" },
-          zakat: { url: "", expiryDate: "" },
-          gosi: { url: "", expiryDate: "" },
-          chamber: { url: "", expiryDate: "" },
         },
         twoFactorEnabled: userData.twoFactorEnabled || false
       }))
@@ -1172,10 +1166,7 @@ export default function SupplierProfilePage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {[
                         { id: 'cr', label: t("cr_doc"), icon: FileText },
-                        { id: 'vat', label: t("vat_doc"), icon: Award },
-                        { id: 'zakat', label: t("zakat_doc"), icon: ShieldCheck },
-                        { id: 'gosi', label: t("gosi_doc"), icon: CheckCircle2 },
-                        { id: 'chamber', label: t("chamber_doc"), icon: Building2 }
+                        { id: 'vat', label: t("vat_doc"), icon: Award }
                       ].map((doc) => {
                         const data = profile.legalDocuments[doc.id as keyof typeof profile.legalDocuments]
                         return (

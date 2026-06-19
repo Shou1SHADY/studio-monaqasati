@@ -695,9 +695,6 @@
       "legal_docs_desc": "Required documents for entity verification",
       "cr_doc": "Commercial Registration",
       "vat_doc": "VAT Certificate",
-      "zakat_doc": "Zakat Certificate",
-      "gosi_doc": "Social Insurance Certificate (GOSI)",
-      "chamber_doc": "Chamber of Commerce Certificate",
       "expiry_date": "Expiry Date",
       "expired_status": "Expired",
       "valid_status": "Valid",
@@ -1428,9 +1425,6 @@
       "profile_legal_desc": "Documents required to verify the contractor's identity",
       "profile_doc_cr": "Commercial Registration",
       "profile_doc_vat": "VAT Certificate",
-      "profile_doc_zakat": "Zakat Certificate",
-      "profile_doc_gosi": "GOSI Certificate",
-      "profile_doc_chamber": "Chamber of Commerce Certificate",
       "profile_expiry": "Expiry Date",
       "profile_expired": "Expired",
       "profile_valid": "Valid",
@@ -1602,10 +1596,7 @@
         "pdf_badge": "{count} PDF file",
         "certs_badge": "Certificates",
         "doc_cr": "Commercial Registration (CR)",
-        "doc_vat": "VAT Certificate",
-        "doc_zakat": "Zakat Certificate",
-        "doc_gosi": "Social Insurance (GOSI)",
-        "doc_chamber": "Chamber of Commerce"
+        "doc_vat": "VAT Certificate"
       },
       "Contractors": {
         "page_title": "Manage Contractors",
@@ -1661,10 +1652,7 @@
         "not_verified_label": "Not Verified",
         "pdf_badge": "{count} PDF file",
         "doc_cr": "Commercial Registration (CR)",
-        "doc_vat": "VAT Certificate",
-        "doc_zakat": "Zakat Certificate",
-        "doc_gosi": "Social Insurance (GOSI)",
-        "doc_chamber": "Chamber of Commerce"
+        "doc_vat": "VAT Certificate"
       },
       "Rfqs": {
         "page_title": "Manage Tenders",

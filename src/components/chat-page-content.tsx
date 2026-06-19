@@ -11,8 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Send, Loader2, MessageSquare, Shield, Clock, User } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import {
-  doc, getDoc, setDoc, collection, addDoc, updateDoc, increment,
-  query, orderBy
+  doc, getDoc, setDoc, collection, addDoc, updateDoc, getDocs, increment,
+  query, orderBy, where, writeBatch
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
@@ -92,7 +92,8 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Mark chat as read when opened
+  // Mark chat as read when opened — updates both the chat doc (for web badge)
+  // and the notification docs (for mobile unread count)
   useEffect(() => {
     if (!firestore || !chatId || !user || metaLoading || !chatMeta) return
     const unreadFor: string[] = chatMeta.unreadFor || []
@@ -100,6 +101,17 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
       updateDoc(doc(firestore, "chats", chatId), {
         unreadFor: unreadFor.filter((uid: string) => uid !== user.uid),
         [`unreadCounts.${user.uid}`]: 0
+      }).catch(() => { })
+
+      getDocs(query(
+        collection(firestore, "users", user.uid, "notifications"),
+        where("chatId", "==", chatId),
+        where("read", "==", false)
+      )).then((snap) => {
+        if (snap.empty) return
+        const batch = writeBatch(firestore)
+        snap.docs.forEach((d) => batch.update(d.ref, { read: true }))
+        return batch.commit()
       }).catch(() => { })
     }
   }, [firestore, chatId, user, chatMeta, metaLoading])
