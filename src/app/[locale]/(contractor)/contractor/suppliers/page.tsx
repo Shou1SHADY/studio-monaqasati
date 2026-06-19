@@ -61,7 +61,7 @@ export default function SuppliersDirectory() {
   const [showFilters, setShowFilters] = useState(false)
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
+    return doc(firestore, "users", user!.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
 
@@ -75,7 +75,7 @@ export default function SuppliersDirectory() {
   // Fetch contractor's RFQs
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
+    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user!.uid))
   }, [firestore, user, isUserLoading, profile?.organizationId])
   
   const { data: myRfqs } = useCollection(rfqsQuery)
@@ -134,7 +134,7 @@ export default function SuppliersDirectory() {
     if (!userDocRef || !profile) return;
     const isExplicit = explicitFavoriteIds.includes(supplierId);
     try {
-      await updateDoc(userDocRef, {
+      await updateDoc(userDocRef!, {
         favoriteSuppliers: isExplicit ? arrayRemove(supplierId) : arrayUnion(supplierId)
       });
       toast({
@@ -162,7 +162,7 @@ export default function SuppliersDirectory() {
     fbSuppliers?.flatMap((s: any) => s.specializations || []).filter(Boolean) || []
   )].sort()
 
-  const displaySuppliers = fbSuppliers?.length ? fbSuppliers
+  const displaySuppliers = (fbSuppliers?.length ?? 0) > 0 ? fbSuppliers!
     .map((s: any) => ({
       ...s,
       id: s.id,
@@ -572,9 +572,9 @@ export default function SuppliersDirectory() {
                   <Star size={18} className="text-amber-400 fill-amber-400" />
                   {t("suppliers_reviews_title", { count: supplierReviews?.length || 0 })}
                 </h4>
-                {supplierReviews && supplierReviews.length > 0 ? (
+                {(supplierReviews?.length ?? 0) > 0 ? (
                   <div className="grid gap-3">
-                    {supplierReviews.map((review: any) => (
+                    {supplierReviews!.map((review: any) => (
                       <div key={review.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <p className="font-bold text-sm text-slate-800">{t("suppliers_anonymous_reviewer")}</p>
