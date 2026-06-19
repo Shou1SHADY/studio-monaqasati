@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle, Check } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
@@ -443,6 +443,53 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const [selectedNotifIds, setSelectedNotifIds] = React.useState<Set<string>>(new Set())
+
+  const toggleNotifSelection = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    setSelectedNotifIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const handleBatchMarkRead = async (read: boolean) => {
+    if (!firestore || !user) return
+    const now = new Date().toISOString()
+    const selected = notifications.filter((n: any) => selectedNotifIds.has(n.id))
+    await Promise.all(selected.map(async (notif: any) => {
+      try {
+        if (notif.type === "new_rfq") {
+          if (read) {
+            markRfqAsRead(notif.id)
+          } else {
+            const updated = readRfqIds.filter((id: string) => id !== notif.id)
+            setReadRfqIds(updated)
+            localStorage.setItem("readRfqIds", JSON.stringify(updated))
+            window.dispatchEvent(new Event('readRfqIdsUpdated'))
+          }
+        } else if (notif.isSubcollection) {
+          await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), {
+            read,
+            readAt: read ? now : null,
+          })
+        } else if (notif.type === "new_offer") {
+          await updateDoc(doc(firestore, "offers", notif.id), {
+            contractorReadAt: read ? now : null,
+          })
+        } else if (notif.type === "offer_update") {
+          await updateDoc(doc(firestore, "offers", notif.id), {
+            readAt: read ? now : null,
+          })
+        }
+      } catch {
+        // ignore individual errors
+      }
+    }))
+    setSelectedNotifIds(new Set())
+  }
+
   // Full-screen block only during the initial Firebase auth check (context persists, so
   // this is true only once per session — not on every page navigation).
   if (isUserLoading) {
@@ -509,7 +556,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
           <div className={cn("flex items-center gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <LanguageSwitcher />
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => { if (!open) setSelectedNotifIds(new Set()) }}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative text-muted-foreground overflow-visible focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
                   <Bell size={20} />
@@ -522,12 +569,40 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-80 p-0" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b">
-                  <span className="font-bold text-sm">{t("notifications")}</span>
-                  {unreadCount > 0 && (
-                    <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full font-medium">
-                      {t("new_count", { count: unreadCount })}
-                    </span>
+                <div className="flex items-center justify-between px-4 py-3 border-b min-h-[48px]">
+                  {selectedNotifIds.size > 0 ? (
+                    <>
+                      <span className="text-xs font-bold text-foreground">
+                        {selectedNotifIds.size} {locale === 'ar' ? 'محدد' : 'selected'}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {notifications.some((n: any) => selectedNotifIds.has(n.id) && isNotifUnread(n)) && (
+                          <button
+                            onClick={() => handleBatchMarkRead(true)}
+                            className="text-[11px] font-bold text-primary hover:text-primary/80 px-2 py-1 rounded-md hover:bg-primary/5 transition-colors"
+                          >
+                            {locale === 'ar' ? `تحديد كمقروء (${selectedNotifIds.size})` : `Mark ${selectedNotifIds.size} as read`}
+                          </button>
+                        )}
+                        {notifications.some((n: any) => selectedNotifIds.has(n.id) && !isNotifUnread(n)) && (
+                          <button
+                            onClick={() => handleBatchMarkRead(false)}
+                            className="text-[11px] font-bold text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-muted transition-colors"
+                          >
+                            {locale === 'ar' ? 'تحديد كغير مقروء' : 'Mark as unread'}
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-sm">{t("notifications")}</span>
+                      {unreadCount > 0 && (
+                        <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full font-medium">
+                          {t("new_count", { count: unreadCount })}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -562,12 +637,28 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       return (
                         <div
                           key={notif.id}
-                          onClick={() => handleNotificationClick(notif)}
+                          onClick={(e) => selectedNotifIds.size > 0 ? toggleNotifSelection(e, notif.id) : handleNotificationClick(notif)}
                           className={`flex items-start gap-3 px-4 py-3 hover:bg-muted transition-colors cursor-pointer select-none ${
                             isUnread ? "bg-amber-50/40" : ""
                           }`}
                         >
-                          <div className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                          <div
+                            onClick={(e) => toggleNotifSelection(e, notif.id)}
+                            className="shrink-0 h-8 w-8 flex items-center justify-center cursor-pointer"
+                          >
+                            <div
+                              style={{ borderRadius: '3px', flexShrink: 0 }}
+                              className={cn(
+                                "h-4 w-4 border-2 flex items-center justify-center transition-colors",
+                                selectedNotifIds.has(notif.id)
+                                  ? "bg-primary border-primary"
+                                  : "border-slate-300 bg-white"
+                              )}
+                            >
+                              {selectedNotifIds.has(notif.id) && <Check size={10} className="text-white" strokeWidth={3} />}
+                            </div>
+                          </div>
+                          <div style={{ borderRadius: '4px', flexShrink: 0 }} className={`h-8 w-8 flex items-center justify-center mt-0.5 ${
                             isSampleReceived ? "bg-success/10 text-success" :
                             isSampleRequest ? "bg-blue-100 text-blue-600" :
                             isPending ? "bg-amber-100 text-amber-600" :
@@ -635,7 +726,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                         : router.push(`/${basePath}/notifications`)}
                       className="flex items-center gap-3 px-4 py-3 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer select-none"
                     >
-                      <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      <div style={{ borderRadius: '4px', flexShrink: 0 }} className="h-8 w-8 bg-primary/10 text-primary flex items-center justify-center">
                         <MessageSquare size={14} />
                       </div>
                       <div className="flex-1 min-w-0">
