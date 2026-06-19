@@ -140,8 +140,8 @@ export default function HomeContent() {
           <div className="max-w-2xl space-y-6">
 
             <h1 className={`text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col ${locale === 'ar' ? 'gap-0 md:gap-0 !leading-[1.4]' : 'gap-0 md:gap-1 !leading-[1.2]'}`}>
-              <span className="whitespace-normal sm:whitespace-nowrap">{tHero('slide1_title')}</span>
-              <span className={`text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 whitespace-normal sm:whitespace-nowrap ${locale === 'ar' ? '' : 'pb-2 md:pb-3'}`}>
+              <span>{tHero('slide1_title')}</span>
+              <span className={`text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 ${locale === 'ar' ? '' : 'pb-2 md:pb-3'}`}>
                 {tHero('slide1_accent')}
               </span>
             </h1>
