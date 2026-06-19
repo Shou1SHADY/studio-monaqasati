@@ -115,6 +115,14 @@ export default function SupplierProfilePage() {
   const t = useTranslations("Portal.Supplier")
   const locale = useLocale()
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const showTour = searchParams.get('tour') === 'true'
+  const [activeTab, setActiveTab] = useState("basic")
+  const [tourActive, setTourActive] = useState(() => {
+    if (showTour) return true
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('supplier_profile_tour_seen') !== 'true'
+  })
   const [isGenerating, setIsGenerating] = useState(false)
   const [showCertForm, setShowCertForm] = useState(false)
   const [showProjectForm, setShowProjectForm] = useState(false)
@@ -230,6 +238,65 @@ export default function SupplierProfilePage() {
       }))
     }
   }, [userData, user])
+
+  const tourSteps = [
+    {
+      targetId: "tour-step-company-name",
+      title: locale === 'ar' ? "اسم الشركة" : "Company Name",
+      description: locale === 'ar'
+        ? "أدخل الاسم الرسمي لشركتك كما هو مسجل في السجل التجاري."
+        : "Enter your company's official name as registered in the Commercial Registration.",
+    },
+    {
+      targetId: "tour-step-phone",
+      title: locale === 'ar' ? "رقم الهاتف" : "Phone Number",
+      description: locale === 'ar'
+        ? "أضف رقم هاتفك للتواصل. نوصي بإضافة رقم جوال سعودي بصيغة +966."
+        : "Add your contact phone number. We recommend using a Saudi mobile number (+966).",
+    },
+    {
+      targetId: "tour-step-cr",
+      title: locale === 'ar' ? "السجل التجاري" : "Commercial Registration",
+      description: locale === 'ar'
+        ? "أدخل رقم السجل التجاري المكون من 10 أرقام. مطلوب للتحقق من هوية شركتك."
+        : "Enter your 10-digit Commercial Registration number. Required to verify your company.",
+    },
+    {
+      targetId: "tour-step-tax",
+      title: locale === 'ar' ? "الرقم الضريبي" : "Tax Number",
+      description: locale === 'ar'
+        ? "أدخل الرقم الضريبي المكون من 15 رقمًا (يبدأ بـ 3). مطلوب لإصدار الفواتير الضريبية."
+        : "Enter your 15-digit Tax Number (starts with 3). Required for issuing tax invoices.",
+    },
+    {
+      targetId: "tour-step-city",
+      title: locale === 'ar' ? "المدينة والموقع" : "City & Location",
+      description: locale === 'ar'
+        ? "حدد مدينتك وأدخل عنوانك التفصيلي. يساعد المقاولين في معرفة موقعك الجغرافي."
+        : "Select your city and enter your address. This helps contractors find you by location.",
+    },
+    {
+      targetId: "tour-step-legal-tab",
+      title: locale === 'ar' ? "المستندات القانونية" : "Legal Documents",
+      description: locale === 'ar'
+        ? "انتقل الآن إلى تبويب المستندات القانونية لرفع السجل التجاري وشهادة الضريبة."
+        : "Switch to the Legal Documents tab to upload your CR and VAT certificate.",
+    },
+    {
+      targetId: "tour-step-legal-cr",
+      title: locale === 'ar' ? "رفع السجل التجاري" : "CR Document",
+      description: locale === 'ar'
+        ? "ارفع صورة من السجل التجاري ساري المفعول. هذا المستند أساسي للتحقق من هوية شركتك."
+        : "Upload a valid copy of your Commercial Registration. Essential for company verification.",
+    },
+    {
+      targetId: "tour-step-legal-vat",
+      title: locale === 'ar' ? "شهادة ضريبة القيمة المضافة" : "VAT Certificate",
+      description: locale === 'ar'
+        ? "ارفع شهادة ضريبة القيمة المضافة الخاصة بشركتك. مطلوبة لاستكمال التحقق."
+        : "Upload your VAT certificate. Required to complete the verification process.",
+    },
+  ]
 
   const handleSave = async () => {
     if (!user || !firestore) return
@@ -795,7 +862,7 @@ export default function SupplierProfilePage() {
           </Button>
         </div>
 
-        <Tabs defaultValue="basic" className="space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <TabsList className="w-full justify-start h-auto flex-wrap p-1.5 gap-1 bg-slate-100/50 rounded-2xl border mb-8">
             <TabsTrigger value="basic" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
               <User size={16} />
@@ -805,7 +872,7 @@ export default function SupplierProfilePage() {
               <Zap size={16} />
               {t("specializations_tab")}
             </TabsTrigger>
-            <TabsTrigger value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+            <TabsTrigger id="tour-step-legal-tab" value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
               <ShieldCheck size={16} />
               {t("legal_tab")}
             </TabsTrigger>
@@ -921,19 +988,19 @@ export default function SupplierProfilePage() {
               <CardContent className="p-6 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-4">
-                    <div className="space-y-2">
+                    <div id="tour-step-company-name" className="space-y-2">
                       <Label htmlFor="name" className="text-slate-700 font-bold">{t("company_name_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input 
-                        id="name" 
+                      <Input
+                        id="name"
                         value={profile.name}
                         onChange={e => setProfile({...profile, name: e.target.value})}
                         className="h-11 focus:ring-primary/20"
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div id="tour-step-phone" className="space-y-2">
                       <Label htmlFor="phone" className="text-slate-700 font-bold">{t("phone_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input 
-                        id="phone" 
+                      <Input
+                        id="phone"
                         value={profile.phone}
                         onChange={e => setProfile({...profile, phone: e.target.value})}
                         className="dir-ltr text-left h-11"
@@ -943,20 +1010,20 @@ export default function SupplierProfilePage() {
                   </div>
                   
                   <div className="space-y-4">
-                    <div className="space-y-2">
+                    <div id="tour-step-cr" className="space-y-2">
                       <Label htmlFor="crNumber-input" className="text-slate-700 font-bold">{t("cr_number_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input 
-                        id="crNumber-input" 
+                      <Input
+                        id="crNumber-input"
                         value={profile.crNumber}
                         onChange={e => setProfile({...profile, crNumber: e.target.value})}
                         className="dir-ltr text-left h-11"
                         placeholder="10 أرقام"
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div id="tour-step-tax" className="space-y-2">
                       <Label htmlFor="taxNumber-input" className="text-slate-700 font-bold">{t("tax_number_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input 
-                        id="taxNumber-input" 
+                      <Input
+                        id="taxNumber-input"
                         value={profile.taxNumber || ""}
                         onChange={e => setProfile({...profile, taxNumber: e.target.value})}
                         className="dir-ltr text-left h-11"
@@ -977,10 +1044,10 @@ export default function SupplierProfilePage() {
 
                 <Separator className="my-4" />
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div id="tour-step-city" className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-4">
                       <Label className="text-slate-700 font-bold">{t("city_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Select 
+                      <Select
                         value={profile.city}
                         onValueChange={(v) => setProfile({ ...profile, city: v })}
                       >
@@ -1157,12 +1224,12 @@ export default function SupplierProfilePage() {
                   <CardContent className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {[
-                        { id: 'cr', label: t("cr_doc"), icon: FileText },
-                        { id: 'vat', label: t("vat_doc"), icon: Award }
+                        { id: 'cr', label: t("cr_doc"), icon: FileText, tourId: 'tour-step-legal-cr' },
+                        { id: 'vat', label: t("vat_doc"), icon: Award, tourId: 'tour-step-legal-vat' }
                       ].map((doc) => {
                         const data = profile.legalDocuments[doc.id as keyof typeof profile.legalDocuments]
                         return (
-                          <div key={doc.id} className="p-5 rounded-2xl border bg-white hover:border-primary/20 transition-all space-y-4 shadow-sm">
+                          <div key={doc.id} id={doc.tourId} className="p-5 rounded-2xl border bg-white hover:border-primary/20 transition-all space-y-4 shadow-sm">
                             <div className="flex items-center gap-3">
                               <div className="h-10 w-10 rounded-lg bg-slate-50 flex items-center justify-center text-primary border">
                                 <doc.icon size={20} />
@@ -1695,10 +1762,31 @@ export default function SupplierProfilePage() {
           </TabsContent>
         </Tabs>
       </div>
-      <ChangePasswordDialog 
-        open={isPasswordDialogOpen} 
-        onOpenChange={setIsPasswordDialogOpen} 
+      <ChangePasswordDialog
+        open={isPasswordDialogOpen}
+        onOpenChange={setIsPasswordDialogOpen}
       />
+      {tourActive && (
+        <ProfileTour
+          steps={tourSteps}
+          onStepChange={(stepIndex) => {
+            if (stepIndex >= 5) {
+              setActiveTab("legal")
+            } else {
+              setActiveTab("basic")
+            }
+          }}
+          onComplete={() => {
+            setTourActive(false)
+            localStorage.setItem('supplier_profile_tour_seen', 'true')
+            toast({ title: t("save_success"), description: locale === 'ar' ? "تم اكتمال جولة الملف التعريفي!" : "Profile tour completed!" })
+          }}
+          onDismiss={() => {
+            setTourActive(false)
+            localStorage.setItem('supplier_profile_tour_seen', 'true')
+          }}
+        />
+      )}
     </PortalLayout>
   )
 }
