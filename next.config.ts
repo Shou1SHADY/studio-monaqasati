@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
     'genkit-cli',
     '@opentelemetry/sdk-node',
     '@opentelemetry/exporter-jaeger',
+    'firebase-admin',
+    'jwks-rsa',
+    'jose',
   ],
   async headers() {
     return [
