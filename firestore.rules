@@ -176,7 +176,9 @@ service cloud.firestore {
     match /invitations/{invitationId} {
       allow list: if isSignedIn();
       allow create: if isSignedIn();
-      allow get: if isSignedIn() && resource.data.email == request.auth.token.email;
+      // resource == null when doc doesn't exist — allow the get so getDoc() returns "not found"
+      // instead of throwing permission-denied (same pattern as chats)
+      allow get: if isSignedIn() && (resource == null || resource.data.email == request.auth.token.email);
       allow delete: if isSignedIn() && (
         resource.data.email == request.auth.token.email ||
         resource.data.invitedBy == request.auth.uid

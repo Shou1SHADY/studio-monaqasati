@@ -29,7 +29,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw } from "lucide-react"
+import { FileText, PlusCircle, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, FileSpreadsheet } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc } from "firebase/firestore"
@@ -277,12 +277,20 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_page_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
           </div>
-          <Link href="/contractor/rfqs/new">
-            <Button className="w-full sm:w-auto gap-2 font-bold">
-              <PlusCircle size={18} />
-              {t("rfq_new_tender")}
-            </Button>
-          </Link>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Link href="/contractor/rfqs/upload-boq">
+              <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/5">
+                <FileSpreadsheet size={16} />
+                {t("boq_upload_btn")}
+              </Button>
+            </Link>
+            <Link href="/contractor/rfqs/new">
+              <Button className="gap-2 font-bold">
+                <PlusCircle size={18} />
+                {t("rfq_new_tender")}
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Status Filter Tabs */}

@@ -13,7 +13,7 @@ import { useLandingChat, type LandingMessage } from '@/hooks/useLandingChat';
 
 const QUICK_PROMPTS = {
   ar: [
-    'ما هي ستوديو مناقصاتي؟',
+    'ما هي مدماك تيك؟',
     'كيف أستفيد كمقاول؟',
     'كيف أستفيد كمورد؟',
     'هل التسجيل مجاني؟',

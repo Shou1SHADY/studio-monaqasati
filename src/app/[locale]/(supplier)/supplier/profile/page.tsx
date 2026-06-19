@@ -198,14 +198,6 @@ export default function SupplierProfilePage() {
   
   const { data: citiesFromDB, isLoading: isCitiesLoading } = useCollection(citiesQuery)
   
-  // Debug log
-  console.log("Cities Status:", { 
-    loading: isCitiesLoading, 
-    fromDB: citiesFromDB, 
-    fromDBLength: citiesFromDB?.length, 
-    fallbackLength: SAUDI_CITIES.length 
-  })
-  
   const cities = SAUDI_CITIES
 
   // Sync with user data
@@ -804,33 +796,33 @@ export default function SupplierProfilePage() {
         </div>
 
         <Tabs defaultValue="basic" className="space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <TabsList className="w-full justify-start h-14 p-1 bg-slate-100/50 rounded-2xl border mb-8 overflow-x-auto overflow-y-hidden no-scrollbar">
-            <TabsTrigger value="basic" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <User size={18} />
+          <TabsList className="w-full justify-start h-auto flex-wrap p-1.5 gap-1 bg-slate-100/50 rounded-2xl border mb-8">
+            <TabsTrigger value="basic" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <User size={16} />
               {t("basic_info_tab")}
             </TabsTrigger>
-            <TabsTrigger value="specializations" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <Zap size={18} />
+            <TabsTrigger value="specializations" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <Zap size={16} />
               {t("specializations_tab")}
             </TabsTrigger>
-            <TabsTrigger value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <ShieldCheck size={18} />
+            <TabsTrigger value="legal" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <ShieldCheck size={16} />
               {t("legal_tab")}
             </TabsTrigger>
-            <TabsTrigger value="portfolio" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <Award size={18} />
+            <TabsTrigger value="portfolio" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <Award size={16} />
               {t("portfolio_tab")}
             </TabsTrigger>
-            <TabsTrigger value="reviews" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <Star size={18} />
+            <TabsTrigger value="reviews" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <Star size={16} />
               {t("supplier_profile_tab_reviews", { count: computedRating.count })}
             </TabsTrigger>
-            <TabsTrigger value="files" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <FolderOpen size={18} />
+            <TabsTrigger value="files" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <FolderOpen size={16} />
               {t("files_tab")}
             </TabsTrigger>
-            <TabsTrigger value="security" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-full px-6 rounded-xl gap-2 text-md transition-all">
-              <Lock size={18} />
+            <TabsTrigger value="security" className="data-[state=active]:bg-white data-[state=active]:shadow-sm h-11 px-5 rounded-xl gap-2 text-sm transition-all">
+              <Lock size={16} />
               {t("security_tab")}
             </TabsTrigger>
           </TabsList>
