@@ -598,6 +598,8 @@
       "sample_sent_desc": "هل ترغب في فتح محادثة مع المقاول لمتابعة وصول العينة؟",
       "later": "لاحقاً",
       "open_chat": "فتح المحادثة",
+      "withdraw_notif_title": "تم سحب العرض",
+      "withdraw_notif_msg": "تم سحب عرضك لـ \"{title}\".",
       "withdraw_success": "تم سحب العرض",
       "withdraw_success_desc": "تم حذف عرضك بنجاح.",
       "withdraw_failed": "فشل سحب العرض، حاول مجدداً.",

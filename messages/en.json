@@ -599,6 +599,8 @@
       "sample_sent_desc": "Would you like to open a chat with the contractor to follow up on the sample arrival?",
       "later": "Later",
       "open_chat": "Open Chat",
+      "withdraw_notif_title": "Offer Withdrawn",
+      "withdraw_notif_msg": "Your offer for \"{title}\" has been withdrawn.",
       "withdraw_success": "Offer Withdrawn",
       "withdraw_success_desc": "Your offer has been deleted.",
       "withdraw_failed": "Failed to withdraw offer, try again.",
