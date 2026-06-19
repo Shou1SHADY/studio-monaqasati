@@ -44,7 +44,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
 import { collection, doc, getDoc, updateDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
 const SAUDI_CITIES = [
@@ -1017,7 +1017,7 @@ export default function NewRfqPage() {
                           setFormData({ ...formData, district: v })
                           clearError("district")
                         }}
-                        options={CITIES_DISTRICTS[formData.city].map(dist => ({ value: dist, label: dist }))}
+                        options={CITIES_DISTRICTS[formData.city].map(dist => ({ value: dist, label: displayDistrict(dist, locale) }))}
                         placeholder={t("newrfq_select_district")}
                         searchPlaceholder={t("newrfq_search_district")}
                         noResultsText={t("newrfq_no_results")}

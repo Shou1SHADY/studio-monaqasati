@@ -479,3 +479,94 @@ export const displaySubcategory = (subAr: string, locale: string) => {
   if (locale === 'en') return SUBCATEGORIES_EN[subAr] || subAr;
   return subAr;
 }
+
+export const DISTRICTS_EN: Record<string, string> = {
+  // Riyadh
+  "شمال الرياض": "North Riyadh",
+  "جنوب الرياض": "South Riyadh",
+  "شرق الرياض": "East Riyadh",
+  "غرب الرياض": "West Riyadh",
+  "وسط الرياض": "Central Riyadh",
+  "جميع الرياض": "All of Riyadh",
+  // Jeddah
+  "شمال جدة": "North Jeddah",
+  "جنوب جدة": "South Jeddah",
+  "وسط جدة": "Central Jeddah",
+  "أبحر": "Abhur",
+  "جميع جدة": "All of Jeddah",
+  // Makkah
+  "العزيزية": "Al Aziziyah",
+  "الشوقية": "Al Shawqiyyah",
+  "العوالي": "Al Awali",
+  "بطحاء قريش": "Batha Quraysh",
+  "جميع مكة": "All of Makkah",
+  // Madinah
+  "الخالدية": "Al Khalidiyah",
+  "الحرة الشرقية": "Al Harrah Al Sharqiyyah",
+  "جميع المدينة": "All of Madinah",
+  // Dammam
+  "شرق الدمام": "East Dammam",
+  "غرب الدمام": "West Dammam",
+  "وسط الدمام": "Central Dammam",
+  "جميع الدمام": "All of Dammam",
+  // Khobar
+  "شمال الخبر": "North Khobar",
+  "الخبر الجنوبية": "South Khobar",
+  "العقربية": "Al Aqrabiyah",
+  "جميع الخبر": "All of Khobar",
+  // Dhahran
+  "حي الدانة": "Al Dana District",
+  "حي الدوحة": "Al Doha District",
+  "حي القصور": "Al Qusour District",
+  "جميع الظهران": "All of Dhahran",
+  // Al Ahsa
+  "الهفوف": "Al Hofuf",
+  "المبرز": "Al Mubarraz",
+  "العيون": "Al Uyun",
+  "العمران": "Al Umran",
+  "جميع الأحساء": "All of Al Ahsa",
+  // Jubail
+  "الجبيل الصناعية": "Jubail Industrial City",
+  "الجبيل البلد": "Jubail Old Town",
+  "جميع الجبيل": "All of Jubail",
+  // Tabuk
+  "المروج": "Al Muruj",
+  "الروضة": "Al Rawdah",
+  "السليمانية": "Al Sulaymaniyah",
+  "جميع تبوك": "All of Tabuk",
+  // Hail
+  "صديان": "Sudyan",
+  "أجا": "Aja",
+  "النقرة": "Al Nuqrah",
+  "جميع حائل": "All of Hail",
+  // Qassim
+  "بريدة": "Buraidah",
+  "عنيزة": "Unaizah",
+  "الرس": "Al Rass",
+  "البدائع": "Al Badai",
+  "جميع القصيم": "All of Qassim",
+  // Abha
+  "حي المنسك": "Al Mansak District",
+  "حي الموظفين": "Al Muwazzafin District",
+  "حي الخالدية": "Al Khalidiyah District",
+  "جميع أبها": "All of Abha",
+  // Khamis Mushait
+  "الرصراص": "Al Rasras",
+  "الشباعة": "Al Shaba'ah",
+  "شكر": "Shukr",
+  "جميع خميس مشيط": "All of Khamis Mushait",
+  // Jazan
+  "حي السويس": "Al Suways District",
+  "حي الروضة": "Al Rawdah District",
+  "حي الشاطئ": "Al Shati District",
+  "جميع جازان": "All of Jazan",
+  // Najran
+  "الفيصلية": "Al Faisaliyah",
+  "الفهد": "Al Fahd",
+  "جميع نجران": "All of Najran",
+}
+
+export const displayDistrict = (districtAr: string, locale: string) => {
+  if (locale === 'en') return DISTRICTS_EN[districtAr] || districtAr;
+  return districtAr;
+}

@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, getDocs, query, where } from "firebase/firestore"
-import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity, displayDistrict } from "@/lib/constants"
 import type { BoqItem, BoqProjectInfo } from "@/lib/boq-parser"
 
 const CITIES_DISTRICTS: Record<string, string[]> = {
@@ -452,7 +452,7 @@ export default function UploadBoqPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {CITIES_DISTRICTS[city].map(d => (
-                          <SelectItem key={d} value={d}>{d}</SelectItem>
+                          <SelectItem key={d} value={d}>{displayDistrict(d, locale)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
