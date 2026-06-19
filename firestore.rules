@@ -87,7 +87,9 @@ service cloud.firestore {
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offersCount'])
         );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId())
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid);
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
       match /inquiries/{inquiryId} {
