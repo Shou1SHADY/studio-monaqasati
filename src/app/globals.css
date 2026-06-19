@@ -218,6 +218,17 @@ html {
   ::-webkit-scrollbar-thumb:hover { background: #2A2D36; }
 }
 
+/* Utility: hide scrollbar visually while keeping scroll functionality.
+   Used on split-screen auth pages to prevent the RTL scrollbar from
+   appearing as a dark column between the image and form panels. */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* Logo marquee animations */
 @keyframes scroll-x-logos-ltr {
   0%   { transform: translateX(0); }

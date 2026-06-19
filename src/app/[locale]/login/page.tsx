@@ -263,7 +263,7 @@ export default function LoginPage() {
   return (
     <div className="h-screen bg-background flex rtl:dir-rtl ltr:dir-ltr">
       {/* Form side */}
-      <div className="flex-1 flex flex-col px-6 md:px-16 lg:px-24 xl:px-32 relative overflow-y-auto py-6">
+      <div className="flex-1 flex flex-col bg-background px-6 md:px-16 lg:px-24 xl:px-32 relative overflow-y-auto py-6 scrollbar-hide">
         <div className="flex items-center justify-between w-full mb-8 shrink-0">
           <Link href="/" className="flex items-center gap-2 group text-muted-foreground hover:text-foreground transition-colors">
             <ArrowRight size={20} className="group-hover:-translate-x-1 transition-transform rtl:rotate-0 ltr:rotate-180" />
