@@ -329,8 +329,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   // Single source-of-truth for whether a notification contributes to the badge count
   const isNotifUnread = (n: any): boolean => {
     if (n.type === "new_rfq") return !readRfqIds.includes(n.id)
-    if (n.type === "new_offer") return n.status === "قيد المراجعة" && !n.contractorReadAt
-    if (n.type === "offer_update") return (n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt
+    // For offer-derived notifications, an explicit *Unread flag (set by "mark as unread")
+    // overrides the status-based default — otherwise toggling unread does nothing once the
+    // offer's transient status no longer matches the gate below.
+    if (n.type === "new_offer") return n.contractorUnread === true || (n.status === "قيد المراجعة" && !n.contractorReadAt)
+    if (n.type === "offer_update") return n.supplierUnread === true || ((n.status === "مقبول" || n.status === "مرفوض" || n.status === "مطلوب تخفيض" || n.sampleStatus === "مطلوبة" || n.sampleStatus === "تم الاستلام") && !n.readAt)
     if (n.type === "offer_accepted" || n.type === "price_reduction" || n.type === "offer_rejected" || n.type === "offer_withdrawn") return !n.read
     return !n.read
   }
@@ -394,9 +397,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         } catch (e) {
           // ignore
         }
-      } else if (!notif.readAt && firestore && notif.type === "offer_update") {
+      } else if (isNotifUnread(notif) && firestore && notif.type === "offer_update") {
         try {
-          await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString() })
+          await updateDoc(doc(firestore, "offers", notif.id), { readAt: new Date().toISOString(), supplierUnread: false })
         } catch (e) {
           // ignore errors
         }
@@ -408,9 +411,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         } catch (e) {
           // ignore
         }
-      } else if (!notif.contractorReadAt && firestore && notif.type === "new_offer") {
+      } else if (isNotifUnread(notif) && firestore && notif.type === "new_offer") {
         try {
-          await updateDoc(doc(firestore, "offers", notif.id), { contractorReadAt: new Date().toISOString() })
+          await updateDoc(doc(firestore, "offers", notif.id), { contractorReadAt: new Date().toISOString(), contractorUnread: false })
         } catch (e) {
           // ignore
         }
@@ -458,17 +461,27 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (!firestore || !user) return
     const now = new Date().toISOString()
     const selected = notifications.filter((n: any) => selectedNotifIds.has(n.id))
+
+    // new_rfq read-state lives in a single localStorage array. Apply all selected
+    // rfq ids in ONE update — calling markRfqAsRead per id would read the stale
+    // readRfqIds closure each time and overwrite the array, so only the last id
+    // would stick (badge would drop by 1 regardless of how many were selected).
+    const selectedRfqIds = selected
+      .filter((n: any) => n.type === "new_rfq")
+      .map((n: any) => n.id)
+    if (selectedRfqIds.length > 0) {
+      const updated = read
+        ? [...new Set([...readRfqIds, ...selectedRfqIds])]
+        : readRfqIds.filter((id: string) => !selectedRfqIds.includes(id))
+      setReadRfqIds(updated)
+      localStorage.setItem("readRfqIds", JSON.stringify(updated))
+      window.dispatchEvent(new Event('readRfqIdsUpdated'))
+    }
+
     await Promise.all(selected.map(async (notif: any) => {
       try {
         if (notif.type === "new_rfq") {
-          if (read) {
-            markRfqAsRead(notif.id)
-          } else {
-            const updated = readRfqIds.filter((id: string) => id !== notif.id)
-            setReadRfqIds(updated)
-            localStorage.setItem("readRfqIds", JSON.stringify(updated))
-            window.dispatchEvent(new Event('readRfqIdsUpdated'))
-          }
+          // handled above in a single batched localStorage write
         } else if (notif.isSubcollection) {
           await updateDoc(doc(firestore, "users", user.uid, "notifications", notif.id), {
             read,
@@ -477,10 +490,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         } else if (notif.type === "new_offer") {
           await updateDoc(doc(firestore, "offers", notif.id), {
             contractorReadAt: read ? now : null,
+            contractorUnread: !read,
           })
         } else if (notif.type === "offer_update") {
           await updateDoc(doc(firestore, "offers", notif.id), {
             readAt: read ? now : null,
+            supplierUnread: !read,
           })
         }
       } catch {
