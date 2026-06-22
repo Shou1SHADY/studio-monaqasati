@@ -11,20 +11,23 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 
-/** Group a flat list of items by suggestedCategory — each category becomes one BoqGroup. */
+/** Group a flat list of items by sheet name — each Excel sheet becomes one BoqGroup. */
 export function buildGroups(items: BoqItem[]): BoqGroup[] {
   const map = new Map<string, BoqItem[]>()
   for (const item of items) {
-    const cat = item.suggestedCategory
-    if (!map.has(cat)) map.set(cat, [])
-    map.get(cat)!.push(item)
+    const sheet = item.sheet || item.suggestedCategory
+    if (!map.has(sheet)) map.set(sheet, [])
+    map.get(sheet)!.push(item)
   }
-  return Array.from(map.entries()).map(([cat, catItems]) => ({
-    id: uid(),
-    categoryAr: cat,
-    titleAr: `توريد ${cat}`,
-    items: catItems,
-  }))
+  return Array.from(map.entries()).map(([sheet, sheetItems]) => {
+    const cat = sheetItems[0]?.suggestedCategory || sheet
+    return {
+      id: uid(),
+      categoryAr: cat,
+      titleAr: sheet,
+      items: sheetItems,
+    }
+  })
 }
 
 /**
