@@ -292,7 +292,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <Link href="/contractor/rfqs/upload-boq">
-              <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/5">
+              <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/10">
                 <FileSpreadsheet size={16} />
                 {t("boq_upload_btn")}
               </Button>
