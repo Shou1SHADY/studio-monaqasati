@@ -151,17 +151,15 @@ export default function UploadBoqPage() {
       setProjectInfo(result.projectInfo)
       setProjectNameEdit(result.projectInfo.projectName)
 
-      // Build groups — auto-deselect existing items by putting them in unassigned
-      const newItems = result.items.filter(i => !existingMap.has(i.itemNo))
-      const existingItems = result.items.filter(i => existingMap.has(i.itemNo))
-      setGroups(buildGroups(newItems))
-      setUnassigned(existingItems) // existing items go to unassigned so user sees them but they won't be re-created
+      // Group ALL items by sheet — duplicates stay in their groups but are marked
+      setGroups(buildGroups(result.items))
+      setUnassigned([])
 
       const dupCount = existingMap.size
       toast({
         title: t("boq_parse_success"),
         description: dupCount > 0
-          ? `${t("boq_items_detected", { count: result.items.length })} — ${dupCount} ${locale === "ar" ? "مكررة (في قسم غير المصنف)" : "duplicates (in unassigned)"}`
+          ? `${t("boq_items_detected", { count: result.items.length })} — ${dupCount} ${locale === "ar" ? "مكررة (معلمة)" : "duplicates (marked)"}`
           : t("boq_items_detected", { count: result.items.length }),
       })
     } catch (err) {
@@ -199,7 +197,7 @@ export default function UploadBoqPage() {
   }
 
   const updateGroupCategory = (groupId: string, categoryAr: string) => {
-    setGroups(prev => prev.map(g => g.id === groupId ? { ...g, categoryAr, titleAr: `توريد ${categoryAr}` } : g))
+    setGroups(prev => prev.map(g => g.id === groupId ? { ...g, categoryAr } : g))
   }
 
   const deleteGroup = (groupId: string) => {
@@ -285,7 +283,7 @@ export default function UploadBoqPage() {
               description: item.descriptionAr
                 ? `${item.descriptionAr}\n${item.descriptionEn}`
                 : item.descriptionEn,
-              category: group.categoryAr,
+              category: item.suggestedCategory || group.categoryAr,
               subCategory: item.suggestedSubCategory || "",
               boqItemNo: item.itemNo,
             })),

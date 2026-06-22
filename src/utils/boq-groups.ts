@@ -1,4 +1,5 @@
 import type { BoqItem } from "@/lib/boq-parser"
+import { detectCategoryFromSheet } from "@/lib/boq-parser"
 
 export interface BoqGroup {
   id: string
@@ -20,10 +21,10 @@ export function buildGroups(items: BoqItem[]): BoqGroup[] {
     map.get(sheet)!.push(item)
   }
   return Array.from(map.entries()).map(([sheet, sheetItems]) => {
-    const cat = sheetItems[0]?.suggestedCategory || sheet
+    const { category } = detectCategoryFromSheet(sheet)
     return {
       id: uid(),
-      categoryAr: cat,
+      categoryAr: category,
       titleAr: sheet,
       items: sheetItems,
     }

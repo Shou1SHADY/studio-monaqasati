@@ -36,6 +36,16 @@ export interface BoqParseResult {
 const SKIP_UNITS = new Set(["n.a", "na", "n/a", "بدون", "", "لا ينطبق"])
 
 /**
+ * Detect category from sheet name alone (no item description needed).
+ * Used by buildGroups to categorize items when grouping by sheet.
+ */
+export function detectCategoryFromSheet(
+  sheetName: string
+): { category: string; subCategory: string } {
+  return detectCategory(sheetName, "")
+}
+
+/**
  * Rule-based category + subcategory detection from sheet name and item description.
  * This covers ~95% of standard CSI-based BOQ structures without needing an AI call.
  */
