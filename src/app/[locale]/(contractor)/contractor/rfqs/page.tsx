@@ -80,6 +80,22 @@ export default function ContractorRfqsPage() {
 
 const handleBatchPublish = async () => {
     if (!firestore || selectedRfqs.length === 0) return;
+
+    // Gate: profile must have mandatory fields filled before publishing
+    const missingFields = []
+    if (!profile?.name?.trim()) missingFields.push(locale === "ar" ? "الاسم" : "Name")
+    if (!profile?.phone?.trim()) missingFields.push(locale === "ar" ? "رقم الهاتف" : "Phone")
+    if (!profile?.crNumber?.trim()) missingFields.push(locale === "ar" ? "رقم السجل التجاري" : "CR Number")
+    if (!profile?.city?.trim()) missingFields.push(locale === "ar" ? "المدينة" : "City")
+    if (missingFields.length > 0) {
+      toast({
+        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
+        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsPublishing(true);
     try {
       for (const rfqId of selectedRfqs) {

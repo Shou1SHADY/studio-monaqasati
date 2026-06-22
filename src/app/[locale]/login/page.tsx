@@ -12,6 +12,7 @@ import {
   signInWithRedirect,
   getRedirectResult,
   sendPasswordResetEmail,
+  fetchSignInMethodsForEmail,
   User,
 } from "firebase/auth"
 import { doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore"
@@ -19,7 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowRight, CheckCircle2, ShieldCheck, Mail } from "lucide-react"
+import { Loader2, ArrowRight, CheckCircle2, ShieldCheck, Mail, Eye, EyeOff } from "lucide-react"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { fetchLoginHint } from "@/lib/loginHint"
 import { useTranslations, useLocale } from "next-intl"
@@ -62,6 +63,46 @@ export default function LoginPage() {
   const [resetEmail, setResetEmail] = useState("")
   const [resetLoading, setResetLoading] = useState(false)
   const [resetSent, setResetSent] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+
+  // Provider-aware auth
+  const [emailProviders, setEmailProviders] = useState<string[]>([])
+  const [providerCheckDone, setProviderCheckDone] = useState(false)
+  const [pendingGoogleCred, setPendingGoogleCred] = useState<any>(null)
+  const [showGooglePrompt, setShowGooglePrompt] = useState(false)
+
+  const handleEmailBlur = async () => {
+    if (!auth || !formData.email.trim()) return
+    try {
+      const methods = await fetchSignInMethodsForEmail(auth, formData.email.trim().toLowerCase())
+      setEmailProviders(methods)
+      setProviderCheckDone(true)
+    } catch { /* ignore */ }
+  }
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!resetEmail.trim() || !auth) return
+    setResetLoading(true)
+    try {
+      // Block reset for Google-only accounts — they have no password to reset
+      const methods: string[] = await fetchSignInMethodsForEmail(auth, resetEmail.trim().toLowerCase()).catch(() => [])
+      if (methods.includes("google.com") && !methods.includes("password")) {
+        toast({ title: t("forgot_password_error_title"), description: t("err_use_google"), variant: "destructive" })
+        return
+      }
+      await sendPasswordResetEmail(auth, resetEmail.trim())
+      setResetSent(true)
+      toast({ title: t("forgot_password_title"), description: t("forgot_password_success_desc") })
+    } catch (err: any) {
+      const msg = err.code === 'auth/user-not-found'
+        ? t("forgot_password_no_user")
+        : t("forgot_password_error")
+      toast({ title: t("forgot_password_error_title"), description: msg, variant: "destructive" })
+    } finally {
+      setResetLoading(false)
+    }
+  }
 
   const sendTwoFactorCode = useCallback(async (uid: string, phone: string) => {
     if (!firestore) return false
@@ -176,19 +217,6 @@ export default function LoginPage() {
       toast({ title: t("err_2fa_failed"), description: error.message || t("err_2fa_process"), variant: "destructive" })
     } finally {
       setTwoFactorLoading(false)
-    }
-  }
-
-  // Always show success state to prevent email enumeration via the reset form.
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!resetEmail.trim() || !auth) return
-    setResetLoading(true)
-    try {
-      await sendPasswordResetEmail(auth, resetEmail.trim())
-    } catch { /* swallow — always show success */ } finally {
-      setResetLoading(false)
-      setResetSent(true)
     }
   }
 
@@ -347,27 +375,36 @@ export default function LoginPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
-                    <button
-                      type="button"
-                      onClick={() => { setResetEmail(formData.email); setResetSent(false); setShowForgotPassword(true) }}
-                      className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors"
-                    >
-                      {t("forgot_password")}
-                    </button>
+                {/* Password — hidden when email only has Google provider */}
+                {!showGooglePrompt && (!providerCheckDone || !emailProviders.includes("google.com") || emailProviders.includes("password")) && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password" className="text-foreground font-bold">{t("password")}</Label>
+                      <button type="button" onClick={() => { setResetEmail(formData.email); setResetSent(false); setShowForgotPassword(true) }} className="text-sm font-semibold text-cta hover:text-cta/80 transition-colors">
+                        {t("forgot_password")}
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        required
+                        placeholder="••••••••"
+                        className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta pr-11"
+                        value={formData.password}
+                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                      >
+                        {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                      </button>
+                    </div>
                   </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    className="text-left dir-ltr h-12 rounded-lg bg-muted border-border focus:ring-2 focus:ring-cta focus:border-cta"
-                    value={formData.password}
-                    onChange={e => setFormData({ ...formData, password: e.target.value })}
-                  />
-                </div>
+                )}
 
                 <Button
                   type="submit"

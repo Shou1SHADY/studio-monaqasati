@@ -225,9 +225,9 @@ export default function VerifyEmailPage() {
             )}
           </Button>
 
-          <Button 
+          <Button
             variant="outline"
-            className="w-full h-12 text-sm font-bold rounded-xl border-slate-200 hover:bg-slate-50 transition-all"
+            className="w-full h-12 text-sm font-bold rounded-xl border-slate-300 text-foreground hover:bg-slate-100 hover:border-slate-400 transition-all"
             onClick={handleResendEmail}
             disabled={isLoading}
           >

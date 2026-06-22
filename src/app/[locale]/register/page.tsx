@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search } from "lucide-react"
+import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search, Eye, EyeOff } from "lucide-react"
 import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 
 export default function RegisterPage() {
@@ -26,6 +26,7 @@ export default function RegisterPage() {
 
   const [isLoading, setIsLoading] = useState(false)
   const [registerError, setRegisterError] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -460,15 +461,25 @@ export default function RegisterPage() {
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-700 font-bold">{t("password")}</Label>
-              <Input
-                id="password"
-                type="password"
-                required
-                placeholder="••••••••"
-                className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  className="text-left dir-ltr h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-primary focus-visible:border-primary pr-11"
+                  value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors"
+                  aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
             </div>
 
             <Button
