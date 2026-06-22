@@ -41,15 +41,17 @@ import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, getDocs, query, where } from "firebase/firestore"
 import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity, displayDistrict } from "@/lib/constants"
 import type { BoqItem, BoqProjectInfo } from "@/lib/boq-parser"
+import {
+  buildGroups,
+  moveItemBetweenGroups,
+  removeItemToUnassigned,
+  splitItemToNewGroup as splitItemUtil,
+  getGroupsToCreate,
+  totalGroupItems,
+} from "@/utils/boq-groups"
+import type { BoqGroup } from "@/utils/boq-groups"
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface BoqGroup {
-  id: string
-  titleAr: string      // editable Arabic RFQ title
-  categoryAr: string   // maps to platform category
-  items: BoqItem[]
-}
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const CITIES_DISTRICTS: Record<string, string[]> = {
   "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],
@@ -68,21 +70,6 @@ type Step = "upload" | "review"
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
-}
-
-function buildGroups(items: BoqItem[]): BoqGroup[] {
-  const map = new Map<string, BoqItem[]>()
-  for (const item of items) {
-    const cat = item.suggestedCategory
-    if (!map.has(cat)) map.set(cat, [])
-    map.get(cat)!.push(item)
-  }
-  return Array.from(map.entries()).map(([cat, catItems]) => ({
-    id: uid(),
-    categoryAr: cat,
-    titleAr: `توريد ${cat}`,
-    items: catItems,
-  }))
 }
 
 export default function UploadBoqPage() {
@@ -232,46 +219,21 @@ export default function UploadBoqPage() {
 
   // ── Item drag-and-drop ────────────────────────────────────────────────────
   const splitItemToNewGroup = (item: BoqItem, fromGroupId: string) => {
-    setGroups(prev => {
-      const updated = prev.map(g =>
-        g.id === fromGroupId ? { ...g, items: g.items.filter(i => i.id !== item.id) } : g
-      )
-      return [...updated, {
-        id: uid(),
-        categoryAr: item.suggestedCategory,
-        titleAr: item.descriptionAr ? item.descriptionAr.substring(0, 60) : `توريد ${item.suggestedCategory}`,
-        items: [item],
-      }]
-    })
+    setGroups(prev => splitItemUtil(prev, item, fromGroupId))
   }
 
   const removeItemFromGroup = (item: BoqItem, fromGroupId: string) => {
-    setGroups(prev => prev.map(g =>
-      g.id === fromGroupId ? { ...g, items: g.items.filter(i => i.id !== item.id) } : g
-    ))
-    setUnassigned(prev => [...prev, item])
+    setGroups(prev => {
+      const { groups: updated, removed } = removeItemToUnassigned(prev, item, fromGroupId)
+      setUnassigned(u => [...u, removed])
+      return updated
+    })
   }
 
   const moveItemToGroup = (item: BoqItem, fromGroupId: string | "unassigned", toGroupId: string | "unassigned") => {
-    if (fromGroupId === toGroupId) return
-
-    // Remove from source
-    if (fromGroupId === "unassigned") {
-      setUnassigned(prev => prev.filter(i => i.id !== item.id))
-    } else {
-      setGroups(prev => prev.map(g =>
-        g.id === fromGroupId ? { ...g, items: g.items.filter(i => i.id !== item.id) } : g
-      ))
-    }
-
-    // Add to target
-    if (toGroupId === "unassigned") {
-      setUnassigned(prev => [...prev, item])
-    } else {
-      setGroups(prev => prev.map(g =>
-        g.id === toGroupId ? { ...g, items: [...g.items, item] } : g
-      ))
-    }
+    const { groups: newGroups, unassigned: newUnassigned } = moveItemBetweenGroups(groups, unassigned, item, fromGroupId, toGroupId)
+    setGroups(newGroups)
+    setUnassigned(newUnassigned)
   }
 
   const onItemDragStart = (e: React.DragEvent, item: BoqItem, fromGroupId: string | "unassigned") => {
@@ -296,7 +258,7 @@ export default function UploadBoqPage() {
   // ── Create draft RFQs ─────────────────────────────────────────────────────
   const handleCreateDrafts = async () => {
     if (!firestore || !user || !profile) return
-    const groupsToCreate = groups.filter(g => g.items.length > 0)
+    const groupsToCreate = getGroupsToCreate(groups)
     if (groupsToCreate.length === 0) {
       toast({ title: t("boq_select_at_least_one"), variant: "destructive" })
       return
@@ -361,8 +323,8 @@ export default function UploadBoqPage() {
     }
   }
 
-  const totalActiveItems = groups.reduce((s, g) => s + g.items.length, 0)
-  const groupsToCreate = groups.filter(g => g.items.length > 0)
+  const totalActiveItems = totalGroupItems(groups)
+  const groupsToCreate = getGroupsToCreate(groups)
   const minDeadline = new Date(); minDeadline.setDate(minDeadline.getDate() + 1)
   const minDeadlineStr = minDeadline.toISOString().split("T")[0]
 
