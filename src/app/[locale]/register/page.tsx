@@ -179,6 +179,13 @@ export default function RegisterPage() {
         // Registration is explicit — do not silently log in an existing user.
         await auth.signOut()
         setRegisterError(t("err_already_registered"))
+        // Also surface a toast: the Google button sits at the bottom of the
+        // form, so the inline error (rendered at the top) may be off-screen.
+        toast({
+          title: t("google_failed"),
+          description: t("err_already_registered"),
+          variant: "destructive"
+        })
         return
       }
 
@@ -243,6 +250,11 @@ export default function RegisterPage() {
       // Account with this email already exists under a different provider (password)
       if (error.code === "auth/account-exists-with-different-credential") {
         setRegisterError(t("error_email_in_use"))
+        toast({
+          title: t("google_failed"),
+          description: t("error_email_in_use"),
+          variant: "destructive"
+        })
         return
       }
       toast({
