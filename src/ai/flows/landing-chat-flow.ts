@@ -1,6 +1,7 @@
 'use server';
 
 import { ai } from '@/ai/genkit';
+import { aiGenerate } from '@/ai/generate';
 import { z } from 'genkit';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -153,8 +154,7 @@ const landingChatFlow = ai.defineFlow(
 
     const prompt = `${historyBlock}Visitor: ${input.question}`;
 
-    const { output } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash',
+    const { output } = await aiGenerate({
       system: input.locale === 'ar' ? SYSTEM_AR : SYSTEM_EN,
       prompt,
       output: { schema: LandingChatOutputSchema },

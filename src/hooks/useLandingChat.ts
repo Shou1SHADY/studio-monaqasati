@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { useTranslations } from 'next-intl';
 
 export interface LandingMessage {
   id: string;
@@ -18,6 +19,7 @@ function genId() {
 }
 
 export function useLandingChat() {
+  const t = useTranslations('RagChat');
   const [messages, setMessages] = useState<LandingMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -51,6 +53,8 @@ export function useLandingChat() {
       .slice(-6)
       .map(m => ({ role: m.role, content: m.content }));
 
+    let resStatus = 0;
+    let lastJson: any = null;
     try {
       const res = await fetch('/api/landing-chat', {
         method: 'POST',
@@ -58,7 +62,9 @@ export function useLandingChat() {
         body: JSON.stringify({ question: question.trim(), locale, history }),
       });
 
+      resStatus = res.status;
       const json = await res.json();
+      lastJson = json;
 
       if (!res.ok || json.error) throw new Error(json.message ?? 'Request failed');
 
@@ -73,13 +79,20 @@ export function useLandingChat() {
       };
 
       setMessages(prev => [...prev.slice(0, -1), aiMsg]);
-    } catch {
+    } catch (err: any) {
+      const isBusy = resStatus === 503;
+      let errorContent = '';
+      if (lastJson?.code === 'AI_RATE_LIMIT' && lastJson?.retryAfter) {
+        errorContent = t('errorBusyRetry', { secs: lastJson.retryAfter as number });
+      } else if (isBusy) {
+        errorContent = t('errorBusy');
+      } else {
+        errorContent = t('error');
+      }
       const errMsg: LandingMessage = {
         id: genId(),
         role: 'assistant',
-        content: locale === 'ar'
-          ? 'حدث خطأ. يرجى المحاولة مرة أخرى.'
-          : 'An error occurred. Please try again.',
+        content: errorContent,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev.slice(0, -1), errMsg]);

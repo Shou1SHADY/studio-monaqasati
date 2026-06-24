@@ -1991,6 +1991,8 @@
     "placeholder": "Ask about your data...",
     "send": "Send",
     "thinking": "Thinking...",
-    "error": "An error occurred. Please try again."
+    "error": "An error occurred. Please try again.",
+    "errorBusy": "The assistant is busy right now. Please try again in a moment.",
+    "errorBusyRetry": "The assistant is busy. Please wait {secs} seconds and try again."
   }
 }

@@ -1,6 +1,7 @@
 'use server';
 
 import { ai } from '@/ai/genkit';
+import { aiGenerate } from '@/ai/generate';
 import { z } from 'genkit';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -285,8 +286,7 @@ const ragAskFlow = ai.defineFlow(
 ---
 ${input.locale === 'ar' ? 'سؤال المستخدم' : 'User question'}: ${input.question}`;
 
-    const { output } = await ai.generate({
-      model: 'googleai/gemini-2.5-flash',
+    const { output } = await aiGenerate({
       system: systemPrompt,
       prompt: userPrompt,
       output: { schema: RagAskOutputSchema },
