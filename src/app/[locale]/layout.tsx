@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, Noto_Sans_Arabic } from 'next/font/google';
+import Script from 'next/script';
 import '../globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { NextIntlClientProvider } from 'next-intl';
@@ -107,6 +108,18 @@ export default async function RootLayout({
         className={`${locale === 'ar' ? notoSansArabic.variable : inter.variable} ${notoNaskhArabic.variable} font-body antialiased text-foreground overflow-x-hidden`}
         suppressHydrationWarning
       >
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-P4RLVZ00Q3"
+          strategy="afterInteractive"
+        />
+        <Script id="ga4-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-P4RLVZ00Q3');
+          `}
+        </Script>
         <NextIntlClientProvider messages={messages}>
           <StructuredData />
           {children}
