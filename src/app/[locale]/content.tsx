@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Link } from "@/i18n/routing";
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, CheckCircle2, Clock, Zap, TrendingUp } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, Zap, TrendingUp, Menu, X } from 'lucide-react';
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useTranslations, useLocale } from 'next-intl';
 import BelowFoldSections from './BelowFoldSections';
@@ -63,6 +63,7 @@ export default function HomeContent() {
 
   const [slide, setSlide] = useState(0);
   const [scrolled, setScrolled] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -73,6 +74,11 @@ export default function HomeContent() {
       clearInterval(t);
     };
   }, []);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileMenuOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileMenuOpen]);
 
   return (
     <div className="min-h-svh bg-[#020617] flex flex-col font-body text-foreground overflow-x-hidden selection:bg-cta/30">
@@ -112,15 +118,81 @@ export default function HomeContent() {
 
           <div className="flex items-center gap-2 md:gap-4">
             <LanguageSwitcher className="text-slate-300 hover:text-white hover:bg-white/5 text-xs md:text-sm" />
-            <Link href="/login">
+            <Link href="/login" className="hidden sm:block">
               <Button variant="ghost" className="text-slate-300 hover:text-white font-bold text-xs md:text-sm px-3 md:px-5 h-9 md:h-11 hover:bg-white/5 transition-all">{tNav('login')}</Button>
             </Link>
             <Link href="/register">
               <Button className="font-bold bg-white text-primary hover:bg-cta hover:text-white px-4 md:px-8 rounded-xl h-9 md:h-11 text-xs md:text-sm transition-all shadow-xl shadow-white/5 border-none">{tNav('start_free')}</Button>
             </Link>
+            <button
+              className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label={locale === 'ar' ? 'فتح القائمة' : 'Open menu'}
+            >
+              <Menu size={18} />
+            </button>
           </div>
         </div>
       </nav>
+
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden">
+          <div
+            className="absolute inset-0 bg-[#020617]/70 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <div className="absolute top-0 inset-x-0 bg-[#0F172A] border-b border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+              <Link href="/" onClick={() => setMobileMenuOpen(false)}>
+                <Image
+                  src="/logo1.png"
+                  alt={locale === 'ar' ? 'مدماك تيك' : 'Mdmak Tech'}
+                  width={120}
+                  height={40}
+                  className="h-9 w-auto object-contain"
+                />
+              </Link>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white transition-colors"
+                aria-label={locale === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <nav className="flex flex-col px-4 py-3">
+              {[
+                { label: tNav('features'), href: '#features' },
+                { label: tNav('how_it_works'), href: '#how' },
+                { label: tNav('suppliers_portal'), href: '/register?role=Supplier' },
+                { label: tNav('contractors_portal'), href: '/register?role=Contractor' },
+              ].map(item => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-slate-300 hover:text-white font-bold text-base py-3.5 px-4 rounded-xl hover:bg-white/5 transition-colors"
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <div className="flex flex-col gap-3 px-6 pb-6 pt-3 border-t border-white/5">
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                <Button variant="ghost" className="w-full h-11 text-slate-300 hover:text-white font-bold hover:bg-white/5 border border-white/10">
+                  {tNav('login')}
+                </Button>
+              </Link>
+              <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
+                <Button className="w-full h-11 font-bold bg-white text-primary hover:bg-cta hover:text-white rounded-xl border-none">
+                  {tNav('start_free')}
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero */}
       <section className="relative h-svh min-h-[640px] md:min-h-[700px] flex flex-col">
