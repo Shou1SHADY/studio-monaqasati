@@ -347,7 +347,7 @@ export default function UploadBoqPage() {
         {/* Step indicator */}
         <div className="flex items-center gap-2">
           <StepDot active={step === "upload"} done={step === "review"} number={1} label={t("boq_step1_label")} />
-          <div className="flex-1 h-px bg-slate-200" />
+          <div className="flex-1 h-px bg-border" />
           <StepDot active={step === "review"} done={false} number={2} label={t("boq_step2_label")} />
         </div>
 
@@ -358,7 +358,7 @@ export default function UploadBoqPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             {/* Left: Dropzone */}
-            <Card className="border-slate-200">
+            <Card className="border-border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
                   <FileSpreadsheet size={16} className="text-primary" />
@@ -376,7 +376,7 @@ export default function UploadBoqPage() {
                     "relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-10 cursor-pointer transition-all",
                     isDragging ? "border-primary bg-primary/5 scale-[1.01]"
                       : projectInfo ? "border-emerald-300 bg-emerald-50/60"
-                      : "border-slate-200 bg-slate-50/50 hover:border-primary/50 hover:bg-primary/3"
+                      : "border-border bg-muted/40 hover:border-primary/50 hover:bg-primary/5"
                   )}
                 >
                   <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={onFileChange} />
@@ -407,7 +407,7 @@ export default function UploadBoqPage() {
                         <Upload size={28} className="text-primary/60" />
                       </div>
                       <div className="text-center space-y-1">
-                        <p className="text-sm font-bold text-slate-700">{t("boq_drop_hint")}</p>
+                        <p className="text-sm font-bold text-foreground">{t("boq_drop_hint")}</p>
                         <p className="text-xs text-muted-foreground">{t("boq_drop_hint_sub")}</p>
                       </div>
                     </>
@@ -416,21 +416,21 @@ export default function UploadBoqPage() {
 
                 {/* Editable project info */}
                 {projectInfo && (
-                  <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+                  <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-muted/50 border border-border text-xs">
                     <div>
                       <p className="text-muted-foreground font-medium mb-0.5">{t("boq_project_no")}</p>
-                      <p className="font-bold text-slate-700 dir-ltr">{projectInfo.projectNo || "—"}</p>
+                      <p className="font-bold text-foreground dir-ltr">{projectInfo.projectNo || "—"}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground font-medium mb-0.5">{t("boq_revision")}</p>
-                      <p className="font-bold text-slate-700">{projectInfo.revision || "R00"}</p>
+                      <p className="font-bold text-foreground">{projectInfo.revision || "R00"}</p>
                     </div>
                     <div className="col-span-2 space-y-1">
                       <p className="text-muted-foreground font-medium">{t("boq_project_name_edit")}</p>
                       <Input
                         value={projectNameEdit}
                         onChange={e => setProjectNameEdit(e.target.value)}
-                        className="h-8 text-xs rounded-lg border-slate-200 bg-white"
+                        className="h-8 text-xs rounded-lg border-border bg-background"
                         dir="auto"
                       />
                     </div>
@@ -440,7 +440,7 @@ export default function UploadBoqPage() {
             </Card>
 
             {/* Right: Common Settings */}
-            <Card className="border-slate-200">
+            <Card className="border-border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-bold flex items-center gap-2">
                   <Layers size={16} className="text-primary" />
@@ -519,12 +519,12 @@ export default function UploadBoqPage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setStep("upload")}
-                  className="h-9 w-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition-colors"
+                  className="h-9 w-9 rounded-xl border border-border flex items-center justify-center hover:bg-muted transition-colors"
                 >
                   {isRtl ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
                 </button>
                 <div>
-                  <p className="font-bold text-slate-800 text-sm">{projectNameEdit || t("boq_review_title")}</p>
+                  <p className="font-bold text-foreground text-sm">{projectNameEdit || t("boq_review_title")}</p>
                   <p className="text-xs text-muted-foreground">
                     {isRtl
                       ? `${groupsToCreate.length} مناقصات ستُنشأ من ${totalActiveItems} بند`
@@ -599,7 +599,7 @@ export default function UploadBoqPage() {
               {unassigned.length > 0 && (
                 <Card className={cn(
                   "border-dashed border-2 transition-colors",
-                  dragOverGroupId === "unassigned" ? "border-primary bg-primary/3" : "border-slate-200"
+                  dragOverGroupId === "unassigned" ? "border-primary bg-primary/5" : "border-border"
                 )}
                   onDragOver={e => onGroupDragOver(e, "unassigned")}
                   onDrop={e => onGroupDrop(e, "unassigned")}
@@ -664,7 +664,7 @@ function BoqGroupCard({
     <Card
       className={cn(
         "border transition-all",
-        isDragOver ? "border-primary/60 bg-primary/3 shadow-md" : "border-slate-200",
+        isDragOver ? "border-primary/60 bg-primary/5 shadow-md" : "border-border",
         group.items.length === 0 && "opacity-60"
       )}
       onDragOver={onDragOver}
@@ -684,7 +684,7 @@ function BoqGroupCard({
               <Input
                 value={group.titleAr}
                 onChange={e => onUpdateTitle(e.target.value)}
-                className="h-9 text-sm font-bold rounded-lg border-slate-200 mt-0.5"
+                className="h-9 text-sm font-bold rounded-lg border-border mt-0.5"
                 dir="rtl"
               />
             </div>
@@ -692,7 +692,7 @@ function BoqGroupCard({
             <div>
               <Label className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("boq_group_category")}</Label>
               <Select value={group.categoryAr} onValueChange={onUpdateCategory}>
-                <SelectTrigger className="h-8 text-xs rounded-lg border-slate-200 mt-0.5">
+                <SelectTrigger className="h-8 text-xs rounded-lg border-border mt-0.5">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
@@ -720,7 +720,7 @@ function BoqGroupCard({
 
       <CardContent className="px-4 pb-4 space-y-2">
         {group.items.length === 0 ? (
-          <div className="py-6 text-center text-xs text-muted-foreground border-2 border-dashed border-slate-200 rounded-xl">
+          <div className="py-6 text-center text-xs text-muted-foreground border-2 border-dashed border-border rounded-xl">
             {isRtl ? "اسحب البنود هنا" : "Drag items here"}
           </div>
         ) : (
@@ -774,9 +774,9 @@ function ItemRow({
     <div
       draggable
       onDragStart={onDragStart}
-      className="flex items-start gap-2 p-2.5 rounded-xl bg-slate-50/70 hover:bg-slate-100/80 border border-slate-100 cursor-grab active:cursor-grabbing transition-colors group"
+      className="flex items-start gap-2 p-2.5 rounded-xl bg-muted/50 hover:bg-muted border border-border cursor-grab active:cursor-grabbing transition-colors group"
     >
-      <GripVertical size={14} className="text-slate-300 group-hover:text-slate-500 shrink-0 mt-0.5 transition-colors" />
+      <GripVertical size={14} className="text-muted-foreground/40 group-hover:text-muted-foreground shrink-0 mt-0.5 transition-colors" />
 
       {/* Item No badge */}
       <span className="text-[10px] font-mono font-bold bg-primary/8 text-primary px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
@@ -787,21 +787,21 @@ function ItemRow({
       <div className="flex-1 min-w-0">
         {/* Arabic first */}
         {item.descriptionAr && (
-          <p className="text-xs font-bold text-slate-800 leading-snug text-right" dir="rtl">
+          <p className="text-xs font-bold text-foreground leading-snug text-right" dir="rtl">
             {item.descriptionAr}
           </p>
         )}
-        <p className={cn("text-[11px] text-muted-foreground leading-snug", item.descriptionAr ? "mt-0.5" : "font-bold text-slate-800 text-xs")}>
+        <p className={cn("text-[11px] text-muted-foreground leading-snug", item.descriptionAr ? "mt-0.5" : "font-bold text-foreground text-xs")}>
           {item.descriptionEn}
         </p>
       </div>
 
       {/* Qty + Unit */}
       <div className="flex items-center gap-1 shrink-0">
-        <span className="text-[10px] font-bold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded" dir="ltr">
+        <span className="text-[10px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded" dir="ltr">
           {item.quantity}
         </span>
-        <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">
+        <span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded">
           {item.unit}
         </span>
       </div>
@@ -829,7 +829,7 @@ function StepDot({ number, label, active, done }: { number: number; label: strin
     <div className="flex items-center gap-2 shrink-0">
       <div className={cn(
         "h-7 w-7 rounded-full flex items-center justify-center text-xs font-black transition-colors",
-        done ? "bg-emerald-500 text-white" : active ? "bg-primary text-white" : "bg-slate-200 text-slate-500"
+        done ? "bg-emerald-500 text-white" : active ? "bg-primary text-white" : "bg-muted text-muted-foreground"
       )}>
         {done ? <CheckCircle2 size={14} /> : number}
       </div>
