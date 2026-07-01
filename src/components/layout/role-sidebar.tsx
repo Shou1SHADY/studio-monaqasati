@@ -22,6 +22,8 @@ import {
   Settings,
   LogOut,
   ChevronDown,
+  FolderOpen,
+  Link2,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -63,7 +65,8 @@ const contractorSections: NavSection[] = [
           { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: PlusCircle },
         ],
       },
-      // { titleKey: "contractor_suppliers", href: "/contractor/suppliers", icon: Users },
+      { titleKey: "contractor_projects", href: "/contractor/projects", icon: FolderOpen },
+      { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },
     ],
   },
   {
@@ -90,6 +93,7 @@ const supplierSections: NavSection[] = [
       { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
       { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
       { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
+      { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
     ],
   },
   {

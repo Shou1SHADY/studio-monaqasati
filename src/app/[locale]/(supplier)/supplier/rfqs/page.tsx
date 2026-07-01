@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
@@ -141,31 +141,53 @@ export default function AvailableRfqsPage() {
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
-    
+
     let q = query(
       collection(firestore, "rfqs"),
       where("status", "in", ["New", "Awarded"]),
       where("visibility", "==", "public")
     )
-    
+
     if (selectedCategory !== "all") {
       q = query(q, where("category", "==", selectedCategory))
     }
     if (selectedCity !== "all") {
       q = query(q, where("city", "==", selectedCity))
     }
-    
+
     return q
   }, [firestore, user, isUserLoading, selectedCategory, selectedCity])
 
+  // Private RFQ query: RFQs where this supplier's org is in allowedSupplierOrgIds
+  const privateRfqsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !profile) return null
+    const supplierOrgId = (profile as any)?.organizationId || user.uid
+    return query(
+      collection(firestore, "rfqs"),
+      where("allowedSupplierOrgIds", "array-contains", supplierOrgId)
+    )
+  }, [firestore, user, isUserLoading, profile])
+
   const { data: allRfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
-  const isLoading = isUserLoading || isCollectionLoading
+  const { data: privateRfqs, isLoading: isPrivateLoading } = useCollection(privateRfqsQuery)
+  const isLoading = isUserLoading || isCollectionLoading || isPrivateLoading
+
+  // Merge public + private RFQs, deduplicate by id, filter to active statuses
+  const allCombinedRfqs = useMemo(() => {
+    const combined = [...(allRfqs || []), ...(privateRfqs || []).filter((r: any) => ["New", "Awarded"].includes(r.status))]
+    const seen = new Set<string>()
+    return combined.filter((rfq: any) => {
+      if (seen.has(rfq.id)) return false
+      seen.add(rfq.id)
+      return true
+    })
+  }, [allRfqs, privateRfqs])
 
   const archivedRfqIds: string[] = (profile as any)?.archivedRfqIds || []
 
   // Client-side filtering by specializations and sorting
-  const allMatchingRfqs = allRfqs
-    ? [...allRfqs]
+  const allMatchingRfqs = allCombinedRfqs
+    ? [...allCombinedRfqs]
         .filter((rfq: any) => {
           if (!profile?.specializations?.length) return false;
           return profile.specializations.includes(rfq.category);

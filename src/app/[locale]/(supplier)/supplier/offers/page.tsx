@@ -26,9 +26,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp } from "lucide-react"
+import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp, Truck } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
@@ -55,6 +56,11 @@ export default function SupplierOffersPage() {
   const [confirmSampleOffer, setConfirmSampleOffer] = useState<any | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  const [deliveryOffer, setDeliveryOffer] = useState<any | null>(null)
+  const [deliveryPersonName, setDeliveryPersonName] = useState("")
+  const [deliveryDate, setDeliveryDate] = useState("")
+  const [deliveryNotes, setDeliveryNotes] = useState("")
+  const [isSendingDelivery, setIsSendingDelivery] = useState(false)
 
   const openChat = async (offer: any) => {
     if (!user) return
@@ -94,6 +100,65 @@ export default function SupplierOffersPage() {
 
   const { data: rawOffers, isLoading: isCollectionLoading } = useCollection(offersQuery)
   const isLoading = isUserLoading || isCollectionLoading
+
+  // Deliveries for this supplier — used to show delivery notice status per offer
+  const deliveriesQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "deliveries"),
+      where("supplierOrgId", "==", profile?.organizationId || user.uid)
+    )
+  }, [firestore, user, isUserLoading, profile?.organizationId])
+  const { data: deliveries } = useCollection(deliveriesQuery)
+  const deliveryByOfferId: Record<string, any> = {}
+  ;(deliveries || []).forEach((d: any) => { deliveryByOfferId[d.offerId] = d })
+
+  const handleSendDelivery = async () => {
+    if (!firestore || !user || !deliveryOffer || !deliveryPersonName.trim() || !deliveryDate) return
+    setIsSendingDelivery(true)
+    try {
+      await addDoc(collection(firestore, "deliveries"), {
+        rfqId: deliveryOffer.rfqId || null,
+        offerId: deliveryOffer.id,
+        contractorOrgId: deliveryOffer.contractorOrgId || deliveryOffer.contractorId,
+        contractorId: deliveryOffer.contractorId || null,
+        supplierOrgId: profile?.organizationId || user.uid,
+        supplierId: user.uid,
+        supplierName: profile?.companyName || profile?.name || t("generic_supplier"),
+        deliveryPersonName: deliveryPersonName.trim(),
+        deliveryDate: new Date(deliveryDate).toISOString(),
+        notes: deliveryNotes.trim() || null,
+        rfqTitle: deliveryOffer.rfqTitle || "",
+        items: deliveryOffer.products || [],
+        status: "pending_confirmation",
+        createdAt: serverTimestamp()
+      })
+
+      if (deliveryOffer.contractorId) {
+        await addDoc(collection(firestore, "users", deliveryOffer.contractorId, "notifications"), {
+          userId: deliveryOffer.contractorId,
+          organizationId: deliveryOffer.contractorOrgId || deliveryOffer.contractorId,
+          type: "delivery_notice",
+          title: "🚚 إشعار تسليم جديد",
+          message: `قام المورد بإرسال إشعار تسليم لمناقصة: ${deliveryOffer.rfqTitle || ""}`,
+          offerId: deliveryOffer.id,
+          rfqId: deliveryOffer.rfqId || null,
+          createdAt: new Date().toISOString(),
+          read: false
+        })
+      }
+
+      toast({ title: t("delivery_sent_toast"), description: t("delivery_sent_desc") })
+      setDeliveryOffer(null)
+      setDeliveryPersonName("")
+      setDeliveryDate("")
+      setDeliveryNotes("")
+    } catch (err) {
+      toast({ title: t("error_title"), variant: "destructive" })
+    } finally {
+      setIsSendingDelivery(false)
+    }
+  }
 
   // Auto-delete archived offers older than 30 days
   useEffect(() => {
@@ -412,6 +477,32 @@ export default function SupplierOffersPage() {
                                   : <MessageSquare size={16} />}
                               </Button>
                               <ContractorWhatsAppButton contractorId={offer.contractorId} />
+                              {deliveryByOfferId[offer.id] ? (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "h-8 px-2.5 gap-1 text-[11px] font-bold",
+                                    deliveryByOfferId[offer.id].status === "confirmed"
+                                      ? "border-success/30 bg-success/10 text-success"
+                                      : "border-blue-200 bg-blue-50 text-blue-700"
+                                  )}
+                                >
+                                  <Truck size={12} />
+                                  {deliveryByOfferId[offer.id].status === "confirmed"
+                                    ? t("delivery_status_confirmed")
+                                    : t("delivery_status_pending")}
+                                </Badge>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                                  title={t("delivery_btn")}
+                                  onClick={() => setDeliveryOffer(offer)}
+                                >
+                                  <Truck size={16} />
+                                </Button>
+                              )}
                             </>
                           )}
 
@@ -691,6 +782,63 @@ export default function SupplierOffersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Delivery Notice Dialog */}
+      <Dialog open={!!deliveryOffer} onOpenChange={(open) => { if (!open) { setDeliveryOffer(null); setDeliveryPersonName(""); setDeliveryDate(""); setDeliveryNotes("") } }}>
+        <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck size={18} className="text-blue-600" />
+              {t("delivery_dialog_title")}
+            </DialogTitle>
+            <DialogDescription>{t("delivery_dialog_desc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>{t("delivery_person_label")} <span className="text-destructive">*</span></Label>
+              <Input
+                value={deliveryPersonName}
+                onChange={(e) => setDeliveryPersonName(e.target.value)}
+                placeholder={t("delivery_person_placeholder")}
+                disabled={isSendingDelivery}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("delivery_date_label")} <span className="text-destructive">*</span></Label>
+              <input
+                type="date"
+                value={deliveryDate}
+                onChange={(e) => setDeliveryDate(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                dir="ltr"
+                disabled={isSendingDelivery}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("delivery_notes_label")}</Label>
+              <Textarea
+                value={deliveryNotes}
+                onChange={(e) => setDeliveryNotes(e.target.value)}
+                placeholder={t("delivery_notes_placeholder")}
+                rows={3}
+                className="resize-none"
+                disabled={isSendingDelivery}
+              />
+            </div>
+          </div>
+          <DialogFooter className={cn("flex flex-row gap-2 mt-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
+            <Button variant="outline" onClick={() => setDeliveryOffer(null)} disabled={isSendingDelivery}>{t("cancel")}</Button>
+            <Button
+              onClick={handleSendDelivery}
+              disabled={isSendingDelivery || !deliveryPersonName.trim() || !deliveryDate}
+              className="bg-blue-600 hover:bg-blue-700 gap-2"
+            >
+              {isSendingDelivery ? <Loader2 className="animate-spin" size={16} /> : <Truck size={16} />}
+              {t("delivery_send_btn")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Chat Redirect Dialog after sample sent - must be sibling, NOT nested */}
       <AlertDialog open={!!openingChat} onOpenChange={(open) => { if (!open) setOpeningChat(null) }}>

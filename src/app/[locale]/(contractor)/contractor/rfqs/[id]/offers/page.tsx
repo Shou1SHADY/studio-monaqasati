@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { Star } from "lucide-react"
 import { displayCategory, displaySubcategory, displayCity } from "@/lib/constants"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 
 import {
@@ -39,10 +41,11 @@ import {
   Globe,
   Download,
   Briefcase,
-  ChevronLeft
+  ChevronLeft,
+  FileCheck
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 
@@ -77,6 +80,9 @@ export default function RfqOffersPage() {
   const [targetPrice, setTargetPrice] = useState("")
   const [sortBy, setSortBy] = useState<"price" | "date" | "duration">("price")
   const [reviewOffer, setReviewOffer] = useState<any | null>(null)
+  const [confirmDeliveryDoc, setConfirmDeliveryDoc] = useState<any | null>(null)
+  const [receiverName, setReceiverName] = useState("")
+  const [isConfirmingDelivery, setIsConfirmingDelivery] = useState(false)
 
   const openChat = async (offer: any) => {
     if (!firestore || !user) return
@@ -123,6 +129,50 @@ export default function RfqOffersPage() {
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
+
+  // Delivery notices for this RFQ's offers
+  const deliveriesQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !rfqId) return null
+    return query(collection(firestore, "deliveries"), where("rfqId", "==", rfqId))
+  }, [firestore, user, isUserLoading, rfqId])
+  const { data: deliveries } = useCollection(deliveriesQuery)
+  const deliveryByOfferId: Record<string, any> = {}
+  ;(deliveries || []).forEach((d: any) => { deliveryByOfferId[d.offerId] = d })
+
+  const handleConfirmDelivery = async () => {
+    if (!firestore || !user || !confirmDeliveryDoc || !receiverName.trim()) return
+    setIsConfirmingDelivery(true)
+    try {
+      await updateDoc(doc(firestore, "deliveries", confirmDeliveryDoc.id), {
+        status: "confirmed",
+        receivedByName: receiverName.trim(),
+        confirmedAt: serverTimestamp(),
+        confirmedByUserId: user.uid
+      })
+
+      if (confirmDeliveryDoc.supplierId) {
+        await addDoc(collection(firestore, "users", confirmDeliveryDoc.supplierId, "notifications"), {
+          userId: confirmDeliveryDoc.supplierId,
+          organizationId: confirmDeliveryDoc.supplierOrgId || confirmDeliveryDoc.supplierId,
+          type: "delivery_confirmed",
+          title: "✅ تم تأكيد الاستلام",
+          message: `أكد المقاول استلام الشحنة لمناقصة: ${confirmDeliveryDoc.rfqTitle || ""}`,
+          offerId: confirmDeliveryDoc.offerId,
+          rfqId: confirmDeliveryDoc.rfqId,
+          createdAt: new Date().toISOString(),
+          read: false
+        })
+      }
+
+      toast({ title: t("delivery_confirm_success"), description: t("delivery_receipt_link") })
+      setConfirmDeliveryDoc(null)
+      setReceiverName("")
+    } catch (err) {
+      toast({ title: t("offers_toast_error"), variant: "destructive" })
+    } finally {
+      setIsConfirmingDelivery(false)
+    }
+  }
 
   const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض" | "مطلوب تخفيض", note?: string, requestedPrice?: string) => {
     if (!firestore || !user) return
@@ -709,6 +759,42 @@ export default function RfqOffersPage() {
                         {/* Action Buttons - Accepted */}
                         {offer.status === "مقبول" && (
                           <div className="bg-success/5 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-success/15">
+                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && (
+                              <div className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1.5 mb-1">
+                                <p className="font-bold text-amber-800 flex items-center gap-1.5">
+                                  <Truck size={12} />
+                                  {t("delivery_notice_banner")}
+                                </p>
+                                <p className="text-amber-700">{t("delivery_notice_driver")}: {deliveryByOfferId[offer.id].deliveryPersonName}</p>
+                                <p className="text-amber-700" suppressHydrationWarning>
+                                  {t("delivery_notice_date")}: {fmtDate(deliveryByOfferId[offer.id].deliveryDate, locale)}
+                                </p>
+                              </div>
+                            )}
+                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && (
+                              <Button
+                                onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
+                                className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs"
+                                size="sm"
+                              >
+                                <CheckCircle2 size={14} />
+                                {t("delivery_confirm_btn")}
+                              </Button>
+                            )}
+                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "confirmed" && (
+                              <>
+                                <Badge className="w-full justify-center bg-success/10 text-success border-success/20 gap-1.5 py-1.5">
+                                  <CheckCircle2 size={12} />
+                                  {t("delivery_confirmed_badge")}
+                                </Badge>
+                                <Link href={`/contractor/receipts/${deliveryByOfferId[offer.id].id}`} className="w-full">
+                                  <Button variant="outline" className="w-full gap-2 rounded-full text-xs" size="sm">
+                                    <FileCheck size={14} />
+                                    {t("delivery_view_receipt")}
+                                  </Button>
+                                </Link>
+                              </>
+                            )}
                             <Button
                               onClick={() => openChat(offer)}
                               disabled={openingChat === offer.id}
@@ -1225,6 +1311,47 @@ export default function RfqOffersPage() {
         </DialogContent>
       </Dialog>
 
+
+      {/* Confirm Delivery Dialog */}
+      <Dialog open={!!confirmDeliveryDoc} onOpenChange={(open) => { if (!open) { setConfirmDeliveryDoc(null); setReceiverName("") } }}>
+        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 size={18} className="text-success" />
+              {t("delivery_confirm_title")}
+            </DialogTitle>
+            <DialogDescription>{t("delivery_confirm_desc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {confirmDeliveryDoc && (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1">
+                <p className="text-slate-600">{t("delivery_notice_driver")}: <span className="font-bold">{confirmDeliveryDoc.deliveryPersonName}</span></p>
+                <p className="text-slate-600" suppressHydrationWarning>{t("delivery_notice_date")}: <span className="font-bold">{fmtDate(confirmDeliveryDoc.deliveryDate, locale)}</span></p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>{t("delivery_receiver_label")} <span className="text-destructive">*</span></Label>
+              <Input
+                value={receiverName}
+                onChange={(e) => setReceiverName(e.target.value)}
+                placeholder={t("delivery_receiver_placeholder")}
+                disabled={isConfirmingDelivery}
+              />
+            </div>
+          </div>
+          <DialogFooter className={cn("flex flex-row gap-2 mt-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
+            <Button variant="outline" onClick={() => setConfirmDeliveryDoc(null)} disabled={isConfirmingDelivery}>{t("cancel")}</Button>
+            <Button
+              onClick={handleConfirmDelivery}
+              disabled={isConfirmingDelivery || !receiverName.trim()}
+              className="bg-success hover:bg-success/90 gap-2"
+            >
+              {isConfirmingDelivery ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+              {t("delivery_confirm_submit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Review Dialog */}
       {reviewOffer && (

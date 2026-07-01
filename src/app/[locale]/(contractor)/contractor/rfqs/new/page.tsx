@@ -37,12 +37,14 @@ import {
   AlertCircle,
   Search,
   ChevronDown,
-  Check
+  Check,
+  Globe,
+  Lock
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
-import { collection, doc, getDoc, updateDoc } from "firebase/firestore"
+import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { collection, doc, getDoc, updateDoc, query, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -215,6 +217,20 @@ export default function NewRfqPage() {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
+
+  // Visibility: "public" shows to all matching-specialization suppliers; "private" sends only to connected suppliers
+  const [visibility, setVisibility] = useState<"public" | "private">("public")
+
+  const connectedLinksQuery = useMemoFirebase(() => {
+    if (!user || !firestore || !profile) return null
+    return query(
+      collection(firestore, "contractorSupplierLinks"),
+      where("contractorOrgId", "==", (profile as any).organizationId || user.uid),
+      where("status", "==", "active")
+    )
+  }, [firestore, user, profile])
+  const { data: connectedLinks } = useCollection(connectedLinksQuery)
+  const connectedSupplierOrgIds: string[] = connectedLinks?.map((l: any) => l.supplierOrgId) || []
 
   // ── All useState/useRef hooks MUST be declared before any early returns ──
   const [formData, setFormData] = useState({
@@ -577,7 +593,8 @@ export default function NewRfqPage() {
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
-        visibility: "public",
+        visibility: visibility,
+        allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         updatedAt: new Date().toISOString()
       }
 
@@ -639,7 +656,8 @@ export default function NewRfqPage() {
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
-        visibility: "public",
+        visibility: visibility,
+        allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         createdByUserId: user.uid,
         createdByUserName: profile?.name || user.email || "عضو الفريق",
         createdAt: new Date().toISOString()
@@ -1066,6 +1084,64 @@ export default function NewRfqPage() {
                         {t("newrfq_deadline_display", { date: new Date(formData.deadline).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
                       </p>
                     )}
+                  </div>
+                </div>
+
+                {/* Visibility Toggle */}
+                <div className={cn(
+                  "p-5 rounded-2xl border transition-all duration-200",
+                  visibility === "private"
+                    ? "bg-primary/5 border-primary/20"
+                    : "bg-muted/40 border-border"
+                )}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className={cn(
+                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                        visibility === "private" ? "bg-primary/15" : "bg-muted"
+                      )}>
+                        {visibility === "private"
+                          ? <Lock size={18} className="text-primary" />
+                          : <Globe size={18} className="text-muted-foreground" />
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-foreground">{t("newrfq_visibility_label")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                          {visibility === "private" ? t("newrfq_visibility_private_desc") : t("newrfq_visibility_public_desc")}
+                        </p>
+                        {visibility === "private" && connectedSupplierOrgIds.length === 0 && (
+                          <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
+                            <AlertCircle size={11} className="shrink-0" />
+                            {t("newrfq_visibility_no_suppliers")}
+                          </p>
+                        )}
+                        {visibility === "private" && connectedSupplierOrgIds.length > 0 && (
+                          <p className="text-xs text-success mt-2 flex items-center gap-1.5 bg-success/10 px-2.5 py-1.5 rounded-lg border border-success/20 w-fit font-semibold">
+                            <CheckCircle2 size={11} className="shrink-0" />
+                            {t("newrfq_visibility_supplier_count", { count: connectedSupplierOrgIds.length })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0 pt-0.5">
+                      <span className={cn(
+                        "text-xs font-semibold transition-colors",
+                        visibility === "public" ? "text-foreground" : "text-muted-foreground"
+                      )}>
+                        {t("newrfq_visibility_public")}
+                      </span>
+                      <Switch
+                        checked={visibility === "private"}
+                        onCheckedChange={checked => setVisibility(checked ? "private" : "public")}
+                      />
+                      <span className={cn(
+                        "text-xs font-semibold transition-colors",
+                        visibility === "private" ? "text-primary" : "text-muted-foreground"
+                      )}>
+                        {t("newrfq_visibility_private")}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

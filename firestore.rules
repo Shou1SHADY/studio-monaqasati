@@ -193,6 +193,69 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.reviewerId == request.auth.uid);
     }
 
+    // Contractor–Supplier connection requests (supplier sends request → contractor accepts)
+    match /contractorSupplierLinks/{linkId} {
+      // Both parties can read their own links
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      // Only suppliers can initiate connection requests
+      allow create: if isSupplier()
+        && request.resource.data.supplierOrgId == getOrganizationId()
+        && request.resource.data.requestedBy == "supplier";
+      // Contractors can accept/reject (update status); suppliers can cancel their own request
+      allow update: if isSignedIn() && (
+        resource.data.contractorOrgId == getOrganizationId() ||
+        (resource.data.supplierOrgId == getOrganizationId() && resource.data.requestedBy == "supplier") ||
+        isAdmin()
+      );
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.supplierOrgId == getOrganizationId());
+    }
+
+    // Project tracking — contractor org-scoped
+    match /projects/{projectId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.organizationId == getOrganizationId() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      allow create: if isContractor()
+        && request.resource.data.organizationId == getOrganizationId();
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+    }
+
+    // Delivery receipts — both contractor and supplier involved can read/write
+    match /deliveries/{deliveryId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId() ||
+        resource.data.supplierId == request.auth.uid ||
+        resource.data.confirmedByUserId == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      // Supplier creates delivery notice for their own accepted offer
+      allow create: if isSupplier()
+        && request.resource.data.supplierOrgId == getOrganizationId();
+      // Contractor confirms receipt; supplier can update their own notice before confirmation
+      allow update: if isSignedIn() && (
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId() ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
   }
 }
 
