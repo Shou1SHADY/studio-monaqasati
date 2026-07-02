@@ -415,7 +415,8 @@
       "section_settings": "الإعدادات",
       "section_management": "الإدارة",
       "section_monitoring": "المراقبة",
-      "logout": "تسجيل الخروج"
+      "logout": "تسجيل الخروج",
+      "contractor_goods_received": "سجل الاستلام"
     },
     "Layout": {
       "search_placeholder": "بحث سريع...",
@@ -885,7 +886,17 @@
       "delivery_sent_desc": "سيُخطر المقاول لتأكيد الاستلام",
       "delivery_already_sent": "تم إرسال إشعار التسليم",
       "delivery_status_pending": "بانتظار تأكيد الاستلام",
-      "delivery_status_confirmed": "تم تأكيد الاستلام"
+      "delivery_status_confirmed": "تم تأكيد الاستلام",
+      "conn_invitations_tab": "الدعوات الواردة",
+      "conn_invitations_empty": "لا توجد دعوات واردة",
+      "conn_invitations_empty_desc": "ستظهر هنا دعوات المقاولين لك",
+      "conn_inv_from": "دعوة من",
+      "conn_inv_accept": "قبول الدعوة",
+      "conn_inv_decline": "رفض",
+      "conn_inv_accepted_toast": "تم قبول الدعوة بنجاح وأنت الآن مرتبط بهذا المقاول",
+      "conn_inv_declined_toast": "تم رفض الدعوة",
+      "conn_inv_received_at": "وردت في",
+      "conn_inv_error": "حدث خطأ أثناء معالجة الدعوة"
     },
     "Errors": {
       "access_denied_title": "عفواً، لا تملك الصلاحيات الكافية",
@@ -1694,7 +1705,38 @@
       "suppliers_fav_removed": "تم الإزالة",
       "suppliers_fav_added": "تمت الإضافة",
       "suppliers_spec_building_materials": "مواد بناء",
-      "suppliers_spec_cement": "أسمنت"
+      "suppliers_spec_cement": "أسمنت",
+      "my_sup_invite_tab": "دعوة مورد",
+      "my_sup_invite_email_label": "البريد الإلكتروني للمورد",
+      "my_sup_invite_email_placeholder": "supplier@example.com",
+      "my_sup_invite_name_label": "اسم الشركة (اختياري)",
+      "my_sup_invite_name_placeholder": "شركة التوريدات",
+      "my_sup_invite_btn": "إرسال الدعوة",
+      "my_sup_invite_success": "تم إرسال الدعوة",
+      "my_sup_invite_success_desc": "سيتمكن المورد من قبول الدعوة من لوحة التحكم الخاصة به",
+      "my_sup_invite_error": "تعذر إرسال الدعوة",
+      "my_sup_invite_empty_email": "البريد الإلكتروني مطلوب",
+      "my_sup_sent_invitations": "الدعوات المرسلة",
+      "my_sup_no_sent": "لا توجد دعوات مرسلة بعد",
+      "my_sup_inv_pending": "قيد الانتظار",
+      "my_sup_inv_accepted": "تم القبول",
+      "my_sup_inv_declined": "مرفوضة",
+      "my_sup_inv_sent_at": "أُرسلت في",
+      "my_sup_inv_to": "إلى",
+      "goods_title": "سجل استلام البضاعة",
+      "goods_desc": "سجلات التسليم المؤكدة وإيصالات الاستلام",
+      "goods_empty": "لا توجد سجلات تسليم",
+      "goods_empty_desc": "ستظهر هنا إيصالات التسليم المؤكدة بعد تأكيد استلام البضاعة",
+      "goods_supplier": "المورد",
+      "goods_rfq": "المناقصة",
+      "goods_date": "تاريخ التسليم",
+      "goods_received_by": "استُلم بواسطة",
+      "goods_view_receipt": "عرض الإيصال",
+      "goods_confirmed_at": "تاريخ التأكيد",
+      "goods_handover_by": "سُلّم بواسطة",
+      "receipt_handover_recipient": "مستلم البضاعة",
+      "delivery_handover_recipient_label": "اسم المستلم في الموقع",
+      "delivery_handover_recipient_placeholder": "الاسم الكامل للشخص المستلم للبضاعة"
     },
     "Admin": {
       "Dashboard": {

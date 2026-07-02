@@ -24,6 +24,7 @@ import {
   ChevronDown,
   FolderOpen,
   Link2,
+  PackageCheck,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -67,6 +68,7 @@ const contractorSections: NavSection[] = [
       },
       { titleKey: "contractor_projects", href: "/contractor/projects", icon: FolderOpen },
       { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },
+      { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
     ],
   },
   {

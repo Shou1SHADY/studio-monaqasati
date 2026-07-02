@@ -416,7 +416,8 @@
       "section_settings": "Settings",
       "section_management": "Management",
       "section_monitoring": "Monitoring",
-      "logout": "Logout"
+      "logout": "Logout",
+      "contractor_goods_received": "Goods Received"
     },
     "Layout": {
       "search_placeholder": "Quick search...",
@@ -886,7 +887,17 @@
       "delivery_sent_desc": "The contractor will be notified to confirm receipt",
       "delivery_already_sent": "Delivery notice already sent",
       "delivery_status_pending": "Awaiting receipt confirmation",
-      "delivery_status_confirmed": "Receipt confirmed"
+      "delivery_status_confirmed": "Receipt confirmed",
+      "conn_invitations_tab": "Invitations",
+      "conn_invitations_empty": "No pending invitations",
+      "conn_invitations_empty_desc": "Contractor invitations to join their supply chain will appear here",
+      "conn_inv_from": "Invitation from",
+      "conn_inv_accept": "Accept",
+      "conn_inv_decline": "Decline",
+      "conn_inv_accepted_toast": "Invitation accepted — you are now connected to this contractor",
+      "conn_inv_declined_toast": "Invitation declined",
+      "conn_inv_received_at": "Received on",
+      "conn_inv_error": "An error occurred while processing the invitation"
     },
     "Errors": {
       "access_denied_title": "Sorry, you don't have sufficient permissions",
@@ -1694,7 +1705,38 @@
       "suppliers_fav_removed": "Removed",
       "suppliers_fav_added": "Added",
       "suppliers_spec_building_materials": "Building Materials",
-      "suppliers_spec_cement": "Cement"
+      "suppliers_spec_cement": "Cement",
+      "my_sup_invite_tab": "Invite Supplier",
+      "my_sup_invite_email_label": "Supplier Email",
+      "my_sup_invite_email_placeholder": "supplier@example.com",
+      "my_sup_invite_name_label": "Company Name (optional)",
+      "my_sup_invite_name_placeholder": "Supply Co.",
+      "my_sup_invite_btn": "Send Invitation",
+      "my_sup_invite_success": "Invitation Sent",
+      "my_sup_invite_success_desc": "The supplier can accept the invitation from their dashboard",
+      "my_sup_invite_error": "Failed to send invitation",
+      "my_sup_invite_empty_email": "Email is required",
+      "my_sup_sent_invitations": "Sent Invitations",
+      "my_sup_no_sent": "No invitations sent yet",
+      "my_sup_inv_pending": "Pending",
+      "my_sup_inv_accepted": "Accepted",
+      "my_sup_inv_declined": "Declined",
+      "my_sup_inv_sent_at": "Sent on",
+      "my_sup_inv_to": "To",
+      "goods_title": "Goods Received Log",
+      "goods_desc": "Confirmed deliveries and handover receipts",
+      "goods_empty": "No delivery records",
+      "goods_empty_desc": "Confirmed delivery receipts will appear here after goods are received",
+      "goods_supplier": "Supplier",
+      "goods_rfq": "Tender",
+      "goods_date": "Delivery Date",
+      "goods_received_by": "Received By",
+      "goods_view_receipt": "View Receipt",
+      "goods_confirmed_at": "Confirmed At",
+      "goods_handover_by": "Handed over by",
+      "receipt_handover_recipient": "Goods Recipient",
+      "delivery_handover_recipient_label": "On-site Recipient Name",
+      "delivery_handover_recipient_placeholder": "Full name of person receiving the goods"
     },
     "Admin": {
       "Dashboard": {

@@ -29,6 +29,7 @@ type Delivery = {
   rfqTitle?: string
   supplierName?: string
   deliveryPersonName?: string
+  handoverRecipientName?: string
   deliveryDate?: string
   receivedByName?: string
   confirmedAt?: unknown
@@ -139,8 +140,14 @@ export default function DeliveryReceiptPage() {
               </div>
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_received_by")}</p>
-                <p className="font-bold text-slate-800">{d.receivedByName || "—"}</p>
+                <p className="font-bold text-slate-800">{d.receivedByName || d.handoverRecipientName || "—"}</p>
               </div>
+              {d.handoverRecipientName && (
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_handover_recipient")}</p>
+                  <p className="font-bold text-slate-800">{d.handoverRecipientName}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_confirmed_date")}</p>
                 <p className="font-bold text-slate-800" suppressHydrationWarning>{fmtDate(d.confirmedAt, locale)}</p>

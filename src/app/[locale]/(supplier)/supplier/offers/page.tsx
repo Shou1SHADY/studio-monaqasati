@@ -58,6 +58,7 @@ export default function SupplierOffersPage() {
   const [showArchived, setShowArchived] = useState(false)
   const [deliveryOffer, setDeliveryOffer] = useState<any | null>(null)
   const [deliveryPersonName, setDeliveryPersonName] = useState("")
+  const [handoverRecipientName, setHandoverRecipientName] = useState("")
   const [deliveryDate, setDeliveryDate] = useState("")
   const [deliveryNotes, setDeliveryNotes] = useState("")
   const [isSendingDelivery, setIsSendingDelivery] = useState(false)
@@ -126,6 +127,7 @@ export default function SupplierOffersPage() {
         supplierId: user.uid,
         supplierName: profile?.companyName || profile?.name || t("generic_supplier"),
         deliveryPersonName: deliveryPersonName.trim(),
+        handoverRecipientName: handoverRecipientName.trim() || null,
         deliveryDate: new Date(deliveryDate).toISOString(),
         notes: deliveryNotes.trim() || null,
         rfqTitle: deliveryOffer.rfqTitle || "",
@@ -151,6 +153,7 @@ export default function SupplierOffersPage() {
       toast({ title: t("delivery_sent_toast"), description: t("delivery_sent_desc") })
       setDeliveryOffer(null)
       setDeliveryPersonName("")
+      setHandoverRecipientName("")
       setDeliveryDate("")
       setDeliveryNotes("")
     } catch (err) {
@@ -784,7 +787,7 @@ export default function SupplierOffersPage() {
       </AlertDialog>
 
       {/* Delivery Notice Dialog */}
-      <Dialog open={!!deliveryOffer} onOpenChange={(open) => { if (!open) { setDeliveryOffer(null); setDeliveryPersonName(""); setDeliveryDate(""); setDeliveryNotes("") } }}>
+      <Dialog open={!!deliveryOffer} onOpenChange={(open) => { if (!open) { setDeliveryOffer(null); setDeliveryPersonName(""); setHandoverRecipientName(""); setDeliveryDate(""); setDeliveryNotes("") } }}>
         <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle className="flex items-center gap-2">
@@ -800,6 +803,15 @@ export default function SupplierOffersPage() {
                 value={deliveryPersonName}
                 onChange={(e) => setDeliveryPersonName(e.target.value)}
                 placeholder={t("delivery_person_placeholder")}
+                disabled={isSendingDelivery}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("delivery_handover_recipient_label")}</Label>
+              <Input
+                value={handoverRecipientName}
+                onChange={(e) => setHandoverRecipientName(e.target.value)}
+                placeholder={t("delivery_handover_recipient_placeholder")}
                 disabled={isSendingDelivery}
               />
             </div>

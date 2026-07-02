@@ -174,13 +174,16 @@ service cloud.firestore {
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.senderId == request.auth.uid);
     }
 
-    // Team invitations — org owners invite members by email
+    // Invitations — contractor invites supplier by email; also used for team member invites
     match /invitations/{invitationId} {
       allow list: if isSignedIn();
       allow create: if isSignedIn();
-      // resource == null when doc doesn't exist — allow the get so getDoc() returns "not found"
-      // instead of throwing permission-denied (same pattern as chats)
-      allow get: if isSignedIn() && (resource == null || resource.data.email == request.auth.token.email);
+      allow get: if isSignedIn() && (resource == null || resource.data.email == request.auth.token.email || resource.data.invitedBy == request.auth.uid);
+      // Supplier accepts/declines; contractor cancels their own invitation
+      allow update: if isSignedIn() && (
+        resource.data.email == request.auth.token.email ||
+        resource.data.invitedBy == request.auth.uid
+      );
       allow delete: if isSignedIn() && (
         resource.data.email == request.auth.token.email ||
         resource.data.invitedBy == request.auth.uid
@@ -203,10 +206,10 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if isSignedIn();
-      // Only suppliers can initiate connection requests
-      allow create: if isSupplier()
+      // Supplier-initiated requests OR supplier accepting a contractor invitation
+      allow create: if isSignedIn()
         && request.resource.data.supplierOrgId == getOrganizationId()
-        && request.resource.data.requestedBy == "supplier";
+        && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor");
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
         resource.data.contractorOrgId == getOrganizationId() ||
