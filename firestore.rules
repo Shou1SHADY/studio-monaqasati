@@ -234,6 +234,20 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.organizationId == getOrganizationId());
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+
+      // BOQ items subcollection — same org as the project
+      match /boqItems/{itemId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+        allow write: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+      }
+    }
+
+    // Procurement materials catalog — admin manages, contractors read
+    match /procurementMaterials/{materialId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // Delivery receipts — both contractor and supplier involved can read/write

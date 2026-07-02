@@ -59,14 +59,15 @@ const contractorSections: NavSection[] = [
     items: [
       { titleKey: "contractor_dashboard", href: "/contractor", icon: LayoutDashboard },
       {
-        titleKey: "contractor_rfqs",
-        href: "/contractor/rfqs",
-        icon: FileText,
+        titleKey: "contractor_projects",
+        href: "/contractor/projects",
+        icon: FolderOpen,
         children: [
+          { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle },
+          { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
           { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: PlusCircle },
         ],
       },
-      { titleKey: "contractor_projects", href: "/contractor/projects", icon: FolderOpen },
       { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
     ],

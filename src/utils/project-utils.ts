@@ -1,13 +1,20 @@
 export type ProjectStatus = 'active' | 'paused' | 'completed'
 
+export type ProjectType = 'proj_type_infrastructure' | 'proj_type_buildings' | 'proj_type_roads' | 'proj_type_industrial' | 'proj_type_energy' | 'proj_type_other'
+export type ClientType = 'proj_client_government' | 'proj_client_private' | 'proj_client_semi_government'
+
 export type Project = {
   id: string
   name?: string
   status?: string
   rfqIds?: string[]
   location?: string
+  region?: string
   budget?: number
   description?: string
+  projectType?: string
+  clientType?: string
+  blueprintUrl?: string
   organizationId?: string
   contractorId?: string
   createdAt?: unknown
@@ -19,8 +26,12 @@ export type ProjectFormFields = {
   name: string
   description?: string
   location?: string
+  region?: string
   budget?: string
   status: ProjectStatus
+  projectType?: string
+  clientType?: string
+  blueprintUrl?: string
 }
 
 export type ValidationResult = {
@@ -56,10 +67,26 @@ export function buildProjectData(
     name: form.name.trim(),
     description: form.description?.trim() || undefined,
     location: form.location?.trim() || undefined,
+    region: form.region?.trim() || undefined,
     budget: form.budget ? Number(form.budget) : undefined,
     status: form.status,
+    projectType: form.projectType || undefined,
+    clientType: form.clientType || undefined,
+    blueprintUrl: form.blueprintUrl || undefined,
     rfqIds: [],
   }
+}
+
+export function getProjectMetaSummary(project: Project): string {
+  const parts: string[] = []
+  if (project.region) parts.push(project.region)
+  if (project.projectType) parts.push(project.projectType)
+  if (project.clientType) parts.push(project.clientType)
+  return parts.join(' · ')
+}
+
+export function hasBlueprint(project: Project): boolean {
+  return typeof project.blueprintUrl === 'string' && project.blueprintUrl.length > 0
 }
 
 export function getStatusCounts(projects: Project[]): Record<ProjectStatus, number> {
