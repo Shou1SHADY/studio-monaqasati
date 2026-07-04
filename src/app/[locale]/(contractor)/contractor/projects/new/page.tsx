@@ -12,9 +12,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, doc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, doc, addDoc, writeBatch, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
+import type { BoqItem } from "@/lib/boq-parser"
 import {
   Loader2,
   FolderPlus,
@@ -26,6 +27,7 @@ import {
   CheckCircle2,
   MapPin,
   AlertCircle,
+  TableProperties,
 } from "lucide-react"
 
 const PROJECT_TYPES = [
@@ -93,6 +95,10 @@ export default function NewProjectPage() {
   const [blueprintFile, setBlueprintFile] = useState<File | null>(null)
   const [blueprintUploading, setBlueprintUploading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [boqFile, setBoqFile] = useState<File | null>(null)
+  const [boqParsedItems, setBoqParsedItems] = useState<BoqItem[] | null>(null)
+  const [boqParsing, setBoqParsing] = useState(false)
+  const boqFileInputRef = useRef<HTMLInputElement>(null)
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -110,6 +116,38 @@ export default function NewProjectPage() {
     } else if (file) {
       toast({ title: "PDF فقط", description: "يرجى اختيار ملف PDF", variant: "destructive" })
     }
+  }
+
+  // Parse a BOQ file at creation time — same parser the project's own BOQ tab uses.
+  // Only file upload here, no manual product list or grouping; that happens later in the BOQ tab.
+  const handleBoqFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBoqParsing(true)
+    ;(async () => {
+      try {
+        const { parseBoqFile } = await import("@/lib/boq-parser")
+        const result = await parseBoqFile(file)
+        if (result.items.length === 0) {
+          toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
+          return
+        }
+        setBoqFile(file)
+        setBoqParsedItems(result.items)
+      } catch (err) {
+        console.error(err)
+        toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
+      } finally {
+        setBoqParsing(false)
+        if (boqFileInputRef.current) boqFileInputRef.current.value = ""
+      }
+    })()
+  }
+
+  const removeBoqFile = () => {
+    setBoqFile(null)
+    setBoqParsedItems(null)
+    if (boqFileInputRef.current) boqFileInputRef.current.value = ""
   }
 
   const validateStep1 = (): ValidationError[] => {
@@ -181,6 +219,35 @@ export default function NewProjectPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
+
+      // Seed the BOQ tab with the parsed file, if one was uploaded — ungrouped, ready to be
+      // organized into sections in the project's own BOQ tab.
+      if (boqParsedItems && boqParsedItems.length > 0) {
+        const boqBatch = writeBatch(firestore)
+        const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
+        boqParsedItems.forEach((item) => {
+          boqBatch.set(doc(boqItemsRef), {
+            itemNo: item.itemNo,
+            descriptionAr: item.descriptionAr,
+            descriptionEn: item.descriptionEn,
+            unit: item.unit,
+            quantity: item.quantity,
+            unitPrice: 0,
+            sheet: item.sheet,
+            divisionNo: item.divisionNo,
+            divisionNameEn: item.divisionNameEn,
+            divisionNameAr: item.divisionNameAr,
+            suggestedCategory: item.suggestedCategory,
+            suggestedSubCategory: item.suggestedSubCategory,
+            tenderId: null,
+            isEditable: true,
+            groupId: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        })
+        await boqBatch.commit()
+      }
 
       toast({ title: t("proj_toast_created") })
       router.push(`/contractor/projects/${projectRef.id}`)
@@ -309,6 +376,61 @@ export default function NewProjectPage() {
                     className="rounded-xl border-slate-200 bg-white resize-none"
                     disabled={isSubmitting}
                   />
+                </div>
+
+                {/* BOQ file upload — file only; manual editing/grouping happens later in the BOQ tab */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <TableProperties size={18} className="text-primary" />
+                    </div>
+                    <Label className="text-base font-bold text-slate-700">{t("proj_boq_upload")}</Label>
+                  </div>
+                  <input
+                    ref={boqFileInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={handleBoqFileChange}
+                  />
+                  {boqFile ? (
+                    <div className="flex items-center gap-4 p-5 bg-primary/5 border border-primary/20 rounded-2xl">
+                      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <TableProperties size={24} className="text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold text-foreground truncate block">{boqFile.name}</span>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {t("proj_boq_import_success", { count: boqParsedItems?.length || 0 })}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={removeBoqFile}
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600 h-9 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        aria-label={t("proj_boq_remove_file")}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => boqFileInputRef.current?.click()}
+                      disabled={isSubmitting || boqParsing}
+                      className="w-full flex items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                        {boqParsing ? <Loader2 size={20} className="animate-spin text-primary" /> : <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />}
+                      </div>
+                      <div className={isRtl ? "text-right" : "text-left"}>
+                        <span className="text-sm font-semibold text-slate-700 block">
+                          {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                        </span>
+                        <span className="text-xs text-muted-foreground">({t("proj_boq_upload_hint")})</span>
+                      </div>
+                    </button>
+                  )}
                 </div>
 
                 {/* Blueprint PDF Upload */}

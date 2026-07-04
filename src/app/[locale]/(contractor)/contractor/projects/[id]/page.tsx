@@ -62,14 +62,18 @@ import {
   Lock,
   Send,
   Lightbulb,
+  Layers,
+  Package,
 } from "lucide-react"
 import {
   useReactTable,
   getCoreRowModel,
   flexRender,
   createColumnHelper,
+  type Row,
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
+import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -111,6 +115,13 @@ type BоqItem = {
   suggestedSubCategory?: string
   tenderId: string | null
   isEditable: boolean
+  groupId: string | null
+}
+
+type BoqGroupMeta = {
+  id: string
+  titleAr: string
+  categoryAr: string
 }
 
 const columnHelper = createColumnHelper<BоqItem>()
@@ -142,9 +153,12 @@ export default function ProjectDetailPage() {
 
   // BOQ state
   const [boqItems, setBoqItems] = useState<BоqItem[]>([])
+  const [boqGroups, setBoqGroups] = useState<BoqGroupMeta[]>([])
   const [boqParsing, setBoqParsing] = useState(false)
   const [boqSaving, setBoqSaving] = useState(false)
   const [boqLoaded, setBoqLoaded] = useState(false)
+  const [dragItemId, setDragItemId] = useState<string | null>(null)
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | "unassigned" | null>(null)
 
   const projectDocRef = useMemoFirebase(() => {
     if (!firestore || !projectId) return null
@@ -174,11 +188,14 @@ export default function ProjectDetailPage() {
     createdAt?: unknown
   } | null
 
-  // Fetch BOQ items from the Firestore subcollection — always reflects server state.
+  // Fetch BOQ items + sections from Firestore — always reflects server state.
   const fetchBoqItems = useCallback(async () => {
     if (!firestore || !projectId) return
-    const snap = await getDocs(collection(firestore, "projects", projectId, "boqItems"))
-    const items: BоqItem[] = snap.docs.map((d) => {
+    const [itemsSnap, groupsSnap] = await Promise.all([
+      getDocs(collection(firestore, "projects", projectId, "boqItems")),
+      getDocs(collection(firestore, "projects", projectId, "boqGroups")),
+    ])
+    const items: BоqItem[] = itemsSnap.docs.map((d) => {
       const data = d.data()
       return {
         id: d.id,
@@ -196,9 +213,15 @@ export default function ProjectDetailPage() {
         suggestedSubCategory: data.suggestedSubCategory || "",
         tenderId: data.tenderId ?? null,
         isEditable: data.isEditable !== false,
+        groupId: data.groupId || null,
       }
     })
+    const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
+      const data = d.data()
+      return { id: d.id, titleAr: data.titleAr || "", categoryAr: data.categoryAr || "" }
+    })
     setBoqItems(items)
+    setBoqGroups(groups)
   }, [firestore, projectId])
 
   // Load BOQ items when switching to the boq tab (only once per visit).
@@ -298,6 +321,7 @@ export default function ProjectDetailPage() {
           suggestedSubCategory: item.suggestedSubCategory,
           tenderId: null,
           isEditable: true,
+          groupId: null,
         }))
         setBoqItems(parsed)
         toast({ title: t("proj_boq_import_success", { count: parsed.length }) })
@@ -318,9 +342,12 @@ export default function ProjectDetailPage() {
     setBoqSaving(true)
     try {
       const colRef = collection(firestore, "projects", projectId, "boqItems")
-      const existing = await getDocs(colRef)
+      const groupsColRef = collection(firestore, "projects", projectId, "boqGroups")
+      const [existing, existingGroups] = await Promise.all([getDocs(colRef), getDocs(groupsColRef)])
       const existingIds = new Set(existing.docs.map((d) => d.id))
       const currentIds = new Set(boqItems.filter((i) => existingIds.has(i.id)).map((i) => i.id))
+      const existingGroupIds = new Set(existingGroups.docs.map((d) => d.id))
+      const currentGroupIds = new Set(boqGroups.map((g) => g.id))
 
       const batch = writeBatch(firestore)
 
@@ -328,6 +355,10 @@ export default function ProjectDetailPage() {
         if (!currentIds.has(d.id) && d.data().isEditable !== false) {
           batch.delete(d.ref)
         }
+      })
+
+      existingGroups.docs.forEach((d) => {
+        if (!currentGroupIds.has(d.id)) batch.delete(d.ref)
       })
 
       boqItems.forEach((item) => {
@@ -349,8 +380,18 @@ export default function ProjectDetailPage() {
           suggestedSubCategory: item.suggestedSubCategory || "",
           tenderId: null,
           isEditable: true,
+          groupId: item.groupId || null,
           updatedAt: serverTimestamp(),
         })
+      })
+
+      boqGroups.forEach((group) => {
+        batch.set(doc(groupsColRef, group.id), {
+          titleAr: group.titleAr,
+          categoryAr: group.categoryAr,
+          ...(existingGroupIds.has(group.id) ? {} : { createdAt: serverTimestamp() }),
+          updatedAt: serverTimestamp(),
+        }, { merge: true })
       })
 
       await batch.commit()
@@ -379,6 +420,7 @@ export default function ProjectDetailPage() {
         sheet: "",
         tenderId: null,
         isEditable: true,
+        groupId: null,
       },
     ])
   }
@@ -418,6 +460,50 @@ export default function ProjectDetailPage() {
     }
   }, [firestore, projectId, fetchBoqItems, toast, t])
 
+  // Add a new BOQ section — the id is a real Firestore auto-ID generated up front (no
+  // server round-trip needed), so items can reference it immediately with no remap at save time.
+  const addBoqGroup = () => {
+    if (!firestore || !projectId) return
+    const newId = doc(collection(firestore, "projects", projectId, "boqGroups")).id
+    const firstCategory = Object.keys(CATEGORIES_DATA)[0] || ""
+    setBoqGroups((prev) => [...prev, { id: newId, titleAr: isRtl ? "قسم جديد" : "New Section", categoryAr: firstCategory }])
+  }
+
+  const updateBoqGroup = (groupId: string, field: "titleAr" | "categoryAr", value: string) => {
+    setBoqGroups((prev) => prev.map((g) => (g.id === groupId ? { ...g, [field]: value } : g)))
+  }
+
+  // Deleting a section un-assigns its items rather than deleting them.
+  const deleteBoqGroup = (groupId: string) => {
+    setBoqGroups((prev) => prev.filter((g) => g.id !== groupId))
+    setBoqItems((prev) => prev.map((i) => (i.groupId === groupId ? { ...i, groupId: null } : i)))
+  }
+
+  // Move one item between sections (or to/from Unassigned). Locked items never move.
+  const moveItemToGroup = useCallback((itemId: string, toGroupId: string | null) => {
+    setBoqItems((prev) =>
+      prev.map((i) => (i.id === itemId && i.isEditable !== false ? { ...i, groupId: toGroupId } : i))
+    )
+  }, [])
+
+  const handleRowDragStart = (e: React.DragEvent, itemId: string) => {
+    e.dataTransfer.effectAllowed = "move"
+    setDragItemId(itemId)
+  }
+
+  const handleSectionDragOver = (e: React.DragEvent, groupId: string | "unassigned") => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = "move"
+    setDragOverGroupId(groupId)
+  }
+
+  const handleSectionDrop = (e: React.DragEvent, groupId: string | "unassigned") => {
+    e.preventDefault()
+    setDragOverGroupId(null)
+    if (dragItemId) moveItemToGroup(dragItemId, groupId === "unassigned" ? null : groupId)
+    setDragItemId(null)
+  }
+
   // Add material from procurement sidebar
   const handleAddMaterial = (material: { name: string; unit: string; refPrice: number }) => {
     setBoqItems((prev) => [
@@ -433,6 +519,7 @@ export default function ProjectDetailPage() {
         sheet: "",
         tenderId: null,
         isEditable: true,
+        groupId: null,
       },
     ])
   }
@@ -580,6 +667,54 @@ export default function ProjectDetailPage() {
     columns: boqColumns,
     getCoreRowModel: getCoreRowModel(),
   })
+
+  const allBoqRows = boqTable.getRowModel().rows
+  const unassignedBoqRows = allBoqRows.filter((r) => !r.original.groupId)
+
+  // Shared row/table renderer for both grouped sections and the Unassigned bucket —
+  // reuses the single memoized boqTable's header/cell definitions, just scoped to a row subset.
+  const renderBoqRows = (rows: Row<BоqItem>[]) => (
+    <table className="w-full text-sm" style={{ minWidth: 640 }}>
+      <thead>
+        {boqTable.getHeaderGroups().map((hg) => (
+          <tr key={hg.id} className="border-b border-slate-100 bg-slate-50">
+            {hg.headers.map((header) => (
+              <th
+                key={header.id}
+                className={cn(
+                  "px-3 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wide",
+                  isRtl ? "text-right" : "text-left"
+                )}
+                style={{ width: header.column.columnDef.size }}
+              >
+                {flexRender(header.column.columnDef.header, header.getContext())}
+              </th>
+            ))}
+          </tr>
+        ))}
+      </thead>
+      <tbody>
+        {rows.map((row, i) => (
+          <tr
+            key={row.id}
+            draggable={row.original.isEditable !== false}
+            onDragStart={(e) => handleRowDragStart(e, row.original.id)}
+            className={cn(
+              "border-b border-slate-50 hover:bg-slate-50/50 transition-colors",
+              i % 2 === 0 ? "bg-white" : "bg-slate-50/30",
+              row.original.isEditable !== false ? "" : "cursor-not-allowed"
+            )}
+          >
+            {row.getVisibleCells().map((cell) => (
+              <td key={cell.id} className="px-1 py-1" style={{ width: cell.column.columnDef.size }}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 
   function getRfqStatusBadge(status: string) {
     if (status === "New")
@@ -840,7 +975,11 @@ export default function ProjectDetailPage() {
                     <Plus size={14} />
                     {t("proj_boq_add_row")}
                   </Button>
-                  <Button size="sm" onClick={saveBoq} disabled={boqSaving || boqItems.length === 0} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={addBoqGroup} className="gap-1.5">
+                    <Layers size={14} />
+                    {t("proj_boq_add_section")}
+                  </Button>
+                  <Button size="sm" onClick={saveBoq} disabled={boqSaving || (boqItems.length === 0 && boqGroups.length === 0)} className="gap-1.5">
                     {boqSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                     {t("proj_boq_save")}
                   </Button>
@@ -857,7 +996,7 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
 
-              {boqItems.length === 0 ? (
+              {boqItems.length === 0 && boqGroups.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-16 bg-slate-50 rounded-xl border border-dashed text-center gap-3">
                   <TableProperties size={40} className="text-muted-foreground/30" />
                   <div>
@@ -866,44 +1005,78 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                  <table className="w-full text-sm" style={{ minWidth: 640 }}>
-                    <thead>
-                      {boqTable.getHeaderGroups().map((hg) => (
-                        <tr key={hg.id} className="border-b border-slate-100 bg-slate-50">
-                          {hg.headers.map((header) => (
-                            <th
-                              key={header.id}
-                              className={cn(
-                                "px-3 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wide",
-                                isRtl ? "text-right" : "text-left"
-                              )}
-                              style={{ width: header.column.columnDef.size }}
-                            >
-                              {flexRender(header.column.columnDef.header, header.getContext())}
-                            </th>
-                          ))}
-                        </tr>
-                      ))}
-                    </thead>
-                    <tbody>
-                      {boqTable.getRowModel().rows.map((row, i) => (
-                        <tr
-                          key={row.id}
-                          className={cn(
-                            "border-b border-slate-50 hover:bg-slate-50/50 transition-colors",
-                            i % 2 === 0 ? "bg-white" : "bg-slate-50/30"
-                          )}
-                        >
-                          {row.getVisibleCells().map((cell) => (
-                            <td key={cell.id} className="px-1 py-1" style={{ width: cell.column.columnDef.size }}>
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="space-y-4">
+                  {boqGroups.map((group) => {
+                    const groupRows = allBoqRows.filter((r) => r.original.groupId === group.id)
+                    return (
+                      <div
+                        key={group.id}
+                        className={cn(
+                          "rounded-xl border overflow-hidden transition-colors",
+                          dragOverGroupId === group.id ? "border-primary ring-1 ring-primary/30" : "border-slate-200"
+                        )}
+                        onDragOver={(e) => handleSectionDragOver(e, group.id)}
+                        onDrop={(e) => handleSectionDrop(e, group.id)}
+                        onDragLeave={() => setDragOverGroupId(null)}
+                      >
+                        <div className="flex items-center gap-2 p-3 bg-slate-50 border-b border-slate-200 flex-wrap">
+                          <Layers size={14} className="text-primary shrink-0" />
+                          <Input
+                            value={group.titleAr}
+                            onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
+                            className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-white"
+                            dir="rtl"
+                          />
+                          <Select value={group.categoryAr} onValueChange={(v) => updateBoqGroup(group.id, "categoryAr", v)}>
+                            <SelectTrigger className="h-8 text-xs w-44 rounded-lg bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              {Object.keys(CATEGORIES_DATA).map((cat) => (
+                                <SelectItem key={cat} value={cat} className="text-xs">{displayCategory(cat, locale)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Badge variant="outline" className="text-[10px] shrink-0">{groupRows.length}</Badge>
+                          <button
+                            type="button"
+                            onClick={() => deleteBoqGroup(group.id)}
+                            aria-label={t("proj_boq_delete_section")}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                        {groupRows.length === 0 ? (
+                          <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                        ) : (
+                          <div className="overflow-x-auto">{renderBoqRows(groupRows)}</div>
+                        )}
+                      </div>
+                    )
+                  })}
+
+                  {/* Unassigned — always shown as a drop target */}
+                  <div
+                    className={cn(
+                      "rounded-xl border overflow-hidden transition-colors",
+                      dragOverGroupId === "unassigned" ? "border-primary ring-1 ring-primary/30" : "border-dashed border-slate-300"
+                    )}
+                    onDragOver={(e) => handleSectionDragOver(e, "unassigned")}
+                    onDrop={(e) => handleSectionDrop(e, "unassigned")}
+                    onDragLeave={() => setDragOverGroupId(null)}
+                  >
+                    <div className="flex items-center gap-2 p-3 bg-slate-50/60 border-b border-slate-200">
+                      <Package size={14} className="text-muted-foreground shrink-0" />
+                      <span className="text-sm font-bold text-muted-foreground">{t("boq_unassigned")}</span>
+                      <Badge variant="outline" className="text-[10px]">{unassignedBoqRows.length}</Badge>
+                    </div>
+                    {unassignedBoqRows.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                    ) : (
+                      <div className="overflow-x-auto">{renderBoqRows(unassignedBoqRows)}</div>
+                    )}
+                  </div>
                 </div>
               )}
 

@@ -133,7 +133,6 @@ export default function NewTenderPage() {
 
   interface Product {
     id: string
-    name: string
     quantity: string
     unit: string
     description: string
@@ -143,7 +142,7 @@ export default function NewTenderPage() {
   }
 
   const [products, setProducts] = useState<Product[]>([
-    { id: "1", name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }
+    { id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }
   ])
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
@@ -169,7 +168,6 @@ export default function NewTenderPage() {
           if (data.products?.length) {
             setProducts(data.products.map((p: any, idx: number) => ({
               id: (idx + 1).toString(),
-              name: p.name || "",
               quantity: String(p.quantity || ""),
               unit: p.unitOfMeasure || p.unit || "",
               description: p.description || "",
@@ -258,7 +256,7 @@ export default function NewTenderPage() {
   const isAiEnabled = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
 
   const addProduct = () => {
-    setProducts([...products, { id: Date.now().toString(), name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
+    setProducts([...products, { id: Date.now().toString(), quantity: "", unit: "", description: "", category: "", subCategory: "" }])
   }
 
   const removeProduct = (id: string) => {
@@ -320,7 +318,6 @@ export default function NewTenderPage() {
     }
 
     const validProducts = products.filter(p =>
-      p.name.trim() &&
       p.quantity.trim() &&
       p.unit.trim() &&
       p.category &&
@@ -449,7 +446,6 @@ export default function NewTenderPage() {
     }
 
     const validProducts = products.filter(p =>
-      p.name.trim() &&
       p.quantity.trim() &&
       p.unit.trim() &&
       p.category &&
@@ -468,7 +464,9 @@ export default function NewTenderPage() {
           ? (validProducts[0].subCategory === "أخرى" ? validProducts[0].otherSubCategory : validProducts[0].subCategory)
           : "متعدد",
         products: validProducts.map(p => ({
-          name: p.name,
+          // No standalone "product name" field — the category/subcategory pick is the name,
+          // matching how the app already treats them as the canonical (Arabic) product label elsewhere.
+          name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category,
           quantity: Number(p.quantity),
           unitOfMeasure: p.unit,
           description: p.description,
@@ -532,7 +530,9 @@ export default function NewTenderPage() {
           ? (catProducts[0].subCategory === "أخرى" ? catProducts[0].otherSubCategory : catProducts[0].subCategory)
           : "متعدد",
         products: catProducts.map(p => ({
-          name: p.name,
+          // No standalone "product name" field — the category/subcategory pick is the name,
+          // matching how the app already treats them as the canonical (Arabic) product label elsewhere.
+          name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category,
           quantity: Number(p.quantity),
           unitOfMeasure: p.unit,
           description: p.description,
@@ -573,7 +573,7 @@ export default function NewTenderPage() {
         pdfUrl: null,
         pdfStoragePath: null
       })
-      setProducts([{ id: "1", name: "", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
+      setProducts([{ id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
       setStep(1)
       setIsSubmitting(false)
     } else {
@@ -677,13 +677,7 @@ export default function NewTenderPage() {
                   <p className="text-xs text-muted-foreground">{t("newrfq_tender_title_help")}</p>
                 </div>
 
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent pointer-events-none" style={{ height: '1px' }} />
-                </div>
-
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent pointer-events-none" style={{ height: '1px' }} />
-                </div>
+                <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
 
                 <div>
                   <div className="flex items-center justify-between mb-6">
@@ -773,18 +767,7 @@ export default function NewTenderPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                          <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">
-                              {t("newrfq_product_name")}<RequiredStar />
-                            </Label>
-                            <Input
-                              placeholder={t("newrfq_product_name_placeholder")}
-                              value={product.name}
-                              onChange={e => updateProduct(product.id, "name", e.target.value)}
-                              className="h-11 rounded-xl border-slate-200"
-                            />
-                          </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                           <div className="space-y-2">
                             <Label className="text-xs font-semibold text-slate-600">
                               {t("newrfq_quantity")}<RequiredStar />

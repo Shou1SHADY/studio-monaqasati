@@ -37,7 +37,6 @@ import { SAUDI_CITIES, displayCity, displayDistrict } from "@/lib/constants"
 import { CATEGORIES_DATA } from "@/lib/constants"
 import type { BoqItem } from "@/lib/boq-parser"
 import {
-  buildGroups,
   moveItemBetweenGroups,
   removeItemToUnassigned,
   splitItemToNewGroup as splitItemUtil,
@@ -100,17 +99,22 @@ export default function PushBoqToTenderPage() {
   const [dragPayload, setDragPayload] = useState<{ item: BoqItem; fromGroupId: string | "unassigned" } | null>(null)
   const [dragOverGroupId, setDragOverGroupId] = useState<string | "unassigned" | null>(null)
 
-  // Load unlocked BOQ items from the project (already parsed/edited on the project's BOQ tab)
+  // Load unlocked BOQ items + the sections the contractor already built on the project's BOQ tab.
+  // Groups are seeded from what's actually persisted there, not re-derived from Excel sheet names.
   useEffect(() => {
     if (!firestore || !projectId) return
     ;(async () => {
       setIsLoadingItems(true)
       try {
-        const snap = await getDocs(
-          query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", null))
-        )
-        const items: BoqItem[] = snap.docs.map((d) => {
+        const [itemsSnap, groupsSnap] = await Promise.all([
+          getDocs(query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", null))),
+          getDocs(collection(firestore, "projects", projectId, "boqGroups")),
+        ])
+
+        const itemGroupIds = new Map<string, string | null>()
+        const items: BoqItem[] = itemsSnap.docs.map((d) => {
           const data = d.data()
+          itemGroupIds.set(d.id, data.groupId || null)
           return {
             id: d.id,
             itemNo: data.itemNo || "",
@@ -127,8 +131,23 @@ export default function PushBoqToTenderPage() {
             selected: true,
           }
         })
-        setGroups(buildGroups(items))
-        setUnassigned([])
+
+        const seededGroups: BoqGroup[] = groupsSnap.docs.map((d) => {
+          const data = d.data()
+          return { id: d.id, titleAr: data.titleAr || "", categoryAr: data.categoryAr || "", items: [] }
+        })
+        const groupById = new Map(seededGroups.map((g) => [g.id, g]))
+        const seededUnassigned: BoqItem[] = []
+
+        for (const item of items) {
+          const groupId = itemGroupIds.get(item.id)
+          const group = groupId ? groupById.get(groupId) : undefined
+          if (group) group.items.push(item)
+          else seededUnassigned.push(item)
+        }
+
+        setGroups(seededGroups)
+        setUnassigned(seededUnassigned)
       } catch (err) {
         console.error(err)
         toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
