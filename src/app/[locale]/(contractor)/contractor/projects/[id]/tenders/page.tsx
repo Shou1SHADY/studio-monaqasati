@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -29,16 +30,18 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw } from "lucide-react"
+import { FileText, PlusCircle, Eye, Calendar, Search, Package, Loader2, Send, MapPin, X, File, MessageCircle, User, Pencil, Trash2, RotateCw, FileSpreadsheet } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 
-export default function ContractorRfqsPage() {
+export default function ProjectTendersPage() {
+  const params = useParams()
+  const projectId = params.id as string
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const [statusFilter, setStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
@@ -79,10 +82,9 @@ export default function ContractorRfqsPage() {
     setSearchQuery(searchParams.get("search") || "")
   }, [searchParams])
 
-const handleBatchPublish = async () => {
+  const handleBatchPublish = async () => {
     if (!firestore || selectedRfqs.length === 0) return;
 
-    // Gate: profile must have mandatory fields filled before publishing
     const missingFields = getIncompletePublishFields(profile, locale)
     if (missingFields.length > 0) {
       toast({
@@ -119,14 +121,9 @@ const handleBatchPublish = async () => {
   };
 
   const toggleSelectRfq = (id: string) => {
-    setSelectedRfqs(prev => 
+    setSelectedRfqs(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
-  };
-
-  const selectAll = () => {
-    const draftRfqs = filteredRfqs.filter((rfq: any) => rfq.status === "Draft").map((rfq: any) => rfq.id);
-    setSelectedRfqs(draftRfqs);
   };
 
   const handleDelete = async () => {
@@ -135,19 +132,17 @@ const handleBatchPublish = async () => {
     try {
       // Unlock any BOQ items that were pushed to this tender before deleting it —
       // matches the Firestore rule's allowed "unlock" transition.
-      if (deleteTarget.projectId) {
-        const boqSnap = await getDocs(
-          query(collection(firestore, "projects", deleteTarget.projectId, "boqItems"), where("tenderId", "==", deleteTarget.id))
-        )
-        if (!boqSnap.empty) {
-          const batch = writeBatch(firestore)
-          boqSnap.docs.forEach((d) => {
-            batch.update(d.ref, { tenderId: null, isEditable: true })
-          })
-          await batch.commit()
-        }
-        await updateDoc(doc(firestore, "projects", deleteTarget.projectId), { rfqIds: arrayRemove(deleteTarget.id) })
+      const boqSnap = await getDocs(
+        query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", deleteTarget.id))
+      )
+      if (!boqSnap.empty) {
+        const batch = writeBatch(firestore)
+        boqSnap.docs.forEach((d) => {
+          batch.update(d.ref, { tenderId: null, isEditable: true })
+        })
+        await batch.commit()
       }
+      await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(deleteTarget.id) })
 
       await deleteDoc(doc(firestore, "rfqs", deleteTarget.id))
       toast({
@@ -189,13 +184,12 @@ const handleBatchPublish = async () => {
     }
   }
 
-  // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null;
-    
+    if (isUserLoading || !user || !firestore || !projectId) return null;
+
     let q = query(
       collection(firestore, "rfqs"),
-      where("organizationId", "==", profile?.organizationId || user.uid)
+      where("projectId", "==", projectId)
     );
 
     if (statusFilter !== "all") {
@@ -207,9 +201,9 @@ const handleBatchPublish = async () => {
     if (locationFilter !== "all") {
       q = query(q, where("city", "==", locationFilter));
     }
-    
+
     return q;
-  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, profile?.organizationId])
+  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, projectId])
 
   const acceptedOffersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -227,8 +221,7 @@ const handleBatchPublish = async () => {
   const isLoading = isUserLoading || (isCollectionLoading && !rfqs && !error)
   const isLoadingMore = isCollectionLoading && !!rfqs
 
-const filteredRfqs = rfqs?.filter((rfq: any) => {
-    // Search query filter
+  const filteredRfqs = rfqs?.filter((rfq: any) => {
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matchesSearch = (
@@ -240,7 +233,6 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
       if (!matchesSearch) return false;
     }
 
-    // Deadline filter
     if (deadlineFilter !== "all" && rfq.deadline) {
       const deadline = new Date(rfq.deadline);
       const now = new Date();
@@ -281,20 +273,20 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     if (rfq.status === "Draft") {
       return <Badge className="bg-slate-100 text-slate-600 border-slate-300 font-bold">{t("rfq_badge_draft")}</Badge>;
     }
-    
+
     if (rfq.status === "Awarded") {
       return <Badge className="bg-success/10 text-success border-success/20 font-bold">{t("rfq_badge_awarded")}</Badge>;
     }
-    
+
     if (rfq.deadline) {
       const deadlineDate = new Date(rfq.deadline);
       const today = new Date();
-      today.setHours(0, 0, 0, 0); // Normalize to start of day for accurate comparison
+      today.setHours(0, 0, 0, 0);
       if (deadlineDate < today) {
         return <Badge className="bg-destructive/10 text-destructive border-none font-bold">{t("rfq_badge_expired")}</Badge>;
       }
     }
-    
+
     return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>;
   }
 
@@ -303,8 +295,22 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_all_tenders_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("rfq_all_tenders_desc")}</p>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_page_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Link href={`/contractor/projects/${projectId}/tenders/from-boq`}>
+              <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/10">
+                <FileSpreadsheet size={16} />
+                {t("boq_upload_btn")}
+              </Button>
+            </Link>
+            <Link href={`/contractor/projects/${projectId}/tenders/new`}>
+              <Button className="gap-2 font-bold">
+                <PlusCircle size={18} />
+                {t("rfq_new_tender")}
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -366,7 +372,6 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               </div>
               {/* Filters Row */}
               <div className="flex flex-wrap gap-2">
-                {/* Category Filter */}
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
                     <SelectValue placeholder={t("rfq_category_filter")} />
@@ -379,7 +384,6 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   </SelectContent>
                 </Select>
 
-                {/* Location Filter */}
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
                   <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
                     <SelectValue placeholder={t("rfq_city_filter")} />
@@ -392,7 +396,6 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   </SelectContent>
                 </Select>
 
-                {/* Deadline Filter */}
                 <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
                   <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
                     <SelectValue placeholder={t("rfq_deadline_filter")} />
@@ -405,17 +408,17 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   </SelectContent>
                 </Select>
                 {deadlineFilter === "custom" && (
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={customDeadline}
                     onChange={e => setCustomDeadline(e.target.value)}
                     className="h-10 px-3 rounded-xl border border-input bg-white text-sm w-[140px]"
                   />
                 )}
                 {hasActiveFilters && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={clearFilters}
                     className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1"
                   >
@@ -442,13 +445,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             {!isLoading && !error && filteredRfqs.length === 0 && (
               <div className="p-20 text-center space-y-4">
                 <p className="text-muted-foreground">
-                  {searchQuery || categoryFilter !== "all" || locationFilter !== "all" || deadlineFilter !== "all" 
-                    ? t("rfq_no_matching") 
+                  {searchQuery || categoryFilter !== "all" || locationFilter !== "all" || deadlineFilter !== "all"
+                    ? t("rfq_no_matching")
                     : t("rfq_no_tenders")}
                 </p>
                 {!searchQuery && categoryFilter === "all" && locationFilter === "all" && deadlineFilter === "all" && (
-                  <Link href="/contractor/projects">
-                    <Button variant="outline">{t("rfq_go_to_projects")}</Button>
+                  <Link href={`/contractor/projects/${projectId}/tenders/new`}>
+                    <Button variant="outline">{t("rfq_first_tender")}</Button>
                   </Link>
                 )}
               </div>
@@ -478,7 +481,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </div>
                         <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
                       </div>
-                      
+
                       <div className="space-y-1 mb-5 flex-1">
                         <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
                           {rfq.title}
@@ -486,7 +489,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md">
                             <Package size={14} className="text-primary" />
-                            {rfq.products && rfq.products.length > 0 
+                            {rfq.products && rfq.products.length > 0
                               ? t("rfq_products_count", { count: rfq.products.length })
                               : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
                             }
@@ -521,9 +524,9 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           {getStatusBadge(rfq)}
                         </div>
                         {rfq.pdfUrl && (
-                          <a 
-                            href={rfq.pdfUrl} 
-                            target="_blank" 
+                          <a
+                            href={rfq.pdfUrl}
+                            target="_blank"
                             rel="noopener noreferrer"
                             download
                             className="flex items-center gap-2 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors w-fit"
@@ -534,15 +537,15 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </a>
                         )}
                       </div>
-                      
+
                       <div className="flex gap-2">
-                        <Link href={`/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers`} className="flex-1">
+                        <Link href={`/contractor/projects/${projectId}/tenders/${rfq.id}/offers`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <Eye size={14} />
                             {t("rfq_view_offers")}
                           </Button>
                         </Link>
-                        <Link href={`/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers?tab=inquiries`} className="flex-1">
+                        <Link href={`/contractor/projects/${projectId}/tenders/${rfq.id}/offers?tab=inquiries`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <MessageCircle size={14} />
                             {t("rfq_inquiries")}
@@ -551,7 +554,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       </div>
                       {canEditOrDelete(rfq) && (
                         <div className="flex gap-2 mt-2">
-                          <Link href={`/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}`} className="flex-1">
+                          <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${rfq.id}`} className="flex-1">
                             <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
                               <Pencil size={14} />
                               {t("rfq_edit_tender")}
@@ -588,8 +591,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             )}
             {hasMore && filteredRfqs.length > 0 && (
               <div className="p-4 text-center">
-                <Button 
-                  onClick={loadMore} 
+                <Button
+                  onClick={loadMore}
                   disabled={isLoadingMore}
                   variant="outline"
                   className="font-bold"

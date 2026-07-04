@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useMemo, useEffect } from "react"
 import { useParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
 import { useRouter, Link } from "@/i18n/routing"
@@ -38,7 +38,6 @@ import {
   updateDoc,
   deleteDoc,
   serverTimestamp,
-  addDoc,
   getDocs,
   writeBatch,
 } from "firebase/firestore"
@@ -60,8 +59,10 @@ import {
   TableProperties,
   Building2,
   Tag,
+  Lock,
+  Send,
+  Lightbulb,
 } from "lucide-react"
-import * as XLSX from "xlsx"
 import {
   useReactTable,
   getCoreRowModel,
@@ -97,11 +98,19 @@ function StatusBadge({ status, t }: { status: string; t: (key: string) => string
 type BоqItem = {
   id: string
   itemNo: string
-  description: string
+  descriptionAr: string
+  descriptionEn: string
   quantity: string
   unit: string
   unitPrice: string
-  rfqId?: string
+  sheet?: string
+  divisionNo?: string
+  divisionNameEn?: string
+  divisionNameAr?: string
+  suggestedCategory?: string
+  suggestedSubCategory?: string
+  tenderId: string | null
+  isEditable: boolean
 }
 
 const columnHelper = createColumnHelper<BоqItem>()
@@ -165,34 +174,54 @@ export default function ProjectDetailPage() {
     createdAt?: unknown
   } | null
 
-  // Load BOQ items from Firestore subcollection when switching to boq tab
+  // Fetch BOQ items from the Firestore subcollection — always reflects server state.
+  const fetchBoqItems = useCallback(async () => {
+    if (!firestore || !projectId) return
+    const snap = await getDocs(collection(firestore, "projects", projectId, "boqItems"))
+    const items: BоqItem[] = snap.docs.map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        itemNo: data.itemNo || "",
+        descriptionAr: data.descriptionAr || "",
+        descriptionEn: data.descriptionEn || data.description || "",
+        quantity: String(data.quantity ?? ""),
+        unit: data.unit || "",
+        unitPrice: String(data.unitPrice ?? ""),
+        sheet: data.sheet || "",
+        divisionNo: data.divisionNo || "",
+        divisionNameEn: data.divisionNameEn || "",
+        divisionNameAr: data.divisionNameAr || "",
+        suggestedCategory: data.suggestedCategory || "",
+        suggestedSubCategory: data.suggestedSubCategory || "",
+        tenderId: data.tenderId ?? null,
+        isEditable: data.isEditable !== false,
+      }
+    })
+    setBoqItems(items)
+  }, [firestore, projectId])
+
+  // Load BOQ items when switching to the boq tab (only once per visit).
   const loadBoqItems = useCallback(async () => {
-    if (!firestore || !projectId || boqLoaded) return
+    if (boqLoaded) return
     try {
-      const snap = await getDocs(collection(firestore, "projects", projectId, "boqItems"))
-      const items: BоqItem[] = snap.docs.map((d) => {
-        const data = d.data()
-        return {
-          id: d.id,
-          itemNo: data.itemNo || "",
-          description: data.description || "",
-          quantity: String(data.quantity ?? ""),
-          unit: data.unit || "",
-          unitPrice: String(data.unitPrice ?? ""),
-          rfqId: data.rfqId || "",
-        }
-      })
-      setBoqItems(items)
+      await fetchBoqItems()
       setBoqLoaded(true)
     } catch (e) {
       console.error(e)
     }
-  }, [firestore, projectId, boqLoaded])
+  }, [boqLoaded, fetchBoqItems])
 
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab)
     if (tab === "boq") loadBoqItems()
   }
+
+  // Load BOQ items eagerly (not just on tab switch) so the "next step" guidance banner
+  // below can tell a fresh project apart from one that already has BOQ items, on any tab.
+  useEffect(() => {
+    loadBoqItems()
+  }, [loadBoqItems])
 
   const startEdit = () => {
     if (!typedProject) return
@@ -240,67 +269,92 @@ export default function ProjectDetailPage() {
     }
   }
 
-  // BOQ file parsing
+  // BOQ file parsing — uses the shared, richer parser (Arabic/English split + category detection)
   const handleBoqFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setBoqParsing(true)
-    const reader = new FileReader()
-    reader.onload = (evt) => {
+    ;(async () => {
       try {
-        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
-        const wb = XLSX.read(data, { type: "array" })
-        const ws = wb.Sheets[wb.SheetNames[0]]
-        const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, defval: "" })
-
-        const parsed: BоqItem[] = []
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i]
-          if (!row || row.every((c) => !c)) continue
-          parsed.push({
-            id: `new_${i}`,
-            itemNo: String(row[0] ?? i),
-            description: String(row[1] ?? ""),
-            quantity: String(row[2] ?? ""),
-            unit: String(row[3] ?? ""),
-            unitPrice: String(row[4] ?? ""),
-            rfqId: "",
-          })
+        const { parseBoqFile } = await import("@/lib/boq-parser")
+        const result = await parseBoqFile(file)
+        if (result.items.length === 0) {
+          toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
+          return
         }
+        const parsed: BоqItem[] = result.items.map((item) => ({
+          id: item.id,
+          itemNo: item.itemNo,
+          descriptionAr: item.descriptionAr,
+          descriptionEn: item.descriptionEn,
+          quantity: String(item.quantity ?? ""),
+          unit: item.unit,
+          unitPrice: "",
+          sheet: item.sheet,
+          divisionNo: item.divisionNo,
+          divisionNameEn: item.divisionNameEn,
+          divisionNameAr: item.divisionNameAr,
+          suggestedCategory: item.suggestedCategory,
+          suggestedSubCategory: item.suggestedSubCategory,
+          tenderId: null,
+          isEditable: true,
+        }))
         setBoqItems(parsed)
         toast({ title: t("proj_boq_import_success", { count: parsed.length }) })
-      } catch {
+      } catch (err) {
+        console.error(err)
         toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
       } finally {
         setBoqParsing(false)
         if (boqFileRef.current) boqFileRef.current.value = ""
       }
-    }
-    reader.readAsArrayBuffer(file)
+    })()
   }
 
-  // Save BOQ to Firestore
+  // Save BOQ to Firestore. Locked (isEditable:false) rows are never touched by a bulk save —
+  // they can only change via the dedicated unlock action, matching the Firestore hard-lock rule.
   const saveBoq = async () => {
     if (!firestore || !projectId) return
     setBoqSaving(true)
     try {
       const colRef = collection(firestore, "projects", projectId, "boqItems")
       const existing = await getDocs(colRef)
+      const existingIds = new Set(existing.docs.map((d) => d.id))
+      const currentIds = new Set(boqItems.filter((i) => existingIds.has(i.id)).map((i) => i.id))
+
       const batch = writeBatch(firestore)
-      existing.docs.forEach((d) => batch.delete(d.ref))
+
+      existing.docs.forEach((d) => {
+        if (!currentIds.has(d.id) && d.data().isEditable !== false) {
+          batch.delete(d.ref)
+        }
+      })
+
       boqItems.forEach((item) => {
-        const newRef = doc(colRef)
-        batch.set(newRef, {
+        if (item.isEditable === false) return
+        const isNew = !existingIds.has(item.id)
+        const ref = isNew ? doc(colRef) : doc(colRef, item.id)
+        batch.set(ref, {
           itemNo: item.itemNo,
-          description: item.description,
+          descriptionAr: item.descriptionAr || "",
+          descriptionEn: item.descriptionEn || "",
           quantity: Number(item.quantity) || 0,
           unit: item.unit,
           unitPrice: Number(item.unitPrice) || 0,
-          rfqId: item.rfqId || null,
+          sheet: item.sheet || "",
+          divisionNo: item.divisionNo || "",
+          divisionNameEn: item.divisionNameEn || "",
+          divisionNameAr: item.divisionNameAr || "",
+          suggestedCategory: item.suggestedCategory || "",
+          suggestedSubCategory: item.suggestedSubCategory || "",
+          tenderId: null,
+          isEditable: true,
           updatedAt: serverTimestamp(),
         })
       })
+
       await batch.commit()
+      await fetchBoqItems()
       toast({ title: t("proj_boq_saved") })
     } catch (err) {
       console.error(err)
@@ -314,19 +368,55 @@ export default function ProjectDetailPage() {
   const addBoqRow = () => {
     setBoqItems((prev) => [
       ...prev,
-      { id: `new_${Date.now()}`, itemNo: String(prev.length + 1), description: "", quantity: "", unit: "", unitPrice: "" },
+      {
+        id: `new_${Date.now()}`,
+        itemNo: String(prev.length + 1),
+        descriptionAr: "",
+        descriptionEn: "",
+        quantity: "",
+        unit: "",
+        unitPrice: "",
+        sheet: "",
+        tenderId: null,
+        isEditable: true,
+      },
     ])
   }
 
-  // Update BOQ cell
-  const updateBoqCell = (rowIndex: number, field: keyof BоqItem, value: string) => {
-    setBoqItems((prev) => prev.map((item, i) => (i === rowIndex ? { ...item, [field]: value } : item)))
-  }
+  // Update BOQ cell — locked rows never accept edits (also enforced server-side)
+  // useCallback with empty deps keeps this reference stable across renders (only functional setState is used),
+  // which lets boqColumns stay memoized — without it, table cells remount on every keystroke and lose focus.
+  const updateBoqCell = useCallback((rowIndex: number, field: keyof BоqItem, value: string) => {
+    setBoqItems((prev) =>
+      prev.map((item, i) => (i === rowIndex && item.isEditable !== false ? { ...item, [field]: value } : item))
+    )
+  }, [])
 
-  // Delete BOQ row
-  const deleteBoqRow = (rowIndex: number) => {
-    setBoqItems((prev) => prev.filter((_, i) => i !== rowIndex))
-  }
+  // Delete BOQ row — locked rows cannot be deleted (also enforced server-side)
+  const deleteBoqRow = useCallback((rowIndex: number) => {
+    setBoqItems((prev) => {
+      const item = prev[rowIndex]
+      if (item?.isEditable === false) return prev
+      return prev.filter((_, i) => i !== rowIndex)
+    })
+  }, [])
+
+  // Remove the tender lock from a single BOQ item (the one write transition the rules allow on a locked row)
+  const unlockBoqItem = useCallback(async (itemId: string) => {
+    if (!firestore || !projectId) return
+    try {
+      await updateDoc(doc(firestore, "projects", projectId, "boqItems", itemId), {
+        isEditable: true,
+        tenderId: null,
+        updatedAt: serverTimestamp(),
+      })
+      await fetchBoqItems()
+      toast({ title: t("proj_boq_unlocked") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("generic_error_title"), variant: "destructive" })
+    }
+  }, [firestore, projectId, fetchBoqItems, toast, t])
 
   // Add material from procurement sidebar
   const handleAddMaterial = (material: { name: string; unit: string; refPrice: number }) => {
@@ -335,37 +425,63 @@ export default function ProjectDetailPage() {
       {
         id: `mat_${Date.now()}`,
         itemNo: String(prev.length + 1),
-        description: material.name,
+        descriptionAr: material.name,
+        descriptionEn: "",
         quantity: "",
         unit: material.unit,
         unitPrice: String(material.refPrice),
+        sheet: "",
+        tenderId: null,
+        isEditable: true,
       },
     ])
   }
 
-  // TanStack table columns
-  const boqColumns = [
+  // TanStack table columns — memoized so cell renderers keep a stable identity across renders.
+  // flexRender creates a fresh React element per render; if the cell function itself were a new
+  // reference every render (as it was before this array was memoized), React treats it as a different
+  // component type at that tree position and remounts it, which drops input focus after every keystroke.
+  const boqColumns = useMemo(() => [
     columnHelper.accessor("itemNo", {
       header: () => <span>{t("proj_boq_item_no")}</span>,
       cell: ({ row, getValue }) => (
         <Input
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "itemNo", e.target.value)}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2"
+          disabled={row.original.isEditable === false}
+          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
         />
       ),
       size: 80,
     }),
-    columnHelper.accessor("description", {
+    columnHelper.display({
+      id: "description",
       header: () => <span>{t("proj_boq_description")}</span>,
-      cell: ({ row, getValue }) => (
-        <Input
-          value={getValue()}
-          onChange={(e) => updateBoqCell(row.index, "description", e.target.value)}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2"
-        />
-      ),
-      size: 260,
+      cell: ({ row }) => {
+        const item = row.original
+        const locked = item.isEditable === false
+        return (
+          <div className="flex flex-col gap-0.5 py-1">
+            <Input
+              value={item.descriptionAr}
+              onChange={(e) => updateBoqCell(row.index, "descriptionAr", e.target.value)}
+              disabled={locked}
+              dir="rtl"
+              placeholder={t("proj_boq_description_ar_placeholder")}
+              className="h-7 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
+            />
+            <Input
+              value={item.descriptionEn}
+              onChange={(e) => updateBoqCell(row.index, "descriptionEn", e.target.value)}
+              disabled={locked}
+              dir="ltr"
+              placeholder={t("proj_boq_description_en_placeholder")}
+              className="h-7 text-[11px] text-muted-foreground border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
+            />
+          </div>
+        )
+      },
+      size: 280,
     }),
     columnHelper.accessor("quantity", {
       header: () => <span>{t("proj_boq_qty")}</span>,
@@ -373,7 +489,8 @@ export default function ProjectDetailPage() {
         <Input
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "quantity", e.target.value)}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center"
+          disabled={row.original.isEditable === false}
+          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60"
           type="number"
           min={0}
         />
@@ -386,7 +503,8 @@ export default function ProjectDetailPage() {
         <Input
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "unit", e.target.value)}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center"
+          disabled={row.original.isEditable === false}
+          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60"
         />
       ),
       size: 80,
@@ -397,7 +515,8 @@ export default function ProjectDetailPage() {
         <Input
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "unitPrice", e.target.value)}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2"
+          disabled={row.original.isEditable === false}
+          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
           type="number"
           min={0}
         />
@@ -422,18 +541,39 @@ export default function ProjectDetailPage() {
     columnHelper.display({
       id: "actions",
       header: () => null,
-      cell: ({ row }) => (
-        <button
-          onClick={() => deleteBoqRow(row.index)}
-          className="text-muted-foreground hover:text-destructive transition-colors px-2"
-          aria-label={t("proj_boq_delete_row")}
-        >
-          <X size={14} />
-        </button>
-      ),
-      size: 40,
+      cell: ({ row }) => {
+        const item = row.original
+        if (item.isEditable === false) {
+          return (
+            <div className="flex items-center gap-1.5 px-2">
+              <Badge variant="outline" className="text-[10px] gap-1 border-accent/30 text-accent whitespace-nowrap">
+                <Lock size={10} />
+                {t("proj_boq_locked")}
+              </Badge>
+              <button
+                type="button"
+                onClick={() => unlockBoqItem(item.id)}
+                className="text-[10px] text-muted-foreground hover:text-primary underline whitespace-nowrap rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+              >
+                {t("proj_boq_unlock")}
+              </button>
+            </div>
+          )
+        }
+        return (
+          <button
+            type="button"
+            onClick={() => deleteBoqRow(row.index)}
+            className="text-muted-foreground hover:text-destructive transition-colors px-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+            aria-label={t("proj_boq_delete_row")}
+          >
+            <X size={14} />
+          </button>
+        )
+      },
+      size: 150,
     }),
-  ]
+  ], [t, locale, updateBoqCell, deleteBoqRow, unlockBoqItem])
 
   const boqTable = useReactTable({
     data: boqItems,
@@ -520,14 +660,35 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
+        {/* Guided next step: shown until the project has BOQ items or a linked tender */}
+        {boqLoaded && boqItems.length === 0 && (!linkedRfqs || linkedRfqs.length === 0) && (
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 p-4 bg-accent/5 border border-accent/20 rounded-xl">
+            <div className="flex items-start gap-3 flex-1 min-w-0">
+              <div className="h-9 w-9 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
+                <Lightbulb size={18} className="text-accent" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-foreground">{t("proj_next_step_title")}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("proj_next_step_desc")}</p>
+              </div>
+            </div>
+            <Button size="sm" className="gap-1.5 shrink-0 w-full sm:w-auto" onClick={() => handleTabChange("boq")}>
+              <TableProperties size={14} />
+              {t("proj_next_step_cta")}
+            </Button>
+          </div>
+        )}
+
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-slate-200">
           {tabs.map((tab) => (
             <button
               key={tab.key}
+              type="button"
               onClick={() => handleTabChange(tab.key)}
+              aria-current={activeTab === tab.key ? "page" : undefined}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 activeTab === tab.key
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -660,7 +821,7 @@ export default function ProjectDetailPage() {
                   <input
                     ref={boqFileRef}
                     type="file"
-                    accept=".xlsx,.xls,.csv"
+                    accept=".xlsx,.xls"
                     className="hidden"
                     onChange={handleBoqFile}
                   />
@@ -682,6 +843,16 @@ export default function ProjectDetailPage() {
                   <Button size="sm" onClick={saveBoq} disabled={boqSaving || boqItems.length === 0} className="gap-1.5">
                     {boqSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                     {t("proj_boq_save")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/contractor/projects/${projectId}/tenders/from-boq`)}
+                    disabled={boqItems.filter((i) => i.isEditable !== false).length === 0}
+                    className="gap-1.5 border-accent/30 text-accent hover:bg-accent/5"
+                  >
+                    <Send size={14} />
+                    {t("proj_boq_push_to_tender")}
                   </Button>
                 </div>
               </div>
@@ -761,13 +932,19 @@ export default function ProjectDetailPage() {
         {activeTab === "rfqs" && (
           <Card className="border-slate-200/60">
             <CardHeader className="border-b pb-4">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText size={20} className="text-primary" />
-                {t("proj_rfqs")}
-                {linkedRfqs && linkedRfqs.length > 0 && (
-                  <Badge variant="secondary" className="ms-2">{linkedRfqs.length}</Badge>
-                )}
-              </CardTitle>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileText size={20} className="text-primary" />
+                  {t("proj_rfqs")}
+                  {linkedRfqs && linkedRfqs.length > 0 && (
+                    <Badge variant="secondary" className="ms-2">{linkedRfqs.length}</Badge>
+                  )}
+                </CardTitle>
+                <Button size="sm" className="gap-1.5" onClick={() => router.push(`/contractor/projects/${projectId}/tenders/new`)}>
+                  <Plus size={14} />
+                  {t("proj_new_tender")}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-4">
               {rfqsLoading ? (
@@ -784,7 +961,7 @@ export default function ProjectDetailPage() {
                   {(linkedRfqs as unknown[]).map((rfq) => {
                     const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string }
                     return (
-                      <Link key={r.id} href={`/contractor/rfqs/${r.id}/offers`}>
+                      <Link key={r.id} href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`}>
                         <div className="flex items-center justify-between gap-3 p-4 bg-white border border-slate-100 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all group">
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-800 truncate group-hover:text-primary">{r.title || r.id}</p>

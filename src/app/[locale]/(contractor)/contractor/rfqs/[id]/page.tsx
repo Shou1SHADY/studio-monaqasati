@@ -1,7 +1,43 @@
-import { redirect } from "next/navigation"
+"use client"
 
-export default async function RfqPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  // Redirect to the offers sub-page which serves as the primary detail view for contractors
-  redirect(`/contractor/rfqs/${id}/offers`)
+import { useEffect } from "react"
+import { useParams } from "next/navigation"
+import { useRouter } from "@/i18n/routing"
+import { doc, getDoc } from "firebase/firestore"
+import { useFirestore } from "@/firebase"
+import { PortalLayout } from "@/components/layout/portal-layout"
+import { Loader2 } from "lucide-react"
+
+// Legacy flat tender URL — resolves the tender's project and redirects into the
+// new nested route. Kept so old links (notifications, bookmarks, AI suggestions) still work.
+export default function LegacyRfqPage() {
+  const params = useParams()
+  const rfqId = params.id as string
+  const router = useRouter()
+  const firestore = useFirestore()
+
+  useEffect(() => {
+    if (!firestore || !rfqId) return
+    ;(async () => {
+      try {
+        const snap = await getDoc(doc(firestore, "rfqs", rfqId))
+        const projectId = snap.exists() ? (snap.data()?.projectId as string | undefined) : undefined
+        if (projectId) {
+          router.replace(`/contractor/projects/${projectId}/tenders/${rfqId}/offers`)
+          return
+        }
+      } catch {
+        // fall through to the aggregate list below
+      }
+      router.replace("/contractor/rfqs")
+    })()
+  }, [firestore, rfqId, router])
+
+  return (
+    <PortalLayout>
+      <div className="flex items-center justify-center p-20">
+        <Loader2 className="animate-spin text-muted-foreground" size={40} />
+      </div>
+    </PortalLayout>
+  )
 }

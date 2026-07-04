@@ -65,7 +65,6 @@ const contractorSections: NavSection[] = [
         children: [
           { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle },
           { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
-          { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: PlusCircle },
         ],
       },
       { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },

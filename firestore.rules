@@ -75,9 +75,15 @@ service cloud.firestore {
     match /rfqs/{rfqId} {
       // Both get and list are safe for all signed-in users (RFQs are semi-public)
       allow read: if isSignedIn();
+      // A tender must always belong to a project owned by the caller's org —
+      // tenders can no longer be created without an open project.
       allow create: if isAdmin()
-        || isContractor()
-        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
+        || (
+          (isContractor() || (isSignedIn() && request.resource.data.organizationId == getOrganizationId()))
+          && request.resource.data.projectId is string
+          && request.resource.data.projectId.size() > 0
+          && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+        );
       // Org members / admins can update everything.
       // Any signed-in user (e.g. a supplier submitting an offer) may increment
       // only the offersCount counter — no other field may change.
@@ -235,12 +241,32 @@ service cloud.firestore {
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId());
 
-      // BOQ items subcollection — same org as the project
+      // BOQ items subcollection — same org as the project.
+      // Once an item is pushed to a tender (isEditable == false), it is hard-locked:
+      // no field may change except the specific "unlock" transition performed when
+      // the item is removed from the tender or the tender itself is deleted.
       match /boqItems/{itemId} {
         allow read: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
-        allow write: if isSignedIn()
+
+        allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (
+            resource.data.isEditable != false
+            ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isEditable', 'tenderId', 'updatedAt'])
+              && request.resource.data.isEditable == true
+              && request.resource.data.tenderId == null
+            )
+          );
+
+        allow delete: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && resource.data.isEditable != false;
       }
     }
 

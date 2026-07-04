@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "@/i18n/routing"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
@@ -35,19 +35,17 @@ import {
   Save,
   Send,
   AlertCircle,
-  Search,
-  ChevronDown,
-  Check,
   Globe,
   Lock
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase, useCollection } from "@/firebase"
-import { collection, doc, getDoc, updateDoc, query, where } from "firebase/firestore"
+import { collection, doc, getDoc, updateDoc, query, where, arrayUnion } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 
 const SAUDI_CITIES = [
   "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
@@ -83,119 +81,7 @@ function RequiredStar() {
   return <span className="text-destructive mr-1">*</span>
 }
 
-interface SearchableSelectOption {
-  value: string
-  label: string
-}
-
-interface SearchableSelectProps {
-  value: string
-  onChange: (v: string) => void
-  options: SearchableSelectOption[]
-  placeholder: string
-  searchPlaceholder: string
-  noResultsText: string
-  disabled?: boolean
-  error?: boolean
-}
-
-function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error }: SearchableSelectProps) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const containerRef = useRef<HTMLDivElement>(null)
-  const locale = useLocale()
-  const isRTL = locale === 'ar'
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false)
-        setSearch("")
-      }
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [open])
-
-  const filtered = options.filter(opt =>
-    !search.trim() || opt.label.toLowerCase().includes(search.toLowerCase().trim())
-  )
-  const selectedLabel = options.find(o => o.value === value)?.label
-
-  return (
-    <div className="relative" ref={containerRef}>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => { if (!disabled) { setOpen(p => !p); setSearch("") } }}
-        className={cn(
-          "w-full flex items-center justify-between h-11 px-4 rounded-xl border bg-white text-start transition-colors",
-          disabled
-            ? "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200"
-            : error
-              ? "border-destructive ring-1 ring-destructive"
-              : open
-                ? "border-primary/60 ring-1 ring-primary/20"
-                : value
-                  ? "border-slate-200 text-slate-800 hover:border-primary/60"
-                  : "border-slate-200 text-slate-400 hover:border-primary/60"
-        )}
-      >
-        <span className="text-sm truncate">{selectedLabel || placeholder}</span>
-        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-
-      {open && (
-        <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-          <div className="px-3 pt-3 pb-2">
-            <div className="relative">
-              <Search size={14} className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", isRTL ? "right-3" : "left-3")} />
-              <Input
-                autoFocus
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                dir={isRTL ? "rtl" : "ltr"}
-                className={cn("h-9 text-sm rounded-lg bg-slate-100 border-slate-200 focus-visible:ring-primary focus-visible:border-primary", isRTL ? "pr-9 pl-3" : "pl-9 pr-3")}
-              />
-            </div>
-          </div>
-          <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-            {filtered.map(opt => {
-              const isSelected = opt.value === value
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => { onChange(opt.value); setOpen(false); setSearch("") }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-primary/5",
-                    isRTL ? "text-right" : "text-left",
-                    isSelected ? "bg-primary/5" : ""
-                  )}
-                >
-                  <div className={cn(
-                    "h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors",
-                    isSelected ? "bg-primary border-primary" : "border-slate-300 bg-white"
-                  )}>
-                    {isSelected && <Check size={8} className="text-white" strokeWidth={3} />}
-                  </div>
-                  <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{opt.label}</span>
-                </button>
-              )
-            })}
-            {filtered.length === 0 && (
-              <p className="px-4 py-3 text-sm text-slate-400 text-center">{noResultsText}</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function NewRfqPage() {
+export default function NewTenderPage() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const [step, setStep] = useState(1)
@@ -204,6 +90,8 @@ export default function NewRfqPage() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
   const { toast } = useToast()
   const router = useRouter()
+  const params = useParams()
+  const projectId = params.id as string
   const searchParams = useSearchParams()
   const editId = searchParams.get("edit")
   const isEditing = !!editId
@@ -426,36 +314,36 @@ export default function NewRfqPage() {
 
   const validateStep1 = (): ValidationError[] => {
     const errors: ValidationError[] = []
-    
+
     if (!formData.title.trim()) {
       errors.push({ field: "title", message: t("newrfq_val_title_required") })
     }
 
-    const validProducts = products.filter(p => 
-      p.name.trim() && 
-      p.quantity.trim() && 
-      p.unit.trim() && 
-      p.category && 
+    const validProducts = products.filter(p =>
+      p.name.trim() &&
+      p.quantity.trim() &&
+      p.unit.trim() &&
+      p.category &&
       (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
     )
     if (validProducts.length === 0) {
       errors.push({ field: "products", message: t("newrfq_val_product_required") })
     }
-    
+
     return errors
   }
 
   const validateStep2 = (): ValidationError[] => {
     const errors: ValidationError[] = []
-    
+
     if (!formData.city) {
       errors.push({ field: "city", message: t("newrfq_val_city_required") })
     }
-    
+
     if (!formData.deadline) {
       errors.push({ field: "deadline", message: t("newrfq_val_deadline_required") })
     }
-    
+
     return errors
   }
 
@@ -467,7 +355,7 @@ export default function NewRfqPage() {
       if (fieldElement) {
         fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }
-      
+
       toast({
         title: t("newrfq_incomplete_data"),
         description: errors[0].message,
@@ -478,12 +366,12 @@ export default function NewRfqPage() {
 
   const nextStep = () => {
     const errors = step === 1 ? validateStep1() : step === 2 ? validateStep2() : []
-    
+
     if (errors.length > 0) {
       showErrors(errors)
       return
     }
-    
+
     setValidationErrors([])
     setStep(s => s + 1)
   }
@@ -546,7 +434,7 @@ export default function NewRfqPage() {
   }
 
   const handleSubmit = async (status: "Draft" | "New" = "New") => {
-    if (!firestore || !user) return
+    if (!firestore || !user || !projectId) return
 
     // Perform full validation
     const step1Errors = validateStep1()
@@ -560,11 +448,11 @@ export default function NewRfqPage() {
       return
     }
 
-    const validProducts = products.filter(p => 
-      p.name.trim() && 
-      p.quantity.trim() && 
-      p.unit.trim() && 
-      p.category && 
+    const validProducts = products.filter(p =>
+      p.name.trim() &&
+      p.quantity.trim() &&
+      p.unit.trim() &&
+      p.category &&
       (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
     )
 
@@ -574,6 +462,7 @@ export default function NewRfqPage() {
       // Edit mode: update the single existing RFQ
       const rfqData: any = {
         title: formData.title,
+        projectId,
         category: validProducts[0]?.category || editRfqData?.category || "",
         subCategory: validProducts.every(p => p.subCategory === validProducts[0].subCategory)
           ? (validProducts[0].subCategory === "أخرى" ? validProducts[0].otherSubCategory : validProducts[0].subCategory)
@@ -604,7 +493,7 @@ export default function NewRfqPage() {
           title: t("newrfq_toast_updated"),
           description: t("newrfq_toast_updated_desc"),
         })
-        router.push("/contractor/rfqs")
+        router.push(`/contractor/projects/${projectId}/tenders`)
       } catch (err) {
         toast({
           title: t("newrfq_toast_update_failed"),
@@ -615,7 +504,7 @@ export default function NewRfqPage() {
       return
     }
 
-    // Create mode: group products by category and create separate RFQs
+    // Create mode: group products by category and create separate tenders, all scoped to this project
     const rfqsRef = collection(firestore, "rfqs")
 
     // Group products by their main category
@@ -635,11 +524,12 @@ export default function NewRfqPage() {
       const rfqData = {
         contractorId: user.uid,
         organizationId: profile?.organizationId || user.uid, // Fallback to UID if orgId not present
+        projectId,
         title: rfqTitle,
         category: cat,
         // If there's only one product or all products share the same subcategory, use it. Otherwise, leave empty.
-        subCategory: catProducts.every(p => p.subCategory === catProducts[0].subCategory) 
-          ? (catProducts[0].subCategory === "أخرى" ? catProducts[0].otherSubCategory : catProducts[0].subCategory) 
+        subCategory: catProducts.every(p => p.subCategory === catProducts[0].subCategory)
+          ? (catProducts[0].subCategory === "أخرى" ? catProducts[0].otherSubCategory : catProducts[0].subCategory)
           : "متعدد",
         products: catProducts.map(p => ({
           name: p.name,
@@ -663,7 +553,10 @@ export default function NewRfqPage() {
         createdAt: new Date().toISOString()
       }
 
-      addDocumentNonBlocking(rfqsRef, rfqData)
+      // Keep the project's rfqIds list in sync so the projects list card's tender count stays accurate
+      addDocumentNonBlocking(rfqsRef, rfqData).then((ref) => {
+        if (ref) updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(ref.id) })
+      })
     }
 
     if (status === "Draft") {
@@ -688,7 +581,7 @@ export default function NewRfqPage() {
         title: t("newrfq_toast_published"),
         description: t("newrfq_toast_published_desc"),
       })
-      router.push("/contractor/rfqs")
+      router.push(`/contractor/projects/${projectId}/tenders`)
     }
   }
 
@@ -702,7 +595,7 @@ export default function NewRfqPage() {
           <p className="text-muted-foreground mt-2">{isEditing ? t("newrfq_edit_desc") : t("newrfq_page_desc")}</p>
         </div>
 
-        <div className="flex items-center justify-center gap-4 mb-8">
+        <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mb-8">
           {[
             { step: 1, label: t("newrfq_step_request_details"), icon: FileText },
             { step: 2, label: t("newrfq_step_location_date"), icon: MapPin },
@@ -711,19 +604,20 @@ export default function NewRfqPage() {
               <button
                 onClick={() => step >= s && setStep(s)}
                 disabled={step < s}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 ${
-                  step === s 
-                    ? "bg-primary text-white shadow-lg shadow-primary/25 cursor-pointer" 
-                    : step > s 
-                      ? "bg-success/10 text-success border border-success/20 cursor-pointer hover:bg-success/20" 
+                aria-current={step === s ? "step" : undefined}
+                className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  step === s
+                    ? "bg-primary text-white shadow-lg shadow-primary/25 cursor-pointer"
+                    : step > s
+                      ? "bg-success/10 text-success border border-success/20 cursor-pointer hover:bg-success/20"
                       : "bg-slate-100 text-slate-400 cursor-not-allowed opacity-60"
                 }`}
               >
                 {step > s ? <CheckCircle2 size={20} /> : <Icon size={20} />}
-                <span className="font-bold text-sm">{label}</span>
+                <span className="font-bold text-xs sm:text-sm">{label}</span>
               </button>
               {idx < 1 && (
-                locale === 'ar' ? <ChevronLeft size={20} className="mx-2 text-slate-300" /> : <ChevronRight size={20} className="mx-2 text-slate-300" />
+                locale === 'ar' ? <ChevronLeft size={20} className="mx-1 sm:mx-2 text-slate-300" /> : <ChevronRight size={20} className="mx-1 sm:mx-2 text-slate-300" />
               )}
             </div>
           ))}
@@ -822,10 +716,10 @@ export default function NewRfqPage() {
                             <span className="text-base font-bold text-slate-700">{t("newrfq_product_label")}</span>
                           </div>
                           {products.length > 1 && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => removeProduct(product.id)} 
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeProduct(product.id)}
                               className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8 px-3 rounded-lg cursor-pointer transition-colors"
                             >
                               <Trash2 size={16} />
@@ -964,10 +858,10 @@ export default function NewRfqPage() {
                         <span className="text-sm font-semibold text-blue-800">{t("newrfq_pdf_attached")}</span>
                         <p className="text-xs text-blue-600/70 mt-0.5">{t("newrfq_pdf_attached_desc")}</p>
                       </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={removePdf} 
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={removePdf}
                         className="text-red-500 hover:bg-red-50 hover:text-red-600 cursor-pointer rounded-lg"
                       >
                         <Trash2 size={16} />

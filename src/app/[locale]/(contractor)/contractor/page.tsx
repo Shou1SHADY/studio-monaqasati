@@ -133,7 +133,7 @@ export default function ContractorDashboard() {
       text: t("rfq_created", { title: (typeof r.title === 'string' && r.title) ? r.title : t("rfq_not_set") }), 
       time: r.createdAt ? new Date(r.createdAt).toLocaleDateString(locale) : t("now"), 
       status: r.status || t("rfq_status_new"),
-      actionUrl: `/contractor/rfqs/${r.id}/offers`,
+      actionUrl: r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}/offers`,
       actionLabel: r.status === "New" ? t("view_and_negotiate") : t("view_details")
     })) || [])
   ]
@@ -225,8 +225,8 @@ export default function ContractorDashboard() {
             </p>
           </div>
 
-          {/* CTA Button */}
-          <Link href="/contractor/rfqs/new" className="relative z-[2] shrink-0 w-full sm:w-auto">
+          {/* CTA Button — tenders now only get created from inside a project */}
+          <Link href="/contractor/projects" className="relative z-[2] shrink-0 w-full sm:w-auto">
             <Button
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 h-[52px] rounded-[13px] bg-white text-[#0b1a33] text-[15.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
               style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
