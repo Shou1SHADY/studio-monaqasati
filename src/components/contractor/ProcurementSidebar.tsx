@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
@@ -39,6 +39,12 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
   const [open, setOpen] = useState(true)
   const [search, setSearch] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("")
+
+  // Starts collapsed on narrow screens — at full width (w-64) this sidebar leaves almost no
+  // room for the BOQ table next to it on a phone-sized viewport.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) setOpen(false)
+  }, [])
 
   const materialsQuery = useMemoFirebase(() => {
     if (!firestore) return null
@@ -180,7 +186,7 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {material.refPrice > 0 && (
                         <span className="text-[11px] font-bold text-primary">
-                          {material.refPrice.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ريال" : "SAR"}
+                          {material.refPrice.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
                         </span>
                       )}
                       {material.unit && (

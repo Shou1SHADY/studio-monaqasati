@@ -21,6 +21,8 @@ export interface SearchableSelectProps {
   noResultsText: string
   disabled?: boolean
   error?: boolean
+  /** "sm" fits inline in compact toolbars/headers (e.g. a table row); "md" matches h-10 filter-bar controls. Default is form-field sized. */
+  size?: "default" | "sm" | "md"
 }
 
 const POPUP_GAP = 4
@@ -34,7 +36,7 @@ interface PopupCoords {
   bottom?: number
 }
 
-export function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error }: SearchableSelectProps) {
+export function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error, size = "default" }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
@@ -142,7 +144,8 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
         aria-expanded={open}
         onClick={() => { if (!disabled) { setOpen(p => !p); setSearch("") } }}
         className={cn(
-          "w-full flex items-center justify-between h-11 px-4 rounded-xl border bg-white text-start transition-colors",
+          "w-full flex items-center justify-between rounded-xl border bg-white text-start transition-colors",
+          size === "sm" ? "h-8 px-3 rounded-lg" : size === "md" ? "h-10 px-3 rounded-xl" : "h-11 px-4",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           disabled
             ? "opacity-50 cursor-not-allowed bg-slate-50 border-slate-200"
@@ -155,8 +158,8 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
                   : "border-slate-200 text-slate-400 hover:border-primary/60"
         )}
       >
-        <span className="text-sm truncate">{selectedLabel || placeholder}</span>
-        <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        <span className={cn("truncate", size === "sm" ? "text-xs" : "text-sm")}>{selectedLabel || placeholder}</span>
+        <ChevronDown size={size === "sm" ? 13 : 16} className={`shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && coords && typeof document !== "undefined" && createPortal(

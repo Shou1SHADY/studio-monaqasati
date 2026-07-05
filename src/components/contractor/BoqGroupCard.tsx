@@ -1,5 +1,6 @@
 "use client"
 
+import { useLocale } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -154,6 +155,7 @@ export function ItemRow({
   onDragStart: (e: React.DragEvent) => void
   actions: React.ReactNode
 }) {
+  const isRtl = useLocale() === "ar"
   return (
     <div
       draggable
@@ -163,7 +165,7 @@ export function ItemRow({
       <GripVertical size={14} className="text-muted-foreground/40 group-hover:text-muted-foreground shrink-0 mt-0.5 transition-colors" />
 
       {/* Item No badge */}
-      <span className="text-[10px] font-mono font-bold bg-primary/8 text-primary px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
+      <span dir="ltr" className="text-[10px] font-mono font-bold bg-primary/8 text-primary px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
         {item.itemNo}
       </span>
 
@@ -198,7 +200,7 @@ export function ItemRow({
             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
             : "bg-amber-50 text-amber-700 border-amber-200"
         )}>
-          {dupStatus === "Published" ? "منشورة" : "مسودة"}
+          {dupStatus === "Published" ? (isRtl ? "منشورة" : "Published") : (isRtl ? "مسودة" : "Draft")}
         </Badge>
       )}
 

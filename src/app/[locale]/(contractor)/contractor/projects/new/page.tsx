@@ -15,7 +15,7 @@ import { useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/fi
 import { collection, doc, addDoc, writeBatch, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
-import type { BoqItem } from "@/lib/boq-parser"
+import type { BoqItem, BoqParsedGroup } from "@/lib/boq-parser"
 import {
   Loader2,
   FolderPlus,
@@ -62,7 +62,7 @@ const CLIENT_TYPES = [
 ] as const
 
 function RequiredStar() {
-  return <span className="text-destructive mr-1">*</span>
+  return <span className="text-destructive me-1">*</span>
 }
 
 interface ValidationError {
@@ -97,6 +97,7 @@ export default function NewProjectPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [boqFile, setBoqFile] = useState<File | null>(null)
   const [boqParsedItems, setBoqParsedItems] = useState<BoqItem[] | null>(null)
+  const [boqParsedGroups, setBoqParsedGroups] = useState<BoqParsedGroup[]>([])
   const [boqParsing, setBoqParsing] = useState(false)
   const boqFileInputRef = useRef<HTMLInputElement>(null)
 
@@ -114,7 +115,7 @@ export default function NewProjectPage() {
     if (file && file.type === "application/pdf") {
       setBlueprintFile(file)
     } else if (file) {
-      toast({ title: "PDF فقط", description: "يرجى اختيار ملف PDF", variant: "destructive" })
+      toast({ title: t("proj_pdf_only_title"), description: t("proj_pdf_only_desc"), variant: "destructive" })
     }
   }
 
@@ -134,6 +135,7 @@ export default function NewProjectPage() {
         }
         setBoqFile(file)
         setBoqParsedItems(result.items)
+        setBoqParsedGroups(result.groups)
       } catch (err) {
         console.error(err)
         toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
@@ -147,6 +149,7 @@ export default function NewProjectPage() {
   const removeBoqFile = () => {
     setBoqFile(null)
     setBoqParsedItems(null)
+    setBoqParsedGroups([])
     if (boqFileInputRef.current) boqFileInputRef.current.value = ""
   }
 
@@ -220,11 +223,12 @@ export default function NewProjectPage() {
         updatedAt: serverTimestamp(),
       })
 
-      // Seed the BOQ tab with the parsed file, if one was uploaded — ungrouped, ready to be
-      // organized into sections in the project's own BOQ tab.
+      // Seed the BOQ tab with the parsed file, if one was uploaded — pre-organized into the
+      // sections detected from the file's own Category/Subcategory hierarchy.
       if (boqParsedItems && boqParsedItems.length > 0) {
         const boqBatch = writeBatch(firestore)
         const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
+        const boqGroupsRef = collection(firestore, "projects", projectRef.id, "boqGroups")
         boqParsedItems.forEach((item) => {
           boqBatch.set(doc(boqItemsRef), {
             itemNo: item.itemNo,
@@ -232,16 +236,27 @@ export default function NewProjectPage() {
             descriptionEn: item.descriptionEn,
             unit: item.unit,
             quantity: item.quantity,
-            unitPrice: 0,
+            unitPrice: item.rate || 0,
             sheet: item.sheet,
             divisionNo: item.divisionNo,
             divisionNameEn: item.divisionNameEn,
             divisionNameAr: item.divisionNameAr,
+            subCategoryCode: item.subCategoryCode,
+            subCategoryNameEn: item.subCategoryNameEn,
+            subCategoryNameAr: item.subCategoryNameAr,
             suggestedCategory: item.suggestedCategory,
             suggestedSubCategory: item.suggestedSubCategory,
             tenderId: null,
             isEditable: true,
-            groupId: null,
+            groupId: item.groupId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        })
+        boqParsedGroups.forEach((group) => {
+          boqBatch.set(doc(boqGroupsRef, group.id), {
+            titleAr: group.titleAr,
+            categoryAr: group.categoryAr,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           })

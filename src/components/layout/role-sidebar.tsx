@@ -68,6 +68,7 @@ const contractorSections: NavSection[] = [
         ],
       },
       { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },
+      { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Search },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
     ],
   },

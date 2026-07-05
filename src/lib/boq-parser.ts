@@ -1,8 +1,11 @@
 /**
  * Client-side BOQ (Bill of Quantities) Excel parser.
- * Detects publishable line items and maps them to platform categories.
- * Uses dynamic import of xlsx to keep the initial bundle lean.
+ * Walks each sheet tracking Category (0-dash code) → Subcategory (1-dash code) state,
+ * classifies rows as Measured (priceable) or Text (narrative, excluded), and maps
+ * platform categories. Uses dynamic import of xlsx to keep the initial bundle lean.
  */
+
+export type BoqItemType = "measured" | "text"
 
 export interface BoqItem {
   id: string
@@ -11,12 +14,18 @@ export interface BoqItem {
   descriptionAr: string
   unit: string
   quantity: number
+  rate: number
+  itemType: BoqItemType
   sheet: string
   divisionNo: string
   divisionNameEn: string
   divisionNameAr: string
+  subCategoryCode: string
+  subCategoryNameEn: string
+  subCategoryNameAr: string
   suggestedCategory: string
   suggestedSubCategory: string
+  groupId: string
   selected: boolean
 }
 
@@ -27,13 +36,23 @@ export interface BoqProjectInfo {
   totalItems: number
 }
 
+export interface BoqParsedGroup {
+  id: string
+  titleAr: string
+  categoryAr: string
+}
+
 export interface BoqParseResult {
   projectInfo: BoqProjectInfo
   items: BoqItem[]
+  groups: BoqParsedGroup[]
 }
 
 // Units that mean "not for separate procurement" — skip these
 const SKIP_UNITS = new Set(["n.a", "na", "n/a", "بدون", "", "لا ينطبق"])
+
+// Units that imply a whole-scope price even without an explicit numeric quantity
+const LUMP_SUM_UNITS = new Set(["ls", "lot", "lumpsum", "sum"])
 
 /**
  * Detect category from sheet name alone (no item description needed).
@@ -48,6 +67,8 @@ export function detectCategoryFromSheet(
 /**
  * Rule-based category + subcategory detection from sheet name and item description.
  * This covers ~95% of standard CSI-based BOQ structures without needing an AI call.
+ * This is the platform's own supplier-facing taxonomy (CATEGORIES_DATA) — independent
+ * of the file's own Category/Subcategory hierarchy (divisionNo/subCategoryCode below).
  */
 function detectCategory(
   sheetName: string,
@@ -165,29 +186,20 @@ function detectCategory(
   return { category: "مواد لاصقة وكيميائية", subCategory: "مواد تقوية خرسانة" }
 }
 
-/**
- * Returns true if the row represents a publishable BOQ line item.
- * Filters out: section headers, division headers, totals, N/A items.
- */
-function isPublishableRow(row: any[]): boolean {
-  const itemNo = String(row[0] ?? "").trim()
-  const unit = String(row[2] ?? "").trim().toLowerCase().replace(/\s/g, "")
-  const quantity = row[3]
-  const descEn = String(row[1] ?? "").trim()
+/** Strips a leading "Division:? <digits> -" prefix so only the clean name remains. */
+function cleanDivisionLabel(descEn: string): string {
+  return descEn.replace(/^division:?\s*\d*\s*[-–]?\s*/i, "").trim() || descEn
+}
 
-  // Must look like a deep item number: at least XX-XX-XX
-  if (!itemNo.match(/^\d{2}[-–]\d{2}[-–]\d{2}/)) return false
+/** Turns any string into a safe Firestore document-id fragment. */
+function sanitizeId(value: string): string {
+  return (value || "x").replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "") || "x"
+}
 
-  // Skip non-applicable units
-  if (SKIP_UNITS.has(unit)) return false
-
-  // Must have a positive numeric quantity
-  if (typeof quantity !== "number" || isNaN(quantity) || quantity <= 0) return false
-
-  // Must have a meaningful description
-  if (!descEn || descEn.length < 5) return false
-
-  return true
+interface CodeState {
+  code: string
+  nameEn: string
+  nameAr: string
 }
 
 /**
@@ -218,6 +230,7 @@ export async function parseBoqFile(file: File): Promise<BoqParseResult> {
   }
 
   const items: BoqItem[] = []
+  const groupsById = new Map<string, BoqParsedGroup>()
 
   for (const sheetName of wb.SheetNames) {
     if (["COVER", "SUMMARY"].includes(sheetName.toUpperCase())) continue
@@ -227,52 +240,81 @@ export async function parseBoqFile(file: File): Promise<BoqParseResult> {
 
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][]
 
-    // Find division header (usually row index 6: a 2-digit item number)
-    let divisionNo = ""
-    let divisionNameEn = ""
-    let divisionNameAr = ""
-
-    for (let i = 5; i < Math.min(12, rows.length); i++) {
-      const r = rows[i]
-      const val = String(r[0] ?? "").trim()
-      if (/^\d{2}$/.test(val) && r[1]) {
-        divisionNo = val
-        divisionNameEn = String(r[1]).trim()
-        divisionNameAr = String(r[6] ?? "").trim()
-        break
-      }
-    }
+    let currentCategory: CodeState = { code: "", nameEn: "", nameAr: "" }
+    let currentSubCategory: CodeState = { code: "", nameEn: "", nameAr: "" }
 
     for (let i = 6; i < rows.length; i++) {
       const row = rows[i]
-      if (!isPublishableRow(row)) continue
+      const itemNo = String(row[0] ?? "").trim()
+      if (!itemNo) continue // blank separator / "TO COLLECTION" subtotal rows
 
-      const itemNo = String(row[0]).trim()
-      const descEn = String(row[1]).trim()
-      const unit = String(row[2]).trim()
-      const quantity = Number(row[3])
+      const descEn = String(row[1] ?? "").trim()
+      const unit = String(row[2] ?? "").trim()
+      const qtyNum = Number(row[3])
+      const rateNum = Number(row[4]) || 0
       const descAr = String(row[6] ?? "").trim()
+      const dashCount = (itemNo.match(/[-–]/g) || []).length
 
-      const { category, subCategory } = detectCategory(sheetName, descEn)
+      const unitNorm = unit.toLowerCase().replace(/\s/g, "")
+      const hasValidUnit = unitNorm !== "" && !SKIP_UNITS.has(unitNorm)
+      const hasQty = !isNaN(qtyNum) && qtyNum > 0
+      const isLumpSum = LUMP_SUM_UNITS.has(unitNorm)
+      const isMeasured = hasValidUnit && (hasQty || isLumpSum) && descEn.length >= 5
 
-      items.push({
-        id: `${sheetName.replace(/\s/g, "_")}_${i}`,
-        itemNo,
-        descriptionEn: descEn,
-        descriptionAr: descAr,
-        unit,
-        quantity,
-        sheet: sheetName,
-        divisionNo,
-        divisionNameEn,
-        divisionNameAr,
-        suggestedCategory: category,
-        suggestedSubCategory: subCategory,
-        selected: true,
-      })
+      if (dashCount === 0) {
+        currentCategory = { code: itemNo, nameEn: cleanDivisionLabel(descEn), nameAr: descAr }
+        currentSubCategory = { code: "", nameEn: "", nameAr: "" }
+        continue
+      }
+
+      if (isMeasured) {
+        const subCode = currentSubCategory.code || currentCategory.code
+        const subNameEn = currentSubCategory.code ? currentSubCategory.nameEn : currentCategory.nameEn
+        const subNameAr = currentSubCategory.code ? currentSubCategory.nameAr : currentCategory.nameAr
+        const { category, subCategory } = detectCategory(sheetName, descEn)
+        const groupId = `grp_${sanitizeId(sheetName)}_${sanitizeId(subCode)}`
+
+        items.push({
+          id: `${sheetName.replace(/\s/g, "_")}_${i}`,
+          itemNo,
+          descriptionEn: descEn,
+          descriptionAr: descAr,
+          unit,
+          quantity: hasQty ? qtyNum : 1,
+          rate: rateNum,
+          itemType: "measured",
+          sheet: sheetName,
+          divisionNo: currentCategory.code,
+          divisionNameEn: currentCategory.nameEn,
+          divisionNameAr: currentCategory.nameAr,
+          subCategoryCode: subCode,
+          subCategoryNameEn: subNameEn,
+          subCategoryNameAr: subNameAr,
+          suggestedCategory: category,
+          suggestedSubCategory: subCategory,
+          groupId,
+          selected: true,
+        })
+
+        if (!groupsById.has(groupId)) {
+          groupsById.set(groupId, {
+            id: groupId,
+            titleAr: subNameAr || subNameEn || currentCategory.nameAr || currentCategory.nameEn,
+            categoryAr: category,
+          })
+        }
+        continue
+      }
+
+      if (dashCount === 1) {
+        currentSubCategory = { code: itemNo, nameEn: descEn, nameAr: descAr }
+        continue
+      }
+
+      // dashCount >= 2 and not measured → narrative/contractual Text item, excluded from items[]
     }
   }
 
   projectInfo.totalItems = items.length
-  return { projectInfo, items }
+  return { projectInfo, items, groups: Array.from(groupsById.values()) }
 }

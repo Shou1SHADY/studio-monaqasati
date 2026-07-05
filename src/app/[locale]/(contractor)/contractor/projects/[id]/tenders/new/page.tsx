@@ -40,37 +40,12 @@ import {
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore, useUser, useStorage, addDocumentNonBlocking, useDoc, useMemoFirebase, useCollection } from "@/firebase"
-import { collection, doc, getDoc, updateDoc, query, where, arrayUnion } from "firebase/firestore"
+import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
-
-const SAUDI_CITIES = [
-  "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
-  "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط",
-  "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
-]
-
-const CITIES_DISTRICTS: Record<string, string[]> = {
-  "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],
-  "جدة": ["شمال جدة", "جنوب جدة", "وسط جدة", "أبحر", "جميع جدة"],
-  "مكة المكرمة": ["العزيزية", "الشوقية", "العوالي", "بطحاء قريش", "جميع مكة"],
-  "المدينة المنورة": ["العزيزية", "الخالدية", "الحرة الشرقية", "جميع المدينة"],
-  "الدمام": ["شرق الدمام", "غرب الدمام", "وسط الدمام", "جميع الدمام"],
-  "الخبر": ["شمال الخبر", "الخبر الجنوبية", "العقربية", "جميع الخبر"],
-  "الظهران": ["حي الدانة", "حي الدوحة", "حي القصور", "جميع الظهران"],
-  "الأحساء": ["الهفوف", "المبرز", "العيون", "العمران", "جميع الأحساء"],
-  "الجبيل": ["الجبيل الصناعية", "الجبيل البلد", "جميع الجبيل"],
-  "تبوك": ["المروج", "الروضة", "السليمانية", "جميع تبوك"],
-  "حائل": ["صديان", "أجا", "النقرة", "جميع حائل"],
-  "القصيم": ["بريدة", "عنيزة", "الرس", "البدائع", "جميع القصيم"],
-  "أبها": ["حي المنسك", "حي الموظفين", "حي الخالدية", "جميع أبها"],
-  "خميس مشيط": ["الرصراص", "الشباعة", "شكر", "جميع خميس مشيط"],
-  "جازان": ["حي السويس", "حي الروضة", "حي الشاطئ", "جميع جازان"],
-  "نجران": ["الفيصلية", "الخالدية", "الفهد", "جميع نجران"],
-}
 
 interface ValidationError {
   field: string
@@ -78,7 +53,7 @@ interface ValidationError {
 }
 
 function RequiredStar() {
-  return <span className="text-destructive mr-1">*</span>
+  return <span className="text-destructive me-1">*</span>
 }
 
 export default function NewTenderPage() {
@@ -208,7 +183,7 @@ export default function NewTenderPage() {
   if (profile && !profile.profileCompleted) {
     return (
       <PortalLayout>
-        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir="rtl">
+        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir={locale === "ar" ? "rtl" : "ltr"}>
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
             <AlertCircle size={32} />
           </div>
@@ -232,7 +207,7 @@ export default function NewTenderPage() {
   if (profile && !profile.isVerified) {
     return (
       <PortalLayout>
-        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir="rtl">
+        <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir={locale === "ar" ? "rtl" : "ltr"}>
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-amber-200">
             <AlertCircle size={32} />
           </div>
@@ -253,7 +228,9 @@ export default function NewTenderPage() {
     )
   }
 
-  const isAiEnabled = process.env.NEXT_PUBLIC_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY
+  // Only NEXT_PUBLIC_-prefixed vars are inlined into the client bundle by Next.js — a plain
+  // GEMINI_API_KEY/GOOGLE_API_KEY set on the server is invisible here and would never enable this.
+  const isAiEnabled = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
   const addProduct = () => {
     setProducts([...products, { id: Date.now().toString(), quantity: "", unit: "", description: "", category: "", subCategory: "" }])
@@ -514,6 +491,8 @@ export default function NewTenderPage() {
     }, {} as Record<string, typeof validProducts>)
 
     const categories = Object.keys(groupedProducts)
+    const createdRfqIds: string[] = []
+    let creationFailed = false
 
     for (const cat of categories) {
       const catProducts = groupedProducts[cat]
@@ -553,10 +532,29 @@ export default function NewTenderPage() {
         createdAt: new Date().toISOString()
       }
 
-      // Keep the project's rfqIds list in sync so the projects list card's tender count stays accurate
-      addDocumentNonBlocking(rfqsRef, rfqData).then((ref) => {
-        if (ref) updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(ref.id) })
+      // Keep the project's rfqIds list in sync so the projects list card's tender count stays accurate.
+      // Awaited (not fire-and-forget) so a failed write is caught before we tell the user it worked.
+      try {
+        const ref = await addDoc(rfqsRef, rfqData)
+        createdRfqIds.push(ref.id)
+        await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(ref.id) })
+      } catch (err) {
+        console.error(err)
+        creationFailed = true
+        break
+      }
+    }
+
+    if (creationFailed) {
+      toast({
+        title: t("newrfq_toast_create_failed"),
+        description: createdRfqIds.length > 0
+          ? t("newrfq_toast_create_partial_desc", { count: createdRfqIds.length, total: categories.length })
+          : t("newrfq_toast_create_failed_desc"),
+        variant: "destructive",
       })
+      setIsSubmitting(false)
+      return
     }
 
     if (status === "Draft") {

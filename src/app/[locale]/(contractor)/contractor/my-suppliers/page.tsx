@@ -10,6 +10,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -59,6 +69,7 @@ export default function MySuppliersPage() {
   const [processingId, setProcessingId] = useState<string | null>(null)
 
   // Invite form state
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; supplierName?: string } | null>(null)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteCompanyName, setInviteCompanyName] = useState("")
   const [isSendingInvite, setIsSendingInvite] = useState(false)
@@ -259,7 +270,7 @@ export default function MySuppliersPage() {
                           size="sm"
                           variant="outline"
                           className="w-full gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive"
-                          onClick={() => handleRemove(link.id)}
+                          onClick={() => setRemoveTarget({ id: link.id, supplierName: link.supplierName || link.supplierOrgId })}
                           disabled={processingId === link.id}
                         >
                           {processingId === link.id ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />}
@@ -437,6 +448,29 @@ export default function MySuppliersPage() {
           </Tabs>
         )}
       </div>
+
+      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("my_sup_remove_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("my_sup_remove_confirm_desc", { supplier: removeTarget?.supplierName || "—" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                if (removeTarget) handleRemove(removeTarget.id)
+                setRemoveTarget(null)
+              }}
+            >
+              {t("my_sup_remove")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PortalLayout>
   )
 }

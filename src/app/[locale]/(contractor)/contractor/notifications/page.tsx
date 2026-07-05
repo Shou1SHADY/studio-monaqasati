@@ -226,7 +226,15 @@ export default function ContractorNotificationsPage() {
               <Card
                 key={chat.id}
                 onClick={() => router.push(`/contractor/chat/${chat.id}`)}
-                className="border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden bg-primary/5 ring-2 ring-primary/20 hover:shadow-md mb-4"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    router.push(`/contractor/chat/${chat.id}`)
+                  }
+                }}
+                className="border-none shadow-sm transition-all cursor-pointer select-none relative overflow-hidden bg-primary/5 ring-2 ring-primary/20 hover:shadow-md mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                   <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
@@ -260,7 +268,15 @@ export default function ContractorNotificationsPage() {
                   <Card
                     key={offer.id}
                     onClick={() => isUnread && markAsRead(offer.id, offer.rfqId)}
-                    className={`transition-shadow border-none cursor-pointer ${
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if ((e.key === "Enter" || e.key === " ") && isUnread) {
+                        e.preventDefault()
+                        markAsRead(offer.id, offer.rfqId)
+                      }
+                    }}
+                    className={`transition-shadow border-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       isUnread
                         ? "bg-white shadow-sm ring-1 ring-primary/10 hover:shadow-md"
                         : "opacity-70 bg-slate-50 hover:opacity-90"
@@ -318,7 +334,15 @@ export default function ContractorNotificationsPage() {
                 <Card
                   key={notif.id}
                   onClick={() => isUnread && markNotifAsRead(notif.id)}
-                  className={`transition-shadow border-none cursor-pointer ${
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === " ") && isUnread) {
+                      e.preventDefault()
+                      markNotifAsRead(notif.id)
+                    }
+                  }}
+                  className={`transition-shadow border-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isUnread
                       ? "bg-white shadow-sm ring-1 ring-primary/10 hover:shadow-md"
                       : "opacity-70 bg-slate-50 hover:opacity-90"

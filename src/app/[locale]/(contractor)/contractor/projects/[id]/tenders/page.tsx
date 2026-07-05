@@ -439,7 +439,9 @@ export default function ProjectTendersPage() {
             {error && (
               <div className="p-10 text-center space-y-4 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-red-600 font-bold">{t("rfq_error_fetching")}</p>
-                <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+                {process.env.NODE_ENV === "development" && (
+                  <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+                )}
               </div>
             )}
             {!isLoading && !error && filteredRfqs.length === 0 && (

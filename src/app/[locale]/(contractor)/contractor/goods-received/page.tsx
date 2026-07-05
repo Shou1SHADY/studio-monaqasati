@@ -128,7 +128,7 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
           {/* Right side */}
           <div className="flex flex-col sm:items-end gap-2 shrink-0">
             <Badge className="bg-success/10 text-success border-success/20 text-xs font-bold w-fit">
-              ✓ {locale === "ar" ? "مؤكد" : "Confirmed"}
+              ✓ {t("goods_received_confirmed_badge")}
             </Badge>
             <Button
               asChild
@@ -183,7 +183,7 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
                   className="inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline bg-primary/5 px-2 py-1 rounded-md"
                 >
                   <FileText size={11} />
-                  {locale === "ar" ? `مستند ${idx + 1}` : `Document ${idx + 1}`}
+                  {t("goods_received_document_label", { num: idx + 1 })}
                   <ExternalLink size={10} />
                 </a>
               ))}

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   AlertDialog,
@@ -53,6 +54,7 @@ export default function ContractorRfqsPage() {
   const [customDeadline, setCustomDeadline] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
   const [locationFilter, setLocationFilter] = useState<string>("all")
+  const [projectFilter, setProjectFilter] = useState<string>("all")
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -64,13 +66,14 @@ export default function ContractorRfqsPage() {
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
 
-  const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all"
+  const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all" || projectFilter !== "all"
   const clearFilters = () => {
     setSearchQuery("")
     setStatusFilter("all")
     setDeadlineFilter("all")
     setCategoryFilter("all")
     setLocationFilter("all")
+    setProjectFilter("all")
     setCustomDeadline("")
     setSelectedRfqs([])
   }
@@ -207,9 +210,25 @@ const handleBatchPublish = async () => {
     if (locationFilter !== "all") {
       q = query(q, where("city", "==", locationFilter));
     }
-    
+    if (projectFilter !== "all") {
+      q = query(q, where("projectId", "==", projectFilter));
+    }
+
     return q;
-  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, profile?.organizationId])
+  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, projectFilter, profile?.organizationId])
+
+  // Projects belonging to this org, used only to populate the project filter dropdown.
+  const projectsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(
+      collection(firestore, "projects"),
+      where("organizationId", "==", profile?.organizationId || user.uid)
+    )
+  }, [firestore, user, isUserLoading, profile?.organizationId])
+  const { data: projects } = useCollection(projectsQuery)
+  const projectOptions = (projects || [])
+    .map((p: any) => ({ value: p.id, label: p.name || p.id }))
+    .sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label, locale === "ar" ? "ar" : "en"))
 
   const acceptedOffersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -366,6 +385,19 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               </div>
               {/* Filters Row */}
               <div className="flex flex-wrap gap-2">
+                {/* Project Filter */}
+                <div className="w-[200px]">
+                  <SearchableSelect
+                    size="md"
+                    value={projectFilter}
+                    onChange={setProjectFilter}
+                    options={[{ value: "all", label: t("rfq_all_projects") }, ...projectOptions]}
+                    placeholder={t("rfq_project_filter")}
+                    searchPlaceholder={t("rfq_search_project")}
+                    noResultsText={t("newrfq_no_results")}
+                  />
+                </div>
+
                 {/* Category Filter */}
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
@@ -436,17 +468,19 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             {error && (
               <div className="p-10 text-center space-y-4 bg-red-50 border border-red-200 rounded-xl">
                 <p className="text-red-600 font-bold">{t("rfq_error_fetching")}</p>
-                <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+                {process.env.NODE_ENV === "development" && (
+                  <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+                )}
               </div>
             )}
             {!isLoading && !error && filteredRfqs.length === 0 && (
               <div className="p-20 text-center space-y-4">
                 <p className="text-muted-foreground">
-                  {searchQuery || categoryFilter !== "all" || locationFilter !== "all" || deadlineFilter !== "all" 
-                    ? t("rfq_no_matching") 
+                  {hasActiveFilters
+                    ? t("rfq_no_matching")
                     : t("rfq_no_tenders")}
                 </p>
-                {!searchQuery && categoryFilter === "all" && locationFilter === "all" && deadlineFilter === "all" && (
+                {!hasActiveFilters && (
                   <Link href="/contractor/projects">
                     <Button variant="outline">{t("rfq_go_to_projects")}</Button>
                   </Link>

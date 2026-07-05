@@ -26,6 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { 
   Loader2, 
   Building2, 
@@ -68,6 +78,7 @@ export default function ContractorProfilePage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
+  const [certToDelete, setCertToDelete] = useState<string | null>(null)
 
   const [tourActive, setTourActive] = useState(() => {
     if (showTour) return true
@@ -713,7 +724,7 @@ export default function ContractorProfilePage() {
                             <a href={cert.url} target="_blank" rel="noopener noreferrer"><LinkIcon size={14} /></a>
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-300 hover:text-destructive" onClick={() => removeCertificate(cert.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-300 hover:text-destructive" onClick={() => setCertToDelete(cert.id)}>
                           <Trash2 size={16} />
                         </Button>
                       </div>
@@ -897,6 +908,27 @@ export default function ContractorProfilePage() {
           }}
         />
       )}
+
+      <AlertDialog open={!!certToDelete} onOpenChange={(open) => !open && setCertToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("profile_delete_cert_title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("profile_delete_cert_desc")}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                if (certToDelete) removeCertificate(certToDelete)
+                setCertToDelete(null)
+              }}
+            >
+              {t("profile_delete_cert_confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PortalLayout>
   )
 }

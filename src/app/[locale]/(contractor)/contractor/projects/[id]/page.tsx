@@ -20,6 +20,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -64,6 +75,10 @@ import {
   Lightbulb,
   Layers,
   Package,
+  GripVertical,
+  ChevronDown,
+  ChevronRight,
+  FolderInput,
 } from "lucide-react"
 import {
   useReactTable,
@@ -73,6 +88,7 @@ import {
   type Row,
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
 
 function fmtDate(val: unknown, locale: string) {
@@ -111,6 +127,9 @@ type BоqItem = {
   divisionNo?: string
   divisionNameEn?: string
   divisionNameAr?: string
+  subCategoryCode?: string
+  subCategoryNameEn?: string
+  subCategoryNameAr?: string
   suggestedCategory?: string
   suggestedSubCategory?: string
   tenderId: string | null
@@ -159,6 +178,16 @@ export default function ProjectDetailPage() {
   const [boqLoaded, setBoqLoaded] = useState(false)
   const [dragItemId, setDragItemId] = useState<string | null>(null)
   const [dragOverGroupId, setDragOverGroupId] = useState<string | "unassigned" | null>(null)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+
+  const toggleGroupCollapsed = useCallback((groupId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }, [])
 
   const projectDocRef = useMemoFirebase(() => {
     if (!firestore || !projectId) return null
@@ -209,6 +238,9 @@ export default function ProjectDetailPage() {
         divisionNo: data.divisionNo || "",
         divisionNameEn: data.divisionNameEn || "",
         divisionNameAr: data.divisionNameAr || "",
+        subCategoryCode: data.subCategoryCode || "",
+        subCategoryNameEn: data.subCategoryNameEn || "",
+        subCategoryNameAr: data.subCategoryNameAr || "",
         suggestedCategory: data.suggestedCategory || "",
         suggestedSubCategory: data.suggestedSubCategory || "",
         tenderId: data.tenderId ?? null,
@@ -279,9 +311,22 @@ export default function ProjectDetailPage() {
   }
 
   const handleDelete = async () => {
-    if (!firestore || !projectDocRef) return
+    if (!firestore || !projectDocRef || !projectId) return
     setIsDeleting(true)
     try {
+      // Firestore doesn't cascade-delete subcollections — clean up boqItems/boqGroups first,
+      // otherwise they're orphaned (unreachable, but still billed and counted) forever.
+      const [itemsSnap, groupsSnap] = await Promise.all([
+        getDocs(collection(firestore, "projects", projectId, "boqItems")),
+        getDocs(collection(firestore, "projects", projectId, "boqGroups")),
+      ])
+      const subDocs = [...itemsSnap.docs, ...groupsSnap.docs]
+      for (let i = 0; i < subDocs.length; i += 450) {
+        const batch = writeBatch(firestore)
+        subDocs.slice(i, i + 450).forEach((d) => batch.delete(d.ref))
+        await batch.commit()
+      }
+
       await deleteDoc(projectDocRef)
       toast({ title: t("proj_toast_deleted") })
       router.push("/contractor/projects")
@@ -312,18 +357,22 @@ export default function ProjectDetailPage() {
           descriptionEn: item.descriptionEn,
           quantity: String(item.quantity ?? ""),
           unit: item.unit,
-          unitPrice: "",
+          unitPrice: item.rate ? String(item.rate) : "",
           sheet: item.sheet,
           divisionNo: item.divisionNo,
           divisionNameEn: item.divisionNameEn,
           divisionNameAr: item.divisionNameAr,
+          subCategoryCode: item.subCategoryCode,
+          subCategoryNameEn: item.subCategoryNameEn,
+          subCategoryNameAr: item.subCategoryNameAr,
           suggestedCategory: item.suggestedCategory,
           suggestedSubCategory: item.suggestedSubCategory,
           tenderId: null,
           isEditable: true,
-          groupId: null,
+          groupId: item.groupId,
         }))
         setBoqItems(parsed)
+        setBoqGroups(result.groups.map((g) => ({ id: g.id, titleAr: g.titleAr, categoryAr: g.categoryAr })))
         toast({ title: t("proj_boq_import_success", { count: parsed.length }) })
       } catch (err) {
         console.error(err)
@@ -376,6 +425,9 @@ export default function ProjectDetailPage() {
           divisionNo: item.divisionNo || "",
           divisionNameEn: item.divisionNameEn || "",
           divisionNameAr: item.divisionNameAr || "",
+          subCategoryCode: item.subCategoryCode || "",
+          subCategoryNameEn: item.subCategoryNameEn || "",
+          subCategoryNameAr: item.subCategoryNameAr || "",
           suggestedCategory: item.suggestedCategory || "",
           suggestedSubCategory: item.suggestedSubCategory || "",
           tenderId: null,
@@ -466,7 +518,9 @@ export default function ProjectDetailPage() {
     if (!firestore || !projectId) return
     const newId = doc(collection(firestore, "projects", projectId, "boqGroups")).id
     const firstCategory = Object.keys(CATEGORIES_DATA)[0] || ""
-    setBoqGroups((prev) => [...prev, { id: newId, titleAr: isRtl ? "قسم جديد" : "New Section", categoryAr: firstCategory }])
+    // titleAr always holds Arabic text regardless of the UI's current locale — it's the canonical
+    // section title shown to suppliers, same convention as categoryAr/CATEGORIES_DATA.
+    setBoqGroups((prev) => [...prev, { id: newId, titleAr: "قسم جديد", categoryAr: firstCategory }])
   }
 
   const updateBoqGroup = (groupId: string, field: "titleAr" | "categoryAr", value: string) => {
@@ -486,10 +540,17 @@ export default function ProjectDetailPage() {
     )
   }, [])
 
-  const handleRowDragStart = (e: React.DragEvent, itemId: string) => {
+  const handleRowDragStart = useCallback((e: React.DragEvent, itemId: string) => {
     e.dataTransfer.effectAllowed = "move"
     setDragItemId(itemId)
-  }
+  }, [])
+
+  // Always clear the dragged-row state when a drag ends, even if dropped outside any section
+  // (otherwise the row would stay dimmed at 40% opacity until the next drag).
+  const handleRowDragEnd = useCallback(() => {
+    setDragItemId(null)
+    setDragOverGroupId(null)
+  }, [])
 
   const handleSectionDragOver = (e: React.DragEvent, groupId: string | "unassigned") => {
     e.preventDefault()
@@ -529,6 +590,29 @@ export default function ProjectDetailPage() {
   // reference every render (as it was before this array was memoized), React treats it as a different
   // component type at that tree position and remounts it, which drops input focus after every keystroke.
   const boqColumns = useMemo(() => [
+    columnHelper.display({
+      id: "drag",
+      header: () => null,
+      cell: ({ row }) => {
+        if (row.original.isEditable === false) {
+          return <div className="w-5 h-8" />
+        }
+        return (
+          // Pointer-only affordance — not focusable/keyboard-operable since native HTML5 drag has no
+          // keyboard equivalent. Keyboard/screen-reader users reorganize via the "move to section" menu instead.
+          <div
+            draggable
+            onDragStart={(e) => handleRowDragStart(e, row.original.id)}
+            onDragEnd={handleRowDragEnd}
+            aria-hidden="true"
+            className="flex items-center justify-center h-8 w-5 text-muted-foreground/50 hover:text-muted-foreground cursor-grab active:cursor-grabbing rounded"
+          >
+            <GripVertical size={14} />
+          </div>
+        )
+      },
+      size: 28,
+    }),
     columnHelper.accessor("itemNo", {
       header: () => <span>{t("proj_boq_item_no")}</span>,
       cell: ({ row, getValue }) => (
@@ -536,10 +620,11 @@ export default function ProjectDetailPage() {
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "itemNo", e.target.value)}
           disabled={row.original.isEditable === false}
+          dir="ltr"
           className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
         />
       ),
-      size: 80,
+      size: 96,
     }),
     columnHelper.display({
       id: "description",
@@ -648,19 +733,54 @@ export default function ProjectDetailPage() {
           )
         }
         return (
-          <button
-            type="button"
-            onClick={() => deleteBoqRow(row.index)}
-            className="text-muted-foreground hover:text-destructive transition-colors px-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-            aria-label={t("proj_boq_delete_row")}
-          >
-            <X size={14} />
-          </button>
+          <div className="flex items-center gap-0.5 px-1">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t("proj_boq_move_to")}
+                      className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                    >
+                      <FolderInput size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{t("proj_boq_move_to")}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                {boqGroups.map((group) => (
+                  <DropdownMenuItem
+                    key={group.id}
+                    disabled={item.groupId === group.id}
+                    onClick={() => moveItemToGroup(item.id, group.id)}
+                  >
+                    {group.titleAr || t("proj_boq_add_section")}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuItem
+                  disabled={!item.groupId}
+                  onClick={() => moveItemToGroup(item.id, null)}
+                >
+                  {t("boq_unassigned")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              type="button"
+              onClick={() => deleteBoqRow(row.index)}
+              className="text-muted-foreground hover:text-destructive transition-colors h-7 w-7 rounded-lg flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+              aria-label={t("proj_boq_delete_row")}
+            >
+              <X size={14} />
+            </button>
+          </div>
         )
       },
       size: 150,
     }),
-  ], [t, locale, updateBoqCell, deleteBoqRow, unlockBoqItem])
+  ], [t, locale, updateBoqCell, deleteBoqRow, unlockBoqItem, boqGroups, moveItemToGroup, handleRowDragStart, handleRowDragEnd])
 
   const boqTable = useReactTable({
     data: boqItems,
@@ -697,12 +817,11 @@ export default function ProjectDetailPage() {
         {rows.map((row, i) => (
           <tr
             key={row.id}
-            draggable={row.original.isEditable !== false}
-            onDragStart={(e) => handleRowDragStart(e, row.original.id)}
             className={cn(
               "border-b border-slate-50 hover:bg-slate-50/50 transition-colors",
               i % 2 === 0 ? "bg-white" : "bg-slate-50/30",
-              row.original.isEditable !== false ? "" : "cursor-not-allowed"
+              row.original.isEditable === false && "cursor-not-allowed",
+              dragItemId === row.original.id && "opacity-40"
             )}
           >
             {row.getVisibleCells().map((cell) => (
@@ -952,7 +1071,7 @@ export default function ProjectDetailPage() {
                     {t("proj_boq_items_count", { count: boqItems.length })}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <input
                     ref={boqFileRef}
                     type="file"
@@ -1005,39 +1124,60 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {boqGroups.map((group) => {
                     const groupRows = allBoqRows.filter((r) => r.original.groupId === group.id)
+                    const isCollapsed = collapsedGroups.has(group.id)
+                    const isDragOver = dragOverGroupId === group.id
                     return (
                       <div
                         key={group.id}
                         className={cn(
-                          "rounded-xl border overflow-hidden transition-colors",
-                          dragOverGroupId === group.id ? "border-primary ring-1 ring-primary/30" : "border-slate-200"
+                          "rounded-xl border bg-white overflow-hidden transition-all",
+                          isDragOver ? "border-primary ring-2 ring-primary/20" : "border-slate-200"
                         )}
                         onDragOver={(e) => handleSectionDragOver(e, group.id)}
                         onDrop={(e) => handleSectionDrop(e, group.id)}
                         onDragLeave={() => setDragOverGroupId(null)}
                       >
-                        <div className="flex items-center gap-2 p-3 bg-slate-50 border-b border-slate-200 flex-wrap">
+                        <div className="flex items-center gap-1.5 p-2.5 bg-slate-50 border-b border-slate-200 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => toggleGroupCollapsed(group.id)}
+                            aria-label={isCollapsed ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
+                            aria-expanded={!isCollapsed}
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                          >
+                            {isCollapsed ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
+                          </button>
                           <Layers size={14} className="text-primary shrink-0" />
-                          <Input
-                            value={group.titleAr}
-                            onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
-                            className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-white"
-                            dir="rtl"
-                          />
-                          <Select value={group.categoryAr} onValueChange={(v) => updateBoqGroup(group.id, "categoryAr", v)}>
-                            <SelectTrigger className="h-8 text-xs w-44 rounded-lg bg-white">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-60">
-                              {Object.keys(CATEGORIES_DATA).map((cat) => (
-                                <SelectItem key={cat} value={cat} className="text-xs">{displayCategory(cat, locale)}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Badge variant="outline" className="text-[10px] shrink-0">{groupRows.length}</Badge>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Input
+                                value={group.titleAr}
+                                onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
+                                className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-white truncate"
+                                dir="rtl"
+                              />
+                            </TooltipTrigger>
+                            {group.titleAr && group.titleAr.length > 40 && (
+                              <TooltipContent className="max-w-xs" side="bottom">{group.titleAr}</TooltipContent>
+                            )}
+                          </Tooltip>
+                          <div className="w-44 shrink-0">
+                            <SearchableSelect
+                              size="sm"
+                              value={group.categoryAr}
+                              onChange={(v) => updateBoqGroup(group.id, "categoryAr", v)}
+                              options={Object.keys(CATEGORIES_DATA).map((cat) => ({ value: cat, label: displayCategory(cat, locale) }))}
+                              placeholder={t("newrfq_select_category")}
+                              searchPlaceholder={t("newrfq_search_category")}
+                              noResultsText={t("newrfq_no_results")}
+                            />
+                          </div>
+                          <Badge variant="outline" className="text-[10px] shrink-0">
+                            {t("proj_boq_items_count", { count: groupRows.length })}
+                          </Badge>
                           <button
                             type="button"
                             onClick={() => deleteBoqGroup(group.id)}
@@ -1047,10 +1187,12 @@ export default function ProjectDetailPage() {
                             <Trash2 size={13} />
                           </button>
                         </div>
-                        {groupRows.length === 0 ? (
-                          <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
-                        ) : (
-                          <div className="overflow-x-auto">{renderBoqRows(groupRows)}</div>
+                        {!isCollapsed && (
+                          groupRows.length === 0 ? (
+                            <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                          ) : (
+                            <div className="overflow-x-auto">{renderBoqRows(groupRows)}</div>
+                          )
                         )}
                       </div>
                     )
@@ -1059,22 +1201,35 @@ export default function ProjectDetailPage() {
                   {/* Unassigned — always shown as a drop target */}
                   <div
                     className={cn(
-                      "rounded-xl border overflow-hidden transition-colors",
-                      dragOverGroupId === "unassigned" ? "border-primary ring-1 ring-primary/30" : "border-dashed border-slate-300"
+                      "rounded-xl border bg-white overflow-hidden transition-all",
+                      dragOverGroupId === "unassigned" ? "border-primary ring-2 ring-primary/20" : "border-dashed border-slate-300"
                     )}
                     onDragOver={(e) => handleSectionDragOver(e, "unassigned")}
                     onDrop={(e) => handleSectionDrop(e, "unassigned")}
                     onDragLeave={() => setDragOverGroupId(null)}
                   >
-                    <div className="flex items-center gap-2 p-3 bg-slate-50/60 border-b border-slate-200">
+                    <div className="flex items-center gap-2 p-2.5 bg-slate-50/60 border-b border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => toggleGroupCollapsed("unassigned")}
+                        aria-label={collapsedGroups.has("unassigned") ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
+                        aria-expanded={!collapsedGroups.has("unassigned")}
+                        className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                      >
+                        {collapsedGroups.has("unassigned") ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
+                      </button>
                       <Package size={14} className="text-muted-foreground shrink-0" />
                       <span className="text-sm font-bold text-muted-foreground">{t("boq_unassigned")}</span>
-                      <Badge variant="outline" className="text-[10px]">{unassignedBoqRows.length}</Badge>
+                      <Badge variant="outline" className="text-[10px]">
+                        {t("proj_boq_items_count", { count: unassignedBoqRows.length })}
+                      </Badge>
                     </div>
-                    {unassignedBoqRows.length === 0 ? (
-                      <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
-                    ) : (
-                      <div className="overflow-x-auto">{renderBoqRows(unassignedBoqRows)}</div>
+                    {!collapsedGroups.has("unassigned") && (
+                      unassignedBoqRows.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                      ) : (
+                        <div className="overflow-x-auto">{renderBoqRows(unassignedBoqRows)}</div>
+                      )
                     )}
                   </div>
                 </div>
@@ -1089,7 +1244,7 @@ export default function ProjectDetailPage() {
                       {boqItems
                         .reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0)
                         .toLocaleString(locale === "ar" ? "ar-SA" : "en-US")}{" "}
-                      {locale === "ar" ? "ريال" : "SAR"}
+                      {t("offers_currency_sar")}
                     </span>
                   </div>
                 </div>

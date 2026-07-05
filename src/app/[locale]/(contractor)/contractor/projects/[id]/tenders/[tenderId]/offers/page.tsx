@@ -13,6 +13,16 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { Star } from "lucide-react"
 import { displayCategory, displaySubcategory, displayCity } from "@/lib/constants"
@@ -45,7 +55,7 @@ import {
   FileCheck
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 
@@ -75,6 +85,7 @@ export default function RfqOffersPage() {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
+  const [confirmDecisionTarget, setConfirmDecisionTarget] = useState<{ offer: any; decision: "مقبول" | "مرفوض" } | null>(null)
   const [reductionOffer, setReductionOffer] = useState<any | null>(null)
   const [reductionNote, setReductionNote] = useState("")
   const [targetPrice, setTargetPrice] = useState("")
@@ -180,7 +191,8 @@ export default function RfqOffersPage() {
 
     const offer = offers?.find((o: any) => o.id === offerId)
 
-    // Step 1: Update offer status
+    // Step 1: Update offer status. When accepting, the offer's own status and the RFQ's
+    // "Awarded" status must never go out of sync, so they're committed together as one batch.
     try {
       const updateData: any = {
         status: decision,
@@ -193,8 +205,18 @@ export default function RfqOffersPage() {
         if (requestedPrice) updateData.targetPrice = Number(requestedPrice)
         updateData.reductionNote = note || null
       }
-      
-      await updateDoc(doc(firestore, "offers", offerId), updateData)
+
+      if (decision === "مقبول") {
+        const batch = writeBatch(firestore)
+        batch.update(doc(firestore, "offers", offerId), updateData)
+        batch.update(doc(firestore, "rfqs", rfqId), {
+          status: "Awarded",
+          awardedAt: new Date().toISOString()
+        })
+        await batch.commit()
+      } else {
+        await updateDoc(doc(firestore, "offers", offerId), updateData)
+      }
     } catch (error: any) {
       console.error("❌ updateDoc offer failed:", error?.code, error?.message)
       toast({ title: t("offers_toast_error"), description: t("offers_toast_error_desc", { message: error?.code || error?.message }), variant: "destructive" })
@@ -227,23 +249,6 @@ export default function RfqOffersPage() {
       }
     }
 
-    // Step 2b: Update RFQ status to Awarded when accepting
-    if (decision === "مقبول") {
-      try {
-        await updateDoc(doc(firestore, "rfqs", rfqId), {
-          status: "Awarded",
-          awardedAt: new Date().toISOString()
-        })
-      } catch (rfqErr) {
-        console.warn("⚠️ Failed to update RFQ status:", rfqErr)
-        toast({
-          title: t("offers_toast_error"),
-          description: t("offers_toast_rfq_update_failed"),
-          variant: "destructive"
-        })
-      }
-    }
-
     // Step 3: Write notification to supplier's subcollection
     if (offer?.supplierId) {
       try {
@@ -258,8 +263,8 @@ export default function RfqOffersPage() {
           notifType = "price_reduction"
           notifTitle = t("offers_notif_reduction_title")
           let baseMsg = t("offers_notif_reduction_msg", { title: offer.rfqTitle || "" })
-          if (requestedPrice) baseMsg += `\nالسعر المستهدف: ${requestedPrice} ${t("offers_currency_sar")}`
-          if (note) baseMsg += `\nملاحظة: ${note}`
+          if (requestedPrice) baseMsg += `\n${t("offers_notif_reduction_target_price", { price: requestedPrice, currency: t("offers_currency_sar") })}`
+          if (note) baseMsg += `\n${t("offers_notif_reduction_note", { note })}`
           notifMessage = baseMsg
         }
         await addDoc(collection(firestore, "users", offer.supplierId, "notifications"), {
@@ -690,7 +695,7 @@ export default function RfqOffersPage() {
                         {offer.status === "قيد المراجعة" && (
                           <div className="bg-slate-50/60 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-slate-100">
                             <Button
-                              onClick={() => handleDecision(offer.id, "مقبول")}
+                              onClick={() => setConfirmDecisionTarget({ offer, decision: "مقبول" })}
                               disabled={processingId === offer.id}
                               className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all hover:shadow-lg hover:shadow-success/20"
                               size="sm"
@@ -709,7 +714,7 @@ export default function RfqOffersPage() {
                               {t("offers_request_reduction")}
                             </Button>
                             <Button
-                              onClick={() => handleDecision(offer.id, "مرفوض")}
+                              onClick={() => setConfirmDecisionTarget({ offer, decision: "مرفوض" })}
                               disabled={processingId === offer.id}
                               variant="ghost"
                               className="w-full gap-2 rounded-full text-red-600 hover:text-red-700 hover:bg-red-50 transition-all"
@@ -1132,7 +1137,7 @@ export default function RfqOffersPage() {
                         <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>{getStatusBadge(offer.status)}</div>
                       ) : (
                         <Button
-                          onClick={() => handleDecision(offer.id, "مقبول")}
+                          onClick={() => setConfirmDecisionTarget({ offer, decision: "مقبول" })}
                           disabled={processingId === offer.id}
                           style={{ width: "auto", minWidth: 130, height: 38, borderRadius: 10, border: "none", cursor: processingId === offer.id ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 13, fontWeight: 800, paddingLeft: 28, paddingRight: 28, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : "#fff", boxShadow: best ? "0 10px 22px -10px hsl(220 56% 11% / 0.55)" : `inset 0 0 0 1.5px ${LINE}`, transition: "transform .15s ease, box-shadow .2s ease", opacity: processingId === offer.id ? 0.7 : 1 }}>
                           {processingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
@@ -1201,6 +1206,35 @@ export default function RfqOffersPage() {
         </Tabs>
       </div>
 
+      <AlertDialog open={!!confirmDecisionTarget} onOpenChange={(open) => !open && setConfirmDecisionTarget(null)}>
+        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmDecisionTarget?.decision === "مقبول" ? t("offers_confirm_accept_title") : t("offers_confirm_reject_title")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDecisionTarget?.decision === "مقبول"
+                ? t("offers_confirm_accept_desc", { supplier: confirmDecisionTarget?.offer?.companyName || confirmDecisionTarget?.offer?.supplierName || t("offers_registered_supplier") })
+                : t("offers_confirm_reject_desc", { supplier: confirmDecisionTarget?.offer?.companyName || confirmDecisionTarget?.offer?.supplierName || t("offers_registered_supplier") })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmDecisionTarget?.decision === "مقبول" ? "bg-success hover:bg-success/90" : "bg-destructive hover:bg-destructive/90"}
+              onClick={() => {
+                if (confirmDecisionTarget) {
+                  handleDecision(confirmDecisionTarget.offer.id, confirmDecisionTarget.decision)
+                  setConfirmDecisionTarget(null)
+                }
+              }}
+            >
+              {confirmDecisionTarget?.decision === "مقبول" ? t("offers_accept") : t("offers_reject")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={!!sampleRequestOffer} onOpenChange={(open) => !open && setSampleRequestOffer(null)}>
         <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
@@ -1260,12 +1294,12 @@ export default function RfqOffersPage() {
             </div>
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                السعر المستهدف ({t("offers_currency_sar")}) <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
+                {t("offers_target_price_label")} ({t("offers_currency_sar")}) <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
               </label>
               <input
                 type="number"
                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
-                placeholder="أدخل السعر المطلوب..."
+                placeholder={t("offers_target_price_placeholder")}
                 value={targetPrice}
                 onChange={(e) => setTargetPrice(e.target.value)}
               />

@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, updateDoc, getDocs, query, where, writeBatch, serverTimestamp, arrayUnion } from "firebase/firestore"
-import { SAUDI_CITIES, displayCity, displayDistrict } from "@/lib/constants"
+import { SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { CATEGORIES_DATA } from "@/lib/constants"
 import type { BoqItem } from "@/lib/boq-parser"
 import {
@@ -45,19 +45,6 @@ import {
 } from "@/utils/boq-groups"
 import type { BoqGroup } from "@/utils/boq-groups"
 import { BoqGroupCard, ItemRow } from "@/components/contractor/BoqGroupCard"
-
-const CITIES_DISTRICTS: Record<string, string[]> = {
-  "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],
-  "جدة": ["شمال جدة", "جنوب جدة", "وسط جدة", "أبحر", "جميع جدة"],
-  "مكة المكرمة": ["العزيزية", "الشوقية", "العوالي", "بطحاء قريش", "جميع مكة"],
-  "المدينة المنورة": ["العزيزية", "الخالدية", "الحرة الشرقية", "جميع المدينة"],
-  "الدمام": ["شرق الدمام", "غرب الدمام", "وسط الدمام", "جميع الدمام"],
-  "الخبر": ["شمال الخبر", "الخبر الجنوبية", "العقربية", "جميع الخبر"],
-  "الظهران": ["حي الدانة", "حي الدوحة", "حي القصور", "جميع الظهران"],
-  "الأحساء": ["الهفوف", "المبرز", "العيون", "جميع الأحساء"],
-  "الجبيل": ["الجبيل الصناعية", "الجبيل البلد", "جميع الجبيل"],
-  "تبوك": ["المروج", "الروضة", "السليمانية", "جميع تبوك"],
-}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10)
@@ -122,12 +109,18 @@ export default function PushBoqToTenderPage() {
             descriptionAr: data.descriptionAr || "",
             unit: data.unit || "",
             quantity: Number(data.quantity) || 0,
+            rate: Number(data.unitPrice) || 0,
+            itemType: "measured",
             sheet: data.sheet || (data.suggestedCategory || ""),
             divisionNo: data.divisionNo || "",
             divisionNameEn: data.divisionNameEn || "",
             divisionNameAr: data.divisionNameAr || "",
+            subCategoryCode: data.subCategoryCode || "",
+            subCategoryNameEn: data.subCategoryNameEn || "",
+            subCategoryNameAr: data.subCategoryNameAr || "",
             suggestedCategory: data.suggestedCategory || "",
             suggestedSubCategory: data.suggestedSubCategory || "",
+            groupId: data.groupId || "",
             selected: true,
           }
         })
@@ -173,10 +166,12 @@ export default function PushBoqToTenderPage() {
   }
 
   const addGroup = () => {
+    // titleAr always holds Arabic text regardless of the UI's current locale — same convention
+    // as the BOQ tab's own addBoqGroup (projects/[id]/page.tsx).
     setGroups(prev => [...prev, {
       id: uid(),
       categoryAr: Object.keys(CATEGORIES_DATA)[0],
-      titleAr: isRtl ? "مجموعة جديدة" : "New Group",
+      titleAr: "مجموعة جديدة",
       items: [],
     }])
   }
@@ -232,10 +227,10 @@ export default function PushBoqToTenderPage() {
     }
 
     setIsCreating(true)
+    let created = 0
     try {
       const rfqsRef = collection(firestore, "rfqs")
       const projectName = (project as { name?: string } | null)?.name || ""
-      let created = 0
 
       for (const group of groupsToCreate) {
         const rfqData = {
@@ -296,7 +291,18 @@ export default function PushBoqToTenderPage() {
       router.push(`/contractor/projects/${projectId}/tenders`)
     } catch (err) {
       console.error("Push to tender error:", err)
-      toast({ title: t("boq_create_error"), variant: "destructive" })
+      if (created > 0) {
+        // Some groups already succeeded (and their BOQ items are already locked) before this one failed —
+        // tell the user exactly how many went through instead of a generic error that implies nothing happened.
+        toast({
+          title: t("boq_create_partial_error"),
+          description: t("boq_create_partial_error_desc", { count: created, total: groupsToCreate.length }),
+          variant: "destructive",
+        })
+        router.push(`/contractor/projects/${projectId}/tenders`)
+      } else {
+        toast({ title: t("boq_create_error"), variant: "destructive" })
+      }
     } finally {
       setIsCreating(false)
     }
