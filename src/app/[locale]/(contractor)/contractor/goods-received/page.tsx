@@ -7,9 +7,20 @@ import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, updateDoc, arrayUnion } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, arrayUnion, addDoc, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -23,6 +34,7 @@ import {
   Upload,
   Paperclip,
   ExternalLink,
+  PlusCircle,
 } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
@@ -51,6 +63,8 @@ type Delivery = {
   status?: string
   contractorOrgId?: string
   attachmentUrls?: string[]
+  notes?: string
+  source?: string
 }
 
 function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: string; t: ReturnType<typeof useTranslations<"Portal.Contractor">> }) {
@@ -96,9 +110,11 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
                 <FileText size={11} />
-                {t("goods_rfq")}
+                {delivery.source === "manual" ? t("goods_manual_description_label") : t("goods_rfq")}
               </p>
-              <p className="font-bold text-slate-800 text-sm truncate">{delivery.rfqTitle || "—"}</p>
+              <p className="font-bold text-slate-800 text-sm truncate">
+                {delivery.source === "manual" ? (delivery.notes || "—") : (delivery.rfqTitle || "—")}
+              </p>
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
@@ -130,6 +146,11 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
             <Badge className="bg-success/10 text-success border-success/20 text-xs font-bold w-fit">
               ✓ {t("goods_received_confirmed_badge")}
             </Badge>
+            {delivery.source === "manual" && (
+              <Badge variant="outline" className="text-slate-500 border-slate-200 bg-white text-xs font-semibold w-fit">
+                {t("goods_manual_badge")}
+              </Badge>
+            )}
             <Button
               asChild
               size="sm"
@@ -195,18 +216,160 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
   )
 }
 
+function ManualReceiptDialog({
+  open,
+  onOpenChange,
+  locale,
+  t,
+  myOrgId,
+  defaultReceiverName,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  locale: string
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  myOrgId?: string
+  defaultReceiverName?: string
+}) {
+  const firestore = useFirestore()
+  const { user } = useUser()
+  const { toast } = useToast()
+  const [isSaving, setIsSaving] = useState(false)
+  const today = new Date().toISOString().split("T")[0]
+
+  const [supplierName, setSupplierName] = useState("")
+  const [deliveryDate, setDeliveryDate] = useState(today)
+  const [deliveryPersonName, setDeliveryPersonName] = useState("")
+  const [receivedByName, setReceivedByName] = useState(defaultReceiverName || "")
+  const [notes, setNotes] = useState("")
+
+  const resetForm = () => {
+    setSupplierName("")
+    setDeliveryDate(today)
+    setDeliveryPersonName("")
+    setReceivedByName(defaultReceiverName || "")
+    setNotes("")
+  }
+
+  const handleSave = async () => {
+    if (!firestore || !user || !myOrgId) return
+    if (!supplierName.trim() || !deliveryDate || !receivedByName.trim() || !notes.trim()) {
+      toast({ title: t("goods_manual_validation_error"), variant: "destructive" })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      await addDoc(collection(firestore, "deliveries"), {
+        contractorOrgId: myOrgId,
+        contractorId: user.uid,
+        supplierName: supplierName.trim(),
+        deliveryPersonName: deliveryPersonName.trim() || null,
+        receivedByName: receivedByName.trim(),
+        deliveryDate,
+        notes: notes.trim(),
+        status: "confirmed",
+        confirmedByUserId: user.uid,
+        confirmedAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        source: "manual",
+      })
+      toast({ title: t("goods_manual_success") })
+      resetForm()
+      onOpenChange(false)
+    } catch (err) {
+      console.error("Failed to log manual receipt:", err)
+      toast({ title: t("goods_manual_error"), variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) { onOpenChange(next); if (!next) resetForm() } }}>
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle>{t("goods_manual_title")}</DialogTitle>
+          <DialogDescription>{t("goods_manual_desc")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-supplier">{t("goods_manual_supplier_name")} *</Label>
+            <Input
+              id="manual-supplier"
+              value={supplierName}
+              onChange={(e) => setSupplierName(e.target.value)}
+              placeholder={t("goods_manual_supplier_placeholder")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-date">{t("goods_manual_delivery_date")} *</Label>
+            <input
+              id="manual-date"
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+              max={today}
+              dir="ltr"
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-delivery-person">{t("goods_manual_delivery_person")}</Label>
+            <Input
+              id="manual-delivery-person"
+              value={deliveryPersonName}
+              onChange={(e) => setDeliveryPersonName(e.target.value)}
+              placeholder={t("goods_manual_delivery_person_placeholder")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-receiver">{t("goods_manual_receiver_name")} *</Label>
+            <Input
+              id="manual-receiver"
+              value={receivedByName}
+              onChange={(e) => setReceivedByName(e.target.value)}
+              placeholder={t("goods_manual_receiver_placeholder")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-notes">{t("goods_manual_description_label")} *</Label>
+            <Textarea
+              id="manual-notes"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t("goods_manual_description_placeholder")}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+            {t("goods_manual_cancel")}
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
+            {t("goods_manual_save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function GoodsReceivedPage() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const [isManualDialogOpen, setIsManualDialogOpen] = useState(false)
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
-  const typedProfile = profile as { organizationId?: string } | null
+  const typedProfile = profile as { organizationId?: string; name?: string } | null
   const myOrgId = typedProfile?.organizationId || user?.uid
 
   const deliveriesQuery = useMemoFirebase(() => {
@@ -232,10 +395,25 @@ export default function GoodsReceivedPage() {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-black text-foreground font-headline">{t("goods_title")}</h1>
-          <p className="text-muted-foreground mt-1">{t("goods_desc")}</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-foreground font-headline">{t("goods_title")}</h1>
+            <p className="text-muted-foreground mt-1">{t("goods_desc")}</p>
+          </div>
+          <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
+            <PlusCircle size={18} />
+            {t("goods_manual_add_button")}
+          </Button>
         </div>
+
+        <ManualReceiptDialog
+          open={isManualDialogOpen}
+          onOpenChange={setIsManualDialogOpen}
+          locale={locale}
+          t={t}
+          myOrgId={myOrgId}
+          defaultReceiverName={typedProfile?.name}
+        />
 
         {pageLoading ? (
           <div className="flex items-center justify-center p-20">
@@ -248,6 +426,10 @@ export default function GoodsReceivedPage() {
               <p className="text-muted-foreground font-medium">{t("goods_empty")}</p>
               <p className="text-sm text-muted-foreground mt-1">{t("goods_empty_desc")}</p>
             </div>
+            <Button className="gap-2 mt-2" onClick={() => setIsManualDialogOpen(true)}>
+              <PlusCircle size={16} />
+              {t("goods_manual_add_button")}
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">

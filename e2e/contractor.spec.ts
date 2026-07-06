@@ -13,7 +13,6 @@ test.describe('Contractor Portal (Unauthenticated)', () => {
     '/contractor/projects',
     '/contractor/projects/new',
     '/contractor/goods-received',
-    '/contractor/my-suppliers',
   ];
 
   for (const route of routes) {

@@ -368,7 +368,7 @@ export default function ContractorNotificationsPage() {
                        </div>
                        <p className="text-sm text-slate-500 mt-1">
                          {isSampleSent && notif.rfqId
-                           ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "Tender" })
+                           ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "RFQ" })
                            : isNewChatMessage
                              ? (notif.message || tLayout("notification_message_in"))
                              : notif.message || notif.description}

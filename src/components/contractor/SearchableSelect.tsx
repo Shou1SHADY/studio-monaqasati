@@ -41,6 +41,7 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
   const [search, setSearch] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
   const [coords, setCoords] = useState<PopupCoords | null>(null)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -59,11 +60,21 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
     const spaceBelow = viewportHeight - rect.bottom - POPUP_GAP
     const spaceAbove = rect.top - POPUP_GAP
     const openUpward = spaceBelow < PREFERRED_POPUP_HEIGHT && spaceAbove > spaceBelow
+    // When the trigger sits inside a Radix dialog, the popup must portal INTO the dialog content,
+    // not <body>: the dialog's focus trap immediately steals focus back from anything outside it,
+    // which made the search input untypable. The dialog content is also CSS-transformed, making it
+    // the containing block for position:fixed descendants — so offsets are computed against its
+    // rect instead of the viewport's origin.
+    const dialog = triggerRef.current.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')
+    const dRect = dialog?.getBoundingClientRect()
+    setPortalTarget(dialog ?? null)
     setCoords({
-      left: rect.left,
+      left: rect.left - (dRect?.left ?? 0),
       width: rect.width,
       maxHeight: Math.min(PREFERRED_POPUP_HEIGHT, Math.max(120, openUpward ? spaceAbove : spaceBelow)),
-      ...(openUpward ? { bottom: viewportHeight - rect.top + POPUP_GAP } : { top: rect.bottom + POPUP_GAP }),
+      ...(openUpward
+        ? { bottom: (dRect ? dRect.bottom : viewportHeight) - rect.top + POPUP_GAP }
+        : { top: rect.bottom + POPUP_GAP - (dRect?.top ?? 0) }),
     })
   }
 
@@ -165,14 +176,18 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
       {open && coords && typeof document !== "undefined" && createPortal(
         <div
           ref={popupRef}
+          data-searchable-select-popup=""
           style={{
             position: "fixed",
             left: coords.left,
             width: coords.width,
             maxHeight: coords.maxHeight,
+            // Radix modal dialogs set pointer-events:none on <body>; this popup portals to body,
+            // so it must re-enable pointer events explicitly or it's unclickable inside a dialog.
+            pointerEvents: "auto",
             ...(coords.top !== undefined ? { top: coords.top } : { bottom: coords.bottom }),
           }}
-          className="z-50 flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
+          className="z-[60] flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden"
         >
           <div className="px-3 pt-3 pb-2 shrink-0">
             <div className="relative">
@@ -226,7 +241,7 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
             )}
           </div>
         </div>,
-        document.body
+        portalTarget ?? document.body
       )}
     </>
   )

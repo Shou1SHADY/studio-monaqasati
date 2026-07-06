@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useRef, useCallback, useMemo, useEffect } from "react"
-import { useParams } from "next/navigation"
+import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
 import { useRouter, Link } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
@@ -40,17 +40,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import {
   doc,
   collection,
   query,
   where,
+  addDoc,
   updateDoc,
   deleteDoc,
   serverTimestamp,
   getDocs,
   writeBatch,
+  arrayRemove,
+  arrayUnion,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -79,6 +92,10 @@ import {
   ChevronDown,
   ChevronRight,
   FolderInput,
+  Eye,
+  Scissors,
+  LayoutGrid,
+  List,
 } from "lucide-react"
 import {
   useReactTable,
@@ -89,7 +106,8 @@ import {
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
-import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
+import { getIncompletePublishFields } from "@/utils/publish-gate"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -145,6 +163,53 @@ type BoqGroupMeta = {
 
 const columnHelper = createColumnHelper<BоqItem>()
 
+// One BOQ table row, memoized so a single state commit (a drop, a keystroke in one cell, a row
+// add/delete) re-renders ONLY the rows whose data actually changed instead of every input in
+// every section — that full re-render was the visible pause between releasing a dragged row and
+// seeing it land. moveItemToGroup/updateBoqCell keep untouched items' object identity stable, so
+// comparing row.original by reference is sufficient; `columns` identity covers everything the
+// cell renderers close over (translations, selection set, groups list…).
+const BoqTableRow = memo(
+  function BoqTableRow({
+    row,
+    zebra,
+    isLastAdded,
+    rowRefs,
+  }: {
+    row: Row<BоqItem>
+    columns: readonly unknown[]
+    zebra: boolean
+    isLastAdded: boolean
+    rowRefs: React.MutableRefObject<Record<string, HTMLTableRowElement | null>>
+  }) {
+    return (
+      <tr
+        ref={(el) => {
+          rowRefs.current[row.original.id] = el
+        }}
+        className={cn(
+          "border-b border-slate-50 hover:bg-slate-50/50 transition-colors",
+          zebra ? "bg-white" : "bg-slate-50/30",
+          row.original.isEditable === false && "cursor-not-allowed",
+          isLastAdded && "ring-2 ring-primary/40"
+        )}
+      >
+        {row.getVisibleCells().map((cell) => (
+          <td key={cell.id} className="px-1 py-1" style={{ width: cell.column.columnDef.size }}>
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </td>
+        ))}
+      </tr>
+    )
+  },
+  (prev, next) =>
+    prev.row.original === next.row.original &&
+    prev.row.index === next.row.index &&
+    prev.zebra === next.zebra &&
+    prev.isLastAdded === next.isLastAdded &&
+    prev.columns === next.columns
+)
+
 type ActiveTab = "info" | "boq" | "rfqs"
 
 export default function ProjectDetailPage() {
@@ -153,13 +218,17 @@ export default function ProjectDetailPage() {
   const isRtl = locale === "ar"
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const projectId = params.id as string
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
   const boqFileRef = useRef<HTMLInputElement>(null)
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>("info")
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    const initial = searchParams.get("tab")
+    return initial === "boq" || initial === "rfqs" ? initial : "info"
+  })
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
@@ -176,9 +245,39 @@ export default function ProjectDetailPage() {
   const [boqParsing, setBoqParsing] = useState(false)
   const [boqSaving, setBoqSaving] = useState(false)
   const [boqLoaded, setBoqLoaded] = useState(false)
-  const [dragItemId, setDragItemId] = useState<string | null>(null)
-  const [dragOverGroupId, setDragOverGroupId] = useState<string | "unassigned" | null>(null)
+  // Row drag-and-drop is a CUSTOM POINTER-EVENTS implementation — NOT native HTML5 DnD. Native
+  // drag sessions proved unreliable here (Chromium/Edge would fail to deliver drop/dragend,
+  // leaving a stuck "grabbing" cursor and an unresponsive page). With pointer events we own the
+  // whole gesture: ghost, hover highlight, drop and cleanup all run on plain mouse/touch events,
+  // via refs + classList toggles only (.boq-drag-source / .boq-dropzone-* in globals.css), so a
+  // drag never re-renders this large page. React state changes exactly once, on a real drop.
+  // This ref holds the active gesture's cleanup so an unmount mid-drag can tear everything down.
+  const boqDragCleanupRef = useRef<(() => void) | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [lastAddedItemId, setLastAddedItemId] = useState<string | null>(null)
+  const boqRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
+
+  // Publish selection — opt-out model: an item is included unless its id is in this set, so
+  // newly added/imported rows are automatically selected without any extra bookkeeping.
+  const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
+  const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
+  const [publishCity, setPublishCity] = useState("")
+  const [publishDistrict, setPublishDistrict] = useState("")
+  const [publishDeadline, setPublishDeadline] = useState("")
+  const [isPublishing, setIsPublishing] = useState(false)
+
+  useEffect(() => {
+    if (!lastAddedItemId) return
+    const el = boqRowRefs.current[lastAddedItemId]
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" })
+    // Keep the highlight ring visible briefly instead of clearing it on the same tick,
+    // otherwise it renders and disappears within a single frame.
+    const timeout = setTimeout(() => setLastAddedItemId(null), 1500)
+    return () => clearTimeout(timeout)
+  }, [lastAddedItemId])
+
+  // If the page unmounts mid-drag, remove the ghost, body cursor override and window listeners.
+  useEffect(() => () => boqDragCleanupRef.current?.(), [])
 
   const toggleGroupCollapsed = useCallback((groupId: string) => {
     setCollapsedGroups((prev) => {
@@ -203,6 +302,208 @@ export default function ProjectDetailPage() {
 
   const { data: linkedRfqs, isLoading: rfqsLoading } = useCollection(linkedRfqsQuery)
 
+  const userDocRef = useMemoFirebase(() => {
+    if (!user || !firestore) return null
+    return doc(firestore, "users", user.uid)
+  }, [firestore, user])
+  const { data: profile } = useDoc(userDocRef)
+
+  // Tenders with an accepted offer can't be edited/deleted even before they're formally Awarded
+  const acceptedOffersQuery = useMemoFirebase(() => {
+    if (!user || !firestore) return null
+    return query(
+      collection(firestore, "offers"),
+      where("contractorId", "==", user.uid),
+      where("status", "==", "مقبول")
+    )
+  }, [firestore, user])
+  const { data: acceptedTenderOffers } = useCollection(acceptedOffersQuery)
+  const acceptedTenderRfqIds = new Set((acceptedTenderOffers || []).map((o: any) => o.rfqId))
+
+  // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
+  const [unlinkTarget, setUnlinkTarget] = useState<BоqItem | null>(null)
+  const [isUnlinking, setIsUnlinking] = useState(false)
+
+  const [tenderDeleteTarget, setTenderDeleteTarget] = useState<{ id: string; title?: string } | null>(null)
+  const [isDeletingTender, setIsDeletingTender] = useState(false)
+  const [publishingTenderId, setPublishingTenderId] = useState<string | null>(null)
+  const [selectedTenderIds, setSelectedTenderIds] = useState<string[]>([])
+  const [isBulkPublishingTenders, setIsBulkPublishingTenders] = useState(false)
+  const [isBulkDeletingTenders, setIsBulkDeletingTenders] = useState(false)
+  const [showBulkTenderDeleteDialog, setShowBulkTenderDeleteDialog] = useState(false)
+  const [tenderViewMode, setTenderViewMode] = useState<"grid" | "list">("grid")
+
+  const canEditOrDeleteTender = (rfq: any) => {
+    if (rfq.status === "Awarded") return false
+    if (acceptedTenderRfqIds.has(rfq.id)) return false
+    return true
+  }
+
+  const getTenderStatusBadge = (rfq: any) => {
+    if (rfq.status === "Draft")
+      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 font-bold">{t("rfq_badge_draft")}</Badge>
+    if (rfq.status === "Awarded")
+      return <Badge className="bg-success/10 text-success border-success/20 font-bold">{t("rfq_badge_awarded")}</Badge>
+    if (rfq.deadline) {
+      const deadlineDate = new Date(rfq.deadline)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (deadlineDate < today)
+        return <Badge className="bg-destructive/10 text-destructive border-none font-bold">{t("rfq_badge_expired")}</Badge>
+    }
+    return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>
+  }
+
+  const handlePublishTender = async (rfqId: string) => {
+    if (!firestore) return
+    const missingFields = getIncompletePublishFields(profile, locale)
+    if (missingFields.length > 0) {
+      toast({
+        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
+        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
+        variant: "destructive",
+      })
+      return
+    }
+    setPublishingTenderId(rfqId)
+    try {
+      await updateDoc(doc(firestore, "rfqs", rfqId), {
+        status: "New",
+        visibility: "public",
+        publishedAt: new Date().toISOString(),
+      })
+      toast({ title: t("rfq_batch_publish_title") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("rfq_batch_publish_error"), variant: "destructive" })
+    } finally {
+      setPublishingTenderId(null)
+    }
+  }
+
+  const handleDeleteTender = async () => {
+    if (!firestore || !tenderDeleteTarget || !projectId) return
+    setIsDeletingTender(true)
+    try {
+      const boqSnap = await getDocs(
+        query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", tenderDeleteTarget.id))
+      )
+      if (!boqSnap.empty) {
+        const batch = writeBatch(firestore)
+        boqSnap.docs.forEach((d) => {
+          batch.update(d.ref, { tenderId: null, isEditable: true })
+        })
+        await batch.commit()
+      }
+      await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(tenderDeleteTarget.id) })
+      await deleteDoc(doc(firestore, "rfqs", tenderDeleteTarget.id))
+      toast({ title: t("rfq_delete_success") })
+      setTenderDeleteTarget(null)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("rfq_delete_failed"), variant: "destructive" })
+    } finally {
+      setIsDeletingTender(false)
+    }
+  }
+
+  const toggleSelectTender = (id: string) => {
+    setSelectedTenderIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  const toggleSelectAllTenders = () => {
+    const allIds = ((linkedRfqs as { id: string }[] | null) || []).map((r) => r.id)
+    setSelectedTenderIds((prev) => (prev.length === allIds.length ? [] : allIds))
+  }
+
+  const handleBulkPublishTenders = async () => {
+    if (isBulkPublishingTenders || !firestore) return
+    const missingFields = getIncompletePublishFields(profile, locale)
+    if (missingFields.length > 0) {
+      toast({
+        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
+        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
+        variant: "destructive",
+      })
+      return
+    }
+    const candidates = ((linkedRfqs as any[]) || []).filter((r) => selectedTenderIds.includes(r.id))
+    const eligible = candidates.filter((r) => canEditOrDeleteTender(r) && r.status === "Draft")
+    const skipped = candidates.length - eligible.length
+    if (eligible.length === 0) {
+      toast({ title: t("rfq_bulk_publish_none_eligible"), variant: "destructive" })
+      return
+    }
+    setIsBulkPublishingTenders(true)
+    let published = 0
+    const failedIds: string[] = []
+    for (const r of eligible) {
+      try {
+        await updateDoc(doc(firestore, "rfqs", r.id), {
+          status: "New",
+          visibility: "public",
+          publishedAt: new Date().toISOString(),
+        })
+        published++
+      } catch (err) {
+        console.error(err)
+        failedIds.push(r.id)
+      }
+    }
+    toast({
+      title: t("rfq_batch_publish_title"),
+      description: t("rfq_bulk_publish_result", { published, skipped })
+        + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
+      variant: failedIds.length > 0 ? "destructive" : undefined,
+    })
+    setSelectedTenderIds(failedIds)
+    setIsBulkPublishingTenders(false)
+  }
+
+  const handleBulkDeleteTenders = async () => {
+    if (isBulkDeletingTenders || !firestore || !projectId) return
+    const candidates = ((linkedRfqs as any[]) || []).filter((r) => selectedTenderIds.includes(r.id))
+    const eligible = candidates.filter((r) => canEditOrDeleteTender(r))
+    const skipped = candidates.length - eligible.length
+    if (eligible.length === 0) {
+      toast({ title: t("rfq_bulk_delete_none_eligible"), variant: "destructive" })
+      setShowBulkTenderDeleteDialog(false)
+      return
+    }
+    setIsBulkDeletingTenders(true)
+    let deleted = 0
+    const failedIds: string[] = []
+    for (const r of eligible) {
+      try {
+        const boqSnap = await getDocs(
+          query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", r.id))
+        )
+        if (!boqSnap.empty) {
+          const batch = writeBatch(firestore)
+          boqSnap.docs.forEach((d) => {
+            batch.update(d.ref, { tenderId: null, isEditable: true })
+          })
+          await batch.commit()
+        }
+        await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(r.id) })
+        await deleteDoc(doc(firestore, "rfqs", r.id))
+        deleted++
+      } catch (err) {
+        console.error(err)
+        failedIds.push(r.id)
+      }
+    }
+    toast({
+      title: t("rfq_delete_success"),
+      description: t("rfq_bulk_delete_result", { deleted, skipped })
+        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : ""),
+      variant: failedIds.length > 0 ? "destructive" : undefined,
+    })
+    setSelectedTenderIds(failedIds)
+    setIsBulkDeletingTenders(false)
+    setShowBulkTenderDeleteDialog(false)
+  }
+
   const typedProject = project as {
     name?: string
     description?: string
@@ -217,9 +518,11 @@ export default function ProjectDetailPage() {
     createdAt?: unknown
   } | null
 
-  // Fetch BOQ items + sections from Firestore — always reflects server state.
-  const fetchBoqItems = useCallback(async () => {
-    if (!firestore || !projectId) return
+  // Fetch BOQ items + sections from Firestore — always reflects server state. Returns the
+  // freshly-fetched data (not just setState) so callers that need to act on it immediately
+  // (e.g. publish) don't read stale values from the current render's closure.
+  const fetchBoqItems = useCallback(async (): Promise<{ items: BоqItem[]; groups: BoqGroupMeta[] }> => {
+    if (!firestore || !projectId) return { items: [], groups: [] }
     const [itemsSnap, groupsSnap] = await Promise.all([
       getDocs(collection(firestore, "projects", projectId, "boqItems")),
       getDocs(collection(firestore, "projects", projectId, "boqGroups")),
@@ -254,6 +557,7 @@ export default function ProjectDetailPage() {
     })
     setBoqItems(items)
     setBoqGroups(groups)
+    return { items, groups }
   }, [firestore, projectId])
 
   // Load BOQ items when switching to the boq tab (only once per visit).
@@ -386,8 +690,11 @@ export default function ProjectDetailPage() {
 
   // Save BOQ to Firestore. Locked (isEditable:false) rows are never touched by a bulk save —
   // they can only change via the dedicated unlock action, matching the Firestore hard-lock rule.
-  const saveBoq = async () => {
-    if (!firestore || !projectId) return
+  // Returns the freshly-synced items/groups plus a map of temp id -> real Firestore id for any
+  // newly-created rows, so a caller like Publish can act on the post-save state without racing
+  // React's setState. `silent` skips the "saved" toast (used when auto-invoked from Publish).
+  const saveBoq = async (opts?: { silent?: boolean }): Promise<{ items: BоqItem[]; groups: BoqGroupMeta[]; idMap: Map<string, string> } | null> => {
+    if (!firestore || !projectId) return null
     setBoqSaving(true)
     try {
       const colRef = collection(firestore, "projects", projectId, "boqItems")
@@ -399,6 +706,7 @@ export default function ProjectDetailPage() {
       const currentGroupIds = new Set(boqGroups.map((g) => g.id))
 
       const batch = writeBatch(firestore)
+      const idMap = new Map<string, string>()
 
       existing.docs.forEach((d) => {
         if (!currentIds.has(d.id) && d.data().isEditable !== false) {
@@ -414,6 +722,7 @@ export default function ProjectDetailPage() {
         if (item.isEditable === false) return
         const isNew = !existingIds.has(item.id)
         const ref = isNew ? doc(colRef) : doc(colRef, item.id)
+        if (isNew) idMap.set(item.id, ref.id)
         batch.set(ref, {
           itemNo: item.itemNo,
           descriptionAr: item.descriptionAr || "",
@@ -447,22 +756,26 @@ export default function ProjectDetailPage() {
       })
 
       await batch.commit()
-      await fetchBoqItems()
-      toast({ title: t("proj_boq_saved") })
+      const fresh = await fetchBoqItems()
+      if (!opts?.silent) toast({ title: t("proj_boq_saved") })
+      return { ...fresh, idMap }
     } catch (err) {
       console.error(err)
       toast({ title: t("proj_boq_save_error"), variant: "destructive" })
+      return null
     } finally {
       setBoqSaving(false)
     }
   }
 
-  // Add empty BOQ row
-  const addBoqRow = () => {
+  // Add empty BOQ row — lands in the given section (or Unassigned when omitted), expanding it
+  // if collapsed and scrolling the new row into view once rendered (see lastAddedItemId effect).
+  const addBoqRow = (groupId: string | null = null) => {
+    const newId = `new_${Date.now()}`
     setBoqItems((prev) => [
       ...prev,
       {
-        id: `new_${Date.now()}`,
+        id: newId,
         itemNo: String(prev.length + 1),
         descriptionAr: "",
         descriptionEn: "",
@@ -472,9 +785,17 @@ export default function ProjectDetailPage() {
         sheet: "",
         tenderId: null,
         isEditable: true,
-        groupId: null,
+        groupId,
       },
     ])
+    const collapseKey = groupId ?? "unassigned"
+    setCollapsedGroups((prev) => {
+      if (!prev.has(collapseKey)) return prev
+      const next = new Set(prev)
+      next.delete(collapseKey)
+      return next
+    })
+    setLastAddedItemId(newId)
   }
 
   // Update BOQ cell — locked rows never accept edits (also enforced server-side)
@@ -512,6 +833,18 @@ export default function ProjectDetailPage() {
     }
   }, [firestore, projectId, fetchBoqItems, toast, t])
 
+  // Runs after the user confirms the unlink dialog — see the AlertDialog at the bottom of the page.
+  const confirmUnlink = async () => {
+    if (!unlinkTarget) return
+    setIsUnlinking(true)
+    try {
+      await unlockBoqItem(unlinkTarget.id)
+    } finally {
+      setIsUnlinking(false)
+      setUnlinkTarget(null)
+    }
+  }
+
   // Add a new BOQ section — the id is a real Firestore auto-ID generated up front (no
   // server round-trip needed), so items can reference it immediately with no remap at save time.
   const addBoqGroup = () => {
@@ -540,30 +873,241 @@ export default function ProjectDetailPage() {
     )
   }, [])
 
-  const handleRowDragStart = useCallback((e: React.DragEvent, itemId: string) => {
-    e.dataTransfer.effectAllowed = "move"
-    setDragItemId(itemId)
+  // Split an item out of its current section into a brand-new one — mirrors the same
+  // title-defaulting convention as src/utils/boq-groups.ts's splitItemToNewGroup.
+  const splitItemToNewGroup = useCallback((item: BоqItem) => {
+    if (!firestore || !projectId) return
+    const newId = doc(collection(firestore, "projects", projectId, "boqGroups")).id
+    const titleAr = item.descriptionAr ? item.descriptionAr.substring(0, 60) : `توريد ${item.suggestedCategory || ""}`
+    const categoryAr = item.suggestedCategory || Object.keys(CATEGORIES_DATA)[0] || ""
+    setBoqGroups((prev) => [...prev, { id: newId, titleAr, categoryAr }])
+    setBoqItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, groupId: newId } : i)))
+  }, [firestore, projectId])
+
+  // Publish selection toggles (opt-out `deselectedIds` set — see its declaration above).
+  const toggleItemSelected = useCallback((itemId: string) => {
+    setDeselectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(itemId)) next.delete(itemId)
+      else next.add(itemId)
+      return next
+    })
   }, [])
 
-  // Always clear the dragged-row state when a drag ends, even if dropped outside any section
-  // (otherwise the row would stay dimmed at 40% opacity until the next drag).
-  const handleRowDragEnd = useCallback(() => {
-    setDragItemId(null)
-    setDragOverGroupId(null)
-  }, [])
+  const setGroupSelected = useCallback((groupId: string, selected: boolean) => {
+    setDeselectedIds((prev) => {
+      const next = new Set(prev)
+      boqItems.forEach((item) => {
+        if (item.groupId !== groupId || item.isEditable === false) return
+        if (selected) next.delete(item.id)
+        else next.add(item.id)
+      })
+      return next
+    })
+  }, [boqItems])
 
-  const handleSectionDragOver = (e: React.DragEvent, groupId: string | "unassigned") => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-    setDragOverGroupId(groupId)
+  // Publish: save first (so newly-added/moved rows get real Firestore ids), then create one RFQ
+  // per section that has at least one selected item, locking only the items actually included.
+  const handlePublish = async () => {
+    if (!firestore || !user || !projectId || !publishCity || !publishDeadline) return
+    setIsPublishing(true)
+    try {
+      const saved = await saveBoq({ silent: true })
+      if (!saved) return // saveBoq already surfaced an error toast
+
+      const { items: freshItems, groups: freshGroups, idMap } = saved
+      const remappedDeselected = new Set([...deselectedIds].map((id) => idMap.get(id) ?? id))
+
+      const itemsByGroup = new Map<string, BоqItem[]>()
+      freshItems.forEach((item) => {
+        if (!item.groupId || item.isEditable === false || remappedDeselected.has(item.id)) return
+        if (!itemsByGroup.has(item.groupId)) itemsByGroup.set(item.groupId, [])
+        itemsByGroup.get(item.groupId)!.push(item)
+      })
+
+      const groupsToPublish = freshGroups.filter((g) => (itemsByGroup.get(g.id) || []).length > 0)
+      if (groupsToPublish.length === 0) {
+        toast({ title: t("boq_select_at_least_one"), variant: "destructive" })
+        return
+      }
+
+      const rfqsRef = collection(firestore, "rfqs")
+      const projectName = typedProject?.name || ""
+      let created = 0
+      try {
+        for (const group of groupsToPublish) {
+          const selectedItems = itemsByGroup.get(group.id) || []
+          const rfqData = {
+            contractorId: user.uid,
+            organizationId: (profile as { organizationId?: string } | null)?.organizationId || user.uid,
+            projectId,
+            title: group.titleAr,
+            category: group.categoryAr,
+            subCategory: "",
+            products: selectedItems.map((item) => ({
+              name: item.descriptionAr || item.descriptionEn,
+              nameEn: item.descriptionEn,
+              quantity: Number(item.quantity) || 0,
+              unitOfMeasure: item.unit,
+              description: item.descriptionAr ? `${item.descriptionAr}\n${item.descriptionEn}` : item.descriptionEn,
+              category: item.suggestedCategory || group.categoryAr,
+              subCategory: item.suggestedSubCategory || "",
+              boqItemNo: item.itemNo,
+            })),
+            quantity: String(selectedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)),
+            notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
+            deadline: publishDeadline,
+            city: publishCity,
+            district: publishDistrict || publishCity,
+            pdfUrl: null,
+            pdfStoragePath: null,
+            status: "Draft",
+            visibility: "public",
+            boqProjectName: projectName,
+            createdByUserId: user.uid,
+            createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
+            createdAt: new Date().toISOString(),
+          }
+          const newRfqRef = await addDoc(rfqsRef, rfqData)
+          created++
+          await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(newRfqRef.id) })
+
+          const lockBatch = writeBatch(firestore)
+          selectedItems.forEach((item) => {
+            lockBatch.update(doc(firestore, "projects", projectId, "boqItems", item.id), {
+              tenderId: newRfqRef.id,
+              isEditable: false,
+              updatedAt: serverTimestamp(),
+            })
+          })
+          await lockBatch.commit()
+        }
+
+        toast({ title: t("boq_success_title"), description: t("boq_success_desc", { count: created }) })
+        setIsPublishDialogOpen(false)
+        setDeselectedIds(new Set())
+        setPublishCity("")
+        setPublishDistrict("")
+        setPublishDeadline("")
+        await fetchBoqItems()
+        handleTabChange("rfqs")
+      } catch (err) {
+        console.error("Publish error:", err)
+        if (created > 0) {
+          toast({
+            title: t("boq_create_partial_error"),
+            description: t("boq_create_partial_error_desc", { count: created, total: groupsToPublish.length }),
+            variant: "destructive",
+          })
+          setIsPublishDialogOpen(false)
+          await fetchBoqItems()
+          handleTabChange("rfqs")
+        } else {
+          toast({ title: t("boq_create_error"), variant: "destructive" })
+        }
+      }
+    } finally {
+      setIsPublishing(false)
+    }
   }
 
-  const handleSectionDrop = (e: React.DragEvent, groupId: string | "unassigned") => {
+  // Starts the custom pointer-based row drag (see the comment on boqDragCleanupRef for why this
+  // is not native HTML5 DnD). The whole gesture lives in closures + window listeners: a cloned
+  // row follows the pointer, sections highlight via elementFromPoint hit-testing, and pointerup
+  // commits the move. Pointer capture guarantees we ALWAYS get the terminal event, so the cursor
+  // and highlights can never be left stuck.
+  const handleRowDragStart = useCallback((e: React.PointerEvent, itemId: string) => {
+    if (boqDragCleanupRef.current) return // a drag is already in progress
+    if (e.pointerType === "mouse" && e.button !== 0) return
+    const grip = e.currentTarget as HTMLElement
+    const rowEl = grip.closest("tr")
+    if (!rowEl) return
     e.preventDefault()
-    setDragOverGroupId(null)
-    if (dragItemId) moveItemToGroup(dragItemId, groupId === "unassigned" ? null : groupId)
-    setDragItemId(null)
-  }
+
+    // Ghost: a static clone of the row wrapped in its own <table> (a bare <tr> can't render
+    // outside one), following the pointer via transform. It's detached from React entirely.
+    const rect = rowEl.getBoundingClientRect()
+    const offsetX = e.clientX - rect.left
+    const offsetY = e.clientY - rect.top
+    const ghost = document.createElement("div")
+    const ghostTable = document.createElement("table")
+    const ghostBody = document.createElement("tbody")
+    ghostBody.appendChild(rowEl.cloneNode(true))
+    ghostTable.appendChild(ghostBody)
+    ghostTable.style.width = `${rect.width}px`
+    ghostTable.style.borderCollapse = "collapse"
+    ghost.appendChild(ghostTable)
+    Object.assign(ghost.style, {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      width: `${rect.width}px`,
+      transform: `translate(${rect.left}px, ${rect.top}px)`,
+      zIndex: "9999",
+      pointerEvents: "none",
+      opacity: "0.95",
+      background: "white",
+      borderRadius: "10px",
+      boxShadow: "0 12px 32px rgba(15, 23, 42, 0.25)",
+      overflow: "hidden",
+    } satisfies Partial<CSSStyleDeclaration>)
+    document.body.appendChild(ghost)
+
+    rowEl.classList.add("boq-drag-source")
+    document.querySelectorAll("[data-boq-dropzone]").forEach((el) => el.classList.add("boq-dropzone-active"))
+    document.body.style.cursor = "grabbing"
+    document.body.style.userSelect = "none"
+
+    let hoverZone: HTMLElement | null = null
+
+    const onMove = (ev: PointerEvent) => {
+      ghost.style.transform = `translate(${ev.clientX - offsetX}px, ${ev.clientY - offsetY}px)`
+      // Nudge the page when dragging near the viewport edges so far-away sections are reachable.
+      if (ev.clientY < 90) window.scrollBy(0, -16)
+      else if (ev.clientY > window.innerHeight - 90) window.scrollBy(0, 16)
+      // The ghost has pointer-events:none, so hit-testing sees the real page under the cursor.
+      const zone = (document.elementFromPoint(ev.clientX, ev.clientY)?.closest("[data-boq-dropzone]") ?? null) as HTMLElement | null
+      if (zone !== hoverZone) {
+        hoverZone?.classList.remove("boq-dropzone-over")
+        zone?.classList.add("boq-dropzone-over")
+        hoverZone = zone
+      }
+    }
+    const cleanup = () => {
+      boqDragCleanupRef.current = null
+      ghost.remove()
+      rowEl.classList.remove("boq-drag-source")
+      document.querySelectorAll("[data-boq-dropzone]").forEach((el) => {
+        el.classList.remove("boq-dropzone-active", "boq-dropzone-over")
+      })
+      document.body.style.removeProperty("cursor")
+      document.body.style.removeProperty("user-select")
+      window.removeEventListener("pointermove", onMove)
+      window.removeEventListener("pointerup", onUp)
+      window.removeEventListener("pointercancel", onPointerCancel)
+      window.removeEventListener("keydown", onKeyDown)
+    }
+    const onUp = () => {
+      const target = hoverZone?.getAttribute("data-boq-dropzone") ?? null
+      cleanup()
+      if (target) moveItemToGroup(itemId, target === "unassigned" ? null : target)
+    }
+    const onPointerCancel = () => cleanup()
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") cleanup()
+    }
+
+    boqDragCleanupRef.current = cleanup
+    try {
+      grip.setPointerCapture(e.pointerId)
+    } catch {
+      // capture is best-effort; window listeners below still end the gesture on pointerup
+    }
+    window.addEventListener("pointermove", onMove)
+    window.addEventListener("pointerup", onUp)
+    window.addEventListener("pointercancel", onPointerCancel)
+    window.addEventListener("keydown", onKeyDown)
+  }, [moveItemToGroup])
 
   // Add material from procurement sidebar
   const handleAddMaterial = (material: { name: string; unit: string; refPrice: number }) => {
@@ -591,6 +1135,23 @@ export default function ProjectDetailPage() {
   // component type at that tree position and remounts it, which drops input focus after every keystroke.
   const boqColumns = useMemo(() => [
     columnHelper.display({
+      id: "select",
+      header: () => null,
+      cell: ({ row }) => {
+        if (row.original.isEditable === false) return <div className="w-5 h-8" />
+        return (
+          <div className="flex items-center justify-center h-8 w-5">
+            <Checkbox
+              checked={!deselectedIds.has(row.original.id)}
+              onCheckedChange={() => toggleItemSelected(row.original.id)}
+              aria-label={t("boq_select_item")}
+            />
+          </div>
+        )
+      },
+      size: 24,
+    }),
+    columnHelper.display({
       id: "drag",
       header: () => null,
       cell: ({ row }) => {
@@ -598,14 +1159,12 @@ export default function ProjectDetailPage() {
           return <div className="w-5 h-8" />
         }
         return (
-          // Pointer-only affordance — not focusable/keyboard-operable since native HTML5 drag has no
-          // keyboard equivalent. Keyboard/screen-reader users reorganize via the "move to section" menu instead.
+          // Pointer-only affordance (custom pointer-events drag) — not focusable/keyboard-operable.
+          // Keyboard/screen-reader users reorganize via the "move to section" menu instead.
           <div
-            draggable
-            onDragStart={(e) => handleRowDragStart(e, row.original.id)}
-            onDragEnd={handleRowDragEnd}
+            onPointerDown={(e) => handleRowDragStart(e, row.original.id)}
             aria-hidden="true"
-            className="flex items-center justify-center h-8 w-5 text-muted-foreground/50 hover:text-muted-foreground cursor-grab active:cursor-grabbing rounded"
+            className="flex items-center justify-center h-8 w-5 text-muted-foreground/50 hover:text-muted-foreground cursor-grab touch-none select-none rounded"
           >
             <GripVertical size={14} />
           </div>
@@ -621,6 +1180,7 @@ export default function ProjectDetailPage() {
           onChange={(e) => updateBoqCell(row.index, "itemNo", e.target.value)}
           disabled={row.original.isEditable === false}
           dir="ltr"
+          draggable={false}
           className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
         />
       ),
@@ -639,6 +1199,7 @@ export default function ProjectDetailPage() {
               onChange={(e) => updateBoqCell(row.index, "descriptionAr", e.target.value)}
               disabled={locked}
               dir="rtl"
+              draggable={false}
               placeholder={t("proj_boq_description_ar_placeholder")}
               className="h-7 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
             />
@@ -647,6 +1208,7 @@ export default function ProjectDetailPage() {
               onChange={(e) => updateBoqCell(row.index, "descriptionEn", e.target.value)}
               disabled={locked}
               dir="ltr"
+              draggable={false}
               placeholder={t("proj_boq_description_en_placeholder")}
               className="h-7 text-[11px] text-muted-foreground border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
             />
@@ -662,6 +1224,7 @@ export default function ProjectDetailPage() {
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "quantity", e.target.value)}
           disabled={row.original.isEditable === false}
+          draggable={false}
           className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60"
           type="number"
           min={0}
@@ -676,6 +1239,7 @@ export default function ProjectDetailPage() {
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "unit", e.target.value)}
           disabled={row.original.isEditable === false}
+          draggable={false}
           className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60"
         />
       ),
@@ -688,6 +1252,7 @@ export default function ProjectDetailPage() {
           value={getValue()}
           onChange={(e) => updateBoqCell(row.index, "unitPrice", e.target.value)}
           disabled={row.original.isEditable === false}
+          draggable={false}
           className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 disabled:opacity-60"
           type="number"
           min={0}
@@ -724,7 +1289,7 @@ export default function ProjectDetailPage() {
               </Badge>
               <button
                 type="button"
-                onClick={() => unlockBoqItem(item.id)}
+                onClick={() => setUnlinkTarget(item)}
                 className="text-[10px] text-muted-foreground hover:text-primary underline whitespace-nowrap rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
               >
                 {t("proj_boq_unlock")}
@@ -749,24 +1314,38 @@ export default function ProjectDetailPage() {
                 </TooltipTrigger>
                 <TooltipContent>{t("proj_boq_move_to")}</TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-64 max-h-72 overflow-y-auto">
                 {boqGroups.map((group) => (
                   <DropdownMenuItem
                     key={group.id}
                     disabled={item.groupId === group.id}
                     onClick={() => moveItemToGroup(item.id, group.id)}
+                    title={group.titleAr}
                   >
-                    {group.titleAr || t("proj_boq_add_section")}
+                    <span className="min-w-0 truncate">{group.titleAr || t("proj_boq_add_section")}</span>
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuItem
                   disabled={!item.groupId}
                   onClick={() => moveItemToGroup(item.id, null)}
                 >
-                  {t("boq_unassigned")}
+                  <span className="min-w-0 truncate">{t("boq_unassigned")}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => splitItemToNewGroup(item)}
+                  className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  aria-label={t("boq_split_item")}
+                >
+                  <Scissors size={13} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{t("boq_split_item")}</TooltipContent>
+            </Tooltip>
             <button
               type="button"
               onClick={() => deleteBoqRow(row.index)}
@@ -778,9 +1357,9 @@ export default function ProjectDetailPage() {
           </div>
         )
       },
-      size: 150,
+      size: 175,
     }),
-  ], [t, locale, updateBoqCell, deleteBoqRow, unlockBoqItem, boqGroups, moveItemToGroup, handleRowDragStart, handleRowDragEnd])
+  ], [t, locale, updateBoqCell, deleteBoqRow, boqGroups, moveItemToGroup, splitItemToNewGroup, handleRowDragStart, deselectedIds, toggleItemSelected])
 
   const boqTable = useReactTable({
     data: boqItems,
@@ -789,7 +1368,27 @@ export default function ProjectDetailPage() {
   })
 
   const allBoqRows = boqTable.getRowModel().rows
-  const unassignedBoqRows = allBoqRows.filter((r) => !r.original.groupId)
+
+  // These all used to be recomputed on every render, including the many re-renders that fire
+  // during drag-and-drop — memoized so a drag gesture only redoes this work when the underlying
+  // items/groups/selection actually change, not on every intermediate render.
+  const unassignedBoqRows = useMemo(() => allBoqRows.filter((r) => !r.original.groupId), [allBoqRows])
+  const boqGrandTotal = useMemo(
+    () => boqItems.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0),
+    [boqItems]
+  )
+
+  // Groups eligible to publish: at least one selected, unlocked item assigned to a named section.
+  // Unassigned items are never publishable, matching the BOQ-to-RFQ convention (a section = one RFQ).
+  const publishableGroupIds = useMemo(() => new Set(
+    boqGroups
+      .filter((g) => allBoqRows.some((r) => r.original.groupId === g.id && r.original.isEditable !== false && !deselectedIds.has(r.original.id)))
+      .map((g) => g.id)
+  ), [boqGroups, allBoqRows, deselectedIds])
+  const totalSelectedForPublish = useMemo(() => allBoqRows.filter(
+    (r) => r.original.groupId && publishableGroupIds.has(r.original.groupId) && r.original.isEditable !== false && !deselectedIds.has(r.original.id)
+  ).length, [allBoqRows, publishableGroupIds, deselectedIds])
+  const canPublish = publishableGroupIds.size > 0
 
   // Shared row/table renderer for both grouped sections and the Unassigned bucket —
   // reuses the single memoized boqTable's header/cell definitions, just scoped to a row subset.
@@ -815,35 +1414,18 @@ export default function ProjectDetailPage() {
       </thead>
       <tbody>
         {rows.map((row, i) => (
-          <tr
-            key={row.id}
-            className={cn(
-              "border-b border-slate-50 hover:bg-slate-50/50 transition-colors",
-              i % 2 === 0 ? "bg-white" : "bg-slate-50/30",
-              row.original.isEditable === false && "cursor-not-allowed",
-              dragItemId === row.original.id && "opacity-40"
-            )}
-          >
-            {row.getVisibleCells().map((cell) => (
-              <td key={cell.id} className="px-1 py-1" style={{ width: cell.column.columnDef.size }}>
-                {flexRender(cell.column.columnDef.cell, cell.getContext())}
-              </td>
-            ))}
-          </tr>
+          <BoqTableRow
+            key={row.original.id}
+            row={row}
+            columns={boqColumns}
+            zebra={i % 2 === 0}
+            isLastAdded={lastAddedItemId === row.original.id}
+            rowRefs={boqRowRefs}
+          />
         ))}
       </tbody>
     </table>
   )
-
-  function getRfqStatusBadge(status: string) {
-    if (status === "New")
-      return <Badge className="bg-blue-50 text-blue-600 border-none text-xs">{t("rfq_status_active")}</Badge>
-    if (status === "Draft")
-      return <Badge className="bg-slate-100 text-slate-600 text-xs">{t("rfq_status_draft")}</Badge>
-    if (status === "Awarded")
-      return <Badge className="bg-success/10 text-success border-success/20 text-xs">{t("proj_rfq_status_awarded")}</Badge>
-    return <Badge variant="secondary" className="text-xs">{status}</Badge>
-  }
 
   if (projectLoading) {
     return (
@@ -936,27 +1518,42 @@ export default function ProjectDetailPage() {
         {/* Tab nav */}
         <div className="flex gap-1 border-b border-slate-200">
           {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => handleTabChange(tab.key)}
-              aria-current={activeTab === tab.key ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                activeTab === tab.key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+            <div key={tab.key} className="flex items-center">
+              <button
+                type="button"
+                onClick={() => handleTabChange(tab.key)}
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  activeTab === tab.key
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+              {tab.key === "boq" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleTabChange("boq")
+                    addBoqRow()
+                  }}
+                  aria-label={t("proj_boq_add_row")}
+                  title={t("proj_boq_add_row")}
+                  className="h-6 w-6 -ms-1 mb-1 rounded-md flex items-center justify-center text-primary bg-primary/10 hover:bg-primary/20 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                >
+                  <Plus size={13} />
+                </button>
               )}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
+            </div>
           ))}
         </div>
 
         {/* ── TAB: INFO ── */}
         {activeTab === "info" && (
-          <Card className="border-slate-200/60">
+          <Card className="border-primary/15">
             <CardContent className="p-6" dir={isRtl ? "rtl" : "ltr"}>
               {isEditing ? (
                 <div className="space-y-4">
@@ -1065,12 +1662,27 @@ export default function ProjectDetailPage() {
           <div className="flex gap-4">
             {/* Main BOQ area */}
             <div className="flex-1 min-w-0 space-y-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">
-                    {t("proj_boq_items_count", { count: boqItems.length })}
-                  </p>
+              {/* Stats bar */}
+              {(boqItems.length > 0 || boqGroups.length > 0) && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_items")}</p>
+                    <p className="text-xl font-black text-slate-800 mt-0.5">{boqItems.length}</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_sections")}</p>
+                    <p className="text-xl font-black text-slate-800 mt-0.5">{boqGroups.length}</p>
+                  </div>
+                  <div className="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
+                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_total")}</p>
+                    <p className="text-xl font-black text-primary mt-0.5">
+                      {boqGrandTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
+                    </p>
+                  </div>
                 </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 flex-wrap bg-white border border-slate-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   <input
                     ref={boqFileRef}
@@ -1090,7 +1702,7 @@ export default function ProjectDetailPage() {
                     {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
                     {!boqParsing && <span className="text-muted-foreground text-xs">({t("proj_boq_upload_hint")})</span>}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={addBoqRow} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                     <Plus size={14} />
                     {t("proj_boq_add_row")}
                   </Button>
@@ -1098,16 +1710,18 @@ export default function ProjectDetailPage() {
                     <Layers size={14} />
                     {t("proj_boq_add_section")}
                   </Button>
-                  <Button size="sm" onClick={saveBoq} disabled={boqSaving || (boqItems.length === 0 && boqGroups.length === 0)} className="gap-1.5">
+                </div>
+                <div className="flex items-center gap-2 flex-wrap ps-3 border-s border-slate-200">
+                  <Button size="sm" onClick={() => saveBoq()} disabled={boqSaving || (boqItems.length === 0 && boqGroups.length === 0)} className="gap-1.5">
                     {boqSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                     {t("proj_boq_save")}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => router.push(`/contractor/projects/${projectId}/tenders/from-boq`)}
-                    disabled={boqItems.filter((i) => i.isEditable !== false).length === 0}
-                    className="gap-1.5 border-accent/30 text-accent hover:bg-accent/5"
+                    onClick={() => setIsPublishDialogOpen(true)}
+                    disabled={!canPublish}
+                    className="gap-1.5 border-accent/30 text-accent hover:bg-accent/10 hover:text-accent hover:border-accent/50"
                   >
                     <Send size={14} />
                     {t("proj_boq_push_to_tender")}
@@ -1124,23 +1738,25 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {boqGroups.map((group) => {
                     const groupRows = allBoqRows.filter((r) => r.original.groupId === group.id)
+                    const unlockedGroupRows = groupRows.filter((r) => r.original.isEditable !== false)
+                    const selectedGroupCount = unlockedGroupRows.filter((r) => !deselectedIds.has(r.original.id)).length
+                    const allGroupSelected = unlockedGroupRows.length > 0 && selectedGroupCount === unlockedGroupRows.length
+                    const someGroupSelected = selectedGroupCount > 0 && !allGroupSelected
                     const isCollapsed = collapsedGroups.has(group.id)
-                    const isDragOver = dragOverGroupId === group.id
+                    const groupTotal = groupRows.reduce(
+                      (sum, r) => sum + (Number(r.original.quantity) || 0) * (Number(r.original.unitPrice) || 0),
+                      0
+                    )
                     return (
                       <div
                         key={group.id}
-                        className={cn(
-                          "rounded-xl border bg-white overflow-hidden transition-all",
-                          isDragOver ? "border-primary ring-2 ring-primary/20" : "border-slate-200"
-                        )}
-                        onDragOver={(e) => handleSectionDragOver(e, group.id)}
-                        onDrop={(e) => handleSectionDrop(e, group.id)}
-                        onDragLeave={() => setDragOverGroupId(null)}
+                        data-boq-dropzone={group.id}
+                        className="rounded-xl border border-slate-200 bg-white overflow-hidden transition-all shadow-sm"
                       >
-                        <div className="flex items-center gap-1.5 p-2.5 bg-slate-50 border-b border-slate-200 flex-wrap">
+                        <div className="flex items-center gap-1.5 p-3 bg-slate-50 border-b-2 border-slate-200 flex-wrap">
                           <button
                             type="button"
                             onClick={() => toggleGroupCollapsed(group.id)}
@@ -1178,6 +1794,28 @@ export default function ProjectDetailPage() {
                           <Badge variant="outline" className="text-[10px] shrink-0">
                             {t("proj_boq_items_count", { count: groupRows.length })}
                           </Badge>
+                          {groupTotal > 0 && (
+                            <Badge variant="outline" className="text-[10px] shrink-0 border-primary/20 text-primary font-bold" dir="ltr">
+                              {groupTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
+                            </Badge>
+                          )}
+                          {unlockedGroupRows.length > 0 && (
+                            <div
+                              className="flex items-center gap-1.5 h-7 px-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer shrink-0"
+                              onClick={() => setGroupSelected(group.id, !allGroupSelected)}
+                              title={t("boq_select_item")}
+                            >
+                              <Checkbox
+                                checked={allGroupSelected ? true : someGroupSelected ? "indeterminate" : false}
+                                onCheckedChange={(checked) => setGroupSelected(group.id, !!checked)}
+                                onClick={(e) => e.stopPropagation()}
+                                aria-label={t("boq_select_item")}
+                              />
+                              <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">
+                                {selectedGroupCount}/{unlockedGroupRows.length}
+                              </span>
+                            </div>
+                          )}
                           <button
                             type="button"
                             onClick={() => deleteBoqGroup(group.id)}
@@ -1188,11 +1826,21 @@ export default function ProjectDetailPage() {
                           </button>
                         </div>
                         {!isCollapsed && (
-                          groupRows.length === 0 ? (
-                            <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
-                          ) : (
-                            <div className="overflow-x-auto">{renderBoqRows(groupRows)}</div>
-                          )
+                          <>
+                            {groupRows.length === 0 ? (
+                              <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                            ) : (
+                              <div className="overflow-x-auto">{renderBoqRows(groupRows)}</div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => addBoqRow(group.id)}
+                              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                            >
+                              <Plus size={13} />
+                              {t("proj_boq_add_row")}
+                            </button>
+                          </>
                         )}
                       </div>
                     )
@@ -1200,15 +1848,10 @@ export default function ProjectDetailPage() {
 
                   {/* Unassigned — always shown as a drop target */}
                   <div
-                    className={cn(
-                      "rounded-xl border bg-white overflow-hidden transition-all",
-                      dragOverGroupId === "unassigned" ? "border-primary ring-2 ring-primary/20" : "border-dashed border-slate-300"
-                    )}
-                    onDragOver={(e) => handleSectionDragOver(e, "unassigned")}
-                    onDrop={(e) => handleSectionDrop(e, "unassigned")}
-                    onDragLeave={() => setDragOverGroupId(null)}
+                    data-boq-dropzone="unassigned"
+                    className="rounded-xl border border-dashed border-slate-300 bg-white overflow-hidden transition-all shadow-sm"
                   >
-                    <div className="flex items-center gap-2 p-2.5 bg-slate-50/60 border-b border-slate-200">
+                    <div className="flex items-center gap-2 p-3 bg-slate-50/60 border-b-2 border-slate-200">
                       <button
                         type="button"
                         onClick={() => toggleGroupCollapsed("unassigned")}
@@ -1225,27 +1868,22 @@ export default function ProjectDetailPage() {
                       </Badge>
                     </div>
                     {!collapsedGroups.has("unassigned") && (
-                      unassignedBoqRows.length === 0 ? (
-                        <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
-                      ) : (
-                        <div className="overflow-x-auto">{renderBoqRows(unassignedBoqRows)}</div>
-                      )
+                      <>
+                        {unassignedBoqRows.length === 0 ? (
+                          <div className="p-6 text-center text-xs text-muted-foreground">{t("proj_boq_section_empty_hint")}</div>
+                        ) : (
+                          <div className="overflow-x-auto">{renderBoqRows(unassignedBoqRows)}</div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => addBoqRow(null)}
+                          className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                        >
+                          <Plus size={13} />
+                          {t("proj_boq_add_row")}
+                        </button>
+                      </>
                     )}
-                  </div>
-                </div>
-              )}
-
-              {/* BOQ total summary */}
-              {boqItems.length > 0 && (
-                <div className={cn("flex justify-end pt-2", isRtl ? "justify-start" : "")}>
-                  <div className="bg-primary/5 border border-primary/10 rounded-xl px-5 py-3 text-sm">
-                    <span className="text-muted-foreground">{t("proj_boq_total")}: </span>
-                    <span className="font-black text-primary text-base">
-                      {boqItems
-                        .reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0), 0)
-                        .toLocaleString(locale === "ar" ? "ar-SA" : "en-US")}{" "}
-                      {t("offers_currency_sar")}
-                    </span>
                   </div>
                 </div>
               )}
@@ -1258,7 +1896,7 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: RFQS ── */}
         {activeTab === "rfqs" && (
-          <Card className="border-slate-200/60">
+          <Card className="border-primary/15">
             <CardHeader className="border-b pb-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -1268,11 +1906,76 @@ export default function ProjectDetailPage() {
                     <Badge variant="secondary" className="ms-2">{linkedRfqs.length}</Badge>
                   )}
                 </CardTitle>
-                <Button size="sm" className="gap-1.5" onClick={() => router.push(`/contractor/projects/${projectId}/tenders/new`)}>
-                  <Plus size={14} />
-                  {t("proj_new_tender")}
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center rounded-lg border border-slate-200 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setTenderViewMode("grid")}
+                      title={t("rfq_view_grid")}
+                      aria-label={t("rfq_view_grid")}
+                      aria-pressed={tenderViewMode === "grid"}
+                      className={cn(
+                        "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        tenderViewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <LayoutGrid size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTenderViewMode("list")}
+                      title={t("rfq_view_list")}
+                      aria-label={t("rfq_view_list")}
+                      aria-pressed={tenderViewMode === "list"}
+                      className={cn(
+                        "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        tenderViewMode === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <List size={14} />
+                    </button>
+                  </div>
+                  <Button size="sm" className="gap-1.5" onClick={() => router.push(`/contractor/projects/${projectId}/tenders/new`)}>
+                    <Plus size={14} />
+                    {t("proj_new_tender")}
+                  </Button>
+                </div>
               </div>
+              {linkedRfqs && linkedRfqs.length > 0 && (
+                <div className="flex items-center gap-3 flex-wrap pt-3">
+                  <div className="flex items-center gap-1.5 cursor-pointer" onClick={toggleSelectAllTenders}>
+                    <Checkbox
+                      checked={selectedTenderIds.length > 0 && selectedTenderIds.length === linkedRfqs.length ? true : selectedTenderIds.length > 0 ? "indeterminate" : false}
+                      onCheckedChange={toggleSelectAllTenders}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-xs font-semibold text-muted-foreground">{t("rfq_select_all")}</span>
+                  </div>
+                  {selectedTenderIds.length > 0 && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={handleBulkPublishTenders}
+                        disabled={isBulkPublishingTenders}
+                        className="gap-1.5 bg-success hover:bg-success/90 h-8 text-xs"
+                      >
+                        {isBulkPublishingTenders ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
+                        {t("rfq_batch_publish", { count: selectedTenderIds.length })}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowBulkTenderDeleteDialog(true)}
+                        disabled={isBulkDeletingTenders}
+                        className="gap-1.5 h-8 text-xs border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 size={13} />
+                        {t("rfq_delete_selected", { count: selectedTenderIds.length })}
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-4">
               {rfqsLoading ? (
@@ -1284,23 +1987,159 @@ export default function ProjectDetailPage() {
                   <FileText size={36} className="mx-auto mb-3 opacity-20" />
                   <p className="text-sm">{t("proj_rfqs_empty")}</p>
                 </div>
+              ) : tenderViewMode === "list" ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
+                        <TableHead className="text-right">{t("proj_category")}</TableHead>
+                        <TableHead className="text-right">{t("proj_status")}</TableHead>
+                        <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>
+                        <TableHead className="text-left"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(linkedRfqs as unknown[]).map((rfq) => {
+                        const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string }
+                        const editable = canEditOrDeleteTender(r)
+                        return (
+                          <TableRow key={r.id}>
+                            <TableCell>
+                              <Checkbox checked={selectedTenderIds.includes(r.id)} onCheckedChange={() => toggleSelectTender(r.id)} />
+                            </TableCell>
+                            <TableCell className="font-bold text-slate-800 max-w-[220px] truncate">{r.title || r.id}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{r.category}</TableCell>
+                            <TableCell>{getTenderStatusBadge(r)}</TableCell>
+                            <TableCell className="text-sm">{r.offersCount || 0}</TableCell>
+                            <TableCell className="text-left">
+                              <div className="flex items-center justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`}>
+                                      <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                        <Eye size={14} />
+                                      </button>
+                                    </Link>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
+                                </Tooltip>
+                                {editable && r.status === "Draft" && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePublishTender(r.id)}
+                                        disabled={publishingTenderId === r.id}
+                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-success hover:bg-success/10 transition-colors"
+                                      >
+                                        {publishingTenderId === r.id ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("newrfq_publish_now")}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {editable && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${r.id}`}>
+                                        <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                          <Pencil size={14} />
+                                        </button>
+                                      </Link>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {editable && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        onClick={() => setTenderDeleteTarget({ id: r.id, title: r.title })}
+                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("rfq_delete_tender")}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {(linkedRfqs as unknown[]).map((rfq) => {
                     const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string }
+                    const editable = canEditOrDeleteTender(r)
                     return (
-                      <Link key={r.id} href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`}>
-                        <div className="flex items-center justify-between gap-3 p-4 bg-white border border-slate-100 rounded-xl hover:border-primary/30 hover:bg-primary/5 transition-all group">
-                          <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-slate-800 truncate group-hover:text-primary">{r.title || r.id}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">{r.category}</p>
+                      <Card key={r.id} className="border-primary/15 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 group">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <Checkbox
+                                checked={selectedTenderIds.includes(r.id)}
+                                onCheckedChange={() => toggleSelectTender(r.id)}
+                                className="mt-1 shrink-0"
+                              />
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800 truncate group-hover:text-primary transition-colors">{r.title || r.id}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">{r.category}</p>
+                              </div>
+                            </div>
+                            {getTenderStatusBadge(r)}
                           </div>
-                          <div className={cn("flex items-center gap-2 shrink-0", isRtl ? "flex-row-reverse" : "")}>
-                            {r.status && getRfqStatusBadge(r.status)}
-                            <span className="text-xs text-slate-500">{r.offersCount || 0} {t("proj_offers_count_label")}</span>
+                          <div className="flex items-center gap-2 text-xs text-slate-600">
+                            <FileText size={13} className="text-emerald-500" />
+                            <span className="font-semibold">{r.offersCount || 0} {t("proj_offers_count_label")}</span>
                           </div>
-                        </div>
-                      </Link>
+                          <div className="space-y-2 pt-3 mt-1 border-t border-slate-100">
+                            <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`} className="block">
+                              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
+                                <Eye size={13} />
+                                {t("rfq_view_offers")}
+                              </Button>
+                            </Link>
+                            {editable && r.status === "Draft" && (
+                              <Button
+                                size="sm"
+                                className="w-full gap-1.5 text-xs h-8 bg-success hover:bg-success/90"
+                                disabled={publishingTenderId === r.id}
+                                onClick={() => handlePublishTender(r.id)}
+                              >
+                                {publishingTenderId === r.id ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
+                                {t("newrfq_publish_now")}
+                              </Button>
+                            )}
+                            {editable && (
+                              <div className="flex gap-2">
+                                <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${r.id}`} className="flex-1">
+                                  <Button variant="ghost" size="sm" className="w-full gap-1.5 text-xs h-8 text-slate-500 hover:text-slate-700 hover:bg-slate-100">
+                                    <Pencil size={13} />
+                                    {t("rfq_edit_tender")}
+                                  </Button>
+                                </Link>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="flex-1 gap-1.5 text-xs h-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => setTenderDeleteTarget({ id: r.id, title: r.title })}
+                                >
+                                  <Trash2 size={13} />
+                                  {t("rfq_delete_tender")}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
                     )
                   })}
                 </div>
@@ -1322,6 +2161,141 @@ export default function ProjectDetailPage() {
             <AlertDialogAction onClick={handleDelete} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
               {isDeleting ? <Loader2 className="animate-spin" size={14} /> : <Trash2 size={14} />}
               {t("proj_delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Publish BOQ groups as RFQs */}
+      <Dialog open={isPublishDialogOpen} onOpenChange={(open) => { if (!isPublishing) setIsPublishDialogOpen(open) }}>
+        <DialogContent
+          dir={isRtl ? "rtl" : "ltr"}
+          // The SearchableSelect popup portals to <body> (to escape the dialog's overflow), so
+          // Radix sees clicks inside it as "outside the dialog" — don't let those close the dialog.
+          onInteractOutside={(e) => {
+            if ((e.target as HTMLElement | null)?.closest?.("[data-searchable-select-popup]")) e.preventDefault()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("boq_push_title")}</DialogTitle>
+            <DialogDescription>{t("boq_push_desc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("boq_city_label")} *</Label>
+              <SearchableSelect
+                size="md"
+                value={publishCity}
+                onChange={(v) => { setPublishCity(v); setPublishDistrict("") }}
+                options={SAUDI_CITIES.map((c) => ({ value: c, label: displayCity(c, locale) }))}
+                placeholder={t("boq_city_placeholder")}
+                searchPlaceholder={t("newrfq_search_city")}
+                noResultsText={t("newrfq_no_results")}
+              />
+            </div>
+            {publishCity && CITIES_DISTRICTS[publishCity] && (
+              <div className="space-y-1.5">
+                <Label>{t("boq_district_label")}</Label>
+                <SearchableSelect
+                  size="md"
+                  value={publishDistrict}
+                  onChange={setPublishDistrict}
+                  options={CITIES_DISTRICTS[publishCity].map((d) => ({ value: d, label: displayDistrict(d, locale) }))}
+                  placeholder={t("boq_district_placeholder")}
+                  searchPlaceholder={t("newrfq_search_district")}
+                  noResultsText={t("newrfq_no_results")}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>{t("boq_deadline_label")} *</Label>
+              <input
+                type="date"
+                value={publishDeadline}
+                onChange={(e) => setPublishDeadline(e.target.value)}
+                min={new Date(Date.now() + 86400000).toISOString().split("T")[0]}
+                dir="ltr"
+                className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+              {isRtl
+                ? `${publishableGroupIds.size} طلب عروض أسعار سيُنشأ من ${totalSelectedForPublish} بند محدد`
+                : `${publishableGroupIds.size} RFQs will be created from ${totalSelectedForPublish} selected items`}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPublishDialogOpen(false)} disabled={isPublishing}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handlePublish} disabled={isPublishing || !publishCity || !publishDeadline} className="gap-2">
+              {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {t("newrfq_publish_now")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unlink BOQ item from RFQ dialog */}
+      <AlertDialog open={!!unlinkTarget} onOpenChange={(open) => !open && !isUnlinking && setUnlinkTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("proj_boq_unlink_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("proj_boq_unlink_desc", { item: unlinkTarget?.descriptionAr || unlinkTarget?.descriptionEn || unlinkTarget?.itemNo || "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUnlinking}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUnlink} disabled={isUnlinking}>
+              {isUnlinking ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("proj_boq_unlock")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Tender delete dialog */}
+      <AlertDialog open={!!tenderDeleteTarget} onOpenChange={(open) => !open && setTenderDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("rfq_delete_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("rfq_delete_confirm_desc", { title: tenderDeleteTarget?.title || "" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingTender}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTender}
+              disabled={isDeletingTender}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isDeletingTender ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("rfq_delete_tender")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk tender delete dialog */}
+      <AlertDialog open={showBulkTenderDeleteDialog} onOpenChange={(open) => !open && setShowBulkTenderDeleteDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("rfq_delete_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("rfq_bulk_delete_confirm_desc", { count: selectedTenderIds.length })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeletingTenders}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDeleteTenders}
+              disabled={isBulkDeletingTenders}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isBulkDeletingTenders ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("rfq_delete_selected", { count: selectedTenderIds.length })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -30,7 +30,7 @@ const prompt = ai.definePrompt({
   name: 'suggestSupplierSpecializationsPrompt',
   input: {schema: SuggestSupplierSpecializationsInputSchema},
   output: {schema: SuggestSupplierSpecializationsOutputSchema},
-  prompt: `أنت خبير في تصنيف الأعمال لمنصة مناقصات البناء. مهمتك هي قراءة وصف العمل المقدم واختيار التصنيفات الأكثر صلة من قائمة التصنيفات المحددة مسبقًا.
+  prompt: `أنت خبير في تصنيف الأعمال لمنصة طلبات عروض أسعار البناء. مهمتك هي قراءة وصف العمل المقدم واختيار التصنيفات الأكثر صلة من قائمة التصنيفات المحددة مسبقًا.
 
 وصف العمل: {{{businessDescription}}}
 

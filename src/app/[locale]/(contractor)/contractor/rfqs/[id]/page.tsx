@@ -8,8 +8,9 @@ import { useFirestore } from "@/firebase"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Loader2 } from "lucide-react"
 
-// Legacy flat tender URL — resolves the tender's project and redirects into the
-// new nested route. Kept so old links (notifications, bookmarks, AI suggestions) still work.
+// Flat tender/RFQ URL — just redirects to its own offers view, mirroring the project-scoped
+// [tenderId]/page.tsx. Project-linked RFQs redirect into the nested route; standalone RFQs
+// (no project) redirect to the flat offers route, which renders the view directly.
 export default function LegacyRfqPage() {
   const params = useParams()
   const rfqId = params.id as string
@@ -24,12 +25,14 @@ export default function LegacyRfqPage() {
         const projectId = snap.exists() ? (snap.data()?.projectId as string | undefined) : undefined
         if (projectId) {
           router.replace(`/contractor/projects/${projectId}/tenders/${rfqId}/offers`)
-          return
+        } else if (snap.exists()) {
+          router.replace(`/contractor/rfqs/${rfqId}/offers`)
+        } else {
+          router.replace("/contractor/rfqs")
         }
       } catch {
-        // fall through to the aggregate list below
+        router.replace("/contractor/rfqs")
       }
-      router.replace("/contractor/rfqs")
     })()
   }, [firestore, rfqId, router])
 

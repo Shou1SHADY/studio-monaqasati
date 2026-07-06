@@ -93,8 +93,8 @@ export default function SeedPage() {
       }
       addLog("✅ تم إضافة المدن بنجاح.")
 
-      // 5. إضافة المناقصات التجريبية
-      addLog("خطوة 4: إضافة المناقصات التجريبية...")
+      // 5. إضافة طلبات عروض الأسعار التجريبية
+      addLog("خطوة 4: إضافة طلبات عروض الأسعار التجريبية...")
       const mockRfqs = [
         { id: "rfq-demo-1", title: "توريد حديد سابك - مشروع نيوم", catId: "cat-1", area: "الرياض" },
         { id: "rfq-demo-2", title: "خرسانة جاهزة K350", catId: "cat-2", area: "جدة" },
@@ -116,7 +116,7 @@ export default function SeedPage() {
           createdAt: new Date().toISOString()
         })
       }
-      addLog("✅ تم إضافة المناقصات بنجاح.")
+      addLog("✅ تم إضافة طلبات عروض الأسعار بنجاح.")
 
       // 6. إضافة الموردين التجريبيين
       addLog("خطوة 5: إضافة الموردين التجريبيين...")

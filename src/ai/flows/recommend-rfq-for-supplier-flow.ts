@@ -42,7 +42,7 @@ const recommendRfqPrompt = ai.definePrompt({
   name: 'recommendRfqPrompt',
   input: { schema: RecommendRfqForSupplierInputSchema },
   output: { schema: RecommendRfqForSupplierOutputSchema },
-  prompt: `أنت مساعد ذكي متخصص في مطابقة المناقصات للموردين.\nمهمتك هي مراجعة قائمة المناقصات المتاحة وتحديد المناقصات التي تتطابق بدقة مع تخصصات المورد ومناطق الخدمة الخاصة به.\n\nمعلومات المورد:\nتخصصات المورد: {{{supplierSpecializationCategories}}}\nمناطق خدمة المورد: {{{supplierServiceAreas}}}\n\nقائمة المناقصات المتاحة (بصيغة JSON):\n{{{JSON.stringify availableRfqs}}}\n\nتعليمات المطابقة:\n1.  يجب أن يكون تصنيف المناقصة (category) موجودًا ضمن تخصصات المورد (supplierSpecializationCategories).\n2.  يجب أن تكون منطقة المناقصة (area) موجودة ضمن مناطق خدمة المورد (supplierServiceAreas).\n3.  الرجاء إخراج قائمة بمعرفات المناقصات الموصى بها فقط (recommendedRfqIds) التي تستوفي جميع الشروط.\n`,
+  prompt: `أنت مساعد ذكي متخصص في مطابقة طلبات عروض الأسعار للموردين.\nمهمتك هي مراجعة قائمة طلبات عروض الأسعار المتاحة وتحديد الطلبات التي تتطابق بدقة مع تخصصات المورد ومناطق الخدمة الخاصة به.\n\nمعلومات المورد:\nتخصصات المورد: {{{supplierSpecializationCategories}}}\nمناطق خدمة المورد: {{{supplierServiceAreas}}}\n\nقائمة طلبات عروض الأسعار المتاحة (بصيغة JSON):\n{{{JSON.stringify availableRfqs}}}\n\nتعليمات المطابقة:\n1.  يجب أن يكون تصنيف طلب عروض الأسعار (category) موجودًا ضمن تخصصات المورد (supplierSpecializationCategories).\n2.  يجب أن تكون منطقة طلب عروض الأسعار (area) موجودة ضمن مناطق خدمة المورد (supplierServiceAreas).\n3.  الرجاء إخراج قائمة بمعرفات طلبات عروض الأسعار الموصى بها فقط (recommendedRfqIds) التي تستوفي جميع الشروط.\n`,
 });
 
 // Flow definition

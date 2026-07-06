@@ -25,6 +25,7 @@ import {
   FolderOpen,
   Link2,
   PackageCheck,
+  FilePlus,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -65,10 +66,10 @@ const contractorSections: NavSection[] = [
         children: [
           { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle },
           { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
+          { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus },
         ],
       },
-      { titleKey: "contractor_my_suppliers", href: "/contractor/my-suppliers", icon: Users },
-      { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Search },
+      { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
     ],
   },

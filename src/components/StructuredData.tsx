@@ -12,7 +12,7 @@ export default function StructuredData() {
         logo: 'https://mdmaktech.sa/android-chrome-512x512.png',
         applicationCategory: 'BusinessApplication',
         description:
-          'Mdmak Tech is a B2B digital procurement platform connecting contractors with verified suppliers through automated smart tendering, price comparison, and order management. Currently serving Saudi Arabia with global expansion planned.',
+          'Mdmak Tech is a B2B digital procurement platform connecting contractors with verified suppliers through automated smart RFQ management, price comparison, and order management. Currently serving Saudi Arabia with global expansion planned.',
         inLanguage: ['ar', 'en'],
         operatingSystem: 'Web',
         browserRequirements: 'Requires a modern web browser with JavaScript enabled',
@@ -26,14 +26,14 @@ export default function StructuredData() {
             name: 'Starter',
             price: '0',
             priceCurrency: 'SAR',
-            description: 'Free plan — up to 5 tenders per month with basic features',
+            description: 'Free plan — up to 5 RFQs per month with basic features',
             url: 'https://mdmaktech.sa/pricing',
             availability: 'https://schema.org/InStock',
           },
           {
             '@type': 'Offer',
             name: 'Professional Growth',
-            description: 'Higher volume tenders and advanced procurement features',
+            description: 'Higher volume RFQs and advanced procurement features',
             url: 'https://mdmaktech.sa/pricing',
             priceSpecification: {
               '@type': 'PriceSpecification',
@@ -54,8 +54,8 @@ export default function StructuredData() {
           },
         ],
         featureList: [
-          'Smart digital tendering system',
-          'RFQ (Request for Quotation) management',
+          'Smart digital RFQ system',
+          'RFQ (Request for Price Quotes) management',
           'Automated price comparison',
           'Verified supplier network',
           'Real-time procurement analytics',
@@ -98,7 +98,7 @@ export default function StructuredData() {
           'Procurement Automation',
           'Supply Chain Management',
           'B2B Marketplace',
-          'Digital Tendering',
+          'Digital RFQ Management',
           'Supplier Management',
           'RFQ Systems',
           'ERP Integration',
@@ -126,7 +126,7 @@ export default function StructuredData() {
         alternateName: 'Mdmak Tech',
         url: 'https://mdmaktech.sa',
         image: 'https://mdmaktech.sa/og-image.jpg',
-        description: 'B2B digital procurement platform — smart tendering, RFQ management, and supplier connectivity for Saudi Arabia.',
+        description: 'B2B digital procurement platform — smart RFQ management and supplier connectivity for Saudi Arabia.',
         inLanguage: ['ar', 'en'],
         publisher: {
           '@id': 'https://mdmaktech.sa/#organization',
@@ -136,10 +136,10 @@ export default function StructuredData() {
         '@type': 'Service',
         '@id': 'https://mdmaktech.sa/#service',
         name: 'Smart Procurement & RFQ Platform',
-        alternateName: 'منصة المناقصات الذكية وإدارة عروض الأسعار',
+        alternateName: 'منصة طلبات عروض الأسعار الذكية وإدارة عروض الأسعار',
         serviceType: 'B2B Procurement Platform',
         description:
-          'Digital procurement service connecting Saudi construction contractors with verified material suppliers through automated tendering, competitive RFQ management, and intelligent price comparison.',
+          'Digital procurement service connecting Saudi construction contractors with verified material suppliers through automated RFQ management and intelligent price comparison.',
         provider: {
           '@id': 'https://mdmaktech.sa/#organization',
         },
@@ -164,7 +164,7 @@ export default function StructuredData() {
             name: 'How does Mdmak Tech connect contractors with suppliers in Saudi Arabia?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Mdmak Tech is a B2B procurement platform where contractors post tenders and RFQs, and verified suppliers submit competitive quotes. The platform streamlines the entire sourcing process — from posting requirements to comparing offers and awarding contracts — all in one place.',
+              text: 'Mdmak Tech is a B2B procurement platform where contractors post RFQs, and verified suppliers submit competitive quotes. The platform streamlines the entire sourcing process — from posting requirements to comparing offers and awarding contracts — all in one place.',
             },
           },
           {
@@ -172,7 +172,7 @@ export default function StructuredData() {
             name: 'Is Mdmak Tech free to use?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Yes, contractors and suppliers can register and start using the platform for free. The Starter plan includes up to 5 tenders per month with basic quotation features. For higher volumes and advanced features, we offer Professional Growth and Enterprise plans.',
+              text: 'Yes, contractors and suppliers can register and start using the platform for free. The Starter plan includes up to 5 RFQs per month with basic quotation features. For higher volumes and advanced features, we offer Professional Growth and Enterprise plans.',
             },
           },
           {
@@ -188,7 +188,7 @@ export default function StructuredData() {
             name: 'How quickly do suppliers respond to RFQs?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Suppliers are notified instantly when a new tender is published. Response times vary, but most suppliers submit their offers within 24 to 48 hours. The platform sends automatic reminders as the deadline approaches to ensure competitive participation.',
+              text: 'Suppliers are notified instantly when a new RFQ is published. Response times vary, but most suppliers submit their offers within 24 to 48 hours. The platform sends automatic reminders as the deadline approaches to ensure competitive participation.',
             },
           },
           {

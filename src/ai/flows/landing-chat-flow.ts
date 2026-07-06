@@ -41,9 +41,9 @@ WHO WE SERVE:
 - Suppliers (موردين): Companies that supply construction materials
 
 FOR CONTRACTORS:
-- Post RFQs (Requests for Quotation) for any materials in minutes
+- Post RFQs (Requests for Price Quotes) for any materials in minutes
 - Receive multiple competitive price offers from verified suppliers
-- AI-assisted RFQ writing for professional tender descriptions
+- AI-assisted RFQ writing for professional RFQ descriptions
 - Smart supplier recommendations based on category & location
 - Compare all offers side-by-side in a clean dashboard
 - Track every procurement step digitally — no WhatsApp groups

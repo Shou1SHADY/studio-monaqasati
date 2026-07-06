@@ -242,7 +242,7 @@ export default function SupplierNotificationsPage() {
 
     if (type === "inquiry_reply") return { title: sanitizeTitle(offer.title) || t("inquiry_reply_title"), desc: offer.description || offer.message || t("inquiry_reply_desc") };
     if (type === "invitation") return { title: sanitizeTitle(offer.title) || t("invitation_title"), desc: offer.message || t("invitation_desc") };
-    if (type === "sample_sent") return { title: "📦 تم إرسال العينة من المورد", desc: sanitizeTitle(offer.message) || `تم إرسال العينة لمناقصة: ${offer.rfqTitle || ""}. يرجى تأكيد الاستلام.` };
+    if (type === "sample_sent") return { title: "📦 تم إرسال العينة من المورد", desc: sanitizeTitle(offer.message) || `تم إرسال العينة لطلب عروض الأسعار: ${offer.rfqTitle || ""}. يرجى تأكيد الاستلام.` };
     if (type === "offer_accepted" || status === "مقبول") return { title: t("accepted_offer"), desc: offer.message || t("accepted_offer_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "offer_rejected" || status === "مرفوض") return { title: t("rejected_offer"), desc: offer.message || t("rejected_offer_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "price_reduction" || status === "مطلوب تخفيض") return { title: t("price_reduction"), desc: offer.message || t("price_reduction_desc", { title: offer.rfqTitle || t("offer_undefined") }) };

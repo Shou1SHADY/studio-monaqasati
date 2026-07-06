@@ -205,7 +205,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
             type: "new_offer",
             title: "عرض سعر جديد",
-            message: `قدم المورد ${profile?.companyName || profile?.name || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على مناقصة: ${selectedRfq.title}`,
+            message: `قدم المورد ${profile?.companyName || profile?.name || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}`,
             offerId: null,
             rfqId: selectedRfq.id,
             createdAt: new Date().toISOString(),
@@ -229,7 +229,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({
                     to: formattedPhone,
-                    body: `منصة مناقصتي: وصلك عرض سعر جديد بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على مناقصة: ${selectedRfq.title}. قم بتسجيل الدخول للمراجعة.`
+                    body: `مدماك تيك: وصلك عرض سعر جديد بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}. قم بتسجيل الدخول للمراجعة.`
                   })
                 });
                 if (!smsRes.ok) {

@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +32,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw } from "lucide-react"
+import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
@@ -47,6 +49,9 @@ export default function ContractorRfqsPage() {
   const [isPublishing, setIsPublishing] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [republishTarget, setRepublishTarget] = useState<any>(null)
   const [republishDeadline, setRepublishDeadline] = useState("")
   const [isRepublishing, setIsRepublishing] = useState(false)
@@ -83,7 +88,7 @@ export default function ContractorRfqsPage() {
   }, [searchParams])
 
 const handleBatchPublish = async () => {
-    if (!firestore || selectedRfqs.length === 0) return;
+    if (isPublishing || !firestore || selectedRfqs.length === 0) return;
 
     // Gate: profile must have mandatory fields filled before publishing
     const missingFields = getIncompletePublishFields(profile, locale)
@@ -96,40 +101,98 @@ const handleBatchPublish = async () => {
       return
     }
 
+    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id));
+    const eligible = candidates.filter((rfq: any) => rfq.status === "Draft");
+    const skipped = candidates.length - eligible.length;
+    if (eligible.length === 0) {
+      toast({ title: t("rfq_bulk_publish_none_eligible"), variant: "destructive" });
+      return
+    }
+
     setIsPublishing(true);
-    try {
-      for (const rfqId of selectedRfqs) {
-        await updateDoc(doc(firestore, "rfqs", rfqId), {
+    let published = 0;
+    const failedIds: string[] = [];
+    for (const rfq of eligible) {
+      try {
+        await updateDoc(doc(firestore, "rfqs", rfq.id), {
           status: "New",
           visibility: "public",
           publishedAt: new Date().toISOString()
         });
+        published++;
+      } catch (error) {
+        console.error(error)
+        failedIds.push(rfq.id)
       }
-      toast({
-        title: t("rfq_batch_publish_title"),
-        description: t("rfq_batch_publish_desc", { count: selectedRfqs.length }),
-      });
-      setSelectedRfqs([]);
-    } catch (error) {
-      toast({
-        title: t("rfq_batch_publish_error"),
-        description: t("rfq_batch_publish_error_desc"),
-        variant: "destructive"
-      });
-    } finally {
-      setIsPublishing(false);
     }
+    toast({
+      title: t("rfq_batch_publish_title"),
+      description: t("rfq_bulk_publish_result", { published, skipped })
+        + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
+      variant: failedIds.length > 0 ? "destructive" : undefined,
+    });
+    // Keep failed items selected so the user can retry; drop everything else.
+    setSelectedRfqs(failedIds);
+    setIsPublishing(false);
   };
 
   const toggleSelectRfq = (id: string) => {
-    setSelectedRfqs(prev => 
+    setSelectedRfqs(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
 
   const selectAll = () => {
-    const draftRfqs = filteredRfqs.filter((rfq: any) => rfq.status === "Draft").map((rfq: any) => rfq.id);
-    setSelectedRfqs(draftRfqs);
+    const allIds = filteredRfqs.map((rfq: any) => rfq.id);
+    setSelectedRfqs(prev => prev.length === allIds.length ? [] : allIds);
+  };
+
+  const handleBatchDelete = async () => {
+    if (isBulkDeleting || !firestore) return
+    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id));
+    const eligible = candidates.filter((rfq: any) => canEditOrDelete(rfq));
+    const skipped = candidates.length - eligible.length;
+    if (eligible.length === 0) {
+      toast({ title: t("rfq_bulk_delete_none_eligible"), variant: "destructive" });
+      setShowBulkDeleteDialog(false)
+      return
+    }
+
+    setIsBulkDeleting(true)
+    let deleted = 0
+    const failedIds: string[] = []
+    for (const rfq of eligible) {
+      try {
+        if (rfq.projectId) {
+          const boqSnap = await getDocs(
+            query(collection(firestore, "projects", rfq.projectId, "boqItems"), where("tenderId", "==", rfq.id))
+          )
+          if (!boqSnap.empty) {
+            const batch = writeBatch(firestore)
+            boqSnap.docs.forEach((d) => {
+              batch.update(d.ref, { tenderId: null, isEditable: true })
+            })
+            await batch.commit()
+          }
+          await updateDoc(doc(firestore, "projects", rfq.projectId), { rfqIds: arrayRemove(rfq.id) })
+        }
+        await deleteDoc(doc(firestore, "rfqs", rfq.id))
+        deleted++
+      } catch (error) {
+        console.error(error)
+        failedIds.push(rfq.id)
+      }
+    }
+    toast({
+      title: t("rfq_delete_success"),
+      description: t("rfq_bulk_delete_result", { deleted, skipped })
+        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : ""),
+      variant: failedIds.length > 0 ? "destructive" : undefined,
+    })
+    // Keep failed items selected so the user can retry; drop everything else.
+    setSelectedRfqs(failedIds)
+    setIsBulkDeleting(false)
+    setShowBulkDeleteDialog(false)
   };
 
   const handleDelete = async () => {
@@ -325,6 +388,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_all_tenders_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfq_all_tenders_desc")}</p>
           </div>
+          <Link href="/contractor/rfqs/new">
+            <Button className="gap-2 rounded-xl shadow-lg shadow-primary/20 cursor-pointer">
+              <Send size={16} />
+              {t("rfq_new_tender")}
+            </Button>
+          </Link>
         </div>
 
         {/* Status Filter Tabs */}
@@ -354,21 +423,63 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
           <CardHeader className="bg-white border-b pb-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="text-primary" size={20} />
-                  {t("rfq_tender_list")}
-                </CardTitle>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="text-primary" size={20} />
+                    {t("rfq_tender_list")}
+                  </CardTitle>
+                  <div className="flex items-center rounded-lg border border-slate-200 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("grid")}
+                      title={t("rfq_view_grid")}
+                      aria-label={t("rfq_view_grid")}
+                      aria-pressed={viewMode === "grid"}
+                      className={cn(
+                        "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        viewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <LayoutGrid size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("list")}
+                      title={t("rfq_view_list")}
+                      aria-label={t("rfq_view_list")}
+                      aria-pressed={viewMode === "list"}
+                      className={cn(
+                        "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        viewMode === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <List size={14} />
+                    </button>
+                  </div>
+                </div>
                 <div className="flex items-center gap-3 flex-wrap">
                   {selectedRfqs.length > 0 && (
-                    <Button
-                      onClick={handleBatchPublish}
-                      disabled={isPublishing}
-                      className="gap-2 bg-success hover:bg-success/90 rounded-lg"
-                      size="sm"
-                    >
-                      {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
-                      {t("rfq_batch_publish", { count: selectedRfqs.length })}
-                    </Button>
+                    <>
+                      <Button
+                        onClick={handleBatchPublish}
+                        disabled={isPublishing}
+                        className="gap-2 bg-success hover:bg-success/90 rounded-lg"
+                        size="sm"
+                      >
+                        {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                        {t("rfq_batch_publish", { count: selectedRfqs.length })}
+                      </Button>
+                      <Button
+                        onClick={() => setShowBulkDeleteDialog(true)}
+                        disabled={isBulkDeleting}
+                        variant="outline"
+                        className="gap-2 rounded-lg border-red-200 text-red-600 hover:bg-red-50"
+                        size="sm"
+                      >
+                        <Trash2 size={14} />
+                        {t("rfq_delete_selected", { count: selectedRfqs.length })}
+                      </Button>
+                    </>
                   )}
                   {selectedRfqs.length === 0 && (
                     <div className="relative">
@@ -383,6 +494,16 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   )}
                 </div>
               </div>
+              {filteredRfqs.length > 0 && (
+                <div className="flex items-center gap-1.5 cursor-pointer w-fit" onClick={selectAll}>
+                  <Checkbox
+                    checked={selectedRfqs.length > 0 && selectedRfqs.length === filteredRfqs.length ? true : selectedRfqs.length > 0 ? "indeterminate" : false}
+                    onCheckedChange={selectAll}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-xs font-semibold text-muted-foreground">{t("rfq_select_all")}</span>
+                </div>
+              )}
               {/* Filters Row */}
               <div className="flex flex-wrap gap-2">
                 {/* Project Filter */}
@@ -481,26 +602,32 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                     : t("rfq_no_tenders")}
                 </p>
                 {!hasActiveFilters && (
-                  <Link href="/contractor/projects">
-                    <Button variant="outline">{t("rfq_go_to_projects")}</Button>
-                  </Link>
+                  <div className="flex items-center justify-center gap-3 flex-wrap">
+                    <Link href="/contractor/rfqs/new">
+                      <Button className="gap-2">
+                        <Send size={16} />
+                        {t("rfq_new_tender")}
+                      </Button>
+                    </Link>
+                    <Link href="/contractor/projects">
+                      <Button variant="outline">{t("rfq_go_to_projects")}</Button>
+                    </Link>
+                  </div>
                 )}
               </div>
             )}
-            {!isLoading && filteredRfqs.length > 0 && (
+            {!isLoading && filteredRfqs.length > 0 && viewMode === "grid" && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredRfqs.map((rfq: any) => (
                   <Card key={rfq.id} className="group relative overflow-hidden border-slate-200/60 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 bg-white/60 backdrop-blur-xl flex flex-col">
                     <CardContent className="p-5 flex flex-col flex-1">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex flex-wrap gap-2">
-                          {rfq.status === "Draft" && (
-                            <Checkbox
-                              checked={selectedRfqs.includes(rfq.id)}
-                              onCheckedChange={() => toggleSelectRfq(rfq.id)}
-                              className={cn("cursor-pointer", locale === 'ar' ? 'ml-2' : 'mr-2')}
-                            />
-                          )}
+                          <Checkbox
+                            checked={selectedRfqs.includes(rfq.id)}
+                            onCheckedChange={() => toggleSelectRfq(rfq.id)}
+                            className={cn("cursor-pointer", locale === 'ar' ? 'ml-2' : 'mr-2')}
+                          />
                           <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
                             {displayCategory(rfq.category, locale)}
                           </Badge>
@@ -570,13 +697,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       </div>
                       
                       <div className="flex gap-2">
-                        <Link href={`/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers`} className="flex-1">
+                        <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <Eye size={14} />
                             {t("rfq_view_offers")}
                           </Button>
                         </Link>
-                        <Link href={`/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers?tab=inquiries`} className="flex-1">
+                        <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers?tab=inquiries` : `/contractor/rfqs/${rfq.id}/offers?tab=inquiries`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <MessageCircle size={14} />
                             {t("rfq_inquiries")}
@@ -585,7 +712,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       </div>
                       {canEditOrDelete(rfq) && (
                         <div className="flex gap-2 mt-2">
-                          <Link href={`/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}`} className="flex-1">
+                          <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
                             <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
                               <Pencil size={14} />
                               {t("rfq_edit_tender")}
@@ -618,6 +745,97 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            )}
+            {!isLoading && filteredRfqs.length > 0 && viewMode === "list" && (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8"></TableHead>
+                      <TableHead className="text-right">{t("rfq_id_col")}</TableHead>
+                      <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
+                      <TableHead className="text-right">{t("rfq_category_filter")}</TableHead>
+                      <TableHead className="text-right">{t("rfq_city_filter")}</TableHead>
+                      <TableHead className="text-right">{t("rfq_deadline_col")}</TableHead>
+                      <TableHead className="text-right">{t("proj_status")}</TableHead>
+                      <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>
+                      <TableHead className="text-left"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredRfqs.map((rfq: any) => (
+                      <TableRow key={rfq.id}>
+                        <TableCell>
+                          <Checkbox checked={selectedRfqs.includes(rfq.id)} onCheckedChange={() => toggleSelectRfq(rfq.id)} />
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-slate-400">{rfq.id.substring(0, 8)}</TableCell>
+                        <TableCell className="font-bold text-slate-800 max-w-[200px] truncate">{rfq.title}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{displayCategory(rfq.category, locale)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{displayCity(rfq.city, locale)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap" suppressHydrationWarning>
+                          {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set")}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(rfq)}</TableCell>
+                        <TableCell className="text-sm">{rfq.offersCount || 0}</TableCell>
+                        <TableCell className="text-left">
+                          <div className="flex items-center justify-end gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`}>
+                                  <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                    <Eye size={14} />
+                                  </button>
+                                </Link>
+                              </TooltipTrigger>
+                              <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
+                            </Tooltip>
+                            {canEditOrDelete(rfq) && (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`}>
+                                      <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                        <Pencil size={14} />
+                                      </button>
+                                    </Link>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeleteTarget(rfq)}
+                                      className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("rfq_delete_tender")}</TooltipContent>
+                                </Tooltip>
+                              </>
+                            )}
+                            {isExpired(rfq) && canEditOrDelete(rfq) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setRepublishTarget(rfq); setRepublishDeadline("") }}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 transition-colors"
+                                  >
+                                    <RotateCw size={14} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("rfq_republish")}</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )}
             {hasMore && filteredRfqs.length > 0 && (
@@ -684,6 +902,28 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             >
               {isDeleting ? <Loader2 className="animate-spin" size={14} /> : null}
               {t("rfq_delete_tender")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showBulkDeleteDialog} onOpenChange={(open) => !open && setShowBulkDeleteDialog(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("rfq_delete_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("rfq_bulk_delete_confirm_desc", { count: selectedRfqs.length })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBatchDelete}
+              disabled={isBulkDeleting}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {isBulkDeleting ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("rfq_delete_selected", { count: selectedRfqs.length })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

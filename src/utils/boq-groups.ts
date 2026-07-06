@@ -107,12 +107,17 @@ export function splitItemToNewGroup(
   return [...withoutItem, newGroup]
 }
 
-/** Returns only groups that have at least one item — these are the ones that will become RFQs. */
+/** Returns only groups that have at least one selected item — these are the ones that will become RFQs. */
 export function getGroupsToCreate(groups: BoqGroup[]): BoqGroup[] {
-  return groups.filter(g => g.items.length > 0)
+  return groups.filter(g => g.items.some(i => i.selected))
 }
 
 /** Total count of items across all groups. */
 export function totalGroupItems(groups: BoqGroup[]): number {
   return groups.reduce((sum, g) => sum + g.items.length, 0)
+}
+
+/** Total count of selected items across all groups — what will actually be published. */
+export function totalSelectedItems(groups: BoqGroup[]): number {
+  return groups.reduce((sum, g) => sum + g.items.filter(i => i.selected).length, 0)
 }

@@ -1,22 +1,25 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { useRouter } from "@/i18n/routing"
 import { doc, getDoc } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Loader2 } from "lucide-react"
+import { RfqOffersView } from "@/components/contractor/RfqOffersView"
 
-// Legacy flat tender-offers URL — resolves the tender's project and redirects into the
-// new nested route. Kept so old links (notifications, bookmarks, AI suggestions) still work.
-export default function LegacyRfqOffersPage() {
+// Flat RFQ-offers URL. Project-linked RFQs redirect into the canonical nested route (kept so
+// old links — notifications, bookmarks, AI suggestions — still work). Standalone RFQs (no
+// project) have no nested route to redirect to, so this page renders the offers view directly.
+export default function RfqOffersEntryPage() {
   const params = useParams()
   const rfqId = params.id as string
   const searchParams = useSearchParams()
   const tab = searchParams.get("tab")
   const router = useRouter()
   const firestore = useFirestore()
+  const [isStandalone, setIsStandalone] = useState(false)
 
   useEffect(() => {
     if (!firestore || !rfqId) return
@@ -27,14 +30,21 @@ export default function LegacyRfqOffersPage() {
         if (projectId) {
           const suffix = tab ? `?tab=${tab}` : ""
           router.replace(`/contractor/projects/${projectId}/tenders/${rfqId}/offers${suffix}`)
-          return
+        } else if (snap.exists()) {
+          // Confirmed: this RFQ genuinely has no project — render the offers view inline.
+          setIsStandalone(true)
+        } else {
+          router.replace("/contractor/rfqs")
         }
       } catch {
-        // fall through to the aggregate list below
+        router.replace("/contractor/rfqs")
       }
-      router.replace("/contractor/rfqs")
     })()
   }, [firestore, rfqId, tab, router])
+
+  if (isStandalone) {
+    return <RfqOffersView rfqId={rfqId} />
+  }
 
   return (
     <PortalLayout>

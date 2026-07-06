@@ -299,7 +299,7 @@ export default function ProjectTendersPage() {
             <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <Link href={`/contractor/projects/${projectId}/tenders/from-boq`}>
+            <Link href={`/contractor/projects/${projectId}?tab=boq`}>
               <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/10">
                 <FileSpreadsheet size={16} />
                 {t("boq_upload_btn")}
@@ -461,7 +461,7 @@ export default function ProjectTendersPage() {
             {!isLoading && filteredRfqs.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredRfqs.map((rfq: any) => (
-                  <Card key={rfq.id} className="group relative overflow-hidden border-slate-200/60 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 bg-white/60 backdrop-blur-xl flex flex-col">
+                  <Card key={rfq.id} className="group relative overflow-hidden border-primary/15 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 bg-white flex flex-col">
                     <CardContent className="p-5 flex flex-col flex-1">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex flex-wrap gap-2">
@@ -540,7 +540,7 @@ export default function ProjectTendersPage() {
                         )}
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 pt-3 border-t border-slate-100">
                         <Link href={`/contractor/projects/${projectId}/tenders/${rfq.id}/offers`} className="flex-1">
                           <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
                             <Eye size={14} />

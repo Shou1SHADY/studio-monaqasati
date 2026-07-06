@@ -50,7 +50,7 @@ describe('buildPageMetadata()', () => {
   const base = {
     locale: 'ar',
     title: 'الرئيسية',
-    description: 'منصة مناقصات ذكية',
+    description: 'منصة طلبات عروض أسعار ذكية',
     path: '/',
   }
 
@@ -71,7 +71,7 @@ describe('buildPageMetadata()', () => {
 
   it('passes description through', () => {
     const meta = buildPageMetadata(base)
-    expect(meta.description).toBe('منصة مناقصات ذكية')
+    expect(meta.description).toBe('منصة طلبات عروض أسعار ذكية')
   })
 
   it('includes openGraph data', () => {

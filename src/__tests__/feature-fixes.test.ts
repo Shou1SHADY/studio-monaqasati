@@ -71,62 +71,70 @@ describe("BOQ Groups — buildGroups", () => {
     expect(buildGroups([])).toEqual([])
   })
 
-  it("creates one group per distinct suggestedCategory", () => {
+  // buildGroups groups by Excel sheet name (item.sheet) — categoryAr is then derived
+  // from that sheet name via detectCategoryFromSheet, not read directly off the item.
+  it("creates one group per distinct sheet", () => {
     const items = [
-      makeItem({ id: "a", suggestedCategory: "خرسانة وبناء" }),
-      makeItem({ id: "b", suggestedCategory: "أرضيات وتشطيبات" }),
-      makeItem({ id: "c", suggestedCategory: "خرسانة وبناء" }),
+      makeItem({ id: "a", sheet: "MASONRY" }),
+      makeItem({ id: "b", sheet: "METAL" }),
+      makeItem({ id: "c", sheet: "MASONRY" }),
     ]
     const groups = buildGroups(items)
     expect(groups).toHaveLength(2)
-    const cats = groups.map(g => g.categoryAr)
-    expect(cats).toContain("خرسانة وبناء")
-    expect(cats).toContain("أرضيات وتشطيبات")
+    const titles = groups.map(g => g.titleAr)
+    expect(titles).toContain("MASONRY")
+    expect(titles).toContain("METAL")
   })
 
-  it("all items with the same category end up in the same group", () => {
+  it("all items with the same sheet end up in the same group", () => {
     const items = [
-      makeItem({ id: "a", suggestedCategory: "حديد ومعادن" }),
-      makeItem({ id: "b", suggestedCategory: "حديد ومعادن" }),
-      makeItem({ id: "c", suggestedCategory: "حديد ومعادن" }),
+      makeItem({ id: "a", sheet: "METAL" }),
+      makeItem({ id: "b", sheet: "METAL" }),
+      makeItem({ id: "c", sheet: "METAL" }),
     ]
     const groups = buildGroups(items)
     expect(groups).toHaveLength(1)
     expect(groups[0].items).toHaveLength(3)
   })
 
-  it("default title is توريد + category", () => {
-    const items = [makeItem({ suggestedCategory: "كهرباء" })]
+  it("title defaults to the raw sheet name", () => {
+    const items = [makeItem({ sheet: "MASONRY" })]
     const [group] = buildGroups(items)
-    expect(group.titleAr).toBe("توريد كهرباء")
+    expect(group.titleAr).toBe("MASONRY")
   })
 
-  it("categoryAr on each group matches its items' suggestedCategory", () => {
-    const items = [
-      makeItem({ id: "1", suggestedCategory: "سباكة" }),
-      makeItem({ id: "2", suggestedCategory: "تكييف" }),
-    ]
-    const groups = buildGroups(items)
-    groups.forEach(g => {
-      g.items.forEach(item => expect(item.suggestedCategory).toBe(g.categoryAr))
-    })
+  it("falls back to suggestedCategory as the sheet key when sheet is absent", () => {
+    const items = [makeItem({ sheet: undefined, suggestedCategory: "سباكة" })]
+    const [group] = buildGroups(items)
+    expect(group.titleAr).toBe("سباكة")
   })
 
-  it("preserves insertion order — first-seen category comes first", () => {
+  it("categoryAr is derived from the sheet name via detectCategoryFromSheet", () => {
     const items = [
-      makeItem({ id: "1", suggestedCategory: "طوب وبلوك" }),
-      makeItem({ id: "2", suggestedCategory: "أسمنت" }),
-      makeItem({ id: "3", suggestedCategory: "طوب وبلوك" }),
+      makeItem({ id: "1", sheet: "MASONRY" }),
+      makeItem({ id: "2", sheet: "METAL" }),
     ]
     const groups = buildGroups(items)
-    expect(groups[0].categoryAr).toBe("طوب وبلوك")
-    expect(groups[1].categoryAr).toBe("أسمنت")
+    const byTitle = Object.fromEntries(groups.map(g => [g.titleAr, g.categoryAr]))
+    expect(byTitle["MASONRY"]).toBe("طوب وبلوك")
+    expect(byTitle["METAL"]).toBe("حديد ومعادن")
+  })
+
+  it("preserves insertion order — first-seen sheet comes first", () => {
+    const items = [
+      makeItem({ id: "1", sheet: "MASONRY" }),
+      makeItem({ id: "2", sheet: "METAL" }),
+      makeItem({ id: "3", sheet: "MASONRY" }),
+    ]
+    const groups = buildGroups(items)
+    expect(groups[0].titleAr).toBe("MASONRY")
+    expect(groups[1].titleAr).toBe("METAL")
   })
 
   it("each group gets a unique id", () => {
     const items = [
-      makeItem({ id: "1", suggestedCategory: "خرسانة وبناء" }),
-      makeItem({ id: "2", suggestedCategory: "حديد ومعادن" }),
+      makeItem({ id: "1", sheet: "MASONRY" }),
+      makeItem({ id: "2", sheet: "METAL" }),
     ]
     const groups = buildGroups(items)
     expect(groups[0].id).not.toBe(groups[1].id)

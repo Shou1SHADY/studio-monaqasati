@@ -7,43 +7,72 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { 
-  Search, 
-  MapPin, 
-  Star, 
-  ShieldCheck, 
-  Filter, 
+import { Label } from "@/components/ui/label"
+import {
+  Search,
+  MapPin,
+  Star,
+  ShieldCheck,
+  Filter,
   ChevronLeft,
   Briefcase,
   Loader2,
   X,
   Heart,
-  FolderOpen
+  FolderOpen,
+  Mail,
+  Send,
+  XCircle,
+  Calendar,
+  UserPlus,
 } from "lucide-react"
-import { 
+import {
   Popover,
   PopoverContent,
-  PopoverTrigger 
+  PopoverTrigger
 } from "@/components/ui/popover"
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue 
+  SelectValue
 } from "@/components/ui/select"
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogDescription 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp } from "firebase/firestore"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity } from "@/lib/constants"
+
+function fmtDate(val: unknown, locale: string) {
+  if (!val) return "–"
+  const d =
+    val && typeof val === "object" && "toDate" in val && typeof (val as { toDate: () => Date }).toDate === "function"
+      ? (val as { toDate: () => Date }).toDate()
+      : new Date(val as string | number)
+  return d.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
  
 export default function SuppliersDirectory() {
   const t = useTranslations("Portal.Contractor")
@@ -57,11 +86,18 @@ export default function SuppliersDirectory() {
   const [filterCity, setFilterCity] = useState<string>("all")
   const [filterSpecialization, setFilterSpecialization] = useState<string>("all")
   const [showFilters, setShowFilters] = useState(false)
+  const [showInviteDialog, setShowInviteDialog] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteCompanyName, setInviteCompanyName] = useState("")
+  const [isSendingInvite, setIsSendingInvite] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; supplierName?: string } | null>(null)
+  const [isRemoving, setIsRemoving] = useState(false)
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user!.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const typedProfile = profile as { organizationId?: string; companyName?: string; name?: string; favoriteSuppliers?: string[] } | null
 
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
@@ -78,7 +114,78 @@ export default function SuppliersDirectory() {
   
   const { data: myRfqs } = useCollection(rfqsQuery)
   const myRfqIds = myRfqs?.map((r: any) => r.id) || []
-  
+
+  // Suppliers this contractor has an active connection with (invited/accepted via My Suppliers)
+  const myOrgId = profile?.organizationId || user?.uid
+  const linksQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !myOrgId) return null
+    return query(
+      collection(firestore, "contractorSupplierLinks"),
+      where("contractorOrgId", "==", myOrgId)
+    )
+  }, [firestore, user, isUserLoading, myOrgId])
+  const { data: supplierLinks, isLoading: linksLoading } = useCollection(linksQuery)
+  const connectedSupplierOrgIds = (supplierLinks || [])
+    .filter((l: any) => l.status === "active")
+    .map((l: any) => l.supplierOrgId)
+    .filter(Boolean)
+
+  // Invitations this contractor has sent (to track pending/accepted/declined status)
+  const invitationsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "invitations"), where("invitedBy", "==", user.uid))
+  }, [firestore, user, isUserLoading])
+  const { data: allInvitations } = useCollection(invitationsQuery)
+  const sentInvitations = (allInvitations || []).filter(
+    (inv: any) => inv.type === "supplier_invite"
+  )
+
+  const handleSendInvitation = async () => {
+    if (!firestore || !user || !myOrgId) return
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) {
+      toast({ title: t("my_sup_invite_empty_email"), variant: "destructive" })
+      return
+    }
+    setIsSendingInvite(true)
+    try {
+      await addDoc(collection(firestore, "invitations"), {
+        email,
+        companyName: inviteCompanyName.trim() || null,
+        invitedBy: user.uid,
+        contractorOrgId: myOrgId,
+        contractorName: typedProfile?.companyName || typedProfile?.name || "",
+        status: "pending",
+        type: "supplier_invite",
+        createdAt: serverTimestamp(),
+      })
+      toast({ title: t("my_sup_invite_success"), description: t("my_sup_invite_success_desc") })
+      setInviteEmail("")
+      setInviteCompanyName("")
+      setShowInviteDialog(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("my_sup_invite_error"), variant: "destructive" })
+    } finally {
+      setIsSendingInvite(false)
+    }
+  }
+
+  const handleRemoveConnection = async (linkId: string) => {
+    if (!firestore) return
+    setIsRemoving(true)
+    try {
+      await updateDoc(doc(firestore, "contractorSupplierLinks", linkId), { status: "rejected" })
+      toast({ title: t("my_sup_toast_removed") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("generic_error_title"), variant: "destructive" })
+    } finally {
+      setIsRemoving(false)
+      setRemoveTarget(null)
+    }
+  }
+
   // Fetch accepted offers for these RFQs
   const acceptedOffersQuery = useMemoFirebase(() => {
     if (!firestore || myRfqIds.length === 0) return null
@@ -149,18 +256,32 @@ export default function SuppliersDirectory() {
     }
   }
   
-  const isLoading = suppliersLoading || isUserLoading;
+  const isLoading = suppliersLoading || isUserLoading || linksLoading;
+
+  // Only show suppliers this contractor has actually invited and connected with — matches the
+  // active contractorSupplierLinks docs (the only way a link is ever created is a supplier
+  // accepting this contractor's email invitation, so "active link" already means "invited by us").
+  const knownSupplierIds = new Set(connectedSupplierOrgIds)
+  const linkIdBySupplierOrgId = new Map(
+    (supplierLinks || [])
+      .filter((l: any) => l.status === "active")
+      .map((l: any) => [l.supplierOrgId, l.id])
+  )
+
+  const knownFbSuppliers = (fbSuppliers || []).filter(
+    (s: any) => knownSupplierIds.has(s.id) || knownSupplierIds.has(s.organizationId)
+  )
 
   const allCities = [...new Set([
-    ...(fbSuppliers?.map((s: any) => s.city).filter(Boolean) || []),
-    ...(fbSuppliers?.flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
+    ...(knownFbSuppliers.map((s: any) => s.city).filter(Boolean) || []),
+    ...(knownFbSuppliers.flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
   ])].sort()
 
   const allSpecializations = [...new Set(
-    fbSuppliers?.flatMap((s: any) => s.specializations || []).filter(Boolean) || []
+    knownFbSuppliers.flatMap((s: any) => s.specializations || []).filter(Boolean) || []
   )].sort()
 
-  const displaySuppliers = (fbSuppliers?.length ?? 0) > 0 ? fbSuppliers!
+  const displaySuppliers = knownFbSuppliers.length > 0 ? knownFbSuppliers
     .map((s: any) => ({
       ...s,
       id: s.id,
@@ -174,7 +295,8 @@ export default function SuppliersDirectory() {
         : (s.rating || 0),
       reviewsCount: supplierRatingsMap[s.id]?.count ?? (s.reviewsCount || 0),
       isFavorite: favoriteSupplierIds.has(s.id),
-      isExplicitFavorite: explicitFavoriteIds.includes(s.id)
+      isExplicitFavorite: explicitFavoriteIds.includes(s.id),
+      linkId: linkIdBySupplierOrgId.get(s.id) || linkIdBySupplierOrgId.get(s.organizationId)
     }))
     .filter((s: any) => {
       // Search query filter
@@ -213,6 +335,15 @@ export default function SuppliersDirectory() {
             <p className="text-muted-foreground mt-1">{t("suppliers_page_desc")}</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
+              <UserPlus size={18} />
+              {t("my_sup_invite_tab")}
+              {sentInvitations.filter((inv: any) => inv.status === "pending").length > 0 && (
+                <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-4">
+                  {sentInvitations.filter((inv: any) => inv.status === "pending").length}
+                </Badge>
+              )}
+            </Button>
             <div className="relative w-64">
               <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
               <Input 
@@ -315,7 +446,15 @@ export default function SuppliersDirectory() {
                 <p className="text-sm mt-1">{t("suppliers_no_search_results_desc")}</p>
               </>
             ) : (
-              t("suppliers_no_suppliers")
+              <>
+                <Briefcase size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="font-bold text-lg">{t("suppliers_no_suppliers")}</p>
+                <p className="text-sm mt-1">{t("suppliers_no_suppliers_desc")}</p>
+                <Button variant="outline" className="mt-4 gap-2" onClick={() => setShowInviteDialog(true)}>
+                  <UserPlus size={16} />
+                  {t("my_sup_invite_tab")}
+                </Button>
+              </>
             )}
           </div>
         ) : (
@@ -328,13 +467,27 @@ export default function SuppliersDirectory() {
                       <Briefcase size={28} />
                     </div>
                     <div className={cn("flex flex-col gap-1", locale === 'ar' ? 'items-end' : 'items-start')}>
-                      <button 
-                        onClick={(e) => toggleFavorite(e, supplier.id)}
-                        className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
-                        title={supplier.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
-                      >
-                        <Heart size={16} className={supplier.isExplicitFavorite ? "fill-amber-500" : ""} />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        {supplier.linkId && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setRemoveTarget({ id: supplier.linkId, supplierName: supplier.name })
+                            }}
+                            className="h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm bg-white text-slate-300 hover:text-destructive hover:bg-destructive/5 border border-slate-100"
+                            title={t("my_sup_remove")}
+                          >
+                            <XCircle size={16} />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => toggleFavorite(e, supplier.id)}
+                          className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
+                          title={supplier.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
+                        >
+                          <Heart size={16} className={supplier.isExplicitFavorite ? "fill-amber-500" : ""} />
+                        </button>
+                      </div>
 
                       {supplier.certificates?.length > 0 && (
                         <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
@@ -602,6 +755,110 @@ export default function SuppliersDirectory() {
           )}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail size={20} className="text-accent" />
+              {t("my_sup_invite_tab")}
+            </DialogTitle>
+            <DialogDescription>{t("my_sup_invite_success_desc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">{t("my_sup_invite_email_label")} <span className="text-destructive">*</span></Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder={t("my_sup_invite_email_placeholder")}
+                disabled={isSendingInvite}
+                dir="ltr"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invite-company">{t("my_sup_invite_name_label")}</Label>
+              <Input
+                id="invite-company"
+                value={inviteCompanyName}
+                onChange={(e) => setInviteCompanyName(e.target.value)}
+                placeholder={t("my_sup_invite_name_placeholder")}
+                disabled={isSendingInvite}
+              />
+            </div>
+            <Button
+              className="w-full gap-2"
+              onClick={handleSendInvitation}
+              disabled={isSendingInvite || !inviteEmail.trim()}
+            >
+              {isSendingInvite ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+              {t("my_sup_invite_btn")}
+            </Button>
+
+            {sentInvitations.length > 0 && (
+              <div className="pt-2">
+                <p className="font-bold text-sm text-slate-700 mb-2">{t("my_sup_sent_invitations")}</p>
+                <div className="space-y-2 max-h-56 overflow-y-auto">
+                  {sentInvitations.map((inv: any) => (
+                    <div key={inv.id} className="p-3 rounded-lg border border-slate-200/60 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 truncate text-sm">{inv.companyName || inv.email}</p>
+                        {inv.companyName && (
+                          <p className="text-xs text-muted-foreground truncate">{inv.email}</p>
+                        )}
+                        <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                          <Calendar size={10} />
+                          {fmtDate(inv.createdAt, locale)}
+                        </p>
+                      </div>
+                      <Badge className={cn(
+                        "shrink-0 text-[11px] font-semibold",
+                        inv.status === "accepted"
+                          ? "bg-success/10 text-success border-success/20"
+                          : inv.status === "declined"
+                          ? "bg-destructive/10 text-destructive border-destructive/20"
+                          : "bg-amber-100 text-amber-700 border-amber-200"
+                      )}>
+                        {inv.status === "accepted"
+                          ? t("my_sup_inv_accepted")
+                          : inv.status === "declined"
+                          ? t("my_sup_inv_declined")
+                          : t("my_sup_inv_pending")}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("my_sup_remove_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("my_sup_remove_confirm_desc", { supplier: removeTarget?.supplierName || "—" })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              disabled={isRemoving}
+              onClick={() => {
+                if (removeTarget) handleRemoveConnection(removeTarget.id)
+              }}
+            >
+              {isRemoving ? <Loader2 className="animate-spin" size={14} /> : null}
+              {t("my_sup_remove")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PortalLayout>
   )
 }

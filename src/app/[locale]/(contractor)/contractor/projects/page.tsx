@@ -151,44 +151,47 @@ export default function ProjectsListPage() {
               }
               return (
                 <Link key={p.id} href={`/contractor/projects/${p.id}`}>
-                  <Card className="group hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-slate-200/60 bg-white/60 backdrop-blur-xl h-full">
+                  <Card className="group hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 border-primary/15 bg-white h-full">
                     <CardContent className="p-5 flex flex-col gap-3">
                       {/* Top row: name + badge */}
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-100">
                         <h3 className="font-bold text-lg text-slate-800 group-hover:text-primary transition-colors leading-snug line-clamp-2 flex-1">
                           {p.name || "—"}
                         </h3>
                         {p.status && getStatusBadge(p.status)}
                       </div>
 
-                      {/* RFQ count */}
-                      <div
-                        className={cn(
-                          "flex items-center gap-1.5 text-sm text-slate-600 bg-slate-50 px-2 py-1 rounded-md w-fit",
-                          isRtl ? "flex-row-reverse" : ""
+                      {/* Info block: RFQ count / location / budget */}
+                      <div className="flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+                        {/* RFQ count */}
+                        <div
+                          className={cn(
+                            "flex items-center gap-1.5 text-sm text-slate-600 w-fit",
+                            isRtl ? "flex-row-reverse" : ""
+                          )}
+                        >
+                          <FileText size={14} className="text-primary" />
+                          {t("proj_linked_rfqs", { count: p.rfqIds?.length || 0 })}
+                        </div>
+
+                        {/* Location */}
+                        {p.location && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <MapPin size={13} className="text-accent shrink-0" />
+                            <span className="truncate">{p.location}</span>
+                          </div>
                         )}
-                      >
-                        <FileText size={14} className="text-primary" />
-                        {t("proj_linked_rfqs", { count: p.rfqIds?.length || 0 })}
+
+                        {/* Budget */}
+                        {p.budget != null && (
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                            <DollarSign size={13} className="text-success shrink-0" />
+                            <span>
+                              {t("proj_budget_label")}: {p.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")}
+                            </span>
+                          </div>
+                        )}
                       </div>
-
-                      {/* Location */}
-                      {p.location && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <MapPin size={13} className="text-accent shrink-0" />
-                          <span className="truncate">{p.location}</span>
-                        </div>
-                      )}
-
-                      {/* Budget */}
-                      {p.budget != null && (
-                        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <DollarSign size={13} className="text-success shrink-0" />
-                          <span>
-                            {t("proj_budget_label")}: {p.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")}
-                          </span>
-                        </div>
-                      )}
 
                       {/* Created date */}
                       <p className="text-[11px] text-muted-foreground mt-auto pt-2 border-t border-slate-100">

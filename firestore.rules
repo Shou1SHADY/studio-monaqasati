@@ -75,20 +75,40 @@ service cloud.firestore {
     match /rfqs/{rfqId} {
       // Both get and list are safe for all signed-in users (RFQs are semi-public)
       allow read: if isSignedIn();
-      // A tender must always belong to a project owned by the caller's org —
-      // tenders can no longer be created without an open project.
+      // A project-linked RFQ ("Tender") must belong to a project owned by the caller's org.
+      // A standalone RFQ (no project — a quick, non-competitive price request) is also allowed,
+      // as long as projectId is absent/null. organizationId must match the caller either way.
       allow create: if isAdmin()
         || (
-          (isContractor() || (isSignedIn() && request.resource.data.organizationId == getOrganizationId()))
-          && request.resource.data.projectId is string
-          && request.resource.data.projectId.size() > 0
-          && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+          isSignedIn()
+          && request.resource.data.organizationId == getOrganizationId()
+          && (
+            (!('projectId' in request.resource.data)) || request.resource.data.projectId == null
+            || (
+              request.resource.data.projectId is string
+              && request.resource.data.projectId.size() > 0
+              && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+            )
+          )
         );
-      // Org members / admins can update everything.
+      // Org members / admins can update everything, but re-verify projectId ownership
+      // on every update too (not just create) so an RFQ can't be re-pointed at a
+      // project belonging to a different org after the fact.
       // Any signed-in user (e.g. a supplier submitting an offer) may increment
       // only the offersCount counter — no other field may change.
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.organizationId == getOrganizationId())
+        || (
+          isSignedIn()
+          && resource.data.organizationId == getOrganizationId()
+          && (
+            (!('projectId' in request.resource.data)) || request.resource.data.projectId == null
+            || (
+              request.resource.data.projectId is string
+              && request.resource.data.projectId.size() > 0
+              && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
+            )
+          )
+        )
         || (
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offersCount'])
@@ -299,13 +319,36 @@ service cloud.firestore {
       );
       allow list: if isSignedIn();
       // Supplier creates delivery notice for their own accepted offer
-      allow create: if isSupplier()
-        && request.resource.data.supplierOrgId == getOrganizationId();
-      // Contractor confirms receipt; supplier can update their own notice before confirmation
+      allow create: if (isSupplier()
+        && request.resource.data.supplierOrgId == getOrganizationId())
+        // Contractor manually logs a receipt for materials received outside the platform —
+        // must already be self-confirmed (no supplier notice/confirmation step to go through)
+        // and must not reference a real supplier account, to prevent impersonating one.
+        || (isContractor()
+          && request.resource.data.contractorOrgId == getOrganizationId()
+          && request.resource.data.contractorId == request.auth.uid
+          && request.resource.data.status == "confirmed"
+          && request.resource.data.confirmedByUserId == request.auth.uid
+          && !('supplierOrgId' in request.resource.data)
+          && !('supplierId' in request.resource.data)
+          && !('offerId' in request.resource.data)
+          && !('rfqId' in request.resource.data));
+      // Contractor confirms receipt; supplier can update their own notice before confirmation.
+      // A manual (contractor-logged) delivery is created without supplierOrgId/supplierId/
+      // offerId/rfqId to prevent impersonating a real supplier — lock that guarantee on
+      // update too, so those fields can never be added retroactively once absent.
       allow update: if isSignedIn() && (
         resource.data.contractorOrgId == getOrganizationId() ||
         resource.data.supplierOrgId == getOrganizationId() ||
         isAdmin()
+      ) && (
+        isAdmin() || !('supplierOrgId' in request.resource.data) || 'supplierOrgId' in resource.data
+      ) && (
+        isAdmin() || !('supplierId' in request.resource.data) || 'supplierId' in resource.data
+      ) && (
+        isAdmin() || !('offerId' in request.resource.data) || 'offerId' in resource.data
+      ) && (
+        isAdmin() || !('rfqId' in request.resource.data) || 'rfqId' in resource.data
       );
       allow delete: if isAdmin();
     }

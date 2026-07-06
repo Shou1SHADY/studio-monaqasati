@@ -270,3 +270,17 @@ html {
     animation: none;
   }
 }
+/* BOQ drag-and-drop visual states — toggled via classList from refs (never React state),
+   so a native drag gesture never re-renders the page. See contractor/projects/[id]/page.tsx. */
+.boq-drag-source {
+  opacity: 0.4;
+}
+.boq-dropzone-active {
+  border-style: dashed;
+  border-color: hsl(var(--primary) / 0.4);
+}
+.boq-dropzone-over {
+  border-style: solid;
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
+}
