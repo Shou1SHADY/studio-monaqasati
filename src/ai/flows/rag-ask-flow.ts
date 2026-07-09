@@ -15,9 +15,14 @@ const ActionParamsSchema = z.object({
   question: z.string().optional().describe('The inquiry question text (for createInquiry)'),
   supplierId: z.string().optional().describe('Supplier user ID (for favoriteSupplier)'),
   supplierName: z.string().optional().describe('Supplier display name (for favoriteSupplier)'),
-  title: z.string().optional().describe('RFQ title (for createRFQ)'),
+  title: z.string().optional().describe('RFQ or project title (for createRFQ / createProject)'),
   category: z.string().optional().describe('Material category (for createRFQ)'),
-  description: z.string().optional().describe('RFQ description (for createRFQ)'),
+  description: z.string().optional().describe('RFQ or project description'),
+  projectId: z.string().optional().describe('Project ID (for viewProject / viewBoq)'),
+  projectName: z.string().optional().describe('Project name for display (for viewProject / viewBoq)'),
+  region: z.string().optional().describe('Saudi region (for createProject)'),
+  projectType: z.string().optional().describe('Project type key (for createProject)'),
+  clientType: z.string().optional().describe('Client type key (for createProject)'),
 });
 
 const NavLinkSchema = z.object({
@@ -26,7 +31,7 @@ const NavLinkSchema = z.object({
 });
 
 const PendingActionSchema = z.object({
-  type: z.enum(['submitOffer', 'createInquiry', 'favoriteSupplier', 'createRFQ'])
+  type: z.enum(['submitOffer', 'createInquiry', 'favoriteSupplier', 'createRFQ', 'createProject', 'viewProject', 'viewBoq'])
     .describe('The type of action to perform'),
   params: ActionParamsSchema,
   label: z.string()
@@ -44,6 +49,7 @@ const RagAskInputSchema = z.object({
     rfqs: z.array(z.record(z.string(), z.any())).optional().describe('RFQ documents relevant to the user'),
     offers: z.array(z.record(z.string(), z.any())).optional().describe('Offer documents relevant to the user'),
     suppliers: z.array(z.record(z.string(), z.any())).optional().describe('Supplier profiles'),
+    projects: z.array(z.record(z.string(), z.any())).optional().describe('Project documents for the contractor'),
   }),
 });
 
@@ -71,13 +77,13 @@ function roleLabel(locale: 'ar' | 'en', role: string): string {
 function roleCapabilities(locale: 'ar' | 'en', role: string): string {
   if (locale === 'ar') {
     if (role === 'Contractor')
-      return '• إدارة طلبات العروض (RFQs) وتتبع حالتها\n• مراجعة العروض الواردة ومقارنة الأسعار\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق\n• المساعدة في استكمال بيانات الملف الشخصي وشروحات المستندات المطلوبة';
+      return '• إدارة المشاريع (إنشاء، تتبع الحالة، إضافة تفاصيل المنطقة ونوع المشروع والعميل)\n• رفع وإدارة جدول الكميات (BOQ) لكل مشروع\n• إدارة طلبات العروض (RFQs) وتتبع حالتها وربطها بالمشاريع\n• مراجعة العروض الواردة ومقارنة الأسعار\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق\n• المساعدة في استكمال بيانات الملف الشخصي وشروحات المستندات المطلوبة';
     if (role === 'Supplier')
       return '• البحث عن طلبات العروض المتاحة المطابقة لتخصصاتي\n• تتبع العروض المقدمة ومعرفة حالتها\n• تقديم عروض أسعار على طلبات العروض\n• استفسار عن تفاصيل طلبات العروض\n• المساعدة في استكمال بيانات الملف الشخصي والتخصصات والمستندات';
     return '• عرض إحصائيات المنصة والنشاط العام\n• مراجعة بيانات المستخدمين والتحقق منهم\n• تحليل توزيع الفئات والمناطق الجغرافية';
   }
   if (role === 'Contractor')
-    return '• Manage RFQs and track their status\n• Review incoming offers and compare prices\n• Search for suitable suppliers and add favorites\n• Get market price insights\n• Get help completing your business profile and document requirements';
+    return '• Manage projects (create, track status, add region / project type / client type)\n• Upload and manage Bill of Quantities (BOQ) per project\n• Manage RFQs and track their status — link them to projects\n• Review incoming offers and compare prices\n• Search for suitable suppliers and add favorites\n• Get market price insights\n• Get help completing your business profile and document requirements';
   if (role === 'Supplier')
     return '• Search available RFQs matching my specializations\n• Track submitted offers and their status\n• Submit price offers on RFQs\n• Inquire about RFQ details\n• Get help completing your profile, specializations, and documents';
   return '• View platform statistics and general activity\n• Review and verify user data\n• Analyze category and geographic distribution';
@@ -142,6 +148,22 @@ function buildContextBlock(input: RagAskInput): string {
     parts.push(`SUPPLIERS (${input.context.suppliers.length} total, showing ${suppliers.length}):\n${JSON.stringify(suppliers, null, 2)}`);
   }
 
+  if (input.context.projects?.length) {
+    const projects = input.context.projects.slice(0, 20).map(p => ({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      region: p.region,
+      projectType: p.projectType,
+      clientType: p.clientType,
+      budget: p.budget,
+      hasBlueprint: !!p.blueprintUrl,
+      rfqIds: p.rfqIds ?? [],
+      createdAt: p.createdAt,
+    }));
+    parts.push(`PROJECTS (${input.context.projects.length} total, showing ${projects.length}):\n${JSON.stringify(projects, null, 2)}`);
+  }
+
   return parts.length > 0
     ? `=== USER DATA CONTEXT ===\n\n${parts.join('\n\n')}\n\n=== END CONTEXT ===`
     : '(No context data provided)';
@@ -176,7 +198,10 @@ ${roleCapabilities('ar', role)}
 - المستخدم يريد السؤال عن طلب عروض → createInquiry (استخرج rfqId من السياق)
 - المستخدم يريد إضافة مورد للمفضلة → favoriteSupplier (استخرج supplierId من السياق)
 - المستخدم يريد إنشاء طلب عروض → createRFQ
-- المستخدم يستخدم كلمات مثل: "قدّم"، "أرسل"، "أضف"، "اعمل"، "أنشئ"، "I want to"، "submit"، "send"، "add"، "create" → pendingAction مطلوب دائماً
+- المستخدم يريد إنشاء مشروع جديد → createProject (استخدم name, region, projectType, clientType إن ذُكرت)
+- المستخدم يريد رؤية تفاصيل مشروع → viewProject (استخرج projectId من السياق)
+- المستخدم يريد رؤية جدول الكميات (BOQ) لمشروع → viewBoq (استخرج projectId من السياق)
+- المستخدم يستخدم كلمات مثل: "قدّم"، "أرسل"، "أضف"، "اعمل"، "أنشئ"، "عرض"، "افتح" → pendingAction مطلوب دائماً
 
 متى تضع pendingAction = null؟ فقط عند الأسئلة الاستعلامية البحتة مثل "كم عدد؟" أو "ما هي؟"
 
@@ -185,17 +210,29 @@ ${roleCapabilities('ar', role)}
 - createInquiry: { rfqId (إلزامي), rfqTitle, question (نص الاستفسار) }
 - favoriteSupplier: { supplierId (إلزامي), supplierName }
 - createRFQ: { title, category, description }
+- createProject: { title, region, projectType, clientType, description }
+- viewProject: { projectId (إلزامي), projectName }
+- viewBoq: { projectId (إلزامي), projectName }
 
-إذا لم تعرف rfqId بالضبط، اختر أول طلب عروض من البيانات المتاحة وأوضح ذلك في الإجابة.
+إذا لم تعرف rfqId/projectId بالضبط، اختر أول عنصر من البيانات المتاحة وأوضح ذلك في الإجابة.
+
+**أنواع المشاريع المتاحة:** proj_type_infrastructure، proj_type_buildings، proj_type_roads، proj_type_industrial، proj_type_energy، proj_type_other
+**أنواع العملاء المتاحة:** proj_client_government، proj_client_private، proj_client_semi_government
+**المناطق السعودية:** الرياض، مكة المكرمة، المدينة المنورة، المنطقة الشرقية، عسير، تبوك، حائل، الحدود الشمالية، جازان، نجران، الباحة، الجوف، القصيم
 
 **روابط التنقل (navLinks) — أضفها دائماً عند ذكر عناصر محددة:**
-كلما ذكرت طلب عروض أو عروضاً أو موردًا بمعرّف محدد، أضف رابطاً مباشراً:
+كلما ذكرت مشروعاً أو طلب عروض أو عروضاً أو موردًا بمعرّف محدد، أضف رابطاً مباشراً:
 
 للمقاول:
 - طلب عروض محدد: /contractor/rfqs/{rfqId}
 - عروض طلب عروض: /contractor/rfqs/{rfqId}/offers
 - ملف مورد: /contractor/supplier/profile/{supplierId}
 - كل طلبات العروض: /contractor/rfqs
+- مشروع محدد: /contractor/projects/{projectId}
+- كل المشاريع: /contractor/projects
+- إنشاء مشروع: /contractor/projects/new
+- استلام البضائع: /contractor/goods-received
+- دليل الموردين: /contractor/my-suppliers
 
 للمورد:
 - طلبات العروض المتاحة: /supplier/rfqs
@@ -205,8 +242,8 @@ ${roleCapabilities('ar', role)}
 - طلب عروض محدد: /admin/rfqs/{rfqId}
 - كل طلبات العروض: /admin/rfqs
 
-مثال: إذا ذكرت عروض طلب "try" (id: 4kbAArWzFtNopssZnekh) للمقاول، أضف:
-[{ label: "عرض العروض", path: "/contractor/rfqs/4kbAArWzFtNopssZnekh/offers" }]`;
+مثال: إذا ذكرت مشروع "فيلا الرياض" (id: proj-123) للمقاول، أضف:
+[{ label: "عرض المشروع", path: "/contractor/projects/proj-123" }, { label: "جدول الكميات", path: "/contractor/projects/proj-123" }]`;
   }
 
   return `You are a specialized AI assistant for "Mdmak Tech", a B2B smart procurement platform connecting contractors with suppliers in Saudi Arabia.
@@ -236,7 +273,10 @@ When to set pendingAction (not null)? In ANY of these cases:
 - User wants to ask a question about an RFQ → createInquiry (extract rfqId from context)
 - User wants to add a supplier to favorites → favoriteSupplier (extract supplierId from context)
 - User wants to create an RFQ → createRFQ
-- User uses words like: "submit", "send", "add", "create", "I want to", "let's", "do it", "place" → pendingAction is REQUIRED
+- User wants to create a new project → createProject (use name, region, projectType, clientType if mentioned)
+- User wants to view or open a project → viewProject (extract projectId from context)
+- User wants to view the Bill of Quantities (BOQ) for a project → viewBoq (extract projectId from context)
+- User uses words like: "submit", "send", "add", "create", "view", "open", "show", "I want to", "let's", "do it", "place" → pendingAction is REQUIRED
 
 When to set pendingAction = null? ONLY for purely informational questions like "how many?" or "what is?"
 
@@ -245,17 +285,29 @@ When to set pendingAction = null? ONLY for purely informational questions like "
 - createInquiry: { rfqId (required), rfqTitle, question (the inquiry text) }
 - favoriteSupplier: { supplierId (required), supplierName }
 - createRFQ: { title, category, description }
+- createProject: { title, region, projectType, clientType, description }
+- viewProject: { projectId (required), projectName }
+- viewBoq: { projectId (required), projectName }
 
-If you don't know the exact rfqId, pick the first RFQ from the context data and mention it in your answer.
+If you don't know the exact rfqId/projectId, pick the first item from the context data and mention it in your answer.
+
+**Available project types:** proj_type_infrastructure, proj_type_buildings, proj_type_roads, proj_type_industrial, proj_type_energy, proj_type_other
+**Available client types:** proj_client_government, proj_client_private, proj_client_semi_government
+**Saudi regions:** Riyadh, Makkah, Madinah, Eastern Province, Asir, Tabuk, Hail, Northern Borders, Jizan, Najran, Al-Baha, Al-Jouf, Qassim
 
 **Navigation links (navLinks) — always include when mentioning specific items:**
-Whenever you mention a specific RFQ, offer list, or supplier by ID, add a direct navLink:
+Whenever you mention a project, RFQ, offer list, or supplier by ID, add a direct navLink:
 
 For Contractor:
 - Specific RFQ: /contractor/rfqs/{rfqId}
 - Offers on an RFQ: /contractor/rfqs/{rfqId}/offers
 - Supplier profile: /contractor/supplier/profile/{supplierId}
 - All RFQs: /contractor/rfqs
+- Specific project: /contractor/projects/{projectId}
+- All projects: /contractor/projects
+- New project: /contractor/projects/new
+- Goods received: /contractor/goods-received
+- Supplier directory: /contractor/my-suppliers
 
 For Supplier:
 - Available RFQs: /supplier/rfqs
@@ -265,8 +317,8 @@ For Admin:
 - Specific RFQ: /admin/rfqs/{rfqId}
 - All RFQs: /admin/rfqs
 
-Example: if you mention offers for RFQ "try" (id: 4kbAArWzFtNopssZnekh) for a Contractor, add:
-[{ label: "View Offers", path: "/contractor/rfqs/4kbAArWzFtNopssZnekh/offers" }]`;
+Example: if you mention project "Villa Riyadh" (id: proj-123) for a Contractor, add:
+[{ label: "View Project", path: "/contractor/projects/proj-123" }, { label: "View BOQ", path: "/contractor/projects/proj-123" }]`;
 }
 
 // ── Flow ──────────────────────────────────────────────────────────────────────

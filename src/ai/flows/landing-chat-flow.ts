@@ -41,12 +41,17 @@ WHO WE SERVE:
 - Suppliers (موردين): Companies that supply construction materials
 
 FOR CONTRACTORS:
-- Post RFQs (Requests for Price Quotes) for any materials in minutes
+- Manage construction projects with type, region, client type, and PDF blueprint upload
+- Upload and manage Bill of Quantities (BOQ) per project via Excel/CSV import or manual entry
+- Post RFQs (Requests for Price Quotes) for any materials in minutes — link them to projects
 - Receive multiple competitive price offers from verified suppliers
 - AI-assisted RFQ writing for professional RFQ descriptions
 - Smart supplier recommendations based on category & location
 - Compare all offers side-by-side in a clean dashboard
+- Procurement materials sidebar: browse reference prices and add items directly to BOQ
+- Track goods received with digital receipts and file attachments
 - Track every procurement step digitally — no WhatsApp groups
+- Supplier directory: manage your vetted supplier network
 - Get analytics: price trends, supplier ratings, spend history
 
 FOR SUPPLIERS:

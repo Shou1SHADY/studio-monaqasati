@@ -18,6 +18,9 @@ const DraftRfqDescriptionInputSchema = z.object({
   quantity: z.number().describe('The required quantity of the product.'),
   unit: z.string().describe('The unit of measurement for the quantity. (e.g., طن, متر مربع, عدد)'),
   notes: z.string().optional().describe('Any additional notes or specific requirements for the RFQ. (e.g., جودة عالية مطلوبة)'),
+  projectName: z.string().optional().describe('Name of the linked project, if any. Adds context to the RFQ.'),
+  projectRegion: z.string().optional().describe('Saudi region of the project. (e.g., الرياض)'),
+  projectType: z.string().optional().describe('Project type key. (e.g., proj_type_buildings)'),
 });
 export type DraftRfqDescriptionInput = z.infer<typeof DraftRfqDescriptionInputSchema>;
 
@@ -45,8 +48,11 @@ const draftRfqDescriptionPrompt = ai.definePrompt({
 الكمية: {{{quantity}}}
 الوحدة: {{{unit}}}
 ملاحظات إضافية: {{{notes}}}
+{{#if projectName}}اسم المشروع: {{{projectName}}}{{/if}}
+{{#if projectRegion}}منطقة المشروع: {{{projectRegion}}}{{/if}}
+{{#if projectType}}نوع المشروع: {{{projectType}}}{{/if}}
 
-يرجى تقديم عنوان احترافي باللغة العربية ووصف تفصيلي ودقيق لطلب عروض الأسعار، مع الأخذ في الاعتبار أن الوصف يجب أن يكون شاملاً ويغطي جميع الجوانب الأساسية لطلب الشراء، ويساعد الموردين على فهم المتطلبات بوضوح. يجب أن تكون اللغة رسمية ومناسبة لمنصة B2B.
+يرجى تقديم عنوان احترافي باللغة العربية ووصف تفصيلي ودقيق لطلب عروض الأسعار، مع الأخذ في الاعتبار أن الوصف يجب أن يكون شاملاً ويغطي جميع الجوانب الأساسية لطلب الشراء، ويساعد الموردين على فهم المتطلبات بوضوح. إذا كان هناك اسم مشروع، أدرجه في الوصف. يجب أن تكون اللغة رسمية ومناسبة لمنصة B2B.
 `,
 });
 
