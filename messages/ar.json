@@ -884,6 +884,8 @@
       "delivery_date_label": "تاريخ التسليم",
       "delivery_notes_label": "ملاحظات (اختياري)",
       "delivery_notes_placeholder": "أي تفاصيل إضافية عن التسليم...",
+      "delivery_handover_recipient_label": "اسم المستلم في الموقع",
+      "delivery_handover_recipient_placeholder": "الاسم الكامل للشخص المستلم للبضاعة",
       "delivery_send_btn": "إرسال الإشعار",
       "delivery_sent_toast": "تم إرسال إشعار التسليم",
       "delivery_sent_desc": "سيُخطر المقاول لتأكيد الاستلام",

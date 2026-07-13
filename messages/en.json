@@ -885,6 +885,8 @@
       "delivery_date_label": "Delivery Date",
       "delivery_notes_label": "Notes (optional)",
       "delivery_notes_placeholder": "Any additional delivery details...",
+      "delivery_handover_recipient_label": "On-site Recipient Name",
+      "delivery_handover_recipient_placeholder": "Full name of person receiving the goods",
       "delivery_send_btn": "Send Notice",
       "delivery_sent_toast": "Delivery notice sent",
       "delivery_sent_desc": "The contractor will be notified to confirm receipt",
