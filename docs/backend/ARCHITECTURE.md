@@ -1,330 +1,476 @@
-# Backend Architecture - مدماك تيك
+# Backend Architecture — مدماك تيك
 
 ## Overview
 
-The backend is built on **Firebase** (Firestore, Authentication, Cloud Functions, Hosting) with **Genkit** for AI capabilities. This is a serverless architecture where most backend logic is handled by Firebase services.
+Serverless architecture built on Firebase (Firestore, Auth, Storage) with Genkit + Google GenAI for AI capabilities. All business logic runs either client-side via the Firebase SDK or in Next.js API routes (`src/app/api/`).
+
+---
 
 ## Firebase Services
 
-| Service | Purpose | Configuration |
-|---------|---------|---------------|
-| **Firestore** | NoSQL database for all application data | `firestore.rules`, `firestore.indexes.json` |
-| **Authentication** | User auth with email/password | Firebase Console |
-| **Hosting** | Static hosting for Next.js app | `firebase.json` |
-| **Cloud Functions** | Server-side logic & AI processing (future) | `functions/` directory |
+| Service | Purpose | Config files |
+|---|---|---|
+| **Firestore** | Primary database — all application data | `firestore.rules`, `firestore.indexes.json` |
+| **Authentication** | Email/password + Google OAuth | Firebase Console |
+| **Storage** | File uploads (blueprints, documents, attachments) | `storage.rules` |
+| **Hosting** | Static Next.js output | `firebase.json` |
 
-## Data Model
+Firebase client is initialized in `src/firebase/` — use `FirebaseClientProvider` context to access in components.
 
-### Entities
+---
 
-#### UserProfile
+## Firestore Collections
+
+### `users/{uid}`
+
+User profiles for all roles.
+
 ```typescript
 interface UserProfile {
-  id: string;                    // Firebase UID
-  role: 'Admin' | 'Contractor' | 'Supplier';
-  name: string;
-  email: string;
-  phone: string;
-  crNumber?: string;             // Commercial Registration (optional)
-  city?: string;
-  specializations?: string[];     // Suppliers only (from PREDEFINED_CATEGORIES)
-  isVerified: boolean;            // Default: false
-  profileCompleted: boolean;      // Default: false
-  coverageCities?: string[];     // Suppliers - service areas
-  joinedAt: string;               // ISO date string
+  id: string                    // Firebase UID
+  role: 'Admin' | 'Contractor' | 'Supplier'
+  name: string
+  email: string
+  phone?: string
+  crNumber?: string             // Commercial Registration number
+  vatNumber?: string
+  companyName?: string
+  city?: string
+  organizationId: string        // org grouping for team accounts
+  organizationRole?: 'owner' | 'member'
+  isVerified: boolean
+  profileCompleted: boolean
+  specializations?: string[]    // Supplier only — from PREDEFINED_CATEGORIES
+  serviceAreas?: string[]       // Supplier only — cities covered
+  coverageCities?: string[]
+  joinedAt: Timestamp
+  updatedAt?: Timestamp
 }
 ```
 
-#### RFQ (RequestForQuotation)
+**Subcollections:**
+- `users/{uid}/notifications/{notificationId}` — in-app notifications
+- `users/{uid}/2fa/{docId}` — OTP codes (owner-only)
+
+---
+
+### `rfqs/{rfqId}`
+
+Request for Quotation documents (standalone + project-linked tenders).
+
 ```typescript
 interface RFQ {
-  id: string;
-  contractorId: string;
-  title: string;
-  category: string;                // From PREDEFINED_CATEGORIES
-  subCategory?: string;
-  quantity?: number;
-  unitOfMeasure?: string;
-  deadline: string;               // ISO date string
-  city: string;
-  district?: string;
-  paymentTerms?: string;
-  isQualityCertificateRequired?: boolean;
-  notes?: string;
-  products?: Product[];          // Array of products for detailed RFQs
-  status: 'Draft' | 'New' | 'Awarded' | 'cancelled';
-  createdAt: string;              // ISO date string
-  publishedAt?: string;          // ISO date string when status changed to New
+  id: string
+  title: string
+  description?: string
+  status: 'New' | 'Active' | 'Closed' | 'Cancelled'
+  contractorId: string
+  organizationId: string
+  projectId?: string            // Set when RFQ is a project tender
+  products: RFQProduct[]
+  deadline?: string             // ISO date
+  city?: string
+  district?: string
+  offersCount: number           // Incremented by suppliers on offer submit
+  attachments?: string[]        // Storage URLs
+  createdAt: Timestamp
+  updatedAt?: Timestamp
 }
 
-interface Product {
-  id: string;
-  name: string;
-  quantity: string;
-  unit: string;
-  description?: string;
+interface RFQProduct {
+  id: string
+  description: string
+  quantity: string
+  unit: string
+  category: string
+  subCategory?: string
 }
 ```
 
-#### Offer
+**Subcollection:** `rfqs/{rfqId}/inquiries/{inquiryId}` — questions from suppliers
+
+---
+
+### `offers/{offerId}`
+
+Price offers submitted by suppliers on RFQs.
+
 ```typescript
 interface Offer {
-  id: string;
-  rfqId: string;
-  supplierId: string;
-  rfqTitle: string;
-  price: string;
-  deliveryLocation: string;
-  deliveryMethod: string;
-  deliveryFrequency?: string;
-  deliveryBatches: DeliveryBatch[];
-  totalBatchesPrice: number;
-  status: 'قيد المراجعة' | 'مقبول' | 'مرفوض' | 'New' | 'Accepted' | 'Rejected';
-  createdAt: string;
-}
-
-interface DeliveryBatch {
-  id: string;
-  quantity: string;
-  deliveryDate: string;
-  price: string;
+  id: string
+  rfqId: string
+  rfqTitle?: string
+  supplierId: string
+  supplierName?: string
+  supplierOrgId?: string
+  contractorId: string
+  contractorOrgId: string
+  organizationId: string        // contractor's org
+  price: number                 // SAR
+  currency: 'SAR'
+  deliveryDays?: number
+  notes?: string
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn'
+  createdAt: Timestamp
+  updatedAt?: Timestamp
 }
 ```
 
-#### InAppNotification
+---
+
+### `projects/{projectId}`
+
+Contractor project management — BOQ tracking, tender grouping.
+
 ```typescript
-interface InAppNotification {
-  id: string;
-  userId: string;
-  message: string;
-  type: 'new_rfq' | 'offer_submitted' | 'offer_accepted' | 'offer_rejected' | 'system';
-  isRead: boolean;
-  sentAt: string;
+interface Project {
+  id: string
+  name: string
+  description?: string
+  status: 'planning' | 'active' | 'completed' | 'cancelled'
+  organizationId: string
+  contractorId: string
+  region: string                // Saudi region
+  projectType: string           // proj_type_* key
+  clientType: string            // proj_client_* key
+  budget?: number
+  blueprintUrl?: string
+  rfqIds: string[]              // linked RFQ/tender IDs
+  createdAt: Timestamp
+  updatedAt?: Timestamp
 }
 ```
 
-## Firestore Structure
+**Subcollections:**
+- `projects/{projectId}/boqItems/{itemId}` — Bill of Quantities line items
+- `projects/{projectId}/boqGroups/{groupId}` — BOQ sections/groups
 
-```
-/users/{userId}
-  - User profile data
-  - Role-based access control
-  - Specializations for suppliers
-
-/rfqs/{rfqId}
-  - RFQ documents
-  - contractorId for authorization
-  - status: Draft, New, Awarded
-
-/offers/{offerId}
-  - Offer documents
-  - rfqId and supplierId for queries
-  - Delivery batches
-
-/users/{userId}/notifications/{notificationId}
-  - User-specific notifications (subcollection)
-
-/cities/{cityId} (optional)
-  - Predefined cities for dropdowns
+```typescript
+interface BOQItem {
+  id: string
+  groupId?: string
+  description: string
+  quantity: number
+  unit: string
+  unitPrice?: number
+  category: string
+  subCategory?: string
+  isEditable: boolean           // false when pushed to a tender (hard-locked)
+  tenderId?: string             // set when pushed to tender
+  createdAt: Timestamp
+  updatedAt?: Timestamp
+}
 ```
 
-## Security Rules
+---
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth.uid == userId;
-    }
-    
-    match /rfqs/{rfqId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth.uid == request.resource.data.contractorId;
-      allow update, delete: if request.auth.uid == resource.data.contractorId;
-    }
-    
-    match /offers/{offerId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth.uid == request.resource.data.supplierId;
-      allow update: if request.auth.uid in [resource.data.supplierId, resource.data.contractorId];
-    }
-    
-    match /users/{userId}/notifications/{notificationId} {
-      allow read, write: if request.auth.uid == userId;
-    }
+### `contractorCatalog/{itemId}`
+
+Recurring materials catalog — auto-populated from RFQ products. Used by the Quick Materials Catalog feature.
+
+```typescript
+interface CatalogItem {
+  id: string
+  contractorId: string
+  organizationId: string
+  name: string                  // product description
+  category: string
+  subCategory: string
+  unit: string
+  usageCount: number            // incremented on each RFQ that includes this item
+  lastQuantity: number
+  lastUsedAt: Timestamp | null
+  createdAt: Timestamp | null
+}
+```
+
+Upsert logic (`src/lib/catalog-utils.ts`):
+- Match by `(category + subCategory + unit)` within the org
+- If found: increment `usageCount`, update `lastQuantity` and `lastUsedAt`
+- If not found: `addDoc` with `usageCount: 1`
+- Runs fire-and-forget after RFQ publish — never blocks the user flow
+
+---
+
+### `chats/{chatId}`
+
+Messaging threads between a contractor and supplier.
+
+```typescript
+interface Chat {
+  id: string
+  contractorId: string
+  supplierId: string
+  contractorOrgId: string
+  supplierOrgId: string
+  rfqId?: string
+  lastMessage?: string
+  lastMessageAt?: Timestamp
+  createdAt: Timestamp
+}
+```
+
+**Subcollection:** `chats/{chatId}/messages/{messageId}`
+
+---
+
+### `messages/{messageId}` (top-level)
+
+Used by the mobile app for direct messaging (parallel to `chats/` subcollection).
+
+---
+
+### `deliveries/{deliveryId}`
+
+Delivery receipts — created by supplier (notice) or contractor (manual log).
+
+```typescript
+interface Delivery {
+  id: string
+  contractorId: string
+  contractorOrgId: string
+  supplierId?: string           // absent for manually logged deliveries
+  supplierOrgId?: string
+  offerId?: string
+  rfqId?: string
+  status: 'pending_confirmation' | 'confirmed'
+  confirmedByUserId?: string
+  items: DeliveryItem[]
+  notes?: string
+  createdAt: Timestamp
+  updatedAt?: Timestamp
+}
+```
+
+---
+
+### `invitations/{invitationId}`
+
+Team invitations and supplier-contractor connection invites.
+
+---
+
+### `contractorSupplierLinks/{linkId}`
+
+Bi-directional connection records between contractor org and supplier org.
+
+```typescript
+interface ContractorSupplierLink {
+  contractorOrgId: string
+  supplierOrgId: string
+  requestedBy: 'supplier' | 'contractor'
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+  createdAt: Timestamp
+}
+```
+
+---
+
+### `reviews/{reviewId}`
+
+Post-delivery supplier reviews from contractors.
+
+---
+
+### `procurementMaterials/{materialId}`
+
+Admin-managed catalog of standard procurement materials. Read-only for contractors.
+
+---
+
+### `categories/{categoryId}` / `cities/{cityId}`
+
+Reference data — managed by admin, read by all signed-in users.
+
+---
+
+### `notification_queue/{queueEntryId}`
+
+Admin/system notification dispatch queue.
+
+---
+
+## Firestore Security Rules
+
+Rules file: `firestore.rules` — must be deployed after any change:
+
+```bash
+firebase deploy --only firestore:rules --project <project-id>
+```
+
+### Helper Functions
+
+```
+isSignedIn()         — request.auth != null
+getUserData()        — reads /users/{uid} doc
+getOrganizationId()  — getUserData().organizationId
+hasRole(role)        — getUserData().role == role
+isAdmin()            — hasRole('Admin')
+isContractor()       — hasRole('Contractor')
+isSupplier()         — hasRole('Supplier')
+isOwner(userId)      — request.auth.uid == userId
+isOrgMember(orgId)   — getOrganizationId() == orgId
+```
+
+### Access Pattern Summary
+
+| Collection | Read | Write |
+|---|---|---|
+| `users` | signed-in (list), owner/org/admin (get) | owner on create, owner/admin/org-owner on update |
+| `rfqs` | signed-in (all — app `where` clause filters) | org member on create/update; org or creator on delete |
+| `offers` | signed-in (list); supplier/contractor/org on get | supplier or org member on create; supplier/contractor/org on update |
+| `projects` | signed-in (list); org/admin on get | contractor-org on create/update/delete |
+| `boqItems` | org member (via project lookup) | org member; locked items only allow unlock transition |
+| `contractorCatalog` | signed-in (all) | contractor (org-scoped) on create; org member on update; org/admin on delete |
+| `chats` | signed-in (list); parties on get/update | signed-in on create |
+| `deliveries` | signed-in (list); parties on get | supplier (notice) or contractor (manual) on create; parties on update |
+| `procurementMaterials` | signed-in | admin only |
+| `categories` / `cities` | signed-in | admin only |
+
+**Pattern used for `list` operations:** `allow read: if isSignedIn()` + client-side `where` clause for data isolation (same as `rfqs`, `offers`, `chats`). Firestore `resource` is `null` in list context so per-document field checks cannot be applied.
+
+---
+
+## Composite Indexes (`firestore.indexes.json`)
+
+Key indexes required:
+- `rfqs`: `organizationId ASC + createdAt DESC`
+- `rfqs`: `status ASC + deadline ASC`
+- `offers`: `rfqId ASC + createdAt DESC`
+- `offers`: `supplierId ASC + createdAt DESC`
+- `offers`: `organizationId ASC + status ASC`
+- `contractorCatalog`: `organizationId ASC + usageCount DESC`
+- `projects`: `organizationId ASC + createdAt DESC`
+- `deliveries`: `contractorOrgId ASC + createdAt DESC`
+
+Deploy indexes: `firebase deploy --only firestore:indexes --project <project-id>`
+
+---
+
+## AI Flows (`src/ai/flows/`)
+
+### Architecture
+
+```
+src/ai/
+  genkit.ts          — Genkit instance (googleAI plugin, Gemini model)
+  generate.ts        — aiGenerate() wrapper with structured output
+  flows/
+    rag-ask-flow.ts           — Portal AI assistant (RAG)
+    landing-chat-flow.ts      — Landing page chatbot
+    draft-rfq-description-flow.ts — AI-generated RFQ descriptions
+```
+
+### `rag-ask-flow.ts` — Portal AI Assistant
+
+**Endpoint:** `POST /api/rag/ask`
+
+**Input:**
+```typescript
+{
+  question: string
+  locale: 'ar' | 'en'
+  userRole: 'Contractor' | 'Supplier' | 'Admin'
+  context: {
+    profile?: Record<string, any>
+    rfqs?: Record<string, any>[]
+    offers?: Record<string, any>[]
+    suppliers?: Record<string, any>[]
+    projects?: Record<string, any>[]
+    catalogItems?: Record<string, any>[]
   }
 }
 ```
+
+**Output:**
+```typescript
+{
+  answer: string          // AI response in locale language
+  pendingAction: {        // null for info-only questions
+    type: 'submitOffer' | 'createInquiry' | 'favoriteSupplier' | 'createRFQ'
+         | 'createProject' | 'viewProject' | 'viewBoq' | 'openCatalog'
+    params: {
+      rfqId?, rfqTitle?, price?, notes?, question?,
+      supplierId?, supplierName?, title?, category?,
+      description?, projectId?, projectName?,
+      region?, projectType?, clientType?,
+      catalogIds?,        // for openCatalog
+    }
+    label: string         // short button label in user's language
+    description: string   // one sentence describing what will happen
+  } | null
+  navLinks: {             // direct deep links to mentioned items
+    label: string
+    path: string          // e.g. /contractor/rfqs/abc123
+  }[] | null
+}
+```
+
+**Known action triggers (Arabic):**
+- Price mention / "قدّم عرض" → `submitOffer`
+- "اسأل" / "استفسر" → `createInquiry`
+- "أضف للمفضلة" → `favoriteSupplier`
+- "أنشئ طلب عروض" → `createRFQ`
+- "أنشئ مشروع" → `createProject`
+- "اعرض مشروع" → `viewProject`
+- "جدول الكميات" / "BOQ" → `viewBoq`
+- "سوق المواد" / "المواد المتكررة" / "فتح الكتالوج" → `openCatalog`
+
+### `landing-chat-flow.ts` — Landing Chatbot
+
+Stateless chatbot for the public landing page. Knows platform features, pricing, and how to direct users to sign up. Does not access user data.
+
+### `draft-rfq-description-flow.ts` — RFQ Description Generator
+
+Given a product list, generates a professional Arabic RFQ description. Called from `RfqForm.tsx` via the "Generate Description" button.
+
+---
+
+## Next.js API Routes (`src/app/api/`)
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/rag/ask` | POST | Portal AI assistant — calls `ragAsk()` |
+| `/api/landing-chat` | POST | Landing page chatbot — calls Genkit flow |
+| `/api/login-hint` | GET | Returns auth login hint for email pre-fill |
+| `/api/sms` | POST | SMS OTP dispatch (via external provider) |
+
+All routes:
+- Validate input with zod at the top
+- Return `{ success: true, data: {...} }` on success
+- Return `{ error: true, message: '...', code: '...' }` on failure
+- Use `NextResponse.json()` with explicit HTTP status codes
+- Never expose Firebase Admin credentials or stack traces
+
+---
 
 ## Authentication Flow
 
-1. User visits `/login` or `/register`
-2. Firebase Auth handles email/password authentication
-3. On successful auth, user document is fetched from Firestore
-4. Role-based routing occurs:
-   - `Admin` → `/admin`
-   - `Contractor` → `/contractor`
-   - `Supplier` → `/supplier`
-5. Auth state is maintained via `onAuthStateChanged` listener
+1. **Register**: `createUserWithEmailAndPassword` → create `users/{uid}` doc with role
+2. **Login**: `signInWithEmailAndPassword` or Google OAuth
+3. **Session**: Firebase Auth handles tokens; `useUser()` hook provides current user client-side
+4. **Server-side**: `getServerSession()` in API routes / Server Components
+5. **Role check**: read `users/{uid}.role` from Firestore
 
-## API Reference
+---
 
-All API operations are performed client-side using Firebase SDK:
+## Organization / Team Model
 
-### Authentication
-```typescript
-// Register
-createUserWithEmailAndPassword(auth, email, password)
-updateProfile(user, { displayName: name })
-setDoc(doc(firestore, "users", user.uid), userData)
+- Every user has an `organizationId` field
+- Solo users: `organizationId === uid`
+- Team accounts: all members share the same `organizationId`; one member has `organizationRole: 'owner'`
+- All Firestore queries filter by `organizationId` for data isolation
+- Security rules use `getOrganizationId()` helper to enforce this at the database level
 
-// Login
-signInWithEmailAndPassword(auth, email, password)
-getDoc(doc(firestore, "users", user.uid))
-```
+---
 
-### RFQ Operations
-```typescript
-// Create RFQ
-addDoc(collection(firestore, "rfqs"), rfqData)
+## Constants (`src/lib/constants.ts`)
 
-// List RFQs
-const q = query(
-  collection(firestore, "rfqs"),
-  where("contractorId", "==", user.uid),
-  orderBy("createdAt", "desc")
-)
-
-// Update RFQ status
-updateDoc(doc(firestore, "rfqs", rfqId), { status: "New" })
-```
-
-### Offer Operations
-```typescript
-// Submit Offer
-addDoc(collection(firestore, "offers"), offerData)
-
-// List Offers (Supplier)
-query(
-  collection(firestore, "offers"),
-  where("supplierId", "==", user.uid)
-)
-
-// List Offers (RFQ - Contractor)
-query(
-  collection(firestore, "offers"),
-  where("rfqId", "==", rfqId)
-)
-```
-
-## Indexes
-
-Required composite indexes in Firestore (defined in `firestore.indexes.json`):
-
-```json
-[
-  {
-    "collectionGroup": "offers",
-    "queryScope": "COLLECTION",
-    "fields": [
-      { "fieldPath": "supplierId", "order": "ASCENDING" },
-      { "fieldPath": "createdAt", "order": "DESCENDING" }
-    ]
-  },
-  {
-    "collectionGroup": "rfqs",
-    "queryScope": "COLLECTION",
-    "fields": [
-      { "fieldPath": "contractorId", "order": "ASCENDING" },
-      { "fieldPath": "status", "order": "ASCENDING" }
-    ]
-  },
-  {
-    "collectionGroup": "rfqs",
-    "queryScope": "COLLECTION",
-    "fields": [
-      { "fieldPath": "category", "order": "ASCENDING" },
-      { "fieldPath": "status", "order": "ASCENDING" }
-    ]
-  }
-]
-```
-
-## AI Flows (Genkit)
-
-### Available Flows
-
-| Flow | Purpose | Input | Output |
-|------|---------|-------|--------|
-| `recommendRFQForSupplier` | Match RFQs to supplier's specializations | supplierId | RFQ[] |
-| `recommendSuppliersForRFQ` | Match suppliers to RFQ's category | rfqId | Supplier[] |
-| `suggestSupplierSpecializations` | AI categorize supplier based on profile | supplierId | Category[] |
-| `draftRFQDescription` | AI-assisted RFQ description generation | rawText | description |
-
-### Running AI Flows
-
-```bash
-# Start Genkit dev server
-npm run genkit:dev
-
-# Watch mode for development
-npm run genkit:watch
-```
-
-## Deployment
-
-### Firebase Deployment
-```bash
-# Deploy hosting
-firebase deploy --only hosting
-
-# Deploy Firestore rules
-firebase deploy --only firestore:rules
-
-# Deploy indexes
-firebase deploy --only firestore:indexes
-
-# Full deploy
-firebase deploy
-```
-
-### Environment Variables
-
-Required in `.env.local`:
-```env
-NEXT_PUBLIC_FIREBASE_API_KEY=
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
-NEXT_PUBLIC_FIREBASE_APP_ID=
-NEXT_PUBLIC_GEMINI_API_KEY=
-```
-
-## Best Practices
-
-1. **Data Denormalization**: Store `contractorId` in RFQ documents for direct access checks
-2. **Real-time Listeners**: Use Firestore `onSnapshot` for live data updates
-3. **Optimistic Updates**: Update UI immediately, then sync with server
-4. **Error Handling**: Wrap all Firestore operations in try-catch blocks
-5. **Loading States**: Always show loading indicators while fetching data
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Permission Denied**: Check Firestore rules and ensure user is authenticated
-2. **Slow Queries**: Review index usage in Firebase Console
-3. **Auth State Issues**: Verify Firebase Auth configuration
-4. **Build Errors**: Run `npm run typecheck` to identify type errors
-
-### Debug Mode
-
-Add to `.env.local`:
-```env
-NEXT_PUBLIC_DEBUG=true
-```
-
-Check browser console for Firebase logs.
+| Export | Contents |
+|---|---|
+| `PREDEFINED_CATEGORIES` | Array of `{ id, name_ar, name_en, subcategories[] }` — 10 construction material categories |
+| `SAUDI_CITIES` | Array of Saudi city names |
+| `UNITS` | Array of measurement units (طن، متر مكعب، لتر، etc.) |
+| `PROJECT_TYPES` | `proj_type_*` keys with AR/EN labels |
+| `CLIENT_TYPES` | `proj_client_*` keys with AR/EN labels |
+| `displayCategory(category, locale)` | Returns localized category name |
