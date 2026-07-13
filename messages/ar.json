@@ -418,7 +418,8 @@
       "logout": "تسجيل الخروج",
       "contractor_goods_received": "سجل الاستلام",
       "contractor_new_project": "مشروع جديد",
-      "contractor_new_rfq": "طلب عروض أسعار جديد"
+      "contractor_new_rfq": "طلب عروض أسعار جديد",
+      "contractor_catalog": "سوق المواد"
     },
     "Layout": {
       "search_placeholder": "بحث سريع...",
@@ -1897,7 +1898,24 @@
       "procurement_add_to_boq": "إضافة للجدول",
       "procurement_toggle": "دليل المواد",
       "procurement_loading": "جاري تحميل الدليل...",
-      "procurement_all_categories": "كل الفئات"
+      "procurement_all_categories": "كل الفئات",
+      "catalog_page_title": "سوق المواد السريع",
+      "catalog_page_desc": "اختر المواد التي طلبتها من قبل وأنشئ طلب عروض أسعار في ثوانٍ",
+      "catalog_search_placeholder": "ابحث عن مادة...",
+      "catalog_filter_all": "الكل",
+      "catalog_usage_times": "{count}×",
+      "catalog_last_qty": "آخر كمية: {qty} {unit}",
+      "catalog_create_rfq": "طلب عروض سريع",
+      "catalog_create_rfq_n": "إنشاء طلب لـ {count} عنصر",
+      "catalog_items_selected": "عنصر محدد",
+      "catalog_deselect": "إلغاء التحديد",
+      "catalog_select_hint": "انقر على العناصر لتحديدها ثم أنشئ طلب عروض سريع",
+      "catalog_empty_title": "لا توجد مواد بعد",
+      "catalog_empty_desc": "ستظهر هنا المواد التي تطلبها عبر طلبات عروض الأسعار المنشورة تلقائياً",
+      "catalog_empty_cta": "إنشاء أول طلب عروض أسعار",
+      "catalog_no_results": "لا توجد نتائج مطابقة",
+      "catalog_prefilled_toast": "تم تعبئة المنتجات من الكتالوج",
+      "catalog_prefilled_toast_desc": "تم إضافة {count} عنصر"
     },
     "Admin": {
       "Dashboard": {

@@ -419,7 +419,8 @@
       "logout": "Logout",
       "contractor_goods_received": "Goods Received",
       "contractor_new_project": "New Project",
-      "contractor_new_rfq": "New RFQ"
+      "contractor_new_rfq": "New RFQ",
+      "contractor_catalog": "Materials Catalog"
     },
     "Layout": {
       "search_placeholder": "Quick search...",
@@ -1897,7 +1898,24 @@
       "procurement_add_to_boq": "Add to BOQ",
       "procurement_toggle": "Materials Guide",
       "procurement_loading": "Loading catalog...",
-      "procurement_all_categories": "All Categories"
+      "procurement_all_categories": "All Categories",
+      "catalog_page_title": "Quick Materials Catalog",
+      "catalog_page_desc": "Select materials you've requested before and create an RFQ in seconds",
+      "catalog_search_placeholder": "Search materials...",
+      "catalog_filter_all": "All",
+      "catalog_usage_times": "{count}×",
+      "catalog_last_qty": "Last qty: {qty} {unit}",
+      "catalog_create_rfq": "Quick RFQ",
+      "catalog_create_rfq_n": "Create RFQ for {count} items",
+      "catalog_items_selected": "selected",
+      "catalog_deselect": "Deselect all",
+      "catalog_select_hint": "Click items to select them, then create a quick RFQ",
+      "catalog_empty_title": "No materials yet",
+      "catalog_empty_desc": "Materials you request through published RFQs will appear here automatically",
+      "catalog_empty_cta": "Create your first RFQ",
+      "catalog_no_results": "No matching materials found",
+      "catalog_prefilled_toast": "Products pre-filled from catalog",
+      "catalog_prefilled_toast_desc": "{count} items added"
     },
     "Admin": {
       "Dashboard": {

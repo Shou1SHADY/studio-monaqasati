@@ -51,6 +51,7 @@ FOR CONTRACTORS:
 - Procurement materials sidebar: browse reference prices and add items directly to BOQ
 - Track goods received with digital receipts and file attachments
 - Track every procurement step digitally — no WhatsApp groups
+- Quick Materials Catalog: recurring items from past RFQs are saved automatically — select them and create a new RFQ in one click
 - Supplier directory: manage your vetted supplier network
 - Get analytics: price trends, supplier ratings, spend history
 

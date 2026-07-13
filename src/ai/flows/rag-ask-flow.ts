@@ -23,6 +23,7 @@ const ActionParamsSchema = z.object({
   region: z.string().optional().describe('Saudi region (for createProject)'),
   projectType: z.string().optional().describe('Project type key (for createProject)'),
   clientType: z.string().optional().describe('Client type key (for createProject)'),
+  catalogIds: z.array(z.string()).optional().describe('Catalog item IDs to pre-select (for openCatalog quick RFQ)'),
 });
 
 const NavLinkSchema = z.object({
@@ -31,7 +32,7 @@ const NavLinkSchema = z.object({
 });
 
 const PendingActionSchema = z.object({
-  type: z.enum(['submitOffer', 'createInquiry', 'favoriteSupplier', 'createRFQ', 'createProject', 'viewProject', 'viewBoq'])
+  type: z.enum(['submitOffer', 'createInquiry', 'favoriteSupplier', 'createRFQ', 'createProject', 'viewProject', 'viewBoq', 'openCatalog'])
     .describe('The type of action to perform'),
   params: ActionParamsSchema,
   label: z.string()
@@ -50,6 +51,7 @@ const RagAskInputSchema = z.object({
     offers: z.array(z.record(z.string(), z.any())).optional().describe('Offer documents relevant to the user'),
     suppliers: z.array(z.record(z.string(), z.any())).optional().describe('Supplier profiles'),
     projects: z.array(z.record(z.string(), z.any())).optional().describe('Project documents for the contractor'),
+    catalogItems: z.array(z.record(z.string(), z.any())).optional().describe('Recurring materials catalog items for the contractor'),
   }),
 });
 
@@ -77,13 +79,13 @@ function roleLabel(locale: 'ar' | 'en', role: string): string {
 function roleCapabilities(locale: 'ar' | 'en', role: string): string {
   if (locale === 'ar') {
     if (role === 'Contractor')
-      return '• إدارة المشاريع (إنشاء، تتبع الحالة، إضافة تفاصيل المنطقة ونوع المشروع والعميل)\n• رفع وإدارة جدول الكميات (BOQ) لكل مشروع\n• إدارة طلبات العروض (RFQs) وتتبع حالتها وربطها بالمشاريع\n• مراجعة العروض الواردة ومقارنة الأسعار\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق\n• المساعدة في استكمال بيانات الملف الشخصي وشروحات المستندات المطلوبة';
+      return '• إدارة المشاريع (إنشاء، تتبع الحالة، إضافة تفاصيل المنطقة ونوع المشروع والعميل)\n• رفع وإدارة جدول الكميات (BOQ) لكل مشروع\n• إدارة طلبات العروض (RFQs) وتتبع حالتها وربطها بالمشاريع\n• مراجعة العروض الواردة ومقارنة الأسعار\n• سوق المواد السريع: عرض المواد المتكررة واختيارها لإنشاء طلب عروض بنقرة واحدة\n• البحث عن الموردين المناسبين وإضافتهم للمفضلة\n• الحصول على رؤى حول أسعار السوق\n• المساعدة في استكمال بيانات الملف الشخصي وشروحات المستندات المطلوبة';
     if (role === 'Supplier')
       return '• البحث عن طلبات العروض المتاحة المطابقة لتخصصاتي\n• تتبع العروض المقدمة ومعرفة حالتها\n• تقديم عروض أسعار على طلبات العروض\n• استفسار عن تفاصيل طلبات العروض\n• المساعدة في استكمال بيانات الملف الشخصي والتخصصات والمستندات';
     return '• عرض إحصائيات المنصة والنشاط العام\n• مراجعة بيانات المستخدمين والتحقق منهم\n• تحليل توزيع الفئات والمناطق الجغرافية';
   }
   if (role === 'Contractor')
-    return '• Manage projects (create, track status, add region / project type / client type)\n• Upload and manage Bill of Quantities (BOQ) per project\n• Manage RFQs and track their status — link them to projects\n• Review incoming offers and compare prices\n• Search for suitable suppliers and add favorites\n• Get market price insights\n• Get help completing your business profile and document requirements';
+    return '• Manage projects (create, track status, add region / project type / client type)\n• Upload and manage Bill of Quantities (BOQ) per project\n• Manage RFQs and track their status — link them to projects\n• Review incoming offers and compare prices\n• Quick Materials Catalog: browse recurring materials and select them to create a new RFQ in one click\n• Search for suitable suppliers and add favorites\n• Get market price insights\n• Get help completing your business profile and document requirements';
   if (role === 'Supplier')
     return '• Search available RFQs matching my specializations\n• Track submitted offers and their status\n• Submit price offers on RFQs\n• Inquire about RFQ details\n• Get help completing your profile, specializations, and documents';
   return '• View platform statistics and general activity\n• Review and verify user data\n• Analyze category and geographic distribution';
@@ -164,6 +166,19 @@ function buildContextBlock(input: RagAskInput): string {
     parts.push(`PROJECTS (${input.context.projects.length} total, showing ${projects.length}):\n${JSON.stringify(projects, null, 2)}`);
   }
 
+  if (input.context.catalogItems?.length) {
+    const catalog = input.context.catalogItems.slice(0, 30).map(c => ({
+      id: c.id,
+      name: c.name,
+      category: c.category,
+      subCategory: c.subCategory,
+      unit: c.unit,
+      usageCount: c.usageCount,
+      lastQuantity: c.lastQuantity,
+    }));
+    parts.push(`CATALOG ITEMS (${input.context.catalogItems.length} total, showing ${catalog.length}):\n${JSON.stringify(catalog, null, 2)}`);
+  }
+
   return parts.length > 0
     ? `=== USER DATA CONTEXT ===\n\n${parts.join('\n\n')}\n\n=== END CONTEXT ===`
     : '(No context data provided)';
@@ -201,6 +216,7 @@ ${roleCapabilities('ar', role)}
 - المستخدم يريد إنشاء مشروع جديد → createProject (استخدم name, region, projectType, clientType إن ذُكرت)
 - المستخدم يريد رؤية تفاصيل مشروع → viewProject (استخرج projectId من السياق)
 - المستخدم يريد رؤية جدول الكميات (BOQ) لمشروع → viewBoq (استخرج projectId من السياق)
+- المستخدم يريد فتح سوق المواد أو إنشاء طلب عروض سريع من المواد المتكررة → openCatalog (يمكن تمرير catalogIds إن ذُكرت)
 - المستخدم يستخدم كلمات مثل: "قدّم"، "أرسل"، "أضف"، "اعمل"، "أنشئ"، "عرض"، "افتح" → pendingAction مطلوب دائماً
 
 متى تضع pendingAction = null؟ فقط عند الأسئلة الاستعلامية البحتة مثل "كم عدد؟" أو "ما هي؟"
@@ -213,6 +229,7 @@ ${roleCapabilities('ar', role)}
 - createProject: { title, region, projectType, clientType, description }
 - viewProject: { projectId (إلزامي), projectName }
 - viewBoq: { projectId (إلزامي), projectName }
+- openCatalog: { catalogIds (اختياري — معرفات عناصر مُحددة), title }
 
 إذا لم تعرف rfqId/projectId بالضبط، اختر أول عنصر من البيانات المتاحة وأوضح ذلك في الإجابة.
 
@@ -233,6 +250,7 @@ ${roleCapabilities('ar', role)}
 - إنشاء مشروع: /contractor/projects/new
 - استلام البضائع: /contractor/goods-received
 - دليل الموردين: /contractor/my-suppliers
+- سوق المواد السريع: /contractor/catalog
 
 للمورد:
 - طلبات العروض المتاحة: /supplier/rfqs
@@ -276,6 +294,7 @@ When to set pendingAction (not null)? In ANY of these cases:
 - User wants to create a new project → createProject (use name, region, projectType, clientType if mentioned)
 - User wants to view or open a project → viewProject (extract projectId from context)
 - User wants to view the Bill of Quantities (BOQ) for a project → viewBoq (extract projectId from context)
+- User wants to open the materials catalog or create a quick RFQ from recurring items → openCatalog (pass catalogIds if specific items are mentioned)
 - User uses words like: "submit", "send", "add", "create", "view", "open", "show", "I want to", "let's", "do it", "place" → pendingAction is REQUIRED
 
 When to set pendingAction = null? ONLY for purely informational questions like "how many?" or "what is?"
@@ -288,6 +307,7 @@ When to set pendingAction = null? ONLY for purely informational questions like "
 - createProject: { title, region, projectType, clientType, description }
 - viewProject: { projectId (required), projectName }
 - viewBoq: { projectId (required), projectName }
+- openCatalog: { catalogIds (optional — IDs of pre-selected items), title }
 
 If you don't know the exact rfqId/projectId, pick the first item from the context data and mention it in your answer.
 
@@ -308,6 +328,7 @@ For Contractor:
 - New project: /contractor/projects/new
 - Goods received: /contractor/goods-received
 - Supplier directory: /contractor/my-suppliers
+- Quick Materials Catalog: /contractor/catalog
 
 For Supplier:
 - Available RFQs: /supplier/rfqs

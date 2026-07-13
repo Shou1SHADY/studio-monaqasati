@@ -33,6 +33,7 @@ import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
+import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CATEGORIES_DATA, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -65,6 +66,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const searchParams = useSearchParams()
   const editId = searchParams.get("edit")
   const isEditing = !!editId
+  const catalogParam = searchParams.get("catalog")
   const [editRfqData, setEditRfqData] = useState<any>(null)
   const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
   const firestore = useFirestore()
@@ -180,6 +182,33 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     }
     loadEditData()
   }, [editId, firestore, user, isUserLoading, isProfileLoading])
+
+  // Pre-populate products from catalog selection (?catalog=id1,id2,...)
+  useEffect(() => {
+    if (!catalogParam || !firestore || isEditing) return
+    const ids = catalogParam.split(",").filter(Boolean)
+    if (ids.length === 0) return
+
+    Promise.all(ids.map(id => getDoc(doc(firestore, "contractorCatalog", id))))
+      .then(snaps => {
+        type CatalogSnap = { id: string; lastQuantity?: number; unit?: string; category?: string; subCategory?: string }
+        const valid: CatalogSnap[] = snaps.filter(s => s.exists()).map(s => ({ id: s.id, ...s.data() } as CatalogSnap))
+        if (valid.length === 0) return
+        setProducts(valid.map((item, idx) => ({
+          id: (idx + 1).toString(),
+          quantity: String(item.lastQuantity || ""),
+          unit: String(item.unit || ""),
+          description: "",
+          category: String(item.category || ""),
+          subCategory: String(item.subCategory || ""),
+        })))
+        toast({
+          title: t("catalog_prefilled_toast"),
+          description: t("catalog_prefilled_toast_desc", { count: valid.length }),
+        })
+      })
+      .catch(console.error)
+  }, [catalogParam, firestore])
 
   if (isLoadingEdit) {
     return (
@@ -601,6 +630,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       setStep(1)
       setIsSubmitting(false)
     } else {
+      // Update recurring-items catalog — fire and forget, doesn't block the success flow
+      const orgId = (profile as Record<string, string>)?.organizationId || user.uid
+      upsertCatalogItems(firestore, user.uid, orgId, validProducts).catch(console.error)
+
       toast({
         title: t("newrfq_toast_published"),
         description: t("newrfq_toast_published_desc"),

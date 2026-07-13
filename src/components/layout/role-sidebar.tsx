@@ -26,6 +26,7 @@ import {
   Link2,
   PackageCheck,
   FilePlus,
+  ShoppingBasket,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -69,6 +70,7 @@ const contractorSections: NavSection[] = [
           { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus },
         ],
       },
+      { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket },
       { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
     ],

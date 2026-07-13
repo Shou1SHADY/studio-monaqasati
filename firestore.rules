@@ -307,6 +307,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Contractor recurring-items catalog — org-scoped read (same pattern as rfqs/deliveries)
+    match /contractorCatalog/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isContractor()
+        && request.resource.data.organizationId == getOrganizationId()
+        && request.resource.data.contractorId == request.auth.uid;
+      allow update: if isSignedIn()
+        && resource.data.organizationId == getOrganizationId();
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+    }
+
     // Delivery receipts — both contractor and supplier involved can read/write
     match /deliveries/{deliveryId} {
       allow get: if isSignedIn() && (
