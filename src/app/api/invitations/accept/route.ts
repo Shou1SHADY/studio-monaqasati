@@ -47,17 +47,66 @@ export async function POST(req: NextRequest) {
 
     const invitationRef = snap.docs[0].ref
     const inv = snap.docs[0].data()
-    if (inv.type !== "supplier_invite" || inv.status !== "pending") {
+    const validType = inv.type === "supplier_invite" || inv.type === "team_invite"
+    if (!validType || inv.status !== "pending") {
       return errorResponse("This invitation is no longer valid", "INVITATION_NOT_PENDING", 410)
     }
-    if (!inv.contractorOrgId) {
-      return errorResponse("Invitation is missing contractor information", "INVALID_INVITATION", 422)
-    }
 
-    // --- Load the accepting user; must be a Supplier ---
+    // --- Load the accepting user ---
     const userSnap = await db.collection("users").doc(decoded.uid).get()
     const profile = userSnap.data()
     if (!profile) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
+
+    // ============================ TEAM INVITE ============================
+    if (inv.type === "team_invite") {
+      if (!inv.organizationId) {
+        return errorResponse("Invitation is missing organization information", "INVALID_INVITATION", 422)
+      }
+      if (inv.organizationId === decoded.uid) {
+        return errorResponse("You cannot accept an invitation to your own organization", "SELF_ACCEPT", 400)
+      }
+      // Guard: already a member of a different org (a solo org — own uid — is fine).
+      if (
+        profile.organizationId &&
+        profile.organizationId !== decoded.uid &&
+        profile.organizationId !== inv.organizationId
+      ) {
+        return errorResponse("You already belong to another organization", "IN_OTHER_ORG", 409)
+      }
+
+      await db.collection("users").doc(decoded.uid).update({
+        organizationId: inv.organizationId,
+        organizationRole: "member",
+        role: inv.role || profile.role || "Contractor",
+        defaultGroupId: inv.groupId || null,
+      })
+
+      await invitationRef.update({
+        status: "accepted",
+        acceptedAt: FieldValue.serverTimestamp(),
+        acceptedBy: decoded.uid,
+        acceptedEmail: (profile.email as string) || decoded.email || null,
+      })
+
+      await db
+        .collection("teamActivity")
+        .add({
+          organizationId: inv.organizationId,
+          type: "member_joined",
+          actorId: decoded.uid,
+          actorName: (profile.name as string) || (profile.email as string) || "",
+          targetName: null,
+          createdAt: FieldValue.serverTimestamp(),
+        })
+        .catch((err) => console.error("Failed to log join activity:", err))
+
+      return NextResponse.json({ success: true, data: { joined: true, organizationId: inv.organizationId } })
+    }
+
+    // ========================== SUPPLIER INVITE ==========================
+    if (!inv.contractorOrgId) {
+      return errorResponse("Invitation is missing contractor information", "INVALID_INVITATION", 422)
+    }
     if (profile.role !== "Supplier") {
       return errorResponse("Only supplier accounts can accept supplier invitations", "FORBIDDEN", 403)
     }

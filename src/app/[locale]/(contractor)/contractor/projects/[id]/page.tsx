@@ -96,6 +96,7 @@ import {
   Scissors,
   LayoutGrid,
   List,
+  Users,
 } from "lucide-react"
 import {
   useReactTable,
@@ -108,6 +109,8 @@ import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
+import { ProjectTeamSection } from "@/components/project-team"
+import { usePermissions } from "@/hooks/usePermissions"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -210,7 +213,7 @@ const BoqTableRow = memo(
     prev.columns === next.columns
 )
 
-type ActiveTab = "info" | "boq" | "rfqs"
+type ActiveTab = "info" | "boq" | "rfqs" | "team"
 
 export default function ProjectDetailPage() {
   const t = useTranslations("Portal.Contractor")
@@ -223,11 +226,12 @@ export default function ProjectDetailPage() {
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions(projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
     const initial = searchParams.get("tab")
-    return initial === "boq" || initial === "rfqs" ? initial : "info"
+    return initial === "boq" || initial === "rfqs" || initial === "team" ? initial : "info"
   })
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState("")
@@ -515,6 +519,7 @@ export default function ProjectDetailPage() {
     clientType?: string
     blueprintUrl?: string
     rfqIds?: string[]
+    organizationId?: string
     createdAt?: unknown
   } | null
 
@@ -1452,6 +1457,7 @@ export default function ProjectDetailPage() {
     { key: "info", label: t("proj_tab_info"), icon: <FolderOpen size={15} /> },
     { key: "boq", label: t("proj_tab_boq"), icon: <TableProperties size={15} /> },
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
+    { key: "team", label: t("proj_tab_team"), icon: <Users size={15} /> },
   ]
 
   return (
@@ -1480,19 +1486,23 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <Button variant="outline" size="sm" onClick={startEdit} className="gap-1">
-              <Pencil size={14} />
-              {t("proj_edit")}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDeleteDialog(true)}
-              className="gap-1 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive"
-            >
-              <Trash2 size={14} />
-              {t("proj_delete")}
-            </Button>
+            {can("projects.edit") && (
+              <Button variant="outline" size="sm" onClick={startEdit} className="gap-1">
+                <Pencil size={14} />
+                {t("proj_edit")}
+              </Button>
+            )}
+            {can("projects.delete") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeleteDialog(true)}
+                className="gap-1 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive"
+              >
+                <Trash2 size={14} />
+                {t("proj_delete")}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1716,7 +1726,7 @@ export default function ProjectDetailPage() {
                     {boqSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                     {t("proj_boq_save")}
                   </Button>
-                  <Button
+                  {can("projects.publish") && <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setIsPublishDialogOpen(true)}
@@ -1725,7 +1735,7 @@ export default function ProjectDetailPage() {
                   >
                     <Send size={14} />
                     {t("proj_boq_push_to_tender")}
-                  </Button>
+                  </Button>}
                 </div>
               </div>
 
@@ -2025,7 +2035,7 @@ export default function ProjectDetailPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
                                 </Tooltip>
-                                {editable && r.status === "Draft" && (
+                                {editable && r.status === "Draft" && can("projects.publish") && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <button
@@ -2146,6 +2156,11 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* ── TAB: TEAM ── */}
+        {activeTab === "team" && (
+          <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
         )}
       </div>
 

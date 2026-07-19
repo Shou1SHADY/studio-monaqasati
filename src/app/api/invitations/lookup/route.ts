@@ -28,13 +28,28 @@ export async function GET(req: NextRequest) {
     }
 
     const inv = snap.docs[0].data()
-    if (inv.type !== "supplier_invite" || inv.status !== "pending") {
+    const validType = inv.type === "supplier_invite" || inv.type === "team_invite"
+    if (!validType || inv.status !== "pending") {
       return errorResponse("This invitation is no longer valid", "INVITATION_NOT_PENDING", 410)
+    }
+
+    if (inv.type === "team_invite") {
+      return NextResponse.json({
+        success: true,
+        data: {
+          type: "team_invite" as const,
+          email: inv.email as string,
+          name: (inv.name as string) || null,
+          orgName: (inv.organizationName as string) || (inv.invitedByName as string) || "",
+          role: (inv.role as string) || "Contractor",
+        },
+      })
     }
 
     return NextResponse.json({
       success: true,
       data: {
+        type: "supplier_invite" as const,
         email: inv.email as string,
         companyName: (inv.companyName as string) || null,
         contractorName: (inv.contractorName as string) || "",

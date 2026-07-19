@@ -37,7 +37,11 @@ export default function RegisterPage() {
   })
 
   const [inviteToken, setInviteToken] = useState<string | null>(null)
-  const [inviteInfo, setInviteInfo] = useState<{ email: string; companyName: string | null; contractorName: string } | null>(null)
+  const [inviteInfo, setInviteInfo] = useState<
+    | { type: "supplier_invite"; email: string; companyName: string | null; contractorName: string }
+    | { type: "team_invite"; email: string; name: string | null; orgName: string; role: string }
+    | null
+  >(null)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -56,8 +60,8 @@ export default function RegisterPage() {
     }
   }, [])
 
-  // Supplier invitation link (?invite=<token>): prefill the form and lock the
-  // flow onto the Supplier role so the contractor link is created after signup.
+  // Invitation link (?invite=<token>): prefill the form. Supplier invites lock
+  // the flow onto the Supplier role; team invites carry their own role.
   useEffect(() => {
     if (!inviteToken) return
     let cancelled = false
@@ -67,12 +71,21 @@ export default function RegisterPage() {
         const data = await res.json().catch(() => null)
         if (cancelled || !res.ok || !data?.success) return
         setInviteInfo(data.data)
-        setFormData(prev => ({
-          ...prev,
-          role: "Supplier",
-          email: data.data.email || prev.email,
-          name: prev.name || data.data.companyName || ""
-        }))
+        if (data.data.type === "team_invite") {
+          setFormData(prev => ({
+            ...prev,
+            role: data.data.role === "Supplier" ? "Supplier" : "Contractor",
+            email: data.data.email || prev.email,
+            name: prev.name || data.data.name || ""
+          }))
+        } else {
+          setFormData(prev => ({
+            ...prev,
+            role: "Supplier",
+            email: data.data.email || prev.email,
+            name: prev.name || data.data.companyName || ""
+          }))
+        }
       } catch (err) {
         console.error("Failed to look up invitation:", err)
       }
@@ -81,8 +94,9 @@ export default function RegisterPage() {
     return () => { cancelled = true }
   }, [inviteToken])
 
-  // Non-fatal: links the new supplier to the inviting contractor's directory.
-  const acceptSupplierInvite = async (user: User) => {
+  // Non-fatal: supplier invite → links the new supplier to the contractor's
+  // directory; team invite → joins the new user to the inviting organization.
+  const acceptInvite = async (user: User) => {
     if (!inviteToken) return
     try {
       const idToken = await user.getIdToken()
@@ -95,7 +109,7 @@ export default function RegisterPage() {
         body: JSON.stringify({ token: inviteToken }),
       })
     } catch (err) {
-      console.error("Failed to auto-accept supplier invitation:", err)
+      console.error("Failed to auto-accept invitation:", err)
     }
   }
 
@@ -191,9 +205,8 @@ export default function RegisterPage() {
         await deleteDoc(inviteRef)
       }
 
-      if (role === "Supplier") {
-        await acceptSupplierInvite(user)
-      }
+      // No-op without a token; the API validates type/role server-side.
+      await acceptInvite(user)
 
       toast({
         title: t("success_title"),
@@ -284,9 +297,8 @@ export default function RegisterPage() {
         await deleteDoc(inviteRef)
       }
 
-      if (role === "Supplier") {
-        await acceptSupplierInvite(user)
-      }
+      // No-op without a token; the API validates type/role server-side.
+      await acceptInvite(user)
 
       toast({
         title: t("success_title"),
@@ -359,9 +371,13 @@ export default function RegisterPage() {
             <div className="mb-6 bg-accent/10 border border-accent/30 rounded-xl p-4 flex items-start gap-3">
               <Mail className="w-5 h-5 text-cta shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-sm text-slate-900">{t("invite_banner_title")}</p>
+                <p className="font-bold text-sm text-slate-900">
+                  {inviteInfo.type === "team_invite" ? t("team_invite_banner_title") : t("invite_banner_title")}
+                </p>
                 <p className="text-sm text-slate-600 mt-0.5">
-                  {t("invite_banner_desc", { name: inviteInfo.contractorName || t("invite_banner_fallback_name") })}
+                  {inviteInfo.type === "team_invite"
+                    ? t("team_invite_banner_desc", { name: inviteInfo.orgName || t("invite_banner_fallback_name") })
+                    : t("invite_banner_desc", { name: inviteInfo.contractorName || t("invite_banner_fallback_name") })}
                 </p>
               </div>
             </div>

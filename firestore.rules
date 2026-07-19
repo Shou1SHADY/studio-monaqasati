@@ -33,17 +33,84 @@ service cloud.firestore {
       return isSignedIn() && getOrganizationId() == orgId;
     }
 
+    // --- Team permission helpers (mirror src/lib/permissions.ts) ---
+    // Org owners have every permission. Members get their group's permissions:
+    // a project-level assignment (projects/{id}/members) overrides the default
+    // group; a member with no group at all has read-only access.
+
+    function isOrgOwner() {
+      // Users created before the org-role migration have no organizationRole;
+      // they are solo accounts, i.e. owners of their own one-person org.
+      let userData = getUserData();
+      return !('organizationRole' in userData) || userData.organizationRole == 'owner';
+    }
+
+    function memberDefaultGroupId() {
+      let userData = getUserData();
+      return ('defaultGroupId' in userData) ? userData.defaultGroupId : null;
+    }
+
+    function groupGrants(groupId, perm) {
+      return groupId != null
+        && groupId is string
+        && exists(/databases/$(database)/documents/teamGroups/$(groupId))
+        && get(/databases/$(database)/documents/teamGroups/$(groupId)).data.permissions.hasAny(['*', perm]);
+    }
+
+    function hasOrgPermission(perm) {
+      return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
+    }
+
+    function hasProjectPermission(projectId, perm) {
+      return isOrgOwner()
+        || (exists(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid))
+            ? groupGrants(get(/databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid)).data.groupId, perm)
+            : groupGrants(memberDefaultGroupId(), perm));
+    }
+
+    // Permission for an RFQ: project-linked RFQs use the project assignment,
+    // standalone RFQs fall back to the member's default group.
+    function hasRfqPermission(rfqData, perm) {
+      return (('projectId' in rfqData) && rfqData.projectId != null && rfqData.projectId is string && rfqData.projectId.size() > 0)
+        ? hasProjectPermission(rfqData.projectId, perm)
+        : hasOrgPermission(perm);
+    }
+
+    // Deciding on an offer (accept/reject/reduction) follows the offer's RFQ:
+    // project-linked → project assignment; otherwise the default group.
+    function hasOfferDecisionPermission(offerData) {
+      return (('rfqId' in offerData) && offerData.rfqId != null && offerData.rfqId is string
+              && exists(/databases/$(database)/documents/rfqs/$(offerData.rfqId)))
+        ? hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(offerData.rfqId)).data, 'offers.accept')
+        : hasOrgPermission('offers.accept');
+    }
+
     // --- Collection Rules ---
 
     match /users/{userId} {
       allow create: if isOwner(userId) || isAdmin();
       allow get: if isOwner(userId) || isOrgMember(resource.data.organizationId) || isSignedIn();
       allow list: if isSignedIn();
-      allow update: if isOwner(userId) || isAdmin() || (
-        isSignedIn() &&
-        resource.data.organizationId == getOrganizationId() &&
-        getUserData().organizationRole == 'owner'
-      );
+      // Self-updates must not touch org membership fields — joining a team goes
+      // through the server-side invitation accept API (or a legacy invitation
+      // doc addressed to the caller's email, which acts as the authorization).
+      // Without this, anyone could write organizationId and join any org.
+      allow update: if isAdmin()
+        || (isOwner(userId) && (
+          !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId'])
+          || (
+            request.auth.token.email is string
+            && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.organizationId
+               == request.resource.data.organizationId
+          )
+        ))
+        || (
+          isSignedIn() &&
+          resource.data.organizationId == getOrganizationId() &&
+          getUserData().organizationRole == 'owner'
+        );
       allow delete: if isAdmin();
 
       match /notifications/{notificationId} {
@@ -90,6 +157,8 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
             )
           )
+          && (hasRfqPermission(request.resource.data, 'rfq.create')
+              || hasRfqPermission(request.resource.data, 'projects.publish'))
         );
       // Org members / admins can update everything, but re-verify projectId ownership
       // on every update too (not just create) so an RFQ can't be re-pointed at a
@@ -108,13 +177,17 @@ service cloud.firestore {
               && get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.organizationId == getOrganizationId()
             )
           )
+          && (hasRfqPermission(resource.data, 'rfq.manage')
+              || hasRfqPermission(resource.data, 'projects.publish'))
         )
         || (
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offersCount'])
         );
       allow delete: if isAdmin()
-        || (isSignedIn() && resource.data.organizationId == getOrganizationId())
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId()
+            && (hasRfqPermission(resource.data, 'rfq.manage')
+                || hasRfqPermission(resource.data, 'projects.publish')))
         || (isSignedIn() && resource.data.contractorId == request.auth.uid);
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
@@ -146,17 +219,22 @@ service cloud.firestore {
         || isSupplier()
         || (isSignedIn() && request.resource.data.supplierId == request.auth.uid)
         || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
-      // Supplier can update their own offer; Contractor can update status on offers for their RFQs
+      // Supplier can update their own offer; contractor-side updates (accept /
+      // reject / reduction / sample requests) additionally require the
+      // offers.accept permission (org owners always have it).
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.supplierId == request.auth.uid)
-        || (isSignedIn() && resource.data.contractorId == request.auth.uid)
         || (isSignedIn() && resource.data.organizationId == getOrganizationId())
-        || (isSignedIn() && resource.data.contractorOrgId == getOrganizationId())
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid
+            && hasOfferDecisionPermission(resource.data))
+        || (isSignedIn() && resource.data.contractorOrgId == getOrganizationId()
+            && hasOfferDecisionPermission(resource.data))
         || (isSignedIn() && resource.data.rfqId != null
             && (
               get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.organizationId == getOrganizationId()
               || get(/databases/$(database)/documents/rfqs/$(resource.data.rfqId)).data.contractorId == request.auth.uid
-            ));
+            )
+            && hasOfferDecisionPermission(resource.data));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.supplierId == request.auth.uid);
     }
@@ -222,6 +300,35 @@ service cloud.firestore {
       );
     }
 
+    // Team permission groups — org-scoped. Members read their org's groups
+    // (queries must filter organizationId == own org); only the org owner
+    // manages them. The Super Admin system group (isSystem) is immutable.
+    match /teamGroups/{groupId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+      allow create: if isAdmin() || (isSignedIn()
+        && request.resource.data.organizationId == getOrganizationId()
+        && getUserData().organizationRole == 'owner');
+      allow update: if isAdmin() || (isSignedIn()
+        && resource.data.organizationId == getOrganizationId()
+        && getUserData().organizationRole == 'owner'
+        && resource.data.isSystem != true
+        && request.resource.data.organizationId == resource.data.organizationId);
+      allow delete: if isAdmin() || (isSignedIn()
+        && resource.data.organizationId == getOrganizationId()
+        && getUserData().organizationRole == 'owner'
+        && resource.data.isSystem != true);
+    }
+
+    // Team activity audit log — append-only from clients; org-scoped reads
+    // (queries must filter organizationId == own org).
+    match /teamActivity/{activityId} {
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+      allow create: if isSignedIn()
+        && request.resource.data.organizationId == getOrganizationId()
+        && request.resource.data.actorId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     match /reviews/{reviewId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
@@ -244,7 +351,7 @@ service cloud.firestore {
         && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor");
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
-        resource.data.contractorOrgId == getOrganizationId() ||
+        (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('suppliers.manage')) ||
         (resource.data.supplierOrgId == getOrganizationId() && resource.data.requestedBy == "supplier") ||
         isAdmin()
       );
@@ -261,11 +368,17 @@ service cloud.firestore {
       );
       allow list: if isSignedIn();
       allow create: if isContractor()
-        && request.resource.data.organizationId == getOrganizationId();
+        && request.resource.data.organizationId == getOrganizationId()
+        && hasOrgPermission('projects.edit');
+      // Editing needs projects.edit; publishing flows also update the project
+      // doc (linked rfqIds), so projects.publish qualifies too.
       allow update: if isAdmin()
-        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId()
+            && (hasProjectPermission(projectId, 'projects.edit')
+                || hasProjectPermission(projectId, 'projects.publish')));
       allow delete: if isAdmin()
-        || (isSignedIn() && resource.data.organizationId == getOrganizationId());
+        || (isSignedIn() && resource.data.organizationId == getOrganizationId()
+            && hasProjectPermission(projectId, 'projects.delete'));
 
       // BOQ items subcollection — same org as the project.
       // Once an item is pushed to a tender (isEditable == false), it is hard-locked:
@@ -276,10 +389,12 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
 
         allow create: if isSignedIn()
-          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && (
             resource.data.isEditable != false
             ||
@@ -292,7 +407,19 @@ service cloud.firestore {
 
         allow delete: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && resource.data.isEditable != false;
+      }
+
+      // Project team assignments — which org member works on this project and
+      // with which permission group. Org members read; the org owner manages.
+      match /members/{memberId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create, update, delete: if isAdmin() || (isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && hasOrgPermission('team.manage'));
       }
 
       // BOQ groups (sections) — plain org-scoped CRUD, same org as the project.
@@ -303,7 +430,8 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
 
         allow create, update, delete: if isSignedIn()
-          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
       }
     }
 
@@ -347,6 +475,7 @@ service cloud.firestore {
           && request.resource.data.contractorId == request.auth.uid
           && request.resource.data.status == "confirmed"
           && request.resource.data.confirmedByUserId == request.auth.uid
+          && hasOrgPermission('deliveries.confirm')
           && !('supplierOrgId' in request.resource.data)
           && !('supplierId' in request.resource.data)
           && !('offerId' in request.resource.data)
@@ -356,7 +485,7 @@ service cloud.firestore {
       // offerId/rfqId to prevent impersonating a real supplier — lock that guarantee on
       // update too, so those fields can never be added retroactively once absent.
       allow update: if isSignedIn() && (
-        resource.data.contractorOrgId == getOrganizationId() ||
+        (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('deliveries.confirm')) ||
         resource.data.supplierOrgId == getOrganizationId() ||
         isAdmin()
       ) && (

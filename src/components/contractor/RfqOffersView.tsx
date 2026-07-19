@@ -52,6 +52,7 @@ import {
   FileCheck
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { usePermissions } from "@/hooks/usePermissions"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
@@ -135,6 +136,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   }, [firestore, rfqId])
 
   const { data: rfq, isLoading: isRfqLoading } = useDoc(rfqDocRef)
+  // Project-scoped permission check (falls back to the default group for standalone RFQs)
+  const { can } = usePermissions((rfq as { projectId?: string } | null)?.projectId || undefined)
+  const canDecide = can("offers.accept")
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
@@ -705,7 +709,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                         </div>
 
                         {/* Action Buttons - Pending */}
-                        {offer.status === "قيد المراجعة" && (
+                        {offer.status === "قيد المراجعة" && canDecide && (
                           <div className="bg-slate-50/60 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-slate-100">
                             <Button
                               onClick={() => setConfirmDecisionTarget({ offer, decision: "مقبول" })}
@@ -1146,7 +1150,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 cells.push(makeCell({ key: "cta" + offer.id, row: 6, col: 2 + i, kind: "offer", best, last: true,
                   children: (
                     <div style={{ height: "100%", minHeight: 68, padding: PAD, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {isDecided ? (
+                      {isDecided || !canDecide ? (
                         <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>{getStatusBadge(offer.status)}</div>
                       ) : (
                         <Button

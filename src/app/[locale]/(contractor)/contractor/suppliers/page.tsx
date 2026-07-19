@@ -59,6 +59,7 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@
 import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { displayCategory, displayCity } from "@/lib/constants"
 
 function fmtDate(val: unknown, locale: string) {
@@ -97,6 +98,9 @@ export default function SuppliersDirectory() {
     return doc(firestore, "users", user!.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+
+  const { can } = usePermissions()
+  const canManageSuppliers = can("suppliers.manage")
 
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
@@ -342,7 +346,7 @@ export default function SuppliersDirectory() {
             <p className="text-muted-foreground mt-1">{t("suppliers_page_desc")}</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
+            {canManageSuppliers && <Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
               <UserPlus size={18} />
               {t("my_sup_invite_tab")}
               {sentInvitations.filter((inv: any) => inv.status === "pending").length > 0 && (
@@ -350,7 +354,7 @@ export default function SuppliersDirectory() {
                   {sentInvitations.filter((inv: any) => inv.status === "pending").length}
                 </Badge>
               )}
-            </Button>
+            </Button>}
             <div className="relative w-64">
               <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
               <Input 
@@ -457,10 +461,10 @@ export default function SuppliersDirectory() {
                 <Briefcase size={48} className="mx-auto mb-4 opacity-20" />
                 <p className="font-bold text-lg">{t("suppliers_no_suppliers")}</p>
                 <p className="text-sm mt-1">{t("suppliers_no_suppliers_desc")}</p>
-                <Button variant="outline" className="mt-4 gap-2" onClick={() => setShowInviteDialog(true)}>
+                {canManageSuppliers && <Button variant="outline" className="mt-4 gap-2" onClick={() => setShowInviteDialog(true)}>
                   <UserPlus size={16} />
                   {t("my_sup_invite_tab")}
-                </Button>
+                </Button>}
               </>
             )}
           </div>
