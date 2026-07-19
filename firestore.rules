@@ -500,6 +500,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Mdmak internal procurement records — admin-only (hides internal cost/commission from contractors)
+    match /mdmakProcurement/{procurementId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Platform-wide settings — admin-only read/write
+    match /platformSettings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
   }
 }
 

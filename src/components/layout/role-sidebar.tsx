@@ -13,6 +13,7 @@ import {
   Users,
   Bell,
   PlusCircle,
+  Handshake,
   UserCircle,
   Search,
   ClipboardList,
@@ -126,6 +127,7 @@ const adminSections: NavSection[] = [
       { titleKey: "admin_suppliers", href: "/admin/suppliers", icon: Users },
       { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
       { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },
+      { titleKey: "admin_procurement", href: "/admin/procurement", icon: Handshake },
     ],
   },
   {

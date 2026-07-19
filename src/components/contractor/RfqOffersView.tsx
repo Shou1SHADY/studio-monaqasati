@@ -49,7 +49,8 @@ import {
   Download,
   Briefcase,
   ChevronLeft,
-  FileCheck
+  FileCheck,
+  Handshake,
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -556,21 +557,29 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
             ) : (
               offers.map((offer: any) => {
                 const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
+                const isMdmak = !!offer.isFromMdmak;
 
                 return (
                   <Card key={offer.id} className={cn(
                     "shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative",
                     offer.status === "مقبول" ? "border-success/30" :
                     offer.status === "مرفوض" ? "border-slate-200 opacity-65" :
+                    isMdmak ? "border-accent/40 bg-accent/[0.015]" :
                     isBestOffer ? "border-amber-300/70 shadow-amber-50" : "border-slate-100"
                   )} style={{
                     borderInlineStart: `3px solid ${
                       offer.status === "مقبول" ? "hsl(155 80% 35%)" :
                       offer.status === "مرفوض" ? "hsl(215 16% 75%)" :
+                      isMdmak ? "hsl(186 79% 46%)" :
                       isBestOffer ? "hsl(35 92% 50%)" : "hsl(214 32% 88%)"
                     }`
                   }}>
-                    {isBestOffer && offer.status === "قيد المراجعة" && (
+                    {isMdmak && (
+                      <div className="absolute top-0 end-0 z-10 flex items-center gap-1 bg-accent text-primary text-[10px] font-black px-3 py-1 rounded-bl-xl rounded-tr-sm shadow-sm whitespace-nowrap">
+                        <Handshake size={11} /> مدماك تيك
+                      </div>
+                    )}
+                    {!isMdmak && isBestOffer && offer.status === "قيد المراجعة" && (
                       <div className="absolute top-1 start-3 z-10 flex items-center gap-1 bg-amber-400 text-amber-950 text-[10px] font-black px-2.5 py-1 rounded-full shadow-sm whitespace-nowrap">
                         <TrendingUp size={11} /> {t("offers_best_price")}
                       </div>
@@ -590,7 +599,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 {((offer.companyName || offer.supplierName) || "؟").trim().charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                {offer.supplierId ? (
+                                {offer.supplierId && !isMdmak ? (
                                   <Link
                                     href={`/contractor/supplier/profile/${offer.supplierId}`}
                                     className="font-bold text-sm text-slate-800 hover:text-primary transition-colors inline-flex items-center gap-1 group"
@@ -599,7 +608,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                     <ChevronLeft size={12} className="opacity-0 -mx-1 group-hover:opacity-100 group-hover:mx-0 transition-all rtl:rotate-0 ltr:rotate-180 shrink-0" />
                                   </Link>
                                 ) : (
-                                  <p className="font-bold text-sm text-slate-800">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</p>
+                                  <p className={cn("font-bold text-sm", isMdmak ? "text-accent" : "text-slate-800")}>
+                                    {offer.companyName || offer.supplierName || t("offers_registered_supplier")}
+                                  </p>
                                 )}
                                 {offer.submittedByUserName && (
                                   <p className="text-[11px] text-slate-500 mt-0.5 truncate">
@@ -621,7 +632,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              {offer.supplierId && (
+                              {offer.supplierId && !isMdmak && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
