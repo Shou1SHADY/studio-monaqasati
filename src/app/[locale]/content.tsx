@@ -208,31 +208,47 @@ export default function HomeContent() {
         <div className="absolute inset-0 z-[5] opacity-20 pointer-events-none overflow-hidden"
           style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 
-        <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24 md:pt-16 pb-4 md:pb-0">
-          <div className="max-w-2xl space-y-6">
+        <div className="relative z-10 flex-1 flex items-center w-full max-w-7xl mx-auto px-6 pt-24 md:pt-20 pb-4 md:pb-0">
+          <div className="max-w-xl">
 
-            <h1 className={`text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-white tracking-tight flex flex-col ${locale === 'ar' ? 'gap-0 md:gap-0 !leading-[1.4]' : 'gap-0 md:gap-1 !leading-[1.2]'}`}>
+            {/* Eyebrow badge */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-sky-400/25 bg-sky-400/[0.08] mb-4">
+              <span className={`text-sky-300 text-[11px] font-bold ${locale === 'ar' ? '' : 'tracking-widest uppercase'}`}>
+                {tHero('slide1_badge')}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse shrink-0" aria-hidden="true" />
+            </div>
+
+            {/* Heading */}
+            <h1
+              className={`font-black text-white flex flex-col mb-4 ${locale === 'ar' ? 'leading-[1.6] gap-0' : 'leading-[1.18] gap-1 tracking-tight'}`}
+              style={{ fontSize: 'clamp(2rem, 4.5vw, 3.75rem)' }}
+            >
               <span>{tHero('slide1_title')}</span>
-              <span className={`text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-200 ${locale === 'ar' ? '' : 'pb-2 md:pb-3'}`}>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-cyan-200">
                 {tHero('slide1_accent')}
               </span>
             </h1>
 
-            <p className="text-slate-300 text-base md:text-lg font-medium max-w-xl !leading-[1.6]">
+            {/* Subtitle */}
+            <p className="text-slate-300/90 text-[13.5px] md:text-[15px] font-medium leading-[1.75] mb-5">
               {tHero('slide1_sub')}
             </p>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4 pt-2">
+            {/* CTA */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
               <Link href="/register" className="w-full sm:w-auto">
-                <Button className="w-full h-14 px-8 text-base font-black rounded-2xl bg-cta hover:bg-sky-600 text-white gap-3 transition-all hover:scale-105 shadow-2xl shadow-cta/30 border-none">
-                  {tAction('register_now')} <ArrowLeft size={18} className="rtl:rotate-0 ltr:rotate-180" />
+                <Button className="w-full h-12 px-7 text-sm font-black rounded-xl bg-cta hover:bg-sky-600 text-white gap-2.5 transition-all hover:scale-[1.02] shadow-xl shadow-cta/25 border-none">
+                  {tAction('register_now')} <ArrowLeft size={16} className="rtl:rotate-0 ltr:rotate-180" />
                 </Button>
               </Link>
             </div>
-            <div className="flex flex-wrap items-center gap-6 text-[10px] font-bold text-slate-500">
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-sky-400" /> {tAction('setup')}</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-sky-400" /> {tAction('no_fees')}</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={12} className="text-sky-400" /> {tAction('vision')}</span>
+
+            {/* Trust indicators */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-400">
+              <span className="flex items-center gap-1.5"><CheckCircle2 size={11} className="text-sky-400 shrink-0" /> {tAction('setup')}</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 size={11} className="text-sky-400 shrink-0" /> {tAction('no_fees')}</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 size={11} className="text-sky-400 shrink-0" /> {tAction('vision')}</span>
             </div>
           </div>
         </div>
