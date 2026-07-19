@@ -56,7 +56,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity } from "@/lib/constants"
@@ -97,7 +97,6 @@ export default function SuppliersDirectory() {
     return doc(firestore, "users", user!.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
-  const typedProfile = profile as { organizationId?: string; companyName?: string; name?: string; favoriteSuppliers?: string[] } | null
 
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
@@ -141,7 +140,7 @@ export default function SuppliersDirectory() {
   )
 
   const handleSendInvitation = async () => {
-    if (!firestore || !user || !myOrgId) return
+    if (!user || !myOrgId) return
     const email = inviteEmail.trim().toLowerCase()
     if (!email) {
       toast({ title: t("my_sup_invite_empty_email"), variant: "destructive" })
@@ -149,17 +148,25 @@ export default function SuppliersDirectory() {
     }
     setIsSendingInvite(true)
     try {
-      await addDoc(collection(firestore, "invitations"), {
-        email,
-        companyName: inviteCompanyName.trim() || null,
-        invitedBy: user.uid,
-        contractorOrgId: myOrgId,
-        contractorName: typedProfile?.companyName || typedProfile?.name || "",
-        status: "pending",
-        type: "supplier_invite",
-        createdAt: serverTimestamp(),
+      const idToken = await user.getIdToken()
+      const res = await fetch("/api/invitations/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ email, companyName: inviteCompanyName.trim() || undefined }),
       })
-      toast({ title: t("my_sup_invite_success"), description: t("my_sup_invite_success_desc") })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || "Failed to send invitation")
+      }
+      toast({
+        title: t("my_sup_invite_success"),
+        description: data.data?.emailSent
+          ? t("my_sup_invite_email_sent_desc")
+          : t("my_sup_invite_email_skipped_desc"),
+      })
       setInviteEmail("")
       setInviteCompanyName("")
       setShowInviteDialog(false)

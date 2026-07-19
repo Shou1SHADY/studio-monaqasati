@@ -1,5 +1,6 @@
 import { getApps, initializeApp, cert, App } from "firebase-admin/app"
 import { getAuth, Auth } from "firebase-admin/auth"
+import { getFirestore, Firestore } from "firebase-admin/firestore"
 
 // Server-only — never import this file in client components.
 // Credentials come from server-only env vars (no NEXT_PUBLIC_ prefix).
@@ -17,4 +18,8 @@ function getAdminApp(): App {
 
 export function getAdminAuth(): Auth {
   return getAuth(getAdminApp())
+}
+
+export function getAdminFirestore(): Firestore {
+  return getFirestore(getAdminApp())
 }

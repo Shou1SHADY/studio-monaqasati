@@ -85,3 +85,11 @@ mdmak-demo/
 .claude/settings.local.jsonlighthouse-report.json
 
 tmp-below-fold.txt
+
+node_modules
+.next
+.env
+.agent
+.opencode
+*.tmp
+.env.example

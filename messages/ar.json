@@ -1775,6 +1775,8 @@
       "my_sup_invite_btn": "إرسال الدعوة",
       "my_sup_invite_success": "تم إرسال الدعوة",
       "my_sup_invite_success_desc": "سيتمكن المورد من قبول الدعوة من لوحة التحكم الخاصة به",
+      "my_sup_invite_email_sent_desc": "تم إرسال بريد إلكتروني بالدعوة يتضمن رابط التسجيل إلى المورّد",
+      "my_sup_invite_email_skipped_desc": "تم حفظ الدعوة — سيراها المورّد في لوحة التحكم، لكن تعذر إرسال البريد الإلكتروني",
       "my_sup_invite_error": "تعذر إرسال الدعوة",
       "my_sup_invite_empty_email": "البريد الإلكتروني مطلوب",
       "my_sup_sent_invitations": "الدعوات المرسلة",
@@ -2262,6 +2264,9 @@
     "Register": {
       "back_to_home": "العودة للرئيسية",
       "new_account": "حساب جديد",
+      "invite_banner_title": "لديك دعوة للانضمام كمورّد",
+      "invite_banner_desc": "دعاك {name} للانضمام إلى دليل مورّديه. أكمل التسجيل وسيتم ربط حسابك تلقائياً.",
+      "invite_banner_fallback_name": "أحد المقاولين على المنصة",
       "join_now": "انضم الآن إلى منصة مدماك تيك وابدأ بتوسيع أعمالك.",
       "role": "طبيعة نشاطك",
       "contractor": "مقاول",

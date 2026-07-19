@@ -66,6 +66,25 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 # AI (Gemini)
 NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_key
+
+# Firebase Admin SDK (server-only — API routes)
+FIREBASE_PROJECT_ID=your_project_id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxx@your_project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Transactional email (Resend) — supplier invitation emails
+# 1. Create an account at https://resend.com
+# 2. Add and verify a SUBDOMAIN as the sending domain (notifications.mdmaktech.sa)
+#    via the DNS records Resend shows. Use a subdomain, not the root domain:
+#    it isolates sending reputation from mdmaktech.sa and avoids touching the
+#    root domain's existing mail (SPF/DKIM) records.
+#    See https://resend.com/docs/knowledge-base/subdomain-vs-root-domain
+# 3. Create an API key and set it here
+RESEND_API_KEY=re_xxxxxxxxxxxx
+EMAIL_FROM="Mdmak Tech <noreply@notifications.mdmaktech.sa>"
+
+# Public base URL used in emailed links (no trailing slash)
+NEXT_PUBLIC_APP_URL=https://mdmaktech.sa
 ```
 
 ### 3. Run Development Server

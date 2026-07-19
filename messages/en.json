@@ -1775,6 +1775,8 @@
       "my_sup_invite_btn": "Send Invitation",
       "my_sup_invite_success": "Invitation Sent",
       "my_sup_invite_success_desc": "The supplier can accept the invitation from their dashboard",
+      "my_sup_invite_email_sent_desc": "An invitation email with a registration link was sent to the supplier",
+      "my_sup_invite_email_skipped_desc": "Invitation saved — the supplier will see it in their dashboard, but the invitation email could not be delivered",
       "my_sup_invite_error": "Failed to send invitation",
       "my_sup_invite_empty_email": "Email is required",
       "my_sup_sent_invitations": "Sent Invitations",
@@ -2262,6 +2264,9 @@
     "Register": {
       "back_to_home": "Back to Home",
       "new_account": "New Account",
+      "invite_banner_title": "You've been invited as a supplier",
+      "invite_banner_desc": "{name} invited you to join their supplier directory. Complete your registration and you'll be connected automatically.",
+      "invite_banner_fallback_name": "A contractor on the platform",
       "join_now": "Join Monaqasati now and start expanding your business.",
       "role": "Your Activity Type",
       "contractor": "Contractor",

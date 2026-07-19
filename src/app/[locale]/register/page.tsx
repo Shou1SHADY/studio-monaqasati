@@ -7,14 +7,14 @@ import Image from "next/image"
 import { useTranslations, useLocale } from "next-intl"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification } from "firebase/auth"
+import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification, type User } from "firebase/auth"
 import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search, Eye, EyeOff } from "lucide-react"
+import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search, Eye, EyeOff, Mail } from "lucide-react"
 import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
 
 export default function RegisterPage() {
@@ -36,12 +36,17 @@ export default function RegisterPage() {
     specializations: [] as string[]
   })
 
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
+  const [inviteInfo, setInviteInfo] = useState<{ email: string; companyName: string | null; contractorName: string } | null>(null)
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search)
       const roleParam = params.get("role")
       const emailParam = params.get("email")
       const nameParam = params.get("name")
+      const inviteParam = params.get("invite")
+      if (inviteParam) setInviteToken(inviteParam)
       setFormData(prev => ({
         ...prev,
         role: (roleParam === "Supplier" || roleParam === "Contractor") ? roleParam : prev.role,
@@ -50,6 +55,49 @@ export default function RegisterPage() {
       }))
     }
   }, [])
+
+  // Supplier invitation link (?invite=<token>): prefill the form and lock the
+  // flow onto the Supplier role so the contractor link is created after signup.
+  useEffect(() => {
+    if (!inviteToken) return
+    let cancelled = false
+    const lookupInvite = async () => {
+      try {
+        const res = await fetch(`/api/invitations/lookup?token=${encodeURIComponent(inviteToken)}`)
+        const data = await res.json().catch(() => null)
+        if (cancelled || !res.ok || !data?.success) return
+        setInviteInfo(data.data)
+        setFormData(prev => ({
+          ...prev,
+          role: "Supplier",
+          email: data.data.email || prev.email,
+          name: prev.name || data.data.companyName || ""
+        }))
+      } catch (err) {
+        console.error("Failed to look up invitation:", err)
+      }
+    }
+    lookupInvite()
+    return () => { cancelled = true }
+  }, [inviteToken])
+
+  // Non-fatal: links the new supplier to the inviting contractor's directory.
+  const acceptSupplierInvite = async (user: User) => {
+    if (!inviteToken) return
+    try {
+      const idToken = await user.getIdToken()
+      await fetch("/api/invitations/accept", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ token: inviteToken }),
+      })
+    } catch (err) {
+      console.error("Failed to auto-accept supplier invitation:", err)
+    }
+  }
 
   const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
   const [specSearch, setSpecSearch] = useState("")
@@ -143,6 +191,10 @@ export default function RegisterPage() {
         await deleteDoc(inviteRef)
       }
 
+      if (role === "Supplier") {
+        await acceptSupplierInvite(user)
+      }
+
       toast({
         title: t("success_title"),
         description: t("success_desc"),
@@ -232,6 +284,10 @@ export default function RegisterPage() {
         await deleteDoc(inviteRef)
       }
 
+      if (role === "Supplier") {
+        await acceptSupplierInvite(user)
+      }
+
       toast({
         title: t("success_title"),
         description: t("google_success_desc"),
@@ -298,6 +354,18 @@ export default function RegisterPage() {
             <h1 className="text-3xl font-extrabold text-slate-900 mb-3 font-headline">{t("new_account")}</h1>
             <p className="text-slate-500 text-sm">{t("join_now")}</p>
           </div>
+
+          {inviteInfo && (
+            <div className="mb-6 bg-accent/10 border border-accent/30 rounded-xl p-4 flex items-start gap-3">
+              <Mail className="w-5 h-5 text-cta shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm text-slate-900">{t("invite_banner_title")}</p>
+                <p className="text-sm text-slate-600 mt-0.5">
+                  {t("invite_banner_desc", { name: inviteInfo.contractorName || t("invite_banner_fallback_name") })}
+                </p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleRegister} className="space-y-6">
             {registerError && (
