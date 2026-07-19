@@ -33,6 +33,7 @@ import {
   setDoc,
   addDoc,
   serverTimestamp,
+  getDocsFromServer,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
@@ -167,7 +168,10 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
 
   // Seed the default permission groups once per organization (owner only).
-  // Deterministic doc ids make concurrent seeding idempotent.
+  // Deterministic doc ids make concurrent seeding idempotent. The local
+  // snapshot can come from an empty offline cache, so confirm against the
+  // server before writing — re-running setDoc on existing docs would be an
+  // update, which the rules (rightly) reject for the Super Admin group.
   const seededRef = useRef(false)
   useEffect(() => {
     if (!firestore || !orgId || !isOwner || groupsLoading || seededRef.current) return
@@ -175,6 +179,10 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     seededRef.current = true
     const seed = async () => {
       try {
+        const serverSnap = await getDocsFromServer(
+          query(collection(firestore, "teamGroups"), where("organizationId", "==", orgId))
+        )
+        if (!serverSnap.empty) return
         await Promise.all(
           SEEDED_GROUPS.map((g) =>
             setDoc(doc(firestore, "teamGroups", seededGroupDocId(orgId, g.key)), {
