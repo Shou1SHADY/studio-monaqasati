@@ -428,11 +428,6 @@ export default function HomeContent() {
           {/* VISUAL COLUMN — desktop only */}
           <div className="hidden lg:flex lg:w-[45%] relative items-center justify-center px-[5%] py-10">
 
-            {/* Per-slide CSS art backgrounds (layered on top of the photo) */}
-            <div className={cn('absolute inset-0 transition-opacity duration-1000 hero-vis-0', slide === 0 ? 'opacity-[0.72]' : 'opacity-0')} aria-hidden="true" />
-            <div className={cn('absolute inset-0 transition-opacity duration-1000 hero-vis-1', slide === 1 ? 'opacity-[0.72]' : 'opacity-0')} aria-hidden="true" />
-            <div className={cn('absolute inset-0 transition-opacity duration-1000 hero-vis-2', slide === 2 ? 'opacity-[0.72]' : 'opacity-0')} aria-hidden="true" />
-
             {/* Floating UI card — key remount triggers entrance animation */}
             <div key={slideKey} className="relative z-10 w-full max-w-[332px] hero-card-in">
               {slide === 0 && <RfqCard />}
