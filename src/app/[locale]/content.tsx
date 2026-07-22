@@ -55,21 +55,48 @@ function AnimatedStat({ value }: { value: string }) {
   return <span ref={spanRef}>{value}</span>;
 }
 
-/* ── Hero floating UI cards (demo display data — Arabic, Saudi-focused) ── */
+/* ── Types for live landing preview data ── */
+type LiveOffer    = { initial: string; bg: string; price: number };
+type LiveRfq      = { id: string; category: string; subCategory: string; quantity: string; unit: string; offersCount: number; deadlineMs: number; topOffers: LiveOffer[] };
+type LiveProject  = { id: string; type: string; pct: number; ok: boolean; status: string; statusOk: boolean; color: string };
+type LiveSupplier = { id: string; initial: string; category: string; bg: string };
+type LandingPreview = { rfq: LiveRfq | null; projects: LiveProject[]; suppliers: LiveSupplier[]; supplierCount: number };
 
-function RfqCard() {
-  const [time, setTime] = useState('23:14');
+/* Animated skeleton bar — used when live data is loading */
+const Sk = ({ w = 'w-24', h = 'h-2.5' }: { w?: string; h?: string }) => (
+  <div className={`${w} ${h} rounded-full bg-white/[0.06] animate-pulse`} />
+);
+
+/* Placeholder name texts at realistic lengths — blurred via CSS */
+const BLUR_NAMES = [
+  'شركة موردة معتمدة في المنصة',
+  'مؤسسة تجارية سعودية معتمدة',
+  'مجموعة موردين سعوديون',
+];
+
+/* ── Hero floating UI cards ── */
+
+function RfqCard({ data }: { data: LandingPreview | null }) {
+  const rfq = data?.rfq ?? null;
+
+  const [secs, setSecs] = useState(23 * 60 + 14);
   useEffect(() => {
-    let s = 23 * 60 + 14;
-    const id = setInterval(() => {
-      s--;
-      if (s < 0) s = 23 * 60 + 14;
-      const m = Math.floor(s / 60);
-      const sec = s % 60;
-      setTime(`${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
-    }, 1000);
+    if (rfq) setSecs(Math.min(Math.floor(rfq.deadlineMs / 1000), 86399));
+  }, [rfq]);
+  useEffect(() => {
+    const id = setInterval(() => setSecs(s => s > 0 ? s - 1 : 0), 1000);
     return () => clearInterval(id);
   }, []);
+
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  const timerStr = h > 0
+    ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+  const best   = rfq?.topOffers[0];
+  const others = rfq?.topOffers.slice(1) ?? [];
 
   return (
     <div className="bg-[#0a1628]/95 backdrop-blur-xl border border-[#20CBD5]/[0.15] rounded-2xl overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,.55)]">
@@ -78,29 +105,75 @@ function RfqCard() {
           <FileText size={15} className="text-[#20CBD5]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-black text-white">طلب عروض #٢٠٢٦-١١٤٧</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-0.5">حديد تسليح 20mm · ٢٠٠ طن</div>
+          {data === null ? (
+            <><Sk w="w-36" h="h-3" /><div className="mt-2"><Sk w="w-24" h="h-2" /></div></>
+          ) : (
+            <>
+              <div className="text-[13px] font-black text-white">طلب عروض #{rfq ? rfq.id : '----'}</div>
+              <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                {rfq ? `${rfq.category}${rfq.quantity ? ` · ${rfq.quantity} ${rfq.unit}` : ''}` : 'جارٍ تحميل البيانات…'}
+              </div>
+            </>
+          )}
         </div>
-        <div className="text-[11px] font-bold text-amber-400 shrink-0 tabular-nums">⏱ {time}</div>
+        <div className="text-[11px] font-bold text-amber-400 shrink-0 tabular-nums">⏱ {timerStr}</div>
       </div>
+
       <div className="p-3 space-y-1.5">
-        <div className="flex items-center gap-2.5 p-2.5 rounded-[10px] bg-[#20CBD5]/[0.07] border border-[#20CBD5]/[0.16]">
-          <div className="h-[30px] w-[30px] rounded-[8px] bg-[#0d4e5c] flex items-center justify-center text-white text-xs font-black shrink-0">ر</div>
-          <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-300 truncate">شركة الرياض للحديد والصلب</div>
-          <div className="text-[12px] font-black text-white shrink-0 tabular-nums">٣٢٠,٠٠٠<span className="text-[9px] text-slate-500 ms-1">ر.س</span></div>
-          <div className="text-[9px] font-black text-emerald-400 bg-emerald-400/[0.14] px-1.5 py-0.5 rounded-full shrink-0">✓ أفضل</div>
-        </div>
-        {[
-          { av: 'ب', bg: '#1a3045', name: 'مؤسسة البناء القوي',   price: '٣٤٥,٠٠٠' },
-          { av: 'خ', bg: '#1c2b3c', name: 'مجموعة الخليج للمواد', price: '٣٦٨,٠٠٠' },
-        ].map(r => (
-          <div key={r.av} className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px]">
-            <div className="h-[30px] w-[30px] rounded-[8px] flex items-center justify-center text-white text-xs font-black shrink-0" style={{ background: r.bg }}>{r.av}</div>
-            <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-400 truncate">{r.name}</div>
-            <div className="text-[12px] font-black text-white shrink-0 tabular-nums">{r.price}<span className="text-[9px] text-slate-500 ms-1">ر.س</span></div>
+        {/* Best offer row */}
+        {data === null ? (
+          <div className="flex items-center gap-2.5 p-2.5 rounded-[10px] bg-[#20CBD5]/[0.07] border border-[#20CBD5]/[0.16]">
+            <div className="h-[30px] w-[30px] rounded-[8px] bg-white/[0.06] animate-pulse shrink-0" />
+            <div className="flex-1 space-y-1.5"><Sk w="w-28" /><Sk w="w-20" h="h-2" /></div>
+            <Sk w="w-16" h="h-3" />
           </div>
-        ))}
+        ) : (
+          <div className="flex items-center gap-2.5 p-2.5 rounded-[10px] bg-[#20CBD5]/[0.07] border border-[#20CBD5]/[0.16]">
+            <div
+              className="h-[30px] w-[30px] rounded-[8px] flex items-center justify-center text-white text-xs font-black shrink-0"
+              style={{ background: best?.bg ?? 'linear-gradient(135deg,#0d5c6a,#07303c)' }}
+            >
+              {best?.initial ?? 'م'}
+            </div>
+            <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-300 truncate blur-redact">{BLUR_NAMES[0]}</div>
+            <div className="text-[12px] font-black text-white shrink-0 tabular-nums">
+              {best ? best.price.toLocaleString() : '---'}
+              <span className="text-[9px] text-slate-500 ms-1">ر.س</span>
+            </div>
+            <div className="text-[9px] font-black text-emerald-400 bg-emerald-400/[0.14] px-1.5 py-0.5 rounded-full shrink-0">✓ أفضل</div>
+          </div>
+        )}
+
+        {/* Other offer rows */}
+        {data === null
+          ? [0, 1].map(i => (
+              <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px]">
+                <div className="h-[30px] w-[30px] rounded-[8px] bg-white/[0.06] animate-pulse shrink-0" />
+                <div className="flex-1"><Sk w="w-24" /></div>
+                <Sk w="w-14" h="h-3" />
+              </div>
+            ))
+          : (others.length > 0 ? others : [
+              { initial: 'م', bg: 'linear-gradient(135deg,#1a3045,#0c1a26)', price: 0 },
+              { initial: 'خ', bg: 'linear-gradient(135deg,#1c2b3c,#0c1520)', price: 0 },
+            ]).slice(0, 2).map((o, i) => (
+              <div key={i} className="flex items-center gap-2.5 px-2.5 py-2 rounded-[10px]">
+                <div
+                  className="h-[30px] w-[30px] rounded-[8px] flex items-center justify-center text-white text-xs font-black shrink-0"
+                  style={{ background: o.bg }}
+                >
+                  {o.initial}
+                </div>
+                <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-400 truncate blur-redact">{BLUR_NAMES[i + 1]}</div>
+                <div className="text-[12px] font-black text-white shrink-0 tabular-nums">
+                  {o.price > 0 ? o.price.toLocaleString() : '---'}
+                  <span className="text-[9px] text-slate-500 ms-1">ر.س</span>
+                </div>
+              </div>
+            ))
+        }
       </div>
+
       <div className="px-4 pb-4">
         <button className="w-full py-2.5 bg-[#0369A1] hover:bg-[#0EA5E9] text-white text-[12px] font-black rounded-[10px] transition-colors">
           قبول العرض الأفضل
@@ -110,12 +183,16 @@ function RfqCard() {
   );
 }
 
-function ProjectsCard() {
-  const projects = [
-    { name: 'برج الرياض الإداري',        pct: 80, color: '#20CBD5', status: '✓ آخر توريد مؤكد', ok: true  },
-    { name: 'مشروع إسكان الشميسي',       pct: 60, color: '#0EA5E9', status: 'قيد التوريد',       ok: false },
-    { name: 'مجمع المستشفيات الجنوبي',   pct: 45, color: '#F59E0B', status: 'بانتظار العروض',    ok: false },
-  ];
+const FALLBACK_PROJECTS: LiveProject[] = [
+  { id: 'a', type: 'مشروع إنشائي · الرياض',   pct: 80, ok: true,  status: '✓ آخر توريد مؤكد', statusOk: true,  color: '#20CBD5' },
+  { id: 'b', type: 'مشروع تجاري · جدة',        pct: 60, ok: false, status: 'قيد التوريد',       statusOk: false, color: '#0EA5E9' },
+  { id: 'c', type: 'مشروع خدمات · الدمام',     pct: 45, ok: false, status: 'بانتظار العروض',    statusOk: false, color: '#F59E0B' },
+];
+
+function ProjectsCard({ data }: { data: LandingPreview | null }) {
+  const projects = data === null ? null : (data.projects.length > 0 ? data.projects : FALLBACK_PROJECTS);
+  const count    = projects?.length ?? 3;
+
   return (
     <div className="bg-[#0a1628]/95 backdrop-blur-xl border border-[#20CBD5]/[0.15] rounded-2xl overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,.55)]">
       <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-white/[0.05]">
@@ -126,32 +203,48 @@ function ProjectsCard() {
           <div className="text-[13px] font-black text-white">المشاريع الجارية</div>
           <div className="text-[11px] text-slate-500 font-medium mt-0.5">آخر تحديث: منذ ٥ دقائق</div>
         </div>
-        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">٣ نشطة</div>
+        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">{count} نشطة</div>
       </div>
       <div className="p-4 space-y-3.5">
-        {projects.map(p => (
-          <div key={p.name}>
-            <div className="text-[11px] font-bold text-slate-300 mb-1.5">{p.name}</div>
-            <div className="h-1.5 rounded-full bg-white/[0.07] overflow-hidden mb-1.5">
-              <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: p.color }} />
-            </div>
-            <div className="flex justify-between text-[10px] font-bold">
-              <span className={p.ok ? 'text-emerald-400' : 'text-slate-500'}>{p.status}</span>
-              <span className="text-slate-400 tabular-nums">{p.pct}٪</span>
-            </div>
-          </div>
-        ))}
+        {projects === null
+          ? [0, 1, 2].map(i => (
+              <div key={i}>
+                <div className="mb-1.5"><Sk w="w-36" /></div>
+                <div className="h-1.5 rounded-full bg-white/[0.07] overflow-hidden mb-1.5">
+                  <div className="h-full w-0 rounded-full bg-white/[0.06] animate-pulse" />
+                </div>
+                <div className="flex justify-between"><Sk w="w-20" h="h-2" /><Sk w="w-8" h="h-2" /></div>
+              </div>
+            ))
+          : projects.map(p => (
+              <div key={p.id}>
+                <div className="text-[11px] font-bold text-slate-300 mb-1.5">{p.type}</div>
+                <div className="h-1.5 rounded-full bg-white/[0.07] overflow-hidden mb-1.5">
+                  <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: p.color }} />
+                </div>
+                <div className="flex justify-between text-[10px] font-bold">
+                  <span className={p.statusOk ? 'text-emerald-400' : 'text-slate-500'}>{p.status}</span>
+                  <span className="text-slate-400 tabular-nums">{p.pct}٪</span>
+                </div>
+              </div>
+            ))
+        }
       </div>
     </div>
   );
 }
 
-function SuppliersCard() {
-  const suppliers = [
-    { av: 'ر', name: 'شركة الرياض للحديد والصلب', rating: '★★★★★ ٤.٩', cat: 'حديد وصلب',       bg: 'linear-gradient(135deg,#0d5c6a,#07303c)' },
-    { av: 'خ', name: 'مصنع الخليج للإسمنت',        rating: '★★★★☆ ٤.٧', cat: 'إسمنت ومواد',    bg: 'linear-gradient(135deg,#0d4a30,#072a1a)' },
-    { av: 'ن', name: 'مجموعة النخبة التقنية',       rating: '★★★★★ ٤.٨', cat: 'كهرباء وميكانيكا', bg: 'linear-gradient(135deg,#0d3e5c,#07222f)' },
-  ];
+const FALLBACK_SUPPLIERS: LiveSupplier[] = [
+  { id: 'a', initial: 'م', category: 'حديد وصلب',        bg: 'linear-gradient(135deg,#0d5c6a,#07303c)' },
+  { id: 'b', initial: 'خ', category: 'إسمنت ومواد بناء', bg: 'linear-gradient(135deg,#0d4a30,#072a1a)' },
+  { id: 'c', initial: 'ن', category: 'كهرباء وميكانيكا', bg: 'linear-gradient(135deg,#0d3e5c,#07222f)' },
+];
+
+function SuppliersCard({ data }: { data: LandingPreview | null }) {
+  const suppliers = data === null ? null : (data.suppliers.length > 0 ? data.suppliers : FALLBACK_SUPPLIERS);
+  const count     = data?.supplierCount ?? null;
+  const badge     = count !== null ? (count > 999 ? `+${Math.floor(count / 100) * 100}` : `+${count}`) : '+٥٠٠';
+
   return (
     <div className="bg-[#0a1628]/95 backdrop-blur-xl border border-[#20CBD5]/[0.15] rounded-2xl overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,.55)]">
       <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-white/[0.05]">
@@ -162,20 +255,36 @@ function SuppliersCard() {
           <div className="text-[13px] font-black text-white">الموردون المعتمدون</div>
           <div className="text-[11px] text-slate-500 font-medium mt-0.5">موثقون رسمياً في المنصة</div>
         </div>
-        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">+٥٠٠</div>
+        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">{badge}</div>
       </div>
       <div className="divide-y divide-white/[0.04] px-4">
-        {suppliers.map(s => (
-          <div key={s.av} className="flex items-center gap-3 py-3">
-            <div className="h-[34px] w-[34px] rounded-[10px] flex items-center justify-center text-white text-sm font-black shrink-0" style={{ background: s.bg }}>{s.av}</div>
-            <div className="min-w-0">
-              <div className="text-[11px] font-bold text-white">
-                {s.name} <span className="text-[#20CBD5] text-[10px]">✓</span>
+        {suppliers === null
+          ? [0, 1, 2].map(i => (
+              <div key={i} className="flex items-center gap-3 py-3">
+                <div className="h-[34px] w-[34px] rounded-[10px] bg-white/[0.06] animate-pulse shrink-0" />
+                <div className="space-y-1.5 flex-1"><Sk w="w-32" h="h-3" /><Sk w="w-24" h="h-2" /></div>
               </div>
-              <div className="text-[10px] text-slate-500 font-medium mt-0.5">{s.rating} · {s.cat}</div>
-            </div>
-          </div>
-        ))}
+            ))
+          : suppliers.map((s, i) => (
+              <div key={s.id} className="flex items-center gap-3 py-3">
+                <div
+                  className="h-[34px] w-[34px] rounded-[10px] flex items-center justify-center text-white text-sm font-black shrink-0"
+                  style={{ background: s.bg }}
+                >
+                  {s.initial}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-white flex items-center gap-1">
+                    <span className="blur-redact">{BLUR_NAMES[i] ?? BLUR_NAMES[0]}</span>
+                    <span className="text-[#20CBD5] text-[10px] shrink-0">✓</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    {s.category || 'مواد بناء'} · مورد معتمد
+                  </div>
+                </div>
+              </div>
+            ))
+        }
       </div>
     </div>
   );
@@ -200,6 +309,14 @@ export default function HomeContent() {
   const [slideKey,       setSlideKey]      = useState(0);
   const [scrolled,       setScrolled]      = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [liveData,       setLiveData]      = useState<LandingPreview | null>(null);
+
+  useEffect(() => {
+    fetch('/api/landing/preview')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLiveData(d as LandingPreview); })
+      .catch(() => {});
+  }, []);
 
   const goToSlide = (i: number) => {
     setSlide(i);
@@ -430,9 +547,9 @@ export default function HomeContent() {
 
             {/* Floating UI card — key remount triggers entrance animation */}
             <div key={slideKey} className="relative z-10 w-full max-w-[332px] hero-card-in">
-              {slide === 0 && <RfqCard />}
-              {slide === 1 && <ProjectsCard />}
-              {slide === 2 && <SuppliersCard />}
+              {slide === 0 && <RfqCard data={liveData} />}
+              {slide === 1 && <ProjectsCard data={liveData} />}
+              {slide === 2 && <SuppliersCard data={liveData} />}
             </div>
           </div>
 

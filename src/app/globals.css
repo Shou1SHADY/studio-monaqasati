@@ -322,3 +322,11 @@ html {
     width: 100%;
   }
 }
+
+/* Redact company/project names while keeping the visual layout intact */
+.blur-redact {
+  color: transparent !important;
+  text-shadow: 0 0 8px rgba(148, 192, 228, 0.55);
+  user-select: none;
+  pointer-events: none;
+}
