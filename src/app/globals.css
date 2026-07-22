@@ -284,3 +284,69 @@ html {
   border-color: hsl(var(--primary));
   box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
+
+/* ──────────────────────────────────────────
+   Hero visual column: per-slide CSS art backgrounds
+   Applied at reduced opacity so the photo underneath shows through.
+   ────────────────────────────────────────── */
+.hero-vis-0 {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% 25%, rgba(32,203,213,.075) 0%, transparent 60%),
+    repeating-linear-gradient(180deg, transparent 0px, transparent 58px, rgba(32,203,213,.055) 58px, rgba(32,203,213,.055) 59px),
+    repeating-linear-gradient(90deg,  transparent 0px, transparent 79px,  rgba(32,203,213,.036) 79px,  rgba(32,203,213,.036) 80px),
+    linear-gradient(180deg, #04101e 0%, #02080f 100%);
+}
+.hero-vis-1 {
+  background:
+    radial-gradient(ellipse 75% 55% at 55% 38%, rgba(14,165,233,.08) 0%, transparent 60%),
+    repeating-linear-gradient( 45deg, rgba(32,203,213,.046) 0px, rgba(32,203,213,.046) 1px, transparent 1px, transparent 36px),
+    repeating-linear-gradient(-45deg, rgba(32,203,213,.03)  0px, rgba(32,203,213,.03)  1px, transparent 1px, transparent 36px),
+    linear-gradient(160deg, #040f1e 0%, #030a16 100%);
+}
+.hero-vis-2 {
+  background:
+    radial-gradient(circle 2px at 20% 28%, rgba(32,203,213,.45) 0%, transparent 2px) 0 0/72px 64px,
+    radial-gradient(circle 3px at 62% 50%, rgba(32,203,213,.32) 0%, transparent 3px) 0 0/72px 64px,
+    radial-gradient(circle 2px at 80% 72%, rgba(32,203,213,.26) 0%, transparent 2px) 0 0/72px 64px,
+    radial-gradient(circle 2px at 40% 84%, rgba(32,203,213,.18) 0%, transparent 2px) 0 0/72px 64px,
+    radial-gradient(ellipse 80% 70% at 48% 50%, rgba(32,203,213,.06) 0%, transparent 65%),
+    linear-gradient(140deg, #04101e 0%, #030b18 100%);
+}
+
+/* Hero slide progress dot fill */
+@keyframes hero-dot-fill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+.hero-dot-fill {
+  animation: hero-dot-fill 6s linear forwards;
+}
+
+/* Hero text entrance — triggers on slide change via key remount */
+@keyframes hero-text-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hero-text-in {
+  animation: hero-text-in 0.35s ease both;
+}
+
+/* Hero card entrance — offset delay so card follows text */
+@keyframes hero-card-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hero-card-in {
+  animation: hero-card-in 0.4s ease 0.15s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-text-in,
+  .hero-card-in,
+  .hero-dot-fill {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    width: 100%;
+  }
+}

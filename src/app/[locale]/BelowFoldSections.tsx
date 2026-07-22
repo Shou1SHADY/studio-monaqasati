@@ -15,6 +15,8 @@ import { useTranslations, useLocale } from 'next-intl';
 import { cn } from "@/lib/utils";
 import { motion } from 'framer-motion';
 
+import { DemoRequestSection } from '@/components/DemoRequestSection';
+
 const LandingChatWidget = dynamic(
   () => import('@/components/rag/LandingChatWidget').then(m => ({ default: m.LandingChatWidget })),
   { ssr: false }
@@ -828,6 +830,8 @@ export default function BelowFoldSections() {
           </div>
         </div>
       </section>
+
+      <DemoRequestSection />
 
       {/* FAQ */}
       <section className="py-16 md:py-24 bg-[#0F172A] border-t border-white/5">

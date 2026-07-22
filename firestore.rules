@@ -510,6 +510,16 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Demo requests — public write (unauthenticated form submissions), admin read
+    match /demoRequests/{requestId} {
+      allow create: if request.resource.data.keys().hasAll(['name', 'company', 'phone', 'email'])
+        && request.resource.data.name is string
+        && request.resource.data.company is string
+        && request.resource.data.phone is string
+        && request.resource.data.email is string;
+      allow read, update, delete: if isAdmin();
+    }
+
   }
 }
 
