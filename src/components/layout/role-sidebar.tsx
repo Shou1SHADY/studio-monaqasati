@@ -249,19 +249,23 @@ export function RoleSidebar() {
   let sections: NavSection[] = []
   let portalTitleKey = ""
   let roleColor = ""
+  let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
     sections = supplierSections
     portalTitleKey = "supplier_portal"
     roleColor = "text-success"
+    dashboardHref = "/supplier"
   } else if (pathname.startsWith("/contractor")) {
     sections = contractorSections
     portalTitleKey = "contractor_portal"
     roleColor = "text-accent"
+    dashboardHref = "/contractor"
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
     portalTitleKey = "admin_portal"
     roleColor = "text-purple-400"
+    dashboardHref = "/admin"
   } else {
     return null
   }
@@ -271,9 +275,9 @@ export function RoleSidebar() {
     <Sidebar side={locale === 'ar' ? 'right' : 'left'} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
       <SidebarHeader className="p-6 border-b border-sidebar-border">
         <div className="flex flex-col gap-3">
-          <Link href="/" className="block">
-            <Image 
-              src="/logo1.png" 
+          <Link href={dashboardHref} className="block">
+            <Image
+              src="/logo1.png"
               alt="مدماك تيك" 
               width={130} 
               height={45} 
