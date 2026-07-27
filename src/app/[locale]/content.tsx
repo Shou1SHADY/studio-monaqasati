@@ -11,9 +11,9 @@ import { cn } from '@/lib/utils';
 import BelowFoldSections from './BelowFoldSections';
 
 const HERO_SLIDES = [
-  { wm: '٢٤'   },
-  { wm: '٧٠٪'  },
-  { wm: '+٥٠٠' },
+  { wm: { ar: '٢٤',  en: '24'  } },
+  { wm: { ar: '٧٠٪', en: '70%' } },
+  { wm: { ar: '+٥٠٠', en: '+500' } },
 ] as const;
 
 function AnimatedStat({ value }: { value: string }) {
@@ -58,7 +58,10 @@ function AnimatedStat({ value }: { value: string }) {
 /* ── Types for live landing preview data ── */
 type LiveOffer    = { initial: string; bg: string; price: number };
 type LiveRfq      = { id: string; category: string; subCategory: string; quantity: string; unit: string; offersCount: number; deadlineMs: number; topOffers: LiveOffer[] };
-type LiveProject  = { id: string; type: string; pct: number; ok: boolean; status: string; statusOk: boolean; color: string };
+type LiveProject  = { id: string; type: string; region?: string; pct: number; ok: boolean; status: string; statusOk: boolean; color: string };
+
+const PROJECT_TYPE_CODES = ['proj_type_infrastructure', 'proj_type_buildings', 'proj_type_roads', 'proj_type_industrial', 'proj_type_energy', 'proj_type_other'];
+const PROJECT_STATUS_CODES = ['completed', 'active', 'pending'];
 type LiveSupplier = { id: string; initial: string; category: string; bg: string };
 type LandingPreview = { rfq: LiveRfq | null; projects: LiveProject[]; suppliers: LiveSupplier[]; supplierCount: number };
 
@@ -67,17 +70,30 @@ const Sk = ({ w = 'w-24', h = 'h-2.5' }: { w?: string; h?: string }) => (
   <div className={`${w} ${h} rounded-full bg-white/[0.06] animate-pulse`} />
 );
 
-/* Placeholder name texts at realistic lengths — blurred via CSS */
-const BLUR_NAMES = [
-  'شركة موردة معتمدة في المنصة',
-  'مؤسسة تجارية سعودية معتمدة',
-  'مجموعة موردين سعوديون',
-];
-
 /* ── Hero floating UI cards ── */
 
+const FALLBACK_RFQ_ID = 'A2C9';
+const FALLBACK_RFQ_OFFERS: LiveOffer[] = [
+  { initial: 'م', bg: 'linear-gradient(135deg,#0d5c6a,#07303c)', price: 187500 },
+  { initial: 'خ', bg: 'linear-gradient(135deg,#1a3045,#0c1a26)', price: 192300 },
+  { initial: 'ن', bg: 'linear-gradient(135deg,#1c2b3c,#0c1520)', price: 198750 },
+];
+
 function RfqCard({ data }: { data: LandingPreview | null }) {
-  const rfq = data?.rfq ?? null;
+  const t = useTranslations('Landing.HeroCards');
+  const blurNames = [t('blur_name_1'), t('blur_name_2'), t('blur_name_3')];
+
+  const fallbackRfq: LiveRfq | null = data === null ? null : {
+    id: FALLBACK_RFQ_ID,
+    category: t('rfq_fallback_category'),
+    subCategory: '',
+    quantity: '50',
+    unit: t('rfq_fallback_unit'),
+    offersCount: FALLBACK_RFQ_OFFERS.length,
+    deadlineMs: (23 * 60 + 14) * 1000,
+    topOffers: FALLBACK_RFQ_OFFERS,
+  };
+  const rfq = (data?.rfq && data.rfq.topOffers.length > 0) ? data.rfq : fallbackRfq;
 
   const [secs, setSecs] = useState(23 * 60 + 14);
   useEffect(() => {
@@ -109,9 +125,9 @@ function RfqCard({ data }: { data: LandingPreview | null }) {
             <><Sk w="w-36" h="h-3" /><div className="mt-2"><Sk w="w-24" h="h-2" /></div></>
           ) : (
             <>
-              <div className="text-[13px] font-black text-white">طلب عروض #{rfq ? rfq.id : '----'}</div>
-              <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                {rfq ? `${rfq.category}${rfq.quantity ? ` · ${rfq.quantity} ${rfq.unit}` : ''}` : 'جارٍ تحميل البيانات…'}
+              <div className="text-[13px] font-black text-white">{t('rfq_label')} #{rfq ? rfq.id : '----'}</div>
+              <div className="text-[11px] text-slate-500 font-medium mt-0.5 blur-redact">
+                {rfq ? `${rfq.category}${rfq.quantity ? ` · ${rfq.quantity} ${rfq.unit}` : ''}` : t('rfq_loading')}
               </div>
             </>
           )}
@@ -135,12 +151,12 @@ function RfqCard({ data }: { data: LandingPreview | null }) {
             >
               {best?.initial ?? 'م'}
             </div>
-            <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-300 truncate blur-redact">{BLUR_NAMES[0]}</div>
+            <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-300 truncate blur-redact">{blurNames[0]}</div>
             <div className="text-[12px] font-black text-white shrink-0 tabular-nums">
-              {best ? best.price.toLocaleString() : '---'}
-              <span className="text-[9px] text-slate-500 ms-1">ر.س</span>
+              <span className="blur-redact">{best ? best.price.toLocaleString() : '---'}</span>
+              <span className="text-[9px] text-slate-500 ms-1">{t('currency')}</span>
             </div>
-            <div className="text-[9px] font-black text-emerald-400 bg-emerald-400/[0.14] px-1.5 py-0.5 rounded-full shrink-0">✓ أفضل</div>
+            <div className="text-[9px] font-black text-emerald-400 bg-emerald-400/[0.14] px-1.5 py-0.5 rounded-full shrink-0">✓ {t('best_offer')}</div>
           </div>
         )}
 
@@ -164,10 +180,10 @@ function RfqCard({ data }: { data: LandingPreview | null }) {
                 >
                   {o.initial}
                 </div>
-                <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-400 truncate blur-redact">{BLUR_NAMES[i + 1]}</div>
+                <div className="flex-1 min-w-0 text-[11px] font-bold text-slate-400 truncate blur-redact">{blurNames[i + 1] ?? blurNames[0]}</div>
                 <div className="text-[12px] font-black text-white shrink-0 tabular-nums">
-                  {o.price > 0 ? o.price.toLocaleString() : '---'}
-                  <span className="text-[9px] text-slate-500 ms-1">ر.س</span>
+                  <span className="blur-redact">{o.price > 0 ? o.price.toLocaleString() : '---'}</span>
+                  <span className="text-[9px] text-slate-500 ms-1">{t('currency')}</span>
                 </div>
               </div>
             ))
@@ -176,21 +192,32 @@ function RfqCard({ data }: { data: LandingPreview | null }) {
 
       <div className="px-4 pb-4">
         <button className="w-full py-2.5 bg-[#0369A1] hover:bg-[#0EA5E9] text-white text-[12px] font-black rounded-[10px] transition-colors">
-          قبول العرض الأفضل
+          {t('accept_best_offer')}
         </button>
       </div>
     </div>
   );
 }
 
-const FALLBACK_PROJECTS: LiveProject[] = [
-  { id: 'a', type: 'مشروع إنشائي · الرياض',   pct: 80, ok: true,  status: '✓ آخر توريد مؤكد', statusOk: true,  color: '#20CBD5' },
-  { id: 'b', type: 'مشروع تجاري · جدة',        pct: 60, ok: false, status: 'قيد التوريد',       statusOk: false, color: '#0EA5E9' },
-  { id: 'c', type: 'مشروع خدمات · الدمام',     pct: 45, ok: false, status: 'بانتظار العروض',    statusOk: false, color: '#F59E0B' },
-];
-
 function ProjectsCard({ data }: { data: LandingPreview | null }) {
-  const projects = data === null ? null : (data.projects.length > 0 ? data.projects : FALLBACK_PROJECTS);
+  const t = useTranslations('Landing.HeroCards');
+  const tProj = useTranslations('Portal.Contractor');
+  const locale = useLocale();
+  const pctSign = locale === 'ar' ? '٪' : '%';
+
+  const typeLabel = (type: string, region?: string) => {
+    const label = PROJECT_TYPE_CODES.includes(type) ? tProj(type) : (type || t('project_type_generic'));
+    return region ? `${label} · ${region}` : label;
+  };
+  const statusLabel = (status: string) =>
+    PROJECT_STATUS_CODES.includes(status) ? t(`project_status_${status}`) : status;
+
+  const fallbackProjects: LiveProject[] = [
+    { id: 'a', type: t('project_1_type'), pct: 80, ok: true,  status: t('project_1_status'), statusOk: true,  color: '#20CBD5' },
+    { id: 'b', type: t('project_2_type'), pct: 60, ok: false, status: t('project_2_status'), statusOk: false, color: '#0EA5E9' },
+    { id: 'c', type: t('project_3_type'), pct: 45, ok: false, status: t('project_3_status'), statusOk: false, color: '#F59E0B' },
+  ];
+  const projects = data === null ? null : (data.projects.length > 0 ? data.projects : fallbackProjects);
   const count    = projects?.length ?? 3;
 
   return (
@@ -200,10 +227,10 @@ function ProjectsCard({ data }: { data: LandingPreview | null }) {
           <BarChart3 size={15} className="text-[#20CBD5]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-black text-white">المشاريع الجارية</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-0.5">آخر تحديث: منذ ٥ دقائق</div>
+          <div className="text-[13px] font-black text-white">{t('projects_title')}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-0.5">{t('projects_updated')}</div>
         </div>
-        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">{count} نشطة</div>
+        <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">{count} {t('projects_active')}</div>
       </div>
       <div className="p-4 space-y-3.5">
         {projects === null
@@ -218,13 +245,13 @@ function ProjectsCard({ data }: { data: LandingPreview | null }) {
             ))
           : projects.map(p => (
               <div key={p.id}>
-                <div className="text-[11px] font-bold text-slate-300 mb-1.5">{p.type}</div>
+                <div className="text-[11px] font-bold text-slate-300 mb-1.5 blur-redact">{typeLabel(p.type, p.region)}</div>
                 <div className="h-1.5 rounded-full bg-white/[0.07] overflow-hidden mb-1.5">
                   <div className="h-full rounded-full" style={{ width: `${p.pct}%`, background: p.color }} />
                 </div>
                 <div className="flex justify-between text-[10px] font-bold">
-                  <span className={p.statusOk ? 'text-emerald-400' : 'text-slate-500'}>{p.status}</span>
-                  <span className="text-slate-400 tabular-nums">{p.pct}٪</span>
+                  <span className={`blur-redact ${p.statusOk ? 'text-emerald-400' : 'text-slate-500'}`}>{statusLabel(p.status)}</span>
+                  <span className="text-slate-400 tabular-nums">{p.pct}{pctSign}</span>
                 </div>
               </div>
             ))
@@ -234,16 +261,18 @@ function ProjectsCard({ data }: { data: LandingPreview | null }) {
   );
 }
 
-const FALLBACK_SUPPLIERS: LiveSupplier[] = [
-  { id: 'a', initial: 'م', category: 'حديد وصلب',        bg: 'linear-gradient(135deg,#0d5c6a,#07303c)' },
-  { id: 'b', initial: 'خ', category: 'إسمنت ومواد بناء', bg: 'linear-gradient(135deg,#0d4a30,#072a1a)' },
-  { id: 'c', initial: 'ن', category: 'كهرباء وميكانيكا', bg: 'linear-gradient(135deg,#0d3e5c,#07222f)' },
-];
-
 function SuppliersCard({ data }: { data: LandingPreview | null }) {
-  const suppliers = data === null ? null : (data.suppliers.length > 0 ? data.suppliers : FALLBACK_SUPPLIERS);
-  const count     = data?.supplierCount ?? null;
-  const badge     = count !== null ? (count > 999 ? `+${Math.floor(count / 100) * 100}` : `+${count}`) : '+٥٠٠';
+  const t = useTranslations('Landing.HeroCards');
+  const locale = useLocale();
+  const fallbackSuppliers: LiveSupplier[] = [
+    { id: 'a', initial: 'م', category: t('supplier_1_category'), bg: 'linear-gradient(135deg,#0d5c6a,#07303c)' },
+    { id: 'b', initial: 'خ', category: t('supplier_2_category'), bg: 'linear-gradient(135deg,#0d4a30,#072a1a)' },
+    { id: 'c', initial: 'ن', category: t('supplier_3_category'), bg: 'linear-gradient(135deg,#0d3e5c,#07222f)' },
+  ];
+  const blurNames = [t('blur_name_1'), t('blur_name_2'), t('blur_name_3')];
+  const suppliers = data === null ? null : (data.suppliers.length > 0 ? data.suppliers : fallbackSuppliers);
+  const count     = data?.supplierCount || null;
+  const badge     = count !== null ? (count > 999 ? `+${Math.floor(count / 100) * 100}` : `+${count}`) : (locale === 'ar' ? '+٥٠٠' : '+500');
 
   return (
     <div className="bg-[#0a1628]/95 backdrop-blur-xl border border-[#20CBD5]/[0.15] rounded-2xl overflow-hidden shadow-[0_24px_64px_rgba(0,0,0,.55)]">
@@ -252,8 +281,8 @@ function SuppliersCard({ data }: { data: LandingPreview | null }) {
           <ShieldCheck size={15} className="text-[#20CBD5]" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-black text-white">الموردون المعتمدون</div>
-          <div className="text-[11px] text-slate-500 font-medium mt-0.5">موثقون رسمياً في المنصة</div>
+          <div className="text-[13px] font-black text-white">{t('suppliers_title')}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-0.5">{t('suppliers_subtitle')}</div>
         </div>
         <div className="text-[10px] font-black bg-[#20CBD5]/[0.12] text-[#20CBD5] px-2 py-1 rounded-full shrink-0">{badge}</div>
       </div>
@@ -275,11 +304,11 @@ function SuppliersCard({ data }: { data: LandingPreview | null }) {
                 </div>
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold text-white flex items-center gap-1">
-                    <span className="blur-redact">{BLUR_NAMES[i] ?? BLUR_NAMES[0]}</span>
+                    <span className="blur-redact">{blurNames[i] ?? blurNames[0]}</span>
                     <span className="text-[#20CBD5] text-[10px] shrink-0">✓</span>
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    {s.category || 'مواد بناء'} · مورد معتمد
+                    <span className="blur-redact">{s.category || t('supplier_category_fallback')}</span> · {t('supplier_tag')}
                   </div>
                 </div>
               </div>
@@ -309,14 +338,10 @@ export default function HomeContent() {
   const [slideKey,       setSlideKey]      = useState(0);
   const [scrolled,       setScrolled]      = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [liveData,       setLiveData]      = useState<LandingPreview | null>(null);
-
-  useEffect(() => {
-    fetch('/api/landing/preview')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setLiveData(d as LandingPreview); })
-      .catch(() => {});
-  }, []);
+  // Hero cards show blurred placeholder content for now — not wired to
+  // /api/landing/preview yet. Swap this for a fetched LandingPreview once
+  // the cards are ready to display real live data.
+  const heroCardData: LandingPreview = { rfq: null, projects: [], suppliers: [], supplierCount: 0 };
 
   const goToSlide = (i: number) => {
     setSlide(i);
@@ -486,7 +511,7 @@ export default function HomeContent() {
               className="absolute bottom-0 start-[-0.05em] font-black text-[#20CBD5] pointer-events-none select-none leading-none"
               style={{ fontSize: 'clamp(7rem,12vw,11rem)', opacity: 0.028 }}
             >
-              {HERO_SLIDES[slide].wm}
+              {HERO_SLIDES[slide].wm[locale === 'ar' ? 'ar' : 'en']}
             </span>
 
             {/* Main content — key remount triggers fade-in on slide change */}
@@ -545,11 +570,27 @@ export default function HomeContent() {
           {/* VISUAL COLUMN — desktop only */}
           <div className="hidden lg:flex lg:w-[45%] relative items-center justify-center px-[5%] py-10">
 
-            {/* Floating UI card — key remount triggers entrance animation */}
-            <div key={slideKey} className="relative z-10 w-full max-w-[332px] hero-card-in">
-              {slide === 0 && <RfqCard data={liveData} />}
-              {slide === 1 && <ProjectsCard data={liveData} />}
-              {slide === 2 && <SuppliersCard data={liveData} />}
+            {/* Ambient glow — fills the negative space around the card so it doesn't float in isolation */}
+            <div aria-hidden="true" className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-[420px] h-[420px] rounded-full bg-[#20CBD5]/[0.08] blur-[110px]" />
+            </div>
+            <div aria-hidden="true" className="absolute top-[18%] end-[10%] w-[200px] h-[200px] rounded-full bg-cta/[0.10] blur-[90px] pointer-events-none" />
+
+            {/* Card stack wrapper */}
+            <div className="relative w-full max-w-[332px]">
+
+              {/* Decorative stacked card — adds depth so the visual reads as a layered product, not a single flat box */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-x-4 -top-3 bottom-[-12px] rounded-2xl border border-white/[0.07] bg-white/[0.015] rotate-[3deg] pointer-events-none"
+              />
+
+              {/* Floating UI card — key remount triggers entrance animation */}
+              <div key={slideKey} className="relative z-10 hero-card-in">
+                {slide === 0 && <RfqCard data={heroCardData} />}
+                {slide === 1 && <ProjectsCard data={heroCardData} />}
+                {slide === 2 && <SuppliersCard data={heroCardData} />}
+              </div>
             </div>
           </div>
 

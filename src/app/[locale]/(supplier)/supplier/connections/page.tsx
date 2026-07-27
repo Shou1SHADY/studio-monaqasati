@@ -110,6 +110,21 @@ export default function SupplierConnectionsPage() {
       .map((l) => l.contractorOrgId)
   )
 
+  const notifyInviter = async (inv: Invitation) => {
+    if (!firestore || !inv.invitedBy) return
+    try {
+      await addDoc(collection(firestore, "users", inv.invitedBy, "notifications"), {
+        title: "تم قبول دعوة المورد",
+        message: `${typedProfile?.companyName || typedProfile?.name || user?.email || ""} قبل دعوتك وانضم إلى دليل مورّديك.`,
+        type: "supplier_invite_accepted",
+        createdAt: new Date().toISOString(),
+        read: false,
+      })
+    } catch (err) {
+      console.error("Failed to notify inviter of acceptance:", err)
+    }
+  }
+
   const handleAcceptInvitation = async (inv: Invitation) => {
     if (!firestore || !user || !myOrgId || !inv.contractorOrgId) return
     if (linkedContractorOrgIds.has(inv.contractorOrgId)) {
@@ -117,6 +132,7 @@ export default function SupplierConnectionsPage() {
       setProcessingId(inv.id)
       try {
         await updateDoc(doc(firestore, "invitations", inv.id), { status: "accepted", acceptedAt: serverTimestamp() })
+        await notifyInviter(inv)
         toast({ title: t("conn_inv_accepted_toast") })
       } catch (err) {
         console.error(err)
@@ -142,6 +158,7 @@ export default function SupplierConnectionsPage() {
       })
       // Mark invitation as accepted
       await updateDoc(doc(firestore, "invitations", inv.id), { status: "accepted", acceptedAt: serverTimestamp() })
+      await notifyInviter(inv)
       toast({ title: t("conn_inv_accepted_toast") })
     } catch (err) {
       console.error(err)

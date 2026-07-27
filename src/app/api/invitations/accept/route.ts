@@ -100,6 +100,39 @@ export async function POST(req: NextRequest) {
         })
         .catch((err) => console.error("Failed to log join activity:", err))
 
+      // Notify the new member (reuses the "invitation" type the notifications
+      // pages already render with a "Go to Team" button) and the inviter, so
+      // acceptance is visible on both sides instead of leaving no trace.
+      const acceptedName = (profile.name as string) || (profile.email as string) || decoded.email || ""
+      await db
+        .collection("users")
+        .doc(decoded.uid)
+        .collection("notifications")
+        .add({
+          title: "انضممت إلى الفريق",
+          message: `أصبحت الآن عضواً في فريق ${(inv.organizationName as string) || ""}. يمكنك الاطلاع على صلاحياتك من صفحة إدارة الفريق.`,
+          type: "invitation",
+          organizationId: inv.organizationId,
+          createdAt: new Date().toISOString(),
+          read: false,
+        })
+        .catch((err) => console.error("Failed to create join notification:", err))
+      if (inv.invitedBy) {
+        await db
+          .collection("users")
+          .doc(inv.invitedBy as string)
+          .collection("notifications")
+          .add({
+            title: "تم قبول دعوة الفريق",
+            message: `${acceptedName} انضم إلى فريقك.`,
+            type: "team_invite_accepted",
+            organizationId: inv.organizationId,
+            createdAt: new Date().toISOString(),
+            read: false,
+          })
+          .catch((err) => console.error("Failed to notify inviter of acceptance:", err))
+      }
+
       return NextResponse.json({ success: true, data: { joined: true, organizationId: inv.organizationId } })
     }
 
@@ -144,6 +177,38 @@ export async function POST(req: NextRequest) {
       acceptedBy: decoded.uid,
       acceptedEmail: (profile.email as string) || decoded.email || null,
     })
+
+    // Notify the new supplier (nudges them to complete their profile — the
+    // notifications pages don't have a dedicated action button for this type
+    // yet, but the message alone still confirms the connection was made) and
+    // the inviting contractor.
+    const acceptedSupplierName = (profile.companyName as string) || (profile.name as string) || decoded.email || ""
+    await db
+      .collection("users")
+      .doc(decoded.uid)
+      .collection("notifications")
+      .add({
+        title: "تم الربط بنجاح",
+        message: `تم ربط حسابك بـ ${(inv.contractorName as string) || "المقاول"}. أكمل بيانات ملفك الشخصي لتبدأ باستقبال طلبات عروض الأسعار.`,
+        type: "supplier_connected",
+        createdAt: new Date().toISOString(),
+        read: false,
+      })
+      .catch((err) => console.error("Failed to create supplier connection notification:", err))
+    if (inv.invitedBy) {
+      await db
+        .collection("users")
+        .doc(inv.invitedBy as string)
+        .collection("notifications")
+        .add({
+          title: "تم قبول دعوة المورد",
+          message: `${acceptedSupplierName} قبل دعوتك وانضم إلى دليل مورّديك.`,
+          type: "supplier_invite_accepted",
+          createdAt: new Date().toISOString(),
+          read: false,
+        })
+        .catch((err) => console.error("Failed to notify inviter of supplier acceptance:", err))
+    }
 
     return NextResponse.json({ success: true, data: { linked: true } })
   } catch (err) {

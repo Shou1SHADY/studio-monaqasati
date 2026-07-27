@@ -80,18 +80,17 @@ export async function GET() {
     const pctMap = [80, 60, 45];
     const projects = projectsSnap.docs.map((doc, i) => {
       const d = doc.data();
-      const type = d.projectType || d.category || d.type || 'مشروع إنشائي';
+      const type = d.projectType || d.category || d.type || '';
       const region = d.region || d.location || '';
-      const status = d.status || 'active';
+      const rawStatus = d.status === 'completed' ? 'completed' : d.status === 'paused' ? 'pending' : 'active';
       return {
         id: doc.id,
-        type: region ? `${type} · ${region}` : type,
+        type,
+        region,
         pct: pctMap[i] ?? 50,
         ok: i === 0,
-        status: status === 'completed' ? '✓ آخر توريد مؤكد'
-          : status === 'active' ? 'قيد التوريد'
-          : 'بانتظار العروض',
-        statusOk: status === 'completed',
+        status: rawStatus,
+        statusOk: rawStatus === 'completed',
         color: ['#20CBD5', '#0EA5E9', '#F59E0B'][i] ?? '#20CBD5',
       };
     });

@@ -94,13 +94,16 @@ export default function RegisterPage() {
     return () => { cancelled = true }
   }, [inviteToken])
 
-  // Non-fatal: supplier invite → links the new supplier to the contractor's
-  // directory; team invite → joins the new user to the inviting organization.
-  const acceptInvite = async (user: User) => {
-    if (!inviteToken) return
+  // Supplier invite → links the new supplier to the contractor's directory;
+  // team invite → joins the new user to the inviting organization. Reports
+  // success/failure so the caller can tell the user when it didn't work —
+  // the account still exists either way, but silently pretending the link
+  // succeeded leaves them stuck in their own solo org with no explanation.
+  const acceptInvite = async (user: User): Promise<{ ok: boolean; code?: string }> => {
+    if (!inviteToken) return { ok: true }
     try {
       const idToken = await user.getIdToken()
-      await fetch("/api/invitations/accept", {
+      const res = await fetch("/api/invitations/accept", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -108,8 +111,15 @@ export default function RegisterPage() {
         },
         body: JSON.stringify({ token: inviteToken }),
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok || !data?.success) {
+        console.error("Failed to auto-accept invitation:", data?.message || res.status)
+        return { ok: false, code: data?.code }
+      }
+      return { ok: true }
     } catch (err) {
       console.error("Failed to auto-accept invitation:", err)
+      return { ok: false }
     }
   }
 
@@ -206,12 +216,30 @@ export default function RegisterPage() {
       }
 
       // No-op without a token; the API validates type/role server-side.
-      await acceptInvite(user)
+      const acceptResult = await acceptInvite(user)
 
-      toast({
-        title: t("success_title"),
-        description: t("success_desc"),
-      })
+      if (inviteToken && !acceptResult.ok) {
+        toast({
+          title: t("success_title"),
+          description: t("invite_accept_failed_desc"),
+          variant: "destructive",
+        })
+      } else if (inviteToken && inviteInfo?.type === "team_invite") {
+        toast({
+          title: t("success_title"),
+          description: t("invite_joined_team_desc", { org: inviteInfo.orgName || "" }),
+        })
+      } else if (inviteToken && inviteInfo?.type === "supplier_invite") {
+        toast({
+          title: t("success_title"),
+          description: t("invite_joined_supplier_desc", { contractor: inviteInfo.contractorName || "" }),
+        })
+      } else {
+        toast({
+          title: t("success_title"),
+          description: t("success_desc"),
+        })
+      }
 
       router.push("/verify-email")
 
@@ -298,12 +326,30 @@ export default function RegisterPage() {
       }
 
       // No-op without a token; the API validates type/role server-side.
-      await acceptInvite(user)
+      const acceptResult = await acceptInvite(user)
 
-      toast({
-        title: t("success_title"),
-        description: t("google_success_desc"),
-      })
+      if (inviteToken && !acceptResult.ok) {
+        toast({
+          title: t("success_title"),
+          description: t("invite_accept_failed_desc"),
+          variant: "destructive",
+        })
+      } else if (inviteToken && inviteInfo?.type === "team_invite") {
+        toast({
+          title: t("success_title"),
+          description: t("invite_joined_team_desc", { org: inviteInfo.orgName || "" }),
+        })
+      } else if (inviteToken && inviteInfo?.type === "supplier_invite") {
+        toast({
+          title: t("success_title"),
+          description: t("invite_joined_supplier_desc", { contractor: inviteInfo.contractorName || "" }),
+        })
+      } else {
+        toast({
+          title: t("success_title"),
+          description: t("google_success_desc"),
+        })
+      }
 
       if (role === "Contractor") {
         router.push("/contractor")

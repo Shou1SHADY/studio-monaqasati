@@ -5,7 +5,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box, MessageCircle, Send, Users } from "lucide-react"
+import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box, MessageCircle, Send, Users, Link2 } from "lucide-react"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -219,6 +219,7 @@ export default function SupplierNotificationsPage() {
 
     if (type === "inquiry_reply") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><MessageCircle size={22} /></div>;
     if (type === "invitation") return <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0"><Users size={22} /></div>;
+    if (type === "supplier_connected") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><Link2 size={22} /></div>;
     if (type === "offer_accepted" || status === "مقبول") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><CheckCircle2 size={22} /></div>;
     if (type === "offer_rejected" || status === "مرفوض") return <div className="h-11 w-11 rounded-2xl bg-destructive/10 flex items-center justify-center text-destructive shrink-0"><XCircle size={22} /></div>;
     if (type === "price_reduction" || status === "مطلوب تخفيض") return <div className="h-11 w-11 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0"><ArrowDown size={22} /></div>;
@@ -242,6 +243,7 @@ export default function SupplierNotificationsPage() {
 
     if (type === "inquiry_reply") return { title: sanitizeTitle(offer.title) || t("inquiry_reply_title"), desc: offer.description || offer.message || t("inquiry_reply_desc") };
     if (type === "invitation") return { title: sanitizeTitle(offer.title) || t("invitation_title"), desc: offer.message || t("invitation_desc") };
+    if (type === "supplier_connected") return { title: sanitizeTitle(offer.title) || t("supplier_connected_title"), desc: offer.message || t("supplier_connected_desc") };
     if (type === "sample_sent") return { title: "📦 تم إرسال العينة من المورد", desc: sanitizeTitle(offer.message) || `تم إرسال العينة لطلب عروض الأسعار: ${offer.rfqTitle || ""}. يرجى تأكيد الاستلام.` };
     if (type === "offer_accepted" || status === "مقبول") return { title: t("accepted_offer"), desc: offer.message || t("accepted_offer_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "offer_rejected" || status === "مرفوض") return { title: t("rejected_offer"), desc: offer.message || t("rejected_offer_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
@@ -428,7 +430,7 @@ export default function SupplierNotificationsPage() {
                         </div>
                       )}
 
-                      {unread && !isActionRequired && notif.type !== "invitation" && (
+                      {unread && !isActionRequired && notif.type !== "invitation" && notif.type !== "supplier_connected" && (
                         <p className="text-[11px] text-muted-foreground mt-1 italic">
                           {t("click_to_mark_read")}
                         </p>
@@ -439,6 +441,16 @@ export default function SupplierNotificationsPage() {
                           <Link href={`/${profile?.role?.toLowerCase()}/team`} className="inline-flex">
                             <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
                               {t("go_to_team")}
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+
+                      {unread && notif.type === "supplier_connected" && (
+                        <div className="pt-2">
+                          <Link href="/supplier/connections" className="inline-flex">
+                            <Button size="sm" className="h-8 text-xs bg-success text-white hover:bg-success/90">
+                              {t("go_to_connections")}
                             </Button>
                           </Link>
                         </div>

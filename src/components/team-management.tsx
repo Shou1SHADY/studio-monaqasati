@@ -354,6 +354,17 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
         await deleteDoc(doc(firestore, "invitations", invitation.id))
       }
       toast({ title: t("team_joined"), description: t("team_joined_desc") })
+      // Accepting changes the caller's own organizationId, which every
+      // org-scoped Firestore rule in this session depends on (via
+      // getOrganizationId()). Listeners opened under the old org (this page's
+      // teamGroups/members queries, the sidebar's usePermissions, etc.) get a
+      // hard permission-denied the instant that field changes underneath
+      // them, because Firestore re-evaluates their rules against the new
+      // value while their query filters still target the old org. A full
+      // reload tears down and re-subscribes everything under the new org
+      // context instead of racing the transition.
+      window.location.reload()
+      return
     } catch (error) {
       console.error("❌ Accept invitation error:", error)
       toast({ title: t("team_error"), description: t("team_join_failed"), variant: "destructive" })
