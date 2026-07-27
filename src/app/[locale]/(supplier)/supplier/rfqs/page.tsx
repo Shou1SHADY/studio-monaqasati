@@ -158,15 +158,16 @@ export default function AvailableRfqsPage() {
     return q
   }, [firestore, user, isUserLoading, selectedCategory, selectedCity])
 
+  const supplierOrgId = (profile as any)?.organizationId || user?.uid
+
   // Private RFQ query: RFQs where this supplier's org is in allowedSupplierOrgIds
   const privateRfqsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore || !profile) return null
-    const supplierOrgId = (profile as any)?.organizationId || user.uid
+    if (isUserLoading || !user || !firestore || !profile || !supplierOrgId) return null
     return query(
       collection(firestore, "rfqs"),
       where("allowedSupplierOrgIds", "array-contains", supplierOrgId)
     )
-  }, [firestore, user, isUserLoading, profile])
+  }, [firestore, user, isUserLoading, profile, supplierOrgId])
 
   const { data: allRfqs, isLoading: isCollectionLoading } = useCollection(rfqsQuery)
   const { data: privateRfqs, isLoading: isPrivateLoading } = useCollection(privateRfqsQuery)
@@ -185,10 +186,14 @@ export default function AvailableRfqsPage() {
 
   const archivedRfqIds: string[] = (profile as any)?.archivedRfqIds || []
 
-  // Client-side filtering by specializations and sorting
+  // Client-side filtering by specializations and sorting.
+  // A supplier explicitly targeted via allowedSupplierOrgIds (invited/connected
+  // to the publishing contractor) sees the RFQ regardless of specialization —
+  // being invited is itself the relevance signal, not a category match.
   const allMatchingRfqs = allCombinedRfqs
     ? [...allCombinedRfqs]
         .filter((rfq: any) => {
+          if (supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)) return true;
           if (!profile?.specializations?.length) return false;
           return profile.specializations.includes(rfq.category);
         })

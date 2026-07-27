@@ -902,6 +902,8 @@
       "inquiry_reply_desc": "لقد وردك رد على استفسارك من المقاول.",
       "invitation_title": "دعوة للانضمام للفريق",
       "invitation_desc": "لقد تلقيت دعوة للانضمام إلى فريق عمل جديد.",
+      "supplier_invite_received_title": "دعوة للانضمام كمورّد",
+      "supplier_invite_received_desc": "دعاك أحد المقاولين للانضمام إلى دليل مورّديه.",
       "supplier_connected_title": "تم الربط بنجاح",
       "supplier_connected_desc": "تم ربط حسابك بأحد المقاولين. أكمل بيانات ملفك الشخصي لتبدأ باستقبال طلبات عروض الأسعار.",
       "go_to_connections": "الانتقال لصفحة جهات الاتصال",

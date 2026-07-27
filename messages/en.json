@@ -906,6 +906,8 @@
       "inquiry_reply_desc": "You have received a reply to your inquiry from the contractor.",
       "invitation_title": "Team Invitation",
       "invitation_desc": "You have received an invitation to join a new team.",
+      "supplier_invite_received_title": "Supplier Invitation",
+      "supplier_invite_received_desc": "A contractor has invited you to join their supplier directory.",
       "supplier_connected_title": "Connected Successfully",
       "supplier_connected_desc": "Your account is now linked to a contractor. Complete your profile to start receiving RFQs.",
       "go_to_connections": "Go to Connections Page",

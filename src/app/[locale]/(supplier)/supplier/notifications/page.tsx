@@ -63,6 +63,8 @@ export default function SupplierNotificationsPage() {
   const { data: offers, isLoading } = useCollection(offersQuery)
 
 
+  const supplierOrgId = (profile as any)?.organizationId || user?.uid
+
   // Fetch new RFQs matching supplier's specializations
   const matchingRfqsQuery = useMemoFirebase(() => {
     if (!profile?.specializations || !firestore) return null
@@ -74,6 +76,19 @@ export default function SupplierNotificationsPage() {
   }, [firestore, profile])
 
   const { data: rfqs } = useCollection(matchingRfqsQuery)
+
+  // RFQs where this supplier's org was explicitly targeted (invited/connected
+  // contractor publishing a private tender) — surfaces regardless of specialization.
+  const privateRfqsQuery = useMemoFirebase(() => {
+    if (!firestore || !supplierOrgId) return null
+    return query(
+      collection(firestore, "rfqs"),
+      where("status", "==", "New"),
+      where("allowedSupplierOrgIds", "array-contains", supplierOrgId)
+    )
+  }, [firestore, supplierOrgId])
+
+  const { data: privateRfqs } = useCollection(privateRfqsQuery)
 
   // Fetch chats for unread chat notifications
   const chatsUnreadQuery = useMemoFirebase(() => {
@@ -135,9 +150,16 @@ export default function SupplierNotificationsPage() {
         return true;
       });
 
-    const rfqsList = (rfqs || [])
+    const combinedRfqs = [...(rfqs || []), ...(privateRfqs || [])]
+    const seenRfqIds = new Set<string>()
+    const rfqsList = combinedRfqs
       .filter((rfq: any) => {
-        if (!profile?.specializations?.includes(rfq.category)) return false
+        if (seenRfqIds.has(rfq.id)) return false
+        seenRfqIds.add(rfq.id)
+        // Explicitly targeted (invited/connected contractor) bypasses the
+        // specialization match — being invited is itself the relevance signal.
+        const isTargeted = supplierOrgId && (rfq.allowedSupplierOrgIds || []).includes(supplierOrgId)
+        if (!isTargeted && !profile?.specializations?.includes(rfq.category)) return false
         if (rfq.deadline) {
           const deadline = new Date(rfq.deadline)
           const now = new Date()
@@ -165,10 +187,10 @@ export default function SupplierNotificationsPage() {
       return dates.length > 0 ? Math.max(...dates) : 0;
     };
 
-    return [...offersList, ...rfqsList, ...inquiryList].sort((a: any, b: any) => 
+    return [...offersList, ...rfqsList, ...inquiryList].sort((a: any, b: any) =>
       getEventTime(b) - getEventTime(a)
     )
-  }, [offers, rfqs, profile, userNotifications])
+  }, [offers, rfqs, privateRfqs, profile, supplierOrgId, userNotifications])
 
   // Mark an offer notification as read
   const markAsRead = async (offerId: string) => {
@@ -219,6 +241,7 @@ export default function SupplierNotificationsPage() {
 
     if (type === "inquiry_reply") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><MessageCircle size={22} /></div>;
     if (type === "invitation") return <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0"><Users size={22} /></div>;
+    if (type === "supplier_invite_received") return <div className="h-11 w-11 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shrink-0"><Users size={22} /></div>;
     if (type === "supplier_connected") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><Link2 size={22} /></div>;
     if (type === "offer_accepted" || status === "مقبول") return <div className="h-11 w-11 rounded-2xl bg-success/10 flex items-center justify-center text-success shrink-0"><CheckCircle2 size={22} /></div>;
     if (type === "offer_rejected" || status === "مرفوض") return <div className="h-11 w-11 rounded-2xl bg-destructive/10 flex items-center justify-center text-destructive shrink-0"><XCircle size={22} /></div>;
@@ -243,6 +266,7 @@ export default function SupplierNotificationsPage() {
 
     if (type === "inquiry_reply") return { title: sanitizeTitle(offer.title) || t("inquiry_reply_title"), desc: offer.description || offer.message || t("inquiry_reply_desc") };
     if (type === "invitation") return { title: sanitizeTitle(offer.title) || t("invitation_title"), desc: offer.message || t("invitation_desc") };
+    if (type === "supplier_invite_received") return { title: sanitizeTitle(offer.title) || t("supplier_invite_received_title"), desc: offer.message || t("supplier_invite_received_desc") };
     if (type === "supplier_connected") return { title: sanitizeTitle(offer.title) || t("supplier_connected_title"), desc: offer.message || t("supplier_connected_desc") };
     if (type === "sample_sent") return { title: "📦 تم إرسال العينة من المورد", desc: sanitizeTitle(offer.message) || `تم إرسال العينة لطلب عروض الأسعار: ${offer.rfqTitle || ""}. يرجى تأكيد الاستلام.` };
     if (type === "offer_accepted" || status === "مقبول") return { title: t("accepted_offer"), desc: offer.message || t("accepted_offer_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
@@ -430,7 +454,7 @@ export default function SupplierNotificationsPage() {
                         </div>
                       )}
 
-                      {unread && !isActionRequired && notif.type !== "invitation" && notif.type !== "supplier_connected" && (
+                      {unread && !isActionRequired && notif.type !== "invitation" && notif.type !== "supplier_invite_received" && notif.type !== "supplier_connected" && (
                         <p className="text-[11px] text-muted-foreground mt-1 italic">
                           {t("click_to_mark_read")}
                         </p>
@@ -441,6 +465,16 @@ export default function SupplierNotificationsPage() {
                           <Link href={`/${profile?.role?.toLowerCase()}/team`} className="inline-flex">
                             <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
                               {t("go_to_team")}
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
+
+                      {unread && notif.type === "supplier_invite_received" && (
+                        <div className="pt-2">
+                          <Link href="/supplier/connections" className="inline-flex">
+                            <Button size="sm" className="h-8 text-xs bg-primary text-white hover:bg-primary/90">
+                              {t("go_to_connections")}
                             </Button>
                           </Link>
                         </div>

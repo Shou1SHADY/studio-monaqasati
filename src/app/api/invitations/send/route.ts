@@ -232,6 +232,24 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // In-app notification for existing users — mirrors the team_invite
+    // notification above; without this, existing suppliers only get the
+    // email and have no way to discover the invite inside the app.
+    if (targetUid) {
+      await db
+        .collection("users")
+        .doc(targetUid)
+        .collection("notifications")
+        .add({
+          title: "دعوة للانضمام كمورّد",
+          message: `${contractorName || "أحد المقاولين"} يدعوك للانضمام إلى دليل مورّديه`,
+          type: "supplier_invite_received",
+          createdAt: new Date().toISOString(),
+          read: false,
+        })
+        .catch((err) => console.error("Failed to create supplier invite notification:", err))
+    }
+
     const inviteUrl = isExistingUser ? `${baseUrl}/login` : `${baseUrl}/register?invite=${inviteToken}`
 
     const { subject, html } = buildSupplierInviteEmail({

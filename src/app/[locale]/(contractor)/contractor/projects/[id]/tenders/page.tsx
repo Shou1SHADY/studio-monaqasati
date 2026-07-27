@@ -67,6 +67,20 @@ export default function ProjectTendersPage() {
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
 
+  // Connected suppliers always get visibility into published tenders,
+  // regardless of specialization match — being invited/connected is itself
+  // the signal of relevance, matching the standalone RfqForm's private-visibility behavior.
+  const connectedLinksQuery = useMemoFirebase(() => {
+    if (!user || !firestore || !profile) return null
+    return query(
+      collection(firestore, "contractorSupplierLinks"),
+      where("contractorOrgId", "==", (profile as any).organizationId || user.uid),
+      where("status", "==", "active")
+    )
+  }, [firestore, user, profile])
+  const { data: connectedLinks } = useCollection(connectedLinksQuery)
+  const connectedSupplierOrgIds: string[] = connectedLinks?.map((l: any) => l.supplierOrgId) || []
+
   const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all"
   const clearFilters = () => {
     setSearchQuery("")
@@ -101,6 +115,7 @@ export default function ProjectTendersPage() {
         await updateDoc(doc(firestore, "rfqs", rfqId), {
           status: "New",
           visibility: "public",
+          allowedSupplierOrgIds: connectedSupplierOrgIds,
           publishedAt: new Date().toISOString()
         });
       }
@@ -167,6 +182,7 @@ export default function ProjectTendersPage() {
         deadline: republishDeadline,
         status: "New",
         visibility: "public",
+        allowedSupplierOrgIds: connectedSupplierOrgIds,
         publishedAt: new Date().toISOString()
       })
       toast({
