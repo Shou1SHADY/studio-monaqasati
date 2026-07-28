@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useTranslations } from "next-intl"
-import { useFirestore, useUser } from "@/firebase"
+import { useFirestore, useUser, useStorage } from "@/firebase"
 import { doc, getDoc } from "firebase/firestore"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
@@ -12,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, TrendingUp, Percent, Calculator, CheckCircle2 } from "lucide-react"
+import { Loader2, TrendingUp, Percent, Calculator, CheckCircle2, Paperclip, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import {
@@ -38,8 +39,11 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
   const [internalCost, setInternalCost] = useState("")
   const [commissionRate, setCommissionRate] = useState(10)
   const [notes, setNotes] = useState("")
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadingRate, setLoadingRate] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const storage = useStorage()
 
   const cost = parseFloat(internalCost.replace(/,/g, "")) || 0
   const { commissionAmount, finalPrice } = calcCommission(cost, commissionRate)
@@ -68,6 +72,13 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
         }
       }
 
+      let pdfUrl: string | undefined
+      if (pdfFile && storage) {
+        const storageRef = ref(storage, `mdmak-offers/${rfq.id}/${Date.now()}_${pdfFile.name}`)
+        const snap = await uploadBytes(storageRef, pdfFile)
+        pdfUrl = await getDownloadURL(snap.ref)
+      }
+
       await createMdmakOffer(firestore, user.uid, {
         rfqId: rfq.id,
         rfqTitle: rfq.title ?? rfq.id,
@@ -76,11 +87,13 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
         internalCost: cost,
         commissionRate,
         adminNotes: notes,
+        pdfUrl,
       })
 
       toast({ title: t("offer_sent_toast"), description: t("offer_sent_desc") })
       setInternalCost("")
       setNotes("")
+      setPdfFile(null)
       onSuccess?.()
       onClose()
     } catch {
@@ -195,6 +208,42 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
                 <CheckCircle2 size={13} />
                 {t("contractor_sees_msg", { price: fmtSAR(finalPrice) })}
               </div>
+            )}
+          </div>
+
+          {/* PDF attachment */}
+          <div className="space-y-1.5">
+            <Label className="font-semibold text-muted-foreground">{t("pdf_label")}</Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={e => setPdfFile(e.target.files?.[0] ?? null)}
+            />
+            {pdfFile ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-accent/30 bg-accent/5 text-sm">
+                <Paperclip size={14} className="text-accent shrink-0" />
+                <span className="flex-1 truncate text-foreground font-medium">{pdfFile.name}</span>
+                <button
+                  type="button"
+                  onClick={() => { setPdfFile(null); if (fileInputRef.current) fileInputRef.current.value = "" }}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-xl gap-2 w-full border-dashed"
+              >
+                <Paperclip size={14} />
+                {t("pdf_btn")}
+              </Button>
             )}
           </div>
 

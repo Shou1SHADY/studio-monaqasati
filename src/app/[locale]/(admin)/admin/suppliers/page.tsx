@@ -99,6 +99,9 @@ export default function AdminSuppliersPage() {
           certificates: s.certificates || [],
           hasCerts: (s.certificates?.length || 0) > 0,
         }
+      }).sort((a: any, b: any) => {
+        if (a.verificationRequested === b.verificationRequested) return 0
+        return a.verificationRequested ? -1 : 1
       }))
     }
   }, [suppliers])

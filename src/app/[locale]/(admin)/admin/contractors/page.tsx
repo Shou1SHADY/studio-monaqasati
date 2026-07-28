@@ -103,6 +103,9 @@ export default function AdminContractorsPage() {
           hasCerts: (c.certificates?.length || 0) > 0,
           rfqCount,
         }
+      }).sort((a: any, b: any) => {
+        if (a.verificationRequested === b.verificationRequested) return 0
+        return a.verificationRequested ? -1 : 1
       }))
     }
   }, [contractors, allRfqs])

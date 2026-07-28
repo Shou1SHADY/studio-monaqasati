@@ -74,6 +74,7 @@ export async function createMdmakOffer(
     internalCost: number
     commissionRate: number
     adminNotes?: string
+    pdfUrl?: string
   }
 ): Promise<{ procurementId: string; offerId: string }> {
   const { commissionAmount, finalPrice } = calcCommission(params.internalCost, params.commissionRate)
@@ -91,6 +92,7 @@ export async function createMdmakOffer(
     currency: 'SAR',
     status: 'قيد المراجعة',
     isFromMdmak: true,
+    pdfUrl: params.pdfUrl ?? null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   })
@@ -107,6 +109,7 @@ export async function createMdmakOffer(
     linkedOfferId: offerRef.id,
     status: 'offer_sent',
     adminNotes: params.adminNotes ?? '',
+    pdfUrl: params.pdfUrl ?? null,
     createdBy: adminUid,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

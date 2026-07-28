@@ -8,7 +8,8 @@ import { ArrowLeft, CheckCircle2, Clock, Zap, TrendingUp, Menu, X, FileText, Bar
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher";
 import { useTranslations, useLocale } from 'next-intl';
 import { cn } from '@/lib/utils';
-import BelowFoldSections from './BelowFoldSections';
+import BelowFoldSections from './BelowFoldSections'
+import { OnboardingWizard } from '@/components/OnboardingWizard';
 
 const HERO_SLIDES = [
   { wm: { ar: '٢٤',  en: '24'  } },
@@ -336,12 +337,17 @@ export default function HomeContent() {
 
   const [slide,          setSlide]         = useState(0);
   const [slideKey,       setSlideKey]      = useState(0);
-  const [scrolled,       setScrolled]      = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  // Hero cards show blurred placeholder content for now — not wired to
-  // /api/landing/preview yet. Swap this for a fetched LandingPreview once
-  // the cards are ready to display real live data.
-  const heroCardData: LandingPreview = { rfq: null, projects: [], suppliers: [], supplierCount: 0 };
+  const [scrolled,        setScrolled]       = useState(false);
+  const [mobileMenuOpen,  setMobileMenuOpen]  = useState(false);
+  const [onboardingOpen,  setOnboardingOpen]  = useState(false);
+  const [liveData,        setLiveData]       = useState<LandingPreview | null>(null);
+
+  useEffect(() => {
+    fetch('/api/landing/preview')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setLiveData(d as LandingPreview); })
+      .catch(() => {});
+  }, []);
 
   const goToSlide = (i: number) => {
     setSlide(i);
@@ -409,9 +415,12 @@ export default function HomeContent() {
             <Link href="/login" className="hidden sm:block">
               <Button variant="ghost" className="text-slate-300 hover:text-white font-bold text-xs md:text-sm px-3 md:px-5 h-9 md:h-11 hover:bg-white/5 transition-all">{tNav('login')}</Button>
             </Link>
-            <Link href="/register">
-              <Button className="font-bold bg-white text-primary hover:bg-cta hover:text-white px-4 md:px-8 rounded-xl h-9 md:h-11 text-xs md:text-sm transition-all shadow-xl shadow-white/5 border-none">{tNav('start_free')}</Button>
-            </Link>
+            <Button
+              onClick={() => setOnboardingOpen(true)}
+              className="font-bold bg-white text-primary hover:bg-cta hover:text-white px-4 md:px-8 rounded-xl h-9 md:h-11 text-xs md:text-sm transition-all shadow-xl shadow-white/5 border-none"
+            >
+              {tNav('start_free')}
+            </Button>
             <button
               className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white transition-colors"
               onClick={() => setMobileMenuOpen(true)}
@@ -472,11 +481,12 @@ export default function HomeContent() {
                   {tNav('login')}
                 </Button>
               </Link>
-              <Link href="/register" onClick={() => setMobileMenuOpen(false)}>
-                <Button className="w-full h-11 font-bold bg-white text-primary hover:bg-cta hover:text-white rounded-xl border-none">
-                  {tNav('start_free')}
-                </Button>
-              </Link>
+              <Button
+                className="w-full h-11 font-bold bg-white text-primary hover:bg-cta hover:text-white rounded-xl border-none"
+                onClick={() => { setMobileMenuOpen(false); setOnboardingOpen(true) }}
+              >
+                {tNav('start_free')}
+              </Button>
             </div>
           </div>
         </div>
@@ -543,11 +553,12 @@ export default function HomeContent() {
 
               {/* CTAs */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-5">
-                <Link href="/register" className="w-full sm:w-auto">
-                  <Button className="w-full h-12 px-7 text-sm font-black rounded-xl bg-cta hover:bg-sky-600 text-white gap-2.5 transition-all hover:scale-[1.02] shadow-xl shadow-cta/25 border-none">
-                    {tAction('register_now')} <ArrowLeft size={16} className="rtl:rotate-0 ltr:rotate-180" />
-                  </Button>
-                </Link>
+                <Button
+                  onClick={() => setOnboardingOpen(true)}
+                  className="w-full sm:w-auto h-12 px-7 text-sm font-black rounded-xl bg-cta hover:bg-sky-600 text-white gap-2.5 transition-all hover:scale-[1.02] shadow-xl shadow-cta/25 border-none"
+                >
+                  {tAction('register_now')} <ArrowLeft size={16} className="rtl:rotate-0 ltr:rotate-180" />
+                </Button>
                 <Link href="#demo" className="w-full sm:w-auto">
                   <Button
                     variant="ghost"
@@ -587,9 +598,9 @@ export default function HomeContent() {
 
               {/* Floating UI card — key remount triggers entrance animation */}
               <div key={slideKey} className="relative z-10 hero-card-in">
-                {slide === 0 && <RfqCard data={heroCardData} />}
-                {slide === 1 && <ProjectsCard data={heroCardData} />}
-                {slide === 2 && <SuppliersCard data={heroCardData} />}
+                {slide === 0 && <RfqCard data={liveData} />}
+                {slide === 1 && <ProjectsCard data={liveData} />}
+                {slide === 2 && <SuppliersCard data={liveData} />}
               </div>
             </div>
           </div>
@@ -650,6 +661,7 @@ export default function HomeContent() {
 
       <BelowFoldSections />
 
+      <OnboardingWizard open={onboardingOpen} onClose={() => setOnboardingOpen(false)} />
     </div>
   );
 }

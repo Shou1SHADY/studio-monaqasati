@@ -35,7 +35,7 @@ import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollecti
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 
@@ -98,6 +98,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     city: "",
     district: "",
     deadline: "",
+    estimatedBudget: "",
     notes: "",
     pdfUrl: null as string | null,
     pdfStoragePath: null as string | null
@@ -159,6 +160,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             city: data.city || "",
             district: data.district || "",
             deadline: data.deadline || "",
+            estimatedBudget: data.estimatedBudget
+              ? Number(data.estimatedBudget).toLocaleString("de-DE")
+              : "",
             notes: data.notes || "",
             pdfUrl: data.pdfUrl || null,
             pdfStoragePath: data.pdfStoragePath || null
@@ -503,6 +507,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
         })),
         deadline: formData.deadline,
+        estimatedBudget: formData.estimatedBudget
+          ? Number(formData.estimatedBudget.replace(/\./g, ""))
+          : null,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
@@ -571,6 +578,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
         })),
         deadline: formData.deadline,
+        estimatedBudget: formData.estimatedBudget
+          ? Number(formData.estimatedBudget.replace(/\./g, ""))
+          : null,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
@@ -622,6 +632,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         city: "",
         district: "",
         deadline: "",
+        estimatedBudget: "",
         notes: "",
         pdfUrl: null,
         pdfStoragePath: null
@@ -801,7 +812,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             </Label>
                             <SearchableSelect
                               value={product.subCategory}
-                              onChange={v => updateProduct(product.id, "subCategory", v)}
+                              onChange={v => {
+                                updateProduct(product.id, "subCategory", v)
+                                const autoUnit = SUBCATEGORY_UNIT_MAP[v]
+                                if (autoUnit) updateProduct(product.id, "unit", autoUnit)
+                              }}
                               options={[
                                 ...(product.category && CATEGORIES_DATA[product.category]
                                   ? CATEGORIES_DATA[product.category].map(sub => ({ value: sub, label: displaySubcategory(sub, locale) }))
@@ -1018,6 +1033,24 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         {t("newrfq_deadline_display", { date: new Date(formData.deadline).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
                       </p>
                     )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold text-slate-700">
+                      {t("newrfq_estimated_budget")}
+                    </Label>
+                    <Input
+                      inputMode="numeric"
+                      placeholder={t("newrfq_estimated_budget_placeholder")}
+                      value={formData.estimatedBudget}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/\D/g, "")
+                        const formatted = digits ? Number(digits).toLocaleString("de-DE") : ""
+                        setFormData({ ...formData, estimatedBudget: formatted })
+                      }}
+                      className="h-12 rounded-xl border-slate-200"
+                      dir="ltr"
+                    />
                   </div>
                 </div>
 
