@@ -2,19 +2,11 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAdminFirestore } from '@/lib/firebaseAdmin'
 
-const itemSchema = z.object({
-  category: z.string().min(1),
-  subCategory: z.string(),
-  quantity: z.string().min(1),
-  unit: z.string(),
-})
-
 const schema = z.object({
   name: z.string().trim().min(2),
   company: z.string().trim().min(2),
   phone: z.string().trim().min(7),
   email: z.string().trim().email(),
-  items: z.array(itemSchema).min(1),
   locale: z.string().optional(),
 })
 
