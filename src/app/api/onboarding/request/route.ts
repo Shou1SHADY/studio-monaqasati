@@ -7,6 +7,10 @@ const schema = z.object({
   company: z.string().trim().min(2),
   phone: z.string().trim().min(7),
   email: z.string().trim().email(),
+  cr: z.string().regex(/^\d{10}$/, 'CR must be 10 digits'),
+  vat: z.string().regex(/^\d{15}$/, 'VAT must be 15 digits'),
+  city: z.string().trim().min(1),
+  size: z.string().trim().min(1),
   locale: z.string().optional(),
 })
 
