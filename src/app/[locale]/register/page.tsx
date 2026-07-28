@@ -244,11 +244,11 @@ export default function RegisterPage() {
       router.push("/verify-email")
 
     } catch (error: any) {
-      console.error("❌ Registration error:", error)
       let errorMsg = error.message || t("error_unexpected")
       if (error.code === "auth/email-already-in-use") errorMsg = t("error_email_in_use")
-      if (error.code === "auth/weak-password") errorMsg = t("error_weak_pwd")
-      if (error.code === "auth/invalid-email") errorMsg = t("error_invalid_email")
+      else if (error.code === "auth/weak-password") errorMsg = t("error_weak_pwd")
+      else if (error.code === "auth/invalid-email") errorMsg = t("error_invalid_email")
+      else console.error("Registration error:", error)
 
       setRegisterError(errorMsg)
     } finally {
