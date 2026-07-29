@@ -107,5 +107,10 @@
   },
   "optionalDependencies": {
     "@swc/helpers": "^0.5.23"
+  },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "^4.15.9"
+    }
   }
 }
