@@ -40,6 +40,8 @@ import { Link } from "@/i18n/routing"
 import { CreateMdmakOfferDialog } from "@/components/admin/CreateMdmakOfferDialog"
 import { getMdmakProcurementForRfq } from "@/lib/mdmak-procurement"
 import type { MdmakProcurement } from "@/lib/mdmak-procurement"
+import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
+import { RfqOffersView } from "@/components/contractor/RfqOffersView"
 
 export default function AdminRfqDetailsPage() {
   const t = useTranslations("Portal.Contractor") // Using contractor translations since they have all the offers text
@@ -104,6 +106,14 @@ export default function AdminRfqDetailsPage() {
     return 0;
   }) : []
   const lowestPrice = sortedOffers.length > 0 ? sortedOffers[0].price : null
+
+  // RFQs Mdmak posted as a contractor have no real org/team behind them — reuse the
+  // contractor's full offers view (accept/reject/negotiate/chat/delivery) wholesale
+  // instead of this admin page's read-only comparison, since admins now have decision
+  // rights on these via the Admin-role bypass in RfqOffersView.
+  if (!isRfqLoading && rfq && (rfq as any).contractorId === MDMAK_CONTRACTOR_ID) {
+    return <RfqOffersView rfqId={rfqId} />
+  }
 
   return (
     <PortalLayout>

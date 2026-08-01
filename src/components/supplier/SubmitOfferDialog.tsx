@@ -9,9 +9,9 @@ import { MapPicker } from "@/components/ui/map-picker"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Package, 
-  MapPin, 
+import {
+  Package,
+  MapPin,
   Calendar,
   CalendarClock,
   Banknote,
@@ -21,7 +21,8 @@ import {
   Trash2,
   Plus,
   Globe,
-  AlertCircle
+  AlertCircle,
+  Handshake
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
@@ -338,7 +339,19 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             <p className="text-sm text-muted-foreground mt-0.5">
               {selectedRfq?.title}
             </p>
-            {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
+            {selectedRfq?.isFromMdmak ? (
+              <div className="mt-2 p-4 bg-accent/5 border border-accent/20 rounded-lg flex items-center gap-3 shadow-inner">
+                <div className="h-9 w-9 rounded-xl bg-accent/10 flex items-center justify-center shrink-0">
+                  <Handshake size={16} className="text-accent" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-accent">{t("offer_mdmak_rfq_badge")}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t("offer_mdmak_rfq_desc")}</p>
+                </div>
+              </div>
+            ) : (
+              selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />
+            )}
             {selectedRfq?.pdfUrl && (
               <div className="mt-3 flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">
                 <div className="flex items-center gap-2">

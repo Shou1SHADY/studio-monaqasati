@@ -139,7 +139,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: rfq, isLoading: isRfqLoading } = useDoc(rfqDocRef)
   // Project-scoped permission check (falls back to the default group for standalone RFQs)
   const { can } = usePermissions((rfq as { projectId?: string } | null)?.projectId || undefined)
-  const canDecide = can("offers.accept")
+  // Admins manage offers directly on RFQs Mdmak posted as a contractor (no real org/team to grant offers.accept).
+  const canDecide = can("offers.accept") || profile?.role === "Admin"
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading

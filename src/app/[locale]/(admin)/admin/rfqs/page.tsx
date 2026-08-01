@@ -9,29 +9,33 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { displayCategory, displaySubcategory } from "@/lib/constants"
-import { 
-  FileText, 
-  Search, 
-  Filter, 
+import {
+  FileText,
+  Search,
+  Filter,
   Calendar,
   MoreVertical,
   Activity,
   CheckCircle,
   Clock,
   Loader2,
-  Eye
+  Eye,
+  Handshake,
 } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, query, orderBy, where } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from "@/i18n/routing"
+import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
+import { CreateMdmakRfqDialog } from "@/components/admin/CreateMdmakRfqDialog"
 
 export default function AdminRfqsPage() {
   const t = useTranslations("Portal.Admin.Rfqs")
   const locale = useLocale()
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
+  const [mdmakDialogOpen, setMdmakDialogOpen] = useState(false)
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
 
@@ -102,6 +106,10 @@ export default function AdminRfqsPage() {
               <Filter size={18} />
               {t("filter")}
             </Button>
+            <Button onClick={() => setMdmakDialogOpen(true)} className="gap-2 bg-accent hover:bg-accent/90 text-primary font-bold shadow-lg shadow-accent/25 shrink-0">
+              <Handshake size={16} />
+              {t("post_as_mdmak_btn")}
+            </Button>
           </div>
         </div>
 
@@ -139,7 +147,14 @@ export default function AdminRfqsPage() {
                       <TableCell className="font-mono text-xs hidden md:table-cell">{rfq.id}</TableCell>
                       <TableCell className="font-bold">{rfq.title}</TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                        {contractorsMap[rfq.contractorId] || "-"}
+                        {rfq.contractorId === MDMAK_CONTRACTOR_ID ? (
+                          <Badge className="bg-accent/10 text-accent border-accent/20 gap-1">
+                            <Handshake size={11} />
+                            {t("contractor_mdmak_badge")}
+                          </Badge>
+                        ) : (
+                          contractorsMap[rfq.contractorId] || "-"
+                        )}
                       </TableCell>
                       <TableCell className="hidden sm:table-cell">
                         <div className="flex flex-col">
@@ -169,6 +184,8 @@ export default function AdminRfqsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <CreateMdmakRfqDialog open={mdmakDialogOpen} onClose={() => setMdmakDialogOpen(false)} />
     </PortalLayout>
   )
 }
