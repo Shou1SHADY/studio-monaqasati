@@ -78,17 +78,27 @@ export function MdmakProcurementQueue() {
       rfq,
       proc: procByRfq[(rfq.id as string)] ?? null,
       procStatus: (procByRfq[(rfq.id as string)]?.status ?? "pending") as ProcStatus,
+      isDirectOrder: !!rfq.orderedFromMdmakDirect,
     }))
   }, [rfqs, procByRfq])
 
-  const filtered = useMemo(() => enriched.filter(({ rfq, procStatus }) => {
-    if (filter !== "all" && procStatus !== filter) return false
-    if (search) {
-      const q = search.toLowerCase()
-      return (rfq.title as string || "").toLowerCase().includes(q)
-    }
-    return true
-  }), [enriched, filter, search])
+  const filtered = useMemo(() => enriched
+    .filter(({ rfq, procStatus }) => {
+      if (filter !== "all" && procStatus !== filter) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (rfq.title as string || "").toLowerCase().includes(q)
+      }
+      return true
+    })
+    // Contractors who explicitly asked to order from Mdmak directly need a faster
+    // response than RFQs Mdmak is opportunistically bidding on — surface those first.
+    .sort((a, b) => {
+      if (a.procStatus === "pending" && b.procStatus === "pending") {
+        return (b.isDirectOrder ? 1 : 0) - (a.isDirectOrder ? 1 : 0)
+      }
+      return 0
+    }), [enriched, filter, search])
 
   const stats = useMemo(() => {
     const total = enriched.length
@@ -196,7 +206,7 @@ export function MdmakProcurementQueue() {
         ) : (
           <motion.div className="space-y-3">
             <AnimatePresence mode="popLayout">
-              {filtered.map(({ rfq, proc, procStatus }, i) => (
+              {filtered.map(({ rfq, proc, procStatus, isDirectOrder }, i) => (
                 <motion.div
                   key={rfq.id as string}
                   layout
@@ -207,9 +217,10 @@ export function MdmakProcurementQueue() {
                 >
                   <Card className={cn(
                     "border shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden",
-                    procStatus === "accepted" && "border-success/30",
-                    procStatus === "pending" && "border-amber-200/60",
-                    procStatus === "offer_sent" && "border-blue-100",
+                    isDirectOrder && procStatus === "pending" && "border-accent/40 ring-1 ring-accent/20",
+                    !isDirectOrder && procStatus === "accepted" && "border-success/30",
+                    !isDirectOrder && procStatus === "pending" && "border-amber-200/60",
+                    !isDirectOrder && procStatus === "offer_sent" && "border-blue-100",
                   )}>
                     <CardContent className="p-0">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-5">
@@ -227,6 +238,12 @@ export function MdmakProcurementQueue() {
                             <h3 className="font-bold text-foreground text-sm leading-snug truncate">
                               {(rfq.title as string) || rfq.id as string}
                             </h3>
+                            {isDirectOrder && (
+                              <Badge className="text-[10px] bg-accent text-primary border-none shrink-0 gap-1">
+                                <Handshake size={10} />
+                                {t("direct_order_badge")}
+                              </Badge>
+                            )}
                             {(rfq.category as string | undefined) && (
                               <Badge variant="secondary" className="text-[10px] bg-primary/5 text-primary border-none shrink-0">
                                 {displayCategory(rfq.category as string, locale)}

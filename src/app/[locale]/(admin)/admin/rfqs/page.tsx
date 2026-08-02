@@ -145,7 +145,17 @@ export default function AdminRfqsPage() {
                   {filteredRfqs.map((rfq: any) => (
                     <TableRow key={rfq.id}>
                       <TableCell className="font-mono text-xs hidden md:table-cell">{rfq.id}</TableCell>
-                      <TableCell className="font-bold">{rfq.title}</TableCell>
+                      <TableCell className="font-bold">
+                        <div className="flex items-center gap-2">
+                          <span>{rfq.title}</span>
+                          {rfq.orderedFromMdmakDirect && (
+                            <Badge className="text-[10px] bg-accent text-primary border-none shrink-0 gap-1">
+                              <Handshake size={10} />
+                              {t("direct_order_badge")}
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                         {rfq.contractorId === MDMAK_CONTRACTOR_ID ? (
                           <Badge className="bg-accent/10 text-accent border-accent/20 gap-1">

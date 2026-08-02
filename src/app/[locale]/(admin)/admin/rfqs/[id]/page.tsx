@@ -136,6 +136,12 @@ export default function AdminRfqDetailsPage() {
               <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="space-y-4 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
+                    {(rfq as any).orderedFromMdmakDirect && (
+                      <Badge className="bg-accent text-primary border-none gap-1">
+                        <Handshake size={11} />
+                        {adminT("direct_order_badge")}
+                      </Badge>
+                    )}
                     <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
                       {displayCategory(rfq.category, locale)}
                     </Badge>

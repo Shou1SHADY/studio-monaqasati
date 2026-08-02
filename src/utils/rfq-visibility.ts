@@ -47,3 +47,31 @@ export function canSupplierViewRfq(rfq: VisibilityRfq, supplierOrgId: string): b
 export function countPrivateRfqRecipients(connectedOrgIds: string[], visibility: RfqVisibility): number {
   return visibility === 'private' ? connectedOrgIds.length : 0
 }
+
+export type RfqVisibilityMode = 'public' | 'private' | 'mdmak_direct'
+
+export interface RfqVisibilityResolution {
+  visibility: RfqVisibility
+  allowedSupplierOrgIds: string[]
+  orderedFromMdmakDirect: boolean
+}
+
+/**
+ * "mdmak_direct" reuses the existing private-RFQ mechanism (allowedSupplierOrgIds) rather
+ * than a new visibility value — it stores as a private RFQ scoped to a single "supplier"
+ * org (Mdmak's system id), so no new Firestore rules or supplier-query changes are needed:
+ * real suppliers already can't see private RFQs they're not listed in allowedSupplierOrgIds for.
+ */
+export function resolveRfqVisibility(
+  mode: RfqVisibilityMode,
+  connectedSupplierOrgIds: string[],
+  mdmakContractorId: string
+): RfqVisibilityResolution {
+  if (mode === 'mdmak_direct') {
+    return { visibility: 'private', allowedSupplierOrgIds: [mdmakContractorId], orderedFromMdmakDirect: true }
+  }
+  if (mode === 'private') {
+    return { visibility: 'private', allowedSupplierOrgIds: [...connectedSupplierOrgIds], orderedFromMdmakDirect: false }
+  }
+  return { visibility: 'public', allowedSupplierOrgIds: [], orderedFromMdmakDirect: false }
+}

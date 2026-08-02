@@ -35,6 +35,16 @@ import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebas
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import {
+  filterSuppliersByStatus,
+  filterSuppliersByCity,
+  filterSuppliersBySpecialization,
+  searchSuppliers,
+  type SupplierStatusFilter,
+} from "@/utils/supplier-filters"
 
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
@@ -55,6 +65,10 @@ export default function AdminSuppliersPage() {
   const [limitCount, setLimitCount] = useState(20)
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<SupplierStatusFilter>("all")
+  const [cityFilter, setCityFilter] = useState("all")
+  const [specializationFilter, setSpecializationFilter] = useState("all")
 
   const suppliersQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -137,10 +151,27 @@ export default function AdminSuppliersPage() {
     }
   }
 
-  const filteredSuppliers = localSuppliers.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.contact.includes(searchQuery) ||
-    s.email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredSuppliers = filterSuppliersBySpecialization(
+    filterSuppliersByCity(
+      filterSuppliersByStatus(
+        searchSuppliers(localSuppliers, searchQuery),
+        statusFilter
+      ),
+      cityFilter
+    ),
+    specializationFilter
+  )
+
+  const activeFilterCount = [statusFilter !== "all", cityFilter !== "all", specializationFilter !== "all"].filter(Boolean).length
+
+  const clearFilters = () => {
+    setStatusFilter("all")
+    setCityFilter("all")
+    setSpecializationFilter("all")
+  }
+
+  const specializationOptions = Array.from(
+    new Set(localSuppliers.flatMap(s => s.specializations))
   )
 
   return (
@@ -161,12 +192,78 @@ export default function AdminSuppliersPage() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters(v => !v)}
+              className={cn("gap-2 shrink-0", (showFilters || activeFilterCount > 0) && "border-primary/40 bg-primary/5 text-primary")}
+            >
               <Filter size={18} />
               {t("filter")}
+              {activeFilterCount > 0 && (
+                <span className="h-5 w-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
             </Button>
           </div>
         </div>
+
+        {showFilters && (
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={statusFilter}
+                  onChange={v => setStatusFilter(v as SupplierStatusFilter)}
+                  options={[
+                    { value: "all", label: t("filter_status_all") },
+                    { value: "verified", label: t("status_active") },
+                    { value: "pending", label: t("status_pending") },
+                    { value: "review", label: t("status_review") },
+                  ]}
+                  placeholder={t("filter_status_label")}
+                  searchPlaceholder={t("filter_status_label")}
+                  noResultsText={t("filter_status_label")}
+                  size="md"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={cityFilter}
+                  onChange={setCityFilter}
+                  options={[
+                    { value: "all", label: t("filter_city_all") },
+                    ...SAUDI_CITIES.map(c => ({ value: c, label: displayCity(c, locale) })),
+                  ]}
+                  placeholder={t("filter_city_label")}
+                  searchPlaceholder={t("filter_city_label")}
+                  noResultsText={t("filter_city_label")}
+                  size="md"
+                />
+              </div>
+              <div className="w-full sm:w-52">
+                <SearchableSelect
+                  value={specializationFilter}
+                  onChange={setSpecializationFilter}
+                  options={[
+                    { value: "all", label: t("filter_specialization_all") },
+                    ...specializationOptions.map(s => ({ value: s, label: displayCategory(s, locale) })),
+                  ]}
+                  placeholder={t("filter_specialization_label")}
+                  searchPlaceholder={t("filter_specialization_label")}
+                  noResultsText={t("filter_specialization_label")}
+                  size="md"
+                />
+              </div>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground gap-1.5">
+                  <XCircle size={14} />
+                  {t("filter_clear")}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
