@@ -175,7 +175,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
           {/* Suppliers */}
           <Link href="/admin/suppliers" className="block">
             <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
@@ -371,7 +371,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Insights Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {/* Verification Health */}
           <Card className="shadow-sm border-slate-100">
             <CardHeader className="border-b pb-3">
