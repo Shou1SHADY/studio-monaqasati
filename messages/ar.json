@@ -2156,6 +2156,7 @@
         "stat_active_rfqs": "طلبات نشطة",
         "stat_total_rfqs": "إجمالي الطلبات",
         "stat_pending_verification": "بانتظار التوثيق",
+        "active_label": "نشط",
         "awarded_label": "مُحال",
         "completed_label": "مكتمل",
         "draft_label": "مسودة",

@@ -2156,6 +2156,7 @@
         "stat_active_rfqs": "Active RFQs",
         "stat_total_rfqs": "Total RFQs",
         "stat_pending_verification": "Pending verification",
+        "active_label": "Active",
         "awarded_label": "Awarded",
         "completed_label": "Completed",
         "draft_label": "Draft",
