@@ -34,6 +34,15 @@ import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebas
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { SAUDI_CITIES, displayCity } from "@/lib/constants"
+import {
+  filterContractorsByStatus,
+  filterContractorsByCity,
+  searchContractors,
+  type ContractorStatusFilter,
+} from "@/utils/contractor-filters"
 
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
@@ -54,6 +63,9 @@ export default function AdminContractorsPage() {
   const [limitCount, setLimitCount] = useState(20)
   const [selectedContractor, setSelectedContractor] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<ContractorStatusFilter>("all")
+  const [cityFilter, setCityFilter] = useState("all")
 
   const contractorsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -142,11 +154,20 @@ export default function AdminContractorsPage() {
     }
   }
 
-  const filtered = localContractors.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.contact.includes(searchQuery)
+  const filtered = filterContractorsByCity(
+    filterContractorsByStatus(
+      searchContractors(localContractors, searchQuery),
+      statusFilter
+    ),
+    cityFilter
   )
+
+  const activeFilterCount = [statusFilter !== "all", cityFilter !== "all"].filter(Boolean).length
+
+  const clearFilters = () => {
+    setStatusFilter("all")
+    setCityFilter("all")
+  }
 
   return (
     <PortalLayout>
@@ -167,12 +188,64 @@ export default function AdminContractorsPage() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters(v => !v)}
+              className={cn("gap-2 shrink-0", (showFilters || activeFilterCount > 0) && "border-primary/40 bg-primary/5 text-primary")}
+            >
               <Filter size={18} />
               {t("filter")}
+              {activeFilterCount > 0 && (
+                <span className="h-5 w-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
             </Button>
           </div>
         </div>
+
+        {showFilters && (
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={statusFilter}
+                  onChange={v => setStatusFilter(v as ContractorStatusFilter)}
+                  options={[
+                    { value: "all", label: t("filter_status_all") },
+                    { value: "verified", label: t("status_active") },
+                    { value: "pending", label: t("status_pending") },
+                    { value: "review", label: t("status_review") },
+                  ]}
+                  placeholder={t("filter_status_label")}
+                  searchPlaceholder={t("filter_status_label")}
+                  noResultsText={t("filter_status_label")}
+                  size="md"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={cityFilter}
+                  onChange={setCityFilter}
+                  options={[
+                    { value: "all", label: t("filter_city_all") },
+                    ...SAUDI_CITIES.map(c => ({ value: c, label: displayCity(c, locale) })),
+                  ]}
+                  placeholder={t("filter_city_label")}
+                  searchPlaceholder={t("filter_city_label")}
+                  noResultsText={t("filter_city_label")}
+                  size="md"
+                />
+              </div>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground gap-1.5">
+                  <XCircle size={14} />
+                  {t("filter_clear")}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats — real data */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
