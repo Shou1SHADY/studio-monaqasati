@@ -91,49 +91,49 @@ export default function AdminDashboard() {
   const pendingContractors = users?.filter((u: any) => u.role === "Contractor" && u.verificationRequested && !u.isVerified).length || 0
   const totalPending = pendingSuppliers + pendingContractors
 
-  // ── RFQs ──
-  const activeRfqs = rfqs?.filter((r: any) => r.status === "New").length || 0
-  const awardedRfqs = rfqs?.filter((r: any) => r.status === "Awarded").length || 0
-  const completedRfqs = rfqs?.filter((r: any) => r.status === "Completed").length || 0
+  // ── RFQs — drafts excluded from all analytics ──
+  const publishedRfqsList = rfqs?.filter((r: any) => r.status !== "Draft") || []
+  const activeRfqs = publishedRfqsList.filter((r: any) => r.status === "New").length
+  const awardedRfqs = publishedRfqsList.filter((r: any) => r.status === "Awarded").length
+  const completedRfqs = publishedRfqsList.filter((r: any) => r.status === "Completed").length
   const draftRfqs = rfqs?.filter((r: any) => r.status === "Draft").length || 0
   const publishedRfqs = activeRfqs + awardedRfqs + completedRfqs
   const closedRfqs = awardedRfqs + completedRfqs
   const awardRate = publishedRfqs > 0 ? Math.round((closedRfqs / publishedRfqs) * 100) : 0
-  const mdmakDirectOrders = rfqs?.filter((r: any) => r.orderedFromMdmakDirect).length || 0
+  const mdmakDirectOrders = publishedRfqsList.filter((r: any) => r.orderedFromMdmakDirect).length
 
   // ── Offers ──
   const offersTotal = offers?.length || 0
   const avgOffersPerRfq = activeRfqs > 0 ? (offersTotal / activeRfqs).toFixed(1) : "—"
 
-  // ── Monthly trend (last 6 months) ──
+  // ── Monthly trend (last 6 months, published only) ──
   const monthlyData = Array.from({ length: 6 }, (_, i) => {
     const now = new Date()
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1)
-    const count = rfqs?.filter((r: any) => {
+    const count = publishedRfqsList.filter((r: any) => {
       const ts = getTs(r.createdAt)
       return ts >= d.getTime() && ts < monthEnd.getTime()
-    }).length || 0
+    }).length
     return {
       name: d.toLocaleDateString(locale === 'ar' ? 'ar-SA' : 'en-US', { month: 'short' }),
       rfqs: count,
     }
   })
 
-  // ── Status distribution (donut) ──
+  // ── Status distribution (donut — published only, drafts excluded) ──
   const statusSegments = [
     { name: t("status_new"), value: activeRfqs, color: "#10b981" },
     { name: t("status_awarded"), value: awardedRfqs, color: "#3b82f6" },
     { name: t("status_completed"), value: completedRfqs, color: "#8b5cf6" },
-    { name: t("status_draft"), value: draftRfqs, color: "#cbd5e1" },
   ].filter(d => d.value > 0)
   const pieData = statusSegments.length > 0 ? statusSegments : [{ name: t("no_data"), value: 1, color: "#e2e8f0" }]
 
-  // ── Top cities by RFQ volume ──
-  const cityCounts = rfqs?.reduce((acc: Record<string, number>, r: any) => {
+  // ── Top cities by RFQ volume (published only) ──
+  const cityCounts = publishedRfqsList.reduce((acc: Record<string, number>, r: any) => {
     if (r.city) acc[r.city] = (acc[r.city] || 0) + 1
     return acc
-  }, {}) || {}
+  }, {})
   const topCities = (Object.entries(cityCounts) as [string, number][])
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
@@ -177,9 +177,9 @@ export default function AdminDashboard() {
         {/* KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Suppliers */}
-          <Link href="/admin/suppliers">
+          <Link href="/admin/suppliers" className="block">
             <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
-              <CardContent className="p-5 h-full flex flex-col">
+              <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-purple-50">
                     <Users className="h-5 w-5 text-purple-600" />
@@ -190,26 +190,25 @@ export default function AdminDashboard() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-3xl font-black text-slate-800 mb-0.5">{suppliersTotal}</p>
+                <p className="text-3xl font-black text-foreground mb-0.5">{suppliersTotal}</p>
                 <p className="text-sm text-muted-foreground mb-3">{t("total_suppliers")}</p>
-                <div className="mt-auto">
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-muted-foreground">{t("verified_label")}</span>
-                    <span className="font-bold text-slate-700">{verifiedSuppliers} / {suppliersTotal}</span>
+                <div className="mt-auto space-y-1.5">
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden" dir="ltr">
+                    <div className="h-full bg-success rounded-full transition-all duration-700" style={{ width: `${supplierVerifPct}%` }} />
                   </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-success rounded-full" style={{ width: `${supplierVerifPct}%` }} />
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-success font-semibold">{supplierVerifPct}% {t("verified_label")}</span>
+                    <span className="text-muted-foreground tabular-nums">{verifiedSuppliers} / {suppliersTotal}</span>
                   </div>
-                  <p className="text-[10px] text-success font-medium mt-1">{supplierVerifPct}%</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
 
           {/* Contractors */}
-          <Link href="/admin/contractors">
+          <Link href="/admin/contractors" className="block">
             <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
-              <CardContent className="p-5 h-full flex flex-col">
+              <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-blue-50">
                     <Building2 className="h-5 w-5 text-blue-600" />
@@ -220,26 +219,25 @@ export default function AdminDashboard() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-3xl font-black text-slate-800 mb-0.5">{contractorsTotal}</p>
+                <p className="text-3xl font-black text-foreground mb-0.5">{contractorsTotal}</p>
                 <p className="text-sm text-muted-foreground mb-3">{t("total_contractors")}</p>
-                <div className="mt-auto">
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-muted-foreground">{t("verified_label")}</span>
-                    <span className="font-bold text-slate-700">{verifiedContractors} / {contractorsTotal}</span>
+                <div className="mt-auto space-y-1.5">
+                  <div className="h-1.5 bg-muted rounded-full overflow-hidden" dir="ltr">
+                    <div className="h-full bg-cta rounded-full transition-all duration-700" style={{ width: `${contractorVerifPct}%` }} />
                   </div>
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-cta rounded-full" style={{ width: `${contractorVerifPct}%` }} />
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-cta font-semibold">{contractorVerifPct}% {t("verified_label")}</span>
+                    <span className="text-muted-foreground tabular-nums">{verifiedContractors} / {contractorsTotal}</span>
                   </div>
-                  <p className="text-[10px] text-cta font-medium mt-1">{contractorVerifPct}%</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
 
           {/* RFQ Pipeline */}
-          <Link href="/admin/rfqs">
+          <Link href="/admin/rfqs" className="block">
             <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
-              <CardContent className="p-5 h-full flex flex-col">
+              <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-success/10">
                     <FileText className="h-5 w-5 text-success" />
@@ -251,17 +249,17 @@ export default function AdminDashboard() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-3xl font-black text-slate-800 mb-0.5">{activeRfqs}</p>
-                <p className="text-sm text-muted-foreground mb-3">{t("stat_active_rfqs")}</p>
+                <p className="text-3xl font-black text-foreground mb-0.5">{publishedRfqs}</p>
+                <p className="text-sm text-muted-foreground mb-3">{t("stat_total_rfqs")}</p>
                 <div className="mt-auto flex flex-wrap gap-1.5">
+                  <span className="text-[10px] bg-success/10 text-success px-2 py-0.5 rounded-full font-semibold">
+                    {t("active_label")} {activeRfqs}
+                  </span>
                   <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
                     {t("awarded_label")} {awardedRfqs}
                   </span>
                   <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
                     {t("completed_label")} {completedRfqs}
-                  </span>
-                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-semibold">
-                    {t("draft_label")} {draftRfqs}
                   </span>
                 </div>
               </CardContent>
@@ -270,7 +268,7 @@ export default function AdminDashboard() {
 
           {/* Award Rate + Engagement */}
           <Card className="border-none shadow-sm h-full">
-            <CardContent className="p-5 h-full flex flex-col">
+            <CardContent className="p-5 flex flex-col h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="p-2.5 rounded-xl bg-amber-50">
                   <Award className="h-5 w-5 text-amber-600" />
@@ -279,10 +277,12 @@ export default function AdminDashboard() {
                   {offersTotal} {t("offers_label")}
                 </Badge>
               </div>
-              <p className="text-3xl font-black text-slate-800 mb-0.5">{awardRate}%</p>
+              <p className="text-3xl font-black text-foreground mb-0.5">
+                {publishedRfqs > 0 ? `${awardRate}%` : "—"}
+              </p>
               <p className="text-sm text-muted-foreground mb-3">{t("award_rate")}</p>
               <p className="mt-auto text-xs text-muted-foreground">
-                {t("avg_per_rfq", { count: avgOffersPerRfq })}
+                {activeRfqs > 0 ? t("avg_per_rfq", { count: avgOffersPerRfq }) : t("no_data")}
               </p>
             </CardContent>
           </Card>
@@ -387,9 +387,9 @@ export default function AdminDashboard() {
                     <Users className="h-3.5 w-3.5 text-purple-500" />
                     <span className="font-medium">{t("total_suppliers")}</span>
                   </div>
-                  <span className="font-black text-slate-800 tabular-nums">{verifiedSuppliers} / {suppliersTotal}</span>
+                  <span className="font-black text-foreground tabular-nums" dir="ltr">{verifiedSuppliers} / {suppliersTotal}</span>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">
                   <div className="h-full bg-success rounded-full transition-all duration-700" style={{ width: `${supplierVerifPct}%` }} />
                 </div>
                 <div className="flex justify-between">
@@ -406,9 +406,9 @@ export default function AdminDashboard() {
                     <Building2 className="h-3.5 w-3.5 text-blue-500" />
                     <span className="font-medium">{t("total_contractors")}</span>
                   </div>
-                  <span className="font-black text-slate-800 tabular-nums">{verifiedContractors} / {contractorsTotal}</span>
+                  <span className="font-black text-foreground tabular-nums" dir="ltr">{verifiedContractors} / {contractorsTotal}</span>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-muted rounded-full overflow-hidden" dir="ltr">
                   <div className="h-full bg-cta rounded-full transition-all duration-700" style={{ width: `${contractorVerifPct}%` }} />
                 </div>
                 <div className="flex justify-between">
