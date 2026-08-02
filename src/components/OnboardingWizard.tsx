@@ -25,7 +25,6 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
   const [company, setCompany] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
-  const [cr, setCr] = useState("")
   const [vat, setVat] = useState("")
   const [city, setCity] = useState("")
   const [size, setSize] = useState("")
@@ -35,7 +34,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
 
   const reset = useCallback(() => {
     setName(""); setCompany(""); setPhone(""); setEmail("")
-    setCr(""); setVat(""); setCity(""); setSize("")
+    setVat(""); setCity(""); setSize("")
     setErrors({}); setSubmitting(false); setDone(false)
   }, [])
 
@@ -59,7 +58,6 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
     if (!company.trim() || company.trim().length < 2) e.company = t("err_company")
     if (!phone.trim() || !/^[+\d\s().\-]{7,}$/.test(phone.trim())) e.phone = t("err_phone")
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = t("err_email")
-    if (!cr.trim() || !/^\d{10}$/.test(cr.trim())) e.cr = t("err_cr")
     if (!vat.trim() || !/^\d{15}$/.test(vat.trim())) e.vat = t("err_vat")
     if (!city) e.city = t("err_city")
     if (!size) e.size = t("err_size")
@@ -74,7 +72,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
       const res = await fetch("/api/onboarding/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, company, phone, email, cr, vat, city, size, locale }),
+        body: JSON.stringify({ name, company, phone, email, vat, city, size, locale }),
       })
       if (!res.ok) throw new Error()
       setDone(true)
@@ -169,19 +167,12 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
                 </span>
               </div>
 
-              {/* Row 3: CR + VAT */}
-              <div className="grid grid-cols-2 gap-3">
-                <Field label={t("cr_label")} error={errors.cr}>
-                  <input value={cr} onChange={e => setCr(e.target.value.replace(/\D/g, "").slice(0, 10))}
-                    placeholder={t("cr_ph")} dir="ltr" inputMode="numeric"
-                    className={cn(inputCls, errors.cr && errorBorderCls)} />
-                </Field>
-                <Field label={t("vat_label")} error={errors.vat}>
-                  <input value={vat} onChange={e => setVat(e.target.value.replace(/\D/g, "").slice(0, 15))}
-                    placeholder={t("vat_ph")} dir="ltr" inputMode="numeric"
-                    className={cn(inputCls, errors.vat && errorBorderCls)} />
-                </Field>
-              </div>
+              {/* Row 3: VAT (full-width) */}
+              <Field label={t("vat_label")} error={errors.vat}>
+                <input value={vat} onChange={e => setVat(e.target.value.replace(/\D/g, "").slice(0, 15))}
+                  placeholder={t("vat_ph")} dir="ltr" inputMode="numeric"
+                  className={cn(inputCls, errors.vat && errorBorderCls)} />
+              </Field>
 
               {/* Row 4: city + size */}
               <div className="grid grid-cols-2 gap-3">

@@ -1612,6 +1612,9 @@
       "newrfq_pdf_attached_desc": "ملف PDF جاهز للإرسال مع طلب عروض الأسعار",
       "newrfq_click_upload_pdf": "اضغط لرفع ملف PDF",
       "newrfq_pdf_technical_desc": "الرسومات والمواصفات الفنية",
+      "newrfq_country_label": "الدولة",
+      "newrfq_select_country": "اختر الدولة",
+      "newrfq_search_country": "ابحث عن دولة...",
       "newrfq_city_label": "المدينة",
       "newrfq_select_city": "اختر المدينة",
       "newrfq_district_label": "الحي / المنطقة",
@@ -2233,7 +2236,11 @@
         "pdf_badge": "{count} ملف PDF",
         "certs_badge": "شهادات",
         "doc_cr": "السجل التجاري (CR)",
-        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)"
+        "doc_vat": "شهادة ضريبة القيمة المضافة (VAT)",
+        "delete_account": "حذف الحساب",
+        "delete_confirm_title": "تأكيد حذف الحساب",
+        "delete_confirm_desc": "هل أنت متأكد من حذف حساب {name}؟ لا يمكن التراجع عن هذا الإجراء.",
+        "delete_success": "تم حذف الحساب بنجاح"
       },
       "Contractors": {
         "page_title": "إدارة المقاولين",
@@ -2294,7 +2301,11 @@
         "filter_status_all": "جميع الحالات",
         "filter_city_label": "المدينة",
         "filter_city_all": "جميع المدن",
-        "filter_clear": "مسح الفلاتر"
+        "filter_clear": "مسح الفلاتر",
+        "delete_account": "حذف الحساب",
+        "delete_confirm_title": "تأكيد حذف الحساب",
+        "delete_confirm_desc": "هل أنت متأكد من حذف حساب {name}؟ لا يمكن التراجع عن هذا الإجراء.",
+        "delete_success": "تم حذف الحساب بنجاح"
       },
       "Rfqs": {
         "page_title": "إدارة طلبات عروض الأسعار",

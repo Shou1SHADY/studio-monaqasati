@@ -178,7 +178,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
           {/* Suppliers */}
           <Link href="/admin/suppliers" className="block">
-            <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <Card className="border border-t-2 border-t-success shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
               <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-purple-50">
@@ -207,7 +207,7 @@ export default function AdminDashboard() {
 
           {/* Contractors */}
           <Link href="/admin/contractors" className="block">
-            <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <Card className="border border-t-2 border-t-cta shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
               <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-blue-50">
@@ -236,7 +236,7 @@ export default function AdminDashboard() {
 
           {/* RFQ Pipeline */}
           <Link href="/admin/rfqs" className="block">
-            <Card className="border-none shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
+            <Card className="border border-t-2 border-t-accent shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
               <CardContent className="p-5 flex flex-col h-full">
                 <div className="flex items-start justify-between mb-3">
                   <div className="p-2.5 rounded-xl bg-success/10">
@@ -267,7 +267,7 @@ export default function AdminDashboard() {
           </Link>
 
           {/* Award Rate + Engagement */}
-          <Card className="border-none shadow-sm h-full">
+          <Card className="border border-t-2 border-t-amber-500 shadow-sm h-full">
             <CardContent className="p-5 flex flex-col h-full">
               <div className="flex items-start justify-between mb-3">
                 <div className="p-2.5 rounded-xl bg-amber-50">
@@ -291,7 +291,7 @@ export default function AdminDashboard() {
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Monthly RFQ Trend */}
-          <Card className="shadow-sm border-slate-100">
+          <Card className="shadow-sm border border-t-2 border-t-primary">
             <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <BarChart3 className="h-4 w-4 text-primary" />
@@ -316,7 +316,7 @@ export default function AdminDashboard() {
           </Card>
 
           {/* RFQ Status Distribution */}
-          <Card className="shadow-sm border-slate-100">
+          <Card className="shadow-sm border border-t-2 border-t-purple-500">
             <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <PieChartIcon className="h-4 w-4 text-accent" />
@@ -373,7 +373,7 @@ export default function AdminDashboard() {
         {/* Insights Row */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           {/* Verification Health */}
-          <Card className="shadow-sm border-slate-100">
+          <Card className="shadow-sm border border-t-2 border-t-success">
             <CardHeader className="border-b pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <ShieldCheck className="h-4 w-4 text-success" />
@@ -433,7 +433,7 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Top Cities */}
-          <Card className="shadow-sm border-slate-100">
+          <Card className="shadow-sm border border-t-2 border-t-cta">
             <CardHeader className="border-b pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-primary" />
@@ -469,7 +469,7 @@ export default function AdminDashboard() {
           </Card>
 
           {/* Pending Verification Queue */}
-          <Card className="shadow-sm border-slate-100">
+          <Card className="shadow-sm border border-t-2 border-t-amber-500">
             <CardHeader className="border-b pb-3">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-destructive" />

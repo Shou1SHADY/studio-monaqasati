@@ -1612,6 +1612,9 @@
       "newrfq_pdf_attached_desc": "PDF file ready to send with the RFQ",
       "newrfq_click_upload_pdf": "Click to upload PDF file",
       "newrfq_pdf_technical_desc": "Drawings and technical specifications",
+      "newrfq_country_label": "Country",
+      "newrfq_select_country": "Select Country",
+      "newrfq_search_country": "Search country...",
       "newrfq_city_label": "City",
       "newrfq_select_city": "Select City",
       "newrfq_district_label": "District / Area",
@@ -2233,7 +2236,11 @@
         "pdf_badge": "{count} PDF file",
         "certs_badge": "Certificates",
         "doc_cr": "Commercial Registration (CR)",
-        "doc_vat": "VAT Certificate"
+        "doc_vat": "VAT Certificate",
+        "delete_account": "Delete Account",
+        "delete_confirm_title": "Confirm Account Deletion",
+        "delete_confirm_desc": "Are you sure you want to delete {name}'s account? This action cannot be undone.",
+        "delete_success": "Account deleted successfully"
       },
       "Contractors": {
         "page_title": "Manage Contractors",
@@ -2294,7 +2301,11 @@
         "filter_status_all": "All statuses",
         "filter_city_label": "City",
         "filter_city_all": "All cities",
-        "filter_clear": "Clear filters"
+        "filter_clear": "Clear filters",
+        "delete_account": "Delete Account",
+        "delete_confirm_title": "Confirm Account Deletion",
+        "delete_confirm_desc": "Are you sure you want to delete {name}'s account? This action cannot be undone.",
+        "delete_success": "Account deleted successfully"
       },
       "Rfqs": {
         "page_title": "Manage RFQs",

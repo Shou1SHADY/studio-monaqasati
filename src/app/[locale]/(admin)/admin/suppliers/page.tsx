@@ -22,7 +22,8 @@ import {
   Building,
   Award,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from "lucide-react"
 import {
   Dialog,
@@ -31,8 +32,18 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, updateDoc, deleteDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
@@ -65,6 +76,8 @@ export default function AdminSuppliersPage() {
   const [limitCount, setLimitCount] = useState(20)
   const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [statusFilter, setStatusFilter] = useState<SupplierStatusFilter>("all")
   const [cityFilter, setCityFilter] = useState("all")
@@ -139,6 +152,23 @@ export default function AdminSuppliersPage() {
       toast({ title: verify ? t("verified_success") : t("unverified_success"), description: t("update_desc") })
     } catch (e: any) {
       toast({ title: t("error"), description: e.message, variant: "destructive" })
+    }
+  }
+
+  const handleDeleteSupplier = async () => {
+    if (!firestore || !selectedSupplier) return
+    setIsDeleting(true)
+    try {
+      await deleteDoc(doc(firestore, "users", selectedSupplier.id))
+      setLocalSuppliers(prev => prev.filter(s => s.id !== selectedSupplier.id))
+      setShowDeleteDialog(false)
+      setShowDetailDialog(false)
+      setSelectedSupplier(null)
+      toast({ title: t("delete_success") })
+    } catch (e: any) {
+      toast({ title: t("error"), description: e.message, variant: "destructive" })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -546,7 +576,7 @@ export default function AdminSuppliersPage() {
                 <Separator />
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-1">
+                <div className="flex gap-3 pt-1 flex-wrap">
                   <Button variant="outline" className="flex-1" onClick={() => setShowDetailDialog(false)}>
                     {t("close")}
                   </Button>
@@ -568,11 +598,41 @@ export default function AdminSuppliersPage() {
                       {t("verify_account")}
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 size={15} />
+                    {t("delete_account")}
+                  </Button>
                 </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("delete_confirm_title")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("delete_confirm_desc", { name: selectedSupplier?.name || "" })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>{t("close")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteSupplier}
+                disabled={isDeleting}
+                className="bg-destructive hover:bg-destructive/90 gap-2"
+              >
+                {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {t("delete_account")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </PortalLayout>
   )

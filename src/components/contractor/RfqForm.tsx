@@ -35,7 +35,7 @@ import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollecti
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict, displayCountry } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { resolveRfqVisibility, type RfqVisibilityMode } from "@/utils/rfq-visibility"
@@ -98,6 +98,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // ── All useState/useRef hooks MUST be declared before any early returns ──
   const [formData, setFormData] = useState({
     title: "",
+    country: "SA",
     city: "",
     district: "",
     deadline: "",
@@ -160,6 +161,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           setEditRfqData(data)
           setFormData({
             title: data.title || "",
+            country: data.country || "SA",
             city: data.city || "",
             district: data.district || "",
             deadline: data.deadline || "",
@@ -514,6 +516,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         estimatedBudget: formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
           : null,
+        country: formData.country,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
@@ -584,6 +587,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         estimatedBudget: formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
           : null,
+        country: formData.country,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
@@ -631,6 +635,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       })
       setFormData({
         title: "",
+        country: "SA",
         city: "",
         district: "",
         deadline: "",
@@ -960,6 +965,22 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
+                      {t("newrfq_country_label")}<RequiredStar />
+                    </Label>
+                    <SearchableSelect
+                      value={formData.country}
+                      onChange={v => {
+                        setFormData({ ...formData, country: v, city: "", district: "" })
+                        clearError("city")
+                      }}
+                      options={COUNTRIES.map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
+                      placeholder={t("newrfq_select_country")}
+                      searchPlaceholder={t("newrfq_search_country")}
+                      noResultsText={t("newrfq_no_results")}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold text-slate-700">
                       {t("newrfq_city_label")}<RequiredStar />
                     </Label>
                     <SearchableSelect
@@ -968,7 +989,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         setFormData({ ...formData, city: v, district: "" })
                         clearError("city")
                       }}
-                      options={SAUDI_CITIES.map(city => ({ value: city, label: displayCity(city, locale) }))}
+                      options={(CITIES_BY_COUNTRY[formData.country] || []).map(city => ({ value: city, label: displayCity(city, locale) }))}
                       placeholder={t("newrfq_select_city")}
                       searchPlaceholder={t("newrfq_search_city")}
                       noResultsText={t("newrfq_no_results")}

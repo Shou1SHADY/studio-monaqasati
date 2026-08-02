@@ -490,6 +490,15 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <Trash2 size={14} />
                         {t("rfq_delete_selected", { count: selectedRfqs.length })}
                       </Button>
+                      <Button
+                        onClick={() => setSelectedRfqs([])}
+                        variant="ghost"
+                        className="gap-2 rounded-lg text-muted-foreground"
+                        size="sm"
+                      >
+                        <X size={14} />
+                        {t("rfq_deselect_all")}
+                      </Button>
                     </>
                   )}
                   {selectedRfqs.length === 0 && (
