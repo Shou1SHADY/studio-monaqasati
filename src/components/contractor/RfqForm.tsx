@@ -804,8 +804,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <SearchableSelect
                               value={product.category}
                               onChange={v => {
-                                if (v !== product.category) updateProduct(product.id, "subCategory", "")
-                                updateProduct(product.id, "category", v)
+                                setProducts(prev => prev.map(p =>
+                                  p.id === product.id ? { ...p, category: v, subCategory: "" } : p
+                                ))
+                                clearError(`product_${product.id}_category`)
                               }}
                               options={Object.keys(CATEGORIES_DATA).map(cat => ({ value: cat, label: displayCategory(cat, locale) }))}
                               placeholder={t("newrfq_select_category")}
@@ -820,9 +822,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <SearchableSelect
                               value={product.subCategory}
                               onChange={v => {
-                                updateProduct(product.id, "subCategory", v)
                                 const autoUnit = SUBCATEGORY_UNIT_MAP[v]
-                                if (autoUnit) updateProduct(product.id, "unit", autoUnit)
+                                setProducts(prev => prev.map(p =>
+                                  p.id === product.id ? { ...p, subCategory: v, ...(autoUnit ? { unit: autoUnit } : {}) } : p
+                                ))
+                                clearError(`product_${product.id}_subCategory`)
                               }}
                               options={[
                                 ...(product.category && CATEGORIES_DATA[product.category]

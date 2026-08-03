@@ -80,6 +80,7 @@ export default function AdminContractorsPage() {
   const [showFilters, setShowFilters] = useState(false)
   const [statusFilter, setStatusFilter] = useState<ContractorStatusFilter>("all")
   const [cityFilter, setCityFilter] = useState("all")
+  const [sortBy, setSortBy] = useState<"verification" | "latest">("verification")
 
   const contractorsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -128,13 +129,18 @@ export default function AdminContractorsPage() {
           certificates: c.certificates || [],
           hasCerts: (c.certificates?.length || 0) > 0,
           rfqCount,
+          createdAt: c.createdAt,
         }
       }).sort((a: any, b: any) => {
+        if (sortBy === "latest") {
+          const getTs = (ts: any) => ts?.seconds ? ts.seconds * 1000 : ts?.toDate ? ts.toDate().getTime() : new Date(ts || 0).getTime()
+          return getTs(b.createdAt) - getTs(a.createdAt)
+        }
         if (a.verificationRequested === b.verificationRequested) return 0
         return a.verificationRequested ? -1 : 1
       }))
     }
-  }, [contractors, allRfqs])
+  }, [contractors, allRfqs, sortBy])
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
@@ -267,6 +273,24 @@ export default function AdminContractorsPage() {
                   noResultsText={t("filter_city_label")}
                   size="md"
                 />
+              </div>
+              <div className="flex gap-1.5 ms-auto">
+                <Button
+                  variant={sortBy === "verification" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSortBy("verification")}
+                  className="text-xs"
+                >
+                  {t("sort_verification")}
+                </Button>
+                <Button
+                  variant={sortBy === "latest" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSortBy("latest")}
+                  className="text-xs"
+                >
+                  {t("sort_latest")}
+                </Button>
               </div>
               {activeFilterCount > 0 && (
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground gap-1.5">

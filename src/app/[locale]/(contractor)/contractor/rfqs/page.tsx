@@ -660,7 +660,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
                       </div>
                       
-                      <div className="space-y-1 mb-5 flex-1">
+                      <div className="space-y-1 mb-3">
                         <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
                           {rfq.title}
                         </h3>
@@ -679,7 +679,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-4 border-t border-slate-100/80 mb-5">
+                      <div className="space-y-3 pt-4 border-t border-slate-100/80 mt-auto mb-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 text-xs text-slate-600">
                             <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
