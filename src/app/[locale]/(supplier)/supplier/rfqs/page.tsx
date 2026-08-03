@@ -63,7 +63,7 @@ export default function AvailableRfqsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
   const [customDeadline, setCustomDeadline] = useState("")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, isFromMdmak?: boolean} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean} | null>(null)
 
   const [showMobileFilters, setShowMobileFilters] = useState(false)
   const activeFilterCount = [deadlineFilter !== "all", selectedCategory !== "all", selectedCity !== "all"].filter(Boolean).length
@@ -433,6 +433,12 @@ export default function AvailableRfqsPage() {
                           {displaySubcategory(rfq.subCategory, locale)}
                         </Badge>
                       )}
+                      {rfq.requiresWarranty && (
+                        <Badge className="bg-amber-100 text-amber-700 border-amber-200 px-2.5 py-1 gap-1">
+                          <ShieldCheck size={11} />
+                          {t("rfq_warranty_required_badge")}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {rfq.status === "Awarded" ? (
@@ -514,7 +520,7 @@ export default function AvailableRfqsPage() {
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
-                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, isFromMdmak: rfq.isFromMdmak })
+                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak })
                         setShowRfqDetails(true)
                       }}
                       variant="outline"
@@ -538,7 +544,7 @@ export default function AvailableRfqsPage() {
                     ) : (
                       <Button
                         onClick={() => {
-                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, isFromMdmak: rfq.isFromMdmak })
+                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak })
                           setShowSubmitOffer(true)
                         }}
                         className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"
@@ -639,6 +645,12 @@ export default function AvailableRfqsPage() {
                   {selectedRfq?.id && (
                     <span className="text-[10px] text-slate-400 font-mono bg-white/70 px-2 py-0.5 rounded-md border border-slate-200">
                       #{selectedRfq.id.substring(0, 8).toUpperCase()}
+                    </span>
+                  )}
+                  {selectedRfq?.requiresWarranty && (
+                    <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200">
+                      <ShieldCheck size={10} />
+                      {t("rfq_warranty_required_badge")}
                     </span>
                   )}
                 </div>

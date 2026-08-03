@@ -27,6 +27,7 @@ export interface BoqItem {
   suggestedSubCategory: string
   groupId: string
   selected: boolean
+  requiresWarranty: boolean
 }
 
 export interface BoqProjectInfo {
@@ -294,6 +295,7 @@ export async function parseBoqFile(file: File): Promise<BoqParseResult> {
           suggestedSubCategory: subCategory,
           groupId,
           selected: true,
+          requiresWarranty: false,
         })
 
         if (!groupsById.has(groupId)) {

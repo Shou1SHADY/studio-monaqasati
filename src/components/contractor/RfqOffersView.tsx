@@ -51,6 +51,7 @@ import {
   ChevronLeft,
   FileCheck,
   Handshake,
+  ShieldCheck,
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -153,6 +154,18 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: deliveries } = useCollection(deliveriesQuery)
   const deliveryByOfferId: Record<string, any> = {}
   ;(deliveries || []).forEach((d: any) => { deliveryByOfferId[d.offerId] = d })
+
+  // Guarantee submissions for this RFQ's offers (submitted by suppliers at delivery time)
+  const guaranteesQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !rfqId) return null
+    return query(collection(firestore, "guarantees"), where("rfqId", "==", rfqId), where("hasGuarantee", "==", true))
+  }, [firestore, user, isUserLoading, rfqId])
+  const { data: guarantees } = useCollection(guaranteesQuery)
+  const guaranteesByOfferId: Record<string, any[]> = {}
+  ;(guarantees || []).forEach((g: any) => {
+    if (!guaranteesByOfferId[g.offerId]) guaranteesByOfferId[g.offerId] = []
+    guaranteesByOfferId[g.offerId].push(g)
+  })
 
   const handleConfirmDelivery = async () => {
     if (!firestore || !user || !confirmDeliveryDoc || !receiverName.trim()) return
@@ -522,6 +535,12 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                     {locale === 'ar' ? 'يوجد ملاحظات' : 'Has notes'}
                   </div>
                 )}
+                {rfq.requiresWarranty && (
+                  <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-200 rounded-lg px-2.5 py-1 text-xs font-medium">
+                    <ShieldCheck size={12} className="shrink-0" />
+                    {t("offers_warranty_required_badge")}
+                  </div>
+                )}
                 <div className="ms-auto font-mono text-white/25 text-[11px] bg-white/5 border border-white/5 px-2 py-1 rounded-lg hidden sm:block">
                   #{rfqId.substring(0, 10)}
                 </div>
@@ -717,6 +736,38 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 </a>
                               </Button>
                             </div>
+                          )}
+                          {rfq?.requiresWarranty && (
+                            (guaranteesByOfferId[offer.id] || []).length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {(guaranteesByOfferId[offer.id] || []).map((g: any) => (
+                                  <div key={g.id} className="p-3 bg-amber-50/60 rounded-xl border border-amber-100 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <ShieldCheck size={18} className="text-amber-600 shrink-0" />
+                                      <div className="min-w-0">
+                                        <span className="text-sm font-bold text-slate-700 block truncate">{g.itemName || g.itemNameEn}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {g.status === "accepted" ? t("offers_guarantee_accepted") : g.status === "rejected" ? t("offers_guarantee_rejected") : t("offers_guarantee_pending")}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {g.fileUrl && (
+                                      <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-amber-200 text-amber-700 hover:bg-amber-600 hover:text-white transition-all shrink-0">
+                                        <a href={g.fileUrl} target="_blank" rel="noopener noreferrer">
+                                          <Download size={12} className="ml-1" />
+                                          {t("offers_view_warranty_file")}
+                                        </a>
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center gap-2">
+                                <ShieldCheck size={18} className="text-slate-400" />
+                                <span className="text-sm text-muted-foreground">{t("offers_warranty_missing")}</span>
+                              </div>
+                            )
                           )}
                         </div>
 
@@ -1148,8 +1199,38 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 }))
               })
 
-              /* ===== ROW 6: CTA ===== */
-              cells.push(makeCell({ key: "rcta", row: 6, col: 1, kind: "rail", last: true,
+              /* ===== ROW 6: warranty (only shown when this RFQ requires one) ===== */
+              const ctaRow = rfq?.requiresWarranty ? 7 : 6
+              if (rfq?.requiresWarranty) {
+                cells.push(makeCell({ key: "rwarranty", row: 6, col: 1, kind: "rail",
+                  children: (
+                    <div style={{ padding: "0 16px", height: "100%", minHeight: 52, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", color: "#b45309", background: "hsl(38 92% 90%)" }}><ShieldCheck size={13} /></span>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: INK }}>{t("offers_warranty_col")}</span>
+                    </div>
+                  ),
+                }))
+                sortedOffers.forEach((offer: any, i: number) => {
+                  const best = i === bestIdx
+                  const offerGuarantees = guaranteesByOfferId[offer.id] || []
+                  cells.push(makeCell({ key: "warranty" + offer.id, row: 6, col: 2 + i, kind: "offer", best,
+                    children: (
+                      <div style={{ height: "100%", minHeight: 52, padding: PAD, display: "flex", alignItems: "center" }}>
+                        {offerGuarantees.length > 0 ? (
+                          <Link href="/contractor/guarantees" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: "#b45309", textDecoration: "none" }}>
+                            <ShieldCheck size={14} />{t("offers_guarantees_count", { count: offerGuarantees.length })}
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: 18, color: "hsl(213 27% 84%)" }}>—</span>
+                        )}
+                      </div>
+                    ),
+                  }))
+                })
+              }
+
+              /* ===== ROW 7 (or 6): CTA ===== */
+              cells.push(makeCell({ key: "rcta", row: ctaRow, col: 1, kind: "rail", last: true,
                 children: (
                   <div style={{ padding: "0 16px", height: "100%", minHeight: 68, display: "flex", alignItems: "center" }}>
                     <span style={{ fontSize: 13, fontWeight: 800, color: NAVY2 }}>{t("offers_decision_col")}</span>
@@ -1159,7 +1240,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
               sortedOffers.forEach((offer: any, i: number) => {
                 const best = i === bestIdx
                 const isDecided = offer.status === "مقبول" || offer.status === "مرفوض"
-                cells.push(makeCell({ key: "cta" + offer.id, row: 6, col: 2 + i, kind: "offer", best, last: true,
+                cells.push(makeCell({ key: "cta" + offer.id, row: ctaRow, col: 2 + i, kind: "offer", best, last: true,
                   children: (
                     <div style={{ height: "100%", minHeight: 68, padding: PAD, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {isDecided || !canDecide ? (
