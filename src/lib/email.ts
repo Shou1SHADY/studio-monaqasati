@@ -202,3 +202,32 @@ export function buildSupplierInviteEmail({
   const html = buildEmailShell({ greetingAr, greetingEn, bodyAr, bodyEn, ctaAr, ctaEn, inviteUrl })
   return { subject, html }
 }
+
+type AccountCreatedEmailInput = {
+  name: string
+  role: "Contractor" | "Supplier"
+  setPasswordUrl: string
+}
+
+export function buildAccountCreatedEmail({
+  name,
+  role,
+  setPasswordUrl,
+}: AccountCreatedEmailInput): { subject: string; html: string } {
+  const safeName = escapeHtml(name || "")
+  const greetingAr = safeName ? `مرحباً ${safeName},` : "مرحباً,"
+  const greetingEn = safeName ? `Hello ${safeName},` : "Hello,"
+
+  const roleAr = role === "Supplier" ? "كمورّد" : "كمقاول"
+  const roleEn = role === "Supplier" ? "supplier" : "contractor"
+
+  const bodyAr = `بعد مراجعة طلبك، قام فريقنا بإنشاء حسابك ${roleAr} على منصة مدماك تيك. لتفعيل الدخول، يرجى تعيين كلمة مرور لحسابك عبر الرابط أدناه.`
+  const bodyEn = `After reviewing your request, our team created your ${roleEn} account on Mdmak Tech. To activate access, please set a password for your account using the link below.`
+
+  const ctaAr = "تعيين كلمة المرور"
+  const ctaEn = "Set your password"
+
+  const subject = "تم إنشاء حسابك في مدماك تيك — Your Mdmak Tech account is ready"
+  const html = buildEmailShell({ greetingAr, greetingEn, bodyAr, bodyEn, ctaAr, ctaEn, inviteUrl: setPasswordUrl })
+  return { subject, html }
+}

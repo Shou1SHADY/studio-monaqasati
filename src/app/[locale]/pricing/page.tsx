@@ -56,7 +56,7 @@ export default function Pricing() {
                 </li>
               ))}
             </ul>
-            <Link href="/register" className="w-full h-12 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl flex items-center justify-center transition-colors">
+            <Link href="/#demo" className="w-full h-12 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl flex items-center justify-center transition-colors">
               {t("register_free")}
             </Link>
           </div>

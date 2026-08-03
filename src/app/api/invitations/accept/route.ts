@@ -10,6 +10,8 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 
 const bodySchema = z.object({
   token: z.string().regex(/^[a-f0-9]{64}$/),
+  name: z.string().trim().max(200).optional(),
+  phone: z.string().trim().max(30).optional(),
 })
 
 function errorResponse(message: string, code: string, status: number) {
@@ -34,7 +36,7 @@ export async function POST(req: NextRequest) {
     const json = await req.json().catch(() => null)
     const parsed = bodySchema.safeParse(json)
     if (!parsed.success) return errorResponse("Invalid invitation token", "INVALID_INPUT", 400)
-    const { token } = parsed.data
+    const { token, name, phone } = parsed.data
 
     // --- Load the invitation ---
     const db = getAdminFirestore()
@@ -52,18 +54,54 @@ export async function POST(req: NextRequest) {
       return errorResponse("This invitation is no longer valid", "INVITATION_NOT_PENDING", 410)
     }
 
-    // --- Load the accepting user ---
-    const userSnap = await db.collection("users").doc(decoded.uid).get()
-    const profile = userSnap.data()
-    if (!profile) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
+    // --- Load the accepting user, creating their profile if this is their
+    // first action after Auth signup. Public self-registration no longer
+    // writes users/{uid} client-side (firestore.rules restricts that create
+    // to admins), so an invited user's profile is created here instead —
+    // the invitation itself (already validated above) is the authorization.
+    const userRef = db.collection("users").doc(decoded.uid)
+    const userSnap = await userRef.get()
+    let profile = userSnap.data()
+    let justCreatedProfile = false
+    // If a validation below rejects the invitation after we've created the
+    // profile in this same request, undo it — otherwise a malformed/self-
+    // targeted invitation would leave a Firestore profile with no accepted
+    // org link and no way for the client's Auth-account rollback to know
+    // about it (mirrors the atomic create-or-rollback pattern this replaced).
+    const rejectAfterCreate = async (message: string, code: string, status: number) => {
+      if (justCreatedProfile) await userRef.delete().catch(() => {})
+      return errorResponse(message, code, status)
+    }
+    if (!profile) {
+      justCreatedProfile = true
+      const email = (decoded.email || "").toLowerCase()
+      const role = inv.type === "supplier_invite" ? "Supplier" : (inv.role as string) || "Contractor"
+      const provider = decoded.firebase?.sign_in_provider === "google.com" ? "google.com" : "password"
+      profile = {
+        id: decoded.uid,
+        name: name || decoded.name || "",
+        email,
+        phone: phone || "",
+        role,
+        organizationId: decoded.uid,
+        organizationRole: "owner",
+        specializations: [] as string[],
+        providers: [provider],
+        isVerified: false,
+        profileCompleted: false,
+        joinedAt: FieldValue.serverTimestamp(),
+        lastLoginAt: FieldValue.serverTimestamp(),
+      }
+      await userRef.set(profile)
+    }
 
     // ============================ TEAM INVITE ============================
     if (inv.type === "team_invite") {
       if (!inv.organizationId) {
-        return errorResponse("Invitation is missing organization information", "INVALID_INVITATION", 422)
+        return rejectAfterCreate("Invitation is missing organization information", "INVALID_INVITATION", 422)
       }
       if (inv.organizationId === decoded.uid) {
-        return errorResponse("You cannot accept an invitation to your own organization", "SELF_ACCEPT", 400)
+        return rejectAfterCreate("You cannot accept an invitation to your own organization", "SELF_ACCEPT", 400)
       }
       // Guard: already a member of a different org (a solo org — own uid — is fine).
       if (
@@ -71,7 +109,7 @@ export async function POST(req: NextRequest) {
         profile.organizationId !== decoded.uid &&
         profile.organizationId !== inv.organizationId
       ) {
-        return errorResponse("You already belong to another organization", "IN_OTHER_ORG", 409)
+        return rejectAfterCreate("You already belong to another organization", "IN_OTHER_ORG", 409)
       }
 
       await db.collection("users").doc(decoded.uid).update({
@@ -138,15 +176,15 @@ export async function POST(req: NextRequest) {
 
     // ========================== SUPPLIER INVITE ==========================
     if (!inv.contractorOrgId) {
-      return errorResponse("Invitation is missing contractor information", "INVALID_INVITATION", 422)
+      return rejectAfterCreate("Invitation is missing contractor information", "INVALID_INVITATION", 422)
     }
     if (profile.role !== "Supplier") {
-      return errorResponse("Only supplier accounts can accept supplier invitations", "FORBIDDEN", 403)
+      return rejectAfterCreate("Only supplier accounts can accept supplier invitations", "FORBIDDEN", 403)
     }
 
     const supplierOrgId = (profile.organizationId as string) || decoded.uid
     if (supplierOrgId === inv.contractorOrgId) {
-      return errorResponse("You cannot accept an invitation from your own organization", "SELF_ACCEPT", 400)
+      return rejectAfterCreate("You cannot accept an invitation from your own organization", "SELF_ACCEPT", 400)
     }
 
     // --- Create the link unless one is already active ---

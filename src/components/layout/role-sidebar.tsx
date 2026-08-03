@@ -28,6 +28,7 @@ import {
   PackageCheck,
   FilePlus,
   ShoppingBasket,
+  Inbox,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -124,6 +125,7 @@ const adminSections: NavSection[] = [
     labelKey: "section_management",
     items: [
       { titleKey: "admin_home", href: "/admin", icon: LayoutDashboard },
+      { titleKey: "admin_leads", href: "/admin/leads", icon: Inbox },
       { titleKey: "admin_suppliers", href: "/admin/suppliers", icon: Users },
       { titleKey: "admin_contractors", href: "/admin/contractors", icon: Users },
       { titleKey: "admin_rfqs", href: "/admin/rfqs", icon: Package },

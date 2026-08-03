@@ -437,7 +437,7 @@ export default function BelowFoldSections() {
                 ))}
               </div>
               <div className="flex items-center gap-4 flex-wrap justify-end lg:justify-start">
-                <Link href="/register?role=Contractor">
+                <Link href="/#demo">
                   <Button className="group h-12 sm:h-[54px] px-6 sm:px-8 text-[14.5px] sm:text-[15.5px] font-extrabold rounded-[13px] sm:rounded-[15px] bg-cta hover:bg-sky-500 text-white transition-all shadow-[0_18px_40px_-16px_rgba(3,105,161,.7)] hover:shadow-[0_22px_48px_-16px_rgba(14,165,233,.7)] hover:-translate-y-0.5">
                     {tContractor('cta')}
                     <ArrowLeft size={15} className="rtl:mr-2 ltr:ml-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
@@ -601,7 +601,7 @@ export default function BelowFoldSections() {
                 ))}
               </div>
               <div className="flex items-center gap-4 flex-wrap">
-                <Link href="/register?role=Supplier">
+                <Link href="/#demo">
                   <Button className="group h-12 px-8 text-sm font-bold rounded-xl bg-cta hover:bg-sky-500 text-white border-none transition-all hover:shadow-lg hover:shadow-cta/20">
                     {tSupplier('cta')}
                     <ArrowLeft size={13} className="rtl:me-2 ltr:ms-2 rtl:rotate-0 ltr:rotate-180 group-hover:translate-x-1 rtl:group-hover:-translate-x-1 transition-transform" />
@@ -765,7 +765,7 @@ export default function BelowFoldSections() {
             {tPartnership('desc')}
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-            <Link href="/register">
+            <Link href="/#demo">
               <Button className="h-12 md:h-16 px-8 md:px-12 text-base font-black rounded-2xl bg-cta hover:bg-sky-500 text-white border-none transition-all hover:scale-[1.02] shadow-xl shadow-cta/20">
                 {tPartnership('cta')}
               </Button>
@@ -808,7 +808,7 @@ export default function BelowFoldSections() {
           <div
             className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10"
           >
-            <Link href="/register" className="w-full sm:w-auto">
+            <Link href="/#demo" className="w-full sm:w-auto">
               <Button className="w-full sm:w-auto h-14 md:h-16 px-10 md:px-14 text-base md:text-lg font-black rounded-2xl bg-sky-500 hover:bg-sky-400 text-white transition-all duration-300 hover:scale-[1.03] shadow-2xl shadow-sky-500/25 group border-none">
                 {tCTA('register')}
                 <ArrowRight size={18} className="rtl:rotate-180 rtl:mr-2 ltr:ml-2 transition-transform group-hover:rtl:-translate-x-1 group-hover:ltr:translate-x-1" />
@@ -949,10 +949,10 @@ export default function BelowFoldSections() {
                   { label: tFooter('l_about'), href: '/about' },
                   { label: tFooter('l_features'), href: '/#features' },
                   { label: tFooter('l_pricing'), href: '/pricing' },
-                  { label: tFooter('l_suppliers'), href: '/register?role=Supplier' },
-                  { label: tFooter('l_contractors'), href: '/register?role=Contractor' },
+                  { label: tFooter('l_suppliers'), href: '/#demo' },
+                  { label: tFooter('l_contractors'), href: '/#demo' },
                 ].map(l => (
-                  <li key={l.href}>
+                  <li key={l.label}>
                     <Link href={l.href} className="text-[13.5px] text-slate-400 hover:text-slate-100 transition-colors duration-200">
                       {l.label}
                     </Link>

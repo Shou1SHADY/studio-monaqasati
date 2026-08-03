@@ -400,11 +400,11 @@ export default function HomeContent() {
               {tNav('how_it_works')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
-            <Link href="/register?role=Supplier" className="hover:text-white transition-colors relative group">
+            <Link href="/#demo" className="hover:text-white transition-colors relative group">
               {tNav('suppliers_portal')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
-            <Link href="/register?role=Contractor" className="hover:text-white transition-colors relative group">
+            <Link href="/#demo" className="hover:text-white transition-colors relative group">
               {tNav('contractors_portal')}
               <span className="absolute -bottom-1 right-0 w-0 h-0.5 bg-cta transition-all group-hover:w-full" />
             </Link>
@@ -462,11 +462,11 @@ export default function HomeContent() {
               {[
                 { label: tNav('features'),            href: '#features' },
                 { label: tNav('how_it_works'),        href: '#how' },
-                { label: tNav('suppliers_portal'),    href: '/register?role=Supplier' },
-                { label: tNav('contractors_portal'),  href: '/register?role=Contractor' },
+                { label: tNav('suppliers_portal'),    href: '/#demo' },
+                { label: tNav('contractors_portal'),  href: '/#demo' },
               ].map(item => (
                 <Link
-                  key={item.href}
+                  key={item.label}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className="text-slate-300 hover:text-white font-bold text-base py-3.5 px-4 rounded-xl hover:bg-white/5 transition-colors"

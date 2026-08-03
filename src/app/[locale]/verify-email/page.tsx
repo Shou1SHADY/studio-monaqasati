@@ -83,7 +83,10 @@ export default function VerifyEmailPage() {
           router.push("/")
         }
       } else {
-        router.push("/register")
+        // No Firestore profile exists — under the admin-only account model
+        // this should be unreachable except for stale pre-migration Auth
+        // accounts, so there's no self-serve registration to send them to.
+        router.push("/")
       }
     } catch (err) {
       console.error(err)

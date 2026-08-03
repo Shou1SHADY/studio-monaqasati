@@ -1,40 +1,35 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import Image from "next/image"
-import { useTranslations, useLocale } from "next-intl"
+import { useTranslations } from "next-intl"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { useFirebase } from "@/firebase"
-import { createUserWithEmailAndPassword, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification, type User } from "firebase/auth"
-import { doc, setDoc, getDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification, type User } from "firebase/auth"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Loader2, ArrowRight, Building2, ShoppingCart, ChevronDown, X, Check, Search, Eye, EyeOff, Mail } from "lucide-react"
-import { PREDEFINED_CATEGORIES, displayCategory } from "@/lib/constants"
+import { Loader2, ArrowRight, X, Eye, EyeOff, Mail } from "lucide-react"
 
+// Public self-registration has been removed — the only way to get an
+// account is an admin creating one from the admin portal (after reviewing a
+// demo request), or accepting an invitation from an already-approved org
+// owner. This page now only handles the latter: without a valid ?invite=
+// token it redirects straight to the demo-request section.
 export default function RegisterPage() {
   const t = useTranslations("Auth.Register")
-  const locale = useLocale()
   const router = useRouter()
-  const { auth, firestore } = useFirebase()
+  const { auth } = useFirebase()
   const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(false)
+  const [checkingInvite, setCheckingInvite] = useState(true)
   const [registerError, setRegisterError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    phone: "",
-    role: "Contractor" as "Contractor" | "Supplier",
-    specializations: [] as string[]
-  })
+  const [formData, setFormData] = useState({ name: "", email: "", password: "", phone: "" })
 
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [inviteInfo, setInviteInfo] = useState<
@@ -44,24 +39,16 @@ export default function RegisterPage() {
   >(null)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search)
-      const roleParam = params.get("role")
-      const emailParam = params.get("email")
-      const nameParam = params.get("name")
-      const inviteParam = params.get("invite")
-      if (inviteParam) setInviteToken(inviteParam)
-      setFormData(prev => ({
-        ...prev,
-        role: (roleParam === "Supplier" || roleParam === "Contractor") ? roleParam : prev.role,
-        email: emailParam || prev.email,
-        name: nameParam || prev.name
-      }))
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const inviteParam = params.get("invite")
+    if (!inviteParam) {
+      router.replace("/#demo")
+      return
     }
-  }, [])
+    setInviteToken(inviteParam)
+  }, [router])
 
-  // Invitation link (?invite=<token>): prefill the form. Supplier invites lock
-  // the flow onto the Supplier role; team invites carry their own role.
   useEffect(() => {
     if (!inviteToken) return
     let cancelled = false
@@ -69,38 +56,32 @@ export default function RegisterPage() {
       try {
         const res = await fetch(`/api/invitations/lookup?token=${encodeURIComponent(inviteToken)}`)
         const data = await res.json().catch(() => null)
-        if (cancelled || !res.ok || !data?.success) return
+        if (cancelled) return
+        if (!res.ok || !data?.success) {
+          router.replace("/#demo")
+          return
+        }
         setInviteInfo(data.data)
         if (data.data.type === "team_invite") {
-          setFormData(prev => ({
-            ...prev,
-            role: data.data.role === "Supplier" ? "Supplier" : "Contractor",
-            email: data.data.email || prev.email,
-            name: prev.name || data.data.name || ""
-          }))
+          setFormData(prev => ({ ...prev, email: data.data.email || prev.email, name: prev.name || data.data.name || "" }))
         } else {
-          setFormData(prev => ({
-            ...prev,
-            role: "Supplier",
-            email: data.data.email || prev.email,
-            name: prev.name || data.data.companyName || ""
-          }))
+          setFormData(prev => ({ ...prev, email: data.data.email || prev.email, name: prev.name || data.data.companyName || "" }))
         }
+        setCheckingInvite(false)
       } catch (err) {
         console.error("Failed to look up invitation:", err)
+        if (!cancelled) router.replace("/#demo")
       }
     }
     lookupInvite()
     return () => { cancelled = true }
-  }, [inviteToken])
+  }, [inviteToken, router])
 
-  // Supplier invite → links the new supplier to the contractor's directory;
-  // team invite → joins the new user to the inviting organization. Reports
-  // success/failure so the caller can tell the user when it didn't work —
-  // the account still exists either way, but silently pretending the link
-  // succeeded leaves them stuck in their own solo org with no explanation.
-  const acceptInvite = async (user: User): Promise<{ ok: boolean; code?: string }> => {
-    if (!inviteToken) return { ok: true }
+  // Links the new account to the inviting org server-side, and creates the
+  // Firestore profile if this is the user's first action after Auth signup
+  // (client-side self-registration is blocked by firestore.rules — the
+  // invitation itself is the authorization for this server call instead).
+  const acceptInvite = async (user: User): Promise<{ ok: boolean; code?: string; message?: string }> => {
     try {
       const idToken = await user.getIdToken()
       const res = await fetch("/api/invitations/accept", {
@@ -109,49 +90,22 @@ export default function RegisterPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ token: inviteToken }),
+        body: JSON.stringify({ token: inviteToken, name: formData.name, phone: formData.phone }),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.success) {
-        console.error("Failed to auto-accept invitation:", data?.message || res.status)
-        return { ok: false, code: data?.code }
+        return { ok: false, code: data?.code, message: data?.message }
       }
       return { ok: true }
     } catch (err) {
-      console.error("Failed to auto-accept invitation:", err)
+      console.error("Failed to accept invitation:", err)
       return { ok: false }
     }
   }
 
-  const [specDropdownOpen, setSpecDropdownOpen] = useState(false)
-  const [specSearch, setSpecSearch] = useState("")
-  const specDropdownRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (specDropdownRef.current && !specDropdownRef.current.contains(e.target as Node)) {
-        setSpecDropdownOpen(false)
-        setSpecSearch("")
-      }
-    }
-    if (specDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside)
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [specDropdownOpen])
-
-  const toggleSpec = (spec: string) => {
-    setFormData(prev => ({
-      ...prev,
-      specializations: prev.specializations.includes(spec)
-        ? prev.specializations.filter(s => s !== spec)
-        : [...prev.specializations, spec]
-    }))
-  }
-
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!auth || !firestore) return
+    if (!auth || !inviteToken) return
 
     setIsLoading(true)
     setRegisterError("")
@@ -166,88 +120,35 @@ export default function RegisterPage() {
 
       await updateProfile(user, { displayName: formData.name })
 
-      // Send Verification Email
       try {
         await sendEmailVerification(user)
       } catch (err) {
         console.error("Failed to send verification email:", err)
       }
 
-      // Check for invitation
-      const inviteRef = doc(firestore, "invitations", emailLower)
-      const inviteSnap = await getDoc(inviteRef)
-
-      let organizationId = user.uid
-      let organizationRole = 'owner'
-      let role = formData.role
-
-      if (inviteSnap.exists()) {
-        const inviteData = inviteSnap.data()
-        organizationId = inviteData.organizationId
-        organizationRole = inviteData.organizationRole || 'member'
-        role = inviteData.role || formData.role
-      }
-
-      // Atomic: if the Firestore write fails, delete the Auth user so no
-      // orphaned account is left that can neither log in nor re-register.
-      try {
-        await setDoc(doc(firestore, "users", user.uid), {
-          id: user.uid,
-          name: formData.name,
-          email: emailLower,
-          phone: formData.phone,
-          role: role,
-          organizationId: organizationId,
-          organizationRole: organizationRole,
-          specializations: role === "Supplier" ? formData.specializations : [],
-          providers: ["password"] as string[],
-          isVerified: false,
-          profileCompleted: false,
-          joinedAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp(),
-        })
-      } catch (firestoreError) {
-        await user.delete().catch(() => {})
-        throw firestoreError
-      }
-
-      if (inviteSnap.exists()) {
-        await deleteDoc(inviteRef)
-      }
-
-      // No-op without a token; the API validates type/role server-side.
       const acceptResult = await acceptInvite(user)
+      if (!acceptResult.ok) {
+        // No profile was created server-side — don't leave an orphaned Auth
+        // account that can neither log in nor be re-invited to this email.
+        await user.delete().catch(() => {})
+        throw new Error(acceptResult.message || t("error_unexpected"))
+      }
 
-      if (inviteToken && !acceptResult.ok) {
-        toast({
-          title: t("success_title"),
-          description: t("invite_accept_failed_desc"),
-          variant: "destructive",
-        })
-      } else if (inviteToken && inviteInfo?.type === "team_invite") {
-        toast({
-          title: t("success_title"),
-          description: t("invite_joined_team_desc", { org: inviteInfo.orgName || "" }),
-        })
-      } else if (inviteToken && inviteInfo?.type === "supplier_invite") {
-        toast({
-          title: t("success_title"),
-          description: t("invite_joined_supplier_desc", { contractor: inviteInfo.contractorName || "" }),
-        })
+      if (inviteInfo?.type === "team_invite") {
+        toast({ title: t("success_title"), description: t("invite_joined_team_desc", { org: inviteInfo.orgName || "" }) })
+      } else if (inviteInfo?.type === "supplier_invite") {
+        toast({ title: t("success_title"), description: t("invite_joined_supplier_desc", { contractor: inviteInfo.contractorName || "" }) })
       } else {
-        toast({
-          title: t("success_title"),
-          description: t("success_desc"),
-        })
+        toast({ title: t("success_title"), description: t("success_desc") })
       }
 
       router.push("/verify-email")
-
     } catch (error: any) {
       let errorMsg = error.message || t("error_unexpected")
       if (error.code === "auth/email-already-in-use") errorMsg = t("error_email_in_use")
       else if (error.code === "auth/weak-password") errorMsg = t("error_weak_pwd")
       else if (error.code === "auth/invalid-email") errorMsg = t("error_invalid_email")
+      else if (!error.code) { /* server-side accept error — message already set above */ }
       else console.error("Registration error:", error)
 
       setRegisterError(errorMsg)
@@ -256,129 +157,12 @@ export default function RegisterPage() {
     }
   }
 
-  const handleGoogleRegister = async () => {
-    if (!auth || !firestore) return
-
-    setIsLoading(true)
-    try {
-      const provider = new GoogleAuthProvider()
-      const result = await signInWithPopup(auth, provider)
-      const user = result.user
-
-      const userDocRef = doc(firestore, "users", user.uid)
-      const userDocSnap = await getDoc(userDocRef)
-
-      if (userDocSnap.exists()) {
-        // Registration is explicit — do not silently log in an existing user.
-        await auth.signOut()
-        setRegisterError(t("err_already_registered"))
-        // Also surface a toast: the Google button sits at the bottom of the
-        // form, so the inline error (rendered at the top) may be off-screen.
-        toast({
-          title: t("google_failed"),
-          description: t("err_already_registered"),
-          variant: "destructive"
-        })
-        return
-      }
-
-      const emailLower = user.email?.toLowerCase().trim() || formData.email.toLowerCase().trim()
-
-      const inviteRef = doc(firestore, "invitations", emailLower)
-      const inviteSnap = await getDoc(inviteRef)
-
-      let organizationId = user.uid
-      let organizationRole = 'owner'
-      let role = formData.role
-
-      if (inviteSnap.exists()) {
-        const inviteData = inviteSnap.data()
-        organizationId = inviteData.organizationId
-        organizationRole = inviteData.organizationRole || 'member'
-        role = inviteData.role || formData.role
-      }
-
-      // Atomic: if the Firestore write fails, delete the Auth user so no
-      // orphaned account is left that can neither log in nor re-register.
-      try {
-        await setDoc(userDocRef, {
-          id: user.uid,
-          name: formData.name || user.displayName || "مستخدم جديد",
-          email: emailLower,
-          phone: formData.phone || "",
-          role: role,
-          organizationId: organizationId,
-          organizationRole: organizationRole,
-          specializations: role === "Supplier" ? formData.specializations : [],
-          providers: ["google.com"] as string[],
-          isVerified: false,
-          profileCompleted: false,
-          joinedAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp(),
-        })
-      } catch (firestoreError) {
-        await user.delete().catch(() => {})
-        throw firestoreError
-      }
-
-      if (inviteSnap.exists()) {
-        await deleteDoc(inviteRef)
-      }
-
-      // No-op without a token; the API validates type/role server-side.
-      const acceptResult = await acceptInvite(user)
-
-      if (inviteToken && !acceptResult.ok) {
-        toast({
-          title: t("success_title"),
-          description: t("invite_accept_failed_desc"),
-          variant: "destructive",
-        })
-      } else if (inviteToken && inviteInfo?.type === "team_invite") {
-        toast({
-          title: t("success_title"),
-          description: t("invite_joined_team_desc", { org: inviteInfo.orgName || "" }),
-        })
-      } else if (inviteToken && inviteInfo?.type === "supplier_invite") {
-        toast({
-          title: t("success_title"),
-          description: t("invite_joined_supplier_desc", { contractor: inviteInfo.contractorName || "" }),
-        })
-      } else {
-        toast({
-          title: t("success_title"),
-          description: t("google_success_desc"),
-        })
-      }
-
-      if (role === "Contractor") {
-        router.push("/contractor")
-      } else {
-        router.push("/supplier")
-      }
-    } catch (error: any) {
-      console.error("❌ Google Registration error:", error)
-      if (error.code === "auth/cancelled-popup-request" || error.code === "auth/popup-closed-by-user") {
-        return
-      }
-      // Account with this email already exists under a different provider (password)
-      if (error.code === "auth/account-exists-with-different-credential") {
-        setRegisterError(t("error_email_in_use"))
-        toast({
-          title: t("google_failed"),
-          description: t("error_email_in_use"),
-          variant: "destructive"
-        })
-        return
-      }
-      toast({
-        title: t("google_failed"),
-        description: error.message || t("google_failed_desc"),
-        variant: "destructive"
-      })
-    } finally {
-      setIsLoading(false)
-    }
+  if (checkingInvite) {
+    return (
+      <div className="h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -394,13 +178,13 @@ export default function RegisterPage() {
           <div className="flex items-center gap-4">
             <LanguageSwitcher />
             <div className="flex items-center">
-              <Image 
-                src="/logo2.png" 
-                alt="Mdmak Tech" 
-                width={120} 
-                height={41} 
-                className="h-8 w-auto object-contain" 
-                priority 
+              <Image
+                src="/logo2.png"
+                alt="Mdmak Tech"
+                width={120}
+                height={41}
+                className="h-8 w-auto object-contain"
+                priority
               />
             </div>
           </div>
@@ -429,42 +213,13 @@ export default function RegisterPage() {
             </div>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {registerError && (
               <div className="bg-destructive/10 text-destructive text-sm font-medium p-3 rounded-lg border border-destructive/20 flex items-start gap-2">
                 <X className="w-5 h-5 shrink-0" />
                 <span>{registerError}</span>
               </div>
             )}
-            <div className="space-y-3">
-              <Label className="text-slate-700 font-bold">{t("role")}</Label>
-              <RadioGroup
-                value={formData.role}
-                onValueChange={(v) => setFormData({ ...formData, role: v as "Contractor" | "Supplier" })}
-                className="grid grid-cols-2 gap-3"
-              >
-                <div>
-                  <RadioGroupItem value="Contractor" id="contractor" className="peer sr-only" />
-                  <Label
-                    htmlFor="contractor"
-                    className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
-                  >
-                    <Building2 className="mb-2 h-6 w-6 text-primary" />
-                    <span className="font-bold text-sm">{t("contractor")}</span>
-                  </Label>
-                </div>
-                <div>
-                  <RadioGroupItem value="Supplier" id="supplier" className="peer sr-only" />
-                  <Label
-                    htmlFor="supplier"
-                    className="flex flex-col items-center justify-between rounded-xl border-2 border-slate-200 bg-white p-4 hover:bg-slate-50 peer-data-[state=checked]:border-success peer-data-[state=checked]:bg-success/5 cursor-pointer transition-all"
-                  >
-                    <ShoppingCart className="mb-2 h-6 w-6 text-success" />
-                    <span className="font-bold text-sm">{t("supplier")}</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
 
             <div className="space-y-2">
               <Label htmlFor="name" className="text-slate-700 font-bold">{t("company_name")}</Label>
@@ -493,100 +248,6 @@ export default function RegisterPage() {
                 }}
               />
             </div>
-
-            {formData.role === "Supplier" && (
-              <div className="space-y-2">
-                <Label className="text-slate-700 font-bold">{t("specializations")}</Label>
-
-                {/* Multiselect Dropdown */}
-                <div className="relative" ref={specDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => { setSpecDropdownOpen(prev => !prev); setSpecSearch("") }}
-                    className={`w-full flex items-center justify-between h-12 px-4 rounded-xl border-2 bg-slate-50 text-start transition-colors ${formData.specializations.length === 0
-                        ? "border-slate-200 text-slate-400"
-                        : "border-primary/40 text-slate-800"
-                      } hover:border-primary/60`}
-                  >
-                    <span className="text-sm truncate">
-                      {formData.specializations.length === 0
-                        ? t("select_specializations")
-                        : t("selected_specializations", { count: formData.specializations.length })}
-                    </span>
-                    <ChevronDown size={16} className={`shrink-0 text-slate-400 transition-transform ${specDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-
-                  {specDropdownOpen && (
-                    <div className="absolute z-50 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
-                      <div className="px-3 pt-3 pb-2">
-                        <div className="relative">
-                          <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                          <Input
-                            autoFocus
-                            value={specSearch}
-                            onChange={e => setSpecSearch(e.target.value)}
-                            placeholder={t("search_specializations")}
-                            className="h-9 pl-3 pr-9 text-sm rounded-lg bg-slate-100 border-slate-200 focus-visible:ring-primary focus-visible:border-primary"
-                          />
-                        </div>
-                      </div>
-                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100">
-                        {PREDEFINED_CATEGORIES.filter(cat => {
-                          if (!specSearch.trim()) return true
-                          return displayCategory(cat, locale).toLowerCase().includes(specSearch.toLowerCase().trim())
-                        }).map(cat => {
-                          const isSelected = formData.specializations.includes(cat)
-                          return (
-                            <button
-                              key={cat}
-                              type="button"
-                              onClick={() => toggleSpec(cat)}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right hover:bg-primary/5 transition-colors ${isSelected ? "bg-primary/5" : ""
-                                }`}
-                            >
-                              <div className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${isSelected
-                                  ? "bg-primary border-primary"
-                                  : "border-slate-300 bg-white"
-                                }`}>
-                                {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
-                              </div>
-                              <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{displayCategory(cat, locale)}</span>
-                            </button>
-                          )
-                        })}
-                        {PREDEFINED_CATEGORIES.filter(cat => {
-                          if (!specSearch.trim()) return true
-                          return displayCategory(cat, locale).toLowerCase().includes(specSearch.toLowerCase().trim())
-                        }).length === 0 && (
-                          <p className="px-4 py-3 text-sm text-slate-400">{t("no_specializations_found")}</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Selected tags */}
-                {formData.specializations.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {formData.specializations.map(spec => (
-                      <span
-                        key={spec}
-                        className="inline-flex items-center gap-1 bg-primary/10 text-primary text-xs font-bold px-2.5 py-1 rounded-full"
-                      >
-                        {spec}
-                        <button type="button" onClick={() => toggleSpec(spec)} className="hover:text-destructive transition-colors">
-                          <X size={12} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {formData.specializations.length === 0 && (
-                  <p className="text-xs text-destructive font-bold">{t("specialization_required")}</p>
-                )}
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-bold">{t("email")}</Label>
@@ -627,46 +288,11 @@ export default function RegisterPage() {
             <Button
               type="submit"
               className="w-full h-12 text-base font-bold rounded-lg mt-4 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 text-white transition-all"
-              disabled={isLoading || (formData.role === "Supplier" && formData.specializations.length === 0)}
+              disabled={isLoading}
             >
               {isLoading ? <Loader2 className="animate-spin" /> : t("confirm_register")}
             </Button>
           </form>
-
-          <div className="relative my-6 text-center">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <span className="relative bg-white px-3 text-xs text-muted-foreground font-bold">{t("or_via")}</span>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full h-12 rounded-lg border border-slate-200 bg-transparent text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-bold transition-all flex items-center justify-center gap-3"
-            onClick={handleGoogleRegister}
-            disabled={isLoading}
-          >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              />
-            </svg>
-            {t("register_google")}
-          </Button>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
             {t("have_account")}{" "}

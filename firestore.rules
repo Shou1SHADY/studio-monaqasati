@@ -88,7 +88,11 @@ service cloud.firestore {
     // --- Collection Rules ---
 
     match /users/{userId} {
-      allow create: if isOwner(userId) || isAdmin();
+      // Accounts are only ever created server-side (Admin SDK bypasses this
+      // rule): by the admin-create-account API, or by the invitation-accept
+      // API on a user's first invited signup. Client-side self-registration
+      // is intentionally not possible.
+      allow create: if isAdmin();
       allow get: if isOwner(userId) || isOrgMember(resource.data.organizationId) || isSignedIn();
       allow list: if isSignedIn();
       // Self-updates must not touch org membership fields — joining a team goes
@@ -517,6 +521,12 @@ service cloud.firestore {
         && request.resource.data.company is string
         && request.resource.data.phone is string
         && request.resource.data.email is string;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /onboardingRequests/{requestId} {
+      // Only ever written server-side (POST /api/onboarding/request via
+      // Admin SDK, which bypasses this rule) — no client create clause.
       allow read, update, delete: if isAdmin();
     }
 
