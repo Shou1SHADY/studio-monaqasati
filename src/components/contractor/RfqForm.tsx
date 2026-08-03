@@ -28,7 +28,8 @@ import {
   AlertCircle,
   Globe,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  Handshake
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -36,9 +37,11 @@ import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollecti
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict, displayCountry } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { resolveRfqVisibility, type RfqVisibilityMode } from "@/utils/rfq-visibility"
+import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
 
 interface ValidationError {
   field: string
@@ -79,8 +82,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   }, [firestore, user, isUserLoading])
   const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
 
-  // Visibility: "public" shows to all matching-specialization suppliers; "private" sends only to connected suppliers
-  const [visibility, setVisibility] = useState<"public" | "private">("public")
+  // "public" shows to all matching-specialization suppliers; "private" sends only to connected
+  // suppliers; "mdmak_direct" routes the request to Mdmak Tech only (see resolveRfqVisibility).
+  const [visibilityMode, setVisibilityMode] = useState<RfqVisibilityMode>("public")
 
   const connectedLinksQuery = useMemoFirebase(() => {
     if (!user || !firestore || !profile) return null
@@ -96,6 +100,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // ── All useState/useRef hooks MUST be declared before any early returns ──
   const [formData, setFormData] = useState({
     title: "",
+    country: "SA",
     city: "",
     district: "",
     deadline: "",
@@ -159,6 +164,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           setEditRfqData(data)
           setFormData({
             title: data.title || "",
+            country: data.country || "SA",
             city: data.city || "",
             district: data.district || "",
             deadline: data.deadline || "",
@@ -169,6 +175,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             pdfUrl: data.pdfUrl || null,
             pdfStoragePath: data.pdfStoragePath || null
           })
+          setVisibilityMode(data.orderedFromMdmakDirect ? "mdmak_direct" : data.visibility === "private" ? "private" : "public")
           if (data.products?.length) {
             setProducts(data.products.map((p: any, idx: number) => ({
               id: (idx + 1).toString(),
@@ -514,15 +521,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         estimatedBudget: formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
           : null,
+        country: formData.country,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
-        visibility: visibility,
+        ...resolveRfqVisibility(visibilityMode, connectedSupplierOrgIds, MDMAK_CONTRACTOR_ID),
         requiresWarranty: validProducts.some(p => p.requiresWarranty),
-        allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         updatedAt: new Date().toISOString()
       }
 
@@ -587,15 +594,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         estimatedBudget: formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
           : null,
+        country: formData.country,
         city: formData.city,
         district: formData.district,
         notes: formData.notes,
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
-        visibility: visibility,
+        ...resolveRfqVisibility(visibilityMode, connectedSupplierOrgIds, MDMAK_CONTRACTOR_ID),
         requiresWarranty: catProducts.some(p => p.requiresWarranty),
-        allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         createdByUserId: user.uid,
         createdByUserName: profile?.name || user.email || "عضو الفريق",
         createdAt: new Date().toISOString()
@@ -636,6 +643,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       })
       setFormData({
         title: "",
+        country: "SA",
         city: "",
         district: "",
         deadline: "",
@@ -804,8 +812,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <SearchableSelect
                               value={product.category}
                               onChange={v => {
-                                if (v !== product.category) updateProduct(product.id, "subCategory", "")
-                                updateProduct(product.id, "category", v)
+                                setProducts(prev => prev.map(p =>
+                                  p.id === product.id ? { ...p, category: v, subCategory: "" } : p
+                                ))
+                                clearError(`product_${product.id}_category`)
                               }}
                               options={Object.keys(CATEGORIES_DATA).map(cat => ({ value: cat, label: displayCategory(cat, locale) }))}
                               placeholder={t("newrfq_select_category")}
@@ -820,9 +830,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <SearchableSelect
                               value={product.subCategory}
                               onChange={v => {
-                                updateProduct(product.id, "subCategory", v)
                                 const autoUnit = SUBCATEGORY_UNIT_MAP[v]
-                                if (autoUnit) updateProduct(product.id, "unit", autoUnit)
+                                setProducts(prev => prev.map(p =>
+                                  p.id === product.id ? { ...p, subCategory: v, ...(autoUnit ? { unit: autoUnit } : {}) } : p
+                                ))
+                                clearError(`product_${product.id}_subCategory`)
                               }}
                               options={[
                                 ...(product.category && CATEGORIES_DATA[product.category]
@@ -975,6 +987,22 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
+                      {t("newrfq_country_label")}<RequiredStar />
+                    </Label>
+                    <SearchableSelect
+                      value={formData.country}
+                      onChange={v => {
+                        setFormData({ ...formData, country: v, city: "", district: "" })
+                        clearError("city")
+                      }}
+                      options={COUNTRIES.map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
+                      placeholder={t("newrfq_select_country")}
+                      searchPlaceholder={t("newrfq_search_country")}
+                      noResultsText={t("newrfq_no_results")}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label className="text-sm font-semibold text-slate-700">
                       {t("newrfq_city_label")}<RequiredStar />
                     </Label>
                     <SearchableSelect
@@ -983,7 +1011,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         setFormData({ ...formData, city: v, district: "" })
                         clearError("city")
                       }}
-                      options={SAUDI_CITIES.map(city => ({ value: city, label: displayCity(city, locale) }))}
+                      options={(CITIES_BY_COUNTRY[formData.country] || []).map(city => ({ value: city, label: displayCity(city, locale) }))}
                       placeholder={t("newrfq_select_city")}
                       searchPlaceholder={t("newrfq_search_city")}
                       noResultsText={t("newrfq_no_results")}
@@ -1071,62 +1099,66 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   </div>
                 </div>
 
-                {/* Visibility Toggle */}
+                {/* Visibility mode */}
                 <div className={cn(
                   "p-5 rounded-2xl border transition-all duration-200",
-                  visibility === "private"
-                    ? "bg-primary/5 border-primary/20"
-                    : "bg-muted/40 border-border"
+                  visibilityMode === "mdmak_direct" ? "bg-accent/5 border-accent/30" :
+                  visibilityMode === "private" ? "bg-primary/5 border-primary/20" :
+                  "bg-muted/40 border-border"
                 )}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className={cn(
-                        "h-10 w-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-colors",
-                        visibility === "private" ? "bg-primary/15" : "bg-muted"
-                      )}>
-                        {visibility === "private"
-                          ? <Lock size={18} className="text-primary" />
-                          : <Globe size={18} className="text-muted-foreground" />
-                        }
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-foreground">{t("newrfq_visibility_label")}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                          {visibility === "private" ? t("newrfq_visibility_private_desc") : t("newrfq_visibility_public_desc")}
-                        </p>
-                        {visibility === "private" && connectedSupplierOrgIds.length === 0 && (
-                          <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
-                            <AlertCircle size={11} className="shrink-0" />
-                            {t("newrfq_visibility_no_suppliers")}
-                          </p>
+                  <p className="text-sm font-bold text-foreground mb-3">{t("newrfq_visibility_label")}</p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {([
+                      { mode: "public" as const, icon: Globe, label: t("newrfq_visibility_public") },
+                      { mode: "private" as const, icon: Lock, label: t("newrfq_visibility_private") },
+                      { mode: "mdmak_direct" as const, icon: Handshake, label: t("newrfq_visibility_mdmak") },
+                    ]).map(({ mode, icon: Icon, label }) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setVisibilityMode(mode)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer",
+                          visibilityMode === mode
+                            ? mode === "mdmak_direct"
+                              ? "bg-accent text-primary border-accent shadow-sm"
+                              : "bg-primary text-white border-primary shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                         )}
-                        {visibility === "private" && connectedSupplierOrgIds.length > 0 && (
-                          <p className="text-xs text-success mt-2 flex items-center gap-1.5 bg-success/10 px-2.5 py-1.5 rounded-lg border border-success/20 w-fit font-semibold">
-                            <CheckCircle2 size={11} className="shrink-0" />
-                            {t("newrfq_visibility_supplier_count", { count: connectedSupplierOrgIds.length })}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2.5 shrink-0 pt-0.5">
-                      <span className={cn(
-                        "text-xs font-semibold transition-colors",
-                        visibility === "public" ? "text-foreground" : "text-muted-foreground"
-                      )}>
-                        {t("newrfq_visibility_public")}
-                      </span>
-                      <Switch
-                        checked={visibility === "private"}
-                        onCheckedChange={checked => setVisibility(checked ? "private" : "public")}
-                      />
-                      <span className={cn(
-                        "text-xs font-semibold transition-colors",
-                        visibility === "private" ? "text-primary" : "text-muted-foreground"
-                      )}>
-                        {t("newrfq_visibility_private")}
-                      </span>
-                    </div>
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        {label}
+                      </button>
+                    ))}
                   </div>
+
+                  <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                    {visibilityMode === "mdmak_direct"
+                      ? t("newrfq_visibility_mdmak_desc")
+                      : visibilityMode === "private"
+                        ? t("newrfq_visibility_private_desc")
+                        : t("newrfq_visibility_public_desc")}
+                  </p>
+
+                  {visibilityMode === "private" && connectedSupplierOrgIds.length === 0 && (
+                    <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
+                      <AlertCircle size={11} className="shrink-0" />
+                      {t("newrfq_visibility_no_suppliers")}
+                    </p>
+                  )}
+                  {visibilityMode === "private" && connectedSupplierOrgIds.length > 0 && (
+                    <p className="text-xs text-success mt-2 flex items-center gap-1.5 bg-success/10 px-2.5 py-1.5 rounded-lg border border-success/20 w-fit font-semibold">
+                      <CheckCircle2 size={11} className="shrink-0" />
+                      {t("newrfq_visibility_supplier_count", { count: connectedSupplierOrgIds.length })}
+                    </p>
+                  )}
+                  {visibilityMode === "mdmak_direct" && (
+                    <p className="text-xs text-accent mt-2 flex items-center gap-1.5 bg-accent/10 px-2.5 py-1.5 rounded-lg border border-accent/20 w-fit font-semibold">
+                      <Handshake size={11} className="shrink-0" />
+                      {t("newrfq_visibility_mdmak_hint")}
+                    </p>
+                  )}
                 </div>
               </div>
             )}

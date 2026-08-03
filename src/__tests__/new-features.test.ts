@@ -21,6 +21,7 @@ import {
   mergeAndDeduplicateRfqs,
   canSupplierViewRfq,
   countPrivateRfqRecipients,
+  resolveRfqVisibility,
   type VisibilityRfq,
 } from '../utils/rfq-visibility'
 
@@ -333,6 +334,36 @@ describe('RFQ Visibility — countPrivateRfqRecipients', () => {
 
   it('returns 0 for a private RFQ with no connected suppliers', () => {
     expect(countPrivateRfqRecipients([], 'private')).toBe(0)
+  })
+})
+
+describe('RFQ Visibility — resolveRfqVisibility', () => {
+  const MDMAK_ID = 'mdmak-system'
+
+  it('"public" mode: public visibility, no allowed orgs, not a Mdmak-direct order', () => {
+    const result = resolveRfqVisibility('public', ['sup-1', 'sup-2'], MDMAK_ID)
+    expect(result).toEqual({ visibility: 'public', allowedSupplierOrgIds: [], orderedFromMdmakDirect: false })
+  })
+
+  it('"private" mode: private visibility scoped to the caller\'s connected suppliers', () => {
+    const result = resolveRfqVisibility('private', ['sup-1', 'sup-2'], MDMAK_ID)
+    expect(result).toEqual({ visibility: 'private', allowedSupplierOrgIds: ['sup-1', 'sup-2'], orderedFromMdmakDirect: false })
+  })
+
+  it('"private" mode with no connected suppliers: empty allowed orgs', () => {
+    const result = resolveRfqVisibility('private', [], MDMAK_ID)
+    expect(result.allowedSupplierOrgIds).toEqual([])
+  })
+
+  it('"mdmak_direct" mode: private visibility scoped only to the Mdmak system id, ignoring connected suppliers', () => {
+    const result = resolveRfqVisibility('mdmak_direct', ['sup-1', 'sup-2'], MDMAK_ID)
+    expect(result).toEqual({ visibility: 'private', allowedSupplierOrgIds: [MDMAK_ID], orderedFromMdmakDirect: true })
+  })
+
+  it('"mdmak_direct" mode never leaks connected supplier org ids into allowedSupplierOrgIds', () => {
+    const result = resolveRfqVisibility('mdmak_direct', ['sup-1', 'sup-2', 'sup-3'], MDMAK_ID)
+    expect(result.allowedSupplierOrgIds).not.toContain('sup-1')
+    expect(result.allowedSupplierOrgIds).toHaveLength(1)
   })
 })
 

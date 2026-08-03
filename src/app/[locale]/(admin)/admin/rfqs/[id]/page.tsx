@@ -40,6 +40,8 @@ import { Link } from "@/i18n/routing"
 import { CreateMdmakOfferDialog } from "@/components/admin/CreateMdmakOfferDialog"
 import { getMdmakProcurementForRfq } from "@/lib/mdmak-procurement"
 import type { MdmakProcurement } from "@/lib/mdmak-procurement"
+import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
+import { RfqOffersView } from "@/components/contractor/RfqOffersView"
 
 export default function AdminRfqDetailsPage() {
   const t = useTranslations("Portal.Contractor") // Using contractor translations since they have all the offers text
@@ -105,6 +107,14 @@ export default function AdminRfqDetailsPage() {
   }) : []
   const lowestPrice = sortedOffers.length > 0 ? sortedOffers[0].price : null
 
+  // RFQs Mdmak posted as a contractor have no real org/team behind them — reuse the
+  // contractor's full offers view (accept/reject/negotiate/chat/delivery) wholesale
+  // instead of this admin page's read-only comparison, since admins now have decision
+  // rights on these via the Admin-role bypass in RfqOffersView.
+  if (!isRfqLoading && rfq && (rfq as any).contractorId === MDMAK_CONTRACTOR_ID) {
+    return <RfqOffersView rfqId={rfqId} />
+  }
+
   return (
     <PortalLayout>
       <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
@@ -126,6 +136,12 @@ export default function AdminRfqDetailsPage() {
               <div className="flex flex-col md:flex-row justify-between gap-6">
                 <div className="space-y-4 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
+                    {(rfq as any).orderedFromMdmakDirect && (
+                      <Badge className="bg-accent text-primary border-none gap-1">
+                        <Handshake size={11} />
+                        {adminT("direct_order_badge")}
+                      </Badge>
+                    )}
                     <Badge variant="secondary" className="bg-primary/5 text-primary border-none">
                       {displayCategory(rfq.category, locale)}
                     </Badge>

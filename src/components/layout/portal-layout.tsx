@@ -796,7 +796,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto overflow-x-hidden w-full max-w-[100vw]">
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto min-w-0">
           <div className="mx-auto max-w-7xl">
             {profile && profile.role !== "Admin" && (profile.profileCompleted !== true || !profile.legalDocuments?.cr?.url || !profile.legalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>

@@ -108,7 +108,7 @@ export function CreateMdmakOfferDialog({ open, onClose, rfq, onSuccess }: Props)
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="max-w-lg" dir="rtl">
+      <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-xl font-black flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-accent/10 flex items-center justify-center">

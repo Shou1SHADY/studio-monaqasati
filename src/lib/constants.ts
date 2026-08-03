@@ -424,6 +424,32 @@ export const SAUDI_CITIES = [
   "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
 ]
 
+export const COUNTRIES = [
+  { value: "SA", labelAr: "المملكة العربية السعودية", labelEn: "Saudi Arabia" },
+  { value: "AE", labelAr: "الإمارات العربية المتحدة", labelEn: "United Arab Emirates" },
+  { value: "EG", labelAr: "مصر", labelEn: "Egypt" },
+  { value: "QA", labelAr: "قطر", labelEn: "Qatar" },
+  { value: "KW", labelAr: "الكويت", labelEn: "Kuwait" },
+]
+
+export const CITIES_BY_COUNTRY: Record<string, string[]> = {
+  SA: [
+    "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
+    "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط",
+    "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
+  ],
+  AE: ["دبي", "أبوظبي", "الشارقة", "عجمان", "رأس الخيمة", "الفجيرة", "أم القيوين"],
+  EG: ["القاهرة", "الإسكندرية", "الجيزة", "شرم الشيخ", "الأقصر", "أسوان", "بورسعيد", "السويس"],
+  QA: ["الدوحة", "الريان", "الوكرة", "الخور", "الشمال", "أم صلال"],
+  KW: ["مدينة الكويت", "حولي", "الفروانية", "الأحمدي", "الجهراء", "مبارك الكبير"],
+}
+
+export function displayCountry(countryCode: string, locale: string): string {
+  const c = COUNTRIES.find(x => x.value === countryCode)
+  if (!c) return countryCode
+  return locale === "ar" ? c.labelAr : c.labelEn
+}
+
 /** City -> districts, shared by every tender-creation entry point so the same city always offers the same districts. */
 export const CITIES_DISTRICTS: Record<string, string[]> = {
   "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],

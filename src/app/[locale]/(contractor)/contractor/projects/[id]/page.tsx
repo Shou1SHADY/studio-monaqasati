@@ -98,6 +98,8 @@ import {
   List,
   Users,
   ShieldCheck,
+  Handshake,
+  Globe,
 } from "lucide-react"
 import {
   useReactTable,
@@ -108,8 +110,9 @@ import {
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
-import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict, COUNTRIES, displayCountry } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
+import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
 
@@ -267,6 +270,9 @@ export default function ProjectDetailPage() {
   // newly added/imported rows are automatically selected without any extra bookkeeping.
   const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
+  const [publishMode, setPublishMode] = useState<"public" | "mdmak">("public")
+  const [publishRequestType, setPublishRequestType] = useState<"local" | "international">("local")
+  const [publishCountry, setPublishCountry] = useState("")
   const [publishCity, setPublishCity] = useState("")
   const [publishDistrict, setPublishDistrict] = useState("")
   const [publishDeadline, setPublishDeadline] = useState("")
@@ -919,7 +925,11 @@ export default function ProjectDetailPage() {
   // Publish: save first (so newly-added/moved rows get real Firestore ids), then create one RFQ
   // per section that has at least one selected item, locking only the items actually included.
   const handlePublish = async () => {
-    if (!firestore || !user || !projectId || !publishCity || !publishDeadline) return
+    const needsCity = publishMode === "public" || publishRequestType === "local"
+    const needsCountry = publishMode === "mdmak" && publishRequestType === "international"
+    if (!firestore || !user || !projectId || !publishDeadline) return
+    if (needsCity && !publishCity) return
+    if (needsCountry && !publishCountry) return
     setIsPublishing(true)
     try {
       const saved = await saveBoq({ silent: true })
@@ -947,6 +957,8 @@ export default function ProjectDetailPage() {
       try {
         for (const group of groupsToPublish) {
           const selectedItems = itemsByGroup.get(group.id) || []
+          const isMdmak = publishMode === "mdmak"
+          const isInternational = isMdmak && publishRequestType === "international"
           const rfqData = {
             contractorId: user.uid,
             organizationId: (profile as { organizationId?: string } | null)?.organizationId || user.uid,
@@ -968,13 +980,19 @@ export default function ProjectDetailPage() {
             quantity: String(selectedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)),
             notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
             deadline: publishDeadline,
-            city: publishCity,
-            district: publishDistrict || publishCity,
+            city: isInternational ? "" : publishCity,
+            district: isInternational ? "" : (publishDistrict || publishCity),
+            country: isInternational ? publishCountry : "SA",
+            isInternational,
             pdfUrl: null,
             pdfStoragePath: null,
             status: "Draft",
-            visibility: "public",
+            visibility: isMdmak ? "private" : "public",
             requiresWarranty: selectedItems.some((item) => item.requiresWarranty),
+            ...(isMdmak ? {
+              orderedFromMdmakDirect: true,
+              allowedSupplierOrgIds: [MDMAK_CONTRACTOR_ID],
+            } : {}),
             boqProjectName: projectName,
             createdByUserId: user.uid,
             createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
@@ -998,6 +1016,9 @@ export default function ProjectDetailPage() {
         toast({ title: t("boq_success_title"), description: t("boq_success_desc", { count: created }) })
         setIsPublishDialogOpen(false)
         setDeselectedIds(new Set())
+        setPublishMode("public")
+        setPublishRequestType("local")
+        setPublishCountry("")
         setPublishCity("")
         setPublishDistrict("")
         setPublishDeadline("")
@@ -1702,15 +1723,15 @@ export default function ProjectDetailPage() {
               {/* Stats bar */}
               {(boqItems.length > 0 || boqGroups.length > 0) && (
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                  <div className="bg-white border border-t-2 border-t-cta rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_items")}</p>
                     <p className="text-xl font-black text-slate-800 mt-0.5">{boqItems.length}</p>
                   </div>
-                  <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+                  <div className="bg-white border border-t-2 border-t-success rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_sections")}</p>
                     <p className="text-xl font-black text-slate-800 mt-0.5">{boqGroups.length}</p>
                   </div>
-                  <div className="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
+                  <div className="bg-accent/5 border border-t-2 border-t-accent rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_total")}</p>
                     <p className="text-xl font-black text-primary mt-0.5">
                       {boqGrandTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
@@ -1739,6 +1760,26 @@ export default function ProjectDetailPage() {
                     {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
                     {!boqParsing && <span className="text-muted-foreground text-xs">({t("proj_boq_upload_hint")})</span>}
                   </Button>
+                  {boqItems.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const editableIds = allBoqRows.filter(r => r.original.isEditable !== false).map(r => r.original.id)
+                        const allDeselected = editableIds.every(id => deselectedIds.has(id))
+                        if (allDeselected) {
+                          setDeselectedIds(new Set())
+                        } else {
+                          setDeselectedIds(new Set(editableIds))
+                        }
+                      }}
+                      className="gap-1.5 text-muted-foreground h-8 text-xs"
+                    >
+                      {allBoqRows.filter(r => r.original.isEditable !== false).every(r => deselectedIds.has(r.original.id))
+                        ? t("rfq_select_all")
+                        : t("rfq_deselect_all")}
+                    </Button>
+                  )}
                   <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                     <Plus size={14} />
                     {t("proj_boq_add_row")}
@@ -1791,9 +1832,9 @@ export default function ProjectDetailPage() {
                       <div
                         key={group.id}
                         data-boq-dropzone={group.id}
-                        className="rounded-xl border border-slate-200 bg-white overflow-hidden transition-all shadow-sm"
+                        className="rounded-xl border border-primary/10 bg-white overflow-hidden transition-all shadow-sm"
                       >
-                        <div className="flex items-center gap-1.5 p-3 bg-slate-50 border-b-2 border-slate-200 flex-wrap">
+                        <div className="flex items-center gap-1.5 p-3 bg-primary/5 border-b-2 border-primary/15 flex-wrap">
                           <button
                             type="button"
                             onClick={() => toggleGroupCollapsed(group.id)}
@@ -2009,6 +2050,15 @@ export default function ProjectDetailPage() {
                         <Trash2 size={13} />
                         {t("rfq_delete_selected", { count: selectedTenderIds.length })}
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedTenderIds([])}
+                        className="gap-1.5 h-8 text-xs text-muted-foreground"
+                      >
+                        <X size={12} />
+                        {t("rfq_deselect_all")}
+                      </Button>
                     </>
                   )}
                 </div>
@@ -2223,19 +2273,90 @@ export default function ProjectDetailPage() {
             <DialogDescription>{t("boq_push_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>{t("boq_city_label")} *</Label>
-              <SearchableSelect
-                size="md"
-                value={publishCity}
-                onChange={(v) => { setPublishCity(v); setPublishDistrict("") }}
-                options={SAUDI_CITIES.map((c) => ({ value: c, label: displayCity(c, locale) }))}
-                placeholder={t("boq_city_placeholder")}
-                searchPlaceholder={t("newrfq_search_city")}
-                noResultsText={t("newrfq_no_results")}
-              />
+            {/* Mode toggle */}
+            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
+              {([
+                { mode: "public" as const, icon: Send, label: t("boq_mode_public") },
+                { mode: "mdmak" as const, icon: Handshake, label: t("boq_mode_mdmak") },
+              ]).map(({ mode, icon: Icon, label }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setPublishMode(mode)}
+                  className={cn(
+                    "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all",
+                    publishMode === mode
+                      ? mode === "mdmak"
+                        ? "bg-accent text-primary shadow-sm"
+                        : "bg-white text-primary shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon size={15} />
+                  {label}
+                </button>
+              ))}
             </div>
-            {publishCity && CITIES_DISTRICTS[publishCity] && (
+
+            {/* Mdmak: local / international sub-toggle */}
+            {publishMode === "mdmak" && (
+              <div className="flex gap-2">
+                {([
+                  { type: "local" as const, label: t("boq_request_local") },
+                  { type: "international" as const, label: t("boq_request_international") },
+                ]).map(({ type, label }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => { setPublishRequestType(type); setPublishCountry(""); setPublishCity(""); setPublishDistrict("") }}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-sm border transition-all",
+                      publishRequestType === type
+                        ? "border-accent bg-accent/10 text-accent font-semibold"
+                        : "border-slate-200 text-muted-foreground hover:border-slate-300"
+                    )}
+                  >
+                    {type === "international" && <Globe size={13} className="inline ms-1" />}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Country selector (international Mdmak only) */}
+            {publishMode === "mdmak" && publishRequestType === "international" && (
+              <div className="space-y-1.5">
+                <Label>{t("boq_country_label")} *</Label>
+                <SearchableSelect
+                  size="md"
+                  value={publishCountry}
+                  onChange={setPublishCountry}
+                  options={COUNTRIES.filter(c => c.value !== "SA").map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
+                  placeholder={t("boq_country_placeholder")}
+                  searchPlaceholder={t("newrfq_search_country")}
+                  noResultsText={t("newrfq_no_results")}
+                />
+              </div>
+            )}
+
+            {/* City selector (public or local Mdmak) */}
+            {(publishMode === "public" || publishRequestType === "local") && (
+              <div className="space-y-1.5">
+                <Label>{t("boq_city_label")} *</Label>
+                <SearchableSelect
+                  size="md"
+                  value={publishCity}
+                  onChange={(v) => { setPublishCity(v); setPublishDistrict("") }}
+                  options={SAUDI_CITIES.map((c) => ({ value: c, label: displayCity(c, locale) }))}
+                  placeholder={t("boq_city_placeholder")}
+                  searchPlaceholder={t("newrfq_search_city")}
+                  noResultsText={t("newrfq_no_results")}
+                />
+              </div>
+            )}
+
+            {/* District selector */}
+            {(publishMode === "public" || publishRequestType === "local") && publishCity && CITIES_DISTRICTS[publishCity] && (
               <div className="space-y-1.5">
                 <Label>{t("boq_district_label")}</Label>
                 <SearchableSelect
@@ -2249,6 +2370,7 @@ export default function ProjectDetailPage() {
                 />
               </div>
             )}
+
             <div className="space-y-1.5">
               <Label>{t("boq_deadline_label")} *</Label>
               <input
@@ -2270,9 +2392,18 @@ export default function ProjectDetailPage() {
             <Button variant="outline" onClick={() => setIsPublishDialogOpen(false)} disabled={isPublishing}>
               {t("cancel")}
             </Button>
-            <Button onClick={handlePublish} disabled={isPublishing || !publishCity || !publishDeadline} className="gap-2">
-              {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-              {t("newrfq_publish_now")}
+            <Button
+              onClick={handlePublish}
+              disabled={
+                isPublishing ||
+                !publishDeadline ||
+                ((publishMode === "public" || publishRequestType === "local") && !publishCity) ||
+                (publishMode === "mdmak" && publishRequestType === "international" && !publishCountry)
+              }
+              className={cn("gap-2", publishMode === "mdmak" && "bg-accent hover:bg-accent/90 text-primary")}
+            >
+              {isPublishing ? <Loader2 size={16} className="animate-spin" /> : publishMode === "mdmak" ? <Handshake size={16} /> : <Send size={16} />}
+              {publishMode === "mdmak" ? t("boq_mode_mdmak") : t("newrfq_publish_now")}
             </Button>
           </DialogFooter>
         </DialogContent>

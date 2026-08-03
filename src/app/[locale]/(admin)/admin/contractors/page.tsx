@@ -21,7 +21,8 @@ import {
   FileText,
   ExternalLink,
   AlertCircle,
-  Award
+  Award,
+  Trash2
 } from "lucide-react"
 import {
   Dialog,
@@ -29,11 +30,31 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, updateDoc, deleteDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
+import { cn } from "@/lib/utils"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { SAUDI_CITIES, displayCity } from "@/lib/constants"
+import {
+  filterContractorsByStatus,
+  filterContractorsByCity,
+  searchContractors,
+  type ContractorStatusFilter,
+} from "@/utils/contractor-filters"
 
 const DOC_LABELS: Record<string, string> = {
   cr: "السجل التجاري (CR)",
@@ -54,6 +75,12 @@ export default function AdminContractorsPage() {
   const [limitCount, setLimitCount] = useState(20)
   const [selectedContractor, setSelectedContractor] = useState<any>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<ContractorStatusFilter>("all")
+  const [cityFilter, setCityFilter] = useState("all")
+  const [sortBy, setSortBy] = useState<"verification" | "latest">("verification")
 
   const contractorsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -102,13 +129,18 @@ export default function AdminContractorsPage() {
           certificates: c.certificates || [],
           hasCerts: (c.certificates?.length || 0) > 0,
           rfqCount,
+          createdAt: c.createdAt,
         }
       }).sort((a: any, b: any) => {
+        if (sortBy === "latest") {
+          const getTs = (ts: any) => ts?.seconds ? ts.seconds * 1000 : ts?.toDate ? ts.toDate().getTime() : new Date(ts || 0).getTime()
+          return getTs(b.createdAt) - getTs(a.createdAt)
+        }
         if (a.verificationRequested === b.verificationRequested) return 0
         return a.verificationRequested ? -1 : 1
       }))
     }
-  }, [contractors, allRfqs])
+  }, [contractors, allRfqs, sortBy])
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
@@ -134,6 +166,23 @@ export default function AdminContractorsPage() {
     }
   }
 
+  const handleDeleteContractor = async () => {
+    if (!firestore || !selectedContractor) return
+    setIsDeleting(true)
+    try {
+      await deleteDoc(doc(firestore, "users", selectedContractor.id))
+      setLocalContractors(prev => prev.filter(c => c.id !== selectedContractor.id))
+      setShowDeleteDialog(false)
+      setShowDetailDialog(false)
+      setSelectedContractor(null)
+      toast({ title: t("delete_success") })
+    } catch (e: any) {
+      toast({ title: t("error"), description: e.message, variant: "destructive" })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case t("status_active"): return <Badge className="bg-success/10 text-success border-success/20">{t("status_active")}</Badge>
@@ -142,11 +191,20 @@ export default function AdminContractorsPage() {
     }
   }
 
-  const filtered = localContractors.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.contact.includes(searchQuery)
+  const filtered = filterContractorsByCity(
+    filterContractorsByStatus(
+      searchContractors(localContractors, searchQuery),
+      statusFilter
+    ),
+    cityFilter
   )
+
+  const activeFilterCount = [statusFilter !== "all", cityFilter !== "all"].filter(Boolean).length
+
+  const clearFilters = () => {
+    setStatusFilter("all")
+    setCityFilter("all")
+  }
 
   return (
     <PortalLayout>
@@ -167,12 +225,82 @@ export default function AdminContractorsPage() {
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" className="gap-2 shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters(v => !v)}
+              className={cn("gap-2 shrink-0", (showFilters || activeFilterCount > 0) && "border-primary/40 bg-primary/5 text-primary")}
+            >
               <Filter size={18} />
               {t("filter")}
+              {activeFilterCount > 0 && (
+                <span className="h-5 w-5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
             </Button>
           </div>
         </div>
+
+        {showFilters && (
+          <Card className="border-none shadow-sm">
+            <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 flex-wrap">
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={statusFilter}
+                  onChange={v => setStatusFilter(v as ContractorStatusFilter)}
+                  options={[
+                    { value: "all", label: t("filter_status_all") },
+                    { value: "verified", label: t("status_active") },
+                    { value: "pending", label: t("status_pending") },
+                    { value: "review", label: t("status_review") },
+                  ]}
+                  placeholder={t("filter_status_label")}
+                  searchPlaceholder={t("filter_status_label")}
+                  noResultsText={t("filter_status_label")}
+                  size="md"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <SearchableSelect
+                  value={cityFilter}
+                  onChange={setCityFilter}
+                  options={[
+                    { value: "all", label: t("filter_city_all") },
+                    ...SAUDI_CITIES.map(c => ({ value: c, label: displayCity(c, locale) })),
+                  ]}
+                  placeholder={t("filter_city_label")}
+                  searchPlaceholder={t("filter_city_label")}
+                  noResultsText={t("filter_city_label")}
+                  size="md"
+                />
+              </div>
+              <div className="flex gap-1.5 ms-auto">
+                <Button
+                  variant={sortBy === "verification" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSortBy("verification")}
+                  className="text-xs"
+                >
+                  {t("sort_verification")}
+                </Button>
+                <Button
+                  variant={sortBy === "latest" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSortBy("latest")}
+                  className="text-xs"
+                >
+                  {t("sort_latest")}
+                </Button>
+              </div>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground gap-1.5">
+                  <XCircle size={14} />
+                  {t("filter_clear")}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats — real data */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -447,7 +575,7 @@ export default function AdminContractorsPage() {
                 <Separator />
 
                 {/* Actions */}
-                <div className="flex gap-3 pt-1">
+                <div className="flex gap-3 pt-1 flex-wrap">
                   <Button variant="outline" className="flex-1" onClick={() => setShowDetailDialog(false)}>
                     {t("close")}
                   </Button>
@@ -469,11 +597,41 @@ export default function AdminContractorsPage() {
                       {t("verify_account")}
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
+                    onClick={() => setShowDeleteDialog(true)}
+                  >
+                    <Trash2 size={15} />
+                    {t("delete_account")}
+                  </Button>
                 </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("delete_confirm_title")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("delete_confirm_desc", { name: selectedContractor?.name || "" })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>{t("close")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteContractor}
+                disabled={isDeleting}
+                className="bg-destructive hover:bg-destructive/90 gap-2"
+              >
+                {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {t("delete_account")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </PortalLayout>
   )

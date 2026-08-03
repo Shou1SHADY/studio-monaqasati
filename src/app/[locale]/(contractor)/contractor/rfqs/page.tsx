@@ -340,9 +340,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
 
     return true;
   }).sort((a: any, b: any) => {
-    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return timeB - timeA;
+    const getTs = (ts: any): number => {
+      if (!ts) return 0
+      if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts).getTime()
+      if (typeof ts === 'object' && 'toDate' in ts) return ts.toDate().getTime()
+      if (typeof ts === 'object' && 'seconds' in ts) return ts.seconds * 1000
+      return 0
+    }
+    return getTs(b.createdAt) - getTs(a.createdAt)
   }) || [];
 
   const isExpired = (rfq: any) => {
@@ -353,11 +358,15 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     return deadline < now
   }
 
-  const canEditOrDelete = (rfq: any) => {
+  const canEdit = (rfq: any) => {
     if (rfq.status === "Awarded") return false
     if (acceptedRfqIds.has(rfq.id)) return false
     return true
   }
+
+  const canDelete = (rfq: any) => rfq.status === "Draft"
+
+  const canEditOrDelete = canEdit
 
   const getStatusBadge = (rfq: any) => {
     if (rfq.status === "Draft") {
@@ -460,15 +469,17 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                 <div className="flex items-center gap-3 flex-wrap">
                   {selectedRfqs.length > 0 && (
                     <>
-                      <Button
-                        onClick={handleBatchPublish}
-                        disabled={isPublishing}
-                        className="gap-2 bg-success hover:bg-success/90 rounded-lg"
-                        size="sm"
-                      >
-                        {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
-                        {t("rfq_batch_publish", { count: selectedRfqs.length })}
-                      </Button>
+                      {filteredRfqs.some((r: any) => selectedRfqs.includes(r.id) && r.status === "Draft") && (
+                        <Button
+                          onClick={handleBatchPublish}
+                          disabled={isPublishing}
+                          className="gap-2 bg-success hover:bg-success/90 rounded-lg"
+                          size="sm"
+                        >
+                          {isPublishing ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                          {t("rfq_batch_publish", { count: selectedRfqs.length })}
+                        </Button>
+                      )}
                       <Button
                         onClick={() => setShowBulkDeleteDialog(true)}
                         disabled={isBulkDeleting}
@@ -478,6 +489,15 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       >
                         <Trash2 size={14} />
                         {t("rfq_delete_selected", { count: selectedRfqs.length })}
+                      </Button>
+                      <Button
+                        onClick={() => setSelectedRfqs([])}
+                        variant="ghost"
+                        className="gap-2 rounded-lg text-muted-foreground"
+                        size="sm"
+                      >
+                        <X size={14} />
+                        {t("rfq_deselect_all")}
                       </Button>
                     </>
                   )}
@@ -640,7 +660,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
                       </div>
                       
-                      <div className="space-y-1 mb-5 flex-1">
+                      <div className="space-y-1 mb-3">
                         <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
                           {rfq.title}
                         </h3>
@@ -659,7 +679,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </div>
                       </div>
 
-                      <div className="space-y-3 pt-4 border-t border-slate-100/80 mb-5">
+                      <div className="space-y-3 pt-4 border-t border-slate-100/80 mt-auto mb-4">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 text-xs text-slate-600">
                             <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
@@ -710,26 +730,30 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </Button>
                         </Link>
                       </div>
-                      {canEditOrDelete(rfq) && (
+                      {(canEdit(rfq) || canDelete(rfq)) && (
                         <div className="flex gap-2 mt-2">
-                          <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
-                            <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
-                              <Pencil size={14} />
-                              {t("rfq_edit_tender")}
+                          {canEdit(rfq) && (
+                            <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
+                              <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                                <Pencil size={14} />
+                                {t("rfq_edit_tender")}
+                              </Button>
+                            </Link>
+                          )}
+                          {canDelete(rfq) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
+                              onClick={() => setDeleteTarget(rfq)}
+                            >
+                              <Trash2 size={14} />
+                              {t("rfq_delete_tender")}
                             </Button>
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="flex-1 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
-                            onClick={() => setDeleteTarget(rfq)}
-                          >
-                            <Trash2 size={14} />
-                            {t("rfq_delete_tender")}
-                          </Button>
+                          )}
                         </div>
                       )}
-                      {isExpired(rfq) && canEditOrDelete(rfq) && (
+                      {isExpired(rfq) && canEdit(rfq) && (
                         <div className="mt-2">
                           <Button
                             variant="outline"
@@ -790,33 +814,33 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               </TooltipTrigger>
                               <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
                             </Tooltip>
-                            {canEditOrDelete(rfq) && (
-                              <>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`}>
-                                      <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
-                                        <Pencil size={14} />
-                                      </button>
-                                    </Link>
-                                  </TooltipTrigger>
-                                  <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDeleteTarget(rfq)}
-                                      className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                    >
-                                      <Trash2 size={14} />
+                            {canEdit(rfq) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`}>
+                                    <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                      <Pencil size={14} />
                                     </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>{t("rfq_delete_tender")}</TooltipContent>
-                                </Tooltip>
-                              </>
+                                  </Link>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
+                              </Tooltip>
                             )}
-                            {isExpired(rfq) && canEditOrDelete(rfq) && (
+                            {canDelete(rfq) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteTarget(rfq)}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("rfq_delete_tender")}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {isExpired(rfq) && canEdit(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
