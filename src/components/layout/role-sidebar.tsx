@@ -28,6 +28,7 @@ import {
   PackageCheck,
   FilePlus,
   ShoppingBasket,
+  ShieldCheck,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -74,6 +75,7 @@ const contractorSections: NavSection[] = [
       { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket },
       { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
+      { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck },
     ],
   },
   {
@@ -100,6 +102,7 @@ const supplierSections: NavSection[] = [
       { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
       { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
       { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
+      { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck },
       { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
     ],
   },

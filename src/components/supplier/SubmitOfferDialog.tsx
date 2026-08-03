@@ -21,7 +21,8 @@ import {
   Trash2,
   Plus,
   Globe,
-  AlertCircle
+  AlertCircle,
+  ShieldCheck
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
@@ -338,6 +339,12 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             <p className="text-sm text-muted-foreground mt-0.5">
               {selectedRfq?.title}
             </p>
+            {selectedRfq?.requiresWarranty && (
+              <Badge className="mt-2 bg-amber-100 text-amber-700 border-amber-200 gap-1.5 font-semibold">
+                <ShieldCheck size={12} />
+                {t("offer_warranty_required_badge")}
+              </Badge>
+            )}
             {selectedRfq?.contractorId && <ContractorInfo contractorId={selectedRfq.contractorId} />}
             {selectedRfq?.pdfUrl && (
               <div className="mt-3 flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">

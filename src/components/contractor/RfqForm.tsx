@@ -27,7 +27,8 @@ import {
   Send,
   AlertCircle,
   Globe,
-  Lock
+  Lock,
+  ShieldCheck
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -112,10 +113,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     category: string
     subCategory: string
     otherSubCategory?: string
+    requiresWarranty?: boolean
   }
 
   const [products, setProducts] = useState<Product[]>([
-    { id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }
+    { id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "", requiresWarranty: false }
   ])
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
@@ -174,7 +176,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
               unit: p.unitOfMeasure || p.unit || "",
               description: p.description || "",
               category: p.category || "",
-              subCategory: p.subCategory || ""
+              subCategory: p.subCategory || "",
+              requiresWarranty: !!p.requiresWarranty
             })))
           }
         }
@@ -287,7 +290,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const isAiEnabled = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
   const addProduct = () => {
-    setProducts([...products, { id: Date.now().toString(), quantity: "", unit: "", description: "", category: "", subCategory: "" }])
+    setProducts([...products, { id: Date.now().toString(), quantity: "", unit: "", description: "", category: "", subCategory: "", requiresWarranty: false }])
   }
 
   const removeProduct = (id: string) => {
@@ -296,7 +299,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     }
   }
 
-  const updateProduct = (id: string, field: keyof Product, value: string) => {
+  const updateProduct = (id: string, field: keyof Product, value: string | boolean) => {
     setProducts(products.map(p => p.id === id ? { ...p, [field]: value } : p))
   }
 
@@ -504,7 +507,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           unitOfMeasure: p.unit,
           description: p.description,
           category: p.category,
-          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
+          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory,
+          requiresWarranty: !!p.requiresWarranty
         })),
         deadline: formData.deadline,
         estimatedBudget: formData.estimatedBudget
@@ -517,6 +521,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
         visibility: visibility,
+        requiresWarranty: validProducts.some(p => p.requiresWarranty),
         allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         updatedAt: new Date().toISOString()
       }
@@ -575,7 +580,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           unitOfMeasure: p.unit,
           description: p.description,
           category: p.category,
-          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory
+          subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory,
+          requiresWarranty: !!p.requiresWarranty
         })),
         deadline: formData.deadline,
         estimatedBudget: formData.estimatedBudget
@@ -588,6 +594,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
         visibility: visibility,
+        requiresWarranty: catProducts.some(p => p.requiresWarranty),
         allowedSupplierOrgIds: visibility === "private" ? connectedSupplierOrgIds : [],
         createdByUserId: user.uid,
         createdByUserName: profile?.name || user.email || "عضو الفريق",
@@ -873,6 +880,16 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             onChange={e => updateProduct(product.id, "description", e.target.value)}
                             className="mt-2 rounded-xl border-slate-200 resize-none"
                           />
+                        </div>
+                        <div className="mt-4 flex items-center gap-2.5">
+                          <Switch
+                            checked={!!product.requiresWarranty}
+                            onCheckedChange={checked => updateProduct(product.id, "requiresWarranty", checked)}
+                          />
+                          <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 cursor-pointer" onClick={() => updateProduct(product.id, "requiresWarranty", !product.requiresWarranty)}>
+                            <ShieldCheck size={14} className="text-amber-600" />
+                            {t("newrfq_requires_warranty")}
+                          </Label>
                         </div>
                       </div>
                     ))}

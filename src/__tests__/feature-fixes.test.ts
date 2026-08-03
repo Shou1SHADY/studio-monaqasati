@@ -48,6 +48,7 @@ function makeItem(overrides: Partial<BoqItem> = {}): BoqItem {
     suggestedSubCategory: "خرسانة مسلحة",
     groupId: "grp_test",
     selected: true,
+    requiresWarranty: false,
     ...overrides,
   }
 }

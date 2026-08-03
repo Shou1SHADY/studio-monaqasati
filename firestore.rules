@@ -500,6 +500,41 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Guarantee certificates submitted by suppliers for contractor-flagged BOQ items on their
+    // own accepted offers. Managed as a standalone flow (its own pages on both sides) — never
+    // gates offer/RFQ/delivery-notice writes.
+    match /guarantees/{guaranteeId} {
+      allow get: if isSignedIn() && (
+        resource == null ||
+        resource.data.contractorOrgId == getOrganizationId() ||
+        resource.data.supplierOrgId == getOrganizationId() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn();
+      // Supplier submits the guarantee answer for their own accepted offer, from the standalone
+      // supplier Guarantees page — independent of sending the delivery notice.
+      allow create: if isSupplier()
+        && request.resource.data.supplierOrgId == getOrganizationId()
+        && (request.resource.data.status == 'pending_review' || request.resource.data.status == 'none');
+      allow update: if isSignedIn() && (
+        // Contractor accepts/rejects a submitted guarantee; only the review fields may change.
+        (resource.data.contractorOrgId == getOrganizationId()
+          && hasOrgPermission('deliveries.confirm')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedByUserId'])
+          && (request.resource.data.status == 'accepted' || request.resource.data.status == 'rejected'))
+        // Owning supplier edits/resubmits their own answer before or after rejection, but never
+        // once the contractor has accepted it.
+        || (isSupplier()
+          && resource.data.supplierOrgId == getOrganizationId()
+          && resource.data.status != 'accepted'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['hasGuarantee', 'fileUrl', 'filePath', 'fileType', 'expirationDate', 'status'])
+          && (request.resource.data.status == 'pending_review' || request.resource.data.status == 'none'))
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
     // Mdmak internal procurement records — admin-only (hides internal cost/commission from contractors)
     match /mdmakProcurement/{procurementId} {
       allow read, write: if isAdmin();

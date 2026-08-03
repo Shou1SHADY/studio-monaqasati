@@ -97,6 +97,7 @@ import {
   LayoutGrid,
   List,
   Users,
+  ShieldCheck,
 } from "lucide-react"
 import {
   useReactTable,
@@ -156,6 +157,7 @@ type BоqItem = {
   tenderId: string | null
   isEditable: boolean
   groupId: string | null
+  requiresWarranty?: boolean
 }
 
 type BoqGroupMeta = {
@@ -554,6 +556,7 @@ export default function ProjectDetailPage() {
         tenderId: data.tenderId ?? null,
         isEditable: data.isEditable !== false,
         groupId: data.groupId || null,
+        requiresWarranty: !!data.requiresWarranty,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -679,6 +682,7 @@ export default function ProjectDetailPage() {
           tenderId: null,
           isEditable: true,
           groupId: item.groupId,
+          requiresWarranty: false,
         }))
         setBoqItems(parsed)
         setBoqGroups(result.groups.map((g) => ({ id: g.id, titleAr: g.titleAr, categoryAr: g.categoryAr })))
@@ -747,6 +751,7 @@ export default function ProjectDetailPage() {
           tenderId: null,
           isEditable: true,
           groupId: item.groupId || null,
+          requiresWarranty: !!item.requiresWarranty,
           updatedAt: serverTimestamp(),
         })
       })
@@ -806,7 +811,7 @@ export default function ProjectDetailPage() {
   // Update BOQ cell — locked rows never accept edits (also enforced server-side)
   // useCallback with empty deps keeps this reference stable across renders (only functional setState is used),
   // which lets boqColumns stay memoized — without it, table cells remount on every keystroke and lose focus.
-  const updateBoqCell = useCallback((rowIndex: number, field: keyof BоqItem, value: string) => {
+  const updateBoqCell = useCallback((rowIndex: number, field: keyof BоqItem, value: string | boolean) => {
     setBoqItems((prev) =>
       prev.map((item, i) => (i === rowIndex && item.isEditable !== false ? { ...item, [field]: value } : item))
     )
@@ -958,6 +963,7 @@ export default function ProjectDetailPage() {
               category: item.suggestedCategory || group.categoryAr,
               subCategory: item.suggestedSubCategory || "",
               boqItemNo: item.itemNo,
+              requiresWarranty: !!item.requiresWarranty,
             })),
             quantity: String(selectedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)),
             notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
@@ -968,6 +974,7 @@ export default function ProjectDetailPage() {
             pdfStoragePath: null,
             status: "Draft",
             visibility: "public",
+            requiresWarranty: selectedItems.some((item) => item.requiresWarranty),
             boqProjectName: projectName,
             createdByUserId: user.uid,
             createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
@@ -1279,6 +1286,26 @@ export default function ProjectDetailPage() {
         )
       },
       size: 100,
+    }),
+    columnHelper.display({
+      id: "warranty",
+      header: () => (
+        <span className="flex items-center gap-1" title={t("proj_boq_warranty_required")}>
+          <ShieldCheck size={12} />
+          {t("proj_boq_warranty_col")}
+        </span>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center h-8">
+          <Checkbox
+            checked={!!row.original.requiresWarranty}
+            onCheckedChange={(checked) => updateBoqCell(row.index, "requiresWarranty", checked === true)}
+            disabled={row.original.isEditable === false}
+            aria-label={t("proj_boq_warranty_required")}
+          />
+        </div>
+      ),
+      size: 70,
     }),
     columnHelper.display({
       id: "actions",
