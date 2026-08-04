@@ -545,10 +545,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b bg-background px-6 shadow-sm">
+        <header className="sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm">
           <SidebarTrigger />
-          
-          <div className="flex-1 max-w-md flex">
+
+          <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
@@ -569,7 +569,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
             </TooltipProvider>
           </div>
 
-          <div className={cn("flex items-center gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
+          <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
             <LanguageSwitcher />
             <DropdownMenu onOpenChange={(open) => { if (!open) setSelectedNotifIds(new Set()) }}>
               <DropdownMenuTrigger asChild>

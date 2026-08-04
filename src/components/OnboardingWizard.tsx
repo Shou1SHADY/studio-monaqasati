@@ -14,7 +14,7 @@ const SAUDI_CITIES = [
 const inputCls =
   "w-full h-11 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white placeholder:text-slate-600 px-3 text-sm font-medium focus:outline-none focus:border-[#20CBD5]/50 focus:bg-white/[0.06] transition-all"
 const selectCls =
-  "w-full h-11 rounded-xl bg-[#0f1e33] border border-white/[0.1] text-sm font-medium px-3 focus:outline-none focus:border-[#20CBD5]/50 transition-all appearance-none cursor-pointer"
+  "w-full h-11 rounded-xl bg-[#0f1e33] border border-white/[0.1] text-sm font-medium ps-3 pe-9 focus:outline-none focus:border-[#20CBD5]/50 transition-all appearance-none cursor-pointer"
 const errorBorderCls = "border-red-500/40 focus:border-red-500/50"
 
 export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -25,7 +25,6 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
   const [company, setCompany] = useState("")
   const [phone, setPhone] = useState("")
   const [email, setEmail] = useState("")
-  const [vat, setVat] = useState("")
   const [city, setCity] = useState("")
   const [size, setSize] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -34,7 +33,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
 
   const reset = useCallback(() => {
     setName(""); setCompany(""); setPhone(""); setEmail("")
-    setVat(""); setCity(""); setSize("")
+    setCity(""); setSize("")
     setErrors({}); setSubmitting(false); setDone(false)
   }, [])
 
@@ -58,7 +57,6 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
     if (!company.trim() || company.trim().length < 2) e.company = t("err_company")
     if (!phone.trim() || !/^[+\d\s().\-]{7,}$/.test(phone.trim())) e.phone = t("err_phone")
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) e.email = t("err_email")
-    if (!vat.trim() || !/^\d{15}$/.test(vat.trim())) e.vat = t("err_vat")
     if (!city) e.city = t("err_city")
     if (!size) e.size = t("err_size")
     setErrors(e)
@@ -72,7 +70,7 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
       const res = await fetch("/api/onboarding/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, company, phone, email, vat, city, size, locale }),
+        body: JSON.stringify({ name, company, phone, email, city, size, locale }),
       })
       if (!res.ok) throw new Error()
       setDone(true)
@@ -160,39 +158,31 @@ export function OnboardingWizard({ open, onClose }: { open: boolean; onClose: ()
                 </Field>
               </div>
 
-              {/* Divider */}
-              <div className="border-t border-white/[0.06] pt-1">
-                <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">
-                  {locale === "ar" ? "بيانات التحقق" : "Verification"}
-                </span>
-              </div>
-
-              {/* Row 3: VAT (full-width) */}
-              <Field label={t("vat_label")} error={errors.vat}>
-                <input value={vat} onChange={e => setVat(e.target.value.replace(/\D/g, "").slice(0, 15))}
-                  placeholder={t("vat_ph")} dir="ltr" inputMode="numeric"
-                  className={cn(inputCls, errors.vat && errorBorderCls)} />
-              </Field>
-
-              {/* Row 4: city + size */}
+              {/* Row 3: city + size */}
               <div className="grid grid-cols-2 gap-3">
                 <Field label={t("city_label")} error={errors.city}>
-                  <select value={city} onChange={e => setCity(e.target.value)}
-                    className={cn(selectCls, !city ? "text-slate-600" : "text-white", errors.city && errorBorderCls)}>
-                    <option value="" disabled>{t("city_ph")}</option>
-                    {SAUDI_CITIES.map(c => (
-                      <option key={c} value={c} className="bg-[#0f1e33] text-white">{c}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select value={city} onChange={e => setCity(e.target.value)}
+                      className={cn(selectCls, !city ? "text-slate-600" : "text-white", errors.city && errorBorderCls)}>
+                      <option value="" disabled>{t("city_ph")}</option>
+                      {SAUDI_CITIES.map(c => (
+                        <option key={c} value={c} className="bg-[#0f1e33] text-white">{c}</option>
+                      ))}
+                    </select>
+                    <svg className="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-4 w-4 text-slate-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 6l4 4 4-4"/></svg>
+                  </div>
                 </Field>
                 <Field label={t("size_label")} error={errors.size}>
-                  <select value={size} onChange={e => setSize(e.target.value)}
-                    className={cn(selectCls, !size ? "text-slate-600" : "text-white", errors.size && errorBorderCls)}>
-                    <option value="" disabled>{t("size_ph")}</option>
-                    {(["size_1", "size_2", "size_3", "size_4"] as const).map(k => (
-                      <option key={k} value={t(k)} className="bg-[#0f1e33] text-white">{t(k)}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select value={size} onChange={e => setSize(e.target.value)}
+                      className={cn(selectCls, !size ? "text-slate-600" : "text-white", errors.size && errorBorderCls)}>
+                      <option value="" disabled>{t("size_ph")}</option>
+                      {(["size_1", "size_2", "size_3", "size_4"] as const).map(k => (
+                        <option key={k} value={t(k)} className="bg-[#0f1e33] text-white">{t(k)}</option>
+                      ))}
+                    </select>
+                    <svg className="pointer-events-none absolute top-1/2 end-3 -translate-y-1/2 h-4 w-4 text-slate-500" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 6l4 4 4-4"/></svg>
+                  </div>
                 </Field>
               </div>
 

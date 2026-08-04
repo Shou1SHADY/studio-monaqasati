@@ -167,15 +167,15 @@ export default function AdminDashboard() {
 
   return (
     <PortalLayout>
-      <div className="space-y-8 text-right">
+      <div className="space-y-6 md:space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-black text-foreground font-headline">{t("title")}</h1>
-          <p className="text-muted-foreground mt-1">{t("subtitle")}</p>
+          <h1 className="text-2xl md:text-3xl font-black text-foreground font-headline">{t("title")}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t("subtitle")}</p>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Suppliers */}
           <Link href="/admin/suppliers" className="block">
             <Card className="border border-t-2 border-t-success shadow-sm hover:shadow-md transition-shadow cursor-pointer h-full">
@@ -289,10 +289,10 @@ export default function AdminDashboard() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
           {/* Monthly RFQ Trend */}
           <Card className="shadow-sm border border-t-2 border-t-primary">
-            <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b pb-4">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <BarChart3 className="h-4 w-4 text-primary" />
                 {t("monthly_trend")}
@@ -317,7 +317,7 @@ export default function AdminDashboard() {
 
           {/* RFQ Status Distribution */}
           <Card className="shadow-sm border border-t-2 border-t-purple-500">
-            <CardHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b pb-4">
               <CardTitle className="text-base font-bold flex items-center gap-2">
                 <PieChartIcon className="h-4 w-4 text-accent" />
                 {t("status_distribution")}
@@ -327,8 +327,8 @@ export default function AdminDashboard() {
               </Badge>
             </CardHeader>
             <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="h-[200px] flex-1">
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="h-[180px] w-full sm:flex-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart style={{ direction: 'ltr' }}>
                       <Pie
@@ -352,7 +352,7 @@ export default function AdminDashboard() {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="space-y-3 min-w-[110px]">
+                <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 pb-2 sm:flex-col sm:gap-y-3 sm:min-w-[110px] sm:pb-0">
                   {statusSegments.length > 0 ? statusSegments.map(d => (
                     <div key={d.name} className="flex items-center gap-2">
                       <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.color }} />
@@ -371,7 +371,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Insights Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {/* Verification Health */}
           <Card className="shadow-sm border border-t-2 border-t-success">
             <CardHeader className="border-b pb-3">
@@ -520,16 +520,16 @@ export default function AdminDashboard() {
               <div className="divide-y">
                 {(recentRfqs as any[]).map((rfq: any) => (
                   <Link key={rfq.id} href={`/admin/rfqs/${rfq.id}`}>
-                    <div className="px-5 py-3 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
+                    <div className="px-4 sm:px-5 py-3 flex items-center justify-between hover:bg-slate-50/80 transition-colors">
                       <div className="min-w-0 flex-1">
                         <span className="text-sm font-bold text-slate-800 block truncate">{rfq.title || t("no_title")}</span>
                         <span className="text-[11px] text-muted-foreground">
                           {rfq.city ? displayCity(rfq.city, locale) : t("uncategorized")}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0 ms-3">
+                      <div className="flex items-center gap-1.5 shrink-0 ms-2">
                         {rfq.orderedFromMdmakDirect && (
-                          <Badge className="text-[10px] bg-accent/10 text-accent border-none gap-1 px-1.5 py-0.5">
+                          <Badge className="text-[10px] bg-accent/10 text-accent border-none gap-1 px-1.5 py-0.5 hidden sm:flex">
                             <Handshake className="h-2.5 w-2.5" />
                           </Badge>
                         )}
@@ -544,7 +544,7 @@ export default function AdminDashboard() {
                         >
                           {getStatusLabel(rfq.status)}
                         </Badge>
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 whitespace-nowrap" suppressHydrationWarning>
+                        <span className="text-[10px] text-muted-foreground hidden sm:flex items-center gap-0.5 whitespace-nowrap" suppressHydrationWarning>
                           <Clock className="h-3 w-3" />
                           {formatTimeAgo(rfq.createdAt)}
                         </span>

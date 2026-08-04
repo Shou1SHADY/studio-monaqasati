@@ -43,7 +43,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, deleteDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
@@ -167,13 +167,18 @@ export default function AdminContractorsPage() {
   }
 
   const handleDeleteContractor = async () => {
-    if (!firestore || !selectedContractor) return
+    if (!user || !selectedContractor) return
     setIsDeleting(true)
     try {
-      await deleteDoc(doc(firestore, "users", selectedContractor.id))
+      const idToken = await user.getIdToken()
+      const res = await fetch("/api/admin/users/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ uid: selectedContractor.id }),
+      })
+      if (!res.ok) throw new Error((await res.json()).message)
       setLocalContractors(prev => prev.filter(c => c.id !== selectedContractor.id))
       setShowDeleteDialog(false)
-      setShowDetailDialog(false)
       setSelectedContractor(null)
       toast({ title: t("delete_success") })
     } catch (e: any) {
@@ -600,7 +605,7 @@ export default function AdminContractorsPage() {
                   <Button
                     variant="outline"
                     className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5"
-                    onClick={() => setShowDeleteDialog(true)}
+                    onClick={() => { setShowDetailDialog(false); setShowDeleteDialog(true) }}
                   >
                     <Trash2 size={15} />
                     {t("delete_account")}
