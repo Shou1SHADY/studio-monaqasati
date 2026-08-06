@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Link } from "@/i18n/routing"
+import React from "react"
 import {
   Users,
   FileText,
@@ -20,6 +21,7 @@ import {
   Award,
   ChevronRight,
   Handshake,
+  Trash2,
 } from "lucide-react"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
@@ -42,6 +44,38 @@ export default function AdminDashboard() {
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+
+  const [cleanupState, setCleanupState] = React.useState<'idle' | 'scanning' | 'deleting' | 'done' | 'error'>('idle')
+  const [cleanupResult, setCleanupResult] = React.useState<{
+    dryRun: boolean
+    totalAuthAccounts: number
+    totalFirestoreUsers: number
+    orphansFound: number
+    orphans?: Array<{ uid: string; email?: string; createdAt: string }>
+    deleted?: number
+    failed?: number
+  } | null>(null)
+
+  const runCleanup = async (dryRun: boolean) => {
+    if (!user) return
+    setCleanupState(dryRun ? 'scanning' : 'deleting')
+    setCleanupResult(null)
+    try {
+      const token = await user.getIdToken()
+      const res = await fetch('/api/admin/auth-cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ dryRun }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.message || 'Failed')
+      setCleanupResult(json.data)
+      setCleanupState('done')
+    } catch (e: unknown) {
+      console.error('[auth-cleanup]', e)
+      setCleanupState('error')
+    }
+  }
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -167,7 +201,7 @@ export default function AdminDashboard() {
 
   return (
     <PortalLayout>
-      <div className="space-y-6 md:space-y-8" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+      <div className="space-y-6 md:space-y-8 md:ml-24" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
         {/* Header */}
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-foreground font-headline">{t("title")}</h1>
@@ -559,6 +593,79 @@ export default function AdminDashboard() {
                 <p className="text-sm font-medium">{t("no_tenders")}</p>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Auth Cleanup Maintenance Card */}
+        <Card className="shadow-sm border-slate-100">
+          <CardHeader className="border-b pb-3">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <Trash2 className="h-4 w-4 text-destructive" />
+              {locale === 'ar' ? 'صيانة: حسابات Auth المعزولة' : 'Maintenance: Orphaned Auth Accounts'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 sm:p-5 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {locale === 'ar'
+                ? 'يبحث عن حسابات Firebase Auth لا يقابلها مستند في مجموعة users ويحذفها.'
+                : 'Finds Firebase Auth accounts with no matching document in the users collection and removes them.'}
+            </p>
+
+            {cleanupResult && (
+              <div className="rounded-lg bg-muted/50 border text-sm p-3 space-y-1">
+                <p><span className="font-semibold">{locale === 'ar' ? 'حسابات Auth:' : 'Auth accounts:'}</span> {cleanupResult.totalAuthAccounts}</p>
+                <p><span className="font-semibold">{locale === 'ar' ? 'وثائق Firestore:' : 'Firestore docs:'}</span> {cleanupResult.totalFirestoreUsers}</p>
+                <p className={cn("font-semibold", cleanupResult.orphansFound > 0 ? "text-destructive" : "text-success")}>
+                  {locale === 'ar' ? `حسابات معزولة: ${cleanupResult.orphansFound}` : `Orphans found: ${cleanupResult.orphansFound}`}
+                </p>
+                {cleanupResult.dryRun && cleanupResult.orphans && cleanupResult.orphans.length > 0 && (
+                  <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
+                    {cleanupResult.orphans.map(o => (
+                      <li key={o.uid} className="text-xs text-muted-foreground font-mono truncate">
+                        {o.uid} {o.email ? `(${o.email})` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!cleanupResult.dryRun && cleanupResult.deleted !== undefined && (
+                  <p className="text-success font-semibold">
+                    {locale === 'ar' ? `تم الحذف: ${cleanupResult.deleted}` : `Deleted: ${cleanupResult.deleted}`}
+                    {(cleanupResult.failed ?? 0) > 0 && ` · Failed: ${cleanupResult.failed}`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {cleanupState === 'error' && (
+              <p className="text-sm text-destructive font-medium">
+                {locale === 'ar' ? 'حدث خطأ. تحقق من console.' : 'An error occurred. Check the console.'}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => runCleanup(true)}
+                disabled={cleanupState === 'scanning' || cleanupState === 'deleting'}
+              >
+                {cleanupState === 'scanning'
+                  ? (locale === 'ar' ? 'جاري الفحص…' : 'Scanning…')
+                  : (locale === 'ar' ? 'فحص (بدون حذف)' : 'Scan (dry run)')}
+              </Button>
+              {cleanupResult?.dryRun && cleanupResult.orphansFound > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => runCleanup(false)}
+                  disabled={cleanupState === 'deleting'}
+                >
+                  {cleanupState === 'deleting'
+                    ? (locale === 'ar' ? 'جاري الحذف…' : 'Deleting…')
+                    : (locale === 'ar' ? `حذف ${cleanupResult.orphansFound} حساب` : `Delete ${cleanupResult.orphansFound} account(s)`)}
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

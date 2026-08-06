@@ -106,6 +106,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   }, [user, isUserLoading, profile, isProfileLoading, router, pathname])
   
   const basePath = pathname.split("/")[1] || "admin"
+  const isAdminOverview = pathname === "/admin"
 
   // Role-based redirect guard — chat now lives inside role groups, no exception needed
   React.useEffect(() => {
@@ -545,7 +546,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm">
+        <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
           <SidebarTrigger />
 
           <div className="hidden md:flex flex-1 max-w-md">
