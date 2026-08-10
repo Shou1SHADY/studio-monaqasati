@@ -30,6 +30,9 @@ import {
   ShoppingBasket,
   Inbox,
   ShieldCheck,
+  Briefcase,
+  Receipt,
+  Warehouse,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -77,6 +80,9 @@ const contractorSections: NavSection[] = [
       { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
       { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
       { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck },
+      { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase },
+      { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt },
+      { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse },
     ],
   },
   {
@@ -105,6 +111,9 @@ const supplierSections: NavSection[] = [
       { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
       { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck },
       { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
+      { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase },
+      { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt },
+      { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse },
     ],
   },
   {

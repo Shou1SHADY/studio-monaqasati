@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { doc } from "firebase/firestore"
-import { Loader2, Printer, FileX, ArrowRight, Truck } from "lucide-react"
+import { Loader2, Printer, FileX, ArrowRight, Truck, Building2, Hash } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -36,6 +36,12 @@ type Delivery = {
   notes?: string
   items?: { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[]
   status?: string
+  supplierCrNumber?: string
+  supplierVatNumber?: string
+  contractorCrNumber?: string
+  contractorVatNumber?: string
+  supplierSignatureData?: string
+  contractorSignatureData?: string
 }
 
 export default function DeliveryReceiptPage() {
@@ -186,6 +192,84 @@ export default function DeliveryReceiptPage() {
                 <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg">{d.notes}</p>
               </div>
             )}
+
+            {/* Business registration details */}
+            {(d.supplierCrNumber || d.supplierVatNumber || d.contractorCrNumber || d.contractorVatNumber) && (
+              <div className="pt-4 border-t border-slate-100">
+                <p className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-1.5">
+                  <Building2 size={12} />
+                  {t("receipt_biz_section")}
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  {(d.supplierCrNumber || d.supplierVatNumber) && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-500">{t("receipt_supplier_party")}</p>
+                      {d.supplierCrNumber && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase">{t("receipt_cr_number")}</p>
+                          <p className="font-mono text-sm font-semibold text-slate-700" dir="ltr">{d.supplierCrNumber}</p>
+                        </div>
+                      )}
+                      {d.supplierVatNumber && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase">{t("receipt_vat_number")}</p>
+                          <p className="font-mono text-sm font-semibold text-slate-700" dir="ltr">{d.supplierVatNumber}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(d.contractorCrNumber || d.contractorVatNumber) && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-bold text-slate-500">{t("receipt_contractor_party")}</p>
+                      {d.contractorCrNumber && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase">{t("receipt_cr_number")}</p>
+                          <p className="font-mono text-sm font-semibold text-slate-700" dir="ltr">{d.contractorCrNumber}</p>
+                        </div>
+                      )}
+                      {d.contractorVatNumber && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase">{t("receipt_vat_number")}</p>
+                          <p className="font-mono text-sm font-semibold text-slate-700" dir="ltr">{d.contractorVatNumber}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Signatures */}
+            <div className="pt-4 border-t border-slate-100">
+              <p className="text-xs font-bold text-slate-400 uppercase mb-4 flex items-center gap-1.5">
+                <Hash size={12} />
+                {t("receipt_signatures_section")}
+              </p>
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-2">{t("receipt_supplier_signature")}</p>
+                  <div className="h-24 border border-slate-200 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                    {d.supplierSignatureData ? (
+                      <img src={d.supplierSignatureData} alt={t("receipt_supplier_signature")} className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <p className="text-slate-200 text-xs">{t("receipt_sig_empty")}</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 text-center">{d.supplierName || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-500 mb-2">{t("receipt_contractor_signature")}</p>
+                  <div className="h-24 border border-slate-200 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                    {d.contractorSignatureData ? (
+                      <img src={d.contractorSignatureData} alt={t("receipt_contractor_signature")} className="w-full h-full object-contain p-1" />
+                    ) : (
+                      <p className="text-slate-200 text-xs">{t("receipt_sig_empty")}</p>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 text-center">{d.receivedByName || d.handoverRecipientName || "—"}</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Footer */}

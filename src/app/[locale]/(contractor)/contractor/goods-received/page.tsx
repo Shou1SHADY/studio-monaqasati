@@ -35,7 +35,9 @@ import {
   Paperclip,
   ExternalLink,
   PlusCircle,
+  PenLine,
 } from "lucide-react"
+import { SignaturePad } from "@/components/SignaturePad"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -242,6 +244,12 @@ function ManualReceiptDialog({
   const [deliveryPersonName, setDeliveryPersonName] = useState("")
   const [receivedByName, setReceivedByName] = useState(defaultReceiverName || "")
   const [notes, setNotes] = useState("")
+  const [supplierCrNumber, setSupplierCrNumber] = useState("")
+  const [supplierVatNumber, setSupplierVatNumber] = useState("")
+  const [contractorCrNumber, setContractorCrNumber] = useState("")
+  const [contractorVatNumber, setContractorVatNumber] = useState("")
+  const [supplierSignatureData, setSupplierSignatureData] = useState<string | null>(null)
+  const [contractorSignatureData, setContractorSignatureData] = useState<string | null>(null)
 
   const resetForm = () => {
     setSupplierName("")
@@ -249,6 +257,12 @@ function ManualReceiptDialog({
     setDeliveryPersonName("")
     setReceivedByName(defaultReceiverName || "")
     setNotes("")
+    setSupplierCrNumber("")
+    setSupplierVatNumber("")
+    setContractorCrNumber("")
+    setContractorVatNumber("")
+    setSupplierSignatureData(null)
+    setContractorSignatureData(null)
   }
 
   const handleSave = async () => {
@@ -268,6 +282,12 @@ function ManualReceiptDialog({
         receivedByName: receivedByName.trim(),
         deliveryDate,
         notes: notes.trim(),
+        supplierCrNumber: supplierCrNumber.trim() || null,
+        supplierVatNumber: supplierVatNumber.trim() || null,
+        contractorCrNumber: contractorCrNumber.trim() || null,
+        contractorVatNumber: contractorVatNumber.trim() || null,
+        supplierSignatureData: supplierSignatureData || null,
+        contractorSignatureData: contractorSignatureData || null,
         status: "confirmed",
         confirmedByUserId: user.uid,
         confirmedAt: serverTimestamp(),
@@ -341,6 +361,68 @@ function ManualReceiptDialog({
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("goods_manual_description_placeholder")}
             />
+          </div>
+
+          {/* Business registration details */}
+          <div className="pt-2 border-t space-y-3">
+            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+              <FileText size={12} />
+              {t("goods_manual_biz_section")}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-supplier-cr" className="text-xs">{t("goods_manual_supplier_cr")}</Label>
+                <Input id="manual-supplier-cr" value={supplierCrNumber}
+                  onChange={(e) => setSupplierCrNumber(e.target.value)}
+                  placeholder={t("goods_manual_cr_placeholder")} className="h-8 text-sm" dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-supplier-vat" className="text-xs">{t("goods_manual_supplier_vat")}</Label>
+                <Input id="manual-supplier-vat" value={supplierVatNumber}
+                  onChange={(e) => setSupplierVatNumber(e.target.value)}
+                  placeholder={t("goods_manual_vat_placeholder")} className="h-8 text-sm" dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-contractor-cr" className="text-xs">{t("goods_manual_contractor_cr")}</Label>
+                <Input id="manual-contractor-cr" value={contractorCrNumber}
+                  onChange={(e) => setContractorCrNumber(e.target.value)}
+                  placeholder={t("goods_manual_cr_placeholder")} className="h-8 text-sm" dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-contractor-vat" className="text-xs">{t("goods_manual_contractor_vat")}</Label>
+                <Input id="manual-contractor-vat" value={contractorVatNumber}
+                  onChange={(e) => setContractorVatNumber(e.target.value)}
+                  placeholder={t("goods_manual_vat_placeholder")} className="h-8 text-sm" dir="ltr" />
+              </div>
+            </div>
+          </div>
+
+          {/* Signatures */}
+          <div className="pt-2 border-t space-y-4">
+            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
+              <PenLine size={12} />
+              {t("goods_manual_signatures_section")}
+            </p>
+            <div>
+              <Label className="text-xs mb-1.5 block">{t("goods_manual_supplier_signature")}</Label>
+              <SignaturePad
+                value={supplierSignatureData}
+                onChange={setSupplierSignatureData}
+                clearLabel={t("goods_manual_sig_clear")}
+                placeholderText={t("goods_manual_sig_placeholder")}
+                height={100}
+              />
+            </div>
+            <div>
+              <Label className="text-xs mb-1.5 block">{t("goods_manual_contractor_signature")}</Label>
+              <SignaturePad
+                value={contractorSignatureData}
+                onChange={setContractorSignatureData}
+                clearLabel={t("goods_manual_sig_clear")}
+                placeholderText={t("goods_manual_sig_placeholder")}
+                height={100}
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>

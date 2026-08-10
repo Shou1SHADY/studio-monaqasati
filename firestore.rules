@@ -565,6 +565,39 @@ service cloud.firestore {
       allow read, update, delete: if isAdmin();
     }
 
+    // Employee records — scoped to an organization
+    match /employees/{employeeId} {
+      allow read, write: if isSignedIn()
+        && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn()
+        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+    }
+
+    // Invoices — scoped to an organization
+    match /invoices/{invoiceId} {
+      allow read, write: if isSignedIn()
+        && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn()
+        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+    }
+
+    // Warehouses — scoped to an organization, with inventory items subcollection
+    match /warehouses/{warehouseId} {
+      allow read, write: if isSignedIn()
+        && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn()
+        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+
+      match /inventoryItems/{itemId} {
+        allow read, write: if isSignedIn()
+          && (isAdmin() || isOrgMember(
+            get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+          ));
+        allow create: if isSignedIn()
+          && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      }
+    }
+
   }
 }
 
