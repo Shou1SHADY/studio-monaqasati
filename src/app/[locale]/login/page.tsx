@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { OnboardingWizard } from "@/components/OnboardingWizard"
 
 const GoogleIcon = () => (
   <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -51,6 +52,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [loginError, setLoginError] = useState("")
   const [formData, setFormData] = useState({ email: "", password: "" })
+  const [showDemo, setShowDemo] = useState(false)
 
   // 2FA states
   const [showTwoFactor, setShowTwoFactor] = useState(false)
@@ -437,9 +439,13 @@ export default function LoginPage() {
 
           <p className="mt-10 text-center text-sm text-muted-foreground">
             {t("no_account")}{" "}
-            <Link href="/#demo" className="text-primary font-semibold hover:text-primary/80 transition-colors">
+            <button
+              type="button"
+              onClick={() => setShowDemo(true)}
+              className="text-primary font-semibold hover:text-primary/80 transition-colors"
+            >
               {t("create_account")}
-            </Link>
+            </button>
           </p>
         </div>
       </div>
@@ -501,6 +507,8 @@ export default function LoginPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <OnboardingWizard open={showDemo} onClose={() => setShowDemo(false)} />
     </div>
   )
 }

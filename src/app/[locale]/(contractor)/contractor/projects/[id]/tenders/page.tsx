@@ -47,6 +47,7 @@ export default function ProjectTendersPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
   const [selectedRfqs, setSelectedRfqs] = useState<string[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
+  const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [republishTarget, setRepublishTarget] = useState<any>(null)
@@ -134,6 +135,23 @@ export default function ProjectTendersPage() {
       setIsPublishing(false);
     }
   };
+
+  const handlePublishDraft = async (rfqId: string) => {
+    if (!firestore || publishingDraftId) return
+    setPublishingDraftId(rfqId)
+    try {
+      await updateDoc(doc(firestore, "rfqs", rfqId), {
+        status: "New",
+        publishedAt: new Date().toISOString()
+      })
+      toast({ title: t("rfq_publish_draft_success"), description: t("rfq_publish_draft_desc") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("rfq_batch_publish_error"), variant: "destructive" })
+    } finally {
+      setPublishingDraftId(null)
+    }
+  }
 
   const toggleSelectRfq = (id: string) => {
     setSelectedRfqs(prev =>
@@ -571,7 +589,19 @@ export default function ProjectTendersPage() {
                         </Link>
                       </div>
                       {canEditOrDelete(rfq) && (
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex flex-col gap-2 mt-2">
+                          {rfq.status === "Draft" && (
+                            <Button
+                              size="sm"
+                              className="w-full gap-1 text-sm h-8 rounded-lg bg-success hover:bg-success/90 text-white transition-all"
+                              onClick={() => handlePublishDraft(rfq.id)}
+                              disabled={publishingDraftId === rfq.id}
+                            >
+                              {publishingDraftId === rfq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                              {t("rfq_publish_draft")}
+                            </Button>
+                          )}
+                          <div className="flex gap-2">
                           <Link href={`/contractor/projects/${projectId}/tenders/new?edit=${rfq.id}`} className="flex-1">
                             <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
                               <Pencil size={14} />
@@ -587,6 +617,7 @@ export default function ProjectTendersPage() {
                             <Trash2 size={14} />
                             {t("rfq_delete_tender")}
                           </Button>
+                          </div>
                         </div>
                       )}
                       {isExpired(rfq) && canEditOrDelete(rfq) && (

@@ -337,6 +337,9 @@ export default function SuppliersDirectory() {
     setFilterSpecialization("all")
   }
 
+  const preferredSuppliers = displaySuppliers.filter((s: any) => s.isFavorite)
+  const otherSuppliers = displaySuppliers.filter((s: any) => !s.isFavorite)
+
   return (
     <PortalLayout>
       <div className="space-y-8">
@@ -469,8 +472,25 @@ export default function SuppliersDirectory() {
             )}
           </div>
         ) : (
+          <div className="space-y-0">
+            {preferredSuppliers.length > 0 && (
+              <div className="flex items-center gap-3 mb-4">
+                <Star size={20} className="text-amber-500 fill-amber-500 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-bold leading-tight">{t("suppliers_preferred_section")}</h2>
+                  <p className="text-xs text-muted-foreground">{t("suppliers_preferred_section_desc")}</p>
+                </div>
+              </div>
+            )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {displaySuppliers.map((supplier: any) => (
+            {[...preferredSuppliers, ...(preferredSuppliers.length > 0 && otherSuppliers.length > 0 ? [{ id: "__divider__", isDivider: true }] : []), ...otherSuppliers].map((supplier: any) =>
+              supplier.isDivider ? (
+                <div key="__divider__" className="col-span-full flex items-center gap-3 py-4 text-sm font-semibold text-muted-foreground">
+                  <div className="flex-1 border-t" />
+                  <span>{t("suppliers_all_section")}</span>
+                  <div className="flex-1 border-t" />
+                </div>
+              ) : (
               <Card key={supplier.id} className={`hover:shadow-md transition-shadow overflow-hidden group flex flex-col ${supplier.isFavorite ? 'border-amber-200 bg-amber-50/10' : 'border-slate-100'}`}>
                 <CardContent className="p-6 flex-1 space-y-4">
                   <div className="flex items-start justify-between">
@@ -602,7 +622,9 @@ export default function SuppliersDirectory() {
                   </Button>
                 </CardFooter>
               </Card>
-            ))}
+              )
+            )}
+          </div>
           </div>
         )}
       </div>

@@ -55,6 +55,7 @@ export default function ContractorRfqsPage() {
   const [republishTarget, setRepublishTarget] = useState<any>(null)
   const [republishDeadline, setRepublishDeadline] = useState("")
   const [isRepublishing, setIsRepublishing] = useState(false)
+  const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null)
   const [deadlineFilter, setDeadlineFilter] = useState<"all" | "week" | "month" | "custom">("all")
   const [customDeadline, setCustomDeadline] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("all")
@@ -135,6 +136,23 @@ const handleBatchPublish = async () => {
     setSelectedRfqs(failedIds);
     setIsPublishing(false);
   };
+
+  const handlePublishDraft = async (rfqId: string) => {
+    if (!firestore || publishingDraftId) return
+    setPublishingDraftId(rfqId)
+    try {
+      await updateDoc(doc(firestore, "rfqs", rfqId), {
+        status: "New",
+        publishedAt: new Date().toISOString()
+      })
+      toast({ title: t("rfq_publish_draft_success"), description: t("rfq_publish_draft_desc") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("offers_toast_error"), variant: "destructive" })
+    } finally {
+      setPublishingDraftId(null)
+    }
+  }
 
   const toggleSelectRfq = (id: string) => {
     setSelectedRfqs(prev =>
@@ -731,7 +749,19 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </Link>
                       </div>
                       {(canEdit(rfq) || canDelete(rfq)) && (
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex flex-col gap-2 mt-2">
+                          {rfq.status === "Draft" && (
+                            <Button
+                              size="sm"
+                              className="w-full gap-1 text-sm h-8 rounded-lg bg-success hover:bg-success/90 text-white transition-all"
+                              onClick={() => handlePublishDraft(rfq.id)}
+                              disabled={publishingDraftId === rfq.id}
+                            >
+                              {publishingDraftId === rfq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                              {t("rfq_publish_draft")}
+                            </Button>
+                          )}
+                          <div className="flex gap-2">
                           {canEdit(rfq) && (
                             <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
                               <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
@@ -751,6 +781,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               {t("rfq_delete_tender")}
                             </Button>
                           )}
+                          </div>
                         </div>
                       )}
                       {isExpired(rfq) && canEdit(rfq) && (
@@ -824,6 +855,21 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                   </Link>
                                 </TooltipTrigger>
                                 <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {rfq.status === "Draft" && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePublishDraft(rfq.id)}
+                                    disabled={publishingDraftId === rfq.id}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-success hover:bg-success/10 transition-colors disabled:opacity-50"
+                                  >
+                                    {publishingDraftId === rfq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("rfq_publish_draft")}</TooltipContent>
                               </Tooltip>
                             )}
                             {canDelete(rfq) && (
