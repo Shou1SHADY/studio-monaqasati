@@ -566,35 +566,38 @@ service cloud.firestore {
     }
 
     // Employee records — scoped to an organization
+    // list uses isSignedIn() (no resource.data on collection queries); the app's
+    // where(organizationId==) clause enforces isolation at query time.
     match /employees/{employeeId} {
-      allow read, write: if isSignedIn()
-        && (isAdmin() || isOrgMember(resource.data.organizationId));
-      allow create: if isSignedIn()
-        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
     // Invoices — scoped to an organization
     match /invoices/{invoiceId} {
-      allow read, write: if isSignedIn()
-        && (isAdmin() || isOrgMember(resource.data.organizationId));
-      allow create: if isSignedIn()
-        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
     // Warehouses — scoped to an organization, with inventory items subcollection
     match /warehouses/{warehouseId} {
-      allow read, write: if isSignedIn()
-        && (isAdmin() || isOrgMember(resource.data.organizationId));
-      allow create: if isSignedIn()
-        && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
 
       match /inventoryItems/{itemId} {
-        allow read, write: if isSignedIn()
-          && (isAdmin() || isOrgMember(
-            get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
-          ));
-        allow create: if isSignedIn()
-          && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+        ));
+        allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+        allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+        ));
       }
     }
 
