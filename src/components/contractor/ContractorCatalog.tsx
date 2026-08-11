@@ -5,6 +5,7 @@ import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { usePermissions } from "@/hooks/usePermissions"
 import { doc, collection, query, where } from "firebase/firestore"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Input } from "@/components/ui/input"
@@ -143,6 +144,7 @@ export function ContractorCatalog() {
   const router = useRouter()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const { can } = usePermissions()
 
   const [search, setSearch] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -331,7 +333,7 @@ export function ContractorCatalog() {
 
       {/* Floating action bar */}
       <AnimatePresence>
-        {selectedIds.size > 0 && (
+        {selectedIds.size > 0 && can("rfq.create") && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}

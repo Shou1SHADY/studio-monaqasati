@@ -38,6 +38,7 @@ import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
+import { usePermissions } from "@/hooks/usePermissions"
 
 export default function ProjectTendersPage() {
   const params = useParams()
@@ -62,6 +63,7 @@ export default function ProjectTendersPage() {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
+  const { can } = usePermissions()
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
@@ -333,18 +335,22 @@ export default function ProjectTendersPage() {
             <p className="text-muted-foreground mt-1">{t("rfq_page_desc")}</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
-            <Link href={`/contractor/projects/${projectId}?tab=boq`}>
-              <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/10">
-                <FileSpreadsheet size={16} />
-                {t("boq_upload_btn")}
-              </Button>
-            </Link>
-            <Link href={`/contractor/projects/${projectId}/tenders/new`}>
-              <Button className="gap-2 font-bold">
-                <PlusCircle size={18} />
-                {t("rfq_new_tender")}
-              </Button>
-            </Link>
+            {can("projects.edit") && (
+              <Link href={`/contractor/projects/${projectId}?tab=boq`}>
+                <Button variant="outline" className="gap-2 font-bold border-primary/30 text-primary hover:bg-primary/10">
+                  <FileSpreadsheet size={16} />
+                  {t("boq_upload_btn")}
+                </Button>
+              </Link>
+            )}
+            {can("rfq.create") && (
+              <Link href={`/contractor/projects/${projectId}/tenders/new`}>
+                <Button className="gap-2 font-bold">
+                  <PlusCircle size={18} />
+                  {t("rfq_new_tender")}
+                </Button>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -380,7 +386,7 @@ export default function ProjectTendersPage() {
                   {t("rfq_tender_list")}
                 </CardTitle>
                 <div className="flex items-center gap-3 flex-wrap">
-                  {selectedRfqs.length > 0 && (
+                  {selectedRfqs.length > 0 && can("rfq.manage") && (
                     <Button
                       onClick={handleBatchPublish}
                       disabled={isPublishing}
@@ -499,7 +505,7 @@ export default function ProjectTendersPage() {
                     <CardContent className="p-5 flex flex-col flex-1">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex flex-wrap gap-2">
-                          {rfq.status === "Draft" && (
+                          {rfq.status === "Draft" && can("rfq.manage") && (
                             <Checkbox
                               checked={selectedRfqs.includes(rfq.id)}
                               onCheckedChange={() => toggleSelectRfq(rfq.id)}
@@ -588,7 +594,7 @@ export default function ProjectTendersPage() {
                           </Button>
                         </Link>
                       </div>
-                      {canEditOrDelete(rfq) && (
+                      {can("rfq.manage") && canEditOrDelete(rfq) && (
                         <div className="flex flex-col gap-2 mt-2">
                           {rfq.status === "Draft" && (
                             <Button
@@ -620,7 +626,7 @@ export default function ProjectTendersPage() {
                           </div>
                         </div>
                       )}
-                      {isExpired(rfq) && canEditOrDelete(rfq) && (
+                      {can("rfq.manage") && isExpired(rfq) && canEditOrDelete(rfq) && (
                         <div className="mt-2">
                           <Button
                             variant="outline"

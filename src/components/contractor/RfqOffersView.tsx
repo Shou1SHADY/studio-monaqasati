@@ -142,6 +142,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { can } = usePermissions((rfq as { projectId?: string } | null)?.projectId || undefined)
   // Admins manage offers directly on RFQs Mdmak posted as a contractor (no real org/team to grant offers.accept).
   const canDecide = can("offers.accept") || profile?.role === "Admin"
+  const canConfirmDelivery = can("deliveries.confirm")
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
@@ -856,7 +857,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 </p>
                               </div>
                             )}
-                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && (
+                            {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && canConfirmDelivery && (
                               <Button
                                 onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
                                 className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs"

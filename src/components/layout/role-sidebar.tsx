@@ -36,6 +36,8 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { usePermissions } from "@/hooks/usePermissions"
+import type { PermissionId } from "@/lib/permissions"
 import {
   Sidebar,
   SidebarContent,
@@ -54,6 +56,7 @@ interface NavItem {
   href: string
   icon: React.ElementType
   children?: NavItem[]
+  requiredPermission?: PermissionId
 }
 
 interface NavSection {
@@ -71,9 +74,9 @@ const contractorSections: NavSection[] = [
         href: "/contractor/projects",
         icon: FolderOpen,
         children: [
-          { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle },
+          { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "projects.edit" },
           { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
-          { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus },
+          { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
         ],
       },
       { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket },
@@ -95,7 +98,7 @@ const contractorSections: NavSection[] = [
   {
     labelKey: "section_settings",
     items: [
-      { titleKey: "contractor_team", href: "/contractor/team", icon: Users },
+      { titleKey: "contractor_team", href: "/contractor/team", icon: Users, requiredPermission: "team.manage" },
       { titleKey: "contractor_profile", href: "/contractor/profile", icon: UserCircle },
     ],
   },
@@ -164,7 +167,8 @@ function childIsActive(children: NavItem[], pathname: string): boolean {
   return children.some(c => c.href === pathname || (c.children && childIsActive(c.children, pathname)))
 }
 
-function NavItemRenderer({ item, pathname, t }: { item: NavItem; pathname: string; t: ReturnType<typeof useTranslations> }) {
+function NavItemRenderer({ item, pathname, t, can }: { item: NavItem; pathname: string; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean }) {
+  if (item.requiredPermission && !can(item.requiredPermission)) return null
   const hasChildren = !!item.children?.length
   const isChildActive = hasChildren && childIsActive(item.children!, pathname)
   const isParentActive = pathname === item.href
@@ -208,7 +212,7 @@ function NavItemRenderer({ item, pathname, t }: { item: NavItem; pathname: strin
 
         {expanded && (
           <div className="ml-4 border-l border-sidebar-border/50 pl-2">
-            {item.children!.map((child) => (
+            {item.children!.filter((child) => !child.requiredPermission || can(child.requiredPermission)).map((child) => (
               <SidebarMenuItem key={child.titleKey}>
                 <SidebarMenuButton
                   asChild
@@ -257,6 +261,7 @@ function NavItemRenderer({ item, pathname, t }: { item: NavItem; pathname: strin
 export function RoleSidebar() {
   const t = useTranslations("Portal.Sidebar")
   const locale = useLocale()
+  const { can } = usePermissions()
 
   const pathname = usePathname()
 
@@ -316,7 +321,7 @@ export function RoleSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="px-3 gap-1">
                 {section.items.map((item) => (
-                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} t={t} />
+                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} t={t} can={can} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

@@ -29,6 +29,7 @@ import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -139,6 +140,8 @@ export default function ContractorWarehousesPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const canManageWarehouses = can("warehouses.manage")
 
   const [showAdd, setShowAdd] = useState(false)
   const [editWarehouse, setEditWarehouse] = useState<WarehouseDoc | null>(null)
@@ -186,10 +189,12 @@ export default function ContractorWarehousesPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{t("wh_page_desc")}</p>
           </div>
-          <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
-            <Plus size={16} />
-            {t("wh_add_btn")}
-          </Button>
+          {canManageWarehouses && (
+            <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
+              <Plus size={16} />
+              {t("wh_add_btn")}
+            </Button>
+          )}
         </div>
 
         {/* List */}
@@ -202,10 +207,12 @@ export default function ContractorWarehousesPage() {
             <Warehouse size={48} className="text-muted-foreground/20" />
             <p className="font-bold text-muted-foreground">{t("wh_empty_title")}</p>
             <p className="text-sm text-muted-foreground/70">{t("wh_empty_desc")}</p>
-            <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
-              <Plus size={14} />
-              {t("wh_add_btn")}
-            </Button>
+            {canManageWarehouses && (
+              <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
+                <Plus size={14} />
+                {t("wh_add_btn")}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -216,16 +223,18 @@ export default function ContractorWarehousesPage() {
                     <div className="h-10 w-10 rounded-lg bg-primary/5 flex items-center justify-center shrink-0">
                       <Warehouse size={18} className="text-primary" />
                     </div>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditWarehouse(wh)} aria-label={t("wh_edit_title")}>
-                        <Pencil size={13} />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteWarehouse(wh)} aria-label={t("wh_delete_btn")}>
-                        <Trash2 size={13} />
-                      </Button>
-                    </div>
+                    {canManageWarehouses && (
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          onClick={() => setEditWarehouse(wh)} aria-label={t("wh_edit_title")}>
+                          <Pencil size={13} />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteWarehouse(wh)} aria-label={t("wh_delete_btn")}>
+                          <Trash2 size={13} />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                   <h3 className="font-bold text-primary mb-1">{wh.name}</h3>
                   <p className="text-xs text-muted-foreground flex items-center gap-1 mb-1">

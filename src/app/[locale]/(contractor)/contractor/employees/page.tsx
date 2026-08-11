@@ -28,6 +28,7 @@ import {
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { Briefcase, Plus, Pencil, Trash2, Loader2, Users2, Wallet } from "lucide-react"
 import { validateEmployee, formatSalary, parseSalary, totalPayroll } from "@/utils/employee-utils"
 
@@ -147,6 +148,8 @@ export default function ContractorEmployeesPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const canManageEmployees = can("employees.manage")
 
   const [showAdd, setShowAdd] = useState(false)
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null)
@@ -196,10 +199,12 @@ export default function ContractorEmployeesPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{t("emp_page_desc")}</p>
           </div>
-          <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
-            <Plus size={16} />
-            {t("emp_add_btn")}
-          </Button>
+          {canManageEmployees && (
+            <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
+              <Plus size={16} />
+              {t("emp_add_btn")}
+            </Button>
+          )}
         </div>
 
         {/* Payroll summary */}
@@ -231,10 +236,12 @@ export default function ContractorEmployeesPage() {
             <Users2 size={48} className="text-muted-foreground/20" />
             <p className="font-bold text-muted-foreground">{t("emp_empty_title")}</p>
             <p className="text-sm text-muted-foreground/70">{t("emp_empty_desc")}</p>
-            <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
-              <Plus size={14} />
-              {t("emp_add_btn")}
-            </Button>
+            {canManageEmployees && (
+              <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
+                <Plus size={14} />
+                {t("emp_add_btn")}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="rounded-xl border overflow-hidden">
@@ -254,26 +261,28 @@ export default function ContractorEmployeesPage() {
                     <td className="py-3 px-4 text-muted-foreground">{emp.role}</td>
                     <td className="py-3 px-4 font-mono text-sm" dir="ltr">{formatSalary(emp.salary, locale)}</td>
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-1 justify-end">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-primary"
-                          onClick={() => setEditEmployee(emp)}
-                          aria-label={t("emp_edit_title")}
-                        >
-                          <Pencil size={13} />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteEmployee(emp)}
-                          aria-label={t("emp_delete_btn")}
-                        >
-                          <Trash2 size={13} />
-                        </Button>
-                      </div>
+                      {canManageEmployees && (
+                        <div className="flex items-center gap-1 justify-end">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            onClick={() => setEditEmployee(emp)}
+                            aria-label={t("emp_edit_title")}
+                          >
+                            <Pencil size={13} />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteEmployee(emp)}
+                            aria-label={t("emp_delete_btn")}
+                          >
+                            <Trash2 size={13} />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

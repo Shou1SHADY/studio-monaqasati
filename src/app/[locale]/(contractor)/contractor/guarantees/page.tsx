@@ -11,6 +11,7 @@ import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import {
   Loader2,
   ShieldCheck,
@@ -82,6 +83,7 @@ function GuaranteeCard({ guarantee, locale, t }: { guarantee: Guarantee; locale:
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions()
   const [isUpdating, setIsUpdating] = useState(false)
 
   const isExpired = guarantee.expirationDate ? new Date(guarantee.expirationDate).getTime() < Date.now() : false
@@ -153,7 +155,7 @@ function GuaranteeCard({ guarantee, locale, t }: { guarantee: Guarantee; locale:
                 </a>
               </Button>
             )}
-            {guarantee.status === "pending_review" && (
+            {guarantee.status === "pending_review" && can("offers.accept") && (
               <div className="flex gap-2">
                 <Button
                   size="sm"

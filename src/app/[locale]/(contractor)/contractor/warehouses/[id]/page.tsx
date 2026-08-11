@@ -30,6 +30,7 @@ import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import {
   Warehouse,
   ArrowRight,
@@ -182,6 +183,8 @@ export default function ContractorWarehouseDetailPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const canManageWarehouses = can("warehouses.manage")
 
   const [showAdd, setShowAdd] = useState(false)
   const [editItem, setEditItem] = useState<InventoryItem | null>(null)
@@ -246,10 +249,12 @@ export default function ContractorWarehouseDetailPage() {
               </p>
             )}
           </div>
-          <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
-            <Plus size={16} />
-            {t("inv_item_add_btn")}
-          </Button>
+          {canManageWarehouses && (
+            <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
+              <Plus size={16} />
+              {t("inv_item_add_btn")}
+            </Button>
+          )}
         </div>
 
         {/* Low stock alert */}
@@ -270,10 +275,12 @@ export default function ContractorWarehouseDetailPage() {
             <Package size={48} className="text-muted-foreground/20" />
             <p className="font-bold text-muted-foreground">{t("inv_item_empty_title")}</p>
             <p className="text-sm text-muted-foreground/70">{t("inv_item_empty_desc")}</p>
-            <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
-              <Plus size={14} />
-              {t("inv_item_add_btn")}
-            </Button>
+            {canManageWarehouses && (
+              <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
+                <Plus size={14} />
+                {t("inv_item_add_btn")}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="rounded-xl border overflow-hidden">
@@ -311,14 +318,18 @@ export default function ContractorWarehouseDetailPage() {
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1 justify-end">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                              onClick={() => setEditItem(item)} aria-label={t("inv_item_edit_title")}>
-                              <Pencil size={13} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteItem(item)} aria-label={t("wh_delete_btn")}>
-                              <Trash2 size={13} />
-                            </Button>
+                            {canManageWarehouses && (
+                              <>
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditItem(item)} aria-label={t("inv_item_edit_title")}>
+                                  <Pencil size={13} />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setDeleteItem(item)} aria-label={t("wh_delete_btn")}>
+                                  <Trash2 size={13} />
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>

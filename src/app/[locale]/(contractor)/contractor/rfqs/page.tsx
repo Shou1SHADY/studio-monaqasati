@@ -68,6 +68,7 @@ export default function ContractorRfqsPage() {
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
   const { can } = usePermissions()
+  const canManageRfqs = can("rfq.manage")
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
@@ -489,7 +490,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 flex-wrap">
-                  {selectedRfqs.length > 0 && (
+                  {selectedRfqs.length > 0 && canManageRfqs && (
                     <>
                       {filteredRfqs.some((r: any) => selectedRfqs.includes(r.id) && r.status === "Draft") && (
                         <Button
@@ -754,7 +755,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </Button>
                         </Link>
                       </div>
-                      {(canEdit(rfq) || canDelete(rfq)) && (
+                      {canManageRfqs && (canEdit(rfq) || canDelete(rfq)) && (
                         <div className="flex flex-col gap-2 mt-2">
                           {rfq.status === "Draft" && (
                             <Button
@@ -790,7 +791,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </div>
                         </div>
                       )}
-                      {isExpired(rfq) && canEdit(rfq) && (
+                      {canManageRfqs && isExpired(rfq) && canEdit(rfq) && (
                         <div className="mt-2">
                           <Button
                             variant="outline"
@@ -851,7 +852,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               </TooltipTrigger>
                               <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
                             </Tooltip>
-                            {canEdit(rfq) && (
+                            {canManageRfqs && canEdit(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`}>
@@ -863,7 +864,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                 <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
                               </Tooltip>
                             )}
-                            {rfq.status === "Draft" && (
+                            {canManageRfqs && rfq.status === "Draft" && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
@@ -878,7 +879,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                 <TooltipContent>{t("rfq_publish_draft")}</TooltipContent>
                               </Tooltip>
                             )}
-                            {canDelete(rfq) && (
+                            {canManageRfqs && canDelete(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button
@@ -892,7 +893,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                 <TooltipContent>{t("rfq_delete_tender")}</TooltipContent>
                               </Tooltip>
                             )}
-                            {isExpired(rfq) && canEdit(rfq) && (
+                            {canManageRfqs && isExpired(rfq) && canEdit(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <button

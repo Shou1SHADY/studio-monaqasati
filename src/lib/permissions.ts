@@ -15,6 +15,9 @@ export const PERMISSION_IDS = [
   "offers.accept",
   "suppliers.manage",
   "deliveries.confirm",
+  "employees.manage",
+  "invoices.manage",
+  "warehouses.manage",
   "team.manage",
 ] as const
 
@@ -62,7 +65,14 @@ export const SEEDED_GROUPS: Array<{
   {
     key: "finance",
     name: "المالية",
-    permissions: ["projects.view", "projects.publish", "offers.view", "offers.accept"],
+    permissions: [
+      "projects.view",
+      "projects.publish",
+      "offers.view",
+      "offers.accept",
+      "invoices.manage",
+      "employees.manage",
+    ],
     isSystem: false,
   },
   {
@@ -75,6 +85,7 @@ export const SEEDED_GROUPS: Array<{
       "offers.view",
       "suppliers.manage",
       "deliveries.confirm",
+      "warehouses.manage",
     ],
     isSystem: false,
   },

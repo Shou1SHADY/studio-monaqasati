@@ -26,6 +26,7 @@ import {
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import {
   Receipt,
@@ -340,6 +341,8 @@ export default function ContractorInvoicesPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const canManageInvoices = can("invoices.manage")
 
   const [showCreate, setShowCreate] = useState(false)
   const [editInvoice, setEditInvoice] = useState<Invoice | null>(null)
@@ -409,10 +412,12 @@ export default function ContractorInvoicesPage() {
             </h1>
             <p className="text-sm text-muted-foreground mt-0.5">{t("inv_page_desc")}</p>
           </div>
-          <Button onClick={() => setShowCreate(true)} className="gap-2 shrink-0">
-            <Plus size={16} />
-            {t("inv_create_btn")}
-          </Button>
+          {canManageInvoices && (
+            <Button onClick={() => setShowCreate(true)} className="gap-2 shrink-0">
+              <Plus size={16} />
+              {t("inv_create_btn")}
+            </Button>
+          )}
         </div>
 
         {/* Status tabs */}
@@ -490,33 +495,35 @@ export default function ContractorInvoicesPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-muted/40">
-                      {inv.status === "draft" && (
+                      {canManageInvoices && inv.status === "draft" && (
                         <Button size="sm" variant="outline" className="gap-1 h-7 text-xs"
                           onClick={() => handleStatusChange(inv, "sent")}>
                           <Send size={12} />
                           {t("inv_mark_sent")}
                         </Button>
                       )}
-                      {inv.status === "sent" && (
+                      {canManageInvoices && inv.status === "sent" && (
                         <Button size="sm" className="gap-1 h-7 text-xs bg-success hover:bg-success/90 text-white"
                           onClick={() => handleStatusChange(inv, "paid")}>
                           <CheckCircle2 size={12} />
                           {t("inv_mark_paid")}
                         </Button>
                       )}
-                      {inv.status === "overdue" && (
+                      {canManageInvoices && inv.status === "overdue" && (
                         <Button size="sm" className="gap-1 h-7 text-xs bg-success hover:bg-success/90 text-white"
                           onClick={() => handleStatusChange(inv, "paid")}>
                           <CheckCircle2 size={12} />
                           {t("inv_mark_paid")}
                         </Button>
                       )}
-                      <Button size="sm" variant="ghost" className="gap-1 h-7 text-xs text-muted-foreground"
-                        onClick={() => setEditInvoice(inv)}>
-                        <Pencil size={12} />
-                        {t("inv_edit_title")}
-                      </Button>
-                      {inv.status === "draft" && (
+                      {canManageInvoices && (
+                        <Button size="sm" variant="ghost" className="gap-1 h-7 text-xs text-muted-foreground"
+                          onClick={() => setEditInvoice(inv)}>
+                          <Pencil size={12} />
+                          {t("inv_edit_title")}
+                        </Button>
+                      )}
+                      {canManageInvoices && inv.status === "draft" && (
                         <Button size="sm" variant="ghost"
                           className="gap-1 h-7 text-xs text-muted-foreground hover:text-destructive"
                           onClick={() => handleDelete(inv.id)}

@@ -48,6 +48,7 @@ import {
   Warehouse,
 } from "lucide-react"
 import { SignaturePad } from "@/components/SignaturePad"
+import { usePermissions } from "@/hooks/usePermissions"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -581,6 +582,8 @@ export default function GoodsReceivedPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false)
+  const { can } = usePermissions()
+  const canConfirmDeliveries = can("deliveries.confirm")
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -618,10 +621,12 @@ export default function GoodsReceivedPage() {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("goods_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("goods_desc")}</p>
           </div>
-          <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
-            <PlusCircle size={18} />
-            {t("goods_manual_add_button")}
-          </Button>
+          {canConfirmDeliveries && (
+            <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
+              <PlusCircle size={18} />
+              {t("goods_manual_add_button")}
+            </Button>
+          )}
         </div>
 
         <ManualReceiptDialog
@@ -644,10 +649,12 @@ export default function GoodsReceivedPage() {
               <p className="text-muted-foreground font-medium">{t("goods_empty")}</p>
               <p className="text-sm text-muted-foreground mt-1">{t("goods_empty_desc")}</p>
             </div>
-            <Button className="gap-2 mt-2" onClick={() => setIsManualDialogOpen(true)}>
-              <PlusCircle size={16} />
-              {t("goods_manual_add_button")}
-            </Button>
+            {canConfirmDeliveries && (
+              <Button className="gap-2 mt-2" onClick={() => setIsManualDialogOpen(true)}>
+                <PlusCircle size={16} />
+                {t("goods_manual_add_button")}
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">

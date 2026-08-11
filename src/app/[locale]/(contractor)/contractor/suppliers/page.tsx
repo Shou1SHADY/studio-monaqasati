@@ -499,7 +499,7 @@ export default function SuppliersDirectory() {
                     </div>
                     <div className={cn("flex flex-col gap-1", locale === 'ar' ? 'items-end' : 'items-start')}>
                       <div className="flex items-center gap-1.5">
-                        {supplier.linkId && (
+                        {supplier.linkId && canManageSuppliers && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
