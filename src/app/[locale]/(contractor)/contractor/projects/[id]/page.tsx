@@ -64,6 +64,7 @@ import {
   writeBatch,
   arrayRemove,
   arrayUnion,
+  increment,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -100,6 +101,7 @@ import {
   ShieldCheck,
   Handshake,
   Globe,
+  Warehouse,
 } from "lucide-react"
 import {
   useReactTable,
@@ -244,7 +246,9 @@ export default function ProjectDetailPage() {
   const [editLocation, setEditLocation] = useState("")
   const [editBudget, setEditBudget] = useState("")
   const [editStatus, setEditStatus] = useState<"active" | "paused" | "completed">("active")
+  const [editWarehouseId, setEditWarehouseId] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -517,6 +521,7 @@ export default function ProjectDetailPage() {
   }
 
   const typedProject = project as {
+    warehouseId?: string
     name?: string
     description?: string
     location?: string
@@ -530,6 +535,23 @@ export default function ProjectDetailPage() {
     organizationId?: string
     createdAt?: unknown
   } | null
+
+  const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
+
+  const warehousesQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId) return null
+    return query(collection(firestore, "warehouses"), where("organizationId", "==", myOrgId))
+  }, [firestore, myOrgId])
+  const { data: warehousesData } = useCollection(warehousesQuery)
+  const projectWarehouses = (warehousesData || []) as { id: string; name: string }[]
+
+  const linkedWarehouseInventoryQuery = useMemoFirebase(() => {
+    const wid = typedProject?.warehouseId
+    if (!firestore || !wid) return null
+    return collection(firestore, "warehouses", wid, "inventoryItems")
+  }, [firestore, typedProject?.warehouseId])
+  const { data: linkedInventoryData } = useCollection(linkedWarehouseInventoryQuery)
+  const linkedInventoryItems = (linkedInventoryData || []) as { id: string; name: string; unit: string; quantity: number }[]
 
   // Fetch BOQ items + sections from Firestore — always reflects server state. Returns the
   // freshly-fetched data (not just setState) so callers that need to act on it immediately
@@ -603,6 +625,7 @@ export default function ProjectDetailPage() {
     setEditLocation(typedProject.location || "")
     setEditBudget(typedProject.budget != null ? String(typedProject.budget) : "")
     setEditStatus((typedProject.status as "active" | "paused" | "completed") || "active")
+    setEditWarehouseId(typedProject.warehouseId || "")
     setIsEditing(true)
   }
 
@@ -616,6 +639,7 @@ export default function ProjectDetailPage() {
         location: editLocation.trim() || null,
         budget: editBudget ? Number(editBudget) : null,
         status: editStatus,
+        warehouseId: editWarehouseId || null,
         updatedAt: serverTimestamp(),
       })
       toast({ title: t("proj_toast_updated") })
@@ -1644,6 +1668,23 @@ export default function ProjectDetailPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label className="font-semibold flex items-center gap-1.5">
+                      <Warehouse size={14} className="text-muted-foreground" />
+                      {t("proj_warehouse_link")}
+                    </Label>
+                    <Select value={editWarehouseId} onValueChange={setEditWarehouseId} disabled={isSaving}>
+                      <SelectTrigger className="h-10 rounded-xl">
+                        <SelectValue placeholder={t("proj_warehouse_placeholder")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">{t("proj_warehouse_none")}</SelectItem>
+                        {projectWarehouses.map((w) => (
+                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex gap-2 pt-2">
                     <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving} className="gap-1">
                       <X size={14} />{t("cancel")}
@@ -1695,6 +1736,15 @@ export default function ProjectDetailPage() {
                       {fmtDate(typedProject.createdAt, locale)}
                     </span>
                   </div>
+                  {typedProject.warehouseId && (
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Warehouse size={16} className="text-accent shrink-0" />
+                      <span>
+                        <span className="font-semibold text-slate-500 text-xs block">{t("proj_warehouse_link")}</span>
+                        {projectWarehouses.find((w) => w.id === typedProject.warehouseId)?.name || typedProject.warehouseId}
+                      </span>
+                    </div>
+                  )}
                   {typedProject.blueprintUrl && (
                     <div className="sm:col-span-2">
                       <a
@@ -1788,6 +1838,13 @@ export default function ProjectDetailPage() {
                     <Layers size={14} />
                     {t("proj_boq_add_section")}
                   </Button>
+                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => setIsConsumeDialogOpen(true)}
+                      className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50">
+                      <Warehouse size={14} />
+                      {t("proj_boq_consume_btn")}
+                    </Button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap ps-3 border-s border-slate-200">
                   <Button size="sm" onClick={() => saveBoq()} disabled={boqSaving || (boqItems.length === 0 && boqGroups.length === 0)} className="gap-1.5">
@@ -2473,6 +2530,155 @@ export default function ProjectDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Consume from warehouse dialog */}
+      {typedProject?.warehouseId && (
+        <ConsumeFromWarehouseDialog
+          open={isConsumeDialogOpen}
+          onOpenChange={setIsConsumeDialogOpen}
+          warehouseId={typedProject.warehouseId}
+          inventoryItems={linkedInventoryItems}
+          locale={locale}
+          t={t}
+          onConsume={async (rows) => {
+            if (!firestore || !typedProject?.warehouseId) return
+            const newRows = rows.map((r, i) => ({
+              id: `new_wh_${Date.now()}_${i}`,
+              itemNo: String(boqItems.length + i + 1),
+              descriptionAr: r.itemName,
+              descriptionEn: r.itemName,
+              quantity: String(r.quantity),
+              unit: r.unit,
+              unitPrice: "",
+              tenderId: null,
+              isEditable: true,
+              groupId: null,
+            }))
+            setBoqItems((prev) => [...prev, ...newRows])
+            for (const r of rows) {
+              await updateDoc(
+                doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId),
+                { quantity: increment(-r.quantity), updatedAt: serverTimestamp() }
+              )
+            }
+            toast({ title: t("proj_boq_consume_success") })
+          }}
+        />
+      )}
     </PortalLayout>
+  )
+}
+
+type ConsumeRow = { inventoryItemId: string; itemName: string; quantity: number; unit: string }
+
+function ConsumeFromWarehouseDialog({
+  open,
+  onOpenChange,
+  warehouseId: _warehouseId,
+  inventoryItems,
+  locale,
+  t,
+  onConsume,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  warehouseId: string
+  inventoryItems: { id: string; name: string; unit: string; quantity: number }[]
+  locale: string
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  onConsume: (rows: ConsumeRow[]) => Promise<void>
+}) {
+  const [qtys, setQtys] = useState<Record<string, string>>({})
+  const [isSaving, setIsSaving] = useState(false)
+  const { toast } = useToast()
+  const isRtl = locale === "ar"
+
+  const reset = () => setQtys({})
+
+  const handleSubmit = async () => {
+    const rows: ConsumeRow[] = inventoryItems
+      .filter((item) => Number(qtys[item.id]) > 0)
+      .map((item) => ({
+        inventoryItemId: item.id,
+        itemName: item.name,
+        quantity: Number(qtys[item.id]),
+        unit: item.unit,
+      }))
+    if (rows.length === 0) {
+      toast({ title: t("proj_boq_consume_empty"), variant: "destructive" })
+      return
+    }
+    setIsSaving(true)
+    try {
+      await onConsume(rows)
+      reset()
+      onOpenChange(false)
+    } catch {
+      toast({ title: t("proj_boq_consume_error"), variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!isSaving) { onOpenChange(v); if (!v) reset() } }}>
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Warehouse size={18} />
+            {t("proj_boq_consume_title")}
+          </DialogTitle>
+          <DialogDescription>{t("proj_boq_consume_desc")}</DialogDescription>
+        </DialogHeader>
+        <div className="border rounded-lg overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b">
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs", isRtl ? "text-right" : "text-left")}>
+                  {t("goods_manual_item_name")}
+                </th>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-24", isRtl ? "text-right" : "text-left")}>
+                  {t("proj_boq_consume_available")}
+                </th>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-28", isRtl ? "text-right" : "text-left")}>
+                  {t("goods_manual_item_qty")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventoryItems.map((item) => (
+                <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50">
+                  <td className="px-3 py-2 font-medium">{item.name}</td>
+                  <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                    {item.quantity} {item.unit}
+                  </td>
+                  <td className="px-2 py-1">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={item.quantity}
+                      value={qtys[item.id] || ""}
+                      onChange={(e) => setQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                      placeholder="0"
+                      dir="ltr"
+                      className="h-8 text-sm tabular-nums"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+            {t("cancel")}
+          </Button>
+          <Button onClick={handleSubmit} disabled={isSaving} className="gap-2">
+            {isSaving && <Loader2 size={14} className="animate-spin" />}
+            {t("proj_boq_consume_btn")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
