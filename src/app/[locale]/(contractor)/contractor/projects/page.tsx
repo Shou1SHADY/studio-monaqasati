@@ -8,9 +8,10 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
-import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where } from "firebase/firestore"
 import { Loader2, FolderOpen, PlusCircle, MapPin, DollarSign, FileText } from "lucide-react"
+import { usePermissions } from "@/hooks/usePermissions"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -34,12 +35,7 @@ export default function ProjectsListPage() {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
-
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile } = useDoc(userDocRef)
+  const { can, profile } = usePermissions()
 
   const projectsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -85,12 +81,14 @@ export default function ProjectsListPage() {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("proj_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("proj_desc")}</p>
           </div>
-          <Link href="/contractor/projects/new">
-            <Button className="gap-2 font-bold">
-              <PlusCircle size={18} />
-              {t("proj_new")}
-            </Button>
-          </Link>
+          {can("projects.edit") && (
+            <Link href="/contractor/projects/new">
+              <Button className="gap-2 font-bold">
+                <PlusCircle size={18} />
+                {t("proj_new")}
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Status filter chips */}
@@ -127,12 +125,14 @@ export default function ProjectsListPage() {
               <p className="font-bold text-lg text-foreground">{t("proj_empty")}</p>
               <p className="text-muted-foreground text-sm mt-1">{t("proj_empty_desc")}</p>
             </div>
-            <Link href="/contractor/projects/new">
-              <Button variant="outline" className="gap-2">
-                <PlusCircle size={16} />
-                {t("proj_new")}
-              </Button>
-            </Link>
+            {can("projects.edit") && (
+              <Link href="/contractor/projects/new">
+                <Button variant="outline" className="gap-2">
+                  <PlusCircle size={16} />
+                  {t("proj_new")}
+                </Button>
+              </Link>
+            )}
           </div>
         )}
 

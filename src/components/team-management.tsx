@@ -62,6 +62,7 @@ import {
   seededGroupDocId,
   isSuperAdminGroup,
   ALL_PERMISSION,
+  can as resolveCan,
   type TeamGroup,
   type PermissionValue,
 } from "@/lib/permissions"
@@ -116,11 +117,13 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     return query(collection(firestore, "invitations"), where("email", "==", user.email.toLowerCase()))
   }, [firestore, user?.email])
 
-  // Invitations I sent (owner: manage pending team invites)
+  // Invitations I sent — load for any signed-in user so team.manage members
+  // can also manage invitations. The Firestore rule restricts the result to
+  // docs where invitedBy == the caller, so non-privileged reads are safe.
   const sentInvitationsQuery = useMemoFirebase(() => {
-    if (!firestore || !user || !isOwner) return null
+    if (!firestore || !user || !orgId) return null
     return query(collection(firestore, "invitations"), where("invitedBy", "==", user.uid))
-  }, [firestore, user, isOwner])
+  }, [firestore, user, orgId])
 
   const activityQuery = useMemoFirebase(() => {
     if (!firestore || !orgId || !isOwner) return null
@@ -150,9 +153,14 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
   }
 
   const groups = ((groupsRaw || []) as TeamGroup[]).slice().sort((a, b) => {
-    // System group first, then seeded, then custom by name
     if (a.isSystem !== b.isSystem) return a.isSystem ? -1 : 1
     return (a.name || "").localeCompare(b.name || "")
+  })
+
+  const canManageTeam = isOwner || resolveCan("team.manage", {
+    organizationRole: (profile?.organizationRole as string) || null,
+    defaultGroupId: (profile?.defaultGroupId as string) || null,
+    groups,
   })
 
   // Incoming team invitations addressed to me: new token-based format + legacy
@@ -505,7 +513,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               {(profile?.role || role) === "Contractor" ? t("team_page_desc_contractor") : t("team_page_desc_supplier")}
             </p>
           </div>
-          {isOwner && (
+          {canManageTeam && (
             <Button
               onClick={() => setIsInviteOpen(true)}
               className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-xl"
@@ -579,7 +587,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               <Layers size={14} />
               {t("team_tab_groups")}
             </TabsTrigger>
-            {isOwner && (
+            {canManageTeam && (
               <TabsTrigger value="sent" className="gap-2">
                 <Send size={14} />
                 {t("team_tab_sent")}
@@ -667,8 +675,12 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                                 <Badge className="bg-amber-100 text-amber-700 border-none gap-1">
                                   <Shield size={12} /> {t("team_ceo")}
                                 </Badge>
-                              ) : (
+                              ) : memberGroup ? (
                                 <Badge className="bg-blue-100 text-blue-700 border-none gap-1">
+                                  <ShieldCheck size={12} /> {displayGroupName(memberGroup)}
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-slate-100 text-slate-500 border-none gap-1">
                                   <ShieldCheck size={12} /> {t("team_team_member")}
                                 </Badge>
                               )}

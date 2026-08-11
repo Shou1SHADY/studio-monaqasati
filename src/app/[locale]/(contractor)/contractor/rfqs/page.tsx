@@ -40,6 +40,7 @@ import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
+import { usePermissions } from "@/hooks/usePermissions"
 
 export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
@@ -66,6 +67,7 @@ export default function ContractorRfqsPage() {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
+  const { can } = usePermissions()
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
@@ -415,12 +417,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_all_tenders_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("rfq_all_tenders_desc")}</p>
           </div>
-          <Link href="/contractor/rfqs/new">
-            <Button className="gap-2 rounded-xl shadow-lg shadow-primary/20 cursor-pointer">
-              <Send size={16} />
-              {t("rfq_new_tender")}
-            </Button>
-          </Link>
+          {can("rfq.create") && (
+            <Link href="/contractor/rfqs/new">
+              <Button className="gap-2 rounded-xl shadow-lg shadow-primary/20 cursor-pointer">
+                <Send size={16} />
+                {t("rfq_new_tender")}
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Status Filter Tabs */}
@@ -641,12 +645,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                 </p>
                 {!hasActiveFilters && (
                   <div className="flex items-center justify-center gap-3 flex-wrap">
-                    <Link href="/contractor/rfqs/new">
-                      <Button className="gap-2">
-                        <Send size={16} />
-                        {t("rfq_new_tender")}
-                      </Button>
-                    </Link>
+                    {can("rfq.create") && (
+                      <Link href="/contractor/rfqs/new">
+                        <Button className="gap-2">
+                          <Send size={16} />
+                          {t("rfq_new_tender")}
+                        </Button>
+                      </Link>
+                    )}
                     <Link href="/contractor/projects">
                       <Button variant="outline">{t("rfq_go_to_projects")}</Button>
                     </Link>
