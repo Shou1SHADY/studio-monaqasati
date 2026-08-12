@@ -4,10 +4,12 @@ import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useFirebase } from "@/firebase"
-import { doc, setDoc } from "firebase/firestore"
+import { doc, setDoc, addDoc, collection, serverTimestamp } from "firebase/firestore"
 import { signInAnonymously } from "firebase/auth"
-import { Loader2, Database, RefreshCw } from "lucide-react"
+import { Loader2, Database, RefreshCw, Warehouse } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
 
@@ -33,6 +35,88 @@ export default function SeedPage() {
   const { toast } = useToast()
 
   const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
+
+  const [whOrgId, setWhOrgId] = useState("")
+  const [isSeedingWh, setIsSeedingWh] = useState(false)
+  const [whLog, setWhLog] = useState<string[]>([])
+  const addWhLog = (msg: string) => setWhLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
+
+  const handleSeedWarehouse = async () => {
+    if (!firestore) return
+    const orgId = whOrgId.trim()
+    if (!orgId) { toast({ title: "أدخل معرّف المنظمة أولاً", variant: "destructive" }); return }
+    setIsSeedingWh(true)
+    setWhLog([])
+    try {
+      addWhLog(`بدء تأسيس بيانات المستودعات للمنظمة: ${orgId}`)
+
+      const warehouseSeeds = [
+        { name: "مستودع المواد الرئيسي", location: "الرياض - حي الصناعية" },
+        { name: "مستودع معدات الموقع", location: "جدة - المنطقة الصناعية" },
+      ]
+
+      const inventorySeeds: Record<string, Array<{ name: string; sku: string; unit: string; quantity: number; minStockLevel: number }>> = {
+        "0": [
+          { name: "حديد تسليح 16مم", sku: "STL-16-001", unit: "طن", quantity: 50, minStockLevel: 10 },
+          { name: "حديد تسليح 12مم", sku: "STL-12-001", unit: "طن", quantity: 30, minStockLevel: 5 },
+          { name: "أسمنت بورتلاندي", sku: "CEM-POR-001", unit: "كيس", quantity: 500, minStockLevel: 100 },
+          { name: "رمل ناعم", sku: "SND-FIN-001", unit: "م³", quantity: 80, minStockLevel: 20 },
+          { name: "بلاط سيراميك 60×60", sku: "TIL-CER-001", unit: "م²", quantity: 200, minStockLevel: 50 },
+          { name: "دهان خارجي أبيض", sku: "PNT-EXT-001", unit: "لتر", quantity: 150, minStockLevel: 30 },
+          { name: "أنابيب PVC 4 بوصة", sku: "PVC-04-001", unit: "متر", quantity: 300, minStockLevel: 60 },
+          { name: "كابلات كهربائية 4×10", sku: "CAB-410-001", unit: "متر", quantity: 500, minStockLevel: 100 },
+        ],
+        "1": [
+          { name: "خوذات السلامة", sku: "SAF-HLM-001", unit: "قطعة", quantity: 25, minStockLevel: 10 },
+          { name: "سقالات معدنية", sku: "SCF-STL-001", unit: "مجموعة", quantity: 8, minStockLevel: 2 },
+          { name: "مضخة مياه 3 بوصة", sku: "PMP-WAT-001", unit: "قطعة", quantity: 3, minStockLevel: 1 },
+          { name: "مولد كهربائي 50KVA", sku: "GEN-50K-001", unit: "قطعة", quantity: 2, minStockLevel: 1 },
+          { name: "خلاطة خرسانة 350L", sku: "MIX-350-001", unit: "قطعة", quantity: 4, minStockLevel: 1 },
+        ],
+      }
+
+      for (let i = 0; i < warehouseSeeds.length; i++) {
+        const wh = warehouseSeeds[i]
+        const whRef = doc(collection(firestore, "warehouses"))
+        const whId = whRef.id
+        await setDoc(whRef, {
+          id: whId,
+          organizationId: orgId,
+          name: wh.name,
+          location: wh.location,
+          description: null,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+        addWhLog(`✅ تم إنشاء المستودع: ${wh.name} (${whId})`)
+
+        const items = inventorySeeds[String(i)] ?? []
+        for (const item of items) {
+          await addDoc(collection(firestore, "warehouses", whId, "inventoryItems"), {
+            organizationId: orgId,
+            warehouseId: whId,
+            name: item.name,
+            sku: item.sku,
+            unit: item.unit,
+            quantity: item.quantity,
+            minStockLevel: item.minStockLevel,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        }
+        addWhLog(`  └─ تمت إضافة ${items.length} صنف مخزني`)
+      }
+
+      addWhLog("✅ اكتمل تأسيس بيانات المستودعات!")
+      toast({ title: "تم بنجاح", description: "تمت إضافة المستودعات والمخزون بنجاح." })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      addWhLog(`❌ خطأ: ${msg}`)
+      toast({ title: "فشل التأسيس", description: msg, variant: "destructive" })
+    } finally {
+      setIsSeedingWh(false)
+    }
+  }
 
   const handleSeed = async () => {
     if (!auth || !firestore) {
@@ -142,7 +226,7 @@ export default function SeedPage() {
 
   return (
     <PortalLayout>
-      <div className="max-w-2xl mx-auto py-10 text-right">
+      <div className="max-w-2xl mx-auto py-10 text-right space-y-8">
         <Card className="border-none shadow-xl bg-white">
           <CardHeader className="text-center border-b pb-6">
             <Database size={60} className="mx-auto text-primary mb-4" />
@@ -170,6 +254,43 @@ export default function SeedPage() {
                   <RefreshCw className="ml-3" size={24} />
                   {t("seed_now")}
                 </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+        {/* Warehouse seed */}
+        <Card className="border-none shadow-xl bg-white">
+          <CardHeader className="text-center border-b pb-6">
+            <Warehouse size={48} className="mx-auto text-accent mb-3" />
+            <CardTitle className="text-xl font-bold">تأسيس بيانات المستودعات</CardTitle>
+            <CardDescription>ينشئ 2 مستودعات + 13 صنف مخزني تجريبي لأي منظمة مقاول</CardDescription>
+          </CardHeader>
+          <CardContent className="p-8 space-y-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="wh-org-id" className="font-semibold">معرّف المنظمة (organizationId)</Label>
+              <Input
+                id="wh-org-id"
+                value={whOrgId}
+                onChange={e => setWhOrgId(e.target.value)}
+                placeholder="مثال: abc123xyz"
+                dir="ltr"
+                className="font-mono"
+              />
+              <p className="text-xs text-muted-foreground">يمكن العثور عليه في Firestore → users → [uid] → organizationId</p>
+            </div>
+            <div className="bg-slate-900 text-green-400 p-4 rounded-xl font-mono text-sm h-40 overflow-y-auto shadow-inner border-2 border-slate-800">
+              {whLog.map((log, i) => <div key={i} className="mb-1">➜ {log}</div>)}
+              {whLog.length === 0 && <div className="text-slate-500 italic">في انتظار التنفيذ...</div>}
+            </div>
+            <Button
+              onClick={handleSeedWarehouse}
+              disabled={isSeedingWh || !whOrgId.trim()}
+              className="w-full h-12 text-lg font-bold bg-accent hover:bg-accent/90 text-primary shadow-lg"
+            >
+              {isSeedingWh ? (
+                <><Loader2 className="animate-spin ml-2" size={20} />جاري الإنشاء...</>
+              ) : (
+                <><Warehouse className="ml-2" size={20} />إنشاء مستودعات تجريبية</>
               )}
             </Button>
           </CardContent>

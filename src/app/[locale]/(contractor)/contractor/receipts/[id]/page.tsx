@@ -248,22 +248,22 @@ export default function DeliveryReceiptPage() {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-xs font-bold text-slate-500 mb-2">{t("receipt_supplier_signature")}</p>
-                  <div className="h-24 border border-slate-200 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                  <div className={cn("h-24 rounded-lg overflow-hidden bg-white flex items-center justify-center", d.supplierSignatureData ? "border border-slate-200" : "border-2 border-dashed border-slate-300")}>
                     {d.supplierSignatureData ? (
                       <img src={d.supplierSignatureData} alt={t("receipt_supplier_signature")} className="w-full h-full object-contain p-1" />
                     ) : (
-                      <p className="text-slate-200 text-xs">{t("receipt_sig_empty")}</p>
+                      <p className="text-slate-400 text-xs">{t("receipt_sig_empty")}</p>
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1 text-center">{d.supplierName || "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-500 mb-2">{t("receipt_contractor_signature")}</p>
-                  <div className="h-24 border border-slate-200 rounded-lg overflow-hidden bg-white flex items-center justify-center">
+                  <div className={cn("h-24 rounded-lg overflow-hidden bg-white flex items-center justify-center", d.contractorSignatureData ? "border border-slate-200" : "border-2 border-dashed border-slate-300")}>
                     {d.contractorSignatureData ? (
                       <img src={d.contractorSignatureData} alt={t("receipt_contractor_signature")} className="w-full h-full object-contain p-1" />
                     ) : (
-                      <p className="text-slate-200 text-xs">{t("receipt_sig_empty")}</p>
+                      <p className="text-slate-400 text-xs">{t("receipt_sig_empty")}</p>
                     )}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1 text-center">{d.receivedByName || d.handoverRecipientName || "—"}</p>

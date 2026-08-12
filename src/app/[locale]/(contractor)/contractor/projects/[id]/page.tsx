@@ -1654,7 +1654,12 @@ export default function ProjectDetailPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label className="font-semibold">{t("proj_budget")}</Label>
-                      <Input type="number" min={0} value={editBudget} onChange={(e) => setEditBudget(e.target.value)} className="h-10 rounded-xl" disabled={isSaving} />
+                      <div className="relative">
+                        <Input type="number" min={0} value={editBudget} onChange={(e) => setEditBudget(e.target.value)} className="h-10 rounded-xl pe-14" disabled={isSaving} dir="ltr" />
+                        <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium pointer-events-none">
+                          {locale === "ar" ? "ر.س" : "SAR"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -1725,7 +1730,7 @@ export default function ProjectDetailPage() {
                       <DollarSign size={16} className="text-success shrink-0" />
                       <span>
                         <span className="font-semibold text-slate-500 text-xs block">{t("proj_budget_label")}</span>
-                        {typedProject.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")}
+                        {typedProject.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ر.س" : "SAR"}
                       </span>
                     </div>
                   )}
