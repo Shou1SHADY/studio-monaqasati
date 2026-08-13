@@ -48,6 +48,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { ColumnCustomizer } from "@/components/shared/ColumnCustomizer"
+import { useTableColumns, type TableColumnDef } from "@/hooks/useTableColumns"
 import { CATEGORIES_DATA, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
 import {
   filterSuppliersByStatus,
@@ -215,6 +217,17 @@ export default function AdminSuppliersPage() {
     new Set(localSuppliers.flatMap(s => s.specializations))
   )
 
+  const supplierColumns: TableColumnDef[] = [
+    { id: "id", label: t("id") },
+    { id: "name", label: t("supplier_name"), locked: true },
+    { id: "specialization", label: t("specialization") },
+    { id: "documents", label: t("documents") },
+    { id: "verification_req", label: t("verification_req") },
+    { id: "status", label: t("status"), locked: true },
+    { id: "actions", label: t("actions"), locked: true },
+  ]
+  const { isVisible, toggle } = useTableColumns("admin_suppliers", supplierColumns)
+
   return (
     <PortalLayout>
       <div className="space-y-6 text-right">
@@ -363,8 +376,9 @@ export default function AdminSuppliersPage() {
 
         {/* Table */}
         <Card className="border-none shadow-sm overflow-hidden">
-          <CardHeader className="border-b bg-white">
+          <CardHeader className="border-b bg-white flex flex-row items-center justify-between gap-3 space-y-0">
             <CardTitle className="text-lg">{t("suppliers_list")}</CardTitle>
+            <ColumnCustomizer columns={supplierColumns} isVisible={isVisible} toggle={toggle} />
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             {isLoading ? (
@@ -380,11 +394,11 @@ export default function AdminSuppliersPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow>
-                    <TableHead className="text-right hidden md:table-cell">{t("id")}</TableHead>
+                    {isVisible("id") && <TableHead className="text-right hidden md:table-cell">{t("id")}</TableHead>}
                     <TableHead className="text-right">{t("supplier_name")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("specialization")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("documents")}</TableHead>
-                    <TableHead className="text-right hidden sm:table-cell">{t("verification_req")}</TableHead>
+                    {isVisible("specialization") && <TableHead className="text-right hidden sm:table-cell">{t("specialization")}</TableHead>}
+                    {isVisible("documents") && <TableHead className="text-right hidden sm:table-cell">{t("documents")}</TableHead>}
+                    {isVisible("verification_req") && <TableHead className="text-right hidden sm:table-cell">{t("verification_req")}</TableHead>}
                     <TableHead className="text-right">{t("status")}</TableHead>
                     <TableHead className="text-left">{t("actions")}</TableHead>
                   </TableRow>
@@ -392,35 +406,39 @@ export default function AdminSuppliersPage() {
                 <TableBody>
                   {filteredSuppliers.map((s) => (
                     <TableRow key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                      <TableCell className="font-mono text-xs hidden md:table-cell">{s.id.substring(0, 8)}</TableCell>
+                      {isVisible("id") && <TableCell className="font-mono text-xs hidden md:table-cell">{s.id.substring(0, 8)}</TableCell>}
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-bold">{s.name}</span>
                           <span className="text-xs text-muted-foreground">{s.email}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <div className="flex gap-1 flex-wrap">
-                          {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{t("cr_badge")}</Badge>}
-                          {s.uploadedDocKeys.length > 0 && (
-                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
-                              {t("pdf_badge", { count: s.uploadedDocKeys.length })}
-                            </Badge>
+                      {isVisible("specialization") && <TableCell className="hidden sm:table-cell text-sm">{s.category}</TableCell>}
+                      {isVisible("documents") && (
+                        <TableCell className="hidden sm:table-cell">
+                          <div className="flex gap-1 flex-wrap">
+                            {s.hasCr && <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">{t("cr_badge")}</Badge>}
+                            {s.uploadedDocKeys.length > 0 && (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                                {t("pdf_badge", { count: s.uploadedDocKeys.length })}
+                              </Badge>
+                            )}
+                            {s.hasCerts && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">{t("certs_badge")}</Badge>}
+                            {!s.hasCr && s.uploadedDocKeys.length === 0 && (
+                              <span className="text-xs text-muted-foreground">{t("not_available")}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
+                      {isVisible("verification_req") && (
+                        <TableCell className="hidden sm:table-cell">
+                          {s.verificationRequested ? (
+                            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">{t("request_submitted")}</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
                           )}
-                          {s.hasCerts && <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">{t("certs_badge")}</Badge>}
-                          {!s.hasCr && s.uploadedDocKeys.length === 0 && (
-                            <span className="text-xs text-muted-foreground">{t("not_available")}</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        {s.verificationRequested ? (
-                          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">{t("request_submitted")}</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
+                        </TableCell>
+                      )}
                       <TableCell>{getStatusBadge(s.status)}</TableCell>
                       <TableCell className="text-left">
                         <div className="flex gap-2">

@@ -6,19 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { 
-  FileText, 
-  Users, 
-  Trophy, 
-  Activity, 
+import {
+  FileText,
+  Trophy,
   PlusCircle,
   ArrowUpRight,
   ArrowRight,
   TrendingUp,
   TrendingDown,
-  History,
   Star,
-  Award,
   Clock,
   ChevronUp,
   ChevronDown
@@ -29,6 +25,39 @@ import { collection, query, where, doc } from "firebase/firestore"
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
+import { useWorkQueue, type WorkQueueItem } from "@/hooks/useWorkQueue"
+import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Package, Truck, AlertTriangle, CircleDot, Banknote } from "lucide-react"
+
+function describeQueueItem(item: WorkQueueItem, t: ReturnType<typeof useTranslations<"Portal.Contractor">>) {
+  switch (item.type) {
+    case "rfq_decision":
+      return {
+        icon: FileText,
+        iconColor: "text-accent",
+        text: t("queue_item_rfq_decision", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set"), count: item.data.offerCount as number }),
+      }
+    case "delivery_confirm":
+      return {
+        icon: Truck,
+        iconColor: "text-amber-600",
+        text: t("queue_item_delivery_confirm", { supplierName: (item.data.supplierName as string) || t("queue_generic_supplier") }),
+      }
+    case "invoice_overdue":
+      return {
+        icon: AlertTriangle,
+        iconColor: "text-destructive",
+        text: t("queue_item_invoice_overdue", { invoiceNumber: (item.data.invoiceNumber as string) || "" }),
+      }
+    case "low_stock":
+      return {
+        icon: Package,
+        iconColor: "text-orange-600",
+        text: t("queue_item_low_stock", { itemName: (item.data.itemName as string) || "", warehouseName: (item.data.warehouseName as string) || "" }),
+      }
+  }
+}
 
 export default function ContractorDashboard() {
   const firestore = useFirestore();
@@ -78,19 +107,29 @@ export default function ContractorDashboard() {
   }, [firestore, user, isUserLoading])
   
   const { data: profile } = useDoc(userDocRef)
+  const myOrgId = profile?.organizationId || user?.uid
+  const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+
+  const projectsQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
+  }, [firestore, myOrgId])
+  const { data: projectsData } = useCollection(projectsQuery)
+  const orgProjects = ((projectsData || []) as { id: string; name?: string; updatedAt?: unknown }[]).slice().sort((a, b) => {
+    const toMs = (v: unknown) =>
+      v && typeof v === "object" && "toDate" in v ? (v as { toDate: () => Date }).toDate().getTime() : 0
+    return toMs(b.updatedAt) - toMs(a.updatedAt)
+  })
+  const activeProjectId = selectedProjectId || orgProjects[0]?.id || ""
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
   }, [firestore, user, isUserLoading, profile?.organizationId])
 
-  const usersQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "users"), where("role", "==", "Supplier"))
-  }, [firestore, user, isUserLoading])
-
   const { data: rfqs } = useCollection(rfqsQuery)
-  const { data: suppliers } = useCollection(usersQuery)
 
   const activeRfqsCount = rfqs?.filter((r: any) => r.status === "New").length || 0;
   const awardedCount = rfqs?.filter((r: any) => r.status === "Awarded").length || 0;
@@ -108,43 +147,21 @@ export default function ContractorDashboard() {
   const totalOffersCount = offersData?.length || 0;
   const pendingOffersCount = offersData?.filter((o: any) => o.status === "قيد المراجعة").length || 0;
   
-  const implicitFavoriteIds = offersData
-    ?.filter((o: any) => o.status === "مقبول")
-    .map((o: any) => o.supplierId) || []
-  const explicitFavoriteIds = profile?.favoriteSuppliers || []
-  const favoriteSupplierIds = new Set([...implicitFavoriteIds, ...explicitFavoriteIds])
-
-  const favoriteSuppliers = suppliers?.filter((s: any) => favoriteSupplierIds.has(s.id)) || [];
-  const suppliersCount = favoriteSuppliers.length || 0;
-
   const lastActivityDate = getLastActivityDate();
 
   const stats = [
     { title: t("active_tenders"), value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: t("browse_tenders"), actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? t("active_tenders_empty") : t("active_tenders_count", { count: activeRfqsCount }) },
     { title: t("awarded_contracts"), value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: t("view_contracts"), actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: t("awarded_contracts_context") },
-    { title: t("commitment_rate"), value: "90%", icon: Activity, color: "text-emerald-600", bg: "bg-emerald-50", glow: "group-hover:shadow-[0_0_20px_rgba(16,185,129,0.15)]", gradient: "group-hover:from-emerald-50 group-hover:to-emerald-100/50", action: t("how_calculated"), actionUrl: "#", trend: { value: 2, isPositive: true }, context: t("commitment_rate_context") },
     { title: t("offers_received"), value: totalOffersCount.toString(), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("review_offers"), actionUrl: "/contractor/rfqs", context: totalOffersCount === 0 ? t("offers_received_empty") : pendingOffersCount > 0 ? t("offers_received_pending", { count: pendingOffersCount }) : t("connected_suppliers_context") },
   ]
 
-  const recentActivity = [
-    ...(rfqs?.slice(0, 3).map((r: any) => ({
-      id: r.id, 
-      type: "rfq", 
-      text: t("rfq_created", { title: (typeof r.title === 'string' && r.title) ? r.title : t("rfq_not_set") }), 
-      time: r.createdAt ? new Date(r.createdAt).toLocaleDateString(locale) : t("now"), 
-      status: r.status || t("rfq_status_new"),
-      actionUrl: r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}/offers`,
-      actionLabel: r.status === "New" ? t("view_and_negotiate") : t("view_details")
-    })) || [])
-  ]
-
-  if (!profile || !rfqs || !suppliers) {
+  if (!profile || !rfqs) {
     return (
       <PortalLayout>
         <div className="space-y-8 max-w-7xl mx-auto pb-10">
           <Skeleton className="h-48 rounded-3xl w-full" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-lg" />)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-lg" />)}
           </div>
           <Skeleton className="h-64 rounded-lg w-full" />
         </div>
@@ -238,7 +255,7 @@ export default function ContractorDashboard() {
         </div>
 
         {/* Stats Grid - Primary KPIs per 5-second rule */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {stats.map((stat) => (
             <Card key={stat.title} className={`glass-card border-none shadow-sm overflow-hidden group hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ${stat.gradient}`}>
               <CardContent className="p-6">
@@ -281,177 +298,104 @@ export default function ContractorDashboard() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Recent Activity */}
-          <Card className="lg:col-span-2 shadow-md border-none overflow-hidden glass-card">
+        <div>
+          {/* Your Work Today — prioritized action queue */}
+          <Card className="shadow-md border-none overflow-hidden glass-card">
             <CardHeader className="flex flex-row items-center justify-between border-b border-border bg-muted/50 pb-4">
-                <CardTitle className="text-lg font-black flex items-center gap-2 text-foreground">
+              <CardTitle className="text-lg font-black flex items-center gap-2 text-foreground">
                 <div className="p-2 bg-primary/10 rounded-lg">
-                  <History className="h-5 w-5 text-primary" />
+                  <CircleDot className="h-5 w-5 text-primary" />
                 </div>
-                {t("recent_activities")}
+                {t("queue_title")}
+                {queueItems.length > 0 && (
+                  <Badge variant="secondary" className="bg-primary/10 text-primary font-bold border-none">
+                    {queueItems.length}
+                  </Badge>
+                )}
               </CardTitle>
-              <Link href="/contractor/rfqs">
-                <Button variant="ghost" size="sm" className="text-primary hover:text-primary/80 hover:bg-primary/5 font-bold">{t("view_full_log")}</Button>
-              </Link>
             </CardHeader>
-<CardContent className="p-0">
-                <div className="divide-y divide-border/80">
-                {recentActivity.length > 0 ? recentActivity.map((activity) => (
-                  <Link 
-                    key={activity.id} 
-                    href={activity.actionUrl}
-                    className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between group cursor-pointer block"
-                  >
-                    <div className="flex items-center gap-4">
-                        <div className={cn("h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-300", !prefersReducedMotion && "group-hover:scale-105")}>
-                        {activity.type === 'offer' && <TrendingUp className="h-5 w-5 text-emerald-500" />}
-                        {activity.type === 'rfq' && <FileText className="h-5 w-5 text-accent" />}
-                        {activity.type === 'award' && <Trophy className="h-5 w-5 text-amber-500" />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors">{activity.text}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="h-1.5 w-1.5 rounded-full bg-border" />
-                          <p className="text-[11px] font-medium text-muted-foreground" suppressHydrationWarning>{activity.time}</p>
+            <CardContent className="p-0">
+              <div className="divide-y divide-border/80">
+                {queueLoading ? (
+                  <div className="p-12 flex items-center justify-center">
+                    <Skeleton className="h-24 w-full rounded-lg" />
+                  </div>
+                ) : queueItems.length > 0 ? queueItems.map((item) => {
+                  const { icon: Icon, iconColor, text } = describeQueueItem(item, t)
+                  return (
+                    <Link
+                      key={item.id}
+                      href={item.actionUrl}
+                      className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between gap-4 group cursor-pointer block"
+                    >
+                      <div className="flex items-center gap-4 min-w-0">
+                        <div className={cn("h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 transition-transform duration-300", !prefersReducedMotion && "group-hover:scale-105")}>
+                          <Icon className={cn("h-5 w-5", iconColor)} />
                         </div>
+                        <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors truncate">{text}</p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium text-primary opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline-flex items-center gap-1">
-                        {activity.actionLabel}
-                        <ArrowRight className={cn("h-3 w-3", locale === 'ar' && "rtl-flip")} />
-                      </span>
-<Badge variant="secondary" className="bg-accent/10 text-accent font-bold px-3 py-1 rounded-full border-none">
-                          {activity.status}
-                        </Badge>
-                    </div>
-                  </Link>
-                )) : (
-                    <div className="p-12 flex flex-col items-center justify-center text-center space-y-3">
+                      <ArrowRight className={cn("h-4 w-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", locale === 'ar' && "rtl-flip")} />
+                    </Link>
+                  )
+                }) : (
+                  <div className="p-12 flex flex-col items-center justify-center text-center space-y-3">
                     <div className="h-16 w-16 rounded-full bg-slate-50 flex items-center justify-center">
-                      <Activity className="h-8 w-8 text-slate-300" />
+                      <CircleDot className="h-8 w-8 text-slate-300" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-700">{t("no_activities")}</p>
-                      <p className="text-sm text-slate-500">{t("no_activities_desc")}</p>
+                      <p className="font-bold text-slate-700">{t("queue_empty")}</p>
                     </div>
                   </div>
                 )}
               </div>
             </CardContent>
           </Card>
+        </div>
 
-          {/* Commitment Score Banner */}
-          <Card className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white shadow-2xl overflow-hidden relative border-none group">
-            {!prefersReducedMotion && (
-              <>
-                <div className={cn("absolute top-0 w-64 h-64 bg-accent/20 rounded-full blur-[80px] transition-all duration-700 group-hover:bg-accent/30 group-hover:scale-110", locale === 'ar' ? '-mr-20 -mt-20 right-0' : '-ml-20 -mt-20 left-0')} />
-                <div className={cn("absolute bottom-0 w-64 h-64 bg-cyan-400/10 rounded-full blur-[80px] transition-all duration-700 group-hover:bg-cyan-400/20 group-hover:scale-110", locale === 'ar' ? '-ml-20 -mb-20 left-0' : '-mr-20 -mb-20 right-0')} />
-              </>
-            )}
-            
-            <div className={cn("absolute top-0 w-full h-1.5", locale === 'ar' ? 'bg-gradient-to-l from-accent/40 via-accent to-cyan-400' : 'bg-gradient-to-r from-accent/40 via-accent to-cyan-400')} />
-            
-            <CardHeader className="relative z-10 pb-2">
-              <CardTitle className="text-lg font-black flex items-center gap-2 text-white/90">
-                <div className="p-2 rounded-lg bg-white/10 backdrop-blur-sm border border-white/5">
-                  <Activity className="h-5 w-5 text-accent" />
+        {/* Money Flow */}
+        {orgProjects.length > 0 && (
+          <Card className="shadow-md border-none overflow-hidden glass-card">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border bg-muted/50 pb-4 flex-wrap gap-3">
+              <CardTitle className="text-lg font-black flex items-center gap-2 text-foreground">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <Banknote className="h-5 w-5 text-primary" />
                 </div>
-                {t("commitment_index")}
+                {t("moneyflow_title")}
               </CardTitle>
+              {orgProjects.length > 1 && (
+                <Select value={activeProjectId} onValueChange={setSelectedProjectId}>
+                  <SelectTrigger className="w-56 h-9 text-sm">
+                    <SelectValue placeholder={t("moneyflow_project_selector_label")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {orgProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name || p.id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </CardHeader>
-            <CardContent className="space-y-6 relative z-10">
-              <div className="flex items-center justify-center py-6">
-                <div className="relative h-36 w-36 drop-shadow-[0_0_15px_rgba(32,203,213,0.3)]">
-                  <svg className="h-full w-full -rotate-90 transform" viewBox="0 0 100 100" aria-label={`${t("commitment_index")} 90%`}>
-                    <circle 
-                      className="text-white/5" 
-                      strokeWidth="8" 
-                      stroke="currentColor" 
-                      fill="transparent" 
-                      r="42" 
-                      cx="50" 
-                      cy="50" 
-                    />
-                    <circle 
-                      className={cn("text-accent drop-shadow-[0_0_8px_rgba(32,203,213,0.8)]", !prefersReducedMotion && "transition-all duration-1000 ease-out")} 
-                      strokeWidth="8" 
-                      strokeDasharray="263.89" 
-                      strokeDashoffset="26.38" 
-                      strokeLinecap="round" 
-                      stroke="currentColor" 
-                      fill="transparent" 
-                      r="42" 
-                      cx="50" 
-                      cy="50" 
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-4xl font-black tracking-tighter text-white" aria-label={`${t("commitment_rate")}: 90%`}>90<span className="text-xl text-accent">%</span></span>
-                  </div>
-                </div>
-              </div>
-              <p className="text-sm text-center text-white/80 leading-relaxed font-medium px-4" dangerouslySetInnerHTML={{ __html: t.raw("commitment_desc") }}>
-              </p>
-              <Button className="w-full bg-white/10 hover:bg-white/20 text-white backdrop-blur-md border border-white/10 font-bold h-12 rounded-xl transition-all duration-300">
-                {t("commitment_cta")}
-              </Button>
+            <CardContent className="p-6">
+              {activeProjectId && <MoneyFlowViz projectId={activeProjectId} />}
             </CardContent>
           </Card>
-        </div>
+        )}
 
-        {/* Favorite Suppliers Section */}
-        <div className="space-y-6 pt-8">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                <Star className="h-6 w-6 text-amber-400 fill-amber-400 drop-shadow-sm" />
-                {t("favorite_suppliers")}
-              </h2>
-              <p className="text-sm text-slate-500 mt-1">{t("favorite_suppliers_desc")}</p>
-            </div>
-            {/* <Link href="/contractor/suppliers">
-              <Button variant="outline" className="rounded-xl font-bold bg-white hover:bg-primary hover:text-white hover:border-primary border-slate-200 shadow-sm transition-all duration-300">{t("manage_favorites")}</Button>
-            </Link> */}
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {favoriteSuppliers && favoriteSuppliers.length > 0 ? favoriteSuppliers.map((supplier: any) => (
-              <Card key={supplier.id} className="border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-white group rounded-2xl overflow-hidden">
-                <div className={cn("h-1.5 w-full", locale === 'ar' ? 'bg-gradient-to-l from-slate-100 to-slate-200 group-hover:from-primary group-hover:to-blue-400' : 'bg-gradient-to-r from-slate-100 to-slate-200 group-hover:from-primary group-hover:to-blue-400')} />
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-400 shrink-0 border border-slate-200 shadow-sm group-hover:scale-110 transition-transform duration-300">
-                      <Users size={24} />
-                    </div>
-                    <div className="space-y-1.5 flex-1 min-w-0">
-                      <h3 className="font-black text-slate-800 text-base truncate group-hover:text-primary transition-colors">{supplier.companyName || supplier.name || t("certified_supplier")}</h3>
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 w-fit px-2 py-1 rounded-md">
-                        <Award size={14} className="text-amber-500" />
-                        <span className="font-medium">{t("previously_dealt")}</span>
-                      </div>
-                        <div className="flex gap-2 pt-3 flex-wrap">
-                          <Badge variant="outline" className="text-[10px] bg-white border-slate-200 text-slate-600 font-bold px-2 py-0.5 rounded-md shadow-sm">{t("suppliers_spec_building_materials")}</Badge>
-                          <Badge variant="outline" className="text-[10px] bg-white border-slate-200 text-slate-600 font-bold px-2 py-0.5 rounded-md shadow-sm">{t("suppliers_spec_cement")}</Badge>
-                        </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )) : (
-              <div className="col-span-3 p-12 flex flex-col items-center justify-center text-center bg-gradient-to-br from-slate-50 to-slate-100/50 rounded-3xl border border-dashed border-slate-200">
-                <div className="h-16 w-16 rounded-full bg-white shadow-sm flex items-center justify-center mb-4">
-                  <Star className="h-8 w-8 text-slate-300" />
-                </div>
-                <h3 className="font-bold text-slate-700 text-lg">{t("no_favorite_suppliers")}</h3>
-                <p className="text-slate-500 max-w-md mt-2 leading-relaxed">
-                  {t("no_favorite_suppliers_desc")}
-                </p>
+        {/* Favorites now live inline in the supplier directory, not as a separate dashboard section */}
+        <Link href="/contractor/suppliers" className="block">
+          <div className="flex items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200 bg-white hover:border-primary/40 hover:shadow-sm transition-all group">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Star className="h-5 w-5 text-amber-400 fill-amber-400" />
               </div>
-            )}
+              <div>
+                <p className="font-black text-slate-800">{t("favorite_suppliers")}</p>
+                <p className="text-sm text-slate-500">{t("favorite_suppliers_desc")}</p>
+              </div>
+            </div>
+            <ArrowRight className={cn("h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors", locale === 'ar' && "rtl-flip")} />
           </div>
-        </div>
+        </Link>
       </div>
     </PortalLayout>
   )

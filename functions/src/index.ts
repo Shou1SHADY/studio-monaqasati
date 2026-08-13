@@ -1,5 +1,6 @@
 import * as admin from "firebase-admin";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { auth as authFunctionsV1 } from "firebase-functions/v1";
 
@@ -116,6 +117,68 @@ export const onNotificationCreated = onDocumentCreated(
 // When a user is deleted from Firebase Auth (console, Admin SDK, or self-delete),
 // remove their push token so it doesn't accumulate as stale data.
 //
+// ─── Guarantee expiry notifications ──────────────────────────────────────────
+//
+// Daily scan of accepted guarantees; warns each member of the contractor org
+// once a guarantee's expirationDate falls within the warning window. Dedup is
+// via expiryNotifiedAt on the guarantee doc — set once, never re-checked.
+//
+const GUARANTEE_EXPIRY_WARNING_DAYS = 30;
+
+export const checkGuaranteeExpiry = onSchedule(
+  { schedule: "every day 06:00", timeZone: "Asia/Riyadh" },
+  async () => {
+    const now = new Date();
+    const horizon = new Date(now.getTime() + GUARANTEE_EXPIRY_WARNING_DAYS * 24 * 60 * 60 * 1000);
+
+    const snap = await db
+      .collection("guarantees")
+      .where("hasGuarantee", "==", true)
+      .where("status", "==", "accepted")
+      .get();
+
+    let notifiedGuarantees = 0;
+
+    for (const guaranteeDoc of snap.docs) {
+      const g = guaranteeDoc.data();
+      if (g.expiryNotifiedAt || !g.expirationDate) continue;
+
+      const expiry = new Date(g.expirationDate as string);
+      if (isNaN(expiry.getTime()) || expiry < now || expiry > horizon) continue;
+
+      const orgId = g.contractorOrgId as string | undefined;
+      if (!orgId) continue;
+
+      const usersSnap = await db.collection("users").where("organizationId", "==", orgId).get();
+      if (usersSnap.empty) continue;
+
+      const daysLeft = Math.max(1, Math.ceil((expiry.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
+      const itemName = (g.itemName as string) || (g.itemNameEn as string) || "المنتج";
+
+      const batch = db.batch();
+      for (const userDoc of usersSnap.docs) {
+        const notifRef = userDoc.ref.collection("notifications").doc();
+        batch.set(notifRef, {
+          userId: userDoc.id,
+          organizationId: orgId,
+          type: "guarantee_expiring",
+          title: "⚠️ ضمان على وشك الانتهاء",
+          message: `ضمان الصنف "${itemName}" سينتهي خلال ${daysLeft} يوم (${g.expirationDate}). يرجى المتابعة قبل الانتهاء.`,
+          offerId: null,
+          rfqId: g.rfqId ?? null,
+          createdAt: new Date().toISOString(),
+          read: false,
+        });
+      }
+      batch.set(guaranteeDoc.ref, { expiryNotifiedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      await batch.commit();
+      notifiedGuarantees++;
+    }
+
+    console.log(`[GuaranteeExpiry] Scanned ${snap.size} accepted guarantees, notified ${notifiedGuarantees} within ${GUARANTEE_EXPIRY_WARNING_DAYS}d window`);
+  }
+);
+
 export const cleanupDeletedUser = authFunctionsV1.user().onDelete(async (user) => {
   try {
     await db.doc(`users/${user.uid}`).update({

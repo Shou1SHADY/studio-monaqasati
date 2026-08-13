@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import {
   ChevronLeft,
   ChevronRight,
@@ -19,7 +18,6 @@ import {
   MapPin,
   Zap,
   Loader2,
-  Plus,
   Trash2,
   Upload,
   File,
@@ -28,7 +26,6 @@ import {
   AlertCircle,
   Globe,
   Lock,
-  ShieldCheck,
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -36,9 +33,10 @@ import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollecti
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
-import { CATEGORIES_DATA, SUBCATEGORY_UNIT_MAP, CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayCategory, displaySubcategory, displayDistrict, displayCountry } from "@/lib/constants"
+import { CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayDistrict, displayCountry } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { ProductRowEditor, type ProductRow, makeEmptyProductRow } from "@/components/shared/ProductRowEditor"
 
 interface ValidationError {
   field: string
@@ -105,20 +103,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     pdfStoragePath: null as string | null
   })
 
-  interface Product {
-    id: string
-    quantity: string
-    unit: string
-    description: string
-    category: string
-    subCategory: string
-    otherSubCategory?: string
-    requiresWarranty?: boolean
-  }
-
-  const [products, setProducts] = useState<Product[]>([
-    { id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "", requiresWarranty: false }
-  ])
+  const [products, setProducts] = useState<ProductRow[]>([makeEmptyProductRow("1")])
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -290,20 +275,6 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // Only NEXT_PUBLIC_-prefixed vars are inlined into the client bundle by Next.js — a plain
   // GEMINI_API_KEY/GOOGLE_API_KEY set on the server is invisible here and would never enable this.
   const isAiEnabled = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY
-
-  const addProduct = () => {
-    setProducts([...products, { id: Date.now().toString(), quantity: "", unit: "", description: "", category: "", subCategory: "", requiresWarranty: false }])
-  }
-
-  const removeProduct = (id: string) => {
-    if (products.length > 1) {
-      setProducts(products.filter(p => p.id !== id))
-    }
-  }
-
-  const updateProduct = (id: string, field: keyof Product, value: string | boolean) => {
-    setProducts(products.map(p => p.id === id ? { ...p, [field]: value } : p))
-  }
 
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -781,137 +752,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       {validationErrors.find(e => e.field === "products")?.message}
                     </div>
                   )}
-                  <div className="space-y-4">
-                    {products.map((product, index) => (
-                      <div key={product.id} className="p-6 bg-gradient-to-br from-white to-slate-50 rounded-2xl border border-slate-200/60 shadow-sm hover:shadow-md transition-all duration-200">
-                        <div className="flex items-center justify-between mb-5">
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-primary text-white flex items-center justify-center text-sm font-bold">
-                              {index + 1}
-                            </div>
-                            <span className="text-base font-bold text-slate-700">{t("newrfq_product_label")}</span>
-                          </div>
-                          {products.length > 1 && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeProduct(product.id)}
-                              className="text-red-500 hover:bg-red-50 hover:text-red-600 h-8 px-3 rounded-lg cursor-pointer transition-colors"
-                            >
-                              <Trash2 size={16} />
-                              <span className="mr-1 text-xs">{t("newrfq_delete_label")}</span>
-                            </Button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-                          <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">
-                              {t("newrfq_main_category")}<RequiredStar />
-                            </Label>
-                            <SearchableSelect
-                              value={product.category}
-                              onChange={v => {
-                                setProducts(prev => prev.map(p =>
-                                  p.id === product.id ? { ...p, category: v, subCategory: "" } : p
-                                ))
-                                clearError(`product_${product.id}_category`)
-                              }}
-                              options={Object.keys(CATEGORIES_DATA).map(cat => ({ value: cat, label: displayCategory(cat, locale) }))}
-                              placeholder={t("newrfq_select_category")}
-                              searchPlaceholder={t("newrfq_search_category")}
-                              noResultsText={t("newrfq_no_results")}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">
-                              {t("newrfq_sub_category")}<RequiredStar />
-                            </Label>
-                            <SearchableSelect
-                              value={product.subCategory}
-                              onChange={v => {
-                                const autoUnit = SUBCATEGORY_UNIT_MAP[v]
-                                setProducts(prev => prev.map(p =>
-                                  p.id === product.id ? { ...p, subCategory: v, ...(autoUnit ? { unit: autoUnit } : {}) } : p
-                                ))
-                                clearError(`product_${product.id}_subCategory`)
-                              }}
-                              options={[
-                                ...(product.category && CATEGORIES_DATA[product.category]
-                                  ? CATEGORIES_DATA[product.category].map(sub => ({ value: sub, label: displaySubcategory(sub, locale) }))
-                                  : []),
-                                { value: "أخرى", label: t("newrfq_other_category") }
-                              ]}
-                              placeholder={t("newrfq_select_sub_category")}
-                              searchPlaceholder={t("newrfq_search_sub_category")}
-                              noResultsText={t("newrfq_no_results")}
-                              disabled={!product.category}
-                            />
-                            {product.subCategory === "أخرى" && (
-                              <Input
-                                placeholder={t("newrfq_other_category_placeholder")}
-                                value={product.otherSubCategory || ""}
-                                onChange={e => updateProduct(product.id, "otherSubCategory", e.target.value)}
-                                className="h-11 rounded-xl border-slate-200 mt-2"
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                          <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">
-                              {t("newrfq_quantity")}<RequiredStar />
-                            </Label>
-                            <Input
-                              type="number"
-                              placeholder="0"
-                              value={product.quantity}
-                              onChange={e => updateProduct(product.id, "quantity", e.target.value)}
-                              className="h-11 rounded-xl border-slate-200"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-xs font-semibold text-slate-600">
-                              {t("newrfq_unit_of_measure")}<RequiredStar />
-                            </Label>
-                            <Input
-                              placeholder={t("newrfq_unit_placeholder")}
-                              value={product.unit}
-                              onChange={e => updateProduct(product.id, "unit", e.target.value)}
-                              className="h-11 rounded-xl border-slate-200"
-                            />
-                          </div>
-                        </div>
-                        <div className="mt-5">
-                          <Label className="text-xs font-semibold text-slate-600">{t("newrfq_specifications")}</Label>
-                          <Textarea
-                            placeholder={t("newrfq_spec_placeholder")}
-                            rows={2}
-                            value={product.description}
-                            onChange={e => updateProduct(product.id, "description", e.target.value)}
-                            className="mt-2 rounded-xl border-slate-200 resize-none"
-                          />
-                        </div>
-                        <div className="mt-4 flex items-center gap-2.5">
-                          <Switch
-                            checked={!!product.requiresWarranty}
-                            onCheckedChange={checked => updateProduct(product.id, "requiresWarranty", checked)}
-                          />
-                          <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5 cursor-pointer" onClick={() => updateProduct(product.id, "requiresWarranty", !product.requiresWarranty)}>
-                            <ShieldCheck size={14} className="text-amber-600" />
-                            {t("newrfq_requires_warranty")}
-                          </Label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-8 flex justify-center">
-                    <Button variant="outline" size="sm" onClick={addProduct} className="gap-2 border-slate-300 bg-white hover:bg-primary hover:text-white hover:border-primary rounded-xl h-11 px-8 cursor-pointer transition-all shadow-sm">
-                      <Plus size={18} />
-                      {t("newrfq_add_product")}
-                    </Button>
-                  </div>
+                  <ProductRowEditor
+                    rows={products}
+                    onChange={setProducts}
+                    locale={locale}
+                    t={t}
+                    onFieldTouched={(id, field) => clearError(`product_${id}_${field}`)}
+                  />
                 </div>
 
                 <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">

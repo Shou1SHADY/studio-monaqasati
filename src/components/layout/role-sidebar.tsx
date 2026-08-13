@@ -20,6 +20,7 @@ import {
   History,
   TrendingUp,
   MessageSquare,
+  MessagesSquare,
   Settings,
   LogOut,
   ChevronDown,
@@ -33,6 +34,7 @@ import {
   Briefcase,
   Receipt,
   Warehouse,
+  Building,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -92,6 +94,7 @@ const contractorSections: NavSection[] = [
     labelKey: "section_communication",
     items: [
       { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
+      { titleKey: "contractor_team_chat", href: "/contractor/team-chat", icon: MessagesSquare },
       { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
     ],
   },
@@ -99,6 +102,7 @@ const contractorSections: NavSection[] = [
     labelKey: "section_settings",
     items: [
       { titleKey: "contractor_team", href: "/contractor/team", icon: Users, requiredPermission: "team.manage" },
+      { titleKey: "contractor_companies", href: "/contractor/companies", icon: Building },
       { titleKey: "contractor_profile", href: "/contractor/profile", icon: UserCircle },
     ],
   },
@@ -123,6 +127,7 @@ const supplierSections: NavSection[] = [
     labelKey: "section_communication",
     items: [
       { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
+      { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
       { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
     ],
   },
@@ -130,6 +135,7 @@ const supplierSections: NavSection[] = [
     labelKey: "section_settings",
     items: [
       { titleKey: "supplier_team", href: "/supplier/team", icon: Users },
+      { titleKey: "supplier_companies", href: "/supplier/companies", icon: Building },
       { titleKey: "supplier_profile", href: "/supplier/profile", icon: UserCircle },
     ],
   },

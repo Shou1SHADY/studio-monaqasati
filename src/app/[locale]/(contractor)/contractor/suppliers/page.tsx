@@ -56,7 +56,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import { collection, query, where, doc, addDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -245,17 +245,34 @@ export default function SuppliersDirectory() {
   const explicitFavoriteIds = profile?.favoriteSuppliers || []
   const favoriteSupplierIds = new Set([...implicitFavoriteIds, ...explicitFavoriteIds])
 
-  const toggleFavorite = async (e: React.MouseEvent, supplierId: string) => {
+  const toggleFavorite = async (e: React.MouseEvent, supplier: any) => {
     e.stopPropagation();
-    if (!userDocRef || !profile) return;
+    if (!userDocRef || !profile || !myOrgId) return;
+    const supplierId = supplier.id
     const isExplicit = explicitFavoriteIds.includes(supplierId);
     try {
+      // Marking a not-yet-connected supplier as favorite auto-connects them immediately
+      // (skips the invite-and-wait flow) — favoriting is treated as "I already work with them."
+      const isConnected = connectedSupplierOrgIds.includes(supplier.id) || connectedSupplierOrgIds.includes(supplier.organizationId)
+      if (!isExplicit && !isConnected && firestore) {
+        await addDoc(collection(firestore, "contractorSupplierLinks"), {
+          contractorOrgId: myOrgId,
+          supplierOrgId: supplier.organizationId || supplier.id,
+          supplierName: supplier.name || supplier.companyName || "",
+          supplierCategories: supplier.specializations || [],
+          status: "active",
+          requestedBy: "contractor_favorite",
+          requestedAt: serverTimestamp(),
+          connectedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      }
       await updateDoc(userDocRef!, {
         favoriteSuppliers: isExplicit ? arrayRemove(supplierId) : arrayUnion(supplierId)
       });
       toast({
         title: isExplicit ? t("suppliers_fav_removed") : t("suppliers_fav_added"),
-        description: isExplicit ? t("suppliers_fav_removed_desc") : t("suppliers_fav_added_desc"),
+        description: isExplicit ? t("suppliers_fav_removed_desc") : (!isConnected ? t("suppliers_fav_added_connected_desc") : t("suppliers_fav_added_desc")),
       });
     } catch (err) {
       console.error("Failed to toggle favorite:", err);
@@ -279,20 +296,16 @@ export default function SuppliersDirectory() {
       .map((l: any) => [l.supplierOrgId, l.id])
   )
 
-  const knownFbSuppliers = (fbSuppliers || []).filter(
-    (s: any) => knownSupplierIds.has(s.id) || knownSupplierIds.has(s.organizationId)
-  )
-
   const allCities = [...new Set([
-    ...(knownFbSuppliers.map((s: any) => s.city).filter(Boolean) || []),
-    ...(knownFbSuppliers.flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
+    ...((fbSuppliers || []).map((s: any) => s.city).filter(Boolean) || []),
+    ...((fbSuppliers || []).flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
   ])].sort()
 
   const allSpecializations = [...new Set(
-    knownFbSuppliers.flatMap((s: any) => s.specializations || []).filter(Boolean) || []
+    (fbSuppliers || []).flatMap((s: any) => s.specializations || []).filter(Boolean) || []
   )].sort()
 
-  const displaySuppliers = knownFbSuppliers.length > 0 ? knownFbSuppliers
+  const displaySuppliers = (fbSuppliers || []).length > 0 ? (fbSuppliers || [])
     .map((s: any) => ({
       ...s,
       id: s.id,
@@ -307,6 +320,7 @@ export default function SuppliersDirectory() {
       reviewsCount: supplierRatingsMap[s.id]?.count ?? (s.reviewsCount || 0),
       isFavorite: favoriteSupplierIds.has(s.id),
       isExplicitFavorite: explicitFavoriteIds.includes(s.id),
+      isConnected: knownSupplierIds.has(s.id) || knownSupplierIds.has(s.organizationId),
       linkId: linkIdBySupplierOrgId.get(s.id) || linkIdBySupplierOrgId.get(s.organizationId)
     }))
     .filter((s: any) => {
@@ -512,7 +526,7 @@ export default function SuppliersDirectory() {
                           </button>
                         )}
                         <button
-                          onClick={(e) => toggleFavorite(e, supplier.id)}
+                          onClick={(e) => toggleFavorite(e, supplier)}
                           className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
                           title={supplier.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
                         >
@@ -530,6 +544,11 @@ export default function SuppliersDirectory() {
                         <Badge variant="outline" className="border-amber-200 text-amber-600 bg-amber-50 px-2 py-0.5 h-6">
                           <Star size={10} className={cn("fill-amber-500", locale === 'ar' ? 'ml-1' : 'mr-1')} />
                           {t("suppliers_fav_badge")}
+                        </Badge>
+                      )}
+                      {!supplier.isConnected && (
+                        <Badge variant="outline" className="border-slate-200 text-slate-500 bg-slate-50 px-2 py-0.5 h-6">
+                          {t("suppliers_not_connected_badge")}
                         </Badge>
                       )}
                     </div>

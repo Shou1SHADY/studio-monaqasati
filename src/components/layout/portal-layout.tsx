@@ -425,10 +425,14 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
       router.push(`/${basePath}/team`)
     } else if (notif.type === "new_chat_message" && notif.chatId) {
       router.push(`/${basePath}/chat/${notif.chatId}`)
+    } else if (notif.type === "team_chat_message") {
+      router.push(`/${basePath}/team-chat`)
     } else if (notif.type === "sample_requested") {
       router.push(`/supplier/offers`)
     } else if (notif.type === "inquiry_reply") {
       router.push(`/supplier/rfqs`)
+    } else if (notif.type === "guarantee_expiring") {
+      router.push(`/${basePath}/guarantees`)
     } else if (isSupplier) {
       if (notif.type === "new_rfq") {
         router.push(`/supplier/rfqs`)
@@ -647,7 +651,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                       const isSupplyCompleted = notif.type === "supply_completed"
                       const isInvitation = notif.type === "invitation"
                       const isInquiryReply = notif.type === "inquiry_reply"
-                      const isNewChatMessage = notif.type === "new_chat_message"
+                      const isNewChatMessage = notif.type === "new_chat_message" || notif.type === "team_chat_message"
+                      const isGuaranteeExpiring = notif.type === "guarantee_expiring"
                       const isUnread = isNotifUnread(notif)
                       
                       return (
@@ -685,9 +690,10 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             isAccepted ? "bg-success/10 text-success" :
                             isInvitation ? "bg-primary/10 text-primary" :
                             isInquiryReply ? "bg-success/10 text-success" :
+                            isGuaranteeExpiring ? "bg-amber-100 text-amber-700" :
                             "bg-muted text-muted-foreground"
                           }`}>
-                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isSampleSent ? <CheckCircle2 size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isPriceUpdated ? <TrendingDown size={14} /> : isSupplyCompleted ? <CheckCircle2 size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isWithdrawn ? <AlertCircle size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : <TrendingUp size={14} />}
+                            {isNewRfq ? <Bell size={14} /> : isSampleReceived ? <CheckCircle2 size={14} /> : isSampleRequest ? <Box size={14} /> : isSampleSent ? <CheckCircle2 size={14} /> : isPending ? <Clock size={14} /> : isPriceReduction ? <TrendingUp className="rotate-180" size={14} /> : isPriceUpdated ? <TrendingDown size={14} /> : isSupplyCompleted ? <CheckCircle2 size={14} /> : isAccepted ? <CheckCircle2 size={14} /> : isWithdrawn ? <AlertCircle size={14} /> : isInvitation ? <Bell size={14} /> : isInquiryReply ? <MessageSquare size={14} /> : isGuaranteeExpiring ? <AlertCircle size={14} /> : <TrendingUp size={14} />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">

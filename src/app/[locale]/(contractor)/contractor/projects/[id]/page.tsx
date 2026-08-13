@@ -50,6 +50,8 @@ import {
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
+import { ColumnCustomizer } from "@/components/shared/ColumnCustomizer"
+import { useTableColumns, type TableColumnDef } from "@/hooks/useTableColumns"
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import {
   doc,
@@ -99,8 +101,6 @@ import {
   List,
   Users,
   ShieldCheck,
-  Handshake,
-  Globe,
   Warehouse,
 } from "lucide-react"
 import {
@@ -112,11 +112,24 @@ import {
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
-import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict, COUNTRIES, displayCountry } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
-import { MDMAK_CONTRACTOR_ID } from "@/lib/mdmak-contractor"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
+import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
+import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
+import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
+import { PurchaseRequestsTab } from "@/components/contractor/PurchaseRequestsTab"
+import {
+  SECTION_IDS,
+  SECTION_REGISTRY,
+  LEGACY_DEFAULT_SECTIONS,
+  cascadeEnable,
+  cascadeDisable,
+  sectionLabelKey,
+  type SectionId,
+} from "@/lib/project-sections"
+import { Settings2, Sparkles, Receipt, ClipboardList } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -220,10 +233,11 @@ const BoqTableRow = memo(
     prev.columns === next.columns
 )
 
-type ActiveTab = "info" | "boq" | "rfqs" | "team"
+type ActiveTab = string
 
 export default function ProjectDetailPage() {
   const t = useTranslations("Portal.Contractor")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const router = useRouter()
@@ -236,10 +250,10 @@ export default function ProjectDetailPage() {
   const { can } = usePermissions(projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
-    const initial = searchParams.get("tab")
-    return initial === "boq" || initial === "rfqs" || initial === "team" ? initial : "info"
-  })
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
+  const [showManageSections, setShowManageSections] = useState(false)
+  const [pendingSections, setPendingSections] = useState<Set<SectionId>>(new Set())
+  const [isSavingSections, setIsSavingSections] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState("")
   const [editDescription, setEditDescription] = useState("")
@@ -274,9 +288,7 @@ export default function ProjectDetailPage() {
   // newly added/imported rows are automatically selected without any extra bookkeeping.
   const [deselectedIds, setDeselectedIds] = useState<Set<string>>(new Set())
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false)
-  const [publishMode, setPublishMode] = useState<"public" | "mdmak">("public")
-  const [publishRequestType, setPublishRequestType] = useState<"local" | "international">("local")
-  const [publishCountry, setPublishCountry] = useState("")
+  const [publishShipmentMode, setPublishShipmentMode] = useState<"single" | "multiple">("single")
   const [publishCity, setPublishCity] = useState("")
   const [publishDistrict, setPublishDistrict] = useState("")
   const [publishDeadline, setPublishDeadline] = useState("")
@@ -348,6 +360,14 @@ export default function ProjectDetailPage() {
   const [isBulkDeletingTenders, setIsBulkDeletingTenders] = useState(false)
   const [showBulkTenderDeleteDialog, setShowBulkTenderDeleteDialog] = useState(false)
   const [tenderViewMode, setTenderViewMode] = useState<"grid" | "list">("grid")
+
+  const rfqColumns: TableColumnDef[] = [
+    { id: "title", label: t("proj_rfqs"), locked: true },
+    { id: "category", label: t("proj_category") },
+    { id: "status", label: t("proj_status"), locked: true },
+    { id: "offers_count", label: t("proj_offers_count_label") },
+  ]
+  const { isVisible: isRfqColVisible, toggle: toggleRfqCol } = useTableColumns("project_rfqs", rfqColumns)
 
   const canEditOrDeleteTender = (rfq: any) => {
     if (rfq.status === "Awarded") return false
@@ -534,7 +554,16 @@ export default function ProjectDetailPage() {
     rfqIds?: string[]
     organizationId?: string
     createdAt?: unknown
+    enabledSections?: string[]
   } | null
+
+  const enabledSectionIds = ((typedProject?.enabledSections?.length
+    ? typedProject.enabledSections
+    : LEGACY_DEFAULT_SECTIONS) as SectionId[])
+
+  const dynamicTabs = SECTION_IDS
+    .filter((id) => enabledSectionIds.includes(id))
+    .filter((id) => SECTION_REGISTRY[id].tabRoute && id !== "collect")
 
   const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
 
@@ -949,11 +978,8 @@ export default function ProjectDetailPage() {
   // Publish: save first (so newly-added/moved rows get real Firestore ids), then create one RFQ
   // per section that has at least one selected item, locking only the items actually included.
   const handlePublish = async () => {
-    const needsCity = publishMode === "public" || publishRequestType === "local"
-    const needsCountry = publishMode === "mdmak" && publishRequestType === "international"
     if (!firestore || !user || !projectId || !publishDeadline) return
-    if (needsCity && !publishCity) return
-    if (needsCountry && !publishCountry) return
+    if (!publishCity) return
     setIsPublishing(true)
     try {
       const saved = await saveBoq({ silent: true })
@@ -981,8 +1007,6 @@ export default function ProjectDetailPage() {
       try {
         for (const group of groupsToPublish) {
           const selectedItems = itemsByGroup.get(group.id) || []
-          const isMdmak = publishMode === "mdmak"
-          const isInternational = isMdmak && publishRequestType === "international"
           const rfqData = {
             contractorId: user.uid,
             organizationId: (profile as { organizationId?: string } | null)?.organizationId || user.uid,
@@ -1004,19 +1028,16 @@ export default function ProjectDetailPage() {
             quantity: String(selectedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)),
             notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
             deadline: publishDeadline,
-            city: isInternational ? "" : publishCity,
-            district: isInternational ? "" : (publishDistrict || publishCity),
-            country: isInternational ? publishCountry : "SA",
-            isInternational,
+            city: publishCity,
+            district: publishDistrict || publishCity,
+            country: "SA",
+            isInternational: false,
+            shipmentMode: publishShipmentMode,
             pdfUrl: null,
             pdfStoragePath: null,
             status: "Draft",
-            visibility: isMdmak ? "private" : "public",
+            visibility: "public",
             requiresWarranty: selectedItems.some((item) => item.requiresWarranty),
-            ...(isMdmak ? {
-              orderedFromMdmakDirect: true,
-              allowedSupplierOrgIds: [MDMAK_CONTRACTOR_ID],
-            } : {}),
             boqProjectName: projectName,
             createdByUserId: user.uid,
             createdByUserName: (profile as { name?: string } | null)?.name || user.email || "عضو الفريق",
@@ -1040,9 +1061,7 @@ export default function ProjectDetailPage() {
         toast({ title: t("boq_success_title"), description: t("boq_success_desc", { count: created }) })
         setIsPublishDialogOpen(false)
         setDeselectedIds(new Set())
-        setPublishMode("public")
-        setPublishRequestType("local")
-        setPublishCountry("")
+        setPublishShipmentMode("single")
         setPublishCity("")
         setPublishDistrict("")
         setPublishDeadline("")
@@ -1529,8 +1548,37 @@ export default function ProjectDetailPage() {
     { key: "info", label: t("proj_tab_info"), icon: <FolderOpen size={15} /> },
     { key: "boq", label: t("proj_tab_boq"), icon: <TableProperties size={15} /> },
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
+    { key: "purchaseRequests", label: t("proj_tab_purchase_requests"), icon: <ClipboardList size={15} /> },
     { key: "team", label: t("proj_tab_team"), icon: <Users size={15} /> },
+    ...dynamicTabs.map((id) => ({
+      key: id as ActiveTab,
+      label: tShared(sectionLabelKey(id)),
+      icon: id === "ipc" ? <Receipt size={15} /> : <Sparkles size={15} />,
+    })),
   ]
+
+  const openManageSections = () => {
+    setPendingSections(new Set(enabledSectionIds))
+    setShowManageSections(true)
+  }
+
+  const handleSaveSections = async () => {
+    if (!firestore) return
+    setIsSavingSections(true)
+    try {
+      await updateDoc(doc(firestore, "projects", projectId), {
+        enabledSections: Array.from(pendingSections),
+        updatedAt: serverTimestamp(),
+      })
+      toast({ title: t("proj_manage_sections_saved") })
+      setShowManageSections(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("generic_error_title"), variant: "destructive" })
+    } finally {
+      setIsSavingSections(false)
+    }
+  }
 
   return (
     <PortalLayout>
@@ -1558,6 +1606,12 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
+            {can("projects.edit") && (
+              <Button variant="outline" size="sm" onClick={openManageSections} className="gap-1">
+                <Settings2 size={14} />
+                {t("proj_manage_sections_btn")}
+              </Button>
+            )}
             {can("projects.edit") && (
               <Button variant="outline" size="sm" onClick={startEdit} className="gap-1">
                 <Pencil size={14} />
@@ -2075,6 +2129,9 @@ export default function ProjectDetailPage() {
                       <List size={14} />
                     </button>
                   </div>
+                  {tenderViewMode === "list" && (
+                    <ColumnCustomizer columns={rfqColumns} isVisible={isRfqColVisible} toggle={toggleRfqCol} />
+                  )}
                   <Button size="sm" className="gap-1.5" onClick={() => router.push(`/contractor/projects/${projectId}/tenders/new`)}>
                     <Plus size={14} />
                     {t("proj_new_tender")}
@@ -2143,9 +2200,9 @@ export default function ProjectDetailPage() {
                       <TableRow>
                         <TableHead className="w-8"></TableHead>
                         <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
-                        <TableHead className="text-right">{t("proj_category")}</TableHead>
-                        <TableHead className="text-right">{t("proj_status")}</TableHead>
-                        <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>
+                        {isRfqColVisible("category") && <TableHead className="text-right">{t("proj_category")}</TableHead>}
+                        {isRfqColVisible("status") && <TableHead className="text-right">{t("proj_status")}</TableHead>}
+                        {isRfqColVisible("offers_count") && <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>}
                         <TableHead className="text-left"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -2159,9 +2216,9 @@ export default function ProjectDetailPage() {
                               <Checkbox checked={selectedTenderIds.includes(r.id)} onCheckedChange={() => toggleSelectTender(r.id)} />
                             </TableCell>
                             <TableCell className="font-bold text-slate-800 max-w-[220px] truncate">{r.title || r.id}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{r.category}</TableCell>
-                            <TableCell>{getTenderStatusBadge(r)}</TableCell>
-                            <TableCell className="text-sm">{r.offersCount || 0}</TableCell>
+                            {isRfqColVisible("category") && <TableCell className="text-sm text-muted-foreground">{r.category}</TableCell>}
+                            {isRfqColVisible("status") && <TableCell>{getTenderStatusBadge(r)}</TableCell>}
+                            {isRfqColVisible("offers_count") && <TableCell className="text-sm">{r.offersCount || 0}</TableCell>}
                             <TableCell className="text-left">
                               <div className="flex items-center justify-end gap-1">
                                 <Tooltip>
@@ -2301,7 +2358,44 @@ export default function ProjectDetailPage() {
         {activeTab === "team" && (
           <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
         )}
+
+        {activeTab === "purchaseRequests" && (
+          <PurchaseRequestsTab projectId={projectId} canDecide={can("warehouses.manage")} />
+        )}
+
+        {/* ── Dynamic section tabs ── */}
+        {activeTab === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
+          <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} />
+        )}
+        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && (
+          <ComingSoonTab sectionId={activeTab as SectionId} tShared={tShared} />
+        )}
       </div>
+
+      {/* Manage sections dialog */}
+      <Dialog open={showManageSections} onOpenChange={(open) => { if (!isSavingSections) setShowManageSections(open) }}>
+        <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("proj_manage_sections_title")}</DialogTitle>
+            <DialogDescription>{t("proj_manage_sections_desc")}</DialogDescription>
+          </DialogHeader>
+          <SectionToggleGrid
+            enabledSections={pendingSections}
+            onToggle={(id) => setPendingSections((prev) => (prev.has(id) ? cascadeDisable(prev, id) : cascadeEnable(prev, id)))}
+            requiredHintLabel={t("proj_manage_sections_required_hint")}
+            tShared={tShared}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManageSections(false)} disabled={isSavingSections}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={handleSaveSections} disabled={isSavingSections} className="gap-2">
+              {isSavingSections ? <Loader2 size={15} className="animate-spin" /> : null}
+              {t("proj_manage_sections_save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={(open) => !open && setShowDeleteDialog(false)}>
@@ -2335,90 +2429,49 @@ export default function ProjectDetailPage() {
             <DialogDescription>{t("boq_push_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Mode toggle */}
-            <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
-              {([
-                { mode: "public" as const, icon: Send, label: t("boq_mode_public") },
-                { mode: "mdmak" as const, icon: Handshake, label: t("boq_mode_mdmak") },
-              ]).map(({ mode, icon: Icon, label }) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setPublishMode(mode)}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all",
-                    publishMode === mode
-                      ? mode === "mdmak"
-                        ? "bg-accent text-primary shadow-sm"
-                        : "bg-white text-primary shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <Icon size={15} />
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {/* Mdmak: local / international sub-toggle */}
-            {publishMode === "mdmak" && (
-              <div className="flex gap-2">
+            {/* Shipment mode toggle */}
+            <div className="space-y-1.5">
+              <Label>{t("boq_shipment_mode_label")}</Label>
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-xl">
                 {([
-                  { type: "local" as const, label: t("boq_request_local") },
-                  { type: "international" as const, label: t("boq_request_international") },
-                ]).map(({ type, label }) => (
+                  { mode: "single" as const, icon: Package, label: t("boq_shipment_single") },
+                  { mode: "multiple" as const, icon: Layers, label: t("boq_shipment_multiple") },
+                ]).map(({ mode, icon: Icon, label }) => (
                   <button
-                    key={type}
+                    key={mode}
                     type="button"
-                    onClick={() => { setPublishRequestType(type); setPublishCountry(""); setPublishCity(""); setPublishDistrict("") }}
+                    onClick={() => setPublishShipmentMode(mode)}
                     className={cn(
-                      "flex-1 py-1.5 rounded-lg text-sm border transition-all",
-                      publishRequestType === type
-                        ? "border-accent bg-accent/10 text-accent font-semibold"
-                        : "border-slate-200 text-muted-foreground hover:border-slate-300"
+                      "flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all",
+                      publishShipmentMode === mode
+                        ? "bg-white text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {type === "international" && <Globe size={13} className="inline ms-1" />}
+                    <Icon size={15} />
                     {label}
                   </button>
                 ))}
               </div>
-            )}
+              <p className="text-xs text-muted-foreground">
+                {publishShipmentMode === "single" ? t("boq_shipment_single_desc") : t("boq_shipment_multiple_desc")}
+              </p>
+            </div>
 
-            {/* Country selector (international Mdmak only) */}
-            {publishMode === "mdmak" && publishRequestType === "international" && (
-              <div className="space-y-1.5">
-                <Label>{t("boq_country_label")} *</Label>
-                <SearchableSelect
-                  size="md"
-                  value={publishCountry}
-                  onChange={setPublishCountry}
-                  options={COUNTRIES.filter(c => c.value !== "SA").map(c => ({ value: c.value, label: displayCountry(c.value, locale) }))}
-                  placeholder={t("boq_country_placeholder")}
-                  searchPlaceholder={t("newrfq_search_country")}
-                  noResultsText={t("newrfq_no_results")}
-                />
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <Label>{t("boq_city_label")} *</Label>
+              <SearchableSelect
+                size="md"
+                value={publishCity}
+                onChange={(v) => { setPublishCity(v); setPublishDistrict("") }}
+                options={SAUDI_CITIES.map((c) => ({ value: c, label: displayCity(c, locale) }))}
+                placeholder={t("boq_city_placeholder")}
+                searchPlaceholder={t("newrfq_search_city")}
+                noResultsText={t("newrfq_no_results")}
+              />
+            </div>
 
-            {/* City selector (public or local Mdmak) */}
-            {(publishMode === "public" || publishRequestType === "local") && (
-              <div className="space-y-1.5">
-                <Label>{t("boq_city_label")} *</Label>
-                <SearchableSelect
-                  size="md"
-                  value={publishCity}
-                  onChange={(v) => { setPublishCity(v); setPublishDistrict("") }}
-                  options={SAUDI_CITIES.map((c) => ({ value: c, label: displayCity(c, locale) }))}
-                  placeholder={t("boq_city_placeholder")}
-                  searchPlaceholder={t("newrfq_search_city")}
-                  noResultsText={t("newrfq_no_results")}
-                />
-              </div>
-            )}
-
-            {/* District selector */}
-            {(publishMode === "public" || publishRequestType === "local") && publishCity && CITIES_DISTRICTS[publishCity] && (
+            {publishCity && CITIES_DISTRICTS[publishCity] && (
               <div className="space-y-1.5">
                 <Label>{t("boq_district_label")}</Label>
                 <SearchableSelect
@@ -2456,16 +2509,11 @@ export default function ProjectDetailPage() {
             </Button>
             <Button
               onClick={handlePublish}
-              disabled={
-                isPublishing ||
-                !publishDeadline ||
-                ((publishMode === "public" || publishRequestType === "local") && !publishCity) ||
-                (publishMode === "mdmak" && publishRequestType === "international" && !publishCountry)
-              }
-              className={cn("gap-2", publishMode === "mdmak" && "bg-accent hover:bg-accent/90 text-primary")}
+              disabled={isPublishing || !publishDeadline || !publishCity}
+              className="gap-2"
             >
-              {isPublishing ? <Loader2 size={16} className="animate-spin" /> : publishMode === "mdmak" ? <Handshake size={16} /> : <Send size={16} />}
-              {publishMode === "mdmak" ? t("boq_mode_mdmak") : t("newrfq_publish_now")}
+              {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+              {t("newrfq_publish_now")}
             </Button>
           </DialogFooter>
         </DialogContent>

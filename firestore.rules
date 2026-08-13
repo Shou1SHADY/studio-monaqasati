@@ -109,6 +109,16 @@ service cloud.firestore {
             && get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.organizationId
                == request.resource.data.organizationId
           )
+          || (
+            // Multi-company switch: an account may only switch its active
+            // organizationId into itself (its default org) or a secondary
+            // company it created — never into an org owned by someone else.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'updatedAt'])
+            && (
+              request.resource.data.organizationId == userId
+              || get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerUserId == userId
+            )
+          )
         ))
         || (
           isSignedIn() &&
@@ -130,6 +140,22 @@ service cloud.firestore {
         // Only the user themselves and admins can read/write OTP codes
         allow read, write: if isOwner(userId) || isAdmin();
       }
+
+      // Supplier-saved quotation PDF templates, reused across offer submissions.
+      match /quotationTemplates/{templateId} {
+        allow get, list, create, update, delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Secondary companies an account creates for the multi-company switcher.
+    // The account's default/primary company has no doc here — it's implicit
+    // (organizationId == the owner's own uid), matching the original org model.
+    match /organizations/{orgId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
+      allow update: if isSignedIn() && resource.data.ownerUserId == request.auth.uid;
+      allow delete: if isAdmin();
     }
 
     match /categories/{categoryId} {
@@ -275,6 +301,17 @@ service cloud.firestore {
       }
     }
 
+    // Internal same-company chat — one channel per organization, doc id == organizationId.
+    match /teamChats/{orgId} {
+      allow get, create, update: if isOrgMember(orgId) || isAdmin();
+      allow list: if isSignedIn();
+
+      match /messages/{messageId} {
+        allow read: if isOrgMember(orgId) || isAdmin();
+        allow create: if isOrgMember(orgId) && request.resource.data.senderId == request.auth.uid;
+      }
+    }
+
     // Top-level messages collection (used by mobile app)
     match /messages/{messageId} {
       allow read, list: if isSignedIn();
@@ -349,10 +386,17 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if isSignedIn();
-      // Supplier-initiated requests OR supplier accepting a contractor invitation
+      // Supplier-initiated requests, supplier accepting a contractor invitation,
+      // OR a contractor marking a supplier as favorite (auto-connects immediately,
+      // skipping the invite-and-wait step).
       allow create: if isSignedIn()
-        && request.resource.data.supplierOrgId == getOrganizationId()
-        && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor");
+        && (
+          (request.resource.data.supplierOrgId == getOrganizationId()
+            && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor"))
+          || (request.resource.data.contractorOrgId == getOrganizationId()
+              && request.resource.data.requestedBy == "contractor_favorite"
+              && request.resource.data.status == "active")
+        );
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
         (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('suppliers.manage')) ||
@@ -436,6 +480,64 @@ service cloud.firestore {
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
+      }
+
+      // Minimal IPC/claims (مستخلصات) — bare-bones: submit, then flip to collected.
+      // No edit/reject flow; amount/description are immutable once submitted.
+      match /ipcClaims/{claimId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && request.resource.data.submittedByUserId == request.auth.uid
+          && request.resource.data.status == 'submitted'
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'invoices.manage'));
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && hasProjectPermission(projectId, 'invoices.manage')
+          && resource.data.status == 'submitted'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'collectedAt', 'updatedAt'])
+          && request.resource.data.status == 'collected';
+
+        allow delete: if isAdmin();
+      }
+
+      // Append-only finance audit trail (who submitted/collected an IPC claim, and when).
+      // No update/delete for non-admins — it's a log, not an editable record.
+      match /financeAuditLog/{entryId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && request.resource.data.actorId == request.auth.uid;
+
+        allow update, delete: if isAdmin();
+      }
+
+      // Internal purchase requests (طلبات شراء داخلية) — any org member can raise
+      // one from inside the project; only the warehouse decision-maker
+      // (warehouses.manage) can approve/reject it. Bare-bones: no edit flow,
+      // only the pending -> approved|rejected transition is allowed post-create.
+      match /purchaseRequests/{requestId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && request.resource.data.requestedByUserId == request.auth.uid
+          && request.resource.data.status == 'pending';
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && hasProjectPermission(projectId, 'warehouses.manage')
+          && resource.data.status == 'pending'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
+          && (request.resource.data.status == 'approved' || request.resource.data.status == 'rejected');
+
+        allow delete: if isAdmin();
       }
     }
 

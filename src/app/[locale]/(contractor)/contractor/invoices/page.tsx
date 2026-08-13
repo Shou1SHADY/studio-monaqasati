@@ -62,9 +62,12 @@ type Invoice = {
   items: InvoiceItem[]
   vatPercent: number
   rfqId?: string
+  projectId?: string | null
   notes?: string
   organizationId: string
 }
+
+type ProjectOption = { id: string; name: string }
 
 const STATUS_ICONS: Record<InvoiceStatus, React.ElementType> = {
   draft: FileText,
@@ -150,6 +153,7 @@ function InvoiceDialog({
   onOpenChange,
   invoice,
   orgId,
+  projects,
   t,
   locale,
 }: {
@@ -157,6 +161,7 @@ function InvoiceDialog({
   onOpenChange: (open: boolean) => void
   invoice?: Invoice
   orgId: string
+  projects: ProjectOption[]
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   locale: string
 }) {
@@ -170,6 +175,7 @@ function InvoiceDialog({
   const [issueDate, setIssueDate] = useState(invoice?.issueDate ?? today)
   const [dueDate, setDueDate] = useState(invoice?.dueDate ?? thirtyDaysLater)
   const [rfqId, setRfqId] = useState(invoice?.rfqId ?? "")
+  const [projectId, setProjectId] = useState(invoice?.projectId ?? "")
   const [notes, setNotes] = useState(invoice?.notes ?? "")
   const [vatPercent, setVatPercent] = useState(invoice?.vatPercent ?? 15)
   const [items, setItems] = useState<InvoiceItem[]>(
@@ -204,6 +210,7 @@ function InvoiceDialog({
         issueDate,
         dueDate,
         rfqId: rfqId.trim() || null,
+        projectId: projectId || null,
         notes: notes.trim() || null,
         vatPercent,
         items: items.filter((it) => it.description.trim()),
@@ -247,6 +254,18 @@ function InvoiceDialog({
             <div className="space-y-1.5">
               <Label htmlFor="inv-rfq">{t("inv_rfq_link")}</Label>
               <Input id="inv-rfq" value={rfqId} onChange={(e) => setRfqId(e.target.value)} placeholder={t("inv_rfq_placeholder")} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inv-project">{t("inv_project_link")}</Label>
+              <Select value={projectId || "none"} onValueChange={(v) => setProjectId(v === "none" ? "" : v)}>
+                <SelectTrigger id="inv-project"><SelectValue placeholder={t("inv_project_placeholder")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t("inv_project_none")}</SelectItem>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="inv-issue">{t("inv_issue_date")} *</Label>
@@ -362,6 +381,13 @@ export default function ContractorInvoicesPage() {
   }, [firestore, myOrgId])
   const { data: invoices, isLoading } = useCollection(invoicesQuery)
   const list = (invoices || []) as Invoice[]
+
+  const projectsQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
+  }, [firestore, myOrgId])
+  const { data: projectsData } = useCollection(projectsQuery)
+  const projects: ProjectOption[] = ((projectsData || []) as { id: string; name?: string }[]).map((p) => ({ id: p.id, name: p.name || p.id }))
 
   const withResolvedStatus = list.map((inv) => ({
     ...inv,
@@ -541,13 +567,14 @@ export default function ContractorInvoicesPage() {
         )}
       </div>
 
-      <InvoiceDialog open={showCreate} onOpenChange={setShowCreate} orgId={myOrgId} t={t} locale={locale} />
+      <InvoiceDialog open={showCreate} onOpenChange={setShowCreate} orgId={myOrgId} projects={projects} t={t} locale={locale} />
       {editInvoice && (
         <InvoiceDialog
           open={!!editInvoice}
           onOpenChange={(open) => { if (!open) setEditInvoice(null) }}
           invoice={editInvoice}
           orgId={myOrgId}
+          projects={projects}
           t={t}
           locale={locale}
         />

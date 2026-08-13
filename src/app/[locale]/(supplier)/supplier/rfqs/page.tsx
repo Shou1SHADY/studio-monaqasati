@@ -30,8 +30,6 @@ import {
   EyeOff,
   Upload,
   X,
-  Star,
-  Award,
   Tag,
   ShieldCheck,
   Globe,
@@ -63,7 +61,7 @@ export default function AvailableRfqsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
   const [customDeadline, setCustomDeadline] = useState("")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean, estimatedBudget?: number} | null>(null)
 
   const [showMobileFilters, setShowMobileFilters] = useState(false)
   const activeFilterCount = [deadlineFilter !== "all", selectedCategory !== "all", selectedCity !== "all"].filter(Boolean).length
@@ -94,7 +92,6 @@ export default function AvailableRfqsPage() {
   const [archivingRfqId, setArchivingRfqId] = useState<string | null>(null)
   const [showArchivedRfqs, setShowArchivedRfqs] = useState(false)
   const [showInquiries, setShowInquiries] = useState(false)
-  const [showContractorReviews, setShowContractorReviews] = useState(false)
   const [newQuestion, setNewQuestion] = useState("")
   const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false)
   
@@ -122,21 +119,6 @@ export default function AvailableRfqsPage() {
   }, [firestore, selectedRfq?.id])
 
   const { data: inquiries, isLoading: inquiriesLoading } = useCollection(inquiriesQuery)
-
-  const contractorDocRef = useMemoFirebase(() => {
-    if (!firestore || !selectedRfq?.contractorId) return null;
-    return doc(firestore, "users", selectedRfq.contractorId)
-  }, [firestore, selectedRfq?.contractorId])
-  const { data: contractorInfo } = useDoc(contractorDocRef)
-
-  const contractorReviewsQuery = useMemoFirebase(() => {
-    if (!firestore || !selectedRfq?.contractorId) return null
-    return query(
-      collection(firestore, "reviews"),
-      where("revieweeId", "==", selectedRfq.contractorId)
-    )
-  }, [firestore, selectedRfq?.contractorId])
-  const { data: contractorReviews } = useCollection(contractorReviewsQuery)
 
   // ✅ تطبيق نمط الحماية: العودة بـ null طالما أن حالة المستخدم لم تكتمل
   const rfqsQuery = useMemoFirebase(() => {
@@ -621,7 +603,7 @@ export default function AvailableRfqsPage() {
       />
 
       {/* RFQ Details Dialog */}
-      <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); } }}>
+      <Dialog open={showRfqDetails} onOpenChange={(open) => { if (!open) { setShowRfqDetails(false); setShowInquiries(false); } }}>
         <DialogContent
           className="w-[calc(100vw-1.5rem)] sm:w-full sm:max-w-3xl text-right rounded-2xl p-0 overflow-hidden max-h-[94dvh] flex flex-col gap-0 border-none shadow-2xl"
           dir={locale === 'ar' ? 'rtl' : 'ltr'}
@@ -714,15 +696,15 @@ export default function AvailableRfqsPage() {
               <div className="flex flex-col gap-1.5 p-3.5 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-transparent">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                   <TrendingUp size={11} className="text-slate-500" />
-                  <span>{t("offers_count_label")}</span>
+                  <span>{t("estimated_budget_label")}</span>
                 </div>
                 <p className="text-sm font-bold text-slate-800 leading-tight" dir="ltr">
-                  <span className="text-2xl font-black text-primary">{selectedRfq?.offersCount || 0}</span>
-                  <span className="text-[11px] text-slate-500 font-medium ms-1">/ {t("offers_count_offers")}</span>
+                  {selectedRfq?.estimatedBudget ? (
+                    <span className="text-xl font-black text-primary">{Number(selectedRfq.estimatedBudget).toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ر.س" : "SAR"}</span>
+                  ) : (
+                    <span className="text-sm font-bold text-slate-400">{t("estimated_budget_not_set")}</span>
+                  )}
                 </p>
-                <span className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  {selectedRfq?.offersCount ? t("offers_competing") : t("offers_no_competition")}
-                </span>
               </div>
             </div>
 
@@ -866,90 +848,11 @@ export default function AvailableRfqsPage() {
               )}
             </div>
 
-            {/* Contractor Info & Reviews */}
-            <div className="border-t border-slate-100 pt-3">
-              <Button
-                variant="ghost"
-                onClick={() => setShowContractorReviews(!showContractorReviews)}
-                className="w-full justify-between hover:bg-slate-50 h-11 rounded-xl px-3"
-              >
-                <span className={`font-bold text-slate-700 flex items-center gap-2 text-sm ${locale === 'ar' ? 'text-right' : ''}`}>
-                  <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Award size={14} className="text-primary" />
-                  </div>
-                  {t("contractor_info_label", { rating: (contractorInfo as any)?.rating || 0 })}
-                </span>
-                {showContractorReviews ? <ChevronRight size={16} className="text-slate-400" /> : <ChevronLeft size={16} className="text-slate-400" />}
-              </Button>
-
-              {showContractorReviews && (
-                <div className="mt-2.5 space-y-2.5">
-                  <div className="p-3.5 bg-gradient-to-br from-slate-50 to-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-sm">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                        <Award size={18} className="text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="font-bold text-slate-800 truncate">{(contractorInfo as any)?.companyName || (contractorInfo as any)?.name || t("approved_contractor")}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">{t("contractor_desc")}</p>
-                      </div>
-                    </div>
-                    {((contractorInfo as any)?.rating || 0) > 0 && (
-                      <div className="flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-100 shrink-0">
-                        <div className="flex items-center gap-0.5">
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star
-                              key={star}
-                              size={10}
-                              className={star <= Math.round(Number((contractorInfo as any)?.rating) || 0) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-xs font-bold text-amber-700">{(contractorInfo as any)?.rating}</span>
-                        <span className="text-[10px] text-amber-600/80 font-medium">({contractorReviews?.length || 0})</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {contractorReviews && contractorReviews.length > 0 ? (
-                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                      <h4 className="font-bold text-sm text-slate-700 flex items-center gap-2">
-                        <Star size={14} className="text-amber-400 fill-amber-400" />
-                        {t("supplier_opinions")}
-                      </h4>
-                      {contractorReviews.map((review: any) => (
-                        <div key={review.id} className="p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-bold text-slate-700">{t("suppliers_anonymous_reviewer")}</span>
-                            <div className="flex items-center gap-0.5 text-amber-500">
-                              <span className="text-xs font-bold">{review.rating}</span>
-                              <Star size={10} className="fill-amber-400" />
-                            </div>
-                          </div>
-                          {review.comment && (
-                            <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-2 rounded">
-                              "{review.comment}"
-                            </p>
-                          )}
-                          <p className="text-[10px] text-slate-400 mt-2 text-left">
-                            {new Date(review.createdAt).toLocaleDateString(locale)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground text-center py-6 bg-slate-50 rounded-xl border border-dashed">
-                      {t("no_previous_reviews")}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Sticky Bottom CTA */}
           <div className="px-5 py-3.5 border-t bg-gradient-to-t from-slate-50/50 to-white shrink-0 flex gap-2.5 shadow-[0_-4px_20px_rgba(15,23,42,0.04)]">
-            <Button variant="outline" className="flex-1 h-11 rounded-xl border-slate-200 hover:bg-slate-50 font-bold" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); setShowContractorReviews(false); }}>
+            <Button variant="outline" className="flex-1 h-11 rounded-xl border-slate-200 hover:bg-slate-50 font-bold" onClick={() => { setShowRfqDetails(false); setShowInquiries(false); }}>
               {t("close")}
             </Button>
             <Button className="flex-[2.5] bg-gradient-to-l from-success to-emerald-600 hover:from-success/90 hover:to-emerald-600/90 gap-2 h-11 rounded-xl shadow-lg shadow-success/25 hover:shadow-xl hover:shadow-success/30 transition-all font-black text-white group active:scale-[0.98]" onClick={() => { setShowRfqDetails(false); setShowSubmitOffer(true) }}>

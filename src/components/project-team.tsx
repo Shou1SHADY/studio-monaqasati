@@ -10,13 +10,14 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { collection, doc, setDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations } from "next-intl"
 import { Users, UserPlus, Trash2, Shield, Loader2 } from "lucide-react"
 import { usePermissions } from "@/hooks/usePermissions"
 import { type TeamGroup } from "@/lib/permissions"
 import { logTeamActivity } from "@/lib/team-activity"
+import { useOrgMembers } from "@/hooks/useOrgMembers"
 
 interface ProjectTeamSectionProps {
   projectId: string
@@ -45,11 +46,7 @@ export function ProjectTeamSection({ projectId, organizationId }: ProjectTeamSec
   const [addGroupId, setAddGroupId] = useState<string>("")
   const [isAdding, setIsAdding] = useState(false)
 
-  const membersQuery = useMemoFirebase(() => {
-    if (!firestore || !organizationId) return null
-    return query(collection(firestore, "users"), where("organizationId", "==", organizationId))
-  }, [firestore, organizationId])
-  const { data: orgMembers } = useCollection(membersQuery)
+  const { orgMembers } = useOrgMembers(organizationId)
 
   const projectMembersQuery = useMemoFirebase(() => {
     if (!firestore || !projectId) return null

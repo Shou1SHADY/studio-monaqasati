@@ -11,11 +11,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { ProductRowEditor, makeEmptyProductRow, type ProductRow } from "@/components/shared/ProductRowEditor"
+import { StagedTeamStep, type StagedMember } from "@/components/contractor/StagedTeamStep"
+import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, doc, addDoc, writeBatch, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import type { BoqItem, BoqParsedGroup } from "@/lib/boq-parser"
+import {
+  SECTION_IDS,
+  cascadeEnable,
+  cascadeDisable,
+  defaultEnabledSections,
+  sectionLabelKey,
+  type SectionId,
+} from "@/lib/project-sections"
 import {
   Loader2,
   FolderPlus,
@@ -28,6 +39,9 @@ import {
   MapPin,
   AlertCircle,
   TableProperties,
+  LayoutGrid,
+  Users,
+  ClipboardCheck,
 } from "lucide-react"
 
 const PROJECT_TYPES = [
@@ -70,8 +84,11 @@ interface ValidationError {
   message: string
 }
 
+type BoqMode = "upload" | "manual" | "skip" | null
+
 export default function NewProjectPage() {
   const t = useTranslations("Portal.Contractor")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const router = useRouter()
@@ -95,17 +112,25 @@ export default function NewProjectPage() {
   const [blueprintFile, setBlueprintFile] = useState<File | null>(null)
   const [blueprintUploading, setBlueprintUploading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [enabledSections, setEnabledSections] = useState<Set<SectionId>>(() => defaultEnabledSections())
+
+  const [boqMode, setBoqMode] = useState<BoqMode>(null)
   const [boqFile, setBoqFile] = useState<File | null>(null)
   const [boqParsedItems, setBoqParsedItems] = useState<BoqItem[] | null>(null)
   const [boqParsedGroups, setBoqParsedGroups] = useState<BoqParsedGroup[]>([])
   const [boqParsing, setBoqParsing] = useState(false)
   const boqFileInputRef = useRef<HTMLInputElement>(null)
+  const [manualRows, setManualRows] = useState<ProductRow[]>([makeEmptyProductRow("1")])
+
+  const [stagedMembers, setStagedMembers] = useState<StagedMember[]>([])
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid
 
   const hasError = (field: string) => validationErrors.some(e => e.field === field)
   const clearError = (field: string) => setValidationErrors(prev => prev.filter(e => e.field !== field))
@@ -119,8 +144,8 @@ export default function NewProjectPage() {
     }
   }
 
-  // Parse a BOQ file at creation time — same parser the project's own BOQ tab uses.
-  // Only file upload here, no manual product list or grouping; that happens later in the BOQ tab.
+  // Parse a BOQ file — same parser the project's own BOQ tab uses. Only file upload
+  // here; per-row reorganization/grouping happens later in the BOQ tab.
   const handleBoqFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -153,6 +178,10 @@ export default function NewProjectPage() {
     if (boqFileInputRef.current) boqFileInputRef.current.value = ""
   }
 
+  const toggleSection = (id: SectionId) => {
+    setEnabledSections((prev) => (prev.has(id) ? cascadeDisable(prev, id) : cascadeEnable(prev, id)))
+  }
+
   const validateStep1 = (): ValidationError[] => {
     const errors: ValidationError[] = []
     if (!name.trim()) errors.push({ field: "name", message: t("proj_name_required") })
@@ -168,6 +197,8 @@ export default function NewProjectPage() {
     }
   }
 
+  const STEP_COUNT = 6
+
   const nextStep = () => {
     const errors = step === 1 ? validateStep1() : []
     if (errors.length > 0) {
@@ -175,11 +206,11 @@ export default function NewProjectPage() {
       return
     }
     setValidationErrors([])
-    setStep(s => s + 1)
+    setStep(s => Math.min(STEP_COUNT, s + 1))
   }
 
   const prevStep = () => {
-    setStep(s => s - 1)
+    setStep(s => Math.max(1, s - 1))
     setValidationErrors([])
   }
 
@@ -218,53 +249,117 @@ export default function NewProjectPage() {
         projectType: projectType || null,
         clientType: clientType || null,
         blueprintUrl,
+        enabledSections: Array.from(enabledSections),
         rfqIds: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
 
-      // Seed the BOQ tab with the parsed file, if one was uploaded — pre-organized into the
-      // sections detected from the file's own Category/Subcategory hierarchy.
-      if (boqParsedItems && boqParsedItems.length > 0) {
-        const boqBatch = writeBatch(firestore)
-        const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
-        const boqGroupsRef = collection(firestore, "projects", projectRef.id, "boqGroups")
-        boqParsedItems.forEach((item) => {
-          boqBatch.set(doc(boqItemsRef), {
-            itemNo: item.itemNo,
-            descriptionAr: item.descriptionAr,
-            descriptionEn: item.descriptionEn,
-            unit: item.unit,
-            quantity: item.quantity,
-            unitPrice: item.rate || 0,
-            sheet: item.sheet,
-            divisionNo: item.divisionNo,
-            divisionNameEn: item.divisionNameEn,
-            divisionNameAr: item.divisionNameAr,
-            subCategoryCode: item.subCategoryCode,
-            subCategoryNameEn: item.subCategoryNameEn,
-            subCategoryNameAr: item.subCategoryNameAr,
-            suggestedCategory: item.suggestedCategory,
-            suggestedSubCategory: item.suggestedSubCategory,
-            tenderId: null,
-            isEditable: true,
-            groupId: item.groupId,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+      // From here on, the project itself already exists — BOQ and team-assignment
+      // writes are best-effort. A failure here surfaces as a softer "partial" toast
+      // and the user still lands on their new project (can retry from its tabs).
+      let hadPartialFailure = false
+
+      try {
+        // Seed the BOQ tab — from the parsed Excel file, or from manually-entered rows.
+        if (boqMode === "upload" && boqParsedItems && boqParsedItems.length > 0) {
+          const boqBatch = writeBatch(firestore)
+          const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
+          const boqGroupsRef = collection(firestore, "projects", projectRef.id, "boqGroups")
+          boqParsedItems.forEach((item) => {
+            boqBatch.set(doc(boqItemsRef), {
+              itemNo: item.itemNo,
+              descriptionAr: item.descriptionAr,
+              descriptionEn: item.descriptionEn,
+              unit: item.unit,
+              quantity: item.quantity,
+              unitPrice: item.rate || 0,
+              sheet: item.sheet,
+              divisionNo: item.divisionNo,
+              divisionNameEn: item.divisionNameEn,
+              divisionNameAr: item.divisionNameAr,
+              subCategoryCode: item.subCategoryCode,
+              subCategoryNameEn: item.subCategoryNameEn,
+              subCategoryNameAr: item.subCategoryNameAr,
+              suggestedCategory: item.suggestedCategory,
+              suggestedSubCategory: item.suggestedSubCategory,
+              tenderId: null,
+              isEditable: true,
+              groupId: item.groupId,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            })
           })
-        })
-        boqParsedGroups.forEach((group) => {
-          boqBatch.set(doc(boqGroupsRef, group.id), {
-            titleAr: group.titleAr,
-            categoryAr: group.categoryAr,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+          boqParsedGroups.forEach((group) => {
+            boqBatch.set(doc(boqGroupsRef, group.id), {
+              titleAr: group.titleAr,
+              categoryAr: group.categoryAr,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            })
           })
-        })
-        await boqBatch.commit()
+          await boqBatch.commit()
+        } else if (boqMode === "manual") {
+          const validRows = manualRows.filter((r) => r.description.trim() && Number(r.quantity) > 0)
+          if (validRows.length > 0) {
+            const boqBatch = writeBatch(firestore)
+            const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
+            validRows.forEach((row) => {
+              boqBatch.set(doc(boqItemsRef), {
+                itemNo: null,
+                descriptionAr: row.description,
+                descriptionEn: null,
+                unit: row.unit,
+                quantity: row.quantity,
+                unitPrice: 0,
+                sheet: null,
+                divisionNo: null,
+                divisionNameEn: null,
+                divisionNameAr: null,
+                subCategoryCode: null,
+                subCategoryNameEn: null,
+                subCategoryNameAr: null,
+                suggestedCategory: row.category || null,
+                suggestedSubCategory: (row.subCategory === "أخرى" ? row.otherSubCategory : row.subCategory) || null,
+                tenderId: null,
+                isEditable: true,
+                groupId: null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              })
+            })
+            await boqBatch.commit()
+          }
+        }
+      } catch (boqErr) {
+        console.error("BOQ seed failed:", boqErr)
+        hadPartialFailure = true
       }
 
-      toast({ title: t("proj_toast_created") })
+      try {
+        if (stagedMembers.length > 0) {
+          const membersBatch = writeBatch(firestore)
+          stagedMembers.forEach((sm) => {
+            membersBatch.set(doc(firestore, "projects", projectRef.id, "members", sm.userId), {
+              userId: sm.userId,
+              groupId: sm.groupId,
+              organizationId: typedProfile?.organizationId || user.uid,
+              addedBy: user.uid,
+              createdAt: serverTimestamp(),
+            })
+          })
+          await membersBatch.commit()
+        }
+      } catch (membersErr) {
+        console.error("Team assignment failed:", membersErr)
+        hadPartialFailure = true
+      }
+
+      toast(
+        hadPartialFailure
+          ? { title: t("proj_toast_created"), description: t("proj_toast_partial_error"), variant: "default" }
+          : { title: t("proj_toast_created") }
+      )
       router.push(`/contractor/projects/${projectRef.id}`)
     } catch (err) {
       console.error(err)
@@ -279,6 +374,8 @@ export default function NewProjectPage() {
     }
   }
 
+  const manualRowCount = manualRows.filter((r) => r.description.trim() && Number(r.quantity) > 0).length
+
   return (
     <PortalLayout>
       <div className={cn("max-w-4xl mx-auto py-8", isRtl ? "text-right" : "text-left")}>
@@ -291,7 +388,11 @@ export default function NewProjectPage() {
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mb-8">
           {[
             { step: 1, label: t("proj_step_details"), icon: FolderPlus },
-            { step: 2, label: t("proj_step_location"), icon: MapPin },
+            { step: 2, label: t("proj_step_sections"), icon: LayoutGrid },
+            { step: 3, label: t("proj_step_boq"), icon: TableProperties },
+            { step: 4, label: t("proj_step_location"), icon: MapPin },
+            { step: 5, label: t("proj_step_team"), icon: Users },
+            { step: 6, label: t("proj_step_review"), icon: ClipboardCheck },
           ].map(({ step: s, label, icon: Icon }, idx) => (
             <div key={s} className="flex items-center">
               <button
@@ -310,7 +411,7 @@ export default function NewProjectPage() {
                 {step > s ? <CheckCircle2 size={20} /> : <Icon size={20} />}
                 <span className="font-bold text-xs sm:text-sm">{label}</span>
               </button>
-              {idx < 1 && (
+              {idx < STEP_COUNT - 1 && (
                 isRtl ? <ChevronLeft size={20} className="mx-1 sm:mx-2 text-slate-300" /> : <ChevronRight size={20} className="mx-1 sm:mx-2 text-slate-300" />
               )}
             </div>
@@ -393,61 +494,6 @@ export default function NewProjectPage() {
                   />
                 </div>
 
-                {/* BOQ file upload — file only; manual editing/grouping happens later in the BOQ tab */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-                      <TableProperties size={18} className="text-primary" />
-                    </div>
-                    <Label className="text-base font-bold text-slate-700">{t("proj_boq_upload")}</Label>
-                  </div>
-                  <input
-                    ref={boqFileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={handleBoqFileChange}
-                  />
-                  {boqFile ? (
-                    <div className="flex items-center gap-4 p-5 bg-primary/5 border border-primary/20 rounded-2xl">
-                      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                        <TableProperties size={24} className="text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-sm font-semibold text-foreground truncate block">{boqFile.name}</span>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {t("proj_boq_import_success", { count: boqParsedItems?.length || 0 })}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={removeBoqFile}
-                        className="text-red-500 hover:bg-red-50 hover:text-red-600 h-9 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        aria-label={t("proj_boq_remove_file")}
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => boqFileInputRef.current?.click()}
-                      disabled={isSubmitting || boqParsing}
-                      className="w-full flex items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                      <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-                        {boqParsing ? <Loader2 size={20} className="animate-spin text-primary" /> : <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />}
-                      </div>
-                      <div className={isRtl ? "text-right" : "text-left"}>
-                        <span className="text-sm font-semibold text-slate-700 block">
-                          {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
-                        </span>
-                        <span className="text-xs text-muted-foreground">({t("proj_boq_upload_hint")})</span>
-                      </div>
-                    </button>
-                  )}
-                </div>
-
                 {/* Blueprint PDF Upload */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
@@ -501,6 +547,119 @@ export default function NewProjectPage() {
             )}
 
             {step === 2 && (
+              <div className="p-8 space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">{t("proj_sections_title")}</h2>
+                  <p className="text-sm text-muted-foreground mt-1">{t("proj_sections_desc")}</p>
+                </div>
+
+                <SectionToggleGrid
+                  enabledSections={enabledSections}
+                  onToggle={toggleSection}
+                  requiredHintLabel={t("proj_sections_required_hint")}
+                  tShared={tShared}
+                />
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="p-8 space-y-6">
+                <div>
+                  <Label className="text-base font-bold text-slate-700">{t("proj_boq_mode_label")}</Label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {([
+                    { mode: "upload" as const, icon: Upload, label: t("proj_boq_mode_upload") },
+                    { mode: "manual" as const, icon: TableProperties, label: t("proj_boq_mode_manual") },
+                    { mode: "skip" as const, icon: ChevronRight, label: t("proj_boq_mode_skip") },
+                  ]).map(({ mode, icon: Icon, label }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setBoqMode(mode)}
+                      className={cn(
+                        "flex flex-col items-center gap-2 p-5 rounded-2xl border text-center transition-all cursor-pointer",
+                        boqMode === mode ? "border-primary bg-primary/5 shadow-sm" : "border-slate-200 bg-white hover:border-slate-300"
+                      )}
+                    >
+                      <Icon size={22} className={boqMode === mode ? "text-primary" : "text-slate-400"} />
+                      <span className="text-sm font-bold text-slate-700">{label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {boqMode === "upload" && (
+                  <div className="space-y-4">
+                    <input
+                      ref={boqFileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      className="hidden"
+                      onChange={handleBoqFileChange}
+                    />
+                    {boqFile ? (
+                      <div className="flex items-center gap-4 p-5 bg-primary/5 border border-primary/20 rounded-2xl">
+                        <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                          <TableProperties size={24} className="text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold text-foreground truncate block">{boqFile.name}</span>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {t("proj_boq_import_success", { count: boqParsedItems?.length || 0 })}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={removeBoqFile}
+                          className="text-red-500 hover:bg-red-50 hover:text-red-600 h-9 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          aria-label={t("proj_boq_remove_file")}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => boqFileInputRef.current?.click()}
+                        disabled={isSubmitting || boqParsing}
+                        className="w-full flex items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                          {boqParsing ? <Loader2 size={20} className="animate-spin text-primary" /> : <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />}
+                        </div>
+                        <div className={isRtl ? "text-right" : "text-left"}>
+                          <span className="text-sm font-semibold text-slate-700 block">
+                            {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                          </span>
+                          <span className="text-xs text-muted-foreground">({t("proj_boq_upload_hint")})</span>
+                        </div>
+                      </button>
+                    )}
+                    {boqParsedItems && boqParsedItems.length > 0 && (
+                      <div className="p-4 bg-success/5 border border-success/20 rounded-xl flex items-center gap-2 text-sm text-success font-semibold">
+                        <CheckCircle2 size={16} />
+                        {t("proj_boq_review_count", { count: boqParsedItems.length })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {boqMode === "manual" && (
+                  <div className="space-y-4">
+                    <p className="text-sm font-bold text-slate-700">{t("proj_boq_manual_title")}</p>
+                    <ProductRowEditor rows={manualRows} onChange={setManualRows} locale={locale} t={t} />
+                    {manualRowCount > 0 && (
+                      <div className="p-4 bg-success/5 border border-success/20 rounded-xl flex items-center gap-2 text-sm text-success font-semibold">
+                        <CheckCircle2 size={16} />
+                        {t("proj_boq_review_count", { count: manualRowCount })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 4 && (
               <div className="p-8 space-y-8">
                 {/* Region + Location */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -531,15 +690,20 @@ export default function NewProjectPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">{t("proj_budget")}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={budget}
-                      onChange={(e) => setBudget(e.target.value)}
-                      className="h-11 rounded-xl border-slate-200"
-                      dir="ltr"
-                      disabled={isSubmitting}
-                    />
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        min={0}
+                        value={budget}
+                        onChange={(e) => setBudget(e.target.value)}
+                        className="h-11 rounded-xl border-slate-200 pe-14"
+                        dir="ltr"
+                        disabled={isSubmitting}
+                      />
+                      <span className="absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-medium pointer-events-none">
+                        {locale === "ar" ? "ر.س" : "SAR"}
+                      </span>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">{t("proj_status")}</Label>
@@ -560,6 +724,74 @@ export default function NewProjectPage() {
                 </div>
               </div>
             )}
+
+            {step === 5 && (
+              <div className="p-8">
+                <StagedTeamStep organizationId={myOrgId} staged={stagedMembers} onChange={setStagedMembers} />
+              </div>
+            )}
+
+            {step === 6 && (
+              <div className="p-8 space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <ClipboardCheck size={18} className="text-primary" />
+                    {t("proj_review_title")}
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">{t("proj_review_desc")}</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("proj_review_details")}</p>
+                    <p className="text-sm font-bold text-slate-800">{name || "—"}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {projectType ? t(projectType as (typeof PROJECT_TYPES)[number]) : "—"}
+                      {clientType ? ` · ${t(clientType as (typeof CLIENT_TYPES)[number])}` : ""}
+                    </p>
+                    {description && <p className="text-xs text-slate-500 mt-2 leading-relaxed">{description}</p>}
+                    {blueprintFile && <p className="text-xs text-blue-600 mt-2">{blueprintFile.name}</p>}
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("proj_review_location_budget")}</p>
+                    <p className="text-sm text-slate-700">{region || "—"}{location ? ` · ${location}` : ""}</p>
+                    <p className="text-sm font-bold text-slate-800 mt-1" dir="ltr">
+                      {budget ? `${Number(budget).toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} ${locale === "ar" ? "ر.س" : "SAR"}` : "—"}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 sm:col-span-2">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">
+                      {t("proj_review_sections")} ({enabledSections.size}/{SECTION_IDS.length})
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SECTION_IDS.filter((id) => enabledSections.has(id)).map((id) => (
+                        <span key={id} className="text-[11px] font-semibold bg-primary/10 text-primary px-2 py-1 rounded-full">
+                          {tShared(sectionLabelKey(id))}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("proj_review_boq")}</p>
+                    <p className="text-sm text-slate-700">
+                      {boqMode === "upload" && boqParsedItems ? t("proj_boq_review_count", { count: boqParsedItems.length }) : null}
+                      {boqMode === "manual" ? t("proj_boq_review_count", { count: manualRowCount }) : null}
+                      {(!boqMode || boqMode === "skip") ? t("proj_boq_mode_skip") : null}
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
+                    <p className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("proj_review_team")}</p>
+                    <p className="text-sm text-slate-700">
+                      {stagedMembers.length > 0 ? t("proj_review_team_count", { count: stagedMembers.length }) : tShared("proj_team_empty")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
 
           <div className="flex items-center justify-between border-t bg-slate-50/50 p-6">
@@ -574,7 +806,7 @@ export default function NewProjectPage() {
               {t("newrfq_prev")}
             </Button>
 
-            {step === 1 ? (
+            {step < STEP_COUNT ? (
               <Button type="button" onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
                 {t("newrfq_next")}
                 {isRtl ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}

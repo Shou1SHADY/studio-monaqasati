@@ -23,12 +23,14 @@ import {
   Globe,
   AlertCircle,
   ShieldCheck,
-  Handshake
+  Handshake,
+  BookmarkPlus,
+  FileStack,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
-import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage } from "@/firebase"
-import { collection, addDoc, doc, getDoc, updateDoc, increment } from "firebase/firestore"
+import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
+import { collection, addDoc, doc, getDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 
 interface DeliveryBatch {
@@ -77,6 +79,15 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [supplierWebsite, setSupplierWebsite] = useState(profile?.website || "")
   const offerPdfInputRef = useRef<HTMLInputElement>(null)
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState("")
+  const [showSaveTemplateInput, setShowSaveTemplateInput] = useState(false)
+
+  const templatesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return collection(firestore, "users", user.uid, "quotationTemplates")
+  }, [firestore, user])
+  const { data: quotationTemplates } = useCollection(templatesQuery)
 
   const resetForm = () => {
     setOfferPrice("")
@@ -87,6 +98,9 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setExecutionDurationUnit("أيام")
     setOfferPdfFile(null)
     setOfferPdfUrl(null)
+    setOfferPdfStoragePath(null)
+    setShowSaveTemplateInput(false)
+    setNewTemplateName("")
     setSupplierWebsite(profile?.website || "")
     setIsSubmitting(false)
     if (offerPdfInputRef.current) offerPdfInputRef.current.value = ""
@@ -147,6 +161,37 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     if (offerPdfInputRef.current) offerPdfInputRef.current.value = ""
   }
 
+  const handleSelectTemplate = (templateId: string) => {
+    const template = (quotationTemplates || []).find((tpl: any) => tpl.id === templateId)
+    if (!template) return
+    // Template-sourced attachments get no storagePath: removeOfferPdf() only deletes
+    // from Storage when a path is set, so picking a template never deletes the
+    // shared template file — only a fresh per-offer upload can be deleted this way.
+    setOfferPdfUrl(template.fileUrl)
+    setOfferPdfStoragePath(null)
+    setOfferPdfFile(null)
+  }
+
+  const handleSaveAsTemplate = async () => {
+    if (!firestore || !user || !offerPdfUrl || !newTemplateName.trim()) return
+    setIsSavingTemplate(true)
+    try {
+      await addDoc(collection(firestore, "users", user.uid, "quotationTemplates"), {
+        name: newTemplateName.trim(),
+        fileUrl: offerPdfUrl,
+        createdAt: serverTimestamp(),
+      })
+      toast({ title: t("offer_template_saved") })
+      setNewTemplateName("")
+      setShowSaveTemplateInput(false)
+    } catch (err) {
+      console.error("Failed to save template:", err)
+      toast({ title: t("offer_error"), variant: "destructive" })
+    } finally {
+      setIsSavingTemplate(false)
+    }
+  }
+
   const submitOffer = async () => {
     if (!user || !firestore) {
       toast({ title: t("offer_error"), description: t("offer_login_required"), variant: "destructive" });
@@ -175,6 +220,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         submittedByUserName: profile?.name || user.email || "عضو الفريق",
         rfqId: selectedRfq.id,
         rfqTitle: selectedRfq.title,
+        projectId: selectedRfq.projectId || null,
         contractorId: selectedRfq.contractorId || null,
         contractorOrgId: selectedRfq.organizationId || selectedRfq.contractorId || null,
         price: offerPrice,
@@ -449,37 +495,78 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             <div className="space-y-3">
               <Label className="text-sm font-semibold">{t("offer_upload_pdf")}</Label>
               {offerPdfUrl ? (
-                <div className="flex items-center gap-4 p-4 bg-blue-50/50 border border-blue-200/50 rounded-xl">
-                  <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <File size={20} className="text-blue-600" />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-4 p-4 bg-blue-50/50 border border-blue-200/50 rounded-xl">
+                    <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <File size={20} className="text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <span className="text-sm font-semibold text-blue-800">{t("offer_pdf_attached")}</span>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={removeOfferPdf} className="text-red-500 rounded-lg"><Trash2 size={16} /></Button>
                   </div>
-                  <div className="flex-1">
-                    <span className="text-sm font-semibold text-blue-800">{t("offer_pdf_attached")}</span>
-                  </div>
-                  <Button variant="ghost" size="sm" onClick={removeOfferPdf} className="text-red-500 rounded-lg"><Trash2 size={16} /></Button>
+                  {/* Only freshly-uploaded PDFs (not ones picked from an existing template) can be saved as a new template */}
+                  {offerPdfStoragePath && (
+                    showSaveTemplateInput ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={newTemplateName}
+                          onChange={(e) => setNewTemplateName(e.target.value)}
+                          placeholder={t("offer_template_name_placeholder")}
+                          className="h-9 rounded-lg text-sm"
+                        />
+                        <Button size="sm" onClick={handleSaveAsTemplate} disabled={isSavingTemplate || !newTemplateName.trim()} className="h-9 gap-1.5 shrink-0">
+                          {isSavingTemplate ? <Loader2 size={14} className="animate-spin" /> : <BookmarkPlus size={14} />}
+                          {t("offer_template_save_btn")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => setShowSaveTemplateInput(true)} className="gap-1.5 h-8 text-xs text-primary">
+                        <BookmarkPlus size={13} />
+                        {t("offer_template_save_prompt")}
+                      </Button>
+                    )
+                  )}
                 </div>
               ) : (
-                <div className="relative">
-                  <input
-                    ref={offerPdfInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleOfferPdfUpload}
-                    disabled={isUploadingPdf}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                  <div className="flex items-center justify-center gap-3 h-24 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
-                    {isUploadingPdf ? <Loader2 size={24} className="animate-spin text-primary" /> : (
-                      <>
-                        <div className="h-10 w-10 rounded-lg bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-                          <Upload size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
-                        </div>
-                        <div className="text-right">
-                          <span className="text-sm font-semibold text-slate-700 block">{t("offer_click_to_upload_pdf")}</span>
-                        </div>
-                      </>
-                    )}
+                <div className="space-y-2">
+                  <div className="relative">
+                    <input
+                      ref={offerPdfInputRef}
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleOfferPdfUpload}
+                      disabled={isUploadingPdf}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                    <div className="flex items-center justify-center gap-3 h-24 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
+                      {isUploadingPdf ? <Loader2 size={24} className="animate-spin text-primary" /> : (
+                        <>
+                          <div className="h-10 w-10 rounded-lg bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
+                            <Upload size={18} className="text-slate-400 group-hover:text-primary transition-colors" />
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-semibold text-slate-700 block">{t("offer_click_to_upload_pdf")}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
+                  {quotationTemplates && quotationTemplates.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <FileStack size={14} className="text-muted-foreground shrink-0" />
+                      <Select onValueChange={handleSelectTemplate}>
+                        <SelectTrigger className="h-9 rounded-lg text-sm">
+                          <SelectValue placeholder={t("offer_template_pick_placeholder")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {quotationTemplates.map((tpl: any) => (
+                            <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

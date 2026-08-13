@@ -121,6 +121,7 @@ export default function SupplierOffersPage() {
       await addDoc(collection(firestore, "deliveries"), {
         rfqId: deliveryOffer.rfqId || null,
         offerId: deliveryOffer.id,
+        projectId: deliveryOffer.projectId || null,
         contractorOrgId: deliveryOffer.contractorOrgId || deliveryOffer.contractorId,
         contractorId: deliveryOffer.contractorId || null,
         supplierOrgId: profile?.organizationId || user.uid,
