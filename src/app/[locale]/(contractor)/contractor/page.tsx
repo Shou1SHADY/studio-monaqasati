@@ -158,7 +158,7 @@ export default function ContractorDashboard() {
   if (!profile || !rfqs) {
     return (
       <PortalLayout>
-        <div className="space-y-8 max-w-7xl mx-auto pb-10">
+        <div className="space-y-8 pb-10">
           <Skeleton className="h-48 rounded-3xl w-full" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-lg" />)}
@@ -171,7 +171,7 @@ export default function ContractorDashboard() {
 
   return (
     <PortalLayout>
-      <div className="space-y-8 max-w-7xl mx-auto pb-10">
+      <div className="space-y-8 pb-10">
         {/* Welcome Banner */}
         <div
           className="relative overflow-hidden rounded-[22px] isolate flex flex-col sm:flex-row items-start sm:items-center gap-8 p-[30px_28px] sm:p-[38px_44px] text-white"
@@ -328,11 +328,11 @@ export default function ContractorDashboard() {
                       href={item.actionUrl}
                       className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between gap-4 group cursor-pointer block"
                     >
-                      <div className="flex items-center gap-4 min-w-0">
+                      <div className="flex items-center gap-4 min-w-0 flex-1">
                         <div className={cn("h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 transition-transform duration-300", !prefersReducedMotion && "group-hover:scale-105")}>
                           <Icon className={cn("h-5 w-5", iconColor)} />
                         </div>
-                        <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors truncate">{text}</p>
+                        <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors truncate min-w-0 flex-1">{text}</p>
                       </div>
                       <ArrowRight className={cn("h-4 w-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", locale === 'ar' && "rtl-flip")} />
                     </Link>

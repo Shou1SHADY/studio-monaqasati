@@ -164,7 +164,7 @@ export default function SupplierDashboard() {
   const recommendedRfqs = activeRfqs.slice(0, 3)
   return (
     <PortalLayout>
-      <div className={cn("space-y-8 max-w-7xl mx-auto pb-10", locale === 'ar' ? 'text-right' : 'text-left')}>
+      <div className={cn("space-y-8 pb-10", locale === 'ar' ? 'text-right' : 'text-left')}>
         {/* Welcome Banner */}
         <div
           className="relative overflow-hidden rounded-[22px] isolate flex flex-col sm:flex-row items-start sm:items-center gap-8 p-[30px_28px] sm:p-[38px_44px] text-white"
