@@ -7,7 +7,7 @@ import {
   SidebarProvider, 
   SidebarTrigger 
 } from "@/components/ui/sidebar"
-import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle, Check } from "lucide-react"
+import { Bell, User, Search, Loader2, CheckCircle2, Clock, TrendingUp, TrendingDown, Box, MessageSquare, ShieldCheck, AlertCircle, Check, Building2, ArrowLeftRight } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
@@ -28,6 +28,7 @@ import { useRouter, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { resolveActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -41,8 +42,26 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   }, [firestore, user, isUserLoading])
   
   const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
-  
+
+  const orgMemberships: OrgMembership[] = (profile?.orgMemberships as OrgMembership[] | undefined) || []
+  const activeOrgId = (profile?.organizationId as string | undefined) || user?.uid || ""
+  const activeCompanyName = resolveActiveCompanyName(profile, user?.uid)
+  const [switchingOrgId, setSwitchingOrgId] = React.useState<string | null>(null)
+  const handleSwitchCompany = async (organizationId: string) => {
+    if (!firestore || !user || organizationId === activeOrgId) return
+    setSwitchingOrgId(organizationId)
+    try {
+      await updateDoc(doc(firestore, "users", user.uid), { organizationId })
+      window.location.reload()
+    } catch (err) {
+      console.error(err)
+      toast({ title: tShared("company_switcher_error"), variant: "destructive" })
+      setSwitchingOrgId(null)
+    }
+  }
+
   const t = useTranslations("Portal.Layout")
+  const tShared = useTranslations("Portal.Shared")
   const tErr = useTranslations("Portal.Errors")
   const locale = useLocale()
   const router = useRouter()
@@ -783,7 +802,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="flex items-center gap-2 pr-2 pl-4 h-10 rounded-full hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none">
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
-                      <span className="text-sm font-bold text-foreground">{profile?.name || (user ? t("new_user") : "")}</span>
+                      <span className="text-sm font-bold text-foreground">{activeCompanyName || (user ? t("new_user") : "")}</span>
                       <span className="text-xs text-muted-foreground">
                         {profile?.role === "Contractor" ? t("role_contractor") : profile?.role === "Supplier" ? t("role_supplier") : profile?.role || t("waiting_setup")}
                       </span>
@@ -793,9 +812,36 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                     </div>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("profile")}</DropdownMenuItem>
                   <DropdownMenuItem onClick={() => router.push(`/${basePath}/profile`)}>{t("settings")}</DropdownMenuItem>
+                  {orgMemberships.length > 1 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Building2 size={12} />
+                        {tShared("company_switcher_title")}
+                      </div>
+                      {orgMemberships.map((m) => (
+                        <DropdownMenuItem
+                          key={m.organizationId}
+                          disabled={m.organizationId === activeOrgId || switchingOrgId === m.organizationId}
+                          onClick={() => handleSwitchCompany(m.organizationId)}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate">{m.companyName}</span>
+                          {m.organizationId === activeOrgId ? (
+                            <Check size={13} className="text-primary shrink-0" />
+                          ) : switchingOrgId === m.organizationId ? (
+                            <Loader2 size={13} className="animate-spin shrink-0" />
+                          ) : (
+                            <ArrowLeftRight size={12} className="text-muted-foreground shrink-0" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive cursor-pointer" onClick={handleLogout}>{t("logout")}</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

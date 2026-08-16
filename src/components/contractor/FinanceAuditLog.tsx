@@ -78,7 +78,7 @@ function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: s
   )
 }
 
-export function FinanceAuditLog({ projectId }: { projectId: string }) {
+export function FinanceAuditLog({ projectId }: { projectId: string | undefined }) {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const isRtl = locale === "ar"
