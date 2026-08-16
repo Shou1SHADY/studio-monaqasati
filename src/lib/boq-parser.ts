@@ -28,6 +28,10 @@ export interface BoqItem {
   groupId: string
   selected: boolean
   requiresWarranty: boolean
+  /** false when no sheet/description signal matched anything — detectCategory fell through to its generic default. */
+  categoryConfident: boolean
+  /** true when the row had no parseable quantity and defaulted to 1 (e.g. a lump-sum unit with no number). */
+  quantityIsAssumed: boolean
 }
 
 export interface BoqProjectInfo {
@@ -61,7 +65,7 @@ const LUMP_SUM_UNITS = new Set(["ls", "lot", "lumpsum", "sum"])
  */
 export function detectCategoryFromSheet(
   sheetName: string
-): { category: string; subCategory: string } {
+): { category: string; subCategory: string; confident: boolean } {
   return detectCategory(sheetName, "")
 }
 
@@ -74,117 +78,118 @@ export function detectCategoryFromSheet(
 function detectCategory(
   sheetName: string,
   descEn: string
-): { category: string; subCategory: string } {
+): { category: string; subCategory: string; confident: boolean } {
   const s = sheetName.toUpperCase()
   const d = descEn.toLowerCase()
 
   // DIV 04 — Masonry
   if (s.includes("MASONRY") || s.includes("04")) {
-    if (d.includes("insulated")) return { category: "طوب وبلوك", subCategory: "بلوك عازل (إنسوليت)" }
-    if (d.includes("hollow")) return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مفرغ" }
-    if (d.includes("solid")) return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مصمت" }
-    return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مفرغ" }
+    if (d.includes("insulated")) return { category: "طوب وبلوك", subCategory: "بلوك عازل (إنسوليت)", confident: true }
+    if (d.includes("hollow")) return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مفرغ", confident: true }
+    if (d.includes("solid")) return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مصمت", confident: true }
+    return { category: "طوب وبلوك", subCategory: "بلوك أسمنتي مفرغ", confident: true }
   }
 
   // DIV 05 — Metals
   if (s.includes("METAL") || s.includes("05-")) {
     if (d.includes("aluminum") || d.includes("aluminium") || d.includes("cover")) {
-      return { category: "حدادة ومصنوعات معدنية", subCategory: "بوابات حديد" }
+      return { category: "حدادة ومصنوعات معدنية", subCategory: "بوابات حديد", confident: true }
     }
     if (d.includes("stainless") || d.includes("handrail") || d.includes("railing")) {
-      return { category: "حدادة ومصنوعات معدنية", subCategory: "درابزين ستانلس ستيل" }
+      return { category: "حدادة ومصنوعات معدنية", subCategory: "درابزين ستانلس ستيل", confident: true }
     }
-    return { category: "حديد ومعادن", subCategory: "حديد مشكّل (زوايا، مواسير، صاج)" }
+    return { category: "حديد ومعادن", subCategory: "حديد مشكّل (زوايا، مواسير، صاج)", confident: true }
   }
 
   // DIV 06 — Wood
   if (s.includes("WOOD") || s.includes("06-")) {
-    if (d.includes("mdf")) return { category: "أخشاب", subCategory: "خشب MDF" }
-    if (d.includes("hdf")) return { category: "أخشاب", subCategory: "خشب HDF" }
-    if (d.includes("plywood") || d.includes("ablakash")) return { category: "أخشاب", subCategory: "خشب أبلكاش (بلايود)" }
-    return { category: "أخشاب", subCategory: "خشب MDF" }
+    if (d.includes("mdf")) return { category: "أخشاب", subCategory: "خشب MDF", confident: true }
+    if (d.includes("hdf")) return { category: "أخشاب", subCategory: "خشب HDF", confident: true }
+    if (d.includes("plywood") || d.includes("ablakash")) return { category: "أخشاب", subCategory: "خشب أبلكاش (بلايود)", confident: true }
+    return { category: "أخشاب", subCategory: "خشب MDF", confident: true }
   }
 
   // DIV 07 — Thermal & Moisture Protection
   if (s.includes("PROTECTION") || s.includes("T&M") || s.includes("07-")) {
     if (d.includes("bitumen") || d.includes("bituminous") || d.includes("membrane")) {
-      return { category: "عزل وأسقف", subCategory: "عزل مائي (رولات بيتومين)" }
+      return { category: "عزل وأسقف", subCategory: "عزل مائي (رولات بيتومين)", confident: true }
     }
     if (d.includes("liquid rubber") || d.includes("waterproof") || d.includes("liquid")) {
-      return { category: "عزل وأسقف", subCategory: "عزل مائي سائل" }
+      return { category: "عزل وأسقف", subCategory: "عزل مائي سائل", confident: true }
     }
     if (d.includes("polyurethane") || d.includes("foam") || d.includes("pur")) {
-      return { category: "عزل وأسقف", subCategory: "عزل حراري (فوم بولي يوريثان)" }
+      return { category: "عزل وأسقف", subCategory: "عزل حراري (فوم بولي يوريثان)", confident: true }
     }
     if (d.includes("cementitious") || d.includes("epoxy")) {
-      return { category: "مواد لاصقة وكيميائية", subCategory: "مانع تسرب بولي يوريثان" }
+      return { category: "مواد لاصقة وكيميائية", subCategory: "مانع تسرب بولي يوريثان", confident: true }
     }
-    return { category: "عزل وأسقف", subCategory: "عزل مائي سائل" }
+    return { category: "عزل وأسقف", subCategory: "عزل مائي سائل", confident: true }
   }
 
   // DIV 08 — Openings (Doors & Windows)
   if (s.includes("OPENING") || s.includes("08-")) {
     if (d.includes("wooden") || d.includes("wood door")) {
-      return { category: "أبواب ونوافذ", subCategory: "أبواب خشبية حشو (HDF)" }
+      return { category: "أبواب ونوافذ", subCategory: "أبواب خشبية حشو (HDF)", confident: true }
     }
     if (d.includes("steel door") || d.includes("iron door")) {
-      return { category: "أبواب ونوافذ", subCategory: "أبواب حديد" }
+      return { category: "أبواب ونوافذ", subCategory: "أبواب حديد", confident: true }
     }
     if (d.includes("curtain wall") || d.includes("glass wall")) {
-      return { category: "أبواب ونوافذ", subCategory: "نوافذ زجاج مزدوج" }
+      return { category: "أبواب ونوافذ", subCategory: "نوافذ زجاج مزدوج", confident: true }
     }
     if (d.includes("aluminum") || d.includes("aluminium") || d.includes("bi-fold")) {
-      return { category: "أبواب ونوافذ", subCategory: "أبواب ألمنيوم" }
+      return { category: "أبواب ونوافذ", subCategory: "أبواب ألمنيوم", confident: true }
     }
-    return { category: "أبواب ونوافذ", subCategory: "أبواب ألمنيوم" }
+    return { category: "أبواب ونوافذ", subCategory: "أبواب ألمنيوم", confident: true }
   }
 
   // DIV 09 — Finishes (multi-category, detect from description)
   if (s.includes("FINISH") || s.includes("09-")) {
     if (d.includes("plaster") || d.includes("cement plaster")) {
-      return { category: "أسمنت وخرسانة", subCategory: "أسمنت تشطيب (لياسة)" }
+      return { category: "أسمنت وخرسانة", subCategory: "أسمنت تشطيب (لياسة)", confident: true }
     }
     if (d.includes("interior paint") || d.includes("exterior paint") || d.includes("spray paint") || d.includes("painting")) {
       if (d.includes("exterior") || d.includes("external") || d.includes("spray")) {
-        return { category: "دهانات وألوان", subCategory: "دهان بلاستيكي خارجي" }
+        return { category: "دهانات وألوان", subCategory: "دهان بلاستيكي خارجي", confident: true }
       }
-      return { category: "دهانات وألوان", subCategory: "دهان بلاستيكي (مائي) داخلي" }
+      return { category: "دهانات وألوان", subCategory: "دهان بلاستيكي (مائي) داخلي", confident: true }
     }
     if (d.includes("stone clad") || d.includes("cladding") || d.includes("stone")) {
-      return { category: "أرضيات وتشطيبات", subCategory: "حجر طبيعي" }
+      return { category: "أرضيات وتشطيبات", subCategory: "حجر طبيعي", confident: true }
     }
     if (d.includes("gypsum board") || d.includes("gypsum")) {
       if (d.includes("moisture") || d.includes("resistant")) {
-        return { category: "جبس وأسقف مستعارة", subCategory: "ألواح جبس بورد مقاوم للرطوبة" }
+        return { category: "جبس وأسقف مستعارة", subCategory: "ألواح جبس بورد مقاوم للرطوبة", confident: true }
       }
-      return { category: "جبس وأسقف مستعارة", subCategory: "ألواح جبس بورد عادي" }
+      return { category: "جبس وأسقف مستعارة", subCategory: "ألواح جبس بورد عادي", confident: true }
     }
-    if (d.includes("porcelain")) return { category: "أرضيات وتشطيبات", subCategory: "بورسلين" }
-    if (d.includes("marble")) return { category: "أرضيات وتشطيبات", subCategory: "رخام طبيعي" }
-    if (d.includes("terrazzo")) return { category: "أرضيات وتشطيبات", subCategory: "بلاط إسمنتي" }
-    if (d.includes("floor") || d.includes("tile")) return { category: "أرضيات وتشطيبات", subCategory: "سيراميك" }
-    return { category: "أرضيات وتشطيبات", subCategory: "بورسلين" }
+    if (d.includes("porcelain")) return { category: "أرضيات وتشطيبات", subCategory: "بورسلين", confident: true }
+    if (d.includes("marble")) return { category: "أرضيات وتشطيبات", subCategory: "رخام طبيعي", confident: true }
+    if (d.includes("terrazzo")) return { category: "أرضيات وتشطيبات", subCategory: "بلاط إسمنتي", confident: true }
+    if (d.includes("floor") || d.includes("tile")) return { category: "أرضيات وتشطيبات", subCategory: "سيراميك", confident: true }
+    return { category: "أرضيات وتشطيبات", subCategory: "بورسلين", confident: false }
   }
 
   // DIV 10 — Specialities
   if (s.includes("SPECIAL") || s.includes("10-")) {
-    return { category: "مواد لاصقة وكيميائية", subCategory: "مواد تقوية خرسانة" }
+    return { category: "مواد لاصقة وكيميائية", subCategory: "مواد تقوية خرسانة", confident: false }
   }
 
   // DIV 14 — Conveying Equipment
   if (s.includes("CONVEYING") || s.includes("14-")) {
-    return { category: "معدات وآليات", subCategory: "رافعات (كرينات)" }
+    return { category: "معدات وآليات", subCategory: "رافعات (كرينات)", confident: true }
   }
 
   // DIV 32 — Exterior Improvements
   if (s.includes("EXTERIOR") || s.includes("32-")) {
     if (d.includes("interlock") || d.includes("pav")) {
-      return { category: "أرضيات وتشطيبات", subCategory: "بلاط إنترلوك" }
+      return { category: "أرضيات وتشطيبات", subCategory: "بلاط إنترلوك", confident: true }
     }
-    return { category: "أرضيات وتشطيبات", subCategory: "بلاط إسمنتي" }
+    return { category: "أرضيات وتشطيبات", subCategory: "بلاط إسمنتي", confident: false }
   }
 
-  return { category: "مواد لاصقة وكيميائية", subCategory: "مواد تقوية خرسانة" }
+  // No sheet-name or division signal matched anything — this is a pure guess.
+  return { category: "مواد لاصقة وكيميائية", subCategory: "مواد تقوية خرسانة", confident: false }
 }
 
 /** Strips a leading "Division:? <digits> -" prefix so only the clean name remains. */
@@ -272,7 +277,7 @@ export async function parseBoqFile(file: File): Promise<BoqParseResult> {
         const subCode = currentSubCategory.code || currentCategory.code
         const subNameEn = currentSubCategory.code ? currentSubCategory.nameEn : currentCategory.nameEn
         const subNameAr = currentSubCategory.code ? currentSubCategory.nameAr : currentCategory.nameAr
-        const { category, subCategory } = detectCategory(sheetName, descEn)
+        const { category, subCategory, confident } = detectCategory(sheetName, descEn)
         const groupId = `grp_${sanitizeId(sheetName)}_${sanitizeId(subCode)}`
 
         items.push({
@@ -296,6 +301,8 @@ export async function parseBoqFile(file: File): Promise<BoqParseResult> {
           groupId,
           selected: true,
           requiresWarranty: false,
+          categoryConfident: confident,
+          quantityIsAssumed: !hasQty,
         })
 
         if (!groupsById.has(groupId)) {

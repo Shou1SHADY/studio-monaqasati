@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ProductRowEditor, makeEmptyProductRow, type ProductRow } from "@/components/shared/ProductRowEditor"
 import { StagedTeamStep, type StagedMember } from "@/components/contractor/StagedTeamStep"
@@ -178,6 +179,16 @@ export default function NewProjectPage() {
     if (boqFileInputRef.current) boqFileInputRef.current.value = ""
   }
 
+  // Review step: let the user exclude parsed rows before they're committed to the
+  // project. `selected` already existed on BoqItem but was previously ignored —
+  // every parsed row was written regardless. This is the first place it's honored.
+  const toggleBoqItem = (id: string) => {
+    setBoqParsedItems((prev) => prev && prev.map((item) => (item.id === id ? { ...item, selected: !item.selected } : item)))
+  }
+  const boqSelectedCount = boqParsedItems?.filter((i) => i.selected).length || 0
+  const boqFlaggedCount = boqParsedItems?.filter((i) => i.selected && (i.rate === 0 || i.quantityIsAssumed || !i.categoryConfident)).length || 0
+  const boqEstimatedTotal = boqParsedItems?.filter((i) => i.selected).reduce((sum, i) => sum + i.quantity * i.rate, 0) || 0
+
   const toggleSection = (id: SectionId) => {
     setEnabledSections((prev) => (prev.has(id) ? cascadeDisable(prev, id) : cascadeEnable(prev, id)))
   }
@@ -262,11 +273,12 @@ export default function NewProjectPage() {
 
       try {
         // Seed the BOQ tab — from the parsed Excel file, or from manually-entered rows.
-        if (boqMode === "upload" && boqParsedItems && boqParsedItems.length > 0) {
+        const boqItemsToSave = (boqParsedItems || []).filter((item) => item.selected)
+        if (boqMode === "upload" && boqItemsToSave.length > 0) {
           const boqBatch = writeBatch(firestore)
           const boqItemsRef = collection(firestore, "projects", projectRef.id, "boqItems")
           const boqGroupsRef = collection(firestore, "projects", projectRef.id, "boqGroups")
-          boqParsedItems.forEach((item) => {
+          boqItemsToSave.forEach((item) => {
             boqBatch.set(doc(boqItemsRef), {
               itemNo: item.itemNo,
               descriptionAr: item.descriptionAr,
@@ -290,7 +302,8 @@ export default function NewProjectPage() {
               updatedAt: serverTimestamp(),
             })
           })
-          boqParsedGroups.forEach((group) => {
+          const usedGroupIds = new Set(boqItemsToSave.map((item) => item.groupId))
+          boqParsedGroups.filter((group) => usedGroupIds.has(group.id)).forEach((group) => {
             boqBatch.set(doc(boqGroupsRef, group.id), {
               titleAr: group.titleAr,
               categoryAr: group.categoryAr,
@@ -636,9 +649,70 @@ export default function NewProjectPage() {
                       </button>
                     )}
                     {boqParsedItems && boqParsedItems.length > 0 && (
-                      <div className="p-4 bg-success/5 border border-success/20 rounded-xl flex items-center gap-2 text-sm text-success font-semibold">
-                        <CheckCircle2 size={16} />
-                        {t("proj_boq_review_count", { count: boqParsedItems.length })}
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-700">{t("proj_boq_review_title")}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t("proj_boq_review_hint")}</p>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2.5">
+                          <div className="bg-success/5 border border-success/20 rounded-xl p-3">
+                            <p className="text-[11px] text-muted-foreground font-medium">{t("proj_boq_stat_selected")}</p>
+                            <p className="text-lg font-black text-success">{boqSelectedCount}<span className="text-xs font-medium text-muted-foreground">/{boqParsedItems.length}</span></p>
+                          </div>
+                          <div className={cn("border rounded-xl p-3", boqFlaggedCount > 0 ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200")}>
+                            <p className="text-[11px] text-muted-foreground font-medium">{t("proj_boq_stat_flagged")}</p>
+                            <p className={cn("text-lg font-black", boqFlaggedCount > 0 ? "text-amber-600" : "text-slate-400")}>{boqFlaggedCount}</p>
+                          </div>
+                          <div className="bg-primary/5 border border-primary/15 rounded-xl p-3">
+                            <p className="text-[11px] text-muted-foreground font-medium">{t("proj_boq_stat_estimate")}</p>
+                            <p className="text-sm font-black text-primary truncate" dir="ltr">
+                              {boqEstimatedTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ر.س" : "SAR"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="border border-slate-200 rounded-xl max-h-[420px] overflow-y-auto divide-y divide-slate-100">
+                          {boqParsedItems.map((item) => {
+                            const flags: string[] = []
+                            if (item.rate === 0) flags.push(t("proj_boq_flag_rate"))
+                            if (item.quantityIsAssumed) flags.push(t("proj_boq_flag_qty"))
+                            if (!item.categoryConfident) flags.push(t("proj_boq_flag_category"))
+                            return (
+                              <label
+                                key={item.id}
+                                className={cn(
+                                  "flex items-start gap-3 p-3 cursor-pointer transition-colors",
+                                  item.selected ? "bg-white hover:bg-slate-50" : "bg-slate-50/70 opacity-60"
+                                )}
+                              >
+                                <Checkbox
+                                  checked={item.selected}
+                                  onCheckedChange={() => toggleBoqItem(item.id)}
+                                  className="mt-0.5 shrink-0"
+                                />
+                                <div className="min-w-0 flex-1 space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className={cn("text-sm font-semibold text-slate-800", !item.selected && "line-through")}>
+                                      {item.descriptionAr || item.descriptionEn}
+                                    </span>
+                                    {flags.map((f) => (
+                                      <span key={f} className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                                        {f}
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                                    {item.itemNo && <span className="font-mono">{item.itemNo}</span>}
+                                    <span dir="ltr">{item.quantity.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {item.unit}</span>
+                                    <span dir="ltr">{item.rate.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {locale === "ar" ? "ر.س" : "SAR"}</span>
+                                    <span className="text-slate-400">{item.suggestedCategory}</span>
+                                  </div>
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -777,7 +851,7 @@ export default function NewProjectPage() {
                   <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50">
                     <p className="text-xs font-bold text-muted-foreground uppercase mb-2">{t("proj_review_boq")}</p>
                     <p className="text-sm text-slate-700">
-                      {boqMode === "upload" && boqParsedItems ? t("proj_boq_review_count", { count: boqParsedItems.length }) : null}
+                      {boqMode === "upload" && boqParsedItems ? t("proj_boq_review_count", { count: boqSelectedCount }) : null}
                       {boqMode === "manual" ? t("proj_boq_review_count", { count: manualRowCount }) : null}
                       {(!boqMode || boqMode === "skip") ? t("proj_boq_mode_skip") : null}
                     </p>

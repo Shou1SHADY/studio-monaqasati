@@ -93,3 +93,6 @@ node_modules
 .opencode
 *.tmp
 .env.example
+
+.vscode
+*mdmak-v3.html*

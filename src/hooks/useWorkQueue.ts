@@ -11,7 +11,13 @@ import { useFirestore, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, query, where, getDocs } from "firebase/firestore"
 import { resolveInvoiceStatus } from "@/utils/invoice-utils"
 
-export type WorkQueueItemType = "rfq_decision" | "delivery_confirm" | "invoice_overdue" | "low_stock"
+export type WorkQueueItemType =
+  | "rfq_decision"
+  | "rfq_closing_soon"
+  | "rfq_no_offers"
+  | "delivery_confirm"
+  | "invoice_overdue"
+  | "low_stock"
 
 export interface WorkQueueItem {
   id: string
@@ -24,10 +30,18 @@ export interface WorkQueueItem {
 
 const TIER: Record<WorkQueueItemType, number> = {
   invoice_overdue: 1,
-  delivery_confirm: 2,
-  rfq_decision: 3,
-  low_stock: 4,
+  rfq_closing_soon: 2,
+  delivery_confirm: 3,
+  rfq_decision: 4,
+  rfq_no_offers: 5,
+  low_stock: 6,
 }
+
+// An RFQ younger than this is still fresh — no supplier has had a fair chance
+// to respond yet, so flagging it as "no offers" would just be noise.
+const NO_OFFERS_GRACE_MS = 3 * 24 * 60 * 60 * 1000
+// Flag RFQs whose deadline is inside this window (or already passed) as closing soon.
+const CLOSING_SOON_MS = 48 * 60 * 60 * 1000
 
 function toMs(v: unknown): number {
   if (!v) return 0
@@ -129,6 +143,49 @@ export function useWorkQueue(organizationId: string | undefined | null) {
       actionUrl: rfq?.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfqId}/offers` : `/contractor/rfqs/${rfqId}/offers`,
       data: { rfqTitle: v.rfqTitle, offerCount: v.count },
     })
+  })
+
+  // Offer count per RFQ (any status) — used to detect RFQs with zero offers at all,
+  // distinct from pendingOffersByRfq above which only counts offers still under review.
+  const offerCountByRfq = new Map<string, number>()
+  ;(offers || []).forEach((o: any) => {
+    offerCountByRfq.set(o.rfqId, (offerCountByRfq.get(o.rfqId) || 0) + 1)
+  })
+
+  const now = Date.now()
+
+  // Published RFQs that are stalling (no offers yet, past a grace period) or
+  // closing within 48h — both real risks that don't show up anywhere else
+  // (a stalled RFQ has no offer to notify on; a closing deadline has no event).
+  ;(rfqs || []).forEach((r: any) => {
+    if (r.status !== "New") return
+    const rfqActionUrl = r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}/offers`
+
+    const createdMs = toMs(r.createdAt)
+    if (!offerCountByRfq.has(r.id) && createdMs && now - createdMs >= NO_OFFERS_GRACE_MS) {
+      items.push({
+        id: `rfq_no_offers_${r.id}`,
+        type: "rfq_no_offers",
+        tier: TIER.rfq_no_offers,
+        sortMs: now - createdMs,
+        actionUrl: rfqActionUrl,
+        data: { rfqTitle: r.title || "", daysOpen: Math.floor((now - createdMs) / (24 * 60 * 60 * 1000)) },
+      })
+    }
+
+    if (r.deadline) {
+      const deadlineMs = new Date(r.deadline).getTime()
+      if (!isNaN(deadlineMs) && deadlineMs - now <= CLOSING_SOON_MS) {
+        items.push({
+          id: `rfq_closing_soon_${r.id}`,
+          type: "rfq_closing_soon",
+          tier: TIER.rfq_closing_soon,
+          sortMs: now - deadlineMs,
+          actionUrl: rfqActionUrl,
+          data: { rfqTitle: r.title || "", hoursLeft: Math.max(0, Math.round((deadlineMs - now) / (60 * 60 * 1000))), isOverdue: deadlineMs < now },
+        })
+      }
+    }
   })
 
   // Deliveries needing confirmation.

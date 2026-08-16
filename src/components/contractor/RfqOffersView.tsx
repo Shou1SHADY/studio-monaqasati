@@ -52,12 +52,15 @@ import {
   FileCheck,
   Handshake,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp, writeBatch } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
+import { logFinanceAudit } from "@/lib/finance-audit"
+import { formatCurrency } from "@/utils/invoice-utils"
 
 function fmtDate(val: any, locale: string) {
   if (!val) return '-'
@@ -87,6 +90,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
   const [confirmDecisionTarget, setConfirmDecisionTarget] = useState<{ offer: any; decision: "مقبول" | "مرفوض" } | null>(null)
+  const [budgetOverrideReason, setBudgetOverrideReason] = useState("")
   const [reductionOffer, setReductionOffer] = useState<any | null>(null)
   const [reductionNote, setReductionNote] = useState("")
   const [targetPrice, setTargetPrice] = useState("")
@@ -146,6 +150,35 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
+
+  // Budget-overrun check: project budget + committed spend across every accepted/completed
+  // offer in the project (not just this RFQ), so accepting this offer is weighed against
+  // the whole project's commitments, not just its own RFQ.
+  const projectId = (rfq as { projectId?: string } | null)?.projectId
+  const projectDocRef = useMemoFirebase(() => {
+    if (!firestore || !projectId) return null
+    return doc(firestore, "projects", projectId)
+  }, [firestore, projectId])
+  const { data: project } = useDoc(projectDocRef)
+
+  const projectOffersQuery = useMemoFirebase(() => {
+    if (!firestore || !projectId) return null
+    return query(collection(firestore, "offers"), where("projectId", "==", projectId))
+  }, [firestore, projectId])
+  const { data: projectOffers } = useCollection(projectOffersQuery)
+
+  const budgetImpact = (() => {
+    if (!confirmDecisionTarget || confirmDecisionTarget.decision !== "مقبول") return null
+    const budgetVal = (project as { budget?: number } | null)?.budget
+    if (budgetVal == null) return null
+    const offerPrice = parseFloat(confirmDecisionTarget.offer.price) || 0
+    const committedSpend = (projectOffers || [])
+      .filter((o: any) => o.id !== confirmDecisionTarget.offer.id && (o.status === "مقبول" || o.status === "تم التسليم"))
+      .reduce((sum: number, o: any) => sum + (parseFloat(o.price) || 0), 0)
+    const projectedTotal = committedSpend + offerPrice
+    if (projectedTotal <= budgetVal) return null
+    return { budget: budgetVal, committedSpend, offerPrice, projectedTotal, overageAmount: projectedTotal - budgetVal }
+  })()
 
   // Delivery notices for this RFQ's offers
   const deliveriesQuery = useMemoFirebase(() => {
@@ -1317,11 +1350,16 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         </Tabs>
       </div>
 
-      <AlertDialog open={!!confirmDecisionTarget} onOpenChange={(open) => !open && setConfirmDecisionTarget(null)}>
+      <AlertDialog
+        open={!!confirmDecisionTarget}
+        onOpenChange={(open) => { if (!open) { setConfirmDecisionTarget(null); setBudgetOverrideReason("") } }}
+      >
         <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirmDecisionTarget?.decision === "مقبول" ? t("offers_confirm_accept_title") : t("offers_confirm_reject_title")}
+              {confirmDecisionTarget?.decision === "مقبول"
+                ? (budgetImpact ? t("offers_confirm_accept_budget_title") : t("offers_confirm_accept_title"))
+                : t("offers_confirm_reject_title")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmDecisionTarget?.decision === "مقبول"
@@ -1329,18 +1367,78 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 : t("offers_confirm_reject_desc", { supplier: confirmDecisionTarget?.offer?.companyName || confirmDecisionTarget?.offer?.supplierName || t("offers_registered_supplier") })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          {budgetImpact && (
+            <div className="space-y-3">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 space-y-2 text-xs text-amber-900">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  {t("offers_budget_warning_title")}
+                </p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 pt-0.5">
+                  <span>{t("offers_budget_label")}<br /><b dir="ltr">{formatCurrency(budgetImpact.budget, locale)}</b></span>
+                  <span>{t("offers_committed_label")}<br /><b dir="ltr">{formatCurrency(budgetImpact.committedSpend, locale)}</b></span>
+                  <span>{t("offers_this_offer_label")}<br /><b dir="ltr">{formatCurrency(budgetImpact.offerPrice, locale)}</b></span>
+                  <span className="text-red-700">{t("offers_overage_label")}<br /><b dir="ltr">{formatCurrency(budgetImpact.overageAmount, locale)}</b></span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="budget-override-reason" className="text-xs font-bold">
+                  {t("offers_budget_reason_label")}
+                </Label>
+                <Textarea
+                  id="budget-override-reason"
+                  rows={2}
+                  value={budgetOverrideReason}
+                  onChange={(e) => setBudgetOverrideReason(e.target.value)}
+                  placeholder={t("offers_budget_reason_placeholder")}
+                  className="text-sm resize-none"
+                />
+                {budgetOverrideReason.trim().length > 0 && budgetOverrideReason.trim().length < 8 && (
+                  <p className="text-[11px] text-destructive">{t("offers_budget_reason_required")}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
-              className={confirmDecisionTarget?.decision === "مقبول" ? "bg-success hover:bg-success/90" : "bg-destructive hover:bg-destructive/90"}
+              className={
+                confirmDecisionTarget?.decision !== "مقبول"
+                  ? "bg-destructive hover:bg-destructive/90"
+                  : budgetImpact ? "bg-amber-600 hover:bg-amber-700" : "bg-success hover:bg-success/90"
+              }
+              disabled={!!budgetImpact && budgetOverrideReason.trim().length < 8}
               onClick={() => {
-                if (confirmDecisionTarget) {
-                  handleDecision(confirmDecisionTarget.offer.id, confirmDecisionTarget.decision)
-                  setConfirmDecisionTarget(null)
+                if (!confirmDecisionTarget) return
+                handleDecision(confirmDecisionTarget.offer.id, confirmDecisionTarget.decision)
+                if (budgetImpact && firestore && user && projectId) {
+                  logFinanceAudit(firestore, projectId, {
+                    action: "budget_exception_override",
+                    actorId: user.uid,
+                    actorName: profile?.name || user.email || "عضو الإدارة",
+                    targetType: "offer",
+                    targetId: confirmDecisionTarget.offer.id,
+                    amount: budgetImpact.offerPrice,
+                    reason: budgetOverrideReason.trim(),
+                    meta: {
+                      rfqTitle: rfq?.title || "",
+                      supplierName: confirmDecisionTarget.offer.companyName || confirmDecisionTarget.offer.supplierName || "",
+                      budget: budgetImpact.budget,
+                      committedBefore: budgetImpact.committedSpend,
+                      projectedTotal: budgetImpact.projectedTotal,
+                      overageAmount: budgetImpact.overageAmount,
+                    },
+                  })
                 }
+                setConfirmDecisionTarget(null)
+                setBudgetOverrideReason("")
               }}
             >
-              {confirmDecisionTarget?.decision === "مقبول" ? t("offers_accept") : t("offers_reject")}
+              {confirmDecisionTarget?.decision === "مقبول"
+                ? (budgetImpact ? t("offers_confirm_accept_anyway") : t("offers_accept"))
+                : t("offers_reject")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -120,6 +120,7 @@ import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
 import { PurchaseRequestsTab } from "@/components/contractor/PurchaseRequestsTab"
+import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
 import {
   SECTION_IDS,
   SECTION_REGISTRY,
@@ -1689,6 +1690,7 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: INFO ── */}
         {activeTab === "info" && (
+          <div className="space-y-4">
           <Card className="border-primary/15">
             <CardContent className="p-6" dir={isRtl ? "rtl" : "ltr"}>
               {isEditing ? (
@@ -1826,6 +1828,15 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {can("offers.accept") && (
+            <Card className="border-primary/15">
+              <CardContent className="p-6">
+                <FinanceAuditLog projectId={projectId} />
+              </CardContent>
+            </Card>
+          )}
+          </div>
         )}
 
         {/* ── TAB: BOQ ── */}

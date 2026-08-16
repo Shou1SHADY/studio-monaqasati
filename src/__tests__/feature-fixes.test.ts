@@ -49,6 +49,8 @@ function makeItem(overrides: Partial<BoqItem> = {}): BoqItem {
     groupId: "grp_test",
     selected: true,
     requiresWarranty: false,
+    categoryConfident: true,
+    quantityIsAssumed: false,
     ...overrides,
   }
 }
