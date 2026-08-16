@@ -5,8 +5,12 @@ import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
 /**
- * An invisible component that listens for globally emitted 'permission-error' events.
- * It throws any received error to be caught by Next.js's global-error.tsx.
+ * An invisible component that listens for globally emitted 'permission-error' events
+ * and throws them to be caught by Next.js's global-error.tsx — a loud dev-time signal
+ * for real Firestore rules bugs. In production this same crash is also reachable by a
+ * routine race (e.g. a subcollection listener still mounted the instant its parent doc
+ * is deleted, a moment before the page navigates away) that isn't a real bug, so there
+ * we log instead of crashing the page out from under the user.
  */
 export function FirebaseErrorListener() {
   // Use the specific error type for the state for type safety.
@@ -15,8 +19,12 @@ export function FirebaseErrorListener() {
   useEffect(() => {
     // The callback now expects a strongly-typed error, matching the event payload.
     const handleError = (error: FirestorePermissionError) => {
-      // Set error in state to trigger a re-render.
-      setError(error);
+      if (process.env.NODE_ENV !== 'production') {
+        // Set error in state to trigger a re-render that throws it (dev-only, see above).
+        setError(error);
+      } else {
+        console.error('Firestore permission error:', error);
+      }
     };
 
     // The typed emitter will enforce that the callback for 'permission-error'
