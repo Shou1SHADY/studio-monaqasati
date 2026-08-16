@@ -1732,12 +1732,16 @@ export default function ProjectDetailPage() {
                       <Warehouse size={14} className="text-muted-foreground" />
                       {t("proj_warehouse_link")}
                     </Label>
-                    <Select value={editWarehouseId} onValueChange={setEditWarehouseId} disabled={isSaving}>
+                    <Select
+                      value={editWarehouseId || "__none__"}
+                      onValueChange={(v) => setEditWarehouseId(v === "__none__" ? "" : v)}
+                      disabled={isSaving}
+                    >
                       <SelectTrigger className="h-10 rounded-xl">
                         <SelectValue placeholder={t("proj_warehouse_placeholder")} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">{t("proj_warehouse_none")}</SelectItem>
+                        <SelectItem value="__none__">{t("proj_warehouse_none")}</SelectItem>
                         {projectWarehouses.map((w) => (
                           <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
                         ))}
