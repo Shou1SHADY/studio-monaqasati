@@ -26,6 +26,7 @@ import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem } from "@/hooks/useWorkQueue"
+import { resolveActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Package, Truck, AlertTriangle, CircleDot, Banknote, Inbox, Timer } from "lucide-react"
@@ -122,6 +123,7 @@ export default function ContractorDashboard() {
   
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = profile?.organizationId || user?.uid
+  const activeCompanyName = resolveActiveCompanyName(profile, user?.uid)
   const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
@@ -241,7 +243,7 @@ export default function ContractorDashboard() {
               <h1 className={cn("text-[27px] sm:text-[34px] font-black text-white leading-[1.05]", locale !== 'ar' && "tracking-[-0.02em]")}>
                 {t("welcome")}{locale === 'ar' ? '،' : ','}{' '}
                 <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
-                  {profile?.companyName || profile?.name || t("welcome_fallback")}
+                  {activeCompanyName || t("welcome_fallback")}
                 </span>
               </h1>
               {lastActivityDate && (
