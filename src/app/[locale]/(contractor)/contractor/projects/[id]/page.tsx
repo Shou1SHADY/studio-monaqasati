@@ -248,7 +248,11 @@ export default function ProjectDetailPage() {
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
-  const { can } = usePermissions(projectId)
+  // Deletion unsubscribes project-scoped listeners immediately (rather than waiting
+  // for the post-delete navigation to unmount them) so they don't race the just-deleted
+  // parent doc and surface a spurious permission-denied on the way out.
+  const [isDeleting, setIsDeleting] = useState(false)
+  const { can } = usePermissions(isDeleting ? undefined : projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
@@ -265,7 +269,6 @@ export default function ProjectDetailPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
 
   // BOQ state
   const [boqItems, setBoqItems] = useState<BоqItem[]>([])
@@ -1832,7 +1835,7 @@ export default function ProjectDetailPage() {
           {can("offers.accept") && (
             <Card className="border-primary/15">
               <CardContent className="p-6">
-                <FinanceAuditLog projectId={projectId} />
+                <FinanceAuditLog projectId={isDeleting ? undefined : projectId} />
               </CardContent>
             </Card>
           )}
