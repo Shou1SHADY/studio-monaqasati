@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem } from "@/hooks/useWorkQueue"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Package, Truck, AlertTriangle, CircleDot, Banknote } from "lucide-react"
+import { Package, Truck, AlertTriangle, CircleDot, Banknote, Inbox, Timer } from "lucide-react"
 
 function describeQueueItem(item: WorkQueueItem, t: ReturnType<typeof useTranslations<"Portal.Contractor">>) {
   switch (item.type) {
@@ -37,6 +37,20 @@ function describeQueueItem(item: WorkQueueItem, t: ReturnType<typeof useTranslat
         icon: FileText,
         iconColor: "text-accent",
         text: t("queue_item_rfq_decision", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set"), count: item.data.offerCount as number }),
+      }
+    case "rfq_no_offers":
+      return {
+        icon: Inbox,
+        iconColor: "text-slate-500",
+        text: t("queue_item_rfq_no_offers", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set"), days: item.data.daysOpen as number }),
+      }
+    case "rfq_closing_soon":
+      return {
+        icon: Timer,
+        iconColor: "text-red-600",
+        text: item.data.isOverdue
+          ? t("queue_item_rfq_deadline_passed", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set") })
+          : t("queue_item_rfq_closing_soon", { rfqTitle: (item.data.rfqTitle as string) || t("rfq_not_set"), hours: item.data.hoursLeft as number }),
       }
     case "delivery_confirm":
       return {

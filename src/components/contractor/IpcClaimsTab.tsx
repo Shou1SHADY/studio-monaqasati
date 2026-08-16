@@ -24,15 +24,7 @@ import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/fi
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/utils/invoice-utils"
 import { logFinanceAudit } from "@/lib/finance-audit"
-import { PlusCircle, ClipboardCheck, Loader2, CheckCircle2, Receipt, History } from "lucide-react"
-
-type FinanceAuditEntry = {
-  id: string
-  action: "ipc_submitted" | "ipc_collected"
-  actorName: string
-  amount: number
-  createdAt?: unknown
-}
+import { PlusCircle, ClipboardCheck, Loader2, CheckCircle2, Receipt } from "lucide-react"
 
 type IpcClaim = {
   id: string
@@ -73,17 +65,6 @@ export function IpcClaimsTab({ projectId, canManage }: IpcClaimsTabProps) {
   }, [firestore, user])
   const { data: profile } = useDoc(userDocRef)
   const actorName = (profile as { name?: string } | null)?.name || user?.email || "عضو الفريق"
-
-  const auditQuery = useMemoFirebase(() => {
-    if (!firestore || !projectId) return null
-    return collection(firestore, "projects", projectId, "financeAuditLog")
-  }, [firestore, projectId])
-  const { data: auditData } = useCollection(auditQuery)
-  const auditLog = ((auditData || []) as FinanceAuditEntry[]).sort((a, b) => {
-    const getTime = (v: unknown) =>
-      v && typeof v === "object" && "toDate" in v ? (v as { toDate: () => Date }).toDate().getTime() : 0
-    return getTime(b.createdAt) - getTime(a.createdAt)
-  })
 
   const [showSubmit, setShowSubmit] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -234,27 +215,6 @@ export function IpcClaimsTab({ projectId, canManage }: IpcClaimsTabProps) {
               )}
             </div>
           ))}
-        </div>
-      )}
-
-      {auditLog.length > 0 && (
-        <div className="pt-2">
-          <h4 className="font-bold text-sm flex items-center gap-1.5 text-slate-600 mb-2">
-            <History size={14} />
-            {t("finance_audit_title")}
-          </h4>
-          <div className="space-y-1.5">
-            {auditLog.map((entry) => (
-              <div key={entry.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-slate-50 text-xs">
-                <span className="text-slate-600">
-                  <span className="font-bold text-slate-800">{entry.actorName}</span>{" "}
-                  {entry.action === "ipc_submitted" ? t("finance_audit_ipc_submitted") : t("finance_audit_ipc_collected")}{" "}
-                  <span className="font-semibold" dir="ltr">{formatCurrency(entry.amount, locale)}</span>
-                </span>
-                <span className="text-slate-400 shrink-0" suppressHydrationWarning>{fmtDate(entry.createdAt, locale)}</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
