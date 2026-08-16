@@ -123,6 +123,9 @@ export default function ContractorDashboard() {
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = profile?.organizationId || user?.uid
   const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
+  const QUEUE_DISPLAY_LIMIT = 8
+  const visibleQueueItems = queueItems.slice(0, QUEUE_DISPLAY_LIMIT)
+  const hiddenQueueCount = queueItems.length - visibleQueueItems.length
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
@@ -334,24 +337,33 @@ export default function ContractorDashboard() {
                   <div className="p-12 flex items-center justify-center">
                     <Skeleton className="h-24 w-full rounded-lg" />
                   </div>
-                ) : queueItems.length > 0 ? queueItems.map((item) => {
-                  const { icon: Icon, iconColor, text } = describeQueueItem(item, t)
-                  return (
-                    <Link
-                      key={item.id}
-                      href={item.actionUrl}
-                      className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between gap-4 group cursor-pointer block"
-                    >
-                      <div className="flex items-center gap-4 min-w-0 flex-1">
-                        <div className={cn("h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 transition-transform duration-300", !prefersReducedMotion && "group-hover:scale-105")}>
-                          <Icon className={cn("h-5 w-5", iconColor)} />
-                        </div>
-                        <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors truncate min-w-0 flex-1">{text}</p>
+                ) : queueItems.length > 0 ? (
+                  <>
+                    {visibleQueueItems.map((item) => {
+                      const { icon: Icon, iconColor, text } = describeQueueItem(item, t)
+                      return (
+                        <Link
+                          key={item.id}
+                          href={item.actionUrl}
+                          className="p-5 hover:bg-muted/80 transition-colors flex items-center justify-between gap-4 group cursor-pointer block"
+                        >
+                          <div className="flex items-center gap-4 min-w-0 flex-1">
+                            <div className={cn("h-12 w-12 rounded-lg bg-background border shadow-sm flex items-center justify-center shrink-0 transition-transform duration-300", !prefersReducedMotion && "group-hover:scale-105")}>
+                              <Icon className={cn("h-5 w-5", iconColor)} />
+                            </div>
+                            <p className="text-sm font-bold text-foreground group-hover:text-accent transition-colors truncate min-w-0 flex-1">{text}</p>
+                          </div>
+                          <ArrowRight className={cn("h-4 w-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", locale === 'ar' && "rtl-flip")} />
+                        </Link>
+                      )
+                    })}
+                    {hiddenQueueCount > 0 && (
+                      <div className="px-5 py-3 text-center text-xs font-semibold text-muted-foreground bg-muted/30">
+                        {t("queue_more_items", { count: hiddenQueueCount })}
                       </div>
-                      <ArrowRight className={cn("h-4 w-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity", locale === 'ar' && "rtl-flip")} />
-                    </Link>
-                  )
-                }) : (
+                    )}
+                  </>
+                ) : (
                   <div className="p-12 flex flex-col items-center justify-center text-center space-y-3">
                     <div className="h-16 w-16 rounded-full bg-slate-50 flex items-center justify-center">
                       <CircleDot className="h-8 w-8 text-slate-300" />

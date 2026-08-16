@@ -1766,6 +1766,7 @@
       "pr_reject_btn": "Reject",
       "queue_title": "Your Work Today",
       "queue_empty": "Nothing waiting on you today ✓",
+      "queue_more_items": "+{count} more waiting",
       "queue_generic_supplier": "a supplier",
       "queue_item_rfq_decision": "{rfqTitle} — {count} offer(s) awaiting your decision",
       "queue_item_rfq_no_offers": "{rfqTitle} — no offers in {days} days",
