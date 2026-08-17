@@ -504,6 +504,21 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
+      // Waste records (نسبة الهدر) — one per material row consumed from the linked
+      // warehouse, capturing quantity taken vs. quantity actually used. Append-only,
+      // same permission as boqItems since it's written in the same transaction.
+      match /wasteRecords/{recordId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
+          && request.resource.data.recordedByUserId == request.auth.uid;
+
+        allow update, delete: if isAdmin();
+      }
+
       // Append-only finance audit trail (who submitted/collected an IPC claim, and when).
       // No update/delete for non-admins — it's a log, not an editable record.
       match /financeAuditLog/{entryId} {

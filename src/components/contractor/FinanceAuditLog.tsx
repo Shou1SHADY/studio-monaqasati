@@ -24,7 +24,9 @@ function fmtDateTime(val: unknown, locale: string) {
 }
 
 function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: string; t: ReturnType<typeof useTranslations<"Portal.Contractor">> }) {
-  const isException = entry.action === "budget_exception_override"
+  const isBudgetException = entry.action === "budget_exception_override"
+  const isWasteException = entry.action === "waste_threshold_exceeded"
+  const isException = isBudgetException || isWasteException
   const isCollected = entry.action === "ipc_collected"
   const meta = entry.meta || {}
 
@@ -32,6 +34,7 @@ function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: s
   const label =
     entry.action === "ipc_submitted" ? t("finance_audit_ipc_submitted") :
     entry.action === "ipc_collected" ? t("finance_audit_ipc_collected") :
+    isWasteException ? t("finance_audit_waste_exceeded") :
     t("finance_audit_budget_override")
 
   return (
@@ -52,7 +55,13 @@ function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: s
           <p className="text-slate-700">
             <span className="font-bold text-slate-900">{entry.actorName}</span>{" "}
             {label}{" "}
-            <span className="font-semibold" dir="ltr">{formatCurrency(entry.amount, locale)}</span>
+            {isWasteException ? (
+              <span className="font-semibold" dir="ltr">
+                {entry.amount} {typeof meta.unit === "string" ? meta.unit : ""}
+              </span>
+            ) : (
+              <span className="font-semibold" dir="ltr">{formatCurrency(entry.amount, locale)}</span>
+            )}
           </p>
           <span className="text-xs text-slate-400 shrink-0" suppressHydrationWarning>{fmtDateTime(entry.createdAt, locale)}</span>
         </div>
@@ -61,9 +70,18 @@ function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: s
             {typeof meta.rfqTitle === "string" && meta.rfqTitle && (
               <p className="text-xs text-slate-500 truncate">{meta.rfqTitle}</p>
             )}
-            {typeof meta.overageAmount === "number" && (
+            {typeof meta.itemName === "string" && meta.itemName && (
+              <p className="text-xs text-slate-500 truncate">{meta.itemName}</p>
+            )}
+            {isBudgetException && typeof meta.overageAmount === "number" && (
               <p className="text-xs font-semibold text-amber-700" dir="ltr">
                 {t("passport_overage_label")} {formatCurrency(meta.overageAmount, locale)}
+              </p>
+            )}
+            {isWasteException && typeof meta.wastePercent === "number" && (
+              <p className="text-xs font-semibold text-amber-700" dir="ltr">
+                {t("passport_waste_percent_label")} {meta.wastePercent}%
+                {typeof meta.targetPercent === "number" ? ` (${t("passport_waste_target_label")} ${meta.targetPercent}%)` : ""}
               </p>
             )}
             {entry.reason && (
