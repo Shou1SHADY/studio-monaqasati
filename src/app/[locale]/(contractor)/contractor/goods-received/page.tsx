@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -46,6 +46,7 @@ import {
   Plus,
   Trash2,
   Warehouse,
+  FolderOpen,
 } from "lucide-react"
 import { SignaturePad } from "@/components/SignaturePad"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -78,6 +79,7 @@ type Delivery = {
   attachmentUrls?: string[]
   notes?: string
   source?: string
+  projectId?: string | null
 }
 
 function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: string; t: ReturnType<typeof useTranslations<"Portal.Contractor">> }) {
@@ -87,6 +89,16 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
   const { toast } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+
+  // Resolved live rather than denormalized — covers both manually-logged
+  // receipts and supplier delivery notices (which already carried projectId
+  // before this feature, just never had anywhere to show it).
+  const projectRef = useMemoFirebase(() => {
+    if (!firestore || !delivery.projectId) return null
+    return doc(firestore, "projects", delivery.projectId)
+  }, [firestore, delivery.projectId])
+  const { data: linkedProject } = useDoc(projectRef)
+  const projectName = (linkedProject as { name?: string } | null)?.name
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -162,6 +174,12 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
             {delivery.source === "manual" && (
               <Badge variant="outline" className="text-slate-500 border-slate-200 bg-white text-xs font-semibold w-fit">
                 {t("goods_manual_badge")}
+              </Badge>
+            )}
+            {projectName && (
+              <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 text-xs font-semibold w-fit gap-1 max-w-[180px]">
+                <FolderOpen size={10} className="shrink-0" />
+                <span className="truncate">{projectName}</span>
               </Badge>
             )}
             <Button
@@ -264,6 +282,7 @@ function ManualReceiptDialog({
   const [receivedByName, setReceivedByName] = useState(defaultReceiverName || "")
   const [notes, setNotes] = useState("")
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("")
+  const [selectedProjectId, setSelectedProjectId] = useState("")
   const [itemRows, setItemRows] = useState<ItemRow[]>([
     { rowId: "r0", inventoryItemId: "", itemName: "", quantity: "", unit: "" },
   ])
@@ -281,12 +300,34 @@ function ManualReceiptDialog({
   const { data: warehousesData } = useCollection(warehousesQuery)
   const warehouses = (warehousesData || []) as { id: string; name: string }[]
 
+  // Org-wide, single-field query (avoids needing a composite index) — filtered
+  // client-side to whichever projects are linked to the selected warehouse.
+  const orgProjectsQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
+  }, [firestore, myOrgId])
+  const { data: orgProjectsData } = useCollection(orgProjectsQuery)
+  const warehouseProjects = ((orgProjectsData || []) as { id: string; name: string; warehouseId?: string }[])
+    .filter((p) => p.warehouseId === selectedWarehouseId)
+
   const inventoryQuery = useMemoFirebase(() => {
     if (!firestore || !selectedWarehouseId) return null
     return collection(firestore, "warehouses", selectedWarehouseId, "inventoryItems")
   }, [firestore, selectedWarehouseId])
   const { data: inventoryData } = useCollection(inventoryQuery)
   const inventoryItems = (inventoryData || []) as { id: string; name: string; unit: string }[]
+
+  // A warehouse serving exactly one project is the common case — pre-select it,
+  // but still leave the field changeable (including back to "no project") since
+  // a warehouse can serve several projects or none in particular.
+  useEffect(() => {
+    if (warehouseProjects.length === 1) {
+      setSelectedProjectId(warehouseProjects[0].id)
+    } else {
+      setSelectedProjectId("")
+    }
+    // Only re-run when the set of candidate projects actually changes.
+  }, [warehouseProjects.map((p) => p.id).join(",")])
 
   const resetForm = () => {
     setSupplierName("")
@@ -295,6 +336,7 @@ function ManualReceiptDialog({
     setReceivedByName(defaultReceiverName || "")
     setNotes("")
     setSelectedWarehouseId("")
+    setSelectedProjectId("")
     setItemRows([{ rowId: "r0", inventoryItemId: "", itemName: "", quantity: "", unit: "" }])
     setSupplierCrNumber("")
     setSupplierVatNumber("")
@@ -339,6 +381,7 @@ function ManualReceiptDialog({
         deliveryDate,
         notes: notes.trim() || null,
         warehouseId: selectedWarehouseId || null,
+        projectId: selectedProjectId || null,
         items: validRows.map((r) => ({
           itemId: r.inventoryItemId || null,
           name: r.itemName,
@@ -434,6 +477,30 @@ function ManualReceiptDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Project picker — only offered when the selected warehouse actually serves a project */}
+          {selectedWarehouseId && warehouseProjects.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                <FolderOpen size={13} className="text-muted-foreground" />
+                {t("goods_manual_project")}
+              </Label>
+              <Select
+                value={selectedProjectId || "__none__"}
+                onValueChange={(v) => setSelectedProjectId(v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("goods_manual_project_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">{t("goods_manual_project_none")}</SelectItem>
+                  {warehouseProjects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Items table */}
           <div className="space-y-2">

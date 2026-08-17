@@ -1,12 +1,12 @@
 import { collection, addDoc, serverTimestamp, type Firestore } from "firebase/firestore"
 
-export type FinanceAuditAction = "ipc_submitted" | "ipc_collected" | "budget_exception_override"
+export type FinanceAuditAction = "ipc_submitted" | "ipc_collected" | "budget_exception_override" | "waste_threshold_exceeded"
 
 export interface FinanceAuditEntry {
   action: FinanceAuditAction
   actorId: string
   actorName: string
-  targetType: "ipcClaim" | "offer"
+  targetType: "ipcClaim" | "offer" | "wasteConsumption"
   targetId: string
   amount: number
   /** Required for budget_exception_override — the written justification for exceeding budget. */
