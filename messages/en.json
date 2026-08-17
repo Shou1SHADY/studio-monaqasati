@@ -446,35 +446,35 @@
     "free_tier": "Starter",
     "free_tier_desc": "For new contractors and suppliers",
     "free": "Free",
-    "free_features": [
-      "Post up to 5 RFQs monthly",
-      "Receive basic quotations",
-      "1 User Account",
-      "Email support"
-    ],
+    "free_features": {
+      "0": "Post up to 5 RFQs monthly",
+      "1": "Receive basic quotations",
+      "2": "1 User Account",
+      "3": "Email support"
+    },
     "register_free": "Request a Demo",
     "most_popular": "Most Popular",
     "growth_tier": "Pro Growth",
     "growth_tier_desc": "For active medium-sized companies",
     "contact_us": "Contact Us",
-    "growth_features": [
-      "Unlimited RFQs",
-      "Smart quotation comparison",
-      "Favorite suppliers management",
-      "Up to 5 Users",
-      "Priority support"
-    ],
+    "growth_features": {
+      "0": "Unlimited RFQs",
+      "1": "Smart quotation comparison",
+      "2": "Favorite suppliers management",
+      "3": "Up to 5 Users",
+      "4": "Priority support"
+    },
     "request_quote": "Request a Quote",
     "enterprise_tier": "Enterprise",
     "enterprise_tier_desc": "For large corporations and national projects",
     "custom": "Custom",
-    "enterprise_features": [
-      "ERP systems integration",
-      "Dedicated account manager",
-      "Unlimited users",
-      "Advanced performance reports",
-      "Private hosting (Optional)"
-    ],
+    "enterprise_features": {
+      "0": "ERP systems integration",
+      "1": "Dedicated account manager",
+      "2": "Unlimited users",
+      "3": "Advanced performance reports",
+      "4": "Private hosting (Optional)"
+    },
     "contact_sales": "Contact Sales"
   },
   "NotFound": {
@@ -2834,7 +2834,8 @@
       "proj_boq_consume_available": "Available",
       "proj_boq_consume_success": "Materials pulled and inventory updated",
       "proj_boq_consume_error": "Failed to pull materials",
-      "proj_boq_consume_empty": "Enter a quantity for at least one item"
+      "proj_boq_consume_empty": "Enter a quantity for at least one item",
+      "queue_more_items": "+{count} more waiting"
     },
     "Admin": {
       "Dashboard": {

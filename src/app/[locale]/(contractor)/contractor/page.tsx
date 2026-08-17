@@ -26,7 +26,7 @@ import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem } from "@/hooks/useWorkQueue"
-import { resolveActiveCompanyName } from "@/hooks/useActiveCompanyName"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Package, Truck, AlertTriangle, CircleDot, Banknote, Inbox, Timer } from "lucide-react"
@@ -123,7 +123,7 @@ export default function ContractorDashboard() {
   
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = profile?.organizationId || user?.uid
-  const activeCompanyName = resolveActiveCompanyName(profile, user?.uid)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
   const [showAllQueue, setShowAllQueue] = useState(false)
   const QUEUE_COLLAPSED_LIMIT = 5

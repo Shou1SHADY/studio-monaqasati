@@ -35,6 +35,7 @@ import {
 import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { collection, query, where, addDoc, doc, orderBy } from "firebase/firestore"
 import { useRouter } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
@@ -82,6 +83,7 @@ export default function SupplierDashboard() {
      return doc(firestore, "users", user.uid)
    }, [firestore, user, isUserLoading])
    const { data: userData } = useDoc(userDocRef)
+   const activeCompanyName = useActiveCompanyName(userData, user?.uid)
 
    const rfqsQuery = useMemoFirebase(() => {
      if (isUserLoading || !user || !firestore) return null
@@ -122,7 +124,7 @@ export default function SupplierDashboard() {
         supplierId: user.uid,
         organizationId: userData?.organizationId || user.uid,
         userId: user.uid,
-        supplierName: userData?.companyName || userData?.name || t("generic_supplier"),
+        supplierName: activeCompanyName || t("generic_supplier"),
         submittedByUserId: user.uid,
         submittedByUserName: userData?.name || user.email || t("generic_team_member"),
         createdAt: new Date().toISOString(),
@@ -225,7 +227,7 @@ export default function SupplierDashboard() {
               <h1 className={cn("text-[27px] sm:text-[34px] font-black text-white leading-[1.05]", locale !== 'ar' && "tracking-[-0.02em]")}>
                 {t("welcome")}{locale === 'ar' ? '،' : ','}{' '}
                 <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
-                  {userData?.companyName || userData?.name || t("partner_name")}
+                  {activeCompanyName || t("partner_name")}
                 </span>
               </h1>
               {lastActivityDate && (

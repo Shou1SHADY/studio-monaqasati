@@ -28,7 +28,7 @@ import { useRouter, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
-import { resolveActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
+import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -45,7 +45,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   const orgMemberships: OrgMembership[] = (profile?.orgMemberships as OrgMembership[] | undefined) || []
   const activeOrgId = (profile?.organizationId as string | undefined) || user?.uid || ""
-  const activeCompanyName = resolveActiveCompanyName(profile, user?.uid)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const [switchingOrgId, setSwitchingOrgId] = React.useState<string | null>(null)
   const handleSwitchCompany = async (organizationId: string) => {
     if (!firestore || !user || organizationId === activeOrgId) return
@@ -476,7 +476,8 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     e.stopPropagation()
     setSelectedNotifIds(prev => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }

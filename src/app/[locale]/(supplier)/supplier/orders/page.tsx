@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { ReviewDialog } from "@/components/ReviewDialog"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { cn } from "@/lib/utils"
 
 export default function SupplierOrdersPage() {
@@ -26,6 +27,7 @@ export default function SupplierOrdersPage() {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const [reviewOrder, setReviewOrder] = useState<any | null>(null)
   const { toast } = useToast()
 
@@ -402,9 +404,9 @@ export default function SupplierOrdersPage() {
           offerId={reviewOrder.id}
           rfqId={reviewOrder.rfqId}
           reviewerId={user?.uid || ""}
-          reviewerName={profile?.companyName || profile?.name || ""}
+          reviewerName={activeCompanyName || ""}
           reviewerRole="Supplier"
-          revieweeId={reviewOrder.contractorId || reviewOrder.contractorOrgId || reviewOrder.submittedByUserId || ""}
+          revieweeId={reviewOrder.contractorOrgId || reviewOrder.contractorId || reviewOrder.submittedByUserId || ""}
           revieweeName={reviewOrder.contractorName || "المقاول"}
           revieweeRole="Contractor"
           onSubmitSuccess={() => {
