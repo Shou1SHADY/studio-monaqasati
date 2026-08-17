@@ -60,6 +60,7 @@ import { collection, query, where, doc, addDoc, updateDoc, arrayUnion, arrayRemo
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { displayCategory, displayCity } from "@/lib/constants"
 
 function fmtDate(val: unknown, locale: string) {
@@ -108,7 +109,8 @@ export default function SuppliersDirectory() {
   }, [firestore])
 
   const { data: fbSuppliers, isLoading: suppliersLoading } = useCollection(suppliersQuery)
-  
+  const supplierCompanyNames = useCompanyNamesForMembers((fbSuppliers || []) as any[])
+
   // Fetch contractor's RFQs
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -229,12 +231,32 @@ export default function SuppliersDirectory() {
   }, [firestore])
   const { data: allSupplierReviews } = useCollection(allSupplierReviewsQuery)
 
-  // Build a map of supplierId -> { avgRating, count } from live reviews
+  // A supplier "company" can have several logged-in accounts (the owner + invited
+  // team members). Reviews and directory listings both used to key off the
+  // individual account that happened to submit/fulfil an offer, so a company's
+  // reputation and presence in the directory were split across its team instead
+  // of being one entry. canonicalOrgIdByUserId maps every individual account to
+  // its company's canonical id (the owner's own uid) so both can be aggregated.
+  const canonicalOrgIdByUserId = new Map<string, string>()
+  ;(fbSuppliers || []).forEach((s: any) => {
+    canonicalOrgIdByUserId.set(s.id, s.organizationId || s.id)
+  })
+  const suppliersByOrg = new Map<string, any[]>()
+  ;(fbSuppliers || []).forEach((s: any) => {
+    const orgId = s.organizationId || s.id
+    if (!suppliersByOrg.has(orgId)) suppliersByOrg.set(orgId, [])
+    suppliersByOrg.get(orgId)!.push(s)
+  })
+
+  // Ratings aggregated by canonical org id — this also correctly combines reviews
+  // written before this fix (against an individual team member) with ones written
+  // after it (against the company), since both resolve through the same map.
   const supplierRatingsMap = (allSupplierReviews || []).reduce((acc: Record<string, { sum: number; count: number }>, r: any) => {
     if (!r.revieweeId) return acc
-    if (!acc[r.revieweeId]) acc[r.revieweeId] = { sum: 0, count: 0 }
-    acc[r.revieweeId].sum += r.rating || 0
-    acc[r.revieweeId].count += 1
+    const orgId = canonicalOrgIdByUserId.get(r.revieweeId) || r.revieweeId
+    if (!acc[orgId]) acc[orgId] = { sum: 0, count: 0 }
+    acc[orgId].sum += r.rating || 0
+    acc[orgId].count += 1
     return acc
   }, {})
 
@@ -305,24 +327,32 @@ export default function SuppliersDirectory() {
     (fbSuppliers || []).flatMap((s: any) => s.specializations || []).filter(Boolean) || []
   )].sort()
 
-  const displaySuppliers = (fbSuppliers || []).length > 0 ? (fbSuppliers || [])
-    .map((s: any) => ({
-      ...s,
-      id: s.id,
-      name: s.name || s.companyName || t("suppliers_registered_supplier"),
-      city: s.city || s.location || t("suppliers_not_set"),
-      coverageCities: s.coverageCities || [],
-      specializations: s.specializations || [],
-      certificates: s.certificates || [],
-      rating: supplierRatingsMap[s.id]
-        ? parseFloat((supplierRatingsMap[s.id].sum / supplierRatingsMap[s.id].count).toFixed(1))
-        : (s.rating || 0),
-      reviewsCount: supplierRatingsMap[s.id]?.count ?? (s.reviewsCount || 0),
-      isFavorite: favoriteSupplierIds.has(s.id),
-      isExplicitFavorite: explicitFavoriteIds.includes(s.id),
-      isConnected: knownSupplierIds.has(s.id) || knownSupplierIds.has(s.organizationId),
-      linkId: linkIdBySupplierOrgId.get(s.id) || linkIdBySupplierOrgId.get(s.organizationId)
-    }))
+  // One card per company, not per logged-in account. Pick the org owner's own
+  // doc as the base (it's the account that goes through onboarding, so its
+  // fields are the most likely to be filled in); fall back to the first team
+  // member with a non-empty value for any field the owner left blank.
+  const displaySuppliers = (fbSuppliers || []).length > 0 ? Array.from(suppliersByOrg.entries())
+    .map(([orgId, members]) => {
+      const owner = members.find((m) => !m.organizationRole || m.organizationRole === "owner") || members[0]
+      const memberIds = members.map((m) => m.id)
+      const pick = (field: string) => owner[field] || members.find((m) => m[field])?.[field]
+      const ratings = supplierRatingsMap[orgId]
+      return {
+        ...owner,
+        id: orgId,
+        name: supplierCompanyNames.get(owner.id) || owner.companyName || owner.name || t("suppliers_registered_supplier"),
+        city: pick("city") || pick("location") || t("suppliers_not_set"),
+        coverageCities: pick("coverageCities") || [],
+        specializations: pick("specializations") || [],
+        certificates: pick("certificates") || [],
+        rating: ratings ? parseFloat((ratings.sum / ratings.count).toFixed(1)) : (owner.rating || 0),
+        reviewsCount: ratings?.count ?? (owner.reviewsCount || 0),
+        isFavorite: memberIds.some((id) => favoriteSupplierIds.has(id)) || favoriteSupplierIds.has(orgId),
+        isExplicitFavorite: memberIds.some((id) => explicitFavoriteIds.includes(id)) || explicitFavoriteIds.includes(orgId),
+        isConnected: knownSupplierIds.has(orgId) || memberIds.some((id) => knownSupplierIds.has(id)),
+        linkId: linkIdBySupplierOrgId.get(orgId) || memberIds.map((id) => linkIdBySupplierOrgId.get(id)).find(Boolean),
+      }
+    })
     .filter((s: any) => {
       // Search query filter
       if (searchQuery.trim()) {

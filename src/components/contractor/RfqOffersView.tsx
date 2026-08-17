@@ -60,6 +60,7 @@ import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addD
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { formatCurrency } from "@/utils/invoice-utils"
 
 function fmtDate(val: any, locale: string) {
@@ -86,6 +87,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
@@ -655,7 +657,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               <div className="min-w-0">
                                 {offer.supplierId && !isMdmak ? (
                                   <Link
-                                    href={`/contractor/supplier/profile/${offer.supplierId}`}
+                                    href={`/contractor/supplier/profile/${offer.organizationId || offer.supplierId}`}
                                     className="font-bold text-sm text-slate-800 hover:text-primary transition-colors inline-flex items-center gap-1 group"
                                   >
                                     <span className="truncate">{offer.companyName || offer.supplierName || t("offers_registered_supplier")}</span>
@@ -693,7 +695,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                   asChild
                                   className="h-8 px-3 rounded-lg text-xs font-bold text-primary hover:text-primary hover:bg-primary/10 gap-1"
                                 >
-                                  <Link href={`/contractor/supplier/profile/${offer.supplierId}`}>
+                                  <Link href={`/contractor/supplier/profile/${offer.organizationId || offer.supplierId}`}>
                                     <Briefcase size={12} />
                                     {t("offers_view_supplier_profile")}
                                   </Link>
@@ -1107,7 +1109,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                           {initials}
                         </span>
                         {offer.supplierId ? (
-                          <Link href={`/contractor/supplier/profile/${offer.supplierId}`} style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.3, textDecoration: "none", color: best ? NAVY : INK, textAlign: "center" }}>
+                          <Link href={`/contractor/supplier/profile/${offer.organizationId || offer.supplierId}`} style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.3, textDecoration: "none", color: best ? NAVY : INK, textAlign: "center" }}>
                             {offer.supplierName || t("offers_registered_supplier")}
                           </Link>
                         ) : (
@@ -1604,9 +1606,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           offerId={reviewOffer.id}
           rfqId={rfqId}
           reviewerId={user?.uid || ""}
-          reviewerName={profile?.companyName || profile?.name || ""}
+          reviewerName={activeCompanyName || ""}
           reviewerRole="Contractor"
-          revieweeId={reviewOffer.supplierId}
+          revieweeId={reviewOffer.organizationId || reviewOffer.supplierId}
           revieweeName={reviewOffer.supplierName || "المورد"}
           revieweeRole="Supplier"
           onSubmitSuccess={() => setReviewOffer(null)}

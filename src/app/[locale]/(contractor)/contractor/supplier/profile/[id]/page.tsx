@@ -28,6 +28,7 @@ import {
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { collection, doc, query, where, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useCompanyNameFor } from "@/hooks/useActiveCompanyName"
 import { displayCategory, displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
@@ -48,11 +49,27 @@ export default function ContractorSupplierProfilePage() {
     return doc(firestore, "users", supplierId)
   }, [firestore, supplierId])
   const { data: supplier, isLoading: isSupplierLoading } = useDoc(supplierDocRef)
+  const resolvedCompanyName = useCompanyNameFor(supplier ? { id: supplierId, ...supplier } : null)
+
+  // A company's reviews can be scattered across several accounts — the owner's,
+  // and any team member's who happened to fulfil a given order — so we can't
+  // just match this one uid. Resolve to the canonical org id, pull in the rest
+  // of the team, and match reviews against any of those ids.
+  const canonicalOrgId = supplier?.organizationRole === "member" && supplier.organizationId ? supplier.organizationId : supplierId
+
+  const orgTeamQuery = useMemoFirebase(() => {
+    if (!firestore || !canonicalOrgId) return null
+    return query(collection(firestore, "users"), where("organizationId", "==", canonicalOrgId))
+  }, [firestore, canonicalOrgId])
+  const { data: orgTeam } = useCollection(orgTeamQuery)
+  const revieweeIds = Array.from(new Set([canonicalOrgId, ...((orgTeam || []).map((m: any) => m.id))])).slice(0, 30)
+  const revieweeIdsKey = revieweeIds.join(",")
 
   const reviewsQuery = useMemoFirebase(() => {
-    if (!firestore || !supplierId) return null
-    return query(collection(firestore, "reviews"), where("revieweeId", "==", supplierId))
-  }, [firestore, supplierId])
+    if (!firestore || revieweeIds.length === 0) return null
+    return query(collection(firestore, "reviews"), where("revieweeId", "in", revieweeIds))
+    // revieweeIdsKey (not revieweeIds) is the real dependency — same ids, same query.
+  }, [firestore, revieweeIdsKey])
   const { data: reviews, isLoading: isReviewsLoading } = useCollection(reviewsQuery)
 
   // Live computed average
@@ -123,7 +140,7 @@ export default function ContractorSupplierProfilePage() {
     )
   }
 
-  const name = supplier.name || supplier.companyName || t("suppliers_registered_supplier")
+  const name = resolvedCompanyName || t("suppliers_registered_supplier")
   const rating = computedRating.avg
   const reviewsCount = computedRating.count
   const certs = supplier.certificates || []

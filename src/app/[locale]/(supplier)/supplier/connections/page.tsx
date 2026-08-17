@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName, useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { Loader2, Users, Link2, Calendar, Building2, CheckCircle2, XCircle, Mail } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
@@ -70,6 +71,7 @@ export default function SupplierConnectionsPage() {
   const { data: profile } = useDoc(userDocRef)
   const typedProfile = profile as { organizationId?: string; companyName?: string; name?: string; specializations?: string[] } | null
   const myOrgId = typedProfile?.organizationId || user?.uid
+  const activeCompanyName = useActiveCompanyName(typedProfile, user?.uid)
 
   // My active links (as supplier)
   const linksQuery = useMemoFirebase(() => {
@@ -97,6 +99,7 @@ export default function SupplierConnectionsPage() {
     return query(collection(firestore, "users"), where("role", "==", "Contractor"))
   }, [firestore, user, isUserLoading])
   const { data: allContractors } = useCollection(contractorsQuery)
+  const contractorCompanyNames = useCompanyNamesForMembers((allContractors || []) as any[])
   const contractorsByOrgId = new Map<string, ContractorUser>()
   ;((allContractors || []) as ContractorUser[]).forEach((c) => {
     const orgId = c.organizationId || c.id
@@ -115,7 +118,7 @@ export default function SupplierConnectionsPage() {
     try {
       await addDoc(collection(firestore, "users", inv.invitedBy, "notifications"), {
         title: "تم قبول دعوة المورد",
-        message: `${typedProfile?.companyName || typedProfile?.name || user?.email || ""} قبل دعوتك وانضم إلى دليل مورّديك.`,
+        message: `${activeCompanyName || user?.email || ""} قبل دعوتك وانضم إلى دليل مورّديك.`,
         type: "supplier_invite_accepted",
         createdAt: new Date().toISOString(),
         read: false,
@@ -148,7 +151,7 @@ export default function SupplierConnectionsPage() {
       await addDoc(collection(firestore, "contractorSupplierLinks"), {
         contractorOrgId: inv.contractorOrgId,
         supplierOrgId: myOrgId,
-        supplierName: typedProfile?.companyName || typedProfile?.name || "",
+        supplierName: activeCompanyName || "",
         supplierCategories: typedProfile?.specializations || [],
         status: "active",
         requestedBy: "contractor",
@@ -237,7 +240,7 @@ export default function SupplierConnectionsPage() {
                                 <Link2 size={14} className="text-success" />
                               </div>
                               <p className="font-bold text-slate-800 text-lg">
-                                {contractor?.companyName || contractor?.name || t("conn_contractor_label")}
+                                {(contractor && contractorCompanyNames.get(contractor.id)) || contractor?.companyName || contractor?.name || t("conn_contractor_label")}
                               </p>
                             </div>
                             <Badge className="bg-success/10 text-success border-success/20 text-xs font-semibold shrink-0">

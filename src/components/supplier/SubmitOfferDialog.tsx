@@ -28,6 +28,7 @@ import {
   FileStack,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompanyName"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
 import { collection, addDoc, doc, getDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
@@ -64,6 +65,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   }, [firestore, user, isUserLoading])
   
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const [offerPrice, setOfferPrice] = useState("")
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
@@ -213,8 +215,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       const offerData: any = {
         supplierId: user.uid,
         organizationId: profile?.organizationId || user.uid,
-        supplierName: profile?.name || profile?.companyName || "مورد",
-        companyName: profile?.companyName || "",
+        supplierName: activeCompanyName || "مورد",
+        companyName: activeCompanyName || "",
         supplierWebsite: supplierWebsite || profile?.website || null,
         submittedByUserId: user.uid,
         submittedByUserName: profile?.name || user.email || "عضو الفريق",
@@ -253,7 +255,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
             type: "new_offer",
             title: "عرض سعر جديد",
-            message: `قدم المورد ${profile?.companyName || profile?.name || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}`,
+            message: `قدم المورد ${activeCompanyName || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}`,
             offerId: null,
             rfqId: selectedRfq.id,
             createdAt: new Date().toISOString(),
@@ -666,14 +668,15 @@ function ContractorInfo({ contractorId }: { contractorId: string }) {
   }, [firestore, contractorId])
   
   const { data: contractor } = useDoc(docRef)
-  
+  const resolvedContractorName = useCompanyNameFor(contractor ? { id: contractorId, ...contractor } : null)
+
   if (!contractor) return null
-  
+
   return (
     <div className="mt-2 p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col gap-3 shadow-inner">
       <div className="flex justify-between items-center">
         <span className="text-sm font-bold text-slate-500">{t("offer_rfq_owner_label")}</span>
-        <span className="text-md font-bold text-slate-800">{contractor.name || contractor.companyName || t("offer_contractor_label")}</span>
+        <span className="text-md font-bold text-slate-800">{resolvedContractorName || t("offer_contractor_label")}</span>
       </div>
       
       {contractor.profileCompleted && (

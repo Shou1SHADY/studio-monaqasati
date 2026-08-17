@@ -42,6 +42,7 @@ import {
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, addDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
@@ -109,6 +110,7 @@ export default function AvailableRfqsPage() {
   }, [firestore, user, isUserLoading])
   
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const inquiriesQuery = useMemoFirebase(() => {
     if (!firestore || !selectedRfq?.id) return null
@@ -266,7 +268,7 @@ export default function AvailableRfqsPage() {
         supplierId: user.uid,
         organizationId: profile?.organizationId || user.uid,
         userId: user.uid,
-        supplierName: profile?.companyName || profile?.name || t("generic_supplier"),
+        supplierName: activeCompanyName || t("generic_supplier"),
         submittedByUserId: user.uid,
         submittedByUserName: profile?.name || user.email || t("generic_team_member"),
         createdAt: new Date().toISOString(),

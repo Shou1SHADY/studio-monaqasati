@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
@@ -45,6 +46,7 @@ export default function SupplierOffersPage() {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const { toast } = useToast()
   const router = useRouter()
   const [viewOffer, setViewOffer] = useState<any | null>(null)
@@ -126,7 +128,7 @@ export default function SupplierOffersPage() {
         contractorId: deliveryOffer.contractorId || null,
         supplierOrgId: profile?.organizationId || user.uid,
         supplierId: user.uid,
-        supplierName: profile?.companyName || profile?.name || t("generic_supplier"),
+        supplierName: activeCompanyName || t("generic_supplier"),
         deliveryPersonName: deliveryPersonName.trim(),
         handoverRecipientName: handoverRecipientName.trim() || null,
         deliveryDate: new Date(deliveryDate).toISOString(),
