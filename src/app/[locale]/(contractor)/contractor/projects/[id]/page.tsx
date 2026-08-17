@@ -103,6 +103,7 @@ import {
   ShieldCheck,
   Warehouse,
   AlertTriangle,
+  Barcode,
 } from "lucide-react"
 import {
   useReactTable,
@@ -181,6 +182,7 @@ type BоqItem = {
   isEditable: boolean
   groupId: string | null
   requiresWarranty?: boolean
+  unitBarcodes?: string[] | null
 }
 
 type BoqGroupMeta = {
@@ -591,7 +593,7 @@ export default function ProjectDetailPage() {
     return collection(firestore, "warehouses", wid, "inventoryItems")
   }, [firestore, typedProject?.warehouseId])
   const { data: linkedInventoryData } = useCollection(linkedWarehouseInventoryQuery)
-  const linkedInventoryItems = (linkedInventoryData || []) as { id: string; name: string; unit: string; quantity: number }[]
+  const linkedInventoryItems = (linkedInventoryData || []) as { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
 
   // Fetch BOQ items + sections from Firestore — always reflects server state. Returns the
   // freshly-fetched data (not just setState) so callers that need to act on it immediately
@@ -625,6 +627,7 @@ export default function ProjectDetailPage() {
         isEditable: data.isEditable !== false,
         groupId: data.groupId || null,
         requiresWarranty: !!data.requiresWarranty,
+        unitBarcodes: data.unitBarcodes || null,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -824,6 +827,7 @@ export default function ProjectDetailPage() {
           isEditable: true,
           groupId: item.groupId || null,
           requiresWarranty: !!item.requiresWarranty,
+          unitBarcodes: item.unitBarcodes || null,
           updatedAt: serverTimestamp(),
         })
       })
@@ -2652,14 +2656,15 @@ export default function ProjectDetailPage() {
             const newRows = rows.map((r, i) => ({
               id: `new_wh_${Date.now()}_${i}`,
               itemNo: String(boqItems.length + i + 1),
-              descriptionAr: r.itemName,
-              descriptionEn: r.itemName,
+              descriptionAr: r.unitBarcodes?.length ? `${r.itemName} (${r.unitBarcodes.join("، ")})` : r.itemName,
+              descriptionEn: r.unitBarcodes?.length ? `${r.itemName} (${r.unitBarcodes.join(", ")})` : r.itemName,
               quantity: String(r.quantityTaken),
               unit: r.unit,
               unitPrice: "",
               tenderId: null,
               isEditable: true,
               groupId: null,
+              unitBarcodes: r.unitBarcodes || null,
             }))
             setBoqItems((prev) => [...prev, ...newRows])
             const actorName = profile?.name || user.email || "عضو الفريق"
@@ -2668,6 +2673,20 @@ export default function ProjectDetailPage() {
                 doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId),
                 { quantity: increment(-r.quantityTaken), updatedAt: serverTimestamp() }
               )
+              if (r.unitIds?.length) {
+                for (const unitId of r.unitIds) {
+                  await updateDoc(
+                    doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId, "units", unitId),
+                    {
+                      status: "consumed",
+                      consumedAt: serverTimestamp(),
+                      consumedProjectId: projectId,
+                      consumedProjectName: typedProject.name || "",
+                      updatedAt: serverTimestamp(),
+                    }
+                  )
+                }
+              }
               await addDoc(collection(firestore, "projects", projectId, "wasteRecords"), {
                 boqItemId: null,
                 itemName: r.itemName,
@@ -2677,6 +2696,8 @@ export default function ProjectDetailPage() {
                 wastePercent: r.quantityTaken > 0
                   ? parseFloat((((r.quantityTaken - r.quantityUsed) / r.quantityTaken) * 100).toFixed(1))
                   : 0,
+                unitBarcodes: r.unitBarcodes || null,
+                wastedUnitBarcodes: r.wastedUnitBarcodes?.length ? r.wastedUnitBarcodes : null,
                 recordedByUserId: user.uid,
                 recordedByUserName: actorName,
                 createdAt: serverTimestamp(),
@@ -2712,12 +2733,92 @@ export default function ProjectDetailPage() {
   )
 }
 
-type ConsumeRow = { inventoryItemId: string; itemName: string; quantityTaken: number; quantityUsed: number; unit: string }
+type UnitSelection = { unitId: string; barcode: string; wasted: boolean }
+type ConsumeRow = {
+  inventoryItemId: string
+  itemName: string
+  quantityTaken: number
+  quantityUsed: number
+  unit: string
+  unitIds?: string[]
+  unitBarcodes?: string[]
+  wastedUnitBarcodes?: string[]
+}
+
+function UnitPickerDialog({
+  open,
+  onOpenChange,
+  item,
+  warehouseId,
+  selected,
+  onToggleUnit,
+  onToggleWasted,
+  t,
+  locale,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  item: { id: string; name: string } | null
+  warehouseId: string
+  selected: UnitSelection[]
+  onToggleUnit: (unitId: string, barcode: string) => void
+  onToggleWasted: (unitId: string) => void
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  locale: string
+}) {
+  const firestore = useFirestore()
+  const isRtl = locale === "ar"
+  const unitsRef = useMemoFirebase(() => {
+    if (!firestore || !item?.id || !open) return null
+    return query(collection(firestore, "warehouses", warehouseId, "inventoryItems", item.id, "units"), where("status", "==", "in_stock"))
+  }, [firestore, warehouseId, item?.id, open])
+  const { data, isLoading } = useCollection(unitsRef)
+  const units = (data || []) as { id: string; barcode: string }[]
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-md max-h-[75vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("proj_waste_select_units_title", { name: item?.name || "" })}</DialogTitle>
+          <DialogDescription>{t("proj_waste_select_units_desc")}</DialogDescription>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" size={22} /></div>
+        ) : units.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">{t("inv_unit_empty")}</p>
+        ) : (
+          <div className="border rounded-lg divide-y overflow-hidden">
+            {units.map((u) => {
+              const sel = selected.find((s) => s.unitId === u.id)
+              return (
+                <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                    <Checkbox checked={!!sel} onCheckedChange={() => onToggleUnit(u.id, u.barcode)} />
+                    <span className="font-mono truncate">{u.barcode}</span>
+                  </label>
+                  {sel && (
+                    <label className="flex items-center gap-1.5 text-xs text-amber-700 shrink-0 cursor-pointer">
+                      <Checkbox checked={sel.wasted} onCheckedChange={() => onToggleWasted(u.id)} />
+                      {t("proj_waste_mark_wasted")}
+                    </label>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <DialogFooter>
+          <Button onClick={() => onOpenChange(false)}>{t("proj_waste_done_btn")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 function ConsumeFromWarehouseDialog({
   open,
   onOpenChange,
-  warehouseId: _warehouseId,
+  warehouseId,
   inventoryItems,
   wasteTargetPercent,
   locale,
@@ -2727,7 +2828,7 @@ function ConsumeFromWarehouseDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
   warehouseId: string
-  inventoryItems: { id: string; name: string; unit: string; quantity: number }[]
+  inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
   wasteTargetPercent: number
   locale: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
@@ -2739,6 +2840,8 @@ function ConsumeFromWarehouseDialog({
   const [takenQtys, setTakenQtys] = useState<Record<string, string>>({})
   const [usedQtys, setUsedQtys] = useState<Record<string, string>>({})
   const [usedTouched, setUsedTouched] = useState<Set<string>>(new Set())
+  const [unitSelections, setUnitSelections] = useState<Record<string, UnitSelection[]>>({})
+  const [pickerItemId, setPickerItemId] = useState<string | null>(null)
   const [aiSuggestingId, setAiSuggestingId] = useState<string | null>(null)
   const [exceptionReason, setExceptionReason] = useState("")
   const [isSaving, setIsSaving] = useState(false)
@@ -2749,6 +2852,8 @@ function ConsumeFromWarehouseDialog({
     setTakenQtys({})
     setUsedQtys({})
     setUsedTouched(new Set())
+    setUnitSelections({})
+    setPickerItemId(null)
     setExceptionReason("")
   }
 
@@ -2761,6 +2866,20 @@ function ConsumeFromWarehouseDialog({
   const handleUsedChange = (itemId: string, value: string) => {
     setUsedQtys((prev) => ({ ...prev, [itemId]: value }))
     setUsedTouched((prev) => new Set(prev).add(itemId))
+  }
+  const toggleUnit = (itemId: string, unitId: string, barcode: string) => {
+    setUnitSelections((prev) => {
+      const cur = prev[itemId] || []
+      const exists = cur.some((u) => u.unitId === unitId)
+      const next = exists ? cur.filter((u) => u.unitId !== unitId) : [...cur, { unitId, barcode, wasted: false }]
+      return { ...prev, [itemId]: next }
+    })
+  }
+  const toggleWasted = (itemId: string, unitId: string) => {
+    setUnitSelections((prev) => ({
+      ...prev,
+      [itemId]: (prev[itemId] || []).map((u) => (u.unitId === unitId ? { ...u, wasted: !u.wasted } : u)),
+    }))
   }
 
   const handleAiSuggest = async (item: { id: string; name: string; unit: string }) => {
@@ -2781,8 +2900,22 @@ function ConsumeFromWarehouseDialog({
   }
 
   const rows: ConsumeRow[] = inventoryItems
-    .filter((item) => Number(takenQtys[item.id]) > 0)
+    .filter((item) => item.trackingMode === "unit" ? (unitSelections[item.id]?.length || 0) > 0 : Number(takenQtys[item.id]) > 0)
     .map((item) => {
+      if (item.trackingMode === "unit") {
+        const sel = unitSelections[item.id] || []
+        const wasted = sel.filter((u) => u.wasted)
+        return {
+          inventoryItemId: item.id,
+          itemName: item.name,
+          unit: item.unit,
+          quantityTaken: sel.length,
+          quantityUsed: sel.length - wasted.length,
+          unitIds: sel.map((u) => u.unitId),
+          unitBarcodes: sel.map((u) => u.barcode),
+          wastedUnitBarcodes: wasted.map((u) => u.barcode),
+        }
+      }
       const taken = Number(takenQtys[item.id]) || 0
       const usedRaw = usedQtys[item.id]
       const used = usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken
@@ -2811,7 +2944,10 @@ function ConsumeFromWarehouseDialog({
     }
   }
 
+  const pickerItem = pickerItemId ? inventoryItems.find((i) => i.id === pickerItemId) || null : null
+
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { if (!isSaving) { onOpenChange(v); if (!v) reset() } }}>
       <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
@@ -2844,52 +2980,82 @@ function ConsumeFromWarehouseDialog({
             </thead>
             <tbody>
               {inventoryItems.map((item) => {
-                const taken = Number(takenQtys[item.id]) || 0
+                const isUnitTracked = item.trackingMode === "unit"
+                const unitSel = unitSelections[item.id] || []
+                const taken = isUnitTracked ? unitSel.length : (Number(takenQtys[item.id]) || 0)
                 const usedRaw = usedQtys[item.id]
-                const used = usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken
+                const used = isUnitTracked
+                  ? unitSel.length - unitSel.filter((u) => u.wasted).length
+                  : (usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken)
                 const rowWaste = taken > 0 ? Math.max(0, ((taken - used) / taken) * 100) : 0
                 return (
                   <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50">
-                    <td className="px-3 py-2 font-medium">{item.name}</td>
+                    <td className="px-3 py-2 font-medium">
+                      {item.name}
+                      {isUnitTracked && (
+                        <Badge variant="outline" className="ms-2 text-primary border-primary/20 text-[10px] py-0 gap-1">
+                          <Barcode size={9} />
+                          {t("inv_item_unit_tracking_badge")}
+                        </Badge>
+                      )}
+                    </td>
                     <td className="px-3 py-2 tabular-nums text-muted-foreground">
                       {item.quantity} {item.unit}
                     </td>
-                    <td className="px-2 py-1">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={item.quantity}
-                        value={takenQtys[item.id] || ""}
-                        onChange={(e) => handleTakenChange(item.id, e.target.value)}
-                        placeholder="0"
-                        dir="ltr"
-                        className="h-8 text-sm tabular-nums"
-                      />
-                    </td>
-                    <td className="px-2 py-1">
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="number"
-                          min={0}
-                          max={taken}
-                          value={usedQtys[item.id] || ""}
-                          onChange={(e) => handleUsedChange(item.id, e.target.value)}
-                          disabled={taken <= 0}
-                          placeholder="0"
-                          dir="ltr"
-                          className="h-8 text-sm tabular-nums"
-                        />
-                        <button
+                    {isUnitTracked ? (
+                      <td className="px-2 py-1" colSpan={2}>
+                        <Button
                           type="button"
-                          onClick={() => handleAiSuggest(item)}
-                          disabled={taken <= 0 || aiSuggestingId === item.id}
-                          title={t("proj_waste_ai_suggest_btn")}
-                          className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 disabled:opacity-30 transition-colors"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs gap-1.5"
+                          onClick={() => setPickerItemId(item.id)}
+                          disabled={item.quantity === 0}
                         >
-                          {aiSuggestingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                        </button>
-                      </div>
-                    </td>
+                          <Barcode size={12} />
+                          {t("proj_waste_select_units_btn", { count: taken })}
+                        </Button>
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={item.quantity}
+                            value={takenQtys[item.id] || ""}
+                            onChange={(e) => handleTakenChange(item.id, e.target.value)}
+                            placeholder="0"
+                            dir="ltr"
+                            className="h-8 text-sm tabular-nums"
+                          />
+                        </td>
+                        <td className="px-2 py-1">
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              min={0}
+                              max={taken}
+                              value={usedQtys[item.id] || ""}
+                              onChange={(e) => handleUsedChange(item.id, e.target.value)}
+                              disabled={taken <= 0}
+                              placeholder="0"
+                              dir="ltr"
+                              className="h-8 text-sm tabular-nums"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAiSuggest(item)}
+                              disabled={taken <= 0 || aiSuggestingId === item.id}
+                              title={t("proj_waste_ai_suggest_btn")}
+                              className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 disabled:opacity-30 transition-colors"
+                            >
+                              {aiSuggestingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
                     <td className={cn("px-3 py-2 tabular-nums font-semibold text-xs", rowWaste > wasteTargetPercent ? "text-amber-600" : "text-muted-foreground")}>
                       {taken > 0 ? `${rowWaste.toFixed(1)}%` : "—"}
                     </td>
@@ -2947,5 +3113,20 @@ function ConsumeFromWarehouseDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {pickerItem && (
+      <UnitPickerDialog
+        open={!!pickerItemId}
+        onOpenChange={(v) => { if (!v) setPickerItemId(null) }}
+        item={pickerItem}
+        warehouseId={warehouseId}
+        selected={unitSelections[pickerItem.id] || []}
+        onToggleUnit={(unitId, barcode) => toggleUnit(pickerItem.id, unitId, barcode)}
+        onToggleWasted={(unitId) => toggleWasted(pickerItem.id, unitId)}
+        t={t}
+        locale={locale}
+      />
+    )}
+    </>
   )
 }

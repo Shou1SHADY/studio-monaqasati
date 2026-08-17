@@ -715,6 +715,19 @@ service cloud.firestore {
         allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(
           get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
         ));
+
+        // Individual physical units (barcode-tracked pieces, e.g. one marble
+        // slab) — only present for items with trackingMode == "unit". Same
+        // org-membership rule as the parent item.
+        match /units/{unitId} {
+          allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+            get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+          ));
+          allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+          allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(
+            get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+          ));
+        }
       }
     }
 

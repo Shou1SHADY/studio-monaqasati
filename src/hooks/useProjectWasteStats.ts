@@ -16,6 +16,8 @@ export interface WasteRecord {
   quantityTaken: number
   quantityUsed: number
   wastePercent: number
+  unitBarcodes?: string[] | null
+  wastedUnitBarcodes?: string[] | null
   recordedByUserId: string
   recordedByUserName: string
   createdAt?: unknown
