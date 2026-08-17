@@ -27,6 +27,7 @@ type Delivery = {
   id: string
   rfqId?: string
   rfqTitle?: string
+  projectId?: string | null
   supplierName?: string
   deliveryPersonName?: string
   handoverRecipientName?: string
@@ -59,6 +60,13 @@ export default function DeliveryReceiptPage() {
   }, [firestore, deliveryId])
   const { data: delivery, isLoading } = useDoc(deliveryDocRef)
   const d = delivery as Delivery | null
+
+  const projectRef = useMemoFirebase(() => {
+    if (!firestore || !d?.projectId) return null
+    return doc(firestore, "projects", d.projectId)
+  }, [firestore, d?.projectId])
+  const { data: linkedProject } = useDoc(projectRef)
+  const projectName = (linkedProject as { name?: string } | null)?.name
 
   if (isLoading) {
     return (
@@ -132,6 +140,12 @@ export default function DeliveryReceiptPage() {
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_from")}</p>
                 <p className="font-bold text-slate-800">{d.supplierName || "—"}</p>
               </div>
+              {projectName && (
+                <div>
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_project")}</p>
+                  <p className="font-bold text-slate-800">{projectName}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase mb-1">{t("receipt_rfq")}</p>
                 <p className="font-bold text-slate-800">{d.rfqTitle || "—"}</p>
