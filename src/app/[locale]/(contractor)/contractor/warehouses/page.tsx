@@ -30,7 +30,7 @@ import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@
 import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type WarehouseDoc = {
@@ -39,6 +39,8 @@ type WarehouseDoc = {
   location: string
   description?: string
   organizationId: string
+  projectId?: string | null
+  projectName?: string | null
 }
 
 function WarehouseDialog({
@@ -243,6 +245,18 @@ export default function ContractorWarehousesPage() {
                   </p>
                   {wh.description && (
                     <p className="text-xs text-muted-foreground/70 truncate">{wh.description}</p>
+                  )}
+                  {wh.projectId && (
+                    <Link
+                      href={`/contractor/projects/${wh.projectId}`}
+                      className={cn(
+                        "mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5 hover:bg-accent/10 transition-colors",
+                        isRtl ? "flex-row-reverse" : ""
+                      )}
+                    >
+                      <Building2 size={10} />
+                      {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
+                    </Link>
                   )}
                   <Link
                     href={`/contractor/warehouses/${wh.id}`}

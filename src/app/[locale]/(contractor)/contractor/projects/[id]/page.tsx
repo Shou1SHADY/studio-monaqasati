@@ -6,6 +6,7 @@ import { useTranslations, useLocale } from "next-intl"
 import { useRouter, Link } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
+import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -121,6 +122,7 @@ import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
 import { PurchaseRequestsTab } from "@/components/contractor/PurchaseRequestsTab"
 import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
+import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import {
   SECTION_IDS,
   SECTION_REGISTRY,
@@ -130,7 +132,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -147,13 +149,12 @@ function fmtDate(val: unknown, locale: string) {
 }
 
 function StatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
-  if (status === "active")
-    return <Badge className="bg-accent/10 text-accent border-accent/20 font-semibold">{t("proj_status_active")}</Badge>
-  if (status === "paused")
-    return <Badge className="bg-amber-100 text-amber-700 border-amber-200 font-semibold">{t("proj_status_paused")}</Badge>
-  if (status === "completed")
-    return <Badge className="bg-success/10 text-success border-success/20 font-semibold">{t("proj_status_completed")}</Badge>
-  return <Badge variant="secondary">{status}</Badge>
+  const resolved = resolveProjectStatus(status)
+  return (
+    <Badge className={cn(PROJECT_STATUS_BADGE_CLASSES[resolved], "font-semibold")}>
+      {t(projectStatusLabelKey(resolved))}
+    </Badge>
+  )
 }
 
 type BоqItem = {
@@ -252,6 +253,7 @@ export default function ProjectDetailPage() {
   // for the post-delete navigation to unmount them) so they don't race the just-deleted
   // parent doc and surface a spurious permission-denied on the way out.
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
   const { can } = usePermissions(isDeleting ? undefined : projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
@@ -261,10 +263,11 @@ export default function ProjectDetailPage() {
   const [isSavingSections, setIsSavingSections] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState("")
+  const [editClientName, setEditClientName] = useState("")
   const [editDescription, setEditDescription] = useState("")
   const [editLocation, setEditLocation] = useState("")
   const [editBudget, setEditBudget] = useState("")
-  const [editStatus, setEditStatus] = useState<"active" | "paused" | "completed">("active")
+  const [editStatus, setEditStatus] = useState<ProjectStatus>("todo")
   const [editWarehouseId, setEditWarehouseId] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
@@ -547,6 +550,7 @@ export default function ProjectDetailPage() {
   const typedProject = project as {
     warehouseId?: string
     name?: string
+    clientName?: string
     description?: string
     location?: string
     region?: string
@@ -654,10 +658,11 @@ export default function ProjectDetailPage() {
   const startEdit = () => {
     if (!typedProject) return
     setEditName(typedProject.name || "")
+    setEditClientName(typedProject.clientName || "")
     setEditDescription(typedProject.description || "")
     setEditLocation(typedProject.location || "")
     setEditBudget(typedProject.budget != null ? String(typedProject.budget) : "")
-    setEditStatus((typedProject.status as "active" | "paused" | "completed") || "active")
+    setEditStatus(resolveProjectStatus(typedProject.status as string | undefined))
     setEditWarehouseId(typedProject.warehouseId || "")
     setIsEditing(true)
   }
@@ -668,6 +673,7 @@ export default function ProjectDetailPage() {
     try {
       await updateDoc(projectDocRef, {
         name: editName.trim(),
+        clientName: editClientName.trim() || null,
         description: editDescription.trim() || null,
         location: editLocation.trim() || null,
         budget: editBudget ? Number(editBudget) : null,
@@ -682,6 +688,30 @@ export default function ProjectDetailPage() {
       toast({ title: t("generic_error_title"), variant: "destructive" })
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleCreateProjectWarehouse = async () => {
+    if (!firestore || !projectDocRef || !typedProject) return
+    setIsCreatingWarehouse(true)
+    try {
+      const warehouseRef = await addDoc(collection(firestore, "warehouses"), {
+        name: t("proj_auto_warehouse_name", { name: typedProject.name || "" }),
+        location: typedProject.location || null,
+        description: null,
+        organizationId: typedProject.organizationId || myOrgId,
+        projectId,
+        projectName: typedProject.name || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      await updateDoc(projectDocRef, { warehouseId: warehouseRef.id, updatedAt: serverTimestamp() })
+      toast({ title: t("proj_warehouse_created") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("generic_error_title"), variant: "destructive" })
+    } finally {
+      setIsCreatingWarehouse(false)
     }
   }
 
@@ -1557,7 +1587,7 @@ export default function ProjectDetailPage() {
     ...dynamicTabs.map((id) => ({
       key: id as ActiveTab,
       label: tShared(sectionLabelKey(id)),
-      icon: id === "ipc" ? <Receipt size={15} /> : <Sparkles size={15} />,
+      icon: id === "ipc" ? <Receipt size={15} /> : id === "store" ? <Warehouse size={15} /> : <Sparkles size={15} />,
     })),
   ]
 
@@ -1703,6 +1733,10 @@ export default function ProjectDetailPage() {
                     <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-10 rounded-xl" disabled={isSaving} />
                   </div>
                   <div className="space-y-1.5">
+                    <Label className="font-semibold">{t("proj_client_name")}</Label>
+                    <Input value={editClientName} onChange={(e) => setEditClientName(e.target.value)} placeholder={t("proj_client_name_placeholder")} className="h-10 rounded-xl" disabled={isSaving} />
+                  </div>
+                  <div className="space-y-1.5">
                     <Label className="font-semibold">{t("proj_description")}</Label>
                     <Textarea value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} className="rounded-xl resize-none" disabled={isSaving} />
                   </div>
@@ -1723,12 +1757,12 @@ export default function ProjectDetailPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="font-semibold">{t("proj_status")}</Label>
-                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v as typeof editStatus)} disabled={isSaving}>
+                    <Select value={editStatus} onValueChange={(v) => setEditStatus(v as ProjectStatus)} disabled={isSaving}>
                       <SelectTrigger className="h-10 rounded-xl"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="active">{t("proj_status_active")}</SelectItem>
-                        <SelectItem value="paused">{t("proj_status_paused")}</SelectItem>
-                        <SelectItem value="completed">{t("proj_status_completed")}</SelectItem>
+                        {PROJECT_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s}>{t(projectStatusLabelKey(s))}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1785,6 +1819,15 @@ export default function ProjectDetailPage() {
                       <span>
                         <span className="font-semibold text-slate-500 text-xs block">{t("proj_location_label")}</span>
                         {typedProject.location}
+                      </span>
+                    </div>
+                  )}
+                  {typedProject.clientName && (
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <User size={16} className="text-primary shrink-0" />
+                      <span>
+                        <span className="font-semibold text-slate-500 text-xs block">{t("proj_client_name")}</span>
+                        {typedProject.clientName}
                       </span>
                     </div>
                   )}
@@ -2385,7 +2428,30 @@ export default function ProjectDetailPage() {
         {activeTab === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
           <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} />
         )}
-        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && (
+        {activeTab === "store" && dynamicTabs.includes("store" as SectionId) && (
+          typedProject.warehouseId ? (
+            <WarehouseInventoryPanel warehouseId={typedProject.warehouseId} orgId={myOrgId} variant="embedded" />
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-3">
+                <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                  <Warehouse size={26} className="text-primary" />
+                </div>
+                <div>
+                  <p className="font-bold text-foreground">{t("proj_warehouse_missing_title")}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{t("proj_warehouse_missing_desc")}</p>
+                </div>
+                {can("warehouses.manage") && (
+                  <Button onClick={handleCreateProjectWarehouse} disabled={isCreatingWarehouse} className="gap-2 mt-2">
+                    {isCreatingWarehouse ? <Loader2 size={15} className="animate-spin" /> : <Warehouse size={15} />}
+                    {t("proj_warehouse_create_btn")}
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          )
+        )}
+        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && activeTab !== "store" && (
           <ComingSoonTab sectionId={activeTab as SectionId} tShared={tShared} />
         )}
       </div>

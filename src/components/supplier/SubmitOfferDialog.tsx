@@ -26,6 +26,7 @@ import {
   Handshake,
   BookmarkPlus,
   FileStack,
+  Layers,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
@@ -40,6 +41,25 @@ interface DeliveryBatch {
   price: string
   location?: string
   coords?: { lat: number; lng: number } | null
+}
+
+// RFQ's own required quantity — always summed from its line items (products[].quantity),
+// falling back to the pre-aggregated `quantity` field only for RFQs published before the
+// per-item products array existed. Never derive this from anything else (e.g. offer price).
+function getRfqRequiredQuantity(rfq: any | null): number {
+  if (!rfq) return 0
+  if (Array.isArray(rfq.products) && rfq.products.length > 0) {
+    return rfq.products.reduce((sum: number, p: any) => sum + (Number(p.quantity) || 0), 0)
+  }
+  return Number(rfq.quantity) || 0
+}
+
+function getRfqUnitLabel(rfq: any | null): string {
+  if (!rfq) return ""
+  if (Array.isArray(rfq.products) && rfq.products.length > 0) {
+    return rfq.products[0].unitOfMeasure || ""
+  }
+  return rfq.unitOfMeasure || ""
 }
 
 interface SubmitOfferDialogProps {
@@ -70,6 +90,11 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     { id: "1", deliveryDate: new Date().toISOString().split('T')[0], price: "", location: "" }
   ])
   const [mapBatchId, setMapBatchId] = useState<string | null>(null)
+  const isMultiShipment = selectedRfq?.shipmentMode === "multiple"
+  const requiredQuantity = getRfqRequiredQuantity(selectedRfq)
+  const unitLabel = getRfqUnitLabel(selectedRfq)
+  const allocatedQuantity = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.quantity || "0") || 0), 0)
+  const remainingQuantity = requiredQuantity - allocatedQuantity
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null)
   const [executionDuration, setExecutionDuration] = useState("")
   const [executionDurationUnit, setExecutionDurationUnit] = useState("أيام")
@@ -91,7 +116,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
   const resetForm = () => {
     setOfferPrice("")
-    setDeliveryBatches([{ id: "1", deliveryDate: "", price: "", location: "" }])
+    setDeliveryBatches(
+      selectedRfq?.shipmentMode === "multiple"
+        ? [
+            { id: "1", deliveryDate: "", price: "", location: "", quantity: "" },
+            { id: "2", deliveryDate: "", price: "", location: "", quantity: "" },
+          ]
+        : [{ id: "1", deliveryDate: "", price: "", location: "" }]
+    )
     setMapBatchId(null)
     setTempLocation(null)
     setExecutionDuration("")
@@ -117,6 +149,29 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       setSupplierWebsite((prev: string) => prev || profile.website)
     }
   }, [profile?.website])
+
+  // Multi-shipment mode: the total offer price is never entered directly — it's always
+  // the sum of what each shipment batch costs, so it can't drift from the batch breakdown.
+  useEffect(() => {
+    if (isMultiShipment) {
+      setOfferPrice(String(deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)))
+    }
+  }, [isMultiShipment, deliveryBatches])
+
+  const addShipmentBatch = () => {
+    setDeliveryBatches((prev) => [
+      ...prev,
+      { id: String(Date.now()), deliveryDate: "", price: "", location: "", quantity: "" },
+    ])
+  }
+
+  const removeShipmentBatch = (id: string) => {
+    setDeliveryBatches((prev) => (prev.length <= 1 ? prev : prev.filter((b) => b.id !== id)))
+  }
+
+  const updateShipmentBatch = (id: string, field: keyof DeliveryBatch, value: string) => {
+    setDeliveryBatches((prev) => prev.map((b) => (b.id === id ? { ...b, [field]: value } : b)))
+  }
 
   const [offerPdfStoragePath, setOfferPdfStoragePath] = useState<string | null>(null)
 
@@ -208,6 +263,18 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       return;
     }
 
+    if (isMultiShipment) {
+      const incomplete = deliveryBatches.some((b) => !b.location || !b.deliveryDate || !b.price || !(parseFloat(b.quantity || "0") > 0))
+      if (incomplete) {
+        toast({ title: t("offer_incomplete_data"), description: t("offer_validation_complete_batches"), variant: "destructive" });
+        return;
+      }
+      if (Math.abs(remainingQuantity) > 0.01) {
+        toast({ title: t("offer_incomplete_data"), description: t("offer_shipment_qty_mismatch", { qty: requiredQuantity, unit: unitLabel }), variant: "destructive" });
+        return;
+      }
+    }
+
     setIsSubmitting(true)
     try {
       const offerData: any = {
@@ -225,14 +292,19 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         contractorOrgId: selectedRfq.organizationId || selectedRfq.contractorId || null,
         price: offerPrice,
         deliveryLocation: deliveryBatches[0].location,
-        deliveryBatches: deliveryBatches.map((b, i) => ({
+        deliveryBatches: deliveryBatches.map((b) => ({
           location: b.location,
           deliveryDate: b.deliveryDate,
-          price: i === 0 ? offerPrice : b.price,
+          price: isMultiShipment ? b.price : offerPrice,
+          quantity: isMultiShipment ? b.quantity : String(requiredQuantity || ""),
         })),
         status: "قيد المراجعة",
         createdAt: new Date().toISOString()
       };
+
+      if (isMultiShipment) {
+        offerData.totalBatchesPrice = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
+      }
 
       if (executionDuration) {
         offerData.executionDuration = executionDuration;
@@ -461,35 +533,146 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                     type="number"
                     value={offerPrice}
                     onChange={(e) => setOfferPrice(e.target.value)}
-                    className="w-full h-12 px-4 ps-4 pe-12 rounded-xl border-2 border-input bg-white text-xl font-black text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                    readOnly={isMultiShipment}
+                    className="w-full h-12 px-4 ps-4 pe-12 rounded-xl border-2 border-input bg-white text-xl font-black text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary read-only:bg-slate-50 read-only:text-slate-500"
                     placeholder="0"
                     min="0"
                   />
                   <span className="absolute end-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{t("offer_sar")}</span>
                 </div>
+                {isMultiShipment && (
+                  <p className="text-[11px] text-muted-foreground">{t("offer_shipment_price_auto_note")}</p>
+                )}
               </div>
             </div>
 
-            {/* Delivery Location */}
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-sm font-semibold">{t("offer_delivery_location")}</Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder={t("offer_city_district")}
-                  value={deliveryBatches[0].location}
-                  onChange={(e) => setDeliveryBatches(prev => prev.map(b => b.id === "1" ? { ...b, location: e.target.value } : b))}
-                  className="h-11 rounded-xl border-2 border-input focus:ring-2 focus:ring-primary/30"
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="shrink-0 h-11 w-11 rounded-xl border-2 hover:bg-primary/5"
-                  onClick={() => setMapBatchId("1")}
-                >
-                  <MapPin size={18} className="text-primary" />
+            {isMultiShipment ? (
+              /* Multiple shipments — each batch splits the RFQ's own required quantity, never a whole-order total */
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold flex items-center gap-1.5">
+                    <Layers size={14} className="text-primary" />
+                    {t("offer_shipments_title")}
+                  </Label>
+                  <span className="text-xs text-muted-foreground">
+                    {t("offer_shipment_required_qty", { qty: requiredQuantity, unit: unitLabel })}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {deliveryBatches.map((batch, idx) => (
+                    <div key={batch.id} className="p-3 rounded-xl border-2 border-input bg-slate-50/50 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs font-bold">
+                          {t("offer_shipment_batch_no", { number: idx + 1 })}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-red-500 hover:bg-red-50 rounded-lg"
+                          onClick={() => removeShipmentBatch(batch.id)}
+                          disabled={deliveryBatches.length <= 1}
+                          aria-label={t("offer_shipment_remove")}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">{t("offer_shipment_qty")}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={batch.quantity || ""}
+                            onChange={(e) => updateShipmentBatch(batch.id, "quantity", e.target.value)}
+                            placeholder={unitLabel}
+                            className="h-9 rounded-lg text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">{t("offer_shipment_price")}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={batch.price}
+                            onChange={(e) => updateShipmentBatch(batch.id, "price", e.target.value)}
+                            placeholder="0"
+                            className="h-9 rounded-lg text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">{t("offer_shipment_date")}</Label>
+                          <Input
+                            type="date"
+                            value={batch.deliveryDate}
+                            onChange={(e) => updateShipmentBatch(batch.id, "deliveryDate", e.target.value)}
+                            className="h-9 rounded-lg text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">{t("offer_shipment_location")}</Label>
+                          <div className="flex gap-1">
+                            <Input
+                              value={batch.location || ""}
+                              onChange={(e) => updateShipmentBatch(batch.id, "location", e.target.value)}
+                              placeholder={t("offer_city_district")}
+                              className="h-9 rounded-lg text-sm"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="shrink-0 h-9 w-9 rounded-lg border-2 hover:bg-primary/5"
+                              onClick={() => setMapBatchId(batch.id)}
+                            >
+                              <MapPin size={14} className="text-primary" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <Button type="button" variant="outline" size="sm" onClick={addShipmentBatch} className="w-full gap-1.5 h-9 rounded-xl">
+                  <Plus size={14} />
+                  {t("offer_shipment_add_btn")}
                 </Button>
+
+                <div className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-semibold ${
+                  Math.abs(remainingQuantity) < 0.01
+                    ? "bg-success/10 text-success"
+                    : remainingQuantity < 0
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-amber-50 text-amber-700"
+                }`}>
+                  <span>{t("offer_shipment_remaining_qty")}</span>
+                  <span dir="ltr">{remainingQuantity} {unitLabel}</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* Delivery Location */
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-sm font-semibold">{t("offer_delivery_location")}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={t("offer_city_district")}
+                    value={deliveryBatches[0].location}
+                    onChange={(e) => setDeliveryBatches(prev => prev.map(b => b.id === "1" ? { ...b, location: e.target.value } : b))}
+                    className="h-11 rounded-xl border-2 border-input focus:ring-2 focus:ring-primary/30"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0 h-11 w-11 rounded-xl border-2 hover:bg-primary/5"
+                    onClick={() => setMapBatchId("1")}
+                  >
+                    <MapPin size={18} className="text-primary" />
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* PDF Upload */}
             <div className="space-y-3">

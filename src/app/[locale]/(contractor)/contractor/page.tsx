@@ -125,6 +125,9 @@ export default function ContractorDashboard() {
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = resolveActiveCompanyName(profile, user?.uid)
   const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
+  const [showAllQueue, setShowAllQueue] = useState(false)
+  const QUEUE_COLLAPSED_LIMIT = 5
+  const visibleQueueItems = showAllQueue ? queueItems : queueItems.slice(0, QUEUE_COLLAPSED_LIMIT)
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
@@ -190,7 +193,7 @@ export default function ContractorDashboard() {
       <div className="space-y-8 pb-10">
         {/* Welcome Banner */}
         <div
-          className="relative overflow-hidden rounded-[22px] isolate flex flex-col sm:flex-row items-start sm:items-center gap-8 p-[30px_28px] sm:p-[38px_44px] text-white"
+          className="relative overflow-hidden rounded-2xl isolate flex flex-col sm:flex-row items-start sm:items-center gap-4 p-[18px_20px] sm:p-[20px_28px] text-white"
           style={{
             background: `
               radial-gradient(110% 140% at ${locale === 'ar' ? '35%' : '65%'} 10%, rgba(37,99,235,.30) 0%, transparent 55%),
@@ -239,32 +242,29 @@ export default function ContractorDashboard() {
 
           {/* Text content */}
           <div className="relative z-[2] flex-1 min-w-0">
-            <div className="flex items-center gap-4 flex-wrap">
-              <h1 className={cn("text-[27px] sm:text-[34px] font-black text-white leading-[1.05]", locale !== 'ar' && "tracking-[-0.02em]")}>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className={cn("text-[18px] sm:text-[22px] font-black text-white leading-[1.15]", locale !== 'ar' && "tracking-[-0.02em]")}>
                 {t("welcome")}{locale === 'ar' ? '،' : ','}{' '}
                 <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
                   {activeCompanyName || t("welcome_fallback")}
                 </span>
               </h1>
               {lastActivityDate && (
-                <span className="inline-flex items-center gap-2 px-3.5 py-[7px] rounded-full bg-white/[0.06] backdrop-blur-md border border-white/[0.14] text-[13.5px] font-semibold text-slate-300 whitespace-nowrap">
-                  <Clock className="h-[15px] w-[15px] text-blue-300" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] backdrop-blur-md border border-white/[0.14] text-[11.5px] font-semibold text-slate-300 whitespace-nowrap">
+                  <Clock className="h-3 w-3 text-blue-300" />
                   {t("last_activity")}: {formatActivityDate(lastActivityDate)}
                 </span>
               )}
             </div>
-            <p className={cn("mt-4 text-[15.5px] sm:text-[17px] leading-[1.7] text-[#9fb2cd] font-medium whitespace-pre-line", locale === 'ar' ? 'max-w-[400px]' : 'max-w-[560px]')}>
-              {t("smart_dashboard_desc")}
-            </p>
           </div>
 
           {/* CTA Button — tenders now only get created from inside a project */}
           <Link href="/contractor/projects" className="relative z-[2] shrink-0 w-full sm:w-auto">
             <Button
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 h-[52px] rounded-[13px] bg-white text-[#0b1a33] text-[15.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 h-9 rounded-[10px] bg-white text-[#0b1a33] text-[13.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
               style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
             >
-              <PlusCircle className={cn("h-[18px] w-[18px]", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
+              <PlusCircle className={cn("h-4 w-4", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
               {t("new_tender_cta")}
             </Button>
           </Link>
@@ -336,7 +336,7 @@ export default function ContractorDashboard() {
                   <div className="p-12 flex items-center justify-center">
                     <Skeleton className="h-24 w-full rounded-lg" />
                   </div>
-                ) : queueItems.length > 0 ? queueItems.map((item) => {
+                ) : queueItems.length > 0 ? visibleQueueItems.map((item) => {
                   const { icon: Icon, iconColor, text } = describeQueueItem(item, t)
                   return (
                     <Link
@@ -364,6 +364,16 @@ export default function ContractorDashboard() {
                   </div>
                 )}
               </div>
+              {queueItems.length > QUEUE_COLLAPSED_LIMIT && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllQueue((v) => !v)}
+                  className="w-full p-3.5 flex items-center justify-center gap-1.5 text-sm font-bold text-primary hover:bg-muted/60 transition-colors border-t border-border/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                >
+                  {showAllQueue ? t("queue_view_less") : t("queue_view_more", { count: queueItems.length - QUEUE_COLLAPSED_LIMIT })}
+                  {showAllQueue ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+              )}
             </CardContent>
           </Card>
         </div>

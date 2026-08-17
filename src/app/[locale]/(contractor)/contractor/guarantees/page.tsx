@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -51,6 +52,7 @@ type Guarantee = {
   status?: "pending_review" | "accepted" | "rejected"
   createdAt?: unknown
   rfqId?: string
+  projectId?: string | null
 }
 
 function statusBadge(status: string | undefined, t: ReturnType<typeof useTranslations<"Portal.Contractor">>) {
@@ -190,6 +192,7 @@ export default function GuaranteesPage() {
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const [projectFilter, setProjectFilter] = useState<string>("all")
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -208,7 +211,20 @@ export default function GuaranteesPage() {
     )
   }, [firestore, user, isUserLoading, myOrgId])
 
-  const { data: guarantees, isLoading } = useCollection(guaranteesQuery)
+  const { data: guaranteesRaw, isLoading } = useCollection(guaranteesQuery)
+  const guarantees = projectFilter === "all"
+    ? guaranteesRaw
+    : (guaranteesRaw || []).filter((g: any) => g.projectId === projectFilter)
+
+  // Projects belonging to this org, used only to populate the project filter dropdown.
+  const projectsQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore || !myOrgId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
+  }, [firestore, user, isUserLoading, myOrgId])
+  const { data: projects } = useCollection(projectsQuery)
+  const projectOptions = (projects || [])
+    .map((p: any) => ({ value: p.id, label: p.name || p.id }))
+    .sort((a: { label: string }, b: { label: string }) => a.label.localeCompare(b.label, locale === "ar" ? "ar" : "en"))
 
   const getTime = (v: unknown) =>
     v && typeof v === "object" && "toDate" in v
@@ -239,6 +255,17 @@ export default function GuaranteesPage() {
           <div>
             <h1 className="text-3xl font-black text-foreground font-headline">{t("guarantees_title")}</h1>
             <p className="text-muted-foreground mt-1">{t("guarantees_desc")}</p>
+          </div>
+          <div className="w-full sm:w-[220px]">
+            <SearchableSelect
+              size="md"
+              value={projectFilter}
+              onChange={setProjectFilter}
+              options={[{ value: "all", label: t("guarantees_all_projects") }, ...projectOptions]}
+              placeholder={t("guarantees_project_filter")}
+              searchPlaceholder={t("guarantees_search_project")}
+              noResultsText={t("guarantees_no_project_results")}
+            />
           </div>
         </div>
 

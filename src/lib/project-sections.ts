@@ -43,7 +43,7 @@ export const SECTION_REGISTRY: Record<SectionId, SectionDef> = {
   docs: { id: "docs", group: "foundation", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "ghost", tabRoute: "docs" },
 
   receive: { id: "receive", group: "materials", required: false, dependsOn: [], stages: ["recv"], reconciliationId: "r2", source: "auto", status: "built", tabRoute: null },
-  store: { id: "store", group: "materials", required: false, dependsOn: ["receive"], stages: [], reconciliationId: "r3", source: "man", status: "built", tabRoute: null },
+  store: { id: "store", group: "materials", required: false, dependsOn: ["receive"], stages: [], reconciliationId: "r3", source: "man", status: "built", tabRoute: "warehouse" },
   mats: { id: "mats", group: "materials", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "ghost", tabRoute: "materials" },
 
   invoice: { id: "invoice", group: "money", required: false, dependsOn: ["receive"], stages: ["inv"], reconciliationId: "r4", source: "auto", status: "ghost", tabRoute: "invoices" },
