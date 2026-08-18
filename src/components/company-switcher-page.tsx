@@ -20,12 +20,32 @@ import { doc, addDoc, collection, updateDoc, arrayUnion, serverTimestamp } from 
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
-import { Building2, PlusCircle, CheckCircle2, Loader2, ArrowLeftRight } from "lucide-react"
+import type { OrgMembership } from "@/hooks/useActiveCompanyName"
+import { Building2, PlusCircle, CheckCircle2, Loader2, ArrowLeftRight, HardHat, Truck } from "lucide-react"
 
-type OrgMembership = {
-  organizationId: string
-  companyName: string
-  isPrimary?: boolean
+type CompanyRole = "Contractor" | "Supplier"
+
+export function companyPortalPath(role: string | undefined, locale: string): string {
+  const portal = role === "Supplier" ? "/supplier" : "/contractor"
+  // localePrefix is "as-needed": Arabic (default) has no prefix, others do.
+  return (locale === "ar" ? "" : `/${locale}`) + portal
+}
+
+export function RoleBadge({ role, t }: { role: CompanyRole; t: ReturnType<typeof useTranslations<"Portal.Shared">> }) {
+  const isSupplier = role === "Supplier"
+  const Icon = isSupplier ? Truck : HardHat
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] gap-1 font-semibold",
+        isSupplier ? "text-accent border-accent/30 bg-accent/5" : "text-cta border-cta/30 bg-cta/5"
+      )}
+    >
+      <Icon size={10} />
+      {isSupplier ? t("company_role_supplier") : t("company_role_contractor")}
+    </Badge>
+  )
 }
 
 export function CompanySwitcherPage() {
@@ -46,44 +66,58 @@ export function CompanySwitcherPage() {
     organizationRole?: string
     companyName?: string
     name?: string
+    role?: CompanyRole
+    primaryRole?: CompanyRole
     orgMemberships?: OrgMembership[]
   } | null
 
   const isOwner = !typedProfile || !("organizationRole" in typedProfile) || typedProfile.organizationRole === "owner"
   const currentOrgId = typedProfile?.organizationId || user?.uid || ""
+  // The role the account was created with — what the primary company operates as,
+  // and the fallback for legacy memberships that predate cross-role companies.
+  const baseRole: CompanyRole = typedProfile?.primaryRole || typedProfile?.role || "Contractor"
 
   const memberships: OrgMembership[] =
     typedProfile?.orgMemberships && typedProfile.orgMemberships.length > 0
       ? typedProfile.orgMemberships
       : user
-        ? [{ organizationId: user.uid, companyName: typedProfile?.companyName || typedProfile?.name || t("company_switcher_default_name"), isPrimary: true }]
+        ? [{ organizationId: user.uid, companyName: typedProfile?.companyName || typedProfile?.name || t("company_switcher_default_name"), isPrimary: true, role: baseRole }]
         : []
 
   const [showAdd, setShowAdd] = useState(false)
   const [newName, setNewName] = useState("")
   const [newCr, setNewCr] = useState("")
+  const [newRole, setNewRole] = useState<CompanyRole>(baseRole)
   const [isSaving, setIsSaving] = useState(false)
   const [switchingId, setSwitchingId] = useState<string | null>(null)
 
-  const handleSwitch = async (organizationId: string) => {
-    if (!firestore || !user || organizationId === currentOrgId) return
-    setSwitchingId(organizationId)
+  const membershipRole = (m: OrgMembership): CompanyRole =>
+    m.isPrimary || m.organizationId === user?.uid ? baseRole : (m.role || baseRole)
+
+  const handleSwitch = async (m: OrgMembership) => {
+    if (!firestore || !user || m.organizationId === currentOrgId) return
+    setSwitchingId(m.organizationId)
     try {
+      const targetRole = membershipRole(m)
+      // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
+      // listeners still mounted for the instant before navigation would throw.
+      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
       await updateDoc(doc(firestore, "users", user.uid), {
-        organizationId,
+        organizationId: m.organizationId,
+        role: targetRole,
         updatedAt: serverTimestamp(),
       })
       toast({ title: t("company_switcher_switched") })
       // Every org-scoped listener across the app (team groups, projects, RFQs, ...)
-      // needs to re-subscribe against the new organizationId. Re-rendering in place
-      // races those listeners against the write's propagation, which can surface a
-      // transient permission-denied error. A full reload guarantees a clean restart
-      // strictly after the write above has already committed.
-      window.location.reload()
+      // needs to re-subscribe against the new organizationId — and the target
+      // company may live in the OTHER portal entirely. A full navigation to the
+      // target portal's root guarantees a clean restart strictly after the write
+      // above has committed, landing on the correct contractor/supplier side.
+      window.location.href = companyPortalPath(targetRole, locale)
     } catch (err) {
+      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
       console.error(err)
       toast({ title: t("company_switcher_error"), variant: "destructive" })
-    } finally {
       setSwitchingId(null)
     }
   }
@@ -99,19 +133,24 @@ export function CompanySwitcherPage() {
         name: newName.trim(),
         crNumber: newCr.trim() || null,
         ownerUserId: user.uid,
+        role: newRole,
         createdAt: serverTimestamp(),
       })
       await updateDoc(doc(firestore, "users", user.uid), {
+        // Anchor the account's original role once, so switching back to the
+        // primary company can always restore it (enforced by Firestore rules).
+        primaryRole: baseRole,
         orgMemberships: arrayUnion(
           ...(typedProfile?.orgMemberships && typedProfile.orgMemberships.length > 0
             ? []
-            : [{ organizationId: user.uid, companyName: typedProfile?.companyName || typedProfile?.name || t("company_switcher_default_name"), isPrimary: true }]),
-          { organizationId: orgRef.id, companyName: newName.trim(), isPrimary: false }
+            : [{ organizationId: user.uid, companyName: typedProfile?.companyName || typedProfile?.name || t("company_switcher_default_name"), isPrimary: true, role: baseRole }]),
+          { organizationId: orgRef.id, companyName: newName.trim(), isPrimary: false, role: newRole }
         ),
       })
       toast({ title: t("company_switcher_added") })
       setNewName("")
       setNewCr("")
+      setNewRole(baseRole)
       setShowAdd(false)
     } catch (err) {
       console.error(err)
@@ -122,6 +161,11 @@ export function CompanySwitcherPage() {
   }
 
   const isLoading = isUserLoading || profileLoading
+
+  const roleOptions: { value: CompanyRole; icon: typeof HardHat; title: string; desc: string }[] = [
+    { value: "Contractor", icon: HardHat, title: t("company_role_contractor"), desc: t("company_role_contractor_desc") },
+    { value: "Supplier", icon: Truck, title: t("company_role_supplier"), desc: t("company_role_supplier_desc") },
+  ]
 
   return (
     <PortalLayout>
@@ -152,16 +196,18 @@ export function CompanySwitcherPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {memberships.map((m) => {
               const isCurrent = m.organizationId === currentOrgId
+              const role = membershipRole(m)
               return (
                 <Card key={m.organizationId} className={cn("border-2 transition-colors", isCurrent ? "border-primary/40 bg-primary/5" : "border-slate-200/70")}>
                   <CardContent className="p-5 flex items-center gap-4">
                     <div className={cn("h-12 w-12 rounded-xl flex items-center justify-center shrink-0", isCurrent ? "bg-primary/15 text-primary" : "bg-slate-100 text-slate-500")}>
-                      <Building2 size={22} />
+                      {role === "Supplier" ? <Truck size={22} /> : <HardHat size={22} />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-bold text-slate-800 truncate">{m.companyName}</p>
                         {m.isPrimary && <Badge variant="outline" className="text-[10px]">{t("company_switcher_primary_badge")}</Badge>}
+                        <RoleBadge role={role} t={t} />
                       </div>
                       {isCurrent ? (
                         <p className="text-xs text-primary font-semibold flex items-center gap-1 mt-1">
@@ -173,7 +219,7 @@ export function CompanySwitcherPage() {
                           size="sm"
                           variant="outline"
                           className="gap-1.5 h-7 text-xs mt-2"
-                          onClick={() => handleSwitch(m.organizationId)}
+                          onClick={() => handleSwitch(m)}
                           disabled={switchingId === m.organizationId}
                         >
                           {switchingId === m.organizationId ? <Loader2 size={12} className="animate-spin" /> : <ArrowLeftRight size={12} />}
@@ -196,13 +242,46 @@ export function CompanySwitcherPage() {
             <DialogDescription>{t("company_switcher_add_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>{t("company_role_label")} *</Label>
+              <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label={t("company_role_label")}>
+                {roleOptions.map(({ value, icon: Icon, title, desc }) => {
+                  const selected = newRole === value
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setNewRole(value)}
+                      disabled={isSaving}
+                      className={cn(
+                        "text-start p-3.5 rounded-xl border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                        selected
+                          ? "border-primary/50 bg-primary/5 shadow-sm"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                      )}
+                    >
+                      <div className={cn(
+                        "h-9 w-9 rounded-lg flex items-center justify-center mb-2",
+                        selected ? "bg-primary/15 text-primary" : "bg-slate-100 text-slate-500"
+                      )}>
+                        <Icon size={18} />
+                      </div>
+                      <p className={cn("text-sm font-bold", selected ? "text-primary" : "text-slate-700")}>{title}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{desc}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="company-name">{t("company_switcher_name_label")} *</Label>
-              <Input id="company-name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Input id="company-name" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={isSaving} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="company-cr">{t("company_switcher_cr_label")}</Label>
-              <Input id="company-cr" value={newCr} onChange={(e) => setNewCr(e.target.value)} dir="ltr" />
+              <Input id="company-cr" value={newCr} onChange={(e) => setNewCr(e.target.value)} dir="ltr" disabled={isSaving} />
             </div>
           </div>
           <DialogFooter>

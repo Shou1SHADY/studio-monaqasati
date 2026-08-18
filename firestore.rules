@@ -101,29 +101,70 @@ service cloud.firestore {
       // Without this, anyone could write organizationId and join any org.
       allow update: if isAdmin()
         || (isOwner(userId) && (
+          // `role` and `primaryRole` are as security-sensitive as the org fields:
+          // role gates entire portals (and isAdmin()), primaryRole anchors what
+          // switching back to the primary company restores. Self-writes to them
+          // are only allowed via the dedicated branches below.
           !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId'])
+            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole'])
           || (
             request.auth.token.email is string
             && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email))
             && get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.organizationId
                == request.resource.data.organizationId
+            && (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
+              || request.resource.data.role
+                 == get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.get('role', resource.data.role)
+            )
+          )
+          || (
+            // Anchoring the account's original role when creating the first
+            // secondary company — may only record the CURRENT effective primary
+            // role, never invent a different one.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['primaryRole', 'orgMemberships', 'updatedAt'])
+            && request.resource.data.primaryRole == resource.data.get('primaryRole', resource.data.role)
           )
           || (
             // Multi-company switch: an account may only switch its active
             // organizationId into itself (its default org) or a secondary
             // company it created — never into an org owned by someone else.
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'updatedAt'])
+            // `role` may change along with the switch (a secondary company can
+            // be a Supplier company owned by a Contractor account, or vice
+            // versa) but only to the target org's declared role; switching back
+            // to the primary org restores the account's original primaryRole.
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'role', 'updatedAt'])
             && (
-              request.resource.data.organizationId == userId
-              || get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerUserId == userId
+              (
+                request.resource.data.organizationId == userId
+                && request.resource.data.role == resource.data.get('primaryRole', resource.data.role)
+              )
+              || (
+                get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerUserId == userId
+                && request.resource.data.role == get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('role', resource.data.role)
+              )
             )
           )
         ))
         || (
-          isSignedIn() &&
-          resource.data.organizationId == getOrganizationId() &&
-          getUserData().organizationRole == 'owner'
+          // Org owner managing a TEAM MEMBER's doc — never their own (self-updates
+          // must go through the restricted isOwner branches above; without the
+          // self-exclusion this branch let owners forge organizationId/role freely).
+          // Only the two team-management writes are allowed: assigning a group,
+          // and removing a member (reverting them to their own solo org).
+          isSignedIn()
+          && request.auth.uid != userId
+          && resource.data.organizationId == getOrganizationId()
+          && getUserData().organizationRole == 'owner'
+          && (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['defaultGroupId', 'updatedAt'])
+            || (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['organizationId', 'organizationRole', 'defaultGroupId', 'updatedAt'])
+              && request.resource.data.organizationId == userId
+              && request.resource.data.organizationRole == 'owner'
+            )
+          )
         );
       allow delete: if isAdmin();
 
