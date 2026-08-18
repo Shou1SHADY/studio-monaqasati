@@ -770,6 +770,18 @@ service cloud.firestore {
           ));
         }
       }
+
+      // Stock-movement log for the central-warehouse system: every transfer
+      // between the company's central warehouse and a project warehouse is
+      // recorded here (on the CENTRAL warehouse's doc). Append-only for the
+      // org — history can't be rewritten client-side.
+      match /transfers/{transferId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+        ));
+        allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+        allow update, delete: if isAdmin();
+      }
     }
 
   }

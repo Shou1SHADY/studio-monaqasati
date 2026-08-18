@@ -26,21 +26,23 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Link } from "@/i18n/routing"
-import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
+import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2 } from "lucide-react"
+import { useCentralWarehouse } from "@/hooks/useCentralWarehouse"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type WarehouseDoc = {
   id: string
   name: string
   location: string
-  description?: string
+  description?: string | null
   organizationId: string
   projectId?: string | null
   projectName?: string | null
+  isCentral?: boolean
 }
 
 function WarehouseDialog({
@@ -157,15 +159,11 @@ export default function ContractorWarehousesPage() {
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
 
-  const warehousesQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId) return null
-    return query(collection(firestore, "warehouses"), where("organizationId", "==", myOrgId))
-  }, [firestore, myOrgId])
-  const { data: warehouses, isLoading } = useCollection(warehousesQuery)
-  const list = (warehouses || []) as WarehouseDoc[]
+  const { central, projectWarehouses, isLoading } = useCentralWarehouse(myOrgId)
+  const list = projectWarehouses as WarehouseDoc[]
 
   const handleDelete = async () => {
-    if (!firestore || !deleteWarehouse) return
+    if (!firestore || !deleteWarehouse || deleteWarehouse.isCentral) return
     setIsDeleting(true)
     try {
       await deleteDoc(doc(firestore, "warehouses", deleteWarehouse.id))
@@ -199,24 +197,67 @@ export default function ContractorWarehousesPage() {
           )}
         </div>
 
-        {/* List */}
+        {/* Central warehouse — the company's master stock, pinned on top */}
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 size={32} className="animate-spin text-muted-foreground" />
           </div>
-        ) : list.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-            <Warehouse size={48} className="text-muted-foreground/20" />
-            <p className="font-bold text-muted-foreground">{t("wh_empty_title")}</p>
-            <p className="text-sm text-muted-foreground/70">{t("wh_empty_desc")}</p>
-            {canManageWarehouses && (
-              <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
-                <Plus size={14} />
-                {t("wh_add_btn")}
-              </Button>
-            )}
-          </div>
         ) : (
+          <>
+            {central && (
+              <Card className="border-2 border-accent/30 bg-gradient-to-bl from-accent/5 via-transparent to-transparent overflow-hidden">
+                <CardContent className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+                  <div className="h-14 w-14 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                    <Warehouse size={26} className="text-accent" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-lg font-black text-primary">{central.name}</h2>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black text-accent bg-accent/10 border border-accent/30 rounded-full px-2 py-0.5">
+                        <Star size={10} />
+                        {t("wh_central_badge")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{t("wh_central_desc")}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canManageWarehouses && (
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setEditWarehouse(central as WarehouseDoc)} aria-label={t("wh_edit_title")}>
+                        <Pencil size={14} />
+                      </Button>
+                    )}
+                    <Button asChild className="gap-2 bg-accent hover:bg-accent/90 text-white">
+                      <Link href={`/contractor/warehouses/${central.id}`}>
+                        <Package size={15} />
+                        {t("wh_view_inventory")}
+                        {isRtl ? <ArrowLeft size={14} /> : <ArrowRight size={14} />}
+                      </Link>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Project & secondary warehouses — each draws its stock from the central one */}
+            <div className="flex items-center gap-2 pt-2">
+              <Building2 size={16} className="text-primary" />
+              <h2 className="font-bold text-primary">{t("wh_project_section_title")}</h2>
+              <span className="text-xs text-muted-foreground">{t("wh_project_section_desc")}</span>
+            </div>
+            {list.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3 text-center border border-dashed rounded-2xl">
+                <Warehouse size={40} className="text-muted-foreground/20" />
+                <p className="font-bold text-muted-foreground">{t("wh_empty_title")}</p>
+                <p className="text-sm text-muted-foreground/70">{t("wh_empty_desc")}</p>
+                {canManageWarehouses && (
+                  <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
+                    <Plus size={14} />
+                    {t("wh_add_btn")}
+                  </Button>
+                )}
+              </div>
+            ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {list.map((wh) => (
               <Card key={wh.id} className="hover:shadow-md transition-shadow group">
@@ -273,6 +314,8 @@ export default function ContractorWarehousesPage() {
               </Card>
             ))}
           </div>
+            )}
+          </>
         )}
       </div>
 
