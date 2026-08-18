@@ -27,9 +27,10 @@ import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem } from "@/hooks/useWorkQueue"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
+import { usePermissions } from "@/hooks/usePermissions"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Package, Truck, AlertTriangle, CircleDot, Banknote, Inbox, Timer } from "lucide-react"
+import { Package, Truck, AlertTriangle, CircleDot, Banknote, Inbox, Timer, FolderKanban, Warehouse, Users2, Receipt, Crown, UsersRound } from "lucide-react"
 
 function describeQueueItem(item: WorkQueueItem, t: ReturnType<typeof useTranslations<"Portal.Contractor">>) {
   switch (item.type) {
@@ -124,10 +125,43 @@ export default function ContractorDashboard() {
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
-  const { items: queueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
+  const { can, isOrgOwner, groups } = usePermissions()
+
+  // --- Personalization: who is this, and what can they act on? ---
+  const firstName = (profile?.name as string | undefined)?.trim().split(/\s+/)[0] || ""
+  const hourNow = new Date().getHours()
+  const greeting = hourNow < 12 ? t("greet_morning") : t("greet_evening")
+  const todayLabel = new Date().toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { weekday: "long", day: "numeric", month: "long" })
+  const myGroup = groups.find((g) => g.id === profile?.defaultGroupId)
+  const roleChip = isOrgOwner ? t("role_owner_chip") : myGroup?.name || null
+
+  // Queue items only appear if this member can actually act on them — a
+  // finance member shouldn't wake up to RFQ decisions they can't take.
+  const queuePermission: Record<WorkQueueItem["type"], boolean> = {
+    rfq_decision: can("offers.view") || can("rfq.manage"),
+    rfq_no_offers: can("rfq.manage") || can("rfq.create"),
+    rfq_closing_soon: can("rfq.manage") || can("rfq.create"),
+    delivery_confirm: can("deliveries.confirm"),
+    invoice_overdue: can("invoices.manage"),
+    low_stock: can("warehouses.manage"),
+  }
+  const { items: allQueueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
+  const queueItems = allQueueItems.filter((item) => queuePermission[item.type])
   const [showAllQueue, setShowAllQueue] = useState(false)
   const QUEUE_COLLAPSED_LIMIT = 5
   const visibleQueueItems = showAllQueue ? queueItems : queueItems.slice(0, QUEUE_COLLAPSED_LIMIT)
+
+  // Personalized shortcuts — only destinations this member can actually use.
+  const quickActions = [
+    { key: "projects", label: t("qa_projects"), icon: FolderKanban, href: "/contractor/projects", show: true },
+    { key: "rfqs", label: t("qa_rfqs"), icon: FileText, href: "/contractor/rfqs", show: can("rfq.manage") || can("rfq.create") },
+    { key: "invoices", label: t("qa_invoices"), icon: Receipt, href: "/contractor/invoices", show: can("invoices.manage") },
+    { key: "warehouses", label: t("qa_warehouses"), icon: Warehouse, href: "/contractor/warehouses", show: can("warehouses.manage") },
+    { key: "suppliers", label: t("qa_suppliers"), icon: Users2, href: "/contractor/suppliers", show: can("suppliers.manage") },
+    { key: "team", label: t("qa_team"), icon: UsersRound, href: "/contractor/team", show: can("team.manage") },
+  ].filter((a) => a.show)
+
+  const showMoneyFlow = isOrgOwner || can("invoices.manage") || can("offers.accept")
 
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
@@ -168,11 +202,18 @@ export default function ContractorDashboard() {
   
   const lastActivityDate = getLastActivityDate();
 
-  const stats = [
-    { title: t("active_tenders"), value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: t("browse_tenders"), actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? t("active_tenders_empty") : t("active_tenders_count", { count: activeRfqsCount }) },
-    { title: t("awarded_contracts"), value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: t("view_contracts"), actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: t("awarded_contracts_context") },
-    { title: t("offers_received"), value: totalOffersCount.toString(), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("review_offers"), actionUrl: "/contractor/rfqs", context: totalOffersCount === 0 ? t("offers_received_empty") : pendingOffersCount > 0 ? t("offers_received_pending", { count: pendingOffersCount }) : t("connected_suppliers_context") },
+  // Stats are role-aware: each card shows only if the member can act in that
+  // domain; the projects card fills in so restricted members still see a full row.
+  const allStats = [
+    { visible: true, title: t("stat_projects_title"), value: orgProjects.length.toString(), icon: FolderKanban, color: "text-cta", bg: "bg-cta/10", glow: "group-hover:shadow-[0_0_20px_rgba(3,105,161,0.15)]", gradient: "group-hover:from-sky-50 group-hover:to-sky-100/50", action: t("qa_projects"), actionUrl: "/contractor/projects", trend: undefined as { value: number; isPositive: boolean } | undefined, context: t("stat_projects_context") },
+    { visible: can("rfq.manage") || can("rfq.create") || isOrgOwner, title: t("active_tenders"), value: activeRfqsCount.toString(), icon: FileText, color: "text-accent", bg: "bg-accent/10", glow: "group-hover:shadow-[0_0_20px_rgba(32,203,213,0.15)]", gradient: "group-hover:from-accent/5 group-hover:to-cyan-50/50", action: t("browse_tenders"), actionUrl: "/contractor/rfqs", trend: activeRfqsCount > 0 ? { value: 12, isPositive: true } : undefined, context: activeRfqsCount === 0 ? t("active_tenders_empty") : t("active_tenders_count", { count: activeRfqsCount }) },
+    { visible: can("offers.view") || isOrgOwner, title: t("awarded_contracts"), value: awardedCount.toString(), icon: Trophy, color: "text-amber-600", bg: "bg-amber-50", glow: "group-hover:shadow-[0_0_20px_rgba(245,158,11,0.15)]", gradient: "group-hover:from-amber-50 group-hover:to-amber-100/50", action: t("view_contracts"), actionUrl: "/contractor/rfqs?status=Awarded", trend: awardedCount > 0 ? { value: 5, isPositive: true } : undefined, context: t("awarded_contracts_context") },
+    { visible: can("offers.view") || isOrgOwner, title: t("offers_received"), value: totalOffersCount.toString(), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50", glow: "group-hover:shadow-[0_0_20px_rgba(139,92,246,0.15)]", gradient: "group-hover:from-violet-50 group-hover:to-violet-100/50", action: t("review_offers"), actionUrl: "/contractor/rfqs", context: totalOffersCount === 0 ? t("offers_received_empty") : pendingOffersCount > 0 ? t("offers_received_pending", { count: pendingOffersCount }) : t("connected_suppliers_context") },
   ]
+  const visibleStats = allStats.filter((s) => s.visible)
+  // Owners see the classic 3 domain cards; the projects card leads only when
+  // it's needed to keep the row meaningful for restricted members.
+  const stats = visibleStats.length > 3 ? visibleStats.slice(1) : visibleStats
 
   if (!profile || !rfqs) {
     return (
@@ -240,15 +281,21 @@ export default function ContractorDashboard() {
             }}
           />
 
-          {/* Text content */}
+          {/* Text content — personal greeting first, company context second */}
           <div className="relative z-[2] flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className={cn("text-[18px] sm:text-[22px] font-black text-white leading-[1.15]", locale !== 'ar' && "tracking-[-0.02em]")}>
-                {t("welcome")}{locale === 'ar' ? '،' : ','}{' '}
+              <h1 suppressHydrationWarning className={cn("text-[18px] sm:text-[22px] font-black text-white leading-[1.15]", locale !== 'ar' && "tracking-[-0.02em]")}>
+                {greeting}{locale === 'ar' ? '،' : ','}{' '}
                 <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
-                  {activeCompanyName || t("welcome_fallback")}
+                  {firstName || activeCompanyName || t("welcome_fallback")}
                 </span>
               </h1>
+              {roleChip && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 backdrop-blur-md border border-accent/30 text-[11.5px] font-bold text-accent whitespace-nowrap">
+                  {isOrgOwner ? <Crown className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}
+                  {roleChip}
+                </span>
+              )}
               {lastActivityDate && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.06] backdrop-blur-md border border-white/[0.14] text-[11.5px] font-semibold text-slate-300 whitespace-nowrap">
                   <Clock className="h-3 w-3 text-blue-300" />
@@ -256,19 +303,43 @@ export default function ContractorDashboard() {
                 </span>
               )}
             </div>
+            <p className="mt-1.5 text-[12.5px] text-slate-400 font-medium truncate">
+              {activeCompanyName || t("welcome_fallback")}
+              <span className="mx-1.5 text-slate-600">·</span>
+              <span suppressHydrationWarning>{todayLabel}</span>
+            </p>
           </div>
 
-          {/* CTA Button — tenders now only get created from inside a project */}
-          <Link href="/contractor/projects" className="relative z-[2] shrink-0 w-full sm:w-auto">
-            <Button
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 h-9 rounded-[10px] bg-white text-[#0b1a33] text-[13.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
-              style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
-            >
-              <PlusCircle className={cn("h-4 w-4", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
-              {t("new_tender_cta")}
-            </Button>
-          </Link>
+          {/* CTA Button — tenders now only get created from inside a project;
+              hidden for members whose role can't publish RFQs at all */}
+          {(isOrgOwner || can("rfq.create") || can("projects.edit")) && (
+            <Link href="/contractor/projects" className="relative z-[2] shrink-0 w-full sm:w-auto">
+              <Button
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 h-9 rounded-[10px] bg-white text-[#0b1a33] text-[13.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
+                style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
+              >
+                <PlusCircle className={cn("h-4 w-4", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
+                {t("new_tender_cta")}
+              </Button>
+            </Link>
+          )}
         </div>
+
+        {/* Personalized shortcuts — only what this member can actually do */}
+        {quickActions.length > 1 && (
+          <div className="flex items-center gap-2 flex-wrap -mt-3">
+            {quickActions.map((a) => (
+              <Link
+                key={a.key}
+                href={a.href}
+                className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-full border border-border bg-background text-[13px] font-bold text-slate-700 hover:border-primary/40 hover:text-primary hover:bg-primary/5 transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                <a.icon className="h-3.5 w-3.5" />
+                {a.label}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Stats Grid - Primary KPIs per 5-second rule */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -378,8 +449,8 @@ export default function ContractorDashboard() {
           </Card>
         </div>
 
-        {/* Money Flow */}
-        {orgProjects.length > 0 && (
+        {/* Money Flow — financial visibility only */}
+        {showMoneyFlow && orgProjects.length > 0 && (
           <Card className="shadow-md border-none overflow-hidden glass-card">
             <CardHeader className="flex flex-row items-center justify-between border-b border-border bg-muted/50 pb-4 flex-wrap gap-3">
               <CardTitle className="text-lg font-black flex items-center gap-2 text-foreground">
