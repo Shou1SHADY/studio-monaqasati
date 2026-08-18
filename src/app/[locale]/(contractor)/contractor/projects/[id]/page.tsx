@@ -126,6 +126,7 @@ import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { useProjectWasteStats } from "@/hooks/useProjectWasteStats"
 import { suggestWastePercent } from "@/ai/flows/suggest-waste-percent-flow"
+import { suggestBoqMaterials } from "@/ai/flows/suggest-boq-materials-flow"
 import {
   SECTION_IDS,
   SECTION_REGISTRY,
@@ -275,6 +276,8 @@ export default function ProjectDetailPage() {
   const [editWarehouseId, setEditWarehouseId] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
+  const [isSuggestMaterialsOpen, setIsSuggestMaterialsOpen] = useState(false)
+  const [suggestedTakenQtys, setSuggestedTakenQtys] = useState<Record<string, string>>({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // BOQ state
@@ -1955,10 +1958,17 @@ export default function ProjectDetailPage() {
                     {t("proj_boq_add_section")}
                   </Button>
                   {typedProject?.warehouseId && linkedInventoryItems.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => setIsConsumeDialogOpen(true)}
+                    <Button variant="outline" size="sm" onClick={() => { setSuggestedTakenQtys({}); setIsConsumeDialogOpen(true) }}
                       className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50">
                       <Warehouse size={14} />
                       {t("proj_boq_consume_btn")}
+                    </Button>
+                  )}
+                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && boqItems.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => setIsSuggestMaterialsOpen(true)}
+                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5">
+                      <Sparkles size={14} />
+                      {t("proj_suggest_materials_btn")}
                     </Button>
                   )}
                 </div>
@@ -2641,6 +2651,22 @@ export default function ProjectDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* AI-suggest materials dialog — feeds its picks into the consume dialog below */}
+      {typedProject?.warehouseId && (
+        <SuggestMaterialsDialog
+          open={isSuggestMaterialsOpen}
+          onOpenChange={setIsSuggestMaterialsOpen}
+          boqItems={boqItems}
+          inventoryItems={linkedInventoryItems}
+          t={t}
+          locale={locale}
+          onApply={(qtys) => {
+            setSuggestedTakenQtys(qtys)
+            setIsConsumeDialogOpen(true)
+          }}
+        />
+      )}
+
       {/* Consume from warehouse dialog */}
       {typedProject?.warehouseId && (
         <ConsumeFromWarehouseDialog
@@ -2649,6 +2675,7 @@ export default function ProjectDetailPage() {
           warehouseId={typedProject.warehouseId}
           inventoryItems={linkedInventoryItems}
           wasteTargetPercent={typedProject.wasteTargetPercent ?? 12}
+          initialTakenQtys={suggestedTakenQtys}
           locale={locale}
           t={t}
           onConsume={async (rows, exceptionReason) => {
@@ -2815,12 +2842,220 @@ function UnitPickerDialog({
   )
 }
 
+type BoqMaterialSuggestion = {
+  warehouseItemName: string | null
+  notFoundSuggestedName: string | null
+  estimatedQuantity: number
+  unit: string
+  reasoning: string
+}
+type BoqSuggestionResult = { matchType: "direct" | "composite" | "not_found"; suggestions: BoqMaterialSuggestion[] }
+
+function SuggestMaterialsDialog({
+  open,
+  onOpenChange,
+  boqItems,
+  inventoryItems,
+  t,
+  locale,
+  onApply,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  boqItems: { id: string; descriptionAr: string; descriptionEn: string; quantity: string; unit: string }[]
+  inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  locale: string
+  onApply: (takenQtys: Record<string, string>) => void
+}) {
+  const isRtl = locale === "ar"
+  const { toast } = useToast()
+  const candidateBoqItems = useMemo(() => boqItems.filter((b) => (b.descriptionAr || b.descriptionEn)?.trim() && Number(b.quantity) > 0), [boqItems])
+  // Barcode-tracked items aren't included — a numeric suggestion can't stand in for
+  // picking specific physical units, that stays a manual step in the consume dialog.
+  const aggregateItems = useMemo(() => inventoryItems.filter((i) => i.trackingMode !== "unit"), [inventoryItems])
+  const nameToId = useMemo(() => new Map(aggregateItems.map((i) => [i.name.trim(), i.id])), [aggregateItems])
+
+  const [selectedBoqIds, setSelectedBoqIds] = useState<Set<string>>(new Set())
+  const [isLoading, setIsLoading] = useState(false)
+  const [results, setResults] = useState<Record<string, BoqSuggestionResult>>({})
+  const [includedLines, setIncludedLines] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (open) {
+      setSelectedBoqIds(new Set(candidateBoqItems.map((b) => b.id)))
+      setResults({})
+      setIncludedLines({})
+    }
+    // Re-run only when the dialog opens.
+  }, [open])
+
+  const toggleBoqSelected = (id: string) => {
+    setSelectedBoqIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleGetSuggestions = async () => {
+    const targets = candidateBoqItems.filter((b) => selectedBoqIds.has(b.id))
+    if (targets.length === 0) return
+    setIsLoading(true)
+    try {
+      const entries = await Promise.all(targets.map(async (b) => {
+        const result = await suggestBoqMaterials({
+          boqItemDescription: b.descriptionAr || b.descriptionEn,
+          boqQuantity: Number(b.quantity) || 0,
+          boqUnit: b.unit,
+          warehouseItems: aggregateItems.map((i) => ({ name: i.name, unit: i.unit, availableQuantity: i.quantity })),
+        })
+        return [b.id, result] as const
+      }))
+      const nextResults: Record<string, BoqSuggestionResult> = {}
+      const nextIncluded: Record<string, boolean> = {}
+      entries.forEach(([boqId, result]) => {
+        nextResults[boqId] = result
+        result.suggestions.forEach((s, i) => {
+          if (s.warehouseItemName && nameToId.has(s.warehouseItemName.trim())) {
+            nextIncluded[`${boqId}_${i}`] = true
+          }
+        })
+      })
+      setResults(nextResults)
+      setIncludedLines(nextIncluded)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("proj_suggest_materials_error"), variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleApply = () => {
+    const takenQtys: Record<string, string> = {}
+    Object.entries(results).forEach(([boqId, result]) => {
+      result.suggestions.forEach((s, i) => {
+        if (!includedLines[`${boqId}_${i}`]) return
+        const itemId = s.warehouseItemName ? nameToId.get(s.warehouseItemName.trim()) : undefined
+        if (!itemId) return
+        const prevVal = Number(takenQtys[itemId]) || 0
+        takenQtys[itemId] = String(prevVal + (s.estimatedQuantity || 0))
+      })
+    })
+    if (Object.keys(takenQtys).length === 0) {
+      toast({ title: t("proj_suggest_materials_none_selected"), variant: "destructive" })
+      return
+    }
+    onApply(takenQtys)
+    onOpenChange(false)
+  }
+
+  const hasResults = Object.keys(results).length > 0
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles size={18} className="text-amber-500" />
+            {t("proj_suggest_materials_title")}
+          </DialogTitle>
+          <DialogDescription>{t("proj_suggest_materials_desc")}</DialogDescription>
+        </DialogHeader>
+
+        {!hasResults ? (
+          <>
+            <div className="border rounded-lg divide-y overflow-hidden max-h-72 overflow-y-auto">
+              {candidateBoqItems.map((b) => (
+                <label key={b.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-slate-50">
+                  <Checkbox checked={selectedBoqIds.has(b.id)} onCheckedChange={() => toggleBoqSelected(b.id)} />
+                  <span className="flex-1 min-w-0 truncate">{b.descriptionAr || b.descriptionEn}</span>
+                  <span className="text-xs text-muted-foreground shrink-0" dir="ltr">{b.quantity} {b.unit}</span>
+                </label>
+              ))}
+              {candidateBoqItems.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-6">{t("proj_boq_empty")}</p>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">{t("proj_suggest_materials_unit_note")}</p>
+          </>
+        ) : (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {candidateBoqItems.filter((b) => results[b.id]).map((b) => {
+              const result = results[b.id]
+              return (
+                <div key={b.id} className="border rounded-lg overflow-hidden">
+                  <div className="bg-slate-50 px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold truncate">{b.descriptionAr || b.descriptionEn}</span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] shrink-0",
+                        result.matchType === "direct" ? "text-success border-success/30 bg-success/5" :
+                        result.matchType === "composite" ? "text-primary border-primary/30 bg-primary/5" :
+                        "text-muted-foreground border-slate-200"
+                      )}
+                    >
+                      {t(`proj_suggest_materials_type_${result.matchType}`)}
+                    </Badge>
+                  </div>
+                  <div className="divide-y">
+                    {result.suggestions.map((s, i) => {
+                      const key = `${b.id}_${i}`
+                      const resolved = s.warehouseItemName ? nameToId.get(s.warehouseItemName.trim()) : undefined
+                      return (
+                        <div key={key} className="px-3 py-2 text-sm">
+                          {resolved ? (
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <Checkbox checked={!!includedLines[key]} onCheckedChange={(v) => setIncludedLines((prev) => ({ ...prev, [key]: !!v }))} />
+                              <span className="flex-1 min-w-0 truncate font-medium">{s.warehouseItemName}</span>
+                              <span className="text-xs text-muted-foreground shrink-0" dir="ltr">{s.estimatedQuantity} {s.unit}</span>
+                            </label>
+                          ) : (
+                            <div className="flex items-center gap-2 opacity-70">
+                              <Package size={13} className="text-amber-500 shrink-0" />
+                              <span className="flex-1 min-w-0 truncate">{s.notFoundSuggestedName || "—"}</span>
+                              <span className="text-xs text-amber-600 shrink-0">{t("proj_suggest_materials_not_in_stock")}</span>
+                            </div>
+                          )}
+                          <p className="text-[11px] text-muted-foreground mt-0.5 ps-6">{s.reasoning}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("cancel")}</Button>
+          {!hasResults ? (
+            <Button onClick={handleGetSuggestions} disabled={isLoading || selectedBoqIds.size === 0} className="gap-2">
+              {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {t("proj_suggest_materials_get_btn")}
+            </Button>
+          ) : (
+            <Button onClick={handleApply} className="gap-2">
+              {t("proj_suggest_materials_apply_btn")}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ConsumeFromWarehouseDialog({
   open,
   onOpenChange,
   warehouseId,
   inventoryItems,
   wasteTargetPercent,
+  initialTakenQtys,
   locale,
   t,
   onConsume,
@@ -2830,6 +3065,8 @@ function ConsumeFromWarehouseDialog({
   warehouseId: string
   inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
   wasteTargetPercent: number
+  /** Pre-fills "taken" quantities when the dialog opens — e.g. from AI material suggestions. */
+  initialTakenQtys?: Record<string, string>
   locale: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   onConsume: (rows: ConsumeRow[], exceptionReason?: string) => Promise<void>
@@ -2856,6 +3093,17 @@ function ConsumeFromWarehouseDialog({
     setPickerItemId(null)
     setExceptionReason("")
   }
+
+  // Seed from AI suggestions (or any other caller-provided defaults) each time
+  // the dialog opens — the user still reviews and can "add or reduce" every
+  // value here, this only saves them re-typing the AI's starting point.
+  useEffect(() => {
+    if (open && initialTakenQtys && Object.keys(initialTakenQtys).length > 0) {
+      setTakenQtys(initialTakenQtys)
+      setUsedQtys(initialTakenQtys)
+    }
+    // Only re-seed when the dialog transitions open, or the suggested values change.
+  }, [open, initialTakenQtys])
 
   const handleTakenChange = (itemId: string, value: string) => {
     setTakenQtys((prev) => ({ ...prev, [itemId]: value }))
