@@ -147,9 +147,10 @@ export default function ContractorDashboard() {
   }
   const { items: allQueueItems, isLoading: queueLoading } = useWorkQueue(myOrgId)
   const queueItems = allQueueItems.filter((item) => queuePermission[item.type])
-  const [showAllQueue, setShowAllQueue] = useState(false)
   const QUEUE_COLLAPSED_LIMIT = 5
-  const visibleQueueItems = showAllQueue ? queueItems : queueItems.slice(0, QUEUE_COLLAPSED_LIMIT)
+  const [visibleQueueCount, setVisibleQueueCount] = useState(QUEUE_COLLAPSED_LIMIT)
+  const visibleQueueItems = queueItems.slice(0, visibleQueueCount)
+  const showAllQueue = visibleQueueCount >= queueItems.length
 
   // Personalized shortcuts — only destinations this member can actually use.
   const quickActions = [
@@ -438,10 +439,14 @@ export default function ContractorDashboard() {
               {queueItems.length > QUEUE_COLLAPSED_LIMIT && (
                 <button
                   type="button"
-                  onClick={() => setShowAllQueue((v) => !v)}
+                  onClick={() =>
+                    setVisibleQueueCount((c) =>
+                      showAllQueue ? QUEUE_COLLAPSED_LIMIT : Math.min(c + QUEUE_COLLAPSED_LIMIT, queueItems.length)
+                    )
+                  }
                   className="w-full p-3.5 flex items-center justify-center gap-1.5 text-sm font-bold text-primary hover:bg-muted/60 transition-colors border-t border-border/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                 >
-                  {showAllQueue ? t("queue_view_less") : t("queue_view_more", { count: queueItems.length - QUEUE_COLLAPSED_LIMIT })}
+                  {showAllQueue ? t("queue_view_less") : t("queue_view_more", { count: queueItems.length - visibleQueueCount })}
                   {showAllQueue ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
               )}
