@@ -19,6 +19,15 @@ export function FirebaseErrorListener() {
   useEffect(() => {
     // The callback now expects a strongly-typed error, matching the event payload.
     const handleError = (error: FirestorePermissionError) => {
+      // A company/role switch commits a write that flips getOrganizationId() under
+      // every org-scoped listener still mounted during the instant before the full
+      // navigation lands — a known, benign teardown race, not a rules bug. The
+      // switch handlers raise this flag just before their write; the page that
+      // follows is a fresh load, so the flag can never suppress a real error.
+      if (typeof window !== 'undefined' && (window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight) {
+        console.warn('Suppressed transient permission error during company switch:', error.message);
+        return;
+      }
       if (process.env.NODE_ENV !== 'production') {
         // Set error in state to trigger a re-render that throws it (dev-only, see above).
         setError(error);

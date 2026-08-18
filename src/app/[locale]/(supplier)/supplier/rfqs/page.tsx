@@ -62,7 +62,7 @@ export default function AvailableRfqsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [selectedCity, setSelectedCity] = useState<string>("all")
   const [customDeadline, setCustomDeadline] = useState("")
-  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean, estimatedBudget?: number} | null>(null)
+  const [selectedRfq, setSelectedRfq] = useState<{id: string, title: string, quantity?: string, unitOfMeasure?: string, contractorId?: string, products?: any[], notes?: string, pdfUrl?: string, category?: string, subCategory?: string, city?: string, district?: string, deadline?: string, locationCoords?: any, offersCount?: number, status?: string, paymentTerms?: string, createdAt?: string, requiresWarranty?: boolean, isFromMdmak?: boolean, estimatedBudget?: number, shipmentMode?: string, projectId?: string | null} | null>(null)
 
   const [showMobileFilters, setShowMobileFilters] = useState(false)
   const activeFilterCount = [deadlineFilter !== "all", selectedCategory !== "all", selectedCity !== "all"].filter(Boolean).length
@@ -504,7 +504,7 @@ export default function AvailableRfqsPage() {
                   <div className="flex gap-2">
                     <Button
                       onClick={() => {
-                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak })
+                        setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, projectId: rfq.projectId ?? null })
                         setShowRfqDetails(true)
                       }}
                       variant="outline"
@@ -528,7 +528,7 @@ export default function AvailableRfqsPage() {
                     ) : (
                       <Button
                         onClick={() => {
-                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak })
+                          setSelectedRfq({ id: rfq.id, title: rfq.title, quantity: rfq.quantity, unitOfMeasure: rfq.unitOfMeasure, contractorId: rfq.contractorId, products: rfq.products, notes: rfq.notes, pdfUrl: rfq.pdfUrl, category: rfq.category, subCategory: rfq.subCategory, city: rfq.city, district: rfq.district, deadline: rfq.deadline, locationCoords: rfq.locationCoords, offersCount: rfq.offersCount, status: rfq.status, paymentTerms: rfq.paymentTerms, createdAt: rfq.createdAt, requiresWarranty: rfq.requiresWarranty, isFromMdmak: rfq.isFromMdmak, shipmentMode: rfq.shipmentMode, projectId: rfq.projectId ?? null })
                           setShowSubmitOffer(true)
                         }}
                         className="flex-[2] gap-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl h-11 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 group"

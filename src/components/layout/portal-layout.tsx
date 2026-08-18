@@ -46,14 +46,30 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const orgMemberships: OrgMembership[] = (profile?.orgMemberships as OrgMembership[] | undefined) || []
   const activeOrgId = (profile?.organizationId as string | undefined) || user?.uid || ""
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
+  // The role the account was created with — the primary company's role, and the
+  // fallback for memberships that predate cross-role companies.
+  const basePrimaryRole: "Contractor" | "Supplier" =
+    (profile?.primaryRole as "Contractor" | "Supplier" | undefined) ||
+    (profile?.role as "Contractor" | "Supplier" | undefined) ||
+    "Contractor"
+  const membershipRole = (m: OrgMembership): "Contractor" | "Supplier" =>
+    m.isPrimary || m.organizationId === user?.uid ? basePrimaryRole : (m.role || basePrimaryRole)
   const [switchingOrgId, setSwitchingOrgId] = React.useState<string | null>(null)
-  const handleSwitchCompany = async (organizationId: string) => {
-    if (!firestore || !user || organizationId === activeOrgId) return
-    setSwitchingOrgId(organizationId)
+  const handleSwitchCompany = async (m: OrgMembership) => {
+    if (!firestore || !user || m.organizationId === activeOrgId) return
+    setSwitchingOrgId(m.organizationId)
     try {
-      await updateDoc(doc(firestore, "users", user.uid), { organizationId })
-      window.location.reload()
+      const targetRole = membershipRole(m)
+      // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
+      // listeners still mounted for the instant before navigation would throw.
+      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
+      await updateDoc(doc(firestore, "users", user.uid), { organizationId: m.organizationId, role: targetRole })
+      // The target company may operate in the other portal — navigate to its
+      // root (full navigation also restarts every org-scoped listener cleanly).
+      const portal = targetRole === "Supplier" ? "/supplier" : "/contractor"
+      window.location.href = (locale === "ar" ? "" : `/${locale}`) + portal
     } catch (err) {
+      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
       console.error(err)
       toast({ title: tShared("company_switcher_error"), variant: "destructive" })
       setSwitchingOrgId(null)
@@ -827,10 +843,20 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                         <DropdownMenuItem
                           key={m.organizationId}
                           disabled={m.organizationId === activeOrgId || switchingOrgId === m.organizationId}
-                          onClick={() => handleSwitchCompany(m.organizationId)}
+                          onClick={() => handleSwitchCompany(m)}
                           className="flex items-center justify-between gap-2"
                         >
-                          <span className="truncate">{m.companyName}</span>
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">{m.companyName}</span>
+                            <span className={cn(
+                              "text-[9px] font-bold px-1.5 py-px rounded-full border shrink-0",
+                              membershipRole(m) === "Supplier"
+                                ? "text-accent border-accent/30 bg-accent/5"
+                                : "text-cta border-cta/30 bg-cta/5"
+                            )}>
+                              {membershipRole(m) === "Supplier" ? tShared("company_role_supplier") : tShared("company_role_contractor")}
+                            </span>
+                          </span>
                           {m.organizationId === activeOrgId ? (
                             <Check size={13} className="text-primary shrink-0" />
                           ) : switchingOrgId === m.organizationId ? (

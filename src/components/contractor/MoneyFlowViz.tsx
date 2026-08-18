@@ -2,6 +2,7 @@
 
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
+import { PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus } from "@/lib/project-status"
 import { useProjectMoneyFlow } from "@/hooks/useProjectMoneyFlow"
 import { formatCurrency } from "@/utils/invoice-utils"
 import { Loader2, Info } from "lucide-react"
@@ -16,13 +17,13 @@ interface MoneyFlowVizProps {
 }
 
 function ProjectStatusBadge({ status, t }: { status: string | null; t: (key: string) => string }) {
-  if (status === "active")
-    return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">{t("proj_status_active")}</span>
-  if (status === "paused")
-    return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">{t("proj_status_paused")}</span>
-  if (status === "completed")
-    return <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-success/10 text-success border border-success/20">{t("proj_status_completed")}</span>
-  return null
+  if (!status) return null
+  const resolved = resolveProjectStatus(status)
+  return (
+    <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full border", PROJECT_STATUS_BADGE_CLASSES[resolved])}>
+      {t(projectStatusLabelKey(resolved))}
+    </span>
+  )
 }
 
 function Stage({

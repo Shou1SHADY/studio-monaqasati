@@ -112,6 +112,7 @@ function GuaranteeItemRow({
         await addDoc(collection(firestore, "guarantees"), {
           rfqId: offer.rfqId || null,
           rfqTitle: offer.rfqTitle || "",
+          projectId: offer.projectId || null,
           offerId: offer.id,
           contractorOrgId: offer.contractorOrgId || offer.contractorId,
           contractorId: offer.contractorId || null,

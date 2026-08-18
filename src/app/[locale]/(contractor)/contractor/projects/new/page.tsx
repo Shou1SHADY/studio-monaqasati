@@ -5,6 +5,7 @@ import { useTranslations, useLocale } from "next-intl"
 import { useRouter } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
+import { PROJECT_STATUSES, projectStatusLabelKey, type ProjectStatus } from "@/lib/project-status"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,7 @@ import { ProductRowEditor, makeEmptyProductRow, type ProductRow } from "@/compon
 import { StagedTeamStep, type StagedMember } from "@/components/contractor/StagedTeamStep"
 import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, doc, addDoc, writeBatch, serverTimestamp } from "firebase/firestore"
+import { collection, doc, addDoc, updateDoc, writeBatch, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import type { BoqItem, BoqParsedGroup } from "@/lib/boq-parser"
@@ -103,10 +104,11 @@ export default function NewProjectPage() {
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([])
 
   const [name, setName] = useState("")
+  const [clientName, setClientName] = useState("")
   const [description, setDescription] = useState("")
   const [location, setLocation] = useState("")
   const [budget, setBudget] = useState("")
-  const [status, setStatus] = useState<"active" | "paused" | "completed">("active")
+  const [status, setStatus] = useState<ProjectStatus>("todo")
   const [projectType, setProjectType] = useState("")
   const [region, setRegion] = useState("")
   const [clientType, setClientType] = useState("")
@@ -258,6 +260,7 @@ export default function NewProjectPage() {
         budget: budget ? Number(budget) : null,
         status,
         projectType: projectType || null,
+        clientName: clientName.trim() || null,
         clientType: clientType || null,
         blueprintUrl,
         enabledSections: Array.from(enabledSections),
@@ -368,6 +371,27 @@ export default function NewProjectPage() {
         hadPartialFailure = true
       }
 
+      try {
+        // Independent per-project warehouse — its own stock, never shared with other
+        // projects or the central warehouse. Only created when the "store" section is on.
+        if (enabledSections.has("store")) {
+          const warehouseRef = await addDoc(collection(firestore, "warehouses"), {
+            name: t("proj_auto_warehouse_name", { name: name.trim() }),
+            location: location.trim() || null,
+            description: null,
+            organizationId: typedProfile?.organizationId || user.uid,
+            projectId: projectRef.id,
+            projectName: name.trim(),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+          await updateDoc(projectRef, { warehouseId: warehouseRef.id })
+        }
+      } catch (warehouseErr) {
+        console.error("Project warehouse auto-create failed:", warehouseErr)
+        hadPartialFailure = true
+      }
+
       toast(
         hadPartialFailure
           ? { title: t("proj_toast_created"), description: t("proj_toast_partial_error"), variant: "default" }
@@ -463,6 +487,19 @@ export default function NewProjectPage() {
                     onChange={(e) => { setName(e.target.value); clearError("name") }}
                     placeholder={t("proj_name_placeholder")}
                     className={cn("h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl", hasError("name") ? "border-destructive ring-1 ring-destructive" : "")}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                {/* Client Name */}
+                <div className="space-y-3">
+                  <Label htmlFor="clientName" className="text-sm font-semibold text-slate-700">{t("proj_client_name")}</Label>
+                  <Input
+                    id="clientName"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder={t("proj_client_name_placeholder")}
+                    className="h-11 border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl"
                     disabled={isSubmitting}
                   />
                 </div>
@@ -783,12 +820,8 @@ export default function NewProjectPage() {
                     <Label className="text-sm font-semibold text-slate-700">{t("proj_status")}</Label>
                     <SearchableSelect
                       value={status}
-                      onChange={(v) => setStatus(v as typeof status)}
-                      options={[
-                        { value: "active", label: t("proj_status_active") },
-                        { value: "paused", label: t("proj_status_paused") },
-                        { value: "completed", label: t("proj_status_completed") },
-                      ]}
+                      onChange={(v) => setStatus(v as ProjectStatus)}
+                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: t(projectStatusLabelKey(s)) }))}
                       placeholder={t("proj_status_placeholder")}
                       searchPlaceholder={t("proj_search_status")}
                       noResultsText={t("newrfq_no_results")}

@@ -16,6 +16,9 @@ export interface OrgMembership {
   organizationId: string
   companyName: string
   isPrimary?: boolean
+  // Which portal this company operates in. Legacy entries (created before
+  // cross-role companies existed) have no role — treat as the account's role.
+  role?: "Contractor" | "Supplier"
 }
 
 interface ActiveCompanyProfile {
