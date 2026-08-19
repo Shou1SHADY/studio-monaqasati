@@ -8,11 +8,9 @@ import { useLocale, useTranslations } from "next-intl"
 import Image from "next/image"
 import {
   LayoutDashboard,
-  FileText,
   Package,
   Users,
   Bell,
-  PlusCircle,
   Handshake,
   UserCircle,
   Search,
@@ -24,11 +22,7 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  FolderOpen,
   Link2,
-  PackageCheck,
-  FilePlus,
-  ShoppingBasket,
   Inbox,
   ShieldCheck,
   Briefcase,
@@ -52,61 +46,14 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar"
+import {
+  CONTRACTOR_COMMUNICATION_SECTION,
+  resolveActiveContractorComponent,
+  type NavItem,
+  type NavSection,
+} from "@/lib/portal-components"
 
-interface NavItem {
-  titleKey: string
-  href: string
-  icon: React.ElementType
-  children?: NavItem[]
-  requiredPermission?: PermissionId
-}
-
-interface NavSection {
-  labelKey: string
-  items: NavItem[]
-}
-
-const contractorSections: NavSection[] = [
-  {
-    labelKey: "section_workspace",
-    items: [
-      { titleKey: "contractor_dashboard", href: "/contractor", icon: LayoutDashboard },
-      {
-        titleKey: "contractor_projects",
-        href: "/contractor/projects",
-        icon: FolderOpen,
-        children: [
-          { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "projects.edit" },
-          { titleKey: "contractor_rfqs", href: "/contractor/rfqs", icon: FileText },
-          { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
-        ],
-      },
-      { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket },
-      { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
-      { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
-      { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck },
-      { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase },
-      { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt },
-      { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse },
-    ],
-  },
-  {
-    labelKey: "section_communication",
-    items: [
-      { titleKey: "contractor_chats", href: "/contractor/chats", icon: MessageSquare },
-      { titleKey: "contractor_team_chat", href: "/contractor/team-chat", icon: MessagesSquare },
-      { titleKey: "contractor_notifications", href: "/contractor/notifications", icon: Bell },
-    ],
-  },
-  {
-    labelKey: "section_settings",
-    items: [
-      { titleKey: "contractor_team", href: "/contractor/team", icon: Users, requiredPermission: "team.manage" },
-      { titleKey: "contractor_companies", href: "/contractor/companies", icon: Building },
-      { titleKey: "contractor_profile", href: "/contractor/profile", icon: UserCircle },
-    ],
-  },
-]
+export type { NavItem, NavSection }
 
 const supplierSections: NavSection[] = [
   {
@@ -282,10 +229,11 @@ export function RoleSidebar() {
     roleColor = "text-success"
     dashboardHref = "/supplier"
   } else if (pathname.startsWith("/contractor")) {
-    sections = contractorSections
-    portalTitleKey = "contractor_portal"
+    const activeComponent = resolveActiveContractorComponent(pathname)
+    sections = [...activeComponent.sections, CONTRACTOR_COMMUNICATION_SECTION]
+    portalTitleKey = activeComponent.labelKey
     roleColor = "text-accent"
-    dashboardHref = "/contractor"
+    dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
     portalTitleKey = "admin_portal"

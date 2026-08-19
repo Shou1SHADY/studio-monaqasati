@@ -19,6 +19,7 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
+import { AppSwitcher } from "@/components/layout/app-switcher"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
@@ -611,6 +612,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className={cn("flex items-center gap-2 md:gap-3", locale === 'ar' ? 'mr-auto' : 'ml-auto')}>
+            <AppSwitcher />
             <LanguageSwitcher />
             <DropdownMenu onOpenChange={(open) => { if (!open) setSelectedNotifIds(new Set()) }}>
               <DropdownMenuTrigger asChild>
