@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
@@ -9,12 +9,16 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Link } from "@/i18n/routing"
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
+import { Link, useRouter } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
-import { Loader2, FolderOpen, PlusCircle, MapPin, DollarSign, FileText, Search, User, Building2, ArrowDownUp } from "lucide-react"
+import { Loader2, FolderOpen, PlusCircle, MapPin, DollarSign, FileText, Search, User, Building2, ArrowDownUp, LayoutGrid, List, ChevronRight, ChevronUp, ChevronDown } from "lucide-react"
 import { usePermissions } from "@/hooks/usePermissions"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
+
+type ViewMode = "grid" | "table"
+const VIEW_MODE_STORAGE_KEY = "contractor_projects_view_mode"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -57,11 +61,23 @@ export default function ProjectsListPage() {
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
+  const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [regionFilter, setRegionFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<SortOption>("newest")
+  const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const { can, profile } = usePermissions()
+
+  // Remember the member's preferred layout across visits.
+  useEffect(() => {
+    const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY)
+    if (stored === "grid" || stored === "table") setViewMode(stored)
+  }, [])
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode)
+    window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
+  }
 
   const projectsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -112,6 +128,18 @@ export default function ProjectsListPage() {
     { value: "budget_asc", label: t("proj_sort_budget_asc") },
     { value: "name_asc", label: t("proj_sort_name") },
   ]
+
+  // Table column headers double as sort controls for the columns that have a
+  // matching SortOption pair — clicking toggles direction, a second click on
+  // a different column switches to it. Columns without a symmetric asc/desc
+  // pair (there's only one) aren't toggleable, just selectable.
+  const toggleNameSort = () => setSortBy("name_asc")
+  const toggleBudgetSort = () => setSortBy(sortBy === "budget_desc" ? "budget_asc" : "budget_desc")
+  const toggleDateSort = () => setSortBy(sortBy === "newest" ? "oldest" : "newest")
+  function SortIndicator({ active, direction }: { active: boolean; direction: "asc" | "desc" }) {
+    if (!active) return null
+    return direction === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />
+  }
 
   function getStatusBadge(status: string) {
     const resolved = resolveProjectStatus(status)
@@ -205,6 +233,34 @@ export default function ProjectsListPage() {
               ))}
             </SelectContent>
           </Select>
+          <div className="flex items-center rounded-xl border border-input h-10 p-0.5 shrink-0 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => handleViewModeChange("grid")}
+              title={t("proj_view_grid")}
+              aria-label={t("proj_view_grid")}
+              aria-pressed={viewMode === "grid"}
+              className={cn(
+                "h-8 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                viewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleViewModeChange("table")}
+              title={t("proj_view_table")}
+              aria-label={t("proj_view_table")}
+              aria-pressed={viewMode === "table"}
+              className={cn(
+                "h-8 w-9 rounded-lg flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                viewMode === "table" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Loading */}
@@ -247,7 +303,7 @@ export default function ProjectsListPage() {
         )}
 
         {/* Project cards */}
-        {!pageLoading && projects.length > 0 && (
+        {!pageLoading && projects.length > 0 && viewMode === "grid" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {projects.map((p) => (
               <Link key={p.id} href={`/contractor/projects/${p.id}`}>
@@ -309,6 +365,98 @@ export default function ProjectsListPage() {
                 </Card>
               </Link>
             ))}
+          </div>
+        )}
+
+        {/* Project table */}
+        {!pageLoading && projects.length > 0 && viewMode === "table" && (
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-start">
+                    <button
+                      type="button"
+                      onClick={toggleNameSort}
+                      className="inline-flex items-center gap-1 font-semibold hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+                    >
+                      {t("proj_table_name")}
+                      <SortIndicator active={sortBy === "name_asc"} direction="asc" />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-start hidden md:table-cell">{t("proj_table_client")}</TableHead>
+                  <TableHead className="text-start">{t("proj_table_status")}</TableHead>
+                  <TableHead className="text-start hidden lg:table-cell">{t("proj_table_region")}</TableHead>
+                  <TableHead className="text-center hidden sm:table-cell">{t("proj_linked_rfqs_label")}</TableHead>
+                  <TableHead className="text-end">
+                    <button
+                      type="button"
+                      onClick={toggleBudgetSort}
+                      className="inline-flex items-center gap-1 font-semibold hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+                    >
+                      {t("proj_budget_label")}
+                      <SortIndicator active={sortBy === "budget_desc" || sortBy === "budget_asc"} direction={sortBy === "budget_asc" ? "asc" : "desc"} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-end hidden md:table-cell">
+                    <button
+                      type="button"
+                      onClick={toggleDateSort}
+                      className="inline-flex items-center gap-1 font-semibold hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+                    >
+                      {t("proj_created_at")}
+                      <SortIndicator active={sortBy === "newest" || sortBy === "oldest"} direction={sortBy === "oldest" ? "asc" : "desc"} />
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-10"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {projects.map((p) => (
+                  <TableRow
+                    key={p.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/contractor/projects/${p.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        router.push(`/contractor/projects/${p.id}`)
+                      }
+                    }}
+                    className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                  >
+                    <TableCell className="max-w-[260px]">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <Building2 size={14} className="text-primary" />
+                        </div>
+                        <span className="font-bold text-slate-800 truncate">{p.name || "—"}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[180px] truncate hidden md:table-cell">
+                      {p.clientName || "—"}
+                    </TableCell>
+                    <TableCell>{p.status ? getStatusBadge(p.status) : "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
+                      {p.region || p.location || "—"}
+                    </TableCell>
+                    <TableCell className="text-center text-sm font-semibold text-slate-700 hidden sm:table-cell">
+                      {p.rfqIds?.length || 0}
+                    </TableCell>
+                    <TableCell className="text-end text-sm font-black text-slate-700" dir="ltr">
+                      {p.budget != null ? p.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US") : "—"}
+                    </TableCell>
+                    <TableCell className="text-end text-xs text-muted-foreground hidden md:table-cell" suppressHydrationWarning>
+                      {fmtDate(p.createdAt, locale)}
+                    </TableCell>
+                    <TableCell className="w-10">
+                      <ChevronRight size={16} className={cn("text-muted-foreground/60", isRtl && "rtl-flip")} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
       </div>
