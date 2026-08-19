@@ -180,11 +180,11 @@ function ItemDialog({
                 onChange={(e) => setMinStockLevel(e.target.value)} placeholder={t("inv_item_min_placeholder")} dir="ltr" />
             </div>
           </div>
-          <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border bg-muted">
             <div className="flex items-center gap-2 min-w-0">
               <Barcode size={16} className="text-primary shrink-0" />
               <div className="min-w-0">
-                <p className="text-sm font-bold text-slate-700">{t("inv_item_unit_tracking")}</p>
+                <p className="text-sm font-bold text-muted-foreground">{t("inv_item_unit_tracking")}</p>
                 <p className="text-[11px] text-muted-foreground">{t("inv_item_unit_tracking_desc")}</p>
               </div>
             </div>
@@ -349,7 +349,7 @@ function UnitsDialog({
             {units.map((u) => (
               <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
                 <div className="min-w-0 flex items-center gap-2">
-                  <span className="font-mono font-semibold text-slate-700 truncate">{u.barcode}</span>
+                  <span className="font-mono font-semibold text-foreground truncate">{u.barcode}</span>
                   {statusBadge(u.status)}
                   {u.status === "consumed" && u.consumedProjectName && (
                     <span className="text-xs text-muted-foreground truncate">— {u.consumedProjectName}</span>
@@ -358,7 +358,7 @@ function UnitsDialog({
                 {u.status !== "consumed" && (
                   <div className="flex items-center gap-1 shrink-0">
                     {u.status === "in_stock" && (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-amber-600"
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-warning"
                         onClick={() => handleMarkDamaged(u.id)} disabled={busyUnitId === u.id} aria-label={t("inv_unit_mark_damaged")}>
                         {busyUnitId === u.id ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
                       </Button>
@@ -478,8 +478,8 @@ function TransferDialog({
           <DialogDescription>{t("transfer_dialog_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-sm">
-            <span className="font-bold text-slate-700">{sourceItem.name}</span>
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted border border-border text-sm">
+            <span className="font-bold text-muted-foreground">{sourceItem.name}</span>
             <span className="text-muted-foreground" dir="ltr">{t("transfer_available", { qty: sourceItem.quantity, unit: sourceItem.unit })}</span>
           </div>
           {destinations.length > 1 ? (
@@ -802,7 +802,7 @@ export function WarehouseInventoryPanel({
 
       {/* Low stock alert */}
       {lowStockItems.length > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+        <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
           <AlertTriangle size={16} className="shrink-0" />
           <span className="font-semibold">{t("inv_low_stock_alert", { count: lowStockItems.length })}</span>
         </div>
@@ -844,7 +844,7 @@ export function WarehouseInventoryPanel({
                   const isLow = item.minStockLevel != null && item.quantity <= item.minStockLevel
                   const isUnitTracked = item.trackingMode === "unit"
                   return (
-                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-l-2 border-amber-400" : "")}>
+                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-l-2 border-warning" : "")}>
                       <td className="py-3 px-4 font-semibold text-primary">
                         {item.name}
                         {isUnitTracked && (
@@ -854,7 +854,7 @@ export function WarehouseInventoryPanel({
                           </Badge>
                         )}
                         {isLow && (
-                          <Badge variant="outline" className="ms-2 text-amber-600 border-amber-200 text-[10px] py-0">
+                          <Badge variant="outline" className="ms-2 text-warning border-warning/30 text-[10px] py-0">
                             <AlertTriangle size={9} className="me-1" />
                             {t("inv_low_stock_badge")}
                           </Badge>
@@ -907,7 +907,7 @@ export function WarehouseInventoryPanel({
       {/* Stock-movement log — central warehouse only */}
       {isCentralHere && (
         <div className="space-y-3">
-          <h3 className="font-bold text-sm flex items-center gap-2 text-slate-700">
+          <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
             <History size={15} className="text-primary" />
             {t("transfers_log_title")}
           </h3>
@@ -923,12 +923,12 @@ export function WarehouseInventoryPanel({
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={cn(
                         "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
-                        tr.direction === "out" ? "bg-amber-50 text-amber-600" : "bg-success/10 text-success"
+                        tr.direction === "out" ? "bg-cta/10 text-cta" : "bg-success/10 text-success"
                       )}>
                         {tr.direction === "out" ? <ArrowLeftRight size={12} /> : <ArrowDownToLine size={12} />}
                       </span>
                       <span className="truncate">
-                        <span className="font-bold text-slate-800" dir="ltr">{tr.quantity} {tr.unit}</span>
+                        <span className="font-bold text-foreground" dir="ltr">{tr.quantity} {tr.unit}</span>
                         {" — "}
                         <span className="font-semibold">{tr.itemName}</span>
                         {" "}

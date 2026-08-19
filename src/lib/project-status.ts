@@ -33,12 +33,12 @@ export function projectStatusLabelKey(status: ProjectStatus): string {
 }
 
 export const PROJECT_STATUS_BADGE_CLASSES: Record<ProjectStatus, string> = {
-  todo: "bg-slate-100 text-slate-600 border-slate-200",
-  waiting_approval: "bg-amber-100 text-amber-700 border-amber-200",
-  pricing: "bg-blue-100 text-blue-700 border-blue-200",
-  approved_waiting_start: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  todo: "bg-muted text-muted-foreground border-border",
+  waiting_approval: "bg-warning/10 text-warning border-warning/20",
+  pricing: "bg-cta/10 text-cta border-cta/20",
+  approved_waiting_start: "bg-success/10 text-success border-success/20",
   working: "bg-accent/10 text-accent border-accent/20",
-  hold: "bg-orange-100 text-orange-700 border-orange-200",
-  remaining_payment: "bg-rose-100 text-rose-700 border-rose-200",
+  hold: "bg-secondary/10 text-secondary border-secondary/20",
+  remaining_payment: "bg-warning/10 text-warning border-warning/20",
   canceled: "bg-destructive/10 text-destructive border-destructive/20",
 }
