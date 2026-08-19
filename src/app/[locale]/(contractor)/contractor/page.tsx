@@ -171,12 +171,17 @@ export default function ContractorDashboard() {
     return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
   }, [firestore, myOrgId])
   const { data: projectsData } = useCollection(projectsQuery)
-  const orgProjects = ((projectsData || []) as { id: string; name?: string; updatedAt?: unknown }[]).slice().sort((a, b) => {
+  const orgProjects = ((projectsData || []) as { id: string; name?: string; status?: string; updatedAt?: unknown }[]).slice().sort((a, b) => {
     const toMs = (v: unknown) =>
       v && typeof v === "object" && "toDate" in v ? (v as { toDate: () => Date }).toDate().getTime() : 0
     return toMs(b.updatedAt) - toMs(a.updatedAt)
   })
-  const activeProjectId = selectedProjectId || orgProjects[0]?.id || ""
+  // Default the money-flow widget to the most-recently-updated project that's
+  // still live — a finished/canceled project's spend breakdown isn't useful
+  // as the first thing shown. Falls back to the newest project of any status
+  // if every project happens to be closed out.
+  const defaultProjectId = orgProjects.find((p) => p.status !== "canceled" && p.status !== "remaining_payment")?.id || orgProjects[0]?.id || ""
+  const activeProjectId = selectedProjectId || defaultProjectId
 
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
