@@ -22,7 +22,6 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  ChevronRight,
   Link2,
   Inbox,
   ShieldCheck,
@@ -30,13 +29,11 @@ import {
   Receipt,
   Warehouse,
   Building,
-  LayoutGrid,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { usePermissions } from "@/hooks/usePermissions"
 import type { PermissionId } from "@/lib/permissions"
-import { findContractorAppForPath } from "@/lib/contractor-apps"
 import {
   Sidebar,
   SidebarContent,
@@ -49,19 +46,14 @@ import {
   SidebarGroupLabel,
   SidebarGroupContent,
 } from "@/components/ui/sidebar"
+import {
+  CONTRACTOR_COMMUNICATION_SECTION,
+  resolveActiveContractorComponent,
+  type NavItem,
+  type NavSection,
+} from "@/lib/portal-components"
 
-interface NavItem {
-  titleKey: string
-  href: string
-  icon: React.ElementType
-  children?: NavItem[]
-  requiredPermission?: PermissionId
-}
-
-interface NavSection {
-  labelKey: string
-  items: NavItem[]
-}
+export type { NavItem, NavSection }
 
 const supplierSections: NavSection[] = [
   {
@@ -219,88 +211,12 @@ function NavItemRenderer({ item, pathname, t, can }: { item: NavItem; pathname: 
   )
 }
 
-// Contractor routes get a sidebar scoped to whichever app the current page
-// belongs to (see contractor-apps.ts), not one global list of everything —
-// the launcher itself (bare /contractor) renders no sidebar at all.
-function ContractorAppSidebar({ pathname }: { pathname: string }) {
-  const t = useTranslations("Portal.Sidebar")
-  const locale = useLocale()
-  const app = findContractorAppForPath(pathname)
-
-  return (
-    <Sidebar side={locale === 'ar' ? 'right' : 'left'} className={locale === 'ar' ? 'border-l bg-sidebar' : 'border-r bg-sidebar'}>
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
-        <Link
-          href="/contractor"
-          className="flex items-center gap-2 rounded-md px-2 py-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-        >
-          {locale === 'ar' ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 -rotate-90" />}
-          <LayoutGrid className="h-4 w-4" />
-          <span className="text-xs font-bold">{t("apps_back")}</span>
-        </Link>
-        {app && (
-          <div className="mt-3 flex items-center gap-2 px-2">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground shrink-0">
-              <app.icon className="h-4 w-4" />
-            </span>
-            <span className="text-sm font-bold text-sidebar-foreground">{t(app.titleKey)}</span>
-          </div>
-        )}
-      </SidebarHeader>
-      {app && (
-        <SidebarContent className="py-4">
-          <SidebarGroup className="px-0 py-1">
-            <SidebarGroupContent>
-              <SidebarMenu className="px-3 gap-1">
-                {app.items.map((item) => (
-                  <SidebarMenuItem key={item.titleKey}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.href || pathname.startsWith(item.href + "/")}
-                      className={cn(
-                        "h-10 transition-all",
-                        pathname === item.href || pathname.startsWith(item.href + "/")
-                          ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                      )}
-                    >
-                      <Link href={item.href} className="flex items-center gap-3">
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        <span className="text-sm font-medium">{t(item.titleKey)}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      )}
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild className="text-red-400 hover:bg-red-950/20 hover:text-red-300">
-              <Link href="/" className="flex items-center gap-3">
-                <LogOut className="h-5 w-5" />
-                <span className="text-sm font-medium">{t("logout")}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
-  )
-}
-
 export function RoleSidebar() {
   const t = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const { can } = usePermissions()
 
   const pathname = usePathname()
-
-  if (pathname === "/contractor") return null
-  if (pathname.startsWith("/contractor/")) return <ContractorAppSidebar pathname={pathname} />
 
   let sections: NavSection[] = []
   let portalTitleKey = ""
@@ -312,6 +228,12 @@ export function RoleSidebar() {
     portalTitleKey = "supplier_portal"
     roleColor = "text-success"
     dashboardHref = "/supplier"
+  } else if (pathname.startsWith("/contractor")) {
+    const activeComponent = resolveActiveContractorComponent(pathname)
+    sections = [...activeComponent.sections, CONTRACTOR_COMMUNICATION_SECTION]
+    portalTitleKey = activeComponent.labelKey
+    roleColor = "text-accent"
+    dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
     portalTitleKey = "admin_portal"

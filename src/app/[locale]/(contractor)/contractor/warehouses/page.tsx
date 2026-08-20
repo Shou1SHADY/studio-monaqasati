@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
@@ -32,7 +33,9 @@ import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCentralWarehouse, createCentralWarehouse, type OrgWarehouse } from "@/hooks/useCentralWarehouse"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft } from "lucide-react"
+import { useWarehouseDashboardStats } from "@/hooks/useWarehouseDashboardStats"
+import { SAUDI_CITIES } from "@/lib/constants"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft, AlertTriangle, ArrowLeftRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type WarehouseDoc = {
@@ -215,8 +218,15 @@ function AddCentralDialog({
             <Input id="central-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("wh_central_name_placeholder")} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="central-city">{t("wh_central_city")} *</Label>
-            <Input id="central-city" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("wh_central_city_placeholder")} />
+            <Label>{t("wh_central_city")} *</Label>
+            <Select value={city} onValueChange={setCity}>
+              <SelectTrigger><SelectValue placeholder={t("wh_central_city_placeholder")} /></SelectTrigger>
+              <SelectContent>
+                {SAUDI_CITIES.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-[11px] text-muted-foreground">{t("wh_central_city_hint")}</p>
           </div>
         </div>
@@ -257,6 +267,7 @@ export default function ContractorWarehousesPage() {
 
   const { centrals, projectWarehouses, isLoading } = useCentralWarehouse(myOrgId)
   const list = projectWarehouses as WarehouseDoc[]
+  const { totalWarehouses, lowStockCount, recentTransferCount, isLoading: statsLoading } = useWarehouseDashboardStats(myOrgId)
   // Group each project warehouse under its linked central — data from before
   // multi-central support (or created with no explicit link) falls back to
   // the FIRST central rather than disappearing once a second central exists.
@@ -306,6 +317,43 @@ export default function ContractorWarehousesPage() {
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Dashboard stat tiles — the Warehouses component's own summary */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                <Warehouse size={18} className="text-accent" />
+              </div>
+              <div className="min-w-0">
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className="text-xl font-black text-foreground">{totalWarehouses}</p>}
+                <p className="text-xs text-muted-foreground truncate">{t("wh_dash_total_warehouses")}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={cn(lowStockCount > 0 && "border-warning/40 bg-warning/5")}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={cn("h-10 w-10 rounded-lg flex items-center justify-center shrink-0", lowStockCount > 0 ? "bg-warning/10" : "bg-slate-100")}>
+                <AlertTriangle size={18} className={lowStockCount > 0 ? "text-warning" : "text-muted-foreground"} />
+              </div>
+              <div className="min-w-0">
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className={cn("text-xl font-black", lowStockCount > 0 ? "text-warning" : "text-foreground")}>{lowStockCount}</p>}
+                <p className="text-xs text-muted-foreground truncate">{t("wh_dash_low_stock")}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <ArrowLeftRight size={18} className="text-primary" />
+              </div>
+              <div className="min-w-0">
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className="text-xl font-black text-foreground">{recentTransferCount}</p>}
+                <p className="text-xs text-muted-foreground truncate">{t("wh_dash_recent_transfers")}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* One card per central warehouse, each with its own linked project warehouses beneath it */}
