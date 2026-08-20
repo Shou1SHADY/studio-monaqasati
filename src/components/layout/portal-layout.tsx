@@ -582,12 +582,16 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
+  // The contractor apps launcher (bare /contractor) has no sidebar to toggle —
+  // it's a full-bleed grid, not a page inside an app.
+  const isContractorLauncher = pathname === "/contractor"
+
   return (
     <SidebarProvider>
       <RoleSidebar />
       <SidebarInset>
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
-          <SidebarTrigger />
+          {!isContractorLauncher && <SidebarTrigger />}
 
           <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>

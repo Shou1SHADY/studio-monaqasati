@@ -782,6 +782,20 @@ service cloud.firestore {
         allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
         allow update, delete: if isAdmin();
       }
+
+      // Withdrawal requests — raised, released, and confirmed by org members;
+      // always stored on the CENTRAL warehouse's doc regardless of which
+      // direction stock is moving (same convention as transfers above).
+      // Client-side update covers the release/confirm/cancel status
+      // transitions; no client delete keeps it a real audit trail.
+      match /requests/{requestId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+        ));
+        allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+        allow update: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+        allow delete: if isAdmin();
+      }
     }
 
   }

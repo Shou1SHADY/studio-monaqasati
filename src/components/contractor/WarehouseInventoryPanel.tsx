@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -31,8 +32,17 @@ import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCentralWarehouse, type OrgWarehouse } from "@/hooks/useCentralWarehouse"
-import { runTransfer, validateTransfer, itemMergeKey, type TransferValidationError } from "@/lib/warehouse-transfer"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, History, ArrowDownToLine } from "lucide-react"
+import {
+  createWarehouseRequest,
+  releaseWarehouseRequest,
+  confirmWarehouseRequestReceipt,
+  cancelWarehouseRequest,
+  validateRequest,
+  itemMergeKey,
+  type TransferValidationError,
+  type WarehouseRequestStatus,
+} from "@/lib/warehouse-requests"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, ClipboardList, Check, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type InventoryItem = {
@@ -53,19 +63,6 @@ type WarehouseDoc = {
   isCentral?: boolean
 }
 
-type TransferLogEntry = {
-  id: string
-  itemName: string
-  unit: string
-  quantity: number
-  fromWarehouseId: string
-  toWarehouseId: string
-  toProjectName?: string | null
-  direction: "out" | "in"
-  byUserName: string
-  createdAt?: { toDate?: () => Date } | null
-}
-
 type Unit = {
   id: string
   barcode: string
@@ -73,6 +70,24 @@ type Unit = {
   consumedProjectName?: string | null
   notes?: string | null
   createdAt?: unknown
+}
+
+type RequestEntry = {
+  id: string
+  requestNumber: string
+  itemName: string
+  unit: string
+  quantity: number
+  fromWarehouseId: string
+  toWarehouseId: string
+  toProjectName?: string | null
+  status: WarehouseRequestStatus
+  requestedByName: string
+  expectedReceiverName: string
+  releasedByName?: string | null
+  receivedByName?: string | null
+  createdAt?: { toDate?: () => Date } | null
+  requestedAt?: { toDate?: () => Date } | null
 }
 
 function ItemDialog({
@@ -386,10 +401,10 @@ function transferErrorKey(err: TransferValidationError): "transfer_err_invalid_q
   return `transfer_err_${err}` as const
 }
 
-/** Move a quantity of one item between this warehouse and another — the
- * central→project direction picks a destination, the project→central
- * direction is fixed. Runs as a single transaction via runTransfer. */
-function TransferDialog({
+/** Raises a withdrawal request between this warehouse and another — nothing
+ * moves yet. The central→project direction picks a destination among that
+ * central's own project warehouses; the project→central direction is fixed. */
+function RequestDialog({
   open,
   onOpenChange,
   sourceItem,
@@ -418,64 +433,65 @@ function TransferDialog({
   const { toast } = useToast()
   const [destId, setDestId] = useState(destinations.length === 1 ? destinations[0].id : "")
   const [qty, setQty] = useState("")
-  const [isMoving, setIsMoving] = useState(false)
+  const [receiver, setReceiver] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const isRtl = locale === "ar"
 
   const quantity = parseFloat(qty) || 0
   const remaining = sourceItem.quantity - quantity
   const dest = destinations.find((d) => d.id === destId)
 
-  const handleTransfer = async () => {
+  const handleSubmit = async () => {
     if (!firestore || !dest) return
-    const error = validateTransfer({ sourceItem, quantity, fromWarehouseId, toWarehouseId: dest.id })
+    const error = validateRequest({ sourceItem, quantity, fromWarehouseId, toWarehouseId: dest.id })
     if (error) {
       toast({ title: t(transferErrorKey(error)), variant: "destructive" })
       return
     }
-    setIsMoving(true)
+    if (!receiver.trim()) {
+      toast({ title: t("request_receiver_required"), variant: "destructive" })
+      return
+    }
+    setIsSubmitting(true)
     try {
-      const destItems = await getDocs(collection(firestore, "warehouses", dest.id, "inventoryItems"))
-      const key = itemMergeKey(sourceItem)
-      const match = destItems.docs.find((d) => {
-        const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
-        return data.name && data.unit && data.trackingMode !== "unit" && itemMergeKey({ name: data.name, unit: data.unit }) === key
-      })
-      await runTransfer({
+      await createWarehouseRequest({
         firestore,
+        centralWarehouseId,
         fromWarehouseId,
         toWarehouseId: dest.id,
         itemId: sourceItem.id,
+        sourceItem,
         quantity,
         organizationId: orgId,
         byUserId,
         byUserName,
-        centralWarehouseId,
+        expectedReceiverName: receiver.trim(),
         toProjectId: dest.projectId ?? null,
         toProjectName: dest.projectName ?? dest.name,
-        existingDestItemId: match?.id ?? null,
       })
-      toast({ title: t("transfer_success") })
+      toast({ title: t("request_created") })
       onOpenChange(false)
       setQty("")
+      setReceiver("")
     } catch (err) {
       const code = err instanceof Error ? err.message : ""
       const known = ["invalid_quantity", "insufficient_stock", "unit_tracked", "same_warehouse"].includes(code)
       toast({ title: known ? t(transferErrorKey(code as TransferValidationError)) : t("transfer_error"), variant: "destructive" })
       console.error(err)
     } finally {
-      setIsMoving(false)
+      setIsSubmitting(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isMoving) onOpenChange(next) }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!isSubmitting) onOpenChange(next) }}>
       <DialogContent dir={isRtl ? "rtl" : "ltr"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowLeftRight size={17} className="text-primary" />
-            {t("transfer_dialog_title", { item: sourceItem.name })}
+            <Send size={17} className="text-primary" />
+            {t("request_dialog_title", { item: sourceItem.name })}
           </DialogTitle>
-          <DialogDescription>{t("transfer_dialog_desc")}</DialogDescription>
+          <DialogDescription>{t("request_dialog_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="flex items-center justify-between p-3 rounded-xl bg-muted border border-border text-sm">
@@ -503,16 +519,16 @@ function TransferDialog({
             <p className="text-sm text-muted-foreground border border-dashed rounded-lg p-3 text-center">{t("transfer_no_destinations")}</p>
           )}
           <div className="space-y-1.5">
-            <Label htmlFor="transfer-qty">{t("transfer_qty_label")} *</Label>
+            <Label htmlFor="request-qty">{t("transfer_qty_label")} *</Label>
             <Input
-              id="transfer-qty"
+              id="request-qty"
               type="number"
               min="0"
               max={sourceItem.quantity}
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               dir="ltr"
-              disabled={isMoving}
+              disabled={isSubmitting}
             />
             {quantity > 0 && quantity <= sourceItem.quantity && (
               <p className="text-xs text-muted-foreground" dir="ltr">{t("transfer_remaining_after", { qty: remaining })}</p>
@@ -521,12 +537,23 @@ function TransferDialog({
               <p className="text-xs text-destructive font-semibold">{t("transfer_err_insufficient_stock")}</p>
             )}
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="request-receiver">{t("request_receiver_label")} *</Label>
+            <Input
+              id="request-receiver"
+              value={receiver}
+              onChange={(e) => setReceiver(e.target.value)}
+              placeholder={t("request_receiver_placeholder")}
+              disabled={isSubmitting}
+            />
+            <p className="text-[11px] text-muted-foreground">{t("request_receiver_hint")}</p>
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isMoving}>{t("wh_cancel")}</Button>
-          <Button onClick={handleTransfer} disabled={isMoving || !dest || quantity <= 0 || quantity > sourceItem.quantity} className="gap-2">
-            {isMoving ? <Loader2 size={15} className="animate-spin" /> : <ArrowLeftRight size={15} />}
-            {t("transfer_submit")}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>{t("wh_cancel")}</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !dest || quantity <= 0 || quantity > sourceItem.quantity || !receiver.trim()} className="gap-2">
+            {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            {t("request_submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -534,13 +561,12 @@ function TransferDialog({
   )
 }
 
-/** Pull stock from the company's central warehouse INTO this project warehouse. */
-function PullFromCentralDialog({
+/** Request stock from the company's central warehouse INTO this project warehouse. */
+function PullRequestDialog({
   open,
   onOpenChange,
   central,
   thisWarehouse,
-  localItems,
   orgId,
   byUserId,
   byUserName,
@@ -551,7 +577,6 @@ function PullFromCentralDialog({
   onOpenChange: (open: boolean) => void
   central: OrgWarehouse
   thisWarehouse: { id: string; projectId?: string | null; projectName?: string | null; name?: string }
-  localItems: InventoryItem[]
   orgId: string
   byUserId: string
   byUserName: string
@@ -563,7 +588,8 @@ function PullFromCentralDialog({
   const isRtl = locale === "ar"
   const [itemId, setItemId] = useState("")
   const [qty, setQty] = useState("")
-  const [isMoving, setIsMoving] = useState(false)
+  const [receiver, setReceiver] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const centralItemsRef = useMemoFirebase(() => {
     if (!firestore || !open || !central.id) return null
@@ -576,47 +602,51 @@ function PullFromCentralDialog({
   const sourceItem = centralItems.find((i) => i.id === itemId) || null
   const quantity = parseFloat(qty) || 0
 
-  const handlePull = async () => {
+  const handleSubmit = async () => {
     if (!firestore || !sourceItem) return
-    const error = validateTransfer({ sourceItem, quantity, fromWarehouseId: central.id, toWarehouseId: thisWarehouse.id })
+    const error = validateRequest({ sourceItem, quantity, fromWarehouseId: central.id, toWarehouseId: thisWarehouse.id })
     if (error) {
       toast({ title: t(transferErrorKey(error)), variant: "destructive" })
       return
     }
-    setIsMoving(true)
+    if (!receiver.trim()) {
+      toast({ title: t("request_receiver_required"), variant: "destructive" })
+      return
+    }
+    setIsSubmitting(true)
     try {
-      const key = itemMergeKey(sourceItem)
-      const match = localItems.find((i) => i.trackingMode !== "unit" && itemMergeKey(i) === key)
-      await runTransfer({
+      await createWarehouseRequest({
         firestore,
+        centralWarehouseId: central.id,
         fromWarehouseId: central.id,
         toWarehouseId: thisWarehouse.id,
         itemId: sourceItem.id,
+        sourceItem,
         quantity,
         organizationId: orgId,
         byUserId,
         byUserName,
-        centralWarehouseId: central.id,
+        expectedReceiverName: receiver.trim(),
         toProjectId: thisWarehouse.projectId ?? null,
         toProjectName: thisWarehouse.projectName ?? thisWarehouse.name ?? null,
-        existingDestItemId: match?.id ?? null,
       })
-      toast({ title: t("transfer_success") })
+      toast({ title: t("request_created") })
       onOpenChange(false)
       setItemId("")
       setQty("")
+      setReceiver("")
     } catch (err) {
       const code = err instanceof Error ? err.message : ""
       const known = ["invalid_quantity", "insufficient_stock", "unit_tracked", "same_warehouse"].includes(code)
       toast({ title: known ? t(transferErrorKey(code as TransferValidationError)) : t("transfer_error"), variant: "destructive" })
       console.error(err)
     } finally {
-      setIsMoving(false)
+      setIsSubmitting(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isMoving) onOpenChange(next) }}>
+    <Dialog open={open} onOpenChange={(next) => { if (!isSubmitting) onOpenChange(next) }}>
       <DialogContent dir={isRtl ? "rtl" : "ltr"}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -657,7 +687,7 @@ function PullFromCentralDialog({
                   value={qty}
                   onChange={(e) => setQty(e.target.value)}
                   dir="ltr"
-                  disabled={isMoving || !sourceItem}
+                  disabled={isSubmitting || !sourceItem}
                 />
                 {sourceItem && quantity > 0 && quantity <= sourceItem.quantity && (
                   <p className="text-xs text-muted-foreground" dir="ltr">{t("transfer_remaining_after", { qty: sourceItem.quantity - quantity })}</p>
@@ -666,18 +696,302 @@ function PullFromCentralDialog({
                   <p className="text-xs text-destructive font-semibold">{t("transfer_err_insufficient_stock")}</p>
                 )}
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pull-receiver">{t("request_receiver_label")} *</Label>
+                <Input
+                  id="pull-receiver"
+                  value={receiver}
+                  onChange={(e) => setReceiver(e.target.value)}
+                  placeholder={t("request_receiver_placeholder")}
+                  disabled={isSubmitting}
+                />
+                <p className="text-[11px] text-muted-foreground">{t("request_receiver_hint")}</p>
+              </div>
             </>
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isMoving}>{t("wh_cancel")}</Button>
-          <Button onClick={handlePull} disabled={isMoving || !sourceItem || quantity <= 0 || quantity > (sourceItem?.quantity ?? 0)} className="gap-2">
-            {isMoving ? <Loader2 size={15} className="animate-spin" /> : <ArrowDownToLine size={15} />}
-            {t("pull_submit")}
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>{t("wh_cancel")}</Button>
+          <Button onClick={handleSubmit} disabled={isSubmitting || !sourceItem || quantity <= 0 || quantity > (sourceItem?.quantity ?? 0) || !receiver.trim()} className="gap-2">
+            {isSubmitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+            {t("request_submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ConfirmReceiptDialog({
+  open,
+  onOpenChange,
+  request,
+  centralWarehouseId,
+  byUserId,
+  byUserName,
+  t,
+  locale,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  request: RequestEntry
+  centralWarehouseId: string
+  byUserId: string
+  byUserName: string
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  locale: string
+}) {
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const isRtl = locale === "ar"
+  const [note, setNote] = useState("")
+  const [isConfirming, setIsConfirming] = useState(false)
+
+  const handleConfirm = async () => {
+    if (!firestore) return
+    setIsConfirming(true)
+    try {
+      const destItems = await getDocs(collection(firestore, "warehouses", request.toWarehouseId, "inventoryItems"))
+      const key = itemMergeKey({ name: request.itemName, unit: request.unit })
+      const match = destItems.docs.find((d) => {
+        const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
+        return data.name && data.unit && data.trackingMode !== "unit" && itemMergeKey({ name: data.name, unit: data.unit }) === key
+      })
+      await confirmWarehouseRequestReceipt({
+        firestore,
+        centralWarehouseId,
+        requestId: request.id,
+        byUserId,
+        byUserName,
+        note: note.trim() || null,
+        existingDestItemId: match?.id ?? null,
+      })
+      toast({ title: t("request_confirmed") })
+      onOpenChange(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("transfer_error"), variant: "destructive" })
+    } finally {
+      setIsConfirming(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!isConfirming) onOpenChange(next) }}>
+      <DialogContent dir={isRtl ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Check size={17} className="text-success" />
+            {t("confirm_receipt_title")}
+          </DialogTitle>
+          <DialogDescription>
+            {t("confirm_receipt_desc", { qty: request.quantity, unit: request.unit, item: request.itemName })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="p-3 rounded-xl bg-muted border border-border text-sm space-y-1">
+            <p><span className="text-muted-foreground">{t("request_number_label")}: </span><span className="font-mono font-bold">{request.requestNumber}</span></p>
+            <p><span className="text-muted-foreground">{t("request_expected_receiver_label")}: </span><span className="font-semibold">{request.expectedReceiverName}</span></p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="receipt-note">{t("confirm_receipt_note_label")}</Label>
+            <Textarea id="receipt-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("confirm_receipt_note_placeholder")} disabled={isConfirming} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isConfirming}>{t("wh_cancel")}</Button>
+          <Button onClick={handleConfirm} disabled={isConfirming} className="gap-2 bg-success hover:bg-success/90">
+            {isConfirming ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+            {t("confirm_receipt_submit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RequestsSection({
+  warehouseId,
+  centralWarehouseId,
+  warehouseNameById,
+  canManage,
+  byUserId,
+  byUserName,
+  t,
+  locale,
+}: {
+  warehouseId: string
+  centralWarehouseId: string
+  warehouseNameById: Map<string, string>
+  canManage: boolean
+  byUserId: string
+  byUserName: string
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  locale: string
+}) {
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [releasingId, setReleasingId] = useState<string | null>(null)
+  const [confirmingRequest, setConfirmingRequest] = useState<RequestEntry | null>(null)
+
+  const requestsRef = useMemoFirebase(() => {
+    if (!firestore || !centralWarehouseId) return null
+    return collection(firestore, "warehouses", centralWarehouseId, "requests")
+  }, [firestore, centralWarehouseId])
+  const { data: requestsData } = useCollection(requestsRef)
+  const allRequests = ((requestsData || []) as RequestEntry[])
+    .filter((r) => r.fromWarehouseId === warehouseId || r.toWarehouseId === warehouseId)
+    .sort((a, b) => (b.requestedAt?.toDate?.()?.getTime() ?? 0) - (a.requestedAt?.toDate?.()?.getTime() ?? 0))
+
+  const active = allRequests.filter((r) => r.status === "pending" || r.status === "released")
+  const history = allRequests.filter((r) => r.status === "received" || r.status === "cancelled").slice(0, 10)
+
+  const handleRelease = async (request: RequestEntry) => {
+    if (!firestore) return
+    setReleasingId(request.id)
+    try {
+      await releaseWarehouseRequest({ firestore, centralWarehouseId, requestId: request.id, byUserId, byUserName })
+      toast({ title: t("request_released") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("transfer_error"), variant: "destructive" })
+    } finally {
+      setReleasingId(null)
+    }
+  }
+
+  const handleCancel = async (request: RequestEntry) => {
+    if (!firestore) return
+    setReleasingId(request.id)
+    try {
+      await cancelWarehouseRequest({ firestore, centralWarehouseId, requestId: request.id })
+      toast({ title: t("request_cancelled") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("transfer_error"), variant: "destructive" })
+    } finally {
+      setReleasingId(null)
+    }
+  }
+
+  const statusBadge = (status: WarehouseRequestStatus) => {
+    if (status === "pending") return <Badge className="bg-warning/10 text-warning border-warning/20">{t("request_status_pending")}</Badge>
+    if (status === "released") return <Badge className="bg-cta/10 text-cta border-cta/20">{t("request_status_released")}</Badge>
+    if (status === "received") return <Badge className="bg-success/10 text-success border-success/20">{t("request_status_received")}</Badge>
+    return <Badge variant="outline" className="text-muted-foreground">{t("request_status_cancelled")}</Badge>
+  }
+
+  const otherName = (r: RequestEntry) => {
+    const otherId = r.fromWarehouseId === warehouseId ? r.toWarehouseId : r.fromWarehouseId
+    return (r.fromWarehouseId === warehouseId ? r.toProjectName : null) || warehouseNameById.get(otherId) || otherId
+  }
+
+  if (allRequests.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
+        <ClipboardList size={15} className="text-primary" />
+        {t("requests_section_title")}
+        {active.length > 0 && (
+          <Badge variant="secondary" className="bg-primary/10 text-primary font-bold border-none">{active.length}</Badge>
+        )}
+      </h3>
+
+      {active.length > 0 && (
+        <div className="border rounded-xl divide-y overflow-hidden">
+          {active.map((r) => {
+            const isSourceHere = r.fromWarehouseId === warehouseId
+            const canRelease = isSourceHere && r.status === "pending" && canManage
+            const canConfirm = !isSourceHere && r.status === "released" && canManage
+            const canCancel = isSourceHere && r.status === "pending" && canManage
+            return (
+              <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-muted-foreground">{r.requestNumber}</span>
+                    {statusBadge(r.status)}
+                  </div>
+                  <p className="mt-1">
+                    <span className="font-bold" dir="ltr">{r.quantity} {r.unit}</span>
+                    {" — "}
+                    <span className="font-semibold">{r.itemName}</span>
+                    {" "}
+                    <span className="text-muted-foreground">
+                      {isSourceHere ? t("transfers_log_to", { name: otherName(r) }) : t("transfers_log_from", { name: otherName(r) })}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {t("request_expected_receiver_label")}: <span className="font-semibold">{r.expectedReceiverName}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {canRelease && (
+                    <Button size="sm" onClick={() => handleRelease(r)} disabled={releasingId === r.id} className="gap-1.5 h-8">
+                      {releasingId === r.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      {t("request_release_btn")}
+                    </Button>
+                  )}
+                  {canConfirm && (
+                    <Button size="sm" onClick={() => setConfirmingRequest(r)} className="gap-1.5 h-8 bg-success hover:bg-success/90">
+                      <Check size={13} />
+                      {t("request_confirm_btn")}
+                    </Button>
+                  )}
+                  {canCancel && (
+                    <Button size="sm" variant="ghost" onClick={() => handleCancel(r)} disabled={releasingId === r.id} className="gap-1.5 h-8 text-muted-foreground hover:text-destructive">
+                      <X size={13} />
+                      {t("wh_cancel")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <details className="group">
+          <summary className="text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground select-none">
+            {t("requests_history_toggle", { count: history.length })}
+          </summary>
+          <div className="border rounded-xl divide-y overflow-hidden mt-2">
+            {history.map((r) => {
+              const isSourceHere = r.fromWarehouseId === warehouseId
+              return (
+                <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-mono text-xs text-muted-foreground me-2">{r.requestNumber}</span>
+                    <span className="font-bold" dir="ltr">{r.quantity} {r.unit}</span>
+                    {" — "}
+                    <span className="font-semibold">{r.itemName}</span>
+                    {" "}
+                    <span className="text-muted-foreground">
+                      {isSourceHere ? t("transfers_log_to", { name: otherName(r) }) : t("transfers_log_from", { name: otherName(r) })}
+                    </span>
+                  </div>
+                  {statusBadge(r.status)}
+                </div>
+              )
+            })}
+          </div>
+        </details>
+      )}
+
+      {confirmingRequest && (
+        <ConfirmReceiptDialog
+          open={!!confirmingRequest}
+          onOpenChange={(open) => { if (!open) setConfirmingRequest(null) }}
+          request={confirmingRequest}
+          centralWarehouseId={centralWarehouseId}
+          byUserId={byUserId}
+          byUserName={byUserName}
+          t={t}
+          locale={locale}
+        />
+      )}
+    </div>
   )
 }
 
@@ -718,10 +1032,22 @@ export function WarehouseInventoryPanel({
     return doc(firestore, "warehouses", warehouseId)
   }, [firestore, warehouseId])
   const { data: warehouse } = useDoc(warehouseRef)
-  const wh = warehouse as (WarehouseDoc & { projectId?: string | null; projectName?: string | null }) | null
+  const wh = warehouse as (WarehouseDoc & { projectId?: string | null; projectName?: string | null; centralWarehouseId?: string | null }) | null
 
-  const { central, projectWarehouses } = useCentralWarehouse(orgId)
-  const isCentralHere = !!wh?.isCentral || (!!central && central.id === warehouseId)
+  const { centrals, projectWarehouses } = useCentralWarehouse(orgId)
+  const isCentralHere = !!wh?.isCentral || centrals.some((c) => c.id === warehouseId)
+  // This warehouse's own central — itself if it IS one, otherwise whichever
+  // central it's linked to. Data with no explicit link (created before
+  // multi-central support, or never assigned) falls back to the FIRST
+  // central rather than losing access to requests once a second exists.
+  const myCentral = isCentralHere
+    ? centrals.find((c) => c.id === warehouseId) || null
+    : centrals.find((c) => c.id === wh?.centralWarehouseId) || centrals[0] || null
+  // Only THIS central's own project warehouses are valid request destinations —
+  // a request never crosses between two different cities' centrals.
+  const myProjectWarehouses = isCentralHere
+    ? projectWarehouses.filter((pw) => (pw.centralWarehouseId || centrals[0]?.id) === warehouseId)
+    : []
   const byUserName = user?.displayName || user?.email || ""
 
   const itemsRef = useMemoFirebase(() => {
@@ -731,18 +1057,8 @@ export function WarehouseInventoryPanel({
   const { data: items, isLoading } = useCollection(itemsRef)
   const list = (items || []) as InventoryItem[]
 
-  // Movement log lives on the central warehouse; shown only in central mode.
-  const transfersRef = useMemoFirebase(() => {
-    if (!firestore || !warehouseId || !isCentralHere) return null
-    return collection(firestore, "warehouses", warehouseId, "transfers")
-  }, [firestore, warehouseId, isCentralHere])
-  const { data: transfersData } = useCollection(transfersRef)
-  const transfers = ((transfersData || []) as TransferLogEntry[])
-    .slice()
-    .sort((a, b) => (b.createdAt?.toDate?.()?.getTime() ?? 0) - (a.createdAt?.toDate?.()?.getTime() ?? 0))
-    .slice(0, 15)
   const warehouseNameById = new Map<string, string>()
-  ;[central, ...projectWarehouses].forEach((w) => { if (w) warehouseNameById.set(w.id, w.name) })
+  ;[...centrals, ...projectWarehouses].forEach((w) => { if (w) warehouseNameById.set(w.id, w.name) })
 
   const handleDelete = async () => {
     if (!firestore || !deleteItem) return
@@ -786,7 +1102,7 @@ export function WarehouseInventoryPanel({
           </div>
         )}
         {variant === "embedded" && <div className="flex-1" />}
-        {!isCentralHere && central && canManageWarehouses && (
+        {!isCentralHere && myCentral && canManageWarehouses && (
           <Button variant="outline" onClick={() => setShowPull(true)} className="gap-2 shrink-0 border-accent/40 text-accent hover:bg-accent/5 hover:text-accent">
             <ArrowDownToLine size={15} />
             {t("pull_btn")}
@@ -874,7 +1190,7 @@ export function WarehouseInventoryPanel({
                               <Barcode size={13} />
                             </Button>
                           )}
-                          {canManageWarehouses && !isUnitTracked && item.quantity > 0 && (isCentralHere ? projectWarehouses.length > 0 : !!central) && (
+                          {canManageWarehouses && !isUnitTracked && item.quantity > 0 && (isCentralHere ? myProjectWarehouses.length > 0 : !!myCentral) && (
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-accent"
                               onClick={() => setTransferItem(item)}
                               aria-label={isCentralHere ? t("transfer_btn") : t("return_btn")}>
@@ -904,56 +1220,28 @@ export function WarehouseInventoryPanel({
         </div>
       )}
 
-      {/* Stock-movement log — central warehouse only */}
-      {isCentralHere && (
-        <div className="space-y-3">
-          <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-            <History size={15} className="text-primary" />
-            {t("transfers_log_title")}
-          </h3>
-          {transfers.length === 0 ? (
-            <p className="text-sm text-muted-foreground border border-dashed rounded-xl p-5 text-center">{t("transfers_log_empty")}</p>
-          ) : (
-            <div className="border rounded-xl divide-y overflow-hidden">
-              {transfers.map((tr) => {
-                const otherId = tr.direction === "out" ? tr.toWarehouseId : tr.fromWarehouseId
-                const otherName = (tr.direction === "out" ? tr.toProjectName : null) || warehouseNameById.get(otherId) || otherId
-                return (
-                  <div key={tr.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={cn(
-                        "h-6 w-6 rounded-md flex items-center justify-center shrink-0",
-                        tr.direction === "out" ? "bg-cta/10 text-cta" : "bg-success/10 text-success"
-                      )}>
-                        {tr.direction === "out" ? <ArrowLeftRight size={12} /> : <ArrowDownToLine size={12} />}
-                      </span>
-                      <span className="truncate">
-                        <span className="font-bold text-foreground" dir="ltr">{tr.quantity} {tr.unit}</span>
-                        {" — "}
-                        <span className="font-semibold">{tr.itemName}</span>
-                        {" "}
-                        <span className="text-muted-foreground">
-                          {tr.direction === "out" ? t("transfers_log_to", { name: otherName }) : t("transfers_log_from", { name: otherName })}
-                        </span>
-                      </span>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0 truncate max-w-[130px]">{tr.byUserName}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+      {/* Withdrawal requests touching this warehouse — release/confirm live here */}
+      {myCentral && (
+        <RequestsSection
+          warehouseId={warehouseId}
+          centralWarehouseId={myCentral.id}
+          warehouseNameById={warehouseNameById}
+          canManage={canManageWarehouses}
+          byUserId={user?.uid || ""}
+          byUserName={byUserName}
+          t={t}
+          locale={locale}
+        />
       )}
 
       {transferItem && (
-        <TransferDialog
+        <RequestDialog
           open={!!transferItem}
           onOpenChange={(open) => { if (!open) setTransferItem(null) }}
           sourceItem={transferItem}
           fromWarehouseId={warehouseId}
-          destinations={isCentralHere ? projectWarehouses : (central ? [central] : [])}
-          centralWarehouseId={central?.id || warehouseId}
+          destinations={isCentralHere ? myProjectWarehouses : (myCentral ? [myCentral] : [])}
+          centralWarehouseId={myCentral?.id || warehouseId}
           orgId={orgId}
           byUserId={user?.uid || ""}
           byUserName={byUserName}
@@ -961,13 +1249,12 @@ export function WarehouseInventoryPanel({
           locale={locale}
         />
       )}
-      {showPull && central && (
-        <PullFromCentralDialog
+      {showPull && myCentral && (
+        <PullRequestDialog
           open={showPull}
           onOpenChange={setShowPull}
-          central={central}
+          central={myCentral}
           thisWarehouse={{ id: warehouseId, projectId: wh?.projectId ?? null, projectName: wh?.projectName ?? null, name: wh?.name }}
-          localItems={list}
           orgId={orgId}
           byUserId={user?.uid || ""}
           byUserName={byUserName}
