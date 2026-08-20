@@ -1,7 +1,7 @@
 "use client"
 
 import { useLocale, useTranslations } from "next-intl"
-import { useRouter, usePathname } from "@/i18n/routing"
+import { Link, usePathname } from "@/i18n/routing"
 import { LayoutGrid, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -31,7 +31,6 @@ export function AppSwitcher() {
   const t = useTranslations("Portal.Layout")
   const tSidebar = useTranslations("Portal.Sidebar")
   const locale = useLocale()
-  const router = useRouter()
   const pathname = usePathname()
 
   if (!pathname.startsWith("/contractor")) return null
@@ -44,7 +43,7 @@ export function AppSwitcher() {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:ring-0 focus-visible:ring-offset-0 focus:outline-none"
+          className="text-muted-foreground hover:bg-primary/10 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           aria-label={t("app_switcher_label")}
           title={t("app_switcher_label")}
         >
@@ -57,10 +56,10 @@ export function AppSwitcher() {
             const isActive = component.id === activeId
             const accent = ACCENT_CLASSES[component.accentToken]
             return (
-              <button
+              <Link
                 key={component.id}
-                type="button"
-                onClick={() => router.push(component.homeHref)}
+                href={component.homeHref}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center gap-1.5 p-2.5 rounded-xl text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive && cn("ring-2 bg-muted/60", accent.ring)
@@ -72,18 +71,17 @@ export function AppSwitcher() {
                 <span className="text-[11px] font-semibold text-foreground leading-tight line-clamp-2">
                   {tSidebar(component.labelKey)}
                 </span>
-              </button>
+              </Link>
             )
           })}
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/contractor/apps")}
-          className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-primary hover:underline py-2 border-t border-border"
+        <Link
+          href="/contractor/apps"
+          className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-primary hover:underline py-2 border-t border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-b-md"
         >
           {t("app_switcher_see_all")}
           <ArrowRight size={12} className={cn(locale === "ar" && "rtl-flip")} />
-        </button>
+        </Link>
       </DropdownMenuContent>
     </DropdownMenu>
   )

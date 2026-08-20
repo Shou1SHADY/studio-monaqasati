@@ -47,8 +47,9 @@ export default function ContractorAppsPage() {
               <Link
                 key={component.id}
                 href={component.homeHref}
+                aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "group flex flex-col gap-3 p-5 rounded-2xl border bg-white hover:shadow-md transition-all",
+                  "group flex flex-col gap-3 p-5 rounded-2xl border bg-white hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   isActive ? cn("border-2", accent.ring) : "border-slate-200 hover:border-primary/30"
                 )}
               >
@@ -59,7 +60,7 @@ export default function ContractorAppsPage() {
                   <h3 className="font-bold text-foreground">{tSidebar(component.labelKey)}</h3>
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{tSidebar(component.descKey)}</p>
                 </div>
-                <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+                <span className="mt-auto inline-flex items-center gap-1 text-xs font-semibold text-primary sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                   {t("apps_page_open")}
                   <ArrowRight size={12} className={cn(isRtl && "rtl-flip")} />
                 </span>

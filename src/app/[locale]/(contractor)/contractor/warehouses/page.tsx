@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -162,7 +163,7 @@ export default function ContractorWarehousesPage() {
 
   const { central, projectWarehouses, isLoading } = useCentralWarehouse(myOrgId)
   const list = projectWarehouses as WarehouseDoc[]
-  const { totalWarehouses, lowStockCount, recentTransferCount } = useWarehouseDashboardStats(myOrgId)
+  const { totalWarehouses, lowStockCount, recentTransferCount, isLoading: statsLoading } = useWarehouseDashboardStats(myOrgId)
 
   const handleDelete = async () => {
     if (!firestore || !deleteWarehouse || deleteWarehouse.isCentral) return
@@ -207,7 +208,7 @@ export default function ContractorWarehousesPage() {
                 <Warehouse size={18} className="text-accent" />
               </div>
               <div className="min-w-0">
-                <p className="text-xl font-black text-foreground">{totalWarehouses}</p>
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className="text-xl font-black text-foreground">{totalWarehouses}</p>}
                 <p className="text-xs text-muted-foreground truncate">{t("wh_dash_total_warehouses")}</p>
               </div>
             </CardContent>
@@ -218,7 +219,7 @@ export default function ContractorWarehousesPage() {
                 <AlertTriangle size={18} className={lowStockCount > 0 ? "text-warning" : "text-muted-foreground"} />
               </div>
               <div className="min-w-0">
-                <p className={cn("text-xl font-black", lowStockCount > 0 ? "text-warning" : "text-foreground")}>{lowStockCount}</p>
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className={cn("text-xl font-black", lowStockCount > 0 ? "text-warning" : "text-foreground")}>{lowStockCount}</p>}
                 <p className="text-xs text-muted-foreground truncate">{t("wh_dash_low_stock")}</p>
               </div>
             </CardContent>
@@ -229,7 +230,7 @@ export default function ContractorWarehousesPage() {
                 <ArrowLeftRight size={18} className="text-primary" />
               </div>
               <div className="min-w-0">
-                <p className="text-xl font-black text-foreground">{recentTransferCount}</p>
+                {statsLoading ? <Skeleton className="h-6 w-8" /> : <p className="text-xl font-black text-foreground">{recentTransferCount}</p>}
                 <p className="text-xs text-muted-foreground truncate">{t("wh_dash_recent_transfers")}</p>
               </div>
             </CardContent>
