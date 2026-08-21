@@ -551,7 +551,12 @@
       "component_crm": "CRM",
       "component_crm_desc": "Customer relationships — coming in careful, incremental steps",
       "component_users": "Users",
-      "component_users_desc": "Team members and access"
+      "component_users_desc": "Team members and access",
+      "supplier_component_order_management": "Order Management",
+      "supplier_component_order_management_desc": "Dashboard and orders",
+      "supplier_component_sales": "Sales",
+      "supplier_component_sales_desc": "RFQs to respond to and your submitted offers",
+      "supplier_component_crm_desc": "Your contractor relationships and connections"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -1160,6 +1165,9 @@
       "wh_empty_title": "No warehouses yet",
       "wh_empty_desc": "Add storage locations to manage your inventory",
       "wh_view_inventory": "View Inventory",
+      "apps_page_title": "All Components",
+      "apps_page_desc": "Browse every component of the system and jump straight into any of them",
+      "apps_page_open": "Open",
       "inv_item_add_btn": "Add Item",
       "inv_item_add_title": "Add New Item",
       "inv_item_edit_title": "Edit Item",

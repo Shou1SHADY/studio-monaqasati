@@ -550,7 +550,12 @@
       "component_crm": "إدارة علاقات العملاء",
       "component_crm_desc": "علاقات العملاء — قيد البناء بخطوات مدروسة",
       "component_users": "المستخدمون",
-      "component_users_desc": "أعضاء الفريق والصلاحيات"
+      "component_users_desc": "أعضاء الفريق والصلاحيات",
+      "supplier_component_order_management": "إدارة الطلبات",
+      "supplier_component_order_management_desc": "لوحة التحكم والطلبات",
+      "supplier_component_sales": "المبيعات",
+      "supplier_component_sales_desc": "طلبات عروض الأسعار المطلوب الرد عليها وعروضك المقدَّمة",
+      "supplier_component_crm_desc": "علاقاتك وارتباطاتك مع المقاولين"
     },
     "Layout": {
       "app_switcher_label": "تبديل المكون",
@@ -1159,6 +1164,9 @@
       "wh_empty_title": "لا توجد مستودعات بعد",
       "wh_empty_desc": "أضف مواقع التخزين لإدارة المخزون",
       "wh_view_inventory": "عرض المخزون",
+      "apps_page_title": "كل المكونات",
+      "apps_page_desc": "تصفح جميع مكونات النظام وانتقل مباشرة لأي منها",
+      "apps_page_open": "فتح",
       "inv_item_add_btn": "إضافة صنف",
       "inv_item_add_title": "إضافة صنف جديد",
       "inv_item_edit_title": "تعديل الصنف",

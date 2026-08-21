@@ -10,7 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { CONTRACTOR_COMPONENTS, resolveActiveContractorComponent, type AccentToken } from "@/lib/portal-components"
+import {
+  CONTRACTOR_COMPONENTS,
+  SUPPLIER_COMPONENTS,
+  resolveActiveContractorComponent,
+  resolveActiveSupplierComponent,
+  type AccentToken,
+} from "@/lib/portal-components"
 
 // Tailwind can't resolve dynamically-built class strings, so every
 // accent-token combination used by a tile must appear as a literal here.
@@ -24,18 +30,22 @@ const ACCENT_CLASSES: Record<AccentToken, { tile: string; ring: string }> = {
   destructive: { tile: "bg-destructive/10 text-destructive", ring: "ring-destructive" },
 }
 
-/** Gmail-style waffle-menu trigger — quick-switch between the contractor
- * portal's standalone components. Contractor-only: renders nothing on the
- * supplier/admin portals. */
+/** Gmail-style waffle-menu trigger — quick-switch between a portal's
+ * standalone components. Contractor and supplier only: renders nothing on
+ * the admin portal. */
 export function AppSwitcher() {
   const t = useTranslations("Portal.Layout")
   const tSidebar = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const pathname = usePathname()
 
-  if (!pathname.startsWith("/contractor")) return null
+  const isContractor = pathname.startsWith("/contractor")
+  const isSupplier = pathname.startsWith("/supplier")
+  if (!isContractor && !isSupplier) return null
 
-  const activeId = resolveActiveContractorComponent(pathname).id
+  const components = isContractor ? CONTRACTOR_COMPONENTS : SUPPLIER_COMPONENTS
+  const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname)).id
+  const appsHref = isContractor ? "/contractor/apps" : "/supplier/apps"
 
   return (
     <DropdownMenu>
@@ -52,7 +62,7 @@ export function AppSwitcher() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align={locale === "ar" ? "start" : "end"} className="w-72 p-3" dir={locale === "ar" ? "rtl" : "ltr"}>
         <div className="grid grid-cols-3 gap-2">
-          {CONTRACTOR_COMPONENTS.map((component) => {
+          {components.map((component) => {
             const isActive = component.id === activeId
             const accent = ACCENT_CLASSES[component.accentToken]
             return (
@@ -76,7 +86,7 @@ export function AppSwitcher() {
           })}
         </div>
         <Link
-          href="/contractor/apps"
+          href={appsHref}
           className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-primary hover:underline py-2 border-t border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-b-md"
         >
           {t("app_switcher_see_all")}
