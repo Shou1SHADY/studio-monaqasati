@@ -60,6 +60,7 @@ import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addD
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
+import { receiveDelivery } from "@/lib/warehouse-transfer"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { formatCurrency } from "@/utils/invoice-utils"
 
@@ -213,6 +214,47 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         confirmedAt: serverTimestamp(),
         confirmedByUserId: user.uid
       })
+
+      // Goods receipt: confirming delivery is the moment stock actually enters a
+      // warehouse — the project's warehouse if this delivery is tied to one project,
+      // otherwise the org's central warehouse (created here if it doesn't exist yet,
+      // same deterministic id as useCentralWarehouse). Kept isolated from the delivery
+      // confirmation above, which already committed and must not be rolled back by this.
+      try {
+        const orgId = confirmDeliveryDoc.contractorOrgId as string | undefined
+        const deliveryItems = ((confirmDeliveryDoc.items || []) as { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[])
+          .map((it) => ({ name: it.name || "", unit: it.unitOfMeasure || it.unit || "", quantity: Number(it.quantity) || 0 }))
+          .filter((it) => it.name && it.unit && it.quantity > 0)
+
+        if (orgId && deliveryItems.length > 0) {
+          let targetWarehouseId: string | null = null
+          if (confirmDeliveryDoc.projectId) {
+            const projectSnap = await getDoc(doc(firestore, "projects", confirmDeliveryDoc.projectId))
+            targetWarehouseId = (projectSnap.data() as { warehouseId?: string } | undefined)?.warehouseId || null
+          }
+          if (!targetWarehouseId) {
+            const centralRef = doc(firestore, "warehouses", `central_${orgId}`)
+            const centralSnap = await getDoc(centralRef)
+            if (!centralSnap.exists()) {
+              await setDoc(centralRef, {
+                name: t("wh_central_name"),
+                location: t("wh_central_location"),
+                description: t("wh_central_desc"),
+                organizationId: orgId,
+                isCentral: true,
+                projectId: null,
+                projectName: null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              })
+            }
+            targetWarehouseId = `central_${orgId}`
+          }
+          await receiveDelivery({ firestore, warehouseId: targetWarehouseId, items: deliveryItems, organizationId: orgId })
+        }
+      } catch (receiptErr) {
+        console.error("Goods receipt into warehouse failed:", receiptErr)
+      }
 
       if (confirmDeliveryDoc.supplierId) {
         await addDoc(collection(firestore, "users", confirmDeliveryDoc.supplierId, "notifications"), {

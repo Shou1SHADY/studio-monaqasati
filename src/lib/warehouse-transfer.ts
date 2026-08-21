@@ -2,6 +2,7 @@ import {
   Firestore,
   collection,
   doc,
+  getDocs,
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore"
@@ -115,4 +116,69 @@ export async function runTransfer(params: RunTransferParams): Promise<void> {
       createdAt: serverTimestamp(),
     })
   })
+}
+
+export interface ReceiveDeliveryItem {
+  name: string
+  unit: string
+  quantity: number
+}
+
+export interface ReceiveDeliveryParams {
+  firestore: Firestore
+  warehouseId: string
+  items: ReceiveDeliveryItem[]
+  organizationId: string
+}
+
+/**
+ * Goods-receipt stock movement: confirming a delivery adds stock straight into
+ * a warehouse (the project's, or the org's central one), matched by name+unit
+ * the same way transfers are — a new item is created only when nothing matches.
+ * Unit-tracked items are skipped; barcode assignment for those stays a manual
+ * step in the warehouse UI, same as everywhere else in this file.
+ */
+export async function receiveDelivery(params: ReceiveDeliveryParams): Promise<void> {
+  const { firestore, warehouseId, items, organizationId } = params
+  const itemsColRef = collection(firestore, "warehouses", warehouseId, "inventoryItems")
+  const existingSnap = await getDocs(itemsColRef)
+  const byMergeKey = new Map<string, string>()
+  existingSnap.docs.forEach((d) => {
+    const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
+    if (data.name && data.unit && data.trackingMode !== "unit") {
+      byMergeKey.set(itemMergeKey({ name: data.name, unit: data.unit }), d.id)
+    }
+  })
+
+  for (const item of items) {
+    const name = item.name?.trim()
+    const unit = item.unit?.trim()
+    const quantity = Number(item.quantity)
+    if (!name || !unit || !Number.isFinite(quantity) || quantity <= 0) continue
+
+    const matchId = byMergeKey.get(itemMergeKey({ name, unit }))
+    const destRef = matchId
+      ? doc(firestore, "warehouses", warehouseId, "inventoryItems", matchId)
+      : doc(itemsColRef)
+
+    await runTransaction(firestore, async (tx) => {
+      const destSnap = matchId ? await tx.get(destRef) : null
+      if (destSnap?.exists()) {
+        tx.update(destRef, { quantity: (destSnap.data().quantity || 0) + quantity, updatedAt: serverTimestamp() })
+      } else {
+        tx.set(destRef, {
+          name,
+          sku: null,
+          quantity,
+          unit,
+          minStockLevel: null,
+          trackingMode: null,
+          organizationId,
+          warehouseId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      }
+    })
+  }
 }
