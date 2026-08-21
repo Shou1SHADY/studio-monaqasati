@@ -281,6 +281,7 @@ export default function ProjectDetailPage() {
   const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
   const [isSuggestMaterialsOpen, setIsSuggestMaterialsOpen] = useState(false)
   const [suggestedTakenQtys, setSuggestedTakenQtys] = useState<Record<string, string>>({})
+  const [suggestedBoqLinks, setSuggestedBoqLinks] = useState<Record<string, string>>({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // BOQ state
@@ -2726,8 +2727,9 @@ export default function ProjectDetailPage() {
           inventoryItems={linkedInventoryItems}
           t={t}
           locale={locale}
-          onApply={(qtys) => {
+          onApply={(qtys, links) => {
             setSuggestedTakenQtys(qtys)
+            setSuggestedBoqLinks(links)
             setIsConsumeDialogOpen(true)
           }}
         />
@@ -2740,8 +2742,10 @@ export default function ProjectDetailPage() {
           onOpenChange={setIsConsumeDialogOpen}
           warehouseId={typedProject.warehouseId}
           inventoryItems={linkedInventoryItems}
+          boqItems={boqItems}
           wasteTargetPercent={typedProject.wasteTargetPercent ?? 12}
           initialTakenQtys={suggestedTakenQtys}
+          initialBoqLinks={suggestedBoqLinks}
           locale={locale}
           t={t}
           onConsume={async (rows, exceptionReason) => {
@@ -2781,7 +2785,7 @@ export default function ProjectDetailPage() {
                 }
               }
               await addDoc(collection(firestore, "projects", projectId, "wasteRecords"), {
-                boqItemId: null,
+                boqItemId: r.boqItemId ?? null,
                 itemName: r.itemName,
                 unit: r.unit,
                 quantityTaken: r.quantityTaken,
@@ -2836,6 +2840,7 @@ type ConsumeRow = {
   unitIds?: string[]
   unitBarcodes?: string[]
   wastedUnitBarcodes?: string[]
+  boqItemId?: string | null
 }
 
 function UnitPickerDialog({
@@ -2932,7 +2937,9 @@ function SuggestMaterialsDialog({
   inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   locale: string
-  onApply: (takenQtys: Record<string, string>) => void
+  /** boqLinks maps each affected warehouse item to the BOQ line that suggested it —
+   * best-effort (last suggestion wins if two BOQ lines point at the same item). */
+  onApply: (takenQtys: Record<string, string>, boqLinks: Record<string, string>) => void
 }) {
   const isRtl = locale === "ar"
   const { toast } = useToast()
@@ -3001,6 +3008,7 @@ function SuggestMaterialsDialog({
 
   const handleApply = () => {
     const takenQtys: Record<string, string> = {}
+    const boqLinks: Record<string, string> = {}
     Object.entries(results).forEach(([boqId, result]) => {
       result.suggestions.forEach((s, i) => {
         if (!includedLines[`${boqId}_${i}`]) return
@@ -3008,13 +3016,14 @@ function SuggestMaterialsDialog({
         if (!itemId) return
         const prevVal = Number(takenQtys[itemId]) || 0
         takenQtys[itemId] = String(prevVal + (s.estimatedQuantity || 0))
+        boqLinks[itemId] = boqId
       })
     })
     if (Object.keys(takenQtys).length === 0) {
       toast({ title: t("proj_suggest_materials_none_selected"), variant: "destructive" })
       return
     }
-    onApply(takenQtys)
+    onApply(takenQtys, boqLinks)
     onOpenChange(false)
   }
 
@@ -3120,8 +3129,10 @@ function ConsumeFromWarehouseDialog({
   onOpenChange,
   warehouseId,
   inventoryItems,
+  boqItems,
   wasteTargetPercent,
   initialTakenQtys,
+  initialBoqLinks,
   locale,
   t,
   onConsume,
@@ -3130,9 +3141,13 @@ function ConsumeFromWarehouseDialog({
   onOpenChange: (v: boolean) => void
   warehouseId: string
   inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  /** BOQ lines this project's warehouse pull can be attributed to, for the per-row link picker. */
+  boqItems: { id: string; descriptionAr: string; descriptionEn: string }[]
   wasteTargetPercent: number
   /** Pre-fills "taken" quantities when the dialog opens — e.g. from AI material suggestions. */
   initialTakenQtys?: Record<string, string>
+  /** Pre-fills the BOQ-item link per warehouse item — from AI material suggestions. */
+  initialBoqLinks?: Record<string, string>
   locale: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   onConsume: (rows: ConsumeRow[], exceptionReason?: string) => Promise<void>
@@ -3144,6 +3159,7 @@ function ConsumeFromWarehouseDialog({
   const [usedQtys, setUsedQtys] = useState<Record<string, string>>({})
   const [usedTouched, setUsedTouched] = useState<Set<string>>(new Set())
   const [unitSelections, setUnitSelections] = useState<Record<string, UnitSelection[]>>({})
+  const [boqLinks, setBoqLinks] = useState<Record<string, string>>({})
   const [pickerItemId, setPickerItemId] = useState<string | null>(null)
   const [aiSuggestingId, setAiSuggestingId] = useState<string | null>(null)
   const [exceptionReason, setExceptionReason] = useState("")
@@ -3156,6 +3172,7 @@ function ConsumeFromWarehouseDialog({
     setUsedQtys({})
     setUsedTouched(new Set())
     setUnitSelections({})
+    setBoqLinks({})
     setPickerItemId(null)
     setExceptionReason("")
   }
@@ -3168,8 +3185,22 @@ function ConsumeFromWarehouseDialog({
       setTakenQtys(initialTakenQtys)
       setUsedQtys(initialTakenQtys)
     }
+    if (open && initialBoqLinks && Object.keys(initialBoqLinks).length > 0) {
+      setBoqLinks(initialBoqLinks)
+    }
     // Only re-seed when the dialog transitions open, or the suggested values change.
-  }, [open, initialTakenQtys])
+  }, [open, initialTakenQtys, initialBoqLinks])
+
+  const setBoqLink = (itemId: string, boqItemId: string) => {
+    setBoqLinks((prev) => {
+      if (!boqItemId) {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      }
+      return { ...prev, [itemId]: boqItemId }
+    })
+  }
 
   const handleTakenChange = (itemId: string, value: string) => {
     setTakenQtys((prev) => ({ ...prev, [itemId]: value }))
@@ -3228,12 +3259,20 @@ function ConsumeFromWarehouseDialog({
           unitIds: sel.map((u) => u.unitId),
           unitBarcodes: sel.map((u) => u.barcode),
           wastedUnitBarcodes: wasted.map((u) => u.barcode),
+          boqItemId: boqLinks[item.id] || null,
         }
       }
       const taken = Number(takenQtys[item.id]) || 0
       const usedRaw = usedQtys[item.id]
       const used = usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken
-      return { inventoryItemId: item.id, itemName: item.name, quantityTaken: taken, quantityUsed: used, unit: item.unit }
+      return {
+        inventoryItemId: item.id,
+        itemName: item.name,
+        quantityTaken: taken,
+        quantityUsed: used,
+        unit: item.unit,
+        boqItemId: boqLinks[item.id] || null,
+      }
     })
   const totalTaken = rows.reduce((s, r) => s + r.quantityTaken, 0)
   const totalUsed = rows.reduce((s, r) => s + r.quantityUsed, 0)
@@ -3289,6 +3328,9 @@ function ConsumeFromWarehouseDialog({
                 </th>
                 <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-20", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_percent_col")}
+                </th>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-40", isRtl ? "text-right" : "text-left")}>
+                  {t("proj_waste_boq_item_col")}
                 </th>
               </tr>
             </thead>
@@ -3372,6 +3414,23 @@ function ConsumeFromWarehouseDialog({
                     )}
                     <td className={cn("px-3 py-2 tabular-nums font-semibold text-xs", rowWaste > wasteTargetPercent ? "text-amber-600" : "text-muted-foreground")}>
                       {taken > 0 ? `${rowWaste.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="px-2 py-1">
+                      <SearchableSelect
+                        value={boqLinks[item.id] || "__none__"}
+                        onChange={(v) => setBoqLink(item.id, v === "__none__" ? "" : v)}
+                        options={[
+                          { value: "__none__", label: t("proj_waste_boq_item_none") },
+                          ...boqItems
+                            .filter((b) => b.descriptionAr || b.descriptionEn)
+                            .map((b) => ({ value: b.id, label: b.descriptionAr || b.descriptionEn })),
+                        ]}
+                        placeholder={t("proj_waste_boq_item_placeholder")}
+                        searchPlaceholder={t("proj_waste_boq_item_placeholder")}
+                        noResultsText={t("proj_boq_empty")}
+                        disabled={taken <= 0}
+                        size="sm"
+                      />
                     </td>
                   </tr>
                 )
