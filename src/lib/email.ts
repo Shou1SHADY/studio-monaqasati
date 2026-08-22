@@ -203,6 +203,52 @@ export function buildSupplierInviteEmail({
   return { subject, html }
 }
 
+type RfqShareEmailInput = {
+  contractorName: string
+  rfqTitle: string
+  deadline?: string | null
+  shareUrl: string
+  linkExpiresAt: string
+}
+
+// Guest RFQ share link — lets a supplier open the RFQ and submit an offer
+// without creating an account. The link itself expires after 3 days.
+export function buildRfqShareEmail({
+  contractorName,
+  rfqTitle,
+  deadline,
+  shareUrl,
+  linkExpiresAt,
+}: RfqShareEmailInput): { subject: string; html: string } {
+  const safeContractor = escapeHtml(contractorName || "أحد المقاولين على المنصة")
+  const safeContractorEn = escapeHtml(contractorName || "A contractor on our platform")
+  const safeTitle = escapeHtml(rfqTitle || "")
+
+  const expiryAr = new Date(linkExpiresAt).toLocaleDateString("ar-SA", { dateStyle: "long" })
+  const expiryEn = new Date(linkExpiresAt).toLocaleDateString("en-US", { dateStyle: "long" })
+  const deadlineNoteAr = deadline
+    ? ` آخر موعد لاستلام العروض: <strong>${escapeHtml(new Date(deadline).toLocaleDateString("ar-SA", { dateStyle: "long" }))}</strong>.`
+    : ""
+  const deadlineNoteEn = deadline
+    ? ` Offer deadline: <strong>${escapeHtml(new Date(deadline).toLocaleDateString("en-US", { dateStyle: "long" }))}</strong>.`
+    : ""
+
+  const bodyAr = `يدعوك <strong>${safeContractor}</strong> لتقديم عرض سعر على طلب عروض الأسعار «<strong>${safeTitle}</strong>» عبر منصة مدماك تيك. يمكنك الاطلاع على كامل التفاصيل وتقديم عرضك مباشرة من الرابط أدناه — دون الحاجة لإنشاء حساب.${deadlineNoteAr} يُرجى العلم أن هذا الرابط صالح حتى <strong>${expiryAr}</strong>.`
+  const bodyEn = `<strong>${safeContractorEn}</strong> invites you to submit a price offer for the RFQ "<strong>${safeTitle}</strong>" on Mdmak Tech. You can review the full details and submit your offer directly from the link below — no account required.${deadlineNoteEn} Please note this link is valid until <strong>${expiryEn}</strong>.`
+
+  const subject = `دعوة لتقديم عرض سعر — ${rfqTitle || "طلب عروض أسعار"} | RFQ invitation on Mdmak Tech`
+  const html = buildEmailShell({
+    greetingAr: "مرحباً,",
+    greetingEn: "Hello,",
+    bodyAr,
+    bodyEn,
+    ctaAr: "عرض الطلب وتقديم العرض",
+    ctaEn: "View RFQ & submit offer",
+    inviteUrl: shareUrl,
+  })
+  return { subject, html }
+}
+
 type AccountCreatedEmailInput = {
   name: string
   role: "Contractor" | "Supplier"

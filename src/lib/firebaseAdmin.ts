@@ -1,6 +1,7 @@
 import { getApps, initializeApp, cert, applicationDefault, App } from "firebase-admin/app"
 import { getAuth, Auth } from "firebase-admin/auth"
 import { getFirestore, Firestore } from "firebase-admin/firestore"
+import { getStorage, Storage } from "firebase-admin/storage"
 
 // Server-only — never import this file in client components.
 // Credentials come from server-only env vars (no NEXT_PUBLIC_ prefix).
@@ -33,4 +34,17 @@ export function getAdminAuth(): Auth {
 
 export function getAdminFirestore(): Firestore {
   return getFirestore(getAdminApp())
+}
+
+export function getAdminStorage(): Storage {
+  return getStorage(getAdminApp())
+}
+
+// Same bucket the client SDK writes to (see src/firebase/config.ts).
+export function getStorageBucketName(): string {
+  return (
+    process.env.FIREBASE_STORAGE_BUCKET ||
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
+    "studio-2889504658-6ee2a.firebasestorage.app"
+  )
 }
