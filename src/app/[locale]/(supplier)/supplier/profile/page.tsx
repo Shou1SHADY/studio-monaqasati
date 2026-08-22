@@ -6,6 +6,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { ProfileTour } from "@/components/profile-tour"
+import { PhoneInput } from "@/components/shared/PhoneInput"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -999,12 +1000,11 @@ export default function SupplierProfilePage() {
                     </div>
                     <div id="tour-step-phone" className="space-y-2">
                       <Label htmlFor="phone" className="text-slate-700 font-bold">{t("phone_label")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input
+                      <PhoneInput
                         id="phone"
                         value={profile.phone}
-                        onChange={e => setProfile({...profile, phone: e.target.value})}
-                        className="dir-ltr text-left h-11"
-                        placeholder="+966 5x xxx xxxx"
+                        onChange={(val) => setProfile({...profile, phone: val})}
+                        locale={locale}
                       />
                     </div>
                   </div>

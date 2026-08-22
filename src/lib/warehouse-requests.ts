@@ -23,7 +23,12 @@ export interface WarehouseRequestDoc {
   itemId: string
   itemName: string
   unit: string
+  /** The originally requested amount — never changed after creation, for audit. */
   quantity: number
+  /** What actually left the source at release time — defaults to `quantity`,
+   * but the releaser can adjust it down for a partial fulfillment. This is
+   * what credits the destination on confirm, not the original `quantity`. */
+  releasedQuantity?: number | null
   fromWarehouseId: string
   toWarehouseId: string
   toProjectId?: string | null
@@ -41,6 +46,7 @@ export interface WarehouseRequestDoc {
   receivedByName?: string | null
   receivedAt?: Timestamp | null
   receivedNote?: string | null
+  cancelledReason?: string | null
 }
 
 function generateRequestNumber(): string {
@@ -115,15 +121,18 @@ export async function createWarehouseRequest(params: CreateRequestParams): Promi
   return requestRef.id
 }
 
-/** Releases a pending request — decrements the source now; destination is credited only on confirm. */
+/** Releases a pending request — decrements the source now; destination is credited only on confirm.
+ * `releasedQuantity` defaults to the originally requested amount but the releaser can lower it for
+ * a partial fulfillment (e.g. the source doesn't actually have the full amount on the shelf). */
 export async function releaseWarehouseRequest(params: {
   firestore: Firestore
   centralWarehouseId: string
   requestId: string
   byUserId: string
   byUserName: string
+  releasedQuantity?: number
 }): Promise<void> {
-  const { firestore, centralWarehouseId, requestId, byUserId, byUserName } = params
+  const { firestore, centralWarehouseId, requestId, byUserId, byUserName, releasedQuantity } = params
   const requestRef = doc(firestore, "warehouses", centralWarehouseId, "requests", requestId)
 
   await runTransaction(firestore, async (tx) => {
@@ -132,15 +141,20 @@ export async function releaseWarehouseRequest(params: {
     const request = reqSnap.data() as WarehouseRequestDoc
     if (request.status !== "pending") throw new Error("not_pending")
 
+    const finalQuantity = releasedQuantity ?? request.quantity
+    if (!Number.isFinite(finalQuantity) || finalQuantity <= 0) throw new Error("invalid_quantity")
+    if (finalQuantity > request.quantity) throw new Error("invalid_quantity")
+
     const sourceRef = doc(firestore, "warehouses", request.fromWarehouseId, "inventoryItems", request.itemId)
     const sourceSnap = await tx.get(sourceRef)
     if (!sourceSnap.exists()) throw new Error("insufficient_stock")
     const source = sourceSnap.data() as TransferItemState
-    if (source.quantity < request.quantity) throw new Error("insufficient_stock")
+    if (source.quantity < finalQuantity) throw new Error("insufficient_stock")
 
-    tx.update(sourceRef, { quantity: source.quantity - request.quantity, updatedAt: serverTimestamp() })
+    tx.update(sourceRef, { quantity: source.quantity - finalQuantity, updatedAt: serverTimestamp() })
     tx.update(requestRef, {
       status: "released",
+      releasedQuantity: finalQuantity,
       releasedByUserId: byUserId,
       releasedByName: byUserName,
       releasedAt: serverTimestamp(),
@@ -167,6 +181,7 @@ export async function confirmWarehouseRequestReceipt(params: {
     if (!reqSnap.exists()) throw new Error("not_found")
     const request = reqSnap.data() as WarehouseRequestDoc
     if (request.status !== "released") throw new Error("not_released")
+    const creditedQuantity = request.releasedQuantity ?? request.quantity
 
     const destRef = existingDestItemId
       ? doc(firestore, "warehouses", request.toWarehouseId, "inventoryItems", existingDestItemId)
@@ -174,12 +189,12 @@ export async function confirmWarehouseRequestReceipt(params: {
     const destSnap = existingDestItemId ? await tx.get(destRef) : null
 
     if (destSnap?.exists()) {
-      tx.update(destRef, { quantity: (destSnap.data().quantity || 0) + request.quantity, updatedAt: serverTimestamp() })
+      tx.update(destRef, { quantity: (destSnap.data().quantity || 0) + creditedQuantity, updatedAt: serverTimestamp() })
     } else {
       tx.set(destRef, {
         name: request.itemName,
         sku: null,
-        quantity: request.quantity,
+        quantity: creditedQuantity,
         unit: request.unit,
         minStockLevel: null,
         trackingMode: null,
@@ -200,19 +215,22 @@ export async function confirmWarehouseRequestReceipt(params: {
   })
 }
 
-/** Cancels a still-pending request — no stock has moved yet, so this is just a status flip. */
+/** Cancels a still-pending request — no stock has moved yet, so this is just a status
+ * flip, but a reason is required so the audit trail explains why it never went out. */
 export async function cancelWarehouseRequest(params: {
   firestore: Firestore
   centralWarehouseId: string
   requestId: string
+  reason: string
 }): Promise<void> {
-  const { firestore, centralWarehouseId, requestId } = params
+  const { firestore, centralWarehouseId, requestId, reason } = params
+  if (!reason.trim()) throw new Error("reason_required")
   const requestRef = doc(firestore, "warehouses", centralWarehouseId, "requests", requestId)
   await runTransaction(firestore, async (tx) => {
     const reqSnap = await tx.get(requestRef)
     if (!reqSnap.exists()) throw new Error("not_found")
     const request = reqSnap.data() as WarehouseRequestDoc
     if (request.status !== "pending") throw new Error("not_pending")
-    tx.update(requestRef, { status: "cancelled" })
+    tx.update(requestRef, { status: "cancelled", cancelledReason: reason.trim() })
   })
 }

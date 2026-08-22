@@ -124,6 +124,7 @@ import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
 import { PurchaseRequestsTab } from "@/components/contractor/PurchaseRequestsTab"
 import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
+import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { useProjectWasteStats } from "@/hooks/useProjectWasteStats"
@@ -139,7 +140,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -1903,6 +1904,18 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {can("offers.accept") && (
+            <Card className="border-primary/15">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 mb-4">
+                  <Banknote size={17} className="text-primary" />
+                  {t("moneyflow_title")}
+                </h3>
+                <MoneyFlowViz projectId={projectId} />
+              </CardContent>
+            </Card>
+          )}
 
           {can("offers.accept") && (
             <Card className="border-primary/15">

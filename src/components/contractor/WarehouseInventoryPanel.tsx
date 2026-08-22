@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -28,21 +27,17 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCollection, useFirestore, useDoc, useMemoFirebase, useUser } from "@/firebase"
-import { collection, doc, addDoc, updateDoc, deleteDoc, getDocs, serverTimestamp, increment } from "firebase/firestore"
+import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp, increment } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCentralWarehouse, type OrgWarehouse } from "@/hooks/useCentralWarehouse"
+import { WarehouseRequestsSection } from "./WarehouseRequestsSection"
 import {
   createWarehouseRequest,
-  releaseWarehouseRequest,
-  confirmWarehouseRequestReceipt,
-  cancelWarehouseRequest,
   validateRequest,
-  itemMergeKey,
   type TransferValidationError,
-  type WarehouseRequestStatus,
 } from "@/lib/warehouse-requests"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, ClipboardList, Check, Send } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type InventoryItem = {
@@ -70,24 +65,6 @@ type Unit = {
   consumedProjectName?: string | null
   notes?: string | null
   createdAt?: unknown
-}
-
-type RequestEntry = {
-  id: string
-  requestNumber: string
-  itemName: string
-  unit: string
-  quantity: number
-  fromWarehouseId: string
-  toWarehouseId: string
-  toProjectName?: string | null
-  status: WarehouseRequestStatus
-  requestedByName: string
-  expectedReceiverName: string
-  releasedByName?: string | null
-  receivedByName?: string | null
-  createdAt?: { toDate?: () => Date } | null
-  requestedAt?: { toDate?: () => Date } | null
 }
 
 function ItemDialog({
@@ -722,278 +699,6 @@ function PullRequestDialog({
   )
 }
 
-function ConfirmReceiptDialog({
-  open,
-  onOpenChange,
-  request,
-  centralWarehouseId,
-  byUserId,
-  byUserName,
-  t,
-  locale,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  request: RequestEntry
-  centralWarehouseId: string
-  byUserId: string
-  byUserName: string
-  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
-  locale: string
-}) {
-  const firestore = useFirestore()
-  const { toast } = useToast()
-  const isRtl = locale === "ar"
-  const [note, setNote] = useState("")
-  const [isConfirming, setIsConfirming] = useState(false)
-
-  const handleConfirm = async () => {
-    if (!firestore) return
-    setIsConfirming(true)
-    try {
-      const destItems = await getDocs(collection(firestore, "warehouses", request.toWarehouseId, "inventoryItems"))
-      const key = itemMergeKey({ name: request.itemName, unit: request.unit })
-      const match = destItems.docs.find((d) => {
-        const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
-        return data.name && data.unit && data.trackingMode !== "unit" && itemMergeKey({ name: data.name, unit: data.unit }) === key
-      })
-      await confirmWarehouseRequestReceipt({
-        firestore,
-        centralWarehouseId,
-        requestId: request.id,
-        byUserId,
-        byUserName,
-        note: note.trim() || null,
-        existingDestItemId: match?.id ?? null,
-      })
-      toast({ title: t("request_confirmed") })
-      onOpenChange(false)
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("transfer_error"), variant: "destructive" })
-    } finally {
-      setIsConfirming(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isConfirming) onOpenChange(next) }}>
-      <DialogContent dir={isRtl ? "rtl" : "ltr"}>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Check size={17} className="text-success" />
-            {t("confirm_receipt_title")}
-          </DialogTitle>
-          <DialogDescription>
-            {t("confirm_receipt_desc", { qty: request.quantity, unit: request.unit, item: request.itemName })}
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="p-3 rounded-xl bg-muted border border-border text-sm space-y-1">
-            <p><span className="text-muted-foreground">{t("request_number_label")}: </span><span className="font-mono font-bold">{request.requestNumber}</span></p>
-            <p><span className="text-muted-foreground">{t("request_expected_receiver_label")}: </span><span className="font-semibold">{request.expectedReceiverName}</span></p>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="receipt-note">{t("confirm_receipt_note_label")}</Label>
-            <Textarea id="receipt-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("confirm_receipt_note_placeholder")} disabled={isConfirming} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isConfirming}>{t("wh_cancel")}</Button>
-          <Button onClick={handleConfirm} disabled={isConfirming} className="gap-2 bg-success hover:bg-success/90">
-            {isConfirming ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-            {t("confirm_receipt_submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function RequestsSection({
-  warehouseId,
-  centralWarehouseId,
-  warehouseNameById,
-  canManage,
-  byUserId,
-  byUserName,
-  t,
-  locale,
-}: {
-  warehouseId: string
-  centralWarehouseId: string
-  warehouseNameById: Map<string, string>
-  canManage: boolean
-  byUserId: string
-  byUserName: string
-  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
-  locale: string
-}) {
-  const firestore = useFirestore()
-  const { toast } = useToast()
-  const [releasingId, setReleasingId] = useState<string | null>(null)
-  const [confirmingRequest, setConfirmingRequest] = useState<RequestEntry | null>(null)
-
-  const requestsRef = useMemoFirebase(() => {
-    if (!firestore || !centralWarehouseId) return null
-    return collection(firestore, "warehouses", centralWarehouseId, "requests")
-  }, [firestore, centralWarehouseId])
-  const { data: requestsData } = useCollection(requestsRef)
-  const allRequests = ((requestsData || []) as RequestEntry[])
-    .filter((r) => r.fromWarehouseId === warehouseId || r.toWarehouseId === warehouseId)
-    .sort((a, b) => (b.requestedAt?.toDate?.()?.getTime() ?? 0) - (a.requestedAt?.toDate?.()?.getTime() ?? 0))
-
-  const active = allRequests.filter((r) => r.status === "pending" || r.status === "released")
-  const history = allRequests.filter((r) => r.status === "received" || r.status === "cancelled").slice(0, 10)
-
-  const handleRelease = async (request: RequestEntry) => {
-    if (!firestore) return
-    setReleasingId(request.id)
-    try {
-      await releaseWarehouseRequest({ firestore, centralWarehouseId, requestId: request.id, byUserId, byUserName })
-      toast({ title: t("request_released") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("transfer_error"), variant: "destructive" })
-    } finally {
-      setReleasingId(null)
-    }
-  }
-
-  const handleCancel = async (request: RequestEntry) => {
-    if (!firestore) return
-    setReleasingId(request.id)
-    try {
-      await cancelWarehouseRequest({ firestore, centralWarehouseId, requestId: request.id })
-      toast({ title: t("request_cancelled") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("transfer_error"), variant: "destructive" })
-    } finally {
-      setReleasingId(null)
-    }
-  }
-
-  const statusBadge = (status: WarehouseRequestStatus) => {
-    if (status === "pending") return <Badge className="bg-warning/10 text-warning border-warning/20">{t("request_status_pending")}</Badge>
-    if (status === "released") return <Badge className="bg-cta/10 text-cta border-cta/20">{t("request_status_released")}</Badge>
-    if (status === "received") return <Badge className="bg-success/10 text-success border-success/20">{t("request_status_received")}</Badge>
-    return <Badge variant="outline" className="text-muted-foreground">{t("request_status_cancelled")}</Badge>
-  }
-
-  const otherName = (r: RequestEntry) => {
-    const otherId = r.fromWarehouseId === warehouseId ? r.toWarehouseId : r.fromWarehouseId
-    return (r.fromWarehouseId === warehouseId ? r.toProjectName : null) || warehouseNameById.get(otherId) || otherId
-  }
-
-  if (allRequests.length === 0) return null
-
-  return (
-    <div className="space-y-3">
-      <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
-        <ClipboardList size={15} className="text-primary" />
-        {t("requests_section_title")}
-        {active.length > 0 && (
-          <Badge variant="secondary" className="bg-primary/10 text-primary font-bold border-none">{active.length}</Badge>
-        )}
-      </h3>
-
-      {active.length > 0 && (
-        <div className="border rounded-xl divide-y overflow-hidden">
-          {active.map((r) => {
-            const isSourceHere = r.fromWarehouseId === warehouseId
-            const canRelease = isSourceHere && r.status === "pending" && canManage
-            const canConfirm = !isSourceHere && r.status === "released" && canManage
-            const canCancel = isSourceHere && r.status === "pending" && canManage
-            return (
-              <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-4 py-3 text-sm">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs text-muted-foreground">{r.requestNumber}</span>
-                    {statusBadge(r.status)}
-                  </div>
-                  <p className="mt-1">
-                    <span className="font-bold" dir="ltr">{r.quantity} {r.unit}</span>
-                    {" — "}
-                    <span className="font-semibold">{r.itemName}</span>
-                    {" "}
-                    <span className="text-muted-foreground">
-                      {isSourceHere ? t("transfers_log_to", { name: otherName(r) }) : t("transfers_log_from", { name: otherName(r) })}
-                    </span>
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {t("request_expected_receiver_label")}: <span className="font-semibold">{r.expectedReceiverName}</span>
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  {canRelease && (
-                    <Button size="sm" onClick={() => handleRelease(r)} disabled={releasingId === r.id} className="gap-1.5 h-8">
-                      {releasingId === r.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                      {t("request_release_btn")}
-                    </Button>
-                  )}
-                  {canConfirm && (
-                    <Button size="sm" onClick={() => setConfirmingRequest(r)} className="gap-1.5 h-8 bg-success hover:bg-success/90">
-                      <Check size={13} />
-                      {t("request_confirm_btn")}
-                    </Button>
-                  )}
-                  {canCancel && (
-                    <Button size="sm" variant="ghost" onClick={() => handleCancel(r)} disabled={releasingId === r.id} className="gap-1.5 h-8 text-muted-foreground hover:text-destructive">
-                      <X size={13} />
-                      {t("wh_cancel")}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {history.length > 0 && (
-        <details className="group">
-          <summary className="text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground select-none">
-            {t("requests_history_toggle", { count: history.length })}
-          </summary>
-          <div className="border rounded-xl divide-y overflow-hidden mt-2">
-            {history.map((r) => {
-              const isSourceHere = r.fromWarehouseId === warehouseId
-              return (
-                <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-                  <div className="min-w-0">
-                    <span className="font-mono text-xs text-muted-foreground me-2">{r.requestNumber}</span>
-                    <span className="font-bold" dir="ltr">{r.quantity} {r.unit}</span>
-                    {" — "}
-                    <span className="font-semibold">{r.itemName}</span>
-                    {" "}
-                    <span className="text-muted-foreground">
-                      {isSourceHere ? t("transfers_log_to", { name: otherName(r) }) : t("transfers_log_from", { name: otherName(r) })}
-                    </span>
-                  </div>
-                  {statusBadge(r.status)}
-                </div>
-              )
-            })}
-          </div>
-        </details>
-      )}
-
-      {confirmingRequest && (
-        <ConfirmReceiptDialog
-          open={!!confirmingRequest}
-          onOpenChange={(open) => { if (!open) setConfirmingRequest(null) }}
-          request={confirmingRequest}
-          centralWarehouseId={centralWarehouseId}
-          byUserId={byUserId}
-          byUserName={byUserName}
-          t={t}
-          locale={locale}
-        />
-      )}
-    </div>
-  )
-}
 
 /**
  * Shared inventory-item CRUD UI for a single warehouse (including barcode-level unit
@@ -1222,13 +927,11 @@ export function WarehouseInventoryPanel({
 
       {/* Withdrawal requests touching this warehouse — release/confirm live here */}
       {myCentral && (
-        <RequestsSection
+        <WarehouseRequestsSection
+          centrals={centrals}
           warehouseId={warehouseId}
-          centralWarehouseId={myCentral.id}
           warehouseNameById={warehouseNameById}
           canManage={canManageWarehouses}
-          byUserId={user?.uid || ""}
-          byUserName={byUserName}
           t={t}
           locale={locale}
         />

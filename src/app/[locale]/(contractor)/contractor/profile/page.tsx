@@ -64,6 +64,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { ProfileTour } from "@/components/profile-tour"
+import { PhoneInput } from "@/components/shared/PhoneInput"
 import { useSearchParams } from "next/navigation"
 
 export default function ContractorProfilePage() {
@@ -522,12 +523,11 @@ export default function ContractorProfilePage() {
                     </div>
                     <div id="tour-step-phone" className="space-y-2">
                       <Label htmlFor="phone" className="text-slate-700 font-bold">{t("profile_phone")} <span className="text-destructive mx-1">*</span></Label>
-                      <Input 
-                        id="phone" 
+                      <PhoneInput
+                        id="phone"
                         value={profile.phone}
-                        onChange={e => setProfile({...profile, phone: e.target.value})}
-                        className="dir-ltr text-left h-11"
-                        placeholder="+966 5x xxx xxxx"
+                        onChange={(val) => setProfile({...profile, phone: val})}
+                        locale={locale}
                       />
                     </div>
                   </div>

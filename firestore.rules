@@ -733,6 +733,14 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
+    // CRM contacts — scoped to an organization
+    match /crmContacts/{contactId} {
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+    }
+
     // Invoices — scoped to an organization
     match /invoices/{invoiceId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));

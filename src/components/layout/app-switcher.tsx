@@ -10,19 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
-import { CONTRACTOR_COMPONENTS, resolveActiveContractorComponent, type AccentToken } from "@/lib/portal-components"
-
-// Tailwind can't resolve dynamically-built class strings, so every
-// accent-token combination used by a tile must appear as a literal here.
-const ACCENT_CLASSES: Record<AccentToken, { tile: string; ring: string }> = {
-  primary: { tile: "bg-primary/10 text-primary", ring: "ring-primary" },
-  secondary: { tile: "bg-secondary/10 text-secondary", ring: "ring-secondary" },
-  accent: { tile: "bg-accent/10 text-accent", ring: "ring-accent" },
-  success: { tile: "bg-success/10 text-success", ring: "ring-success" },
-  cta: { tile: "bg-cta/10 text-cta", ring: "ring-cta" },
-  warning: { tile: "bg-warning/10 text-warning", ring: "ring-warning" },
-  destructive: { tile: "bg-destructive/10 text-destructive", ring: "ring-destructive" },
-}
+import { CONTRACTOR_COMPONENTS, resolveActiveContractorComponent, COMPONENT_ACCENT_CLASSES } from "@/lib/portal-components"
 
 /** Gmail-style waffle-menu trigger — quick-switch between the contractor
  * portal's standalone components. Contractor-only: renders nothing on the
@@ -54,7 +42,7 @@ export function AppSwitcher() {
         <div className="grid grid-cols-3 gap-2">
           {CONTRACTOR_COMPONENTS.map((component) => {
             const isActive = component.id === activeId
-            const accent = ACCENT_CLASSES[component.accentToken]
+            const accent = COMPONENT_ACCENT_CLASSES[component.accentToken]
             return (
               <Link
                 key={component.id}

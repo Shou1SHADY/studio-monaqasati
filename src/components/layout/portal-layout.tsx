@@ -143,6 +143,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   
   const basePath = pathname.split("/")[1] || "admin"
   const isAdminOverview = pathname === "/admin"
+  // The contractor home dashboard IS the navigation (a full tile grid to every
+  // component) — a persistent sidebar there is redundant, not just visually
+  // but literally: it'd fall back to the "project management" component's
+  // sidebar, which only duplicates two of the seven tiles already on screen.
+  const isContractorDashboardHome = pathname === "/contractor"
 
   // Role-based redirect guard — chat now lives inside role groups, no exception needed
   React.useEffect(() => {
@@ -583,16 +588,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // The contractor apps launcher (bare /contractor) has no sidebar to toggle —
-  // it's a full-bleed grid, not a page inside an app.
-  const isContractorLauncher = pathname === "/contractor"
-
   return (
     <SidebarProvider>
-      <RoleSidebar />
+      {!isContractorDashboardHome && <RoleSidebar />}
       <SidebarInset>
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>
-          {!isContractorLauncher && <SidebarTrigger />}
+          {!isContractorDashboardHome && <SidebarTrigger />}
 
           <div className="hidden md:flex flex-1 max-w-md">
             <TooltipProvider>

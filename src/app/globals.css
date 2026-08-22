@@ -103,6 +103,18 @@
     }
   }
 
+  /* Radix (Dialog/DropdownMenu/Popover/Select) locks body scroll while open and adds
+     its own margin-right/padding-right on body[data-scroll-locked] to compensate for
+     the "removed" scrollbar. Since scrollbar-gutter: stable above already reserves
+     that space permanently, Radix's compensation double-counts it — showing up as a
+     visible right-side margin every time a menu opens. `html body[...]` outranks
+     Radix's own `body[data-scroll-locked]` rule in specificity, so this wins
+     regardless of which stylesheet loads last. */
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
+    padding-right: 0 !important;
+  }
+
   img {
     max-width: 100%;
     height: auto;

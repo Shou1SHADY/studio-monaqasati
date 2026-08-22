@@ -18,6 +18,7 @@ export const PERMISSION_IDS = [
   "employees.manage",
   "invoices.manage",
   "warehouses.manage",
+  "crm.manage",
   "team.manage",
 ] as const
 
