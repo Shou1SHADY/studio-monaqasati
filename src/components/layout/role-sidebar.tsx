@@ -13,22 +13,11 @@ import {
   Bell,
   Handshake,
   UserCircle,
-  Search,
-  ClipboardList,
-  History,
   TrendingUp,
-  MessageSquare,
-  MessagesSquare,
   Settings,
   LogOut,
   ChevronDown,
-  Link2,
   Inbox,
-  ShieldCheck,
-  Briefcase,
-  Receipt,
-  Warehouse,
-  Building,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -48,45 +37,14 @@ import {
 } from "@/components/ui/sidebar"
 import {
   CONTRACTOR_COMMUNICATION_SECTION,
+  SUPPLIER_COMMUNICATION_SECTION,
   resolveActiveContractorComponent,
+  resolveActiveSupplierComponent,
   type NavItem,
   type NavSection,
 } from "@/lib/portal-components"
 
 export type { NavItem, NavSection }
-
-const supplierSections: NavSection[] = [
-  {
-    labelKey: "section_workspace",
-    items: [
-      { titleKey: "supplier_dashboard", href: "/supplier", icon: LayoutDashboard },
-      { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
-      { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
-      { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
-      { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck },
-      { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
-      { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase },
-      { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt },
-      { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse },
-    ],
-  },
-  {
-    labelKey: "section_communication",
-    items: [
-      { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
-      { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
-      { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
-    ],
-  },
-  {
-    labelKey: "section_settings",
-    items: [
-      { titleKey: "supplier_team", href: "/supplier/team", icon: Users },
-      { titleKey: "supplier_companies", href: "/supplier/companies", icon: Building },
-      { titleKey: "supplier_profile", href: "/supplier/profile", icon: UserCircle },
-    ],
-  },
-]
 
 const adminSections: NavSection[] = [
   {
@@ -224,10 +182,11 @@ export function RoleSidebar() {
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
-    sections = supplierSections
-    portalTitleKey = "supplier_portal"
+    const activeComponent = resolveActiveSupplierComponent(pathname)
+    sections = [...activeComponent.sections, SUPPLIER_COMMUNICATION_SECTION]
+    portalTitleKey = activeComponent.labelKey
     roleColor = "text-success"
-    dashboardHref = "/supplier"
+    dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/contractor")) {
     const activeComponent = resolveActiveContractorComponent(pathname)
     sections = [...activeComponent.sections, CONTRACTOR_COMMUNICATION_SECTION]

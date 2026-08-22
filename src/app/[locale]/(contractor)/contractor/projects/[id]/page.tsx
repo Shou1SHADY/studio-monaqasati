@@ -53,7 +53,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table"
 import { ColumnCustomizer } from "@/components/shared/ColumnCustomizer"
 import { useTableColumns, type TableColumnDef } from "@/hooks/useTableColumns"
-import { useDoc, useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { useDoc, useCollection, useCollectionPaginated, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import {
   doc,
   collection,
@@ -105,6 +105,10 @@ import {
   Warehouse,
   AlertTriangle,
   Barcode,
+  Search,
+  RotateCw,
+  File,
+  MessageCircle,
 } from "lucide-react"
 import {
   useReactTable,
@@ -115,7 +119,7 @@ import {
 } from "@tanstack/react-table"
 import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
-import { CATEGORIES_DATA, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
+import { CATEGORIES_DATA, PREDEFINED_CATEGORIES, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -283,6 +287,7 @@ export default function ProjectDetailPage() {
   const [isConsumeDialogOpen, setIsConsumeDialogOpen] = useState(false)
   const [isSuggestMaterialsOpen, setIsSuggestMaterialsOpen] = useState(false)
   const [suggestedTakenQtys, setSuggestedTakenQtys] = useState<Record<string, string>>({})
+  const [suggestedBoqLinks, setSuggestedBoqLinks] = useState<Record<string, string>>({})
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // BOQ state
@@ -342,12 +347,68 @@ export default function ProjectDetailPage() {
 
   const { data: project, isLoading: projectLoading } = useDoc(projectDocRef)
 
+  // Status/category/city narrow the query itself (each is a single extra equality
+  // filter on top of projectId, same combinations the old standalone tenders page
+  // already queried — no new composite indexes needed). Search text and deadline
+  // range stay client-side filters over whatever page is currently loaded.
+  const [tenderStatusFilter, setTenderStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
+  const [tenderCategoryFilter, setTenderCategoryFilter] = useState<string>("all")
+  const [tenderCityFilter, setTenderCityFilter] = useState<string>("all")
+  const [tenderSearchQuery, setTenderSearchQuery] = useState("")
+  const [tenderDeadlineFilter, setTenderDeadlineFilter] = useState<"all" | "week" | "month" | "custom">("all")
+  const [tenderCustomDeadline, setTenderCustomDeadline] = useState("")
+
   const linkedRfqsQuery = useMemoFirebase(() => {
     if (!firestore || !projectId) return null
-    return query(collection(firestore, "rfqs"), where("projectId", "==", projectId))
-  }, [firestore, projectId])
+    let q = query(collection(firestore, "rfqs"), where("projectId", "==", projectId))
+    if (tenderStatusFilter !== "all") q = query(q, where("status", "==", tenderStatusFilter))
+    if (tenderCategoryFilter !== "all") q = query(q, where("category", "==", tenderCategoryFilter))
+    if (tenderCityFilter !== "all") q = query(q, where("city", "==", tenderCityFilter))
+    return q
+  }, [firestore, projectId, tenderStatusFilter, tenderCategoryFilter, tenderCityFilter])
 
-  const { data: linkedRfqs, isLoading: rfqsLoading } = useCollection(linkedRfqsQuery)
+  const { data: linkedRfqs, isLoading: isLinkedRfqsLoading, hasMore: hasMoreTenders, loadMore: loadMoreTenders } = useCollectionPaginated(linkedRfqsQuery)
+  const rfqsLoading = isLinkedRfqsLoading && !linkedRfqs
+
+  const hasActiveTenderFilters = !!(tenderSearchQuery || tenderStatusFilter !== "all" || tenderCategoryFilter !== "all" || tenderCityFilter !== "all" || tenderDeadlineFilter !== "all")
+  const clearTenderFilters = () => {
+    setTenderSearchQuery("")
+    setTenderStatusFilter("all")
+    setTenderCategoryFilter("all")
+    setTenderCityFilter("all")
+    setTenderDeadlineFilter("all")
+    setTenderCustomDeadline("")
+    setSelectedTenderIds([])
+  }
+
+  const filteredLinkedRfqs = ((linkedRfqs as any[]) || []).filter((rfq) => {
+    if (tenderSearchQuery) {
+      const q = tenderSearchQuery.toLowerCase()
+      const matches = rfq.title?.toLowerCase().includes(q) || rfq.category?.toLowerCase().includes(q)
+        || rfq.subCategory?.toLowerCase().includes(q) || rfq.id?.toLowerCase().includes(q)
+      if (!matches) return false
+    }
+    if (tenderDeadlineFilter !== "all" && rfq.deadline) {
+      const deadline = new Date(rfq.deadline)
+      const now = new Date()
+      if (tenderDeadlineFilter === "week") {
+        if (deadline > new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)) return false
+      } else if (tenderDeadlineFilter === "month") {
+        if (deadline > new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)) return false
+      } else if (tenderDeadlineFilter === "custom" && tenderCustomDeadline) {
+        if (deadline > new Date(tenderCustomDeadline)) return false
+      }
+    }
+    return true
+  })
+
+  const isTenderExpired = (rfq: any) => {
+    if (rfq.status !== "New" || !rfq.deadline) return false
+    const deadline = new Date(rfq.deadline)
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+    return deadline < now
+  }
 
   const userDocRef = useMemoFirebase(() => {
     if (!user || !firestore) return null
@@ -368,6 +429,20 @@ export default function ProjectDetailPage() {
   const { data: acceptedTenderOffers } = useCollection(acceptedOffersQuery)
   const acceptedTenderRfqIds = new Set((acceptedTenderOffers || []).map((o: any) => o.rfqId))
 
+  // Connected suppliers get visibility into published tenders regardless of specialization
+  // match — being invited/connected is itself the signal of relevance. Used to restrict
+  // a publish action's audience the same way the old standalone tenders page did.
+  const connectedTenderLinksQuery = useMemoFirebase(() => {
+    if (!user || !firestore || !profile) return null
+    return query(
+      collection(firestore, "contractorSupplierLinks"),
+      where("contractorOrgId", "==", (profile as { organizationId?: string }).organizationId || user.uid),
+      where("status", "==", "active")
+    )
+  }, [firestore, user, profile])
+  const { data: connectedTenderLinks } = useCollection(connectedTenderLinksQuery)
+  const connectedSupplierOrgIds: string[] = (connectedTenderLinks || []).map((l: any) => l.supplierOrgId)
+
   // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
   const [unlinkTarget, setUnlinkTarget] = useState<BоqItem | null>(null)
   const [isUnlinking, setIsUnlinking] = useState(false)
@@ -380,6 +455,9 @@ export default function ProjectDetailPage() {
   const [isBulkDeletingTenders, setIsBulkDeletingTenders] = useState(false)
   const [showBulkTenderDeleteDialog, setShowBulkTenderDeleteDialog] = useState(false)
   const [tenderViewMode, setTenderViewMode] = useState<"grid" | "list">("grid")
+  const [republishTarget, setRepublishTarget] = useState<{ id: string; title?: string } | null>(null)
+  const [republishDeadline, setRepublishDeadline] = useState("")
+  const [isRepublishingTender, setIsRepublishingTender] = useState(false)
 
   const rfqColumns: TableColumnDef[] = [
     { id: "title", label: t("proj_rfqs"), locked: true },
@@ -426,6 +504,7 @@ export default function ProjectDetailPage() {
       await updateDoc(doc(firestore, "rfqs", rfqId), {
         status: "New",
         visibility: "public",
+        allowedSupplierOrgIds: connectedSupplierOrgIds,
         publishedAt: new Date().toISOString(),
       })
       toast({ title: t("rfq_batch_publish_title") })
@@ -434,6 +513,28 @@ export default function ProjectDetailPage() {
       toast({ title: t("rfq_batch_publish_error"), variant: "destructive" })
     } finally {
       setPublishingTenderId(null)
+    }
+  }
+
+  const handleRepublishTender = async () => {
+    if (!firestore || !republishTarget || !republishDeadline) return
+    setIsRepublishingTender(true)
+    try {
+      await updateDoc(doc(firestore, "rfqs", republishTarget.id), {
+        deadline: republishDeadline,
+        status: "New",
+        visibility: "public",
+        allowedSupplierOrgIds: connectedSupplierOrgIds,
+        publishedAt: new Date().toISOString(),
+      })
+      toast({ title: t("rfq_republish_success") })
+      setRepublishTarget(null)
+      setRepublishDeadline("")
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("rfq_republish_failed"), variant: "destructive" })
+    } finally {
+      setIsRepublishingTender(false)
     }
   }
 
@@ -468,7 +569,7 @@ export default function ProjectDetailPage() {
   }
 
   const toggleSelectAllTenders = () => {
-    const allIds = ((linkedRfqs as { id: string }[] | null) || []).map((r) => r.id)
+    const allIds = filteredLinkedRfqs.map((r) => r.id)
     setSelectedTenderIds((prev) => (prev.length === allIds.length ? [] : allIds))
   }
 
@@ -498,6 +599,7 @@ export default function ProjectDetailPage() {
         await updateDoc(doc(firestore, "rfqs", r.id), {
           status: "New",
           visibility: "public",
+          allowedSupplierOrgIds: connectedSupplierOrgIds,
           publishedAt: new Date().toISOString(),
         })
         published++
@@ -2225,8 +2327,8 @@ export default function ProjectDetailPage() {
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <FileText size={20} className="text-primary" />
                   {t("proj_rfqs")}
-                  {linkedRfqs && linkedRfqs.length > 0 && (
-                    <Badge variant="secondary" className="ms-2">{linkedRfqs.length}</Badge>
+                  {filteredLinkedRfqs.length > 0 && (
+                    <Badge variant="secondary" className="ms-2">{filteredLinkedRfqs.length}</Badge>
                   )}
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2267,11 +2369,86 @@ export default function ProjectDetailPage() {
                   </Button>
                 </div>
               </div>
-              {linkedRfqs && linkedRfqs.length > 0 && (
+
+              {/* Status filter tabs */}
+              <div className="flex items-center gap-2 flex-wrap pt-3">
+                {[
+                  { value: "all" as const, label: t("rfq_all") },
+                  { value: "Draft" as const, label: t("rfq_status_draft") },
+                  { value: "New" as const, label: t("rfq_status_active") },
+                  { value: "Awarded" as const, label: t("rfq_status_completed") },
+                ].map((opt) => (
+                  <Button
+                    key={opt.value}
+                    variant={tenderStatusFilter === opt.value ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 text-xs rounded-lg"
+                    onClick={() => { setTenderStatusFilter(opt.value); setSelectedTenderIds([]) }}
+                  >
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+
+              {/* Search + filters */}
+              <div className="flex flex-wrap items-center gap-2 pt-3">
+                <div className="relative">
+                  <Search className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", isRtl ? "right-3" : "left-3")} size={15} />
+                  <Input
+                    placeholder={t("rfq_search_placeholder")}
+                    value={tenderSearchQuery}
+                    onChange={(e) => setTenderSearchQuery(e.target.value)}
+                    className={cn("h-9 w-full sm:w-56 text-sm rounded-lg", isRtl ? "pr-9" : "pl-9")}
+                  />
+                </div>
+                <Select value={tenderCategoryFilter} onValueChange={(v) => { setTenderCategoryFilter(v); setSelectedTenderIds([]) }}>
+                  <SelectTrigger className="w-[170px] h-9 text-xs rounded-lg"><SelectValue placeholder={t("rfq_category_filter")} /></SelectTrigger>
+                  <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectItem value="all">{t("rfq_all_categories")}</SelectItem>
+                    {PREDEFINED_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat} value={cat}>{displayCategory(cat, locale)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={tenderCityFilter} onValueChange={(v) => { setTenderCityFilter(v); setSelectedTenderIds([]) }}>
+                  <SelectTrigger className="w-[170px] h-9 text-xs rounded-lg"><SelectValue placeholder={t("rfq_city_filter")} /></SelectTrigger>
+                  <SelectContent className="max-h-72 overflow-y-auto">
+                    <SelectItem value="all">{t("rfq_all_cities")}</SelectItem>
+                    {SAUDI_CITIES.map((city) => (
+                      <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={tenderDeadlineFilter} onValueChange={(v) => setTenderDeadlineFilter(v as typeof tenderDeadlineFilter)}>
+                  <SelectTrigger className="w-[170px] h-9 text-xs rounded-lg"><SelectValue placeholder={t("rfq_deadline_filter")} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("rfq_all_deadlines")}</SelectItem>
+                    <SelectItem value="week">{t("rfq_within_week")}</SelectItem>
+                    <SelectItem value="month">{t("rfq_within_month")}</SelectItem>
+                    <SelectItem value="custom">{t("rfq_custom_date")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {tenderDeadlineFilter === "custom" && (
+                  <input
+                    type="date"
+                    value={tenderCustomDeadline}
+                    onChange={(e) => setTenderCustomDeadline(e.target.value)}
+                    className="h-9 px-3 rounded-lg border border-input bg-white text-xs w-[135px]"
+                  />
+                )}
+                {hasActiveTenderFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearTenderFilters} className="h-9 text-xs text-muted-foreground hover:text-destructive gap-1">
+                    <X size={12} />
+                    {t("rfq_clear_filters")}
+                  </Button>
+                )}
+              </div>
+
+              {filteredLinkedRfqs.length > 0 && (
                 <div className="flex items-center gap-3 flex-wrap pt-3">
                   <div className="flex items-center gap-1.5 cursor-pointer" onClick={toggleSelectAllTenders}>
                     <Checkbox
-                      checked={selectedTenderIds.length > 0 && selectedTenderIds.length === linkedRfqs.length ? true : selectedTenderIds.length > 0 ? "indeterminate" : false}
+                      checked={selectedTenderIds.length > 0 && selectedTenderIds.length === filteredLinkedRfqs.length ? true : selectedTenderIds.length > 0 ? "indeterminate" : false}
                       onCheckedChange={toggleSelectAllTenders}
                       onClick={(e) => e.stopPropagation()}
                     />
@@ -2317,10 +2494,10 @@ export default function ProjectDetailPage() {
                 <div className="flex items-center justify-center p-10">
                   <Loader2 className="animate-spin text-muted-foreground" size={24} />
                 </div>
-              ) : !linkedRfqs || linkedRfqs.length === 0 ? (
+              ) : filteredLinkedRfqs.length === 0 ? (
                 <div className="text-center p-10 bg-slate-50 rounded-lg border border-dashed text-muted-foreground">
                   <FileText size={36} className="mx-auto mb-3 opacity-20" />
-                  <p className="text-sm">{t("proj_rfqs_empty")}</p>
+                  <p className="text-sm">{hasActiveTenderFilters ? t("rfq_no_matching") : t("proj_rfqs_empty")}</p>
                 </div>
               ) : tenderViewMode === "list" ? (
                 <div className="overflow-x-auto">
@@ -2336,8 +2513,8 @@ export default function ProjectDetailPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {(linkedRfqs as unknown[]).map((rfq) => {
-                        const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string }
+                      {filteredLinkedRfqs.map((rfq) => {
+                        const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string; pdfUrl?: string }
                         const editable = canEditOrDeleteTender(r)
                         return (
                           <TableRow key={r.id}>
@@ -2360,6 +2537,41 @@ export default function ProjectDetailPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
                                 </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers?tab=inquiries`}>
+                                      <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                        <MessageCircle size={14} />
+                                      </button>
+                                    </Link>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{t("rfq_inquiries")}</TooltipContent>
+                                </Tooltip>
+                                {r.pdfUrl && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <a href={r.pdfUrl} target="_blank" rel="noopener noreferrer" download
+                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                                        <File size={14} />
+                                      </a>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("rfq_download_pdf")}</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {can("rfq.manage") && editable && isTenderExpired(r) && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        onClick={() => { setRepublishTarget({ id: r.id, title: r.title }); setRepublishDeadline("") }}
+                                        className="h-7 w-7 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 transition-colors"
+                                      >
+                                        <RotateCw size={14} />
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{t("rfq_republish")}</TooltipContent>
+                                  </Tooltip>
+                                )}
                                 {editable && r.status === "Draft" && can("projects.publish") && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -2411,8 +2623,8 @@ export default function ProjectDetailPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {(linkedRfqs as unknown[]).map((rfq) => {
-                    const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string }
+                  {filteredLinkedRfqs.map((rfq) => {
+                    const r = rfq as { id: string; title?: string; category?: string; status?: string; offersCount?: number; deadline?: string; pdfUrl?: string }
                     const editable = canEditOrDeleteTender(r)
                     return (
                       <Card key={r.id} className="border-primary/15 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 group">
@@ -2431,17 +2643,39 @@ export default function ProjectDetailPage() {
                             </div>
                             {getTenderStatusBadge(r)}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-slate-600">
-                            <FileText size={13} className="text-emerald-500" />
-                            <span className="font-semibold">{r.offersCount || 0} {t("proj_offers_count_label")}</span>
+                          <div className="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
+                            <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-md">
+                              <FileText size={13} className="text-emerald-500" />
+                              <span className="font-semibold">{r.offersCount || 0} {t("proj_offers_count_label")}</span>
+                            </div>
+                            {r.pdfUrl && (
+                              <a
+                                href={r.pdfUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download
+                                className="flex items-center gap-1.5 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-md hover:bg-blue-100 transition-colors"
+                              >
+                                <File size={12} />
+                                {t("rfq_download_pdf")}
+                              </a>
+                            )}
                           </div>
                           <div className="space-y-2 pt-3 mt-1 border-t border-slate-100">
-                            <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`} className="block">
-                              <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
-                                <Eye size={13} />
-                                {t("rfq_view_offers")}
-                              </Button>
-                            </Link>
+                            <div className="flex gap-2">
+                              <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers`} className="flex-1">
+                                <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
+                                  <Eye size={13} />
+                                  {t("rfq_view_offers")}
+                                </Button>
+                              </Link>
+                              <Link href={`/contractor/projects/${projectId}/tenders/${r.id}/offers?tab=inquiries`} className="flex-1">
+                                <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs h-8">
+                                  <MessageCircle size={13} />
+                                  {t("rfq_inquiries")}
+                                </Button>
+                              </Link>
+                            </div>
                             {editable && r.status === "Draft" && (
                               <Button
                                 size="sm"
@@ -2451,6 +2685,17 @@ export default function ProjectDetailPage() {
                               >
                                 {publishingTenderId === r.id ? <Loader2 className="animate-spin" size={13} /> : <Send size={13} />}
                                 {t("newrfq_publish_now")}
+                              </Button>
+                            )}
+                            {can("rfq.manage") && editable && isTenderExpired(r) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-full gap-1.5 text-xs h-8 text-amber-600 border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-400"
+                                onClick={() => { setRepublishTarget({ id: r.id, title: r.title }); setRepublishDeadline("") }}
+                              >
+                                <RotateCw size={13} />
+                                {t("rfq_republish")}
                               </Button>
                             )}
                             {editable && (
@@ -2477,6 +2722,13 @@ export default function ProjectDetailPage() {
                       </Card>
                     )
                   })}
+                </div>
+              )}
+              {hasMoreTenders && filteredLinkedRfqs.length > 0 && (
+                <div className="p-4 text-center">
+                  <Button onClick={loadMoreTenders} variant="outline" className="font-bold">
+                    {t("rfq_load_more")}
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -2690,6 +2942,37 @@ export default function ProjectDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Republish tender dialog */}
+      <Dialog open={!!republishTarget} onOpenChange={(open) => { if (!open) { setRepublishTarget(null); setRepublishDeadline("") } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("rfq_republish_title")}</DialogTitle>
+            <DialogDescription>
+              {t("rfq_republish_desc", { title: republishTarget?.title || "" })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("rfq_republish_deadline_label")}</Label>
+              <input
+                type="date"
+                value={republishDeadline}
+                onChange={(e) => setRepublishDeadline(e.target.value)}
+                className="h-10 w-full px-3 rounded-xl border border-input bg-white text-sm"
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRepublishTarget(null); setRepublishDeadline("") }} disabled={isRepublishingTender}>{t("cancel")}</Button>
+            <Button onClick={handleRepublishTender} disabled={!republishDeadline || isRepublishingTender}>
+              {isRepublishingTender ? <Loader2 className="animate-spin" size={14} /> : <RotateCw size={14} />}
+              {t("rfq_republish_confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Tender delete dialog */}
       <AlertDialog open={!!tenderDeleteTarget} onOpenChange={(open) => !open && setTenderDeleteTarget(null)}>
         <AlertDialogContent>
@@ -2745,8 +3028,9 @@ export default function ProjectDetailPage() {
           inventoryItems={linkedInventoryItems}
           t={t}
           locale={locale}
-          onApply={(qtys) => {
+          onApply={(qtys, links) => {
             setSuggestedTakenQtys(qtys)
+            setSuggestedBoqLinks(links)
             setIsConsumeDialogOpen(true)
           }}
         />
@@ -2759,8 +3043,10 @@ export default function ProjectDetailPage() {
           onOpenChange={setIsConsumeDialogOpen}
           warehouseId={typedProject.warehouseId}
           inventoryItems={linkedInventoryItems}
+          boqItems={boqItems}
           wasteTargetPercent={typedProject.wasteTargetPercent ?? 12}
           initialTakenQtys={suggestedTakenQtys}
+          initialBoqLinks={suggestedBoqLinks}
           locale={locale}
           t={t}
           onConsume={async (rows, exceptionReason) => {
@@ -2800,7 +3086,7 @@ export default function ProjectDetailPage() {
                 }
               }
               await addDoc(collection(firestore, "projects", projectId, "wasteRecords"), {
-                boqItemId: null,
+                boqItemId: r.boqItemId ?? null,
                 itemName: r.itemName,
                 unit: r.unit,
                 quantityTaken: r.quantityTaken,
@@ -2855,6 +3141,7 @@ type ConsumeRow = {
   unitIds?: string[]
   unitBarcodes?: string[]
   wastedUnitBarcodes?: string[]
+  boqItemId?: string | null
 }
 
 function UnitPickerDialog({
@@ -2951,7 +3238,9 @@ function SuggestMaterialsDialog({
   inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   locale: string
-  onApply: (takenQtys: Record<string, string>) => void
+  /** boqLinks maps each affected warehouse item to the BOQ line that suggested it —
+   * best-effort (last suggestion wins if two BOQ lines point at the same item). */
+  onApply: (takenQtys: Record<string, string>, boqLinks: Record<string, string>) => void
 }) {
   const isRtl = locale === "ar"
   const { toast } = useToast()
@@ -3020,6 +3309,7 @@ function SuggestMaterialsDialog({
 
   const handleApply = () => {
     const takenQtys: Record<string, string> = {}
+    const boqLinks: Record<string, string> = {}
     Object.entries(results).forEach(([boqId, result]) => {
       result.suggestions.forEach((s, i) => {
         if (!includedLines[`${boqId}_${i}`]) return
@@ -3027,13 +3317,14 @@ function SuggestMaterialsDialog({
         if (!itemId) return
         const prevVal = Number(takenQtys[itemId]) || 0
         takenQtys[itemId] = String(prevVal + (s.estimatedQuantity || 0))
+        boqLinks[itemId] = boqId
       })
     })
     if (Object.keys(takenQtys).length === 0) {
       toast({ title: t("proj_suggest_materials_none_selected"), variant: "destructive" })
       return
     }
-    onApply(takenQtys)
+    onApply(takenQtys, boqLinks)
     onOpenChange(false)
   }
 
@@ -3139,8 +3430,10 @@ function ConsumeFromWarehouseDialog({
   onOpenChange,
   warehouseId,
   inventoryItems,
+  boqItems,
   wasteTargetPercent,
   initialTakenQtys,
+  initialBoqLinks,
   locale,
   t,
   onConsume,
@@ -3149,9 +3442,13 @@ function ConsumeFromWarehouseDialog({
   onOpenChange: (v: boolean) => void
   warehouseId: string
   inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  /** BOQ lines this project's warehouse pull can be attributed to, for the per-row link picker. */
+  boqItems: { id: string; descriptionAr: string; descriptionEn: string }[]
   wasteTargetPercent: number
   /** Pre-fills "taken" quantities when the dialog opens — e.g. from AI material suggestions. */
   initialTakenQtys?: Record<string, string>
+  /** Pre-fills the BOQ-item link per warehouse item — from AI material suggestions. */
+  initialBoqLinks?: Record<string, string>
   locale: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   onConsume: (rows: ConsumeRow[], exceptionReason?: string) => Promise<void>
@@ -3163,6 +3460,7 @@ function ConsumeFromWarehouseDialog({
   const [usedQtys, setUsedQtys] = useState<Record<string, string>>({})
   const [usedTouched, setUsedTouched] = useState<Set<string>>(new Set())
   const [unitSelections, setUnitSelections] = useState<Record<string, UnitSelection[]>>({})
+  const [boqLinks, setBoqLinks] = useState<Record<string, string>>({})
   const [pickerItemId, setPickerItemId] = useState<string | null>(null)
   const [aiSuggestingId, setAiSuggestingId] = useState<string | null>(null)
   const [exceptionReason, setExceptionReason] = useState("")
@@ -3175,6 +3473,7 @@ function ConsumeFromWarehouseDialog({
     setUsedQtys({})
     setUsedTouched(new Set())
     setUnitSelections({})
+    setBoqLinks({})
     setPickerItemId(null)
     setExceptionReason("")
   }
@@ -3187,8 +3486,22 @@ function ConsumeFromWarehouseDialog({
       setTakenQtys(initialTakenQtys)
       setUsedQtys(initialTakenQtys)
     }
+    if (open && initialBoqLinks && Object.keys(initialBoqLinks).length > 0) {
+      setBoqLinks(initialBoqLinks)
+    }
     // Only re-seed when the dialog transitions open, or the suggested values change.
-  }, [open, initialTakenQtys])
+  }, [open, initialTakenQtys, initialBoqLinks])
+
+  const setBoqLink = (itemId: string, boqItemId: string) => {
+    setBoqLinks((prev) => {
+      if (!boqItemId) {
+        const next = { ...prev }
+        delete next[itemId]
+        return next
+      }
+      return { ...prev, [itemId]: boqItemId }
+    })
+  }
 
   const handleTakenChange = (itemId: string, value: string) => {
     setTakenQtys((prev) => ({ ...prev, [itemId]: value }))
@@ -3247,12 +3560,20 @@ function ConsumeFromWarehouseDialog({
           unitIds: sel.map((u) => u.unitId),
           unitBarcodes: sel.map((u) => u.barcode),
           wastedUnitBarcodes: wasted.map((u) => u.barcode),
+          boqItemId: boqLinks[item.id] || null,
         }
       }
       const taken = Number(takenQtys[item.id]) || 0
       const usedRaw = usedQtys[item.id]
       const used = usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken
-      return { inventoryItemId: item.id, itemName: item.name, quantityTaken: taken, quantityUsed: used, unit: item.unit }
+      return {
+        inventoryItemId: item.id,
+        itemName: item.name,
+        quantityTaken: taken,
+        quantityUsed: used,
+        unit: item.unit,
+        boqItemId: boqLinks[item.id] || null,
+      }
     })
   const totalTaken = rows.reduce((s, r) => s + r.quantityTaken, 0)
   const totalUsed = rows.reduce((s, r) => s + r.quantityUsed, 0)
@@ -3308,6 +3629,9 @@ function ConsumeFromWarehouseDialog({
                 </th>
                 <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-20", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_percent_col")}
+                </th>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-40", isRtl ? "text-right" : "text-left")}>
+                  {t("proj_waste_boq_item_col")}
                 </th>
               </tr>
             </thead>
@@ -3391,6 +3715,23 @@ function ConsumeFromWarehouseDialog({
                     )}
                     <td className={cn("px-3 py-2 tabular-nums font-semibold text-xs", rowWaste > wasteTargetPercent ? "text-amber-600" : "text-muted-foreground")}>
                       {taken > 0 ? `${rowWaste.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="px-2 py-1">
+                      <SearchableSelect
+                        value={boqLinks[item.id] || "__none__"}
+                        onChange={(v) => setBoqLink(item.id, v === "__none__" ? "" : v)}
+                        options={[
+                          { value: "__none__", label: t("proj_waste_boq_item_none") },
+                          ...boqItems
+                            .filter((b) => b.descriptionAr || b.descriptionEn)
+                            .map((b) => ({ value: b.id, label: b.descriptionAr || b.descriptionEn })),
+                        ]}
+                        placeholder={t("proj_waste_boq_item_placeholder")}
+                        searchPlaceholder={t("proj_waste_boq_item_placeholder")}
+                        noResultsText={t("proj_boq_empty")}
+                        disabled={taken <= 0}
+                        size="sm"
+                      />
                     </td>
                   </tr>
                 )

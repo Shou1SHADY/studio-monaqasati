@@ -1,13 +1,18 @@
-// Contractor portal "app switcher" — Gmail-style: the portal is split into
-// standalone components (Project Management, Procurement, Warehouses,
-// Payments/Billing, HR, CRM, Users), each with its own side navigation.
+// Gmail-style "app switcher" — the contractor and supplier portals are each
+// split into standalone components, mirrored 1:1 by business function so
+// the same icon/color language means the same thing in both portals
+// (Warehouses/Payments/HR/CRM/Users are identical concepts either way; only
+// the "core work" and "RFQ-facing" components differ by role — Project
+// Management/Procurement for a contractor buying materials, Order
+// Management/Sales for a supplier fulfilling orders and responding to RFQs).
 // No routes move — every page keeps its existing URL. Which component
 // "owns" a page is purely a navigation/IA concept: this registry maps each
 // component to the nav items it renders, and `resolveActiveContractorComponent`
-// derives which component is active from the current pathname (mirroring the
-// pathname-prefix role-detection already used in role-sidebar.tsx).
+// / `resolveActiveSupplierComponent` derive which component is active from
+// the current pathname (mirroring the pathname-prefix role-detection
+// already used in role-sidebar.tsx).
 //
-// Supplier and admin portals are untouched — this registry is contractor-only.
+// The admin portal is untouched — this registry only covers contractor/supplier.
 
 import type { ElementType } from "react"
 import {
@@ -31,6 +36,9 @@ import {
   MessagesSquare,
   Bell,
   ClipboardList,
+  Search,
+  History,
+  Link2,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 
@@ -231,6 +239,142 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
   },
 ]
 
+// Always reachable regardless of the active component — appended to the
+// bottom of every supplier component's sidebar.
+export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
+  labelKey: "section_communication",
+  items: [
+    { titleKey: "supplier_chats", href: "/supplier/chats", icon: MessageSquare },
+    { titleKey: "supplier_team_chat", href: "/supplier/team-chat", icon: MessagesSquare },
+    { titleKey: "supplier_notifications", href: "/supplier/notifications", icon: Bell },
+  ],
+}
+
+// Same 7-slot shape as CONTRACTOR_COMPONENTS, same icon/accent per slot —
+// Warehouses/Payments/HR/CRM/Users are identical concepts to the contractor
+// side. "Order Management" mirrors Project Management (the supplier's core
+// work: orders instead of projects); "Sales" mirrors Procurement (their
+// RFQ-facing pipeline: browsing RFQs and tracking submitted offers, instead
+// of sourcing materials). CRM's home is the existing Connections page —
+// managing contractor relationships already IS a CRM, no stub needed here.
+export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
+  {
+    id: "procurement",
+    labelKey: "supplier_component_sales",
+    descKey: "supplier_component_sales_desc",
+    homeHref: "/supplier/rfqs",
+    icon: Handshake,
+    accentToken: "cta",
+    sections: [
+      {
+        labelKey: "supplier_component_sales",
+        items: [
+          { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
+          { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
+        ],
+      },
+    ],
+  },
+  {
+    id: "warehouses",
+    labelKey: "component_warehouses",
+    descKey: "component_warehouses_desc",
+    homeHref: "/supplier/warehouses",
+    icon: Warehouse,
+    accentToken: "accent",
+    sections: [
+      {
+        labelKey: "component_warehouses",
+        items: [
+          { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse },
+        ],
+      },
+    ],
+  },
+  {
+    id: "payments",
+    labelKey: "component_payments",
+    descKey: "component_payments_desc",
+    homeHref: "/supplier/invoices",
+    icon: Wallet,
+    accentToken: "success",
+    sections: [
+      {
+        labelKey: "component_payments",
+        items: [
+          { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt },
+          { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hr",
+    labelKey: "component_hr",
+    descKey: "component_hr_desc",
+    homeHref: "/supplier/employees",
+    icon: Briefcase,
+    accentToken: "warning",
+    sections: [
+      {
+        labelKey: "component_hr",
+        items: [
+          { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase },
+        ],
+      },
+    ],
+  },
+  {
+    id: "crm",
+    labelKey: "component_crm",
+    descKey: "supplier_component_crm_desc",
+    homeHref: "/supplier/connections",
+    icon: Contact,
+    accentToken: "destructive",
+    sections: [
+      {
+        labelKey: "component_crm",
+        items: [
+          { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "users",
+    labelKey: "component_users",
+    descKey: "component_users_desc",
+    homeHref: "/supplier/team",
+    icon: UserCog,
+    accentToken: "secondary",
+    sections: [
+      {
+        labelKey: "component_users",
+        items: [
+          { titleKey: "supplier_team", href: "/supplier/team", icon: Users },
+        ],
+      },
+    ],
+  },
+  {
+    id: "project-management",
+    labelKey: "supplier_component_order_management",
+    descKey: "supplier_component_order_management_desc",
+    homeHref: "/supplier",
+    icon: LayoutDashboard,
+    accentToken: "primary",
+    sections: [
+      {
+        labelKey: "supplier_component_order_management",
+        items: [
+          { titleKey: "supplier_dashboard", href: "/supplier", icon: LayoutDashboard },
+          { titleKey: "supplier_orders", href: "/supplier/orders", icon: ClipboardList },
+        ],
+      },
+    ],
+  },
+]
+
 /** Exact match or a "/"-bounded prefix — never a bare `startsWith`, so
  * `/contractor/team` doesn't false-match `/contractor/team-chat`. */
 function matchesPrefix(pathname: string, prefix: string): boolean {
@@ -243,16 +387,24 @@ function componentOwnsPath(component: PortalComponentDef, pathname: string): boo
   )
 }
 
-const PROJECT_MANAGEMENT = CONTRACTOR_COMPONENTS.find((c) => c.id === "project-management")!
-
 /** Resolves which component's sidebar should render for the current
- * contractor-portal pathname. Every non-PM component owns a disjoint
- * `/contractor/xxx` prefix, so they're checked first; Project Management
- * (whose home is the bare `/contractor` root) is the catch-all default. */
-export function resolveActiveContractorComponent(pathname: string): PortalComponentDef {
-  for (const component of CONTRACTOR_COMPONENTS) {
+ * pathname within one portal's component set. Every non-"project-management"
+ * component owns a disjoint route prefix, so they're checked first;
+ * "project-management" (whose home is the bare portal root) is the
+ * catch-all default every other prefix also sits under. */
+function resolveActiveComponent(components: PortalComponentDef[], pathname: string): PortalComponentDef {
+  const fallback = components.find((c) => c.id === "project-management")!
+  for (const component of components) {
     if (component.id === "project-management") continue
     if (componentOwnsPath(component, pathname)) return component
   }
-  return PROJECT_MANAGEMENT
+  return fallback
+}
+
+export function resolveActiveContractorComponent(pathname: string): PortalComponentDef {
+  return resolveActiveComponent(CONTRACTOR_COMPONENTS, pathname)
+}
+
+export function resolveActiveSupplierComponent(pathname: string): PortalComponentDef {
+  return resolveActiveComponent(SUPPLIER_COMPONENTS, pathname)
 }

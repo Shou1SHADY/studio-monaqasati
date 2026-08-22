@@ -32,7 +32,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List } from "lucide-react"
+import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
+import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
@@ -54,6 +55,7 @@ export default function ContractorRfqsPage() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [republishTarget, setRepublishTarget] = useState<any>(null)
+  const [shareTarget, setShareTarget] = useState<any>(null)
   const [republishDeadline, setRepublishDeadline] = useState("")
   const [isRepublishing, setIsRepublishing] = useState(false)
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null)
@@ -754,6 +756,22 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             {t("rfq_inquiries")}
                           </Button>
                         </Link>
+                        {rfq.status === "New" && !isExpired(rfq) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShareTarget(rfq)}
+                                aria-label={t("rfq_share_title")}
+                                className="h-9 w-9 p-0 rounded-lg border-slate-200 text-accent hover:bg-accent hover:text-white hover:border-accent transition-all shrink-0"
+                              >
+                                <Share2 size={14} />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{t("rfq_share_title")}</TooltipContent>
+                          </Tooltip>
+                        )}
                       </div>
                       {canManageRfqs && (canEdit(rfq) || canDelete(rfq)) && (
                         <div className="flex flex-col gap-2 mt-2">
@@ -852,6 +870,21 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               </TooltipTrigger>
                               <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
                             </Tooltip>
+                            {rfq.status === "New" && !isExpired(rfq) && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShareTarget(rfq)}
+                                    aria-label={t("rfq_share_title")}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+                                  >
+                                    <Share2 size={14} />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>{t("rfq_share_title")}</TooltipContent>
+                              </Tooltip>
+                            )}
                             {canManageRfqs && canEdit(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -931,6 +964,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         </CardContent>
         </Card>
       </div>
+
+      <ShareRfqLinkDialog
+        rfq={shareTarget}
+        isOpen={!!shareTarget}
+        onClose={() => setShareTarget(null)}
+      />
 
       <Dialog open={!!republishTarget} onOpenChange={(open) => { if (!open) { setRepublishTarget(null); setRepublishDeadline("") } }}>
         <DialogContent className="sm:max-w-md">

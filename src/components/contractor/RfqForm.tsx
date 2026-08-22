@@ -461,7 +461,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
     setIsSubmitting(true)
 
-    const redirectTarget = projectId ? `/contractor/projects/${projectId}/tenders` : "/contractor/rfqs"
+    const redirectTarget = projectId ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"
 
     if (isEditing && editId) {
       // Edit mode: update the single existing RFQ. projectId is intentionally NOT included here —

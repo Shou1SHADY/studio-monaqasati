@@ -53,6 +53,7 @@ import {
   Handshake,
   ShieldCheck,
   AlertTriangle,
+  Link2,
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -60,6 +61,7 @@ import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addD
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
+import { receiveDelivery } from "@/lib/warehouse-transfer"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { formatCurrency } from "@/utils/invoice-utils"
 
@@ -104,6 +106,12 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
   const openChat = async (offer: any) => {
     if (!firestore || !user) return
+    // Guest offers (submitted via a share link) have no platform account to
+    // chat with — reach the supplier on the contact email they provided.
+    if (offer.isGuestOffer) {
+      if (offer.guestContact?.email) window.open(`mailto:${offer.guestContact.email}`, "_blank")
+      return
+    }
     setOpeningChat(offer.id)
     try {
       // Create chat doc if it doesn't exist (fallback for offers accepted before this fix)
@@ -214,6 +222,47 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         confirmedByUserId: user.uid
       })
 
+      // Goods receipt: confirming delivery is the moment stock actually enters a
+      // warehouse — the project's warehouse if this delivery is tied to one project,
+      // otherwise the org's central warehouse (created here if it doesn't exist yet,
+      // same deterministic id as useCentralWarehouse). Kept isolated from the delivery
+      // confirmation above, which already committed and must not be rolled back by this.
+      try {
+        const orgId = confirmDeliveryDoc.contractorOrgId as string | undefined
+        const deliveryItems = ((confirmDeliveryDoc.items || []) as { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[])
+          .map((it) => ({ name: it.name || "", unit: it.unitOfMeasure || it.unit || "", quantity: Number(it.quantity) || 0 }))
+          .filter((it) => it.name && it.unit && it.quantity > 0)
+
+        if (orgId && deliveryItems.length > 0) {
+          let targetWarehouseId: string | null = null
+          if (confirmDeliveryDoc.projectId) {
+            const projectSnap = await getDoc(doc(firestore, "projects", confirmDeliveryDoc.projectId))
+            targetWarehouseId = (projectSnap.data() as { warehouseId?: string } | undefined)?.warehouseId || null
+          }
+          if (!targetWarehouseId) {
+            const centralRef = doc(firestore, "warehouses", `central_${orgId}`)
+            const centralSnap = await getDoc(centralRef)
+            if (!centralSnap.exists()) {
+              await setDoc(centralRef, {
+                name: t("wh_central_name"),
+                location: t("wh_central_location"),
+                description: t("wh_central_desc"),
+                organizationId: orgId,
+                isCentral: true,
+                projectId: null,
+                projectName: null,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              })
+            }
+            targetWarehouseId = `central_${orgId}`
+          }
+          await receiveDelivery({ firestore, warehouseId: targetWarehouseId, items: deliveryItems, organizationId: orgId })
+        }
+      } catch (receiptErr) {
+        console.error("Goods receipt into warehouse failed:", receiptErr)
+      }
+
       if (confirmDeliveryDoc.supplierId) {
         await addDoc(collection(firestore, "users", confirmDeliveryDoc.supplierId, "notifications"), {
           userId: confirmDeliveryDoc.supplierId,
@@ -277,8 +326,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       return
     }
 
-    // Step 2: Auto-create chat when accepting
-    if (decision === "مقبول" && offer) {
+    // Step 2: Auto-create chat when accepting (guest offers have no account to chat with)
+    if (decision === "مقبول" && offer && !offer.isGuestOffer) {
       try {
         const chatRef = doc(firestore, "chats", offerId)
         const snap = await getDoc(chatRef)
@@ -302,8 +351,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       }
     }
 
-    // Step 3: Write notification to supplier's subcollection
-    if (offer?.supplierId) {
+    // Step 3: Write notification to supplier's subcollection (skip guests — no user doc)
+    if (offer?.supplierId && !offer.isGuestOffer) {
       try {
         let notifType = "offer_rejected"
         let notifTitle = t("offers_notif_rejected_title")
@@ -655,7 +704,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 {((offer.companyName || offer.supplierName) || "؟").trim().charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                {offer.supplierId && !isMdmak ? (
+                                {offer.supplierId && !isMdmak && !offer.isGuestOffer ? (
                                   <Link
                                     href={`/contractor/supplier/profile/${offer.organizationId || offer.supplierId}`}
                                     className="font-bold text-sm text-slate-800 hover:text-primary transition-colors inline-flex items-center gap-1 group"
@@ -668,12 +717,33 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                     {offer.companyName || offer.supplierName || t("offers_registered_supplier")}
                                   </p>
                                 )}
+                                {offer.isGuestOffer && (
+                                  <span className="inline-flex items-center gap-1 bg-accent/10 text-accent text-[10px] font-black px-2 py-0.5 rounded-full border border-accent/20 mt-1">
+                                    <Link2 size={9} />
+                                    {t("offers_guest_badge")}
+                                  </span>
+                                )}
                                 {offer.submittedByUserName && (
                                   <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                                     {t("offers_submitted_by", { name: offer.submittedByUserName })}
                                   </p>
                                 )}
-                                <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
+                                {offer.isGuestOffer && offer.guestContact ? (
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                                    {offer.guestContact.email && (
+                                      <a href={`mailto:${offer.guestContact.email}`} className="text-xs text-blue-600 hover:underline" dir="ltr">
+                                        {offer.guestContact.email}
+                                      </a>
+                                    )}
+                                    {offer.guestContact.phone && (
+                                      <a href={`tel:${offer.guestContact.phone}`} className="text-xs text-blue-600 hover:underline" dir="ltr">
+                                        {offer.guestContact.phone}
+                                      </a>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
+                                )}
                                 {offer.supplierWebsite && (
                                   <a
                                     href={offer.supplierWebsite.startsWith('http') ? offer.supplierWebsite : `https://${offer.supplierWebsite}`}
@@ -688,7 +758,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               </div>
                             </div>
                             <div className="flex items-center gap-2 shrink-0">
-                              {offer.supplierId && !isMdmak && (
+                              {offer.supplierId && !isMdmak && !offer.isGuestOffer && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -925,7 +995,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
                               {t("offers_open_chat")}
                             </Button>
-                            <SupplierWhatsAppButton supplierId={offer.supplierId} />
+                            <SupplierWhatsAppButton supplierId={offer.supplierId} guestPhone={offer.isGuestOffer ? offer.guestContact?.phone : undefined} />
                             <Button
                               onClick={() => handleMarkAsCompleted(offer.id)}
                               disabled={processingId === offer.id}
@@ -950,7 +1020,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
                               {t("offers_open_chat")}
                             </Button>
-                            <SupplierWhatsAppButton supplierId={offer.supplierId} />
+                            <SupplierWhatsAppButton supplierId={offer.supplierId} guestPhone={offer.isGuestOffer ? offer.guestContact?.phone : undefined} />
                             {offer.contractorRated ? (
                               <Button
                                 disabled
@@ -1802,16 +1872,17 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
   )
 }
 
-function SupplierWhatsAppButton({ supplierId }: { supplierId: string }) {
+function SupplierWhatsAppButton({ supplierId, guestPhone }: { supplierId: string; guestPhone?: string | null }) {
   const firestore = useFirestore()
   const t = useTranslations("Portal.Contractor")
+  // Guest offers carry their phone inline — there is no users/{id} doc to read.
   const docRef = useMemoFirebase(() => {
-    if (!firestore || !supplierId) return null
+    if (!firestore || !supplierId || guestPhone || supplierId === "guest") return null
     return doc(firestore, "users", supplierId)
-  }, [firestore, supplierId])
+  }, [firestore, supplierId, guestPhone])
   const { data: supplier } = useDoc(docRef)
 
-  const phone = supplier?.phone || supplier?.mobile || supplier?.whatsapp
+  const phone = guestPhone || supplier?.phone || supplier?.mobile || supplier?.whatsapp
   if (!phone) return null
 
   const cleaned = phone.replace(/\D/g, "")

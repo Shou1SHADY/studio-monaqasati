@@ -382,6 +382,13 @@ service cloud.firestore {
       );
     }
 
+    // Guest RFQ share links — created and consumed exclusively by the
+    // server (Admin SDK) via /api/rfq-share/*. The tokens inside grant
+    // unauthenticated access to an RFQ, so clients must never read them.
+    match /rfqShareLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     // Team permission groups — org-scoped. Members read their org's groups
     // (queries must filter organizationId == own org); only the org owner
     // manages them. The Super Admin system group (isSystem) is immutable.
