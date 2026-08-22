@@ -103,8 +103,10 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://mdmaktech.sa").replace(/\/$/, "")
-    const shareUrl = `${baseUrl}/rfq/${token}`
+    // Share links are handed to suppliers outside the platform (Gmail,
+    // WhatsApp, ...), so they must always point at the canonical production
+    // domain — never a localhost/preview NEXT_PUBLIC_APP_URL.
+    const shareUrl = `https://www.mdmaktech.sa/rfq/${token}`
 
     // --- Optional: send the link by email through the platform ---
     let emailSent = false
