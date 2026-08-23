@@ -389,6 +389,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Private per-offer links that let a guest supplier (no account) keep the
+    // RFQ workflow going — revised prices, sample confirmation, delivery
+    // notices. Holding the token IS the credential, so these docs are reachable
+    // only through the server routes that verify it (Admin SDK).
+    match /guestOfferLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     // Team permission groups — org-scoped. Members read their org's groups
     // (queries must filter organizationId == own org); only the org owner
     // manages them. The Super Admin system group (isSystem) is immutable.

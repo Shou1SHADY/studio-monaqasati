@@ -64,6 +64,12 @@ import { logFinanceAudit } from "@/lib/finance-audit"
 import { receiveDelivery } from "@/lib/warehouse-transfer"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { formatCurrency } from "@/utils/invoice-utils"
+import { GuestNotifyDialog, type GuestNotifyTarget } from "@/components/contractor/GuestNotifyDialog"
+import {
+  eventForDecision,
+  eventForSampleAction,
+  guestEventForOffer,
+} from "@/utils/guest-offer-workflow"
 
 function fmtDate(val: any, locale: string) {
   if (!val) return '-'
@@ -103,13 +109,38 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [confirmDeliveryDoc, setConfirmDeliveryDoc] = useState<any | null>(null)
   const [receiverName, setReceiverName] = useState("")
   const [isConfirmingDelivery, setIsConfirmingDelivery] = useState(false)
+  // Guest offers have no in-app inbox — every workflow step has to be pushed
+  // out to the supplier on the channel the RFQ was originally shared on.
+  const [guestNotify, setGuestNotify] = useState<GuestNotifyTarget | null>(null)
+
+  const queueGuestNotify = (
+    offer: any,
+    event: ReturnType<typeof eventForDecision>,
+    extras?: { note?: string | null; targetPrice?: string | null }
+  ) => {
+    if (!offer?.isGuestOffer || !event) return
+    setGuestNotify({
+      offerId: offer.id,
+      supplierName: offer.companyName || offer.supplierName || t("offers_registered_supplier"),
+      rfqTitle: offer.rfqTitle || (rfq as { title?: string } | null)?.title || "",
+      event,
+      note: extras?.note || null,
+      targetPrice: extras?.targetPrice || null,
+    })
+  }
 
   const openChat = async (offer: any) => {
     if (!firestore || !user) return
     // Guest offers (submitted via a share link) have no platform account to
-    // chat with — reach the supplier on the contact email they provided.
+    // chat with — reach the supplier on the channel the RFQ was shared on,
+    // falling back to a plain mail draft when there's nothing to announce.
     if (offer.isGuestOffer) {
-      if (offer.guestContact?.email) window.open(`mailto:${offer.guestContact.email}`, "_blank")
+      const event = guestEventForOffer(offer)
+      if (event) {
+        queueGuestNotify(offer, event, { note: offer.reductionNote, targetPrice: offer.targetPrice ? String(offer.targetPrice) : null })
+      } else if (offer.guestContact?.email) {
+        window.open(`mailto:${offer.guestContact.email}`, "_blank")
+      }
       return
     }
     setOpeningChat(offer.id)
@@ -263,7 +294,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         console.error("Goods receipt into warehouse failed:", receiptErr)
       }
 
-      if (confirmDeliveryDoc.supplierId) {
+      // Guest deliveries have no user doc to notify — the guest sees the
+      // confirmation on their offer page, and hears from us again when the
+      // supply is marked complete.
+      if (confirmDeliveryDoc.supplierId && !confirmDeliveryDoc.isGuestDelivery && confirmDeliveryDoc.supplierId !== "guest") {
         await addDoc(collection(firestore, "users", confirmDeliveryDoc.supplierId, "notifications"), {
           userId: confirmDeliveryDoc.supplierId,
           organizationId: confirmDeliveryDoc.supplierOrgId || confirmDeliveryDoc.supplierId,
@@ -386,6 +420,12 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       }
     }
 
+    // Step 4: Guests get the same news by WhatsApp/email instead of an inbox
+    queueGuestNotify(offer, eventForDecision(decision, Boolean(offer?.isGuestOffer)), {
+      note,
+      targetPrice: requestedPrice,
+    })
+
     toast({
       title: decision === "مقبول" ? t("offers_toast_accepted_title") : decision === "مرفوض" ? t("offers_toast_rejected_title") : t("offers_toast_reduction_title"),
       description: decision === "مقبول"
@@ -408,8 +448,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
       const offerSnap = await getDoc(doc(firestore, "offers", offerId));
       const offerData = offerSnap.data();
+      // Guests have no user doc — they're reached through GuestNotifyDialog below.
+      const canNotifyInApp = Boolean(offerData?.supplierId) && !offerData?.isGuestOffer
       if (action === "مطلوبة") {
-        if (offerData?.supplierId) {
+        if (canNotifyInApp && offerData?.supplierId) {
           await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
@@ -423,7 +465,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           });
         }
       } else if (action === "تم الاستلام") {
-        if (offerData?.supplierId) {
+        if (canNotifyInApp && offerData?.supplierId) {
           await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
@@ -437,6 +479,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           });
         }
       }
+
+      queueGuestNotify(
+        { ...offerData, id: offerId },
+        eventForSampleAction(action, Boolean(offerData?.isGuestOffer))
+      );
 
       toast({
         title: action === "مطلوبة" ? t("offers_toast_sample_req") : t("offers_toast_sample_rcv"),
@@ -464,9 +511,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       })
 
       // Notify the supplier that the supply has been confirmed as complete
+      // (guests get the same news by WhatsApp/email — see queueGuestNotify below)
       const offerSnap = await getDoc(doc(firestore, "offers", offerId))
       const offerData = offerSnap.data()
-      if (offerData?.supplierId) {
+      if (offerData?.supplierId && !offerData?.isGuestOffer) {
         await addDoc(collection(firestore, "users", offerData.supplierId, "notifications"), {
           userId: offerData.supplierId,
           organizationId: offerData.organizationId || offerData.supplierId,
@@ -478,6 +526,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           createdAt: new Date().toISOString(),
           read: false
         })
+      }
+
+      if (offerData?.isGuestOffer) {
+        queueGuestNotify({ ...offerData, id: offerId }, "supply_completed")
       }
 
       toast({
@@ -740,6 +792,21 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                         {offer.guestContact.phone}
                                       </a>
                                     )}
+                                    {guestEventForOffer(offer) && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          queueGuestNotify(offer, guestEventForOffer(offer), {
+                                            note: offer.reductionNote,
+                                            targetPrice: offer.targetPrice ? String(offer.targetPrice) : null,
+                                          })
+                                        }
+                                        className="inline-flex items-center gap-1 text-xs font-bold text-accent hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+                                      >
+                                        <Send size={10} />
+                                        {t("guest_notify_resend")}
+                                      </button>
+                                    )}
                                   </div>
                                 ) : (
                                   <p className="text-xs text-muted-foreground font-mono mt-0.5">{offer.supplierId?.substring(0, 10)}...</p>
@@ -798,6 +865,19 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               </div>
                             )}
                           </div>
+
+                          {/* Guest suppliers have no chat thread — their note
+                              travels with the offer itself */}
+                          {offer.isGuestOffer && (offer.guestReplyNote || offer.guestMessage) && (
+                            <div className="mt-3 p-3 rounded-xl border border-accent/20 bg-accent/5">
+                              <p className="text-[11px] font-bold text-accent uppercase tracking-wider mb-1">
+                                {t("offers_guest_note")}
+                              </p>
+                              <p className="text-sm text-slate-700 leading-relaxed" dir="auto">
+                                {offer.guestReplyNote || offer.guestMessage}
+                              </p>
+                            </div>
+                          )}
 
                           {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-slate-200">
@@ -1684,6 +1764,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           onSubmitSuccess={() => setReviewOffer(null)}
         />
       )}
+
+      {/* Guest supplier notification — pushes the workflow step out to a
+          share-link supplier on WhatsApp or email */}
+      <GuestNotifyDialog target={guestNotify} onClose={() => setGuestNotify(null)} />
     </PortalLayout>
   )
 }

@@ -4,6 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildRfqShareEmail } from "@/lib/email"
+import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
 
 // Creates (or reuses) a portable guest link for an RFQ. The link lets a
 // supplier view the RFQ and submit an offer WITHOUT registering. Links are
@@ -15,6 +16,10 @@ const bodySchema = z.object({
   rfqId: z.string().trim().min(1).max(128),
   // Optional: also send the link by email through the platform (Resend).
   email: z.string().trim().toLowerCase().email().optional(),
+  // Optional: which channel the contractor actually shared on. Recorded so the
+  // rest of the RFQ workflow (reduction, sample, award, ...) can reach the
+  // guest supplier back on the same channel.
+  channel: z.enum(["whatsapp", "email", "link"]).optional(),
 })
 
 function errorResponse(message: string, code: string, status: number) {
@@ -41,7 +46,9 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return errorResponse("A valid RFQ id is required", "INVALID_INPUT", 400)
     }
-    const { rfqId, email } = parsed.data
+    const { rfqId, email, channel } = parsed.data
+    // Sending through the platform is itself an email share.
+    const effectiveChannel = channel || (email ? "email" : null)
 
     // --- Load sender + RFQ, verify ownership ---
     const db = getAdminFirestore()
@@ -81,6 +88,11 @@ export async function POST(req: NextRequest) {
       if (exp > now) {
         token = data.token as string
         expiresAt = data.expiresAt as string
+        if (effectiveChannel) {
+          await d.ref
+            .update({ channel: effectiveChannel, channelUpdatedAt: new Date().toISOString() })
+            .catch((err) => console.error("Failed to record share channel:", err))
+        }
         break
       }
     }
@@ -91,6 +103,8 @@ export async function POST(req: NextRequest) {
       await db.collection("rfqShareLinks").add({
         token,
         rfqId,
+        channel: effectiveChannel || "link",
+        channelUpdatedAt: new Date().toISOString(),
         rfqTitle: (rfq.title as string) || "",
         contractorId: (rfq.contractorId as string) || decoded.uid,
         organizationId: rfqOrgId,
@@ -103,10 +117,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Share links are handed to suppliers outside the platform (Gmail,
-    // WhatsApp, ...), so they must always point at the canonical production
-    // domain — never a localhost/preview NEXT_PUBLIC_APP_URL.
-    const shareUrl = `https://www.mdmaktech.sa/rfq/${token}`
+    const shareUrl = `${PUBLIC_BASE_URL}/rfq/${token}`
 
     // --- Optional: send the link by email through the platform ---
     let emailSent = false
