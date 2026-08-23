@@ -128,9 +128,11 @@ import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
 import { PurchaseRequestsTab } from "@/components/contractor/PurchaseRequestsTab"
 import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
+import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { useProjectWasteStats } from "@/hooks/useProjectWasteStats"
+import { useCentralWarehouse, resolveCentralForRegion } from "@/hooks/useCentralWarehouse"
 import { suggestWastePercent } from "@/ai/flows/suggest-waste-percent-flow"
 import { suggestBoqMaterials } from "@/ai/flows/suggest-boq-materials-flow"
 import {
@@ -142,7 +144,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -695,6 +697,7 @@ export default function ProjectDetailPage() {
   }, [firestore, myOrgId])
   const { data: warehousesData } = useCollection(warehousesQuery)
   const projectWarehouses = (warehousesData || []) as { id: string; name: string }[]
+  const { centrals } = useCentralWarehouse(myOrgId)
 
   const linkedWarehouseInventoryQuery = useMemoFirebase(() => {
     const wid = typedProject?.warehouseId
@@ -812,18 +815,22 @@ export default function ProjectDetailPage() {
     if (!firestore || !projectDocRef || !typedProject) return
     setIsCreatingWarehouse(true)
     try {
+      // Which central this project draws from — matched by region when the
+      // company has more than one; a single central serves everyone.
+      const linkedCentral = resolveCentralForRegion(centrals, (typedProject as { region?: string | null }).region)
       const warehouseRef = await addDoc(collection(firestore, "warehouses"), {
         name: t("proj_auto_warehouse_name", { name: typedProject.name || "" }),
         location: typedProject.location || null,
         description: null,
         organizationId: typedProject.organizationId || myOrgId,
+        centralWarehouseId: linkedCentral?.id ?? null,
         projectId,
         projectName: typedProject.name || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       })
       await updateDoc(projectDocRef, { warehouseId: warehouseRef.id, updatedAt: serverTimestamp() })
-      toast({ title: t("proj_warehouse_created") })
+      toast({ title: linkedCentral ? t("proj_warehouse_created") : t("proj_warehouse_created_no_central") })
     } catch (err) {
       console.error(err)
       toast({ title: t("generic_error_title"), variant: "destructive" })
@@ -1999,6 +2006,18 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {can("offers.accept") && (
+            <Card className="border-primary/15">
+              <CardContent className="p-6">
+                <h3 className="font-bold text-base flex items-center gap-2 text-slate-800 mb-4">
+                  <Banknote size={17} className="text-primary" />
+                  {t("moneyflow_title")}
+                </h3>
+                <MoneyFlowViz projectId={projectId} />
+              </CardContent>
+            </Card>
+          )}
 
           {can("offers.accept") && (
             <Card className="border-primary/15">

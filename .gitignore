@@ -80,9 +80,10 @@ mdmak-mob/
 mdmak-demo/
 
 # Claude personal settings (team rules in .claude/settings.json ARE committed)
- 
+.claude/settings.local.json
+.claude/worktrees/
 
-.claude/settings.local.jsonlighthouse-report.json
+lighthouse-report.json
 
 tmp-below-fold.txt
 

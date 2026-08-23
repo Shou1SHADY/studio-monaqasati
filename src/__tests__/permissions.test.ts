@@ -228,8 +228,8 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 14 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(14)
+  it("contains exactly 15 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(15)
   })
 
   it("contains the three new permissions added in the latest batch", () => {
@@ -448,6 +448,7 @@ describe("permissionLabelKey", () => {
       "employees.manage": "perm_employees_manage",
       "invoices.manage": "perm_invoices_manage",
       "warehouses.manage": "perm_warehouses_manage",
+      "crm.manage": "perm_crm_manage",
       "team.manage": "perm_team_manage",
     }
     PERMISSION_IDS.forEach((p) => {

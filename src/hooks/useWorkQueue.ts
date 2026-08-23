@@ -9,15 +9,17 @@
 import { useEffect, useState } from "react"
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, query, where, getDocs } from "firebase/firestore"
-import { resolveInvoiceStatus } from "@/utils/invoice-utils"
+import { resolveProjectStatus, projectStatusLabelKey, type ProjectStatus } from "@/lib/project-status"
 
 export type WorkQueueItemType =
+  | "guarantee_expiring"
   | "rfq_decision"
   | "rfq_closing_soon"
   | "rfq_no_offers"
   | "delivery_confirm"
-  | "invoice_overdue"
+  | "project_waiting_approval"
   | "low_stock"
+  | "team_invite_pending"
 
 export interface WorkQueueItem {
   id: string
@@ -29,12 +31,14 @@ export interface WorkQueueItem {
 }
 
 const TIER: Record<WorkQueueItemType, number> = {
-  invoice_overdue: 1,
+  guarantee_expiring: 1,
   rfq_closing_soon: 2,
   delivery_confirm: 3,
   rfq_decision: 4,
-  rfq_no_offers: 5,
-  low_stock: 6,
+  project_waiting_approval: 5,
+  rfq_no_offers: 6,
+  low_stock: 7,
+  team_invite_pending: 8,
 }
 
 // An RFQ younger than this is still fresh — no supplier has had a fair chance
@@ -42,6 +46,13 @@ const TIER: Record<WorkQueueItemType, number> = {
 const NO_OFFERS_GRACE_MS = 3 * 24 * 60 * 60 * 1000
 // Flag RFQs whose deadline is inside this window (or already passed) as closing soon.
 const CLOSING_SOON_MS = 48 * 60 * 60 * 1000
+// Guarantees are a compliance/financial risk, so the warning window is wider
+// than an RFQ deadline — a lapsed guarantee letter is a real liability.
+const GUARANTEE_EXPIRING_MS = 30 * 24 * 60 * 60 * 1000
+// Project statuses that represent a stalled decision this member can act on —
+// there's no milestone/date concept in the data model, so "stuck in one of
+// these statuses" is the only real signal available.
+const PROJECT_NEEDS_DECISION_STATUSES: ProjectStatus[] = ["waiting_approval", "pricing"]
 
 function toMs(v: unknown): number {
   if (!v) return 0
@@ -52,7 +63,7 @@ function toMs(v: unknown): number {
   return isNaN(t) ? 0 : t
 }
 
-export function useWorkQueue(organizationId: string | undefined | null) {
+export function useWorkQueue(organizationId: string | undefined | null, userId: string | undefined | null) {
   const firestore = useFirestore()
 
   const rfqsQuery = useMemoFirebase(() => {
@@ -77,17 +88,35 @@ export function useWorkQueue(organizationId: string | undefined | null) {
   }, [firestore, organizationId])
   const { data: deliveries } = useCollection(deliveriesQuery)
 
-  const invoicesQuery = useMemoFirebase(() => {
-    if (!firestore || !organizationId) return null
-    return query(collection(firestore, "invoices"), where("organizationId", "==", organizationId))
-  }, [firestore, organizationId])
-  const { data: invoices } = useCollection(invoicesQuery)
-
   const warehousesQuery = useMemoFirebase(() => {
     if (!firestore || !organizationId) return null
     return query(collection(firestore, "warehouses"), where("organizationId", "==", organizationId))
   }, [firestore, organizationId])
   const { data: warehouses } = useCollection(warehousesQuery)
+
+  const guaranteesQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(
+      collection(firestore, "guarantees"),
+      where("contractorOrgId", "==", organizationId),
+      where("hasGuarantee", "==", true)
+    )
+  }, [firestore, organizationId])
+  const { data: guarantees } = useCollection(guaranteesQuery)
+
+  const projectsQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", organizationId))
+  }, [firestore, organizationId])
+  const { data: projects } = useCollection(projectsQuery)
+
+  // Firestore rules restrict `invitations` reads to `invitedBy == caller` —
+  // this can only ever reflect invites the current member personally sent.
+  const invitationsQuery = useMemoFirebase(() => {
+    if (!firestore || !userId) return null
+    return query(collection(firestore, "invitations"), where("invitedBy", "==", userId))
+  }, [firestore, userId])
+  const { data: invitations } = useCollection(invitationsQuery)
 
   // Low-stock items live in a per-warehouse subcollection — can't be expressed as a
   // single top-level query, so fetch once (not real-time) whenever the warehouse list changes.
@@ -123,6 +152,26 @@ export function useWorkQueue(organizationId: string | undefined | null) {
   }, [firestore, warehouses])
 
   const items: WorkQueueItem[] = []
+  const now = Date.now()
+
+  // Guarantee letters expiring soon (or already lapsed) — a real compliance risk.
+  ;(guarantees || []).forEach((g: any) => {
+    if (g.status === "rejected" || !g.expirationDate) return
+    const expiresMs = toMs(g.expirationDate)
+    if (!expiresMs || expiresMs - now > GUARANTEE_EXPIRING_MS) return
+    items.push({
+      id: `guarantee_expiring_${g.id}`,
+      type: "guarantee_expiring",
+      tier: TIER.guarantee_expiring,
+      sortMs: now - expiresMs,
+      actionUrl: "/contractor/guarantees",
+      data: {
+        itemName: g.itemName || g.itemNameEn || g.rfqTitle || "",
+        daysLeft: Math.round((expiresMs - now) / (24 * 60 * 60 * 1000)),
+        isExpired: expiresMs < now,
+      },
+    })
+  })
 
   // RFQs awaiting decision — grouped by rfqId from pending offers.
   const pendingOffersByRfq = new Map<string, { count: number; rfqTitle: string; latestMs: number }>()
@@ -151,8 +200,6 @@ export function useWorkQueue(organizationId: string | undefined | null) {
   ;(offers || []).forEach((o: any) => {
     offerCountByRfq.set(o.rfqId, (offerCountByRfq.get(o.rfqId) || 0) + 1)
   })
-
-  const now = Date.now()
 
   // Published RFQs that are stalling (no offers yet, past a grace period) or
   // closing within 48h — both real risks that don't show up anywhere else
@@ -200,17 +247,18 @@ export function useWorkQueue(organizationId: string | undefined | null) {
     })
   })
 
-  // Overdue invoices.
-  ;(invoices || []).forEach((inv: any) => {
-    const resolved = resolveInvoiceStatus(inv.dueDate, inv.status)
-    if (resolved !== "overdue") return
+  // Projects stalled in a status that needs an explicit decision.
+  ;(projects || []).forEach((p: any) => {
+    const status = resolveProjectStatus(p.status)
+    if (!PROJECT_NEEDS_DECISION_STATUSES.includes(status)) return
+    const updatedMs = toMs(p.updatedAt) || toMs(p.createdAt)
     items.push({
-      id: `invoice_overdue_${inv.id}`,
-      type: "invoice_overdue",
-      tier: TIER.invoice_overdue,
-      sortMs: toMs(inv.dueDate),
-      actionUrl: "/contractor/invoices",
-      data: { invoiceNumber: inv.invoiceNumber || "", clientName: inv.clientName || "" },
+      id: `project_waiting_approval_${p.id}`,
+      type: "project_waiting_approval",
+      tier: TIER.project_waiting_approval,
+      sortMs: updatedMs ? now - updatedMs : 0,
+      actionUrl: `/contractor/projects/${p.id}`,
+      data: { projectName: p.name || "", statusLabelKey: projectStatusLabelKey(status) },
     })
   })
 
@@ -226,9 +274,22 @@ export function useWorkQueue(organizationId: string | undefined | null) {
     })
   })
 
+  // Team invites this member sent that are still awaiting a response.
+  ;(invitations || []).forEach((inv: any) => {
+    if (inv.type !== "team_invite" || inv.status !== "pending") return
+    items.push({
+      id: `team_invite_pending_${inv.id}`,
+      type: "team_invite_pending",
+      tier: TIER.team_invite_pending,
+      sortMs: now - toMs(inv.createdAt),
+      actionUrl: "/contractor/team",
+      data: { email: inv.email || "", name: inv.name || "" },
+    })
+  })
+
   items.sort((a, b) => (a.tier !== b.tier ? a.tier - b.tier : b.sortMs - a.sortMs))
 
-  const isLoading = !rfqs || !offers || !deliveries || !invoices || !warehouses
+  const isLoading = !rfqs || !offers || !deliveries || !warehouses || !guarantees || !projects
 
   return { items, isLoading }
 }

@@ -66,6 +66,19 @@ export type PortalComponentId =
 
 export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive"
 
+// Tailwind can't resolve dynamically-built class strings, so every
+// accent-token combination used by a tile must appear as a literal here.
+// Shared by the app-switcher dropdown and the home dashboard's tile grid.
+export const COMPONENT_ACCENT_CLASSES: Record<AccentToken, { tile: string; ring: string }> = {
+  primary: { tile: "bg-primary/10 text-primary", ring: "ring-primary" },
+  secondary: { tile: "bg-secondary/10 text-secondary", ring: "ring-secondary" },
+  accent: { tile: "bg-accent/10 text-accent", ring: "ring-accent" },
+  success: { tile: "bg-success/10 text-success", ring: "ring-success" },
+  cta: { tile: "bg-cta/10 text-cta", ring: "ring-cta" },
+  warning: { tile: "bg-warning/10 text-warning", ring: "ring-warning" },
+  destructive: { tile: "bg-destructive/10 text-destructive", ring: "ring-destructive" },
+}
+
 export interface PortalComponentDef {
   id: PortalComponentId
   labelKey: string
@@ -130,6 +143,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         labelKey: "component_warehouses",
         items: [
           { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse },
+          { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList },
         ],
       },
     ],

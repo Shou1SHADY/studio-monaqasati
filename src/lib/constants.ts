@@ -450,6 +450,16 @@ export function displayCountry(countryCode: string, locale: string): string {
   return locale === "ar" ? c.labelAr : c.labelEn
 }
 
+/** Dial code + national mobile-number length for each country in COUNTRIES —
+ * used to validate and format phone numbers as {dialCode}{nationalNumber}. */
+export const PHONE_DIAL_CODES: Record<string, { dialCode: string; nationalLength: number }> = {
+  SA: { dialCode: "+966", nationalLength: 9 }, // 5XXXXXXXX
+  AE: { dialCode: "+971", nationalLength: 9 }, // 5XXXXXXXX
+  EG: { dialCode: "+20", nationalLength: 10 }, // 1XXXXXXXXX
+  QA: { dialCode: "+974", nationalLength: 8 },
+  KW: { dialCode: "+965", nationalLength: 8 },
+}
+
 /** City -> districts, shared by every tender-creation entry point so the same city always offers the same districts. */
 export const CITIES_DISTRICTS: Record<string, string[]> = {
   "الرياض": ["شمال الرياض", "جنوب الرياض", "شرق الرياض", "غرب الرياض", "وسط الرياض", "جميع الرياض"],

@@ -65,6 +65,7 @@ export default function ProjectsListPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [regionFilter, setRegionFilter] = useState<string>("all")
+  const [monthFilter, setMonthFilter] = useState<string>("all")
   const [sortBy, setSortBy] = useState<SortOption>("newest")
   const [viewMode, setViewMode] = useState<ViewMode>("grid")
   const { can, profile } = usePermissions()
@@ -92,10 +93,28 @@ export default function ProjectsListPage() {
 
   const regionOptions = Array.from(new Set(typedProjects.map((p) => p.region).filter(Boolean))) as string[]
 
+  // "YYYY-MM" key per project's creation month, for the month filter — derived
+  // client-side rather than queried, since the project list is already small
+  // enough to filter in memory (same approach as the region filter above).
+  const monthKey = (v: unknown): string | null => {
+    const ms = getTimeMs(v)
+    if (!ms) return null
+    const d = new Date(ms)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  }
+  const monthOptions = Array.from(
+    new Set(typedProjects.map((p) => monthKey(p.createdAt)).filter((k): k is string => !!k))
+  ).sort((a, b) => (a < b ? 1 : -1))
+  const monthLabel = (key: string) => {
+    const [year, month] = key.split("-").map(Number)
+    return new Date(year, month - 1, 1).toLocaleDateString(isRtl ? "ar-SA" : "en-US", { month: "long", year: "numeric" })
+  }
+
   const searchLower = searchQuery.trim().toLowerCase()
   const projects = typedProjects
     .filter((p) => (statusFilter === "all" ? true : resolveProjectStatus(p.status) === statusFilter))
     .filter((p) => (regionFilter === "all" ? true : p.region === regionFilter))
+    .filter((p) => (monthFilter === "all" ? true : monthKey(p.createdAt) === monthFilter))
     .filter((p) => {
       if (!searchLower) return true
       return (p.name || "").toLowerCase().includes(searchLower) || (p.clientName || "").toLowerCase().includes(searchLower)
@@ -218,6 +237,19 @@ export default function ProjectsListPage() {
                 <SelectItem value="all">{t("proj_all_regions")}</SelectItem>
                 {regionOptions.map((r) => (
                   <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {monthOptions.length > 0 && (
+            <Select value={monthFilter} onValueChange={setMonthFilter}>
+              <SelectTrigger className="w-full sm:w-[180px] h-10 rounded-xl">
+                <SelectValue placeholder={t("proj_month_filter")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("proj_all_months")}</SelectItem>
+                {monthOptions.map((m) => (
+                  <SelectItem key={m} value={m}>{monthLabel(m)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
