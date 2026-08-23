@@ -222,7 +222,9 @@ export function buildRfqShareEmail({
 }: RfqShareEmailInput): { subject: string; html: string } {
   const safeContractor = escapeHtml(contractorName || "أحد المقاولين على المنصة")
   const safeContractorEn = escapeHtml(contractorName || "A contractor on our platform")
-  const safeTitle = escapeHtml(rfqTitle || "")
+  // RFQ titles can be paragraph-length — keep subject/body readable.
+  const shortTitle = rfqTitle.length > 100 ? `${rfqTitle.slice(0, 100).trimEnd()}…` : rfqTitle
+  const safeTitle = escapeHtml(shortTitle)
 
   const expiryAr = new Date(linkExpiresAt).toLocaleDateString("ar-SA", { dateStyle: "long" })
   const expiryEn = new Date(linkExpiresAt).toLocaleDateString("en-US", { dateStyle: "long" })
@@ -236,7 +238,7 @@ export function buildRfqShareEmail({
   const bodyAr = `يدعوك <strong>${safeContractor}</strong> لتقديم عرض سعر على طلب عروض الأسعار «<strong>${safeTitle}</strong>» عبر منصة مدماك تيك. يمكنك الاطلاع على كامل التفاصيل وتقديم عرضك مباشرة من الرابط أدناه — دون الحاجة لإنشاء حساب.${deadlineNoteAr} يُرجى العلم أن هذا الرابط صالح حتى <strong>${expiryAr}</strong>.`
   const bodyEn = `<strong>${safeContractorEn}</strong> invites you to submit a price offer for the RFQ "<strong>${safeTitle}</strong>" on Mdmak Tech. You can review the full details and submit your offer directly from the link below — no account required.${deadlineNoteEn} Please note this link is valid until <strong>${expiryEn}</strong>.`
 
-  const subject = `دعوة لتقديم عرض سعر — ${rfqTitle || "طلب عروض أسعار"} | RFQ invitation on Mdmak Tech`
+  const subject = `دعوة لتقديم عرض سعر — ${shortTitle || "طلب عروض أسعار"} | RFQ invitation on Mdmak Tech`
   const html = buildEmailShell({
     greetingAr: "مرحباً,",
     greetingEn: "Hello,",

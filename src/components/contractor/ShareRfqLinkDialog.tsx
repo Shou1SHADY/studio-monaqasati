@@ -89,16 +89,23 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
     }
   }
 
+  // RFQ titles can run to whole paragraphs; embedding them verbatim blows past
+  // Gmail's compose-URL length limit and it responds with a 400. Truncate for
+  // the prefilled subject/body — the full title is on the shared page itself.
+  const truncate = (text: string, max: number) =>
+    text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
+
+  const shortTitle = truncate(rfq?.title || "", 100)
   const shareMessage = shareUrl && rfq
     ? t("rfq_share_message", {
-        title: rfq.title || "",
+        title: shortTitle,
         url: shareUrl,
         date: expiresAt ? new Date(expiresAt).toLocaleDateString(locale) : "",
       })
     : ""
 
   const gmailUrl = shareUrl
-    ? `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(t("rfq_share_email_subject", { title: rfq?.title || "" }))}&body=${encodeURIComponent(shareMessage)}`
+    ? `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(t("rfq_share_email_subject", { title: truncate(rfq?.title || "", 70) }))}&body=${encodeURIComponent(shareMessage)}`
     : "#"
   const whatsappUrl = shareUrl ? `https://wa.me/?text=${encodeURIComponent(shareMessage)}` : "#"
 
