@@ -786,12 +786,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               {t("rfq_publish_draft")}
                             </Button>
                           )}
+                          {/* Compact labels: the full "edit/delete RFQ" wording overflows
+                              the card and gets clipped — icons + card context carry the meaning */}
                           <div className="flex gap-2">
                           {canEdit(rfq) && (
-                            <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1">
-                              <Button variant="ghost" size="sm" className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
-                                <Pencil size={14} />
-                                {t("rfq_edit_tender")}
+                            <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1 min-w-0">
+                              <Button variant="ghost" size="sm" title={t("rfq_edit_tender")} className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                                <Pencil size={14} className="shrink-0" />
+                                <span className="truncate">{t("rfq_edit_short")}</span>
                               </Button>
                             </Link>
                           )}
@@ -799,11 +801,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="flex-1 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
+                              title={t("rfq_delete_tender")}
+                              className="flex-1 min-w-0 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
                               onClick={() => setDeleteTarget(rfq)}
                             >
-                              <Trash2 size={14} />
-                              {t("rfq_delete_tender")}
+                              <Trash2 size={14} className="shrink-0" />
+                              <span className="truncate">{t("rfq_delete_short")}</span>
                             </Button>
                           )}
                           </div>

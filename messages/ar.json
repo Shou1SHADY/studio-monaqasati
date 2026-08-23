@@ -1718,6 +1718,8 @@
       "rfq_share_email_help": "سيتم إرسال بريد دعوة رسمي يتضمن الرابط من المنصة.",
       "rfq_share_close": "إغلاق",
       "offers_guest_badge": "عبر رابط المشاركة",
+      "rfq_edit_short": "تعديل",
+      "rfq_delete_short": "حذف",
       "optional": "اختياري",
       "offers_reduction_note_placeholder": "مثال: عرضكم جيد ولكن الميزانية المحددة أقل، نأمل إعادة النظر...",
       "cancel": "إلغاء",

@@ -1718,6 +1718,8 @@
       "rfq_share_email_help": "A branded invitation with the link will be emailed from the platform.",
       "rfq_share_close": "Close",
       "offers_guest_badge": "Via share link",
+      "rfq_edit_short": "Edit",
+      "rfq_delete_short": "Delete",
       "optional": "Optional",
       "cancel": "Cancel",
       "offers_send_request": "Send Request",
