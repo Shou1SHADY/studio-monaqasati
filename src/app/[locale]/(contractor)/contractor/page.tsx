@@ -4,7 +4,6 @@ import Image from "next/image"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   FileText,
@@ -225,9 +224,13 @@ export default function ContractorDashboard() {
     return (
       <PortalLayout>
         <div className="space-y-8 pb-10">
-          <Skeleton className="h-48 rounded-3xl w-full" />
+          {/* Mirrors the real layout heights so content doesn't jump when data lands */}
+          <Skeleton className="h-36 sm:h-[72px] rounded-2xl w-full" />
+          <div className="flex items-center gap-2 -mt-3">
+            {[1,2,3,4].map(i => <Skeleton key={i} className="h-9 w-24 rounded-full" />)}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1,2,3].map(i => <Skeleton key={i} className="h-32 rounded-lg" />)}
+            {[1,2,3].map(i => <Skeleton key={i} className="h-52 rounded-lg" />)}
           </div>
           <Skeleton className="h-64 rounded-lg w-full" />
         </div>
@@ -240,7 +243,7 @@ export default function ContractorDashboard() {
       <div className="space-y-8 pb-10">
         {/* Welcome Banner */}
         <div
-          className="relative overflow-hidden rounded-2xl isolate flex flex-col sm:flex-row items-start sm:items-center gap-4 p-[18px_20px] sm:p-[20px_28px] text-white"
+          className="relative overflow-hidden rounded-2xl isolate flex flex-col sm:flex-row items-start sm:items-center gap-3 px-4 py-3 sm:px-6 sm:py-3.5 text-white"
           style={{
             background: `
               radial-gradient(110% 140% at ${locale === 'ar' ? '35%' : '65%'} 10%, rgba(37,99,235,.30) 0%, transparent 55%),
@@ -290,7 +293,7 @@ export default function ContractorDashboard() {
           {/* Text content — personal greeting first, company context second */}
           <div className="relative z-[2] flex-1 min-w-0">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 suppressHydrationWarning className={cn("text-[18px] sm:text-[22px] font-black text-white leading-[1.15]", locale !== 'ar' && "tracking-[-0.02em]")}>
+              <h1 suppressHydrationWarning className={cn("text-[16px] sm:text-[19px] font-black text-white leading-[1.2]", locale !== 'ar' && "tracking-[-0.02em]")}>
                 {greeting}{locale === 'ar' ? '،' : ','}{' '}
                 <span className={cn("text-transparent bg-clip-text", locale === 'ar' ? 'bg-gradient-to-l from-accent to-cyan-300' : 'bg-gradient-to-r from-accent to-cyan-300')}>
                   {firstName || activeCompanyName || t("welcome_fallback")}
@@ -309,7 +312,7 @@ export default function ContractorDashboard() {
                 </span>
               )}
             </div>
-            <p className="mt-1.5 text-[12.5px] text-slate-400 font-medium truncate">
+            <p className="mt-1 text-[12px] text-slate-400 font-medium truncate">
               {activeCompanyName || t("welcome_fallback")}
               <span className="mx-1.5 text-slate-600">·</span>
               <span suppressHydrationWarning>{todayLabel}</span>
@@ -318,15 +321,16 @@ export default function ContractorDashboard() {
 
           {/* CTA Button — tenders now only get created from inside a project;
               hidden for members whose role can't publish RFQs at all */}
+          {/* Single <a> styled as a button — a <button> nested inside a Link is
+              invalid HTML and can swallow the click, leaving the banner CTA dead */}
           {(isOrgOwner || can("rfq.create") || can("projects.edit")) && (
-            <Link href="/contractor/projects" className="relative z-[2] shrink-0 w-full sm:w-auto">
-              <Button
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 h-9 rounded-[10px] bg-white text-[#0b1a33] text-[13.5px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200"
-                style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
-              >
-                <PlusCircle className={cn("h-4 w-4", !prefersReducedMotion && "transition-transform group-hover:rotate-90")} />
-                {t("new_tender_cta")}
-              </Button>
+            <Link
+              href="/contractor/projects"
+              className="relative z-[2] shrink-0 w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 h-9 rounded-[10px] bg-white text-[#0b1a33] text-[13px] font-bold hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-14px_rgba(0,0,0,.6)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+              style={{ boxShadow: '0 12px 26px -12px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.6)' }}
+            >
+              <PlusCircle className="h-4 w-4" />
+              {t("new_tender_cta")}
             </Link>
           )}
         </div>

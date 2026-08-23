@@ -2,19 +2,19 @@
 
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { Link, usePathname } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
 import { LayoutGrid, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SUPPLIER_COMPONENTS, resolveActiveSupplierComponent, type AccentToken } from "@/lib/portal-components"
+import { SUPPLIER_COMPONENTS, type AccentToken } from "@/lib/portal-components"
 
-const ACCENT_CLASSES: Record<AccentToken, { tile: string; ring: string }> = {
-  primary: { tile: "bg-primary/10 text-primary", ring: "border-primary" },
-  secondary: { tile: "bg-secondary/10 text-secondary", ring: "border-secondary" },
-  accent: { tile: "bg-accent/10 text-accent", ring: "border-accent" },
-  success: { tile: "bg-success/10 text-success", ring: "border-success" },
-  cta: { tile: "bg-cta/10 text-cta", ring: "border-cta" },
-  warning: { tile: "bg-warning/10 text-warning", ring: "border-warning" },
-  destructive: { tile: "bg-destructive/10 text-destructive", ring: "border-destructive" },
+const ACCENT_CLASSES: Record<AccentToken, { tile: string }> = {
+  primary: { tile: "bg-primary/10 text-primary" },
+  secondary: { tile: "bg-secondary/10 text-secondary" },
+  accent: { tile: "bg-accent/10 text-accent" },
+  success: { tile: "bg-success/10 text-success" },
+  cta: { tile: "bg-cta/10 text-cta" },
+  warning: { tile: "bg-warning/10 text-warning" },
+  destructive: { tile: "bg-destructive/10 text-destructive" },
 }
 
 // Full-page "app launcher" — the ERP-style browsable alternative to the
@@ -26,8 +26,6 @@ export default function SupplierAppsPage() {
   const tSidebar = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const isRtl = locale === "ar"
-  const pathname = usePathname()
-  const activeId = resolveActiveSupplierComponent(pathname).id
 
   return (
     <PortalLayout>
@@ -41,18 +39,16 @@ export default function SupplierAppsPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+          {/* No "active" marker here: this launcher page isn't inside any
+              component, so the resolver could only ever mark the fallback —
+              a permanently-wrong "you are here" signal. */}
           {SUPPLIER_COMPONENTS.map((component) => {
-            const isActive = component.id === activeId
             const accent = ACCENT_CLASSES[component.accentToken]
             return (
               <Link
                 key={component.id}
                 href={component.homeHref}
-                aria-current={isActive ? "page" : undefined}
-                className={cn(
-                  "group flex flex-col gap-3 p-5 rounded-2xl border bg-white hover:shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  isActive ? cn("border-2", accent.ring) : "border-slate-200 hover:border-primary/30"
-                )}
+                className="group flex flex-col gap-3 p-5 rounded-2xl border border-slate-200 bg-white hover:shadow-md hover:border-primary/30 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <span className={cn("h-12 w-12 rounded-xl flex items-center justify-center", accent.tile)}>
                   <component.icon size={22} />
