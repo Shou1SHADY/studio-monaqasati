@@ -28,7 +28,8 @@
     "validate:quick": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Quick",
     "validate:full": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Full",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
-    "prepare": "node scripts/prepare.js"
+    "prepare": "node scripts/prepare.js",
+    "migrate:crm": "tsx scripts/migrate-crm-subcollections.ts"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",

@@ -1,0 +1,147 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { useFirestore } from "@/firebase"
+import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { useToast } from "@/hooks/use-toast"
+import { Loader2 } from "lucide-react"
+import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
+import {
+  CRM_QUOTATIONS,
+  QUOTATION_STATUSES,
+  generateQuotationNumber,
+  type CrmQuotation,
+  type QuotationStatus,
+} from "@/lib/crm"
+
+export function CrmQuotationDialog({
+  open,
+  onOpenChange,
+  orgId,
+  contactId,
+  contactName,
+  quotation,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  orgId: string
+  contactId: string
+  contactName?: string | null
+  quotation?: CrmQuotation
+}) {
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [isSaving, setIsSaving] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [status, setStatus] = useState<QuotationStatus>("draft")
+  const [date, setDate] = useState("")
+  const [notes, setNotes] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    setAmount(quotation?.amount != null ? String(quotation.amount) : "")
+    setStatus(quotation?.status ?? "draft")
+    setDate(quotation?.date ?? new Date().toISOString().split("T")[0])
+    setNotes(quotation?.notes ?? "")
+  }, [open, quotation])
+
+  const handleSave = async () => {
+    if (!firestore || isSaving) return
+    const parsed = parseFloat(amount)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      toast({ title: t("crm_quote_amount_error"), variant: "destructive" })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const data = {
+        contactId,
+        contactName: contactName ?? null,
+        amount: parsed,
+        status,
+        date: date || null,
+        notes: notes.trim() || null,
+        organizationId: orgId,
+        updatedAt: serverTimestamp(),
+      }
+      if (quotation) {
+        await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), data)
+      } else {
+        await addDoc(collection(firestore, CRM_QUOTATIONS), {
+          ...data,
+          quotationNumber: generateQuotationNumber(),
+          createdAt: serverTimestamp(),
+        })
+      }
+      toast({ title: t("crm_quote_saved") })
+      onOpenChange(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("crm_save_error"), variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
+        <DialogHeader>
+          <DialogTitle>{quotation ? t("crm_quote_edit_title") : t("crm_quote_add_title")}</DialogTitle>
+          <DialogDescription>{t("crm_quote_dialog_desc")}</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4 py-2" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="quote-amount">{t("crm_quote_amount")} *</Label>
+              <Input id="quote-amount" type="number" min="0" step="any" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} dir="ltr" disabled={isSaving} autoFocus />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="quote-status">{t("crm_quote_status")}</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as QuotationStatus)} disabled={isSaving}>
+                <SelectTrigger id="quote-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {QUOTATION_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{t(`crm_quote_status_${s}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="quote-date">{t("crm_quote_date")}</Label>
+            <input id="quote-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} dir="ltr" disabled={isSaving} className={DATE_INPUT_CLASS} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="quote-notes">{t("crm_notes")}</Label>
+            <Textarea id="quote-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSaving} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
+            <Button type="submit" disabled={isSaving} className="gap-2">
+              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
+              {t("crm_save")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
