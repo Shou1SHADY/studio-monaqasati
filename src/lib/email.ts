@@ -222,7 +222,9 @@ export function buildRfqShareEmail({
 }: RfqShareEmailInput): { subject: string; html: string } {
   const safeContractor = escapeHtml(contractorName || "أحد المقاولين على المنصة")
   const safeContractorEn = escapeHtml(contractorName || "A contractor on our platform")
-  const safeTitle = escapeHtml(rfqTitle || "")
+  // RFQ titles can be paragraph-length — keep subject/body readable.
+  const shortTitle = rfqTitle.length > 100 ? `${rfqTitle.slice(0, 100).trimEnd()}…` : rfqTitle
+  const safeTitle = escapeHtml(shortTitle)
 
   const expiryAr = new Date(linkExpiresAt).toLocaleDateString("ar-SA", { dateStyle: "long" })
   const expiryEn = new Date(linkExpiresAt).toLocaleDateString("en-US", { dateStyle: "long" })
@@ -236,7 +238,7 @@ export function buildRfqShareEmail({
   const bodyAr = `يدعوك <strong>${safeContractor}</strong> لتقديم عرض سعر على طلب عروض الأسعار «<strong>${safeTitle}</strong>» عبر منصة مدماك تيك. يمكنك الاطلاع على كامل التفاصيل وتقديم عرضك مباشرة من الرابط أدناه — دون الحاجة لإنشاء حساب.${deadlineNoteAr} يُرجى العلم أن هذا الرابط صالح حتى <strong>${expiryAr}</strong>.`
   const bodyEn = `<strong>${safeContractorEn}</strong> invites you to submit a price offer for the RFQ "<strong>${safeTitle}</strong>" on Mdmak Tech. You can review the full details and submit your offer directly from the link below — no account required.${deadlineNoteEn} Please note this link is valid until <strong>${expiryEn}</strong>.`
 
-  const subject = `دعوة لتقديم عرض سعر — ${rfqTitle || "طلب عروض أسعار"} | RFQ invitation on Mdmak Tech`
+  const subject = `دعوة لتقديم عرض سعر — ${shortTitle || "طلب عروض أسعار"} | RFQ invitation on Mdmak Tech`
   const html = buildEmailShell({
     greetingAr: "مرحباً,",
     greetingEn: "Hello,",
@@ -245,6 +247,155 @@ export function buildRfqShareEmail({
     ctaAr: "عرض الطلب وتقديم العرض",
     ctaEn: "View RFQ & submit offer",
     inviteUrl: shareUrl,
+  })
+  return { subject, html }
+}
+
+type GuestOfferReceiptEmailInput = {
+  companyName: string
+  rfqTitle: string
+  price: number
+  offerUrl: string
+}
+
+// Sent to a guest supplier the moment their offer lands: their receipt plus the
+// private link they'll use for the rest of the negotiation (price revisions,
+// sample confirmation, delivery notice) without ever creating an account.
+export function buildGuestOfferReceiptEmail({
+  companyName,
+  rfqTitle,
+  price,
+  offerUrl,
+}: GuestOfferReceiptEmailInput): { subject: string; html: string } {
+  const shortTitle = rfqTitle.length > 100 ? `${rfqTitle.slice(0, 100).trimEnd()}…` : rfqTitle
+  const safeTitle = escapeHtml(shortTitle)
+  const safeCompany = escapeHtml(companyName || "")
+  const priceAr = `${price.toLocaleString("ar-SA")} ر.س`
+  const priceEn = `SAR ${price.toLocaleString("en-US")}`
+
+  const bodyAr = `تم استلام عرضكم${safeCompany ? ` المقدّم من <strong>${safeCompany}</strong>` : ""} بمبلغ <strong>${priceAr}</strong> على طلب عروض الأسعار «<strong>${safeTitle}</strong>».<br /><br />احتفظوا بالرابط أدناه: هو صفحتكم الخاصة لمتابعة العرض حتى نهاية التعامل — منها ستتابعون قرار المقاول، وتقدّمون سعراً محدّثاً إذا طُلب تخفيض، وتؤكدون إرسال العينة عند طلبها، وترسلون إشعار التسليم بعد الترسية. لا حاجة لإنشاء حساب.`
+  const bodyEn = `We received your offer${safeCompany ? ` from <strong>${safeCompany}</strong>` : ""} of <strong>${priceEn}</strong> for the RFQ "<strong>${safeTitle}</strong>".<br /><br />Keep the link below — it is your private page for the rest of this deal: track the contractor's decision, submit a revised price if a reduction is requested, confirm you sent a requested sample, and send a delivery notice once awarded. No account needed.`
+
+  const subject = `تم استلام عرضكم — ${shortTitle || "طلب عروض أسعار"} | Offer received on Mdmak Tech`
+  const html = buildEmailShell({
+    greetingAr: "مرحباً,",
+    greetingEn: "Hello,",
+    bodyAr,
+    bodyEn,
+    ctaAr: "متابعة العرض",
+    ctaEn: "Track your offer",
+    inviteUrl: offerUrl,
+  })
+  return { subject, html }
+}
+
+type GuestOfferEventEmailInput = {
+  event:
+    | "reduction_requested"
+    | "sample_requested"
+    | "sample_received"
+    | "offer_accepted"
+    | "offer_rejected"
+    | "supply_completed"
+  contractorName: string
+  rfqTitle: string
+  offerUrl: string
+  targetPrice?: number | null
+  note?: string | null
+}
+
+// Contractor → guest supplier: every step of the RFQ workflow that a
+// registered supplier would receive as an in-app notification, delivered by
+// email instead with a CTA back into their private offer page.
+export function buildGuestOfferEventEmail({
+  event,
+  contractorName,
+  rfqTitle,
+  offerUrl,
+  targetPrice,
+  note,
+}: GuestOfferEventEmailInput): { subject: string; html: string } {
+  const shortTitle = rfqTitle.length > 100 ? `${rfqTitle.slice(0, 100).trimEnd()}…` : rfqTitle
+  const safeTitle = escapeHtml(shortTitle)
+  const safeContractor = escapeHtml(contractorName || "المقاول")
+  const safeContractorEn = escapeHtml(contractorName || "The contractor")
+  const safeNote = note ? escapeHtml(note) : null
+
+  const targetAr =
+    targetPrice != null
+      ? `<br />السعر المستهدف: <strong>${targetPrice.toLocaleString("ar-SA")} ر.س</strong>`
+      : ""
+  const targetEn =
+    targetPrice != null
+      ? `<br />Target price: <strong>SAR ${targetPrice.toLocaleString("en-US")}</strong>`
+      : ""
+  const noteAr = safeNote ? `<br />ملاحظة المقاول: «${safeNote}»` : ""
+  const noteEn = safeNote ? `<br />Contractor's note: "${safeNote}"` : ""
+
+  const copy: Record<
+    GuestOfferEventEmailInput["event"],
+    { subjectAr: string; subjectEn: string; bodyAr: string; bodyEn: string; ctaAr: string; ctaEn: string }
+  > = {
+    reduction_requested: {
+      subjectAr: "طلب تخفيض السعر",
+      subjectEn: "Price reduction requested",
+      bodyAr: `طلب <strong>${safeContractor}</strong> تخفيض سعر عرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>».${targetAr}${noteAr}<br /><br />يمكنكم تقديم سعر محدّث مباشرة من صفحة العرض الخاصة بكم عبر الزر أدناه.`,
+      bodyEn: `<strong>${safeContractorEn}</strong> has requested a price reduction on your offer for the RFQ "<strong>${safeTitle}</strong>".${targetEn}${noteEn}<br /><br />You can submit a revised price straight from your private offer page using the button below.`,
+      ctaAr: "تقديم سعر محدّث",
+      ctaEn: "Submit a revised price",
+    },
+    sample_requested: {
+      subjectAr: "طلب عينة",
+      subjectEn: "Sample requested",
+      bodyAr: `طلب <strong>${safeContractor}</strong> عينة من المنتج قبل اعتماد عرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>».${noteAr}<br /><br />بعد إرسال العينة، أكّدوا ذلك من صفحة العرض ليصل الإشعار للمقاول فوراً.`,
+      bodyEn: `<strong>${safeContractorEn}</strong> has requested a product sample before deciding on your offer for the RFQ "<strong>${safeTitle}</strong>".${noteEn}<br /><br />Once you've sent it, confirm from your offer page so the contractor is notified immediately.`,
+      ctaAr: "تأكيد إرسال العينة",
+      ctaEn: "Confirm sample sent",
+    },
+    sample_received: {
+      subjectAr: "تم استلام العينة",
+      subjectEn: "Sample received",
+      bodyAr: `أكّد <strong>${safeContractor}</strong> استلام العينة الخاصة بعرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>». عرضكم الآن قيد المراجعة النهائية.`,
+      bodyEn: `<strong>${safeContractorEn}</strong> confirmed receiving your sample for the RFQ "<strong>${safeTitle}</strong>". Your offer is now under final review.`,
+      ctaAr: "متابعة العرض",
+      ctaEn: "Track your offer",
+    },
+    offer_accepted: {
+      subjectAr: "🎉 تم قبول عرضكم",
+      subjectEn: "Your offer was accepted",
+      bodyAr: `تهانينا — قَبِل <strong>${safeContractor}</strong> عرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>».${noteAr}<br /><br />الخطوة التالية: عند شحن الطلب، أرسلوا إشعار التسليم من صفحة العرض ليتمكن المقاول من تأكيد الاستلام.`,
+      bodyEn: `Congratulations — <strong>${safeContractorEn}</strong> accepted your offer for the RFQ "<strong>${safeTitle}</strong>".${noteEn}<br /><br />Next step: when you ship, send a delivery notice from your offer page so the contractor can confirm receipt.`,
+      ctaAr: "فتح صفحة العرض",
+      ctaEn: "Open your offer page",
+    },
+    offer_rejected: {
+      subjectAr: "تحديث بخصوص عرضكم",
+      subjectEn: "Update on your offer",
+      bodyAr: `نأسف لإبلاغكم بأن <strong>${safeContractor}</strong> لم يعتمد عرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>».${noteAr}<br /><br />نتطلع لمشاركتكم في طلبات عروض الأسعار القادمة.`,
+      bodyEn: `We're sorry to let you know that <strong>${safeContractorEn}</strong> did not select your offer for the RFQ "<strong>${safeTitle}</strong>".${noteEn}<br /><br />We look forward to your participation in upcoming RFQs.`,
+      ctaAr: "عرض التفاصيل",
+      ctaEn: "View details",
+    },
+    supply_completed: {
+      subjectAr: "🎉 تم تأكيد اكتمال التوريد",
+      subjectEn: "Supply confirmed as complete",
+      bodyAr: `أكّد <strong>${safeContractor}</strong> اكتمال التوريد الخاص بعرضكم على طلب عروض الأسعار «<strong>${safeTitle}</strong>». شكراً لتعاملكم معنا.`,
+      bodyEn: `<strong>${safeContractorEn}</strong> confirmed that the supply for your offer on the RFQ "<strong>${safeTitle}</strong>" is complete. Thank you for working with us.`,
+      ctaAr: "عرض التفاصيل",
+      ctaEn: "View details",
+    },
+  }
+
+  const c = copy[event]
+  const subject = `${c.subjectAr} — ${shortTitle || "طلب عروض أسعار"} | ${c.subjectEn} on Mdmak Tech`
+  const html = buildEmailShell({
+    greetingAr: "مرحباً,",
+    greetingEn: "Hello,",
+    bodyAr: c.bodyAr,
+    bodyEn: c.bodyEn,
+    ctaAr: c.ctaAr,
+    ctaEn: c.ctaEn,
+    inviteUrl: offerUrl,
   })
   return { subject, html }
 }

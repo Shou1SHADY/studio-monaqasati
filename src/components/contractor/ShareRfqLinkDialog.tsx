@@ -77,6 +77,28 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
     }
   }, [isOpen, rfq, generateLink])
 
+  // The channel picked here is remembered on the link: every later step of the
+  // RFQ workflow (price reduction, sample request, award, ...) is pushed back
+  // to the guest supplier on the same channel.
+  const recordChannel = useCallback(
+    async (channel: "whatsapp" | "email" | "link") => {
+      if (!user || !rfq) return
+      try {
+        const idToken = await user.getIdToken()
+        await fetch("/api/rfq-share/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ rfqId: rfq.id, channel }),
+        })
+      } catch (err) {
+        // Non-critical: the link still works, the contractor just gets a
+        // neutral default when notifying the supplier later.
+        console.error("Failed to record share channel:", err)
+      }
+    },
+    [user, rfq]
+  )
+
   const handleCopy = async () => {
     if (!shareUrl) return
     try {
@@ -89,16 +111,23 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
     }
   }
 
+  // RFQ titles can run to whole paragraphs; embedding them verbatim blows past
+  // Gmail's compose-URL length limit and it responds with a 400. Truncate for
+  // the prefilled subject/body — the full title is on the shared page itself.
+  const truncate = (text: string, max: number) =>
+    text.length > max ? `${text.slice(0, max).trimEnd()}…` : text
+
+  const shortTitle = truncate(rfq?.title || "", 100)
   const shareMessage = shareUrl && rfq
     ? t("rfq_share_message", {
-        title: rfq.title || "",
+        title: shortTitle,
         url: shareUrl,
         date: expiresAt ? new Date(expiresAt).toLocaleDateString(locale) : "",
       })
     : ""
 
   const gmailUrl = shareUrl
-    ? `https://mail.google.com/mail/?view=cm&su=${encodeURIComponent(t("rfq_share_email_subject", { title: rfq?.title || "" }))}&body=${encodeURIComponent(shareMessage)}`
+    ? `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(t("rfq_share_email_subject", { title: truncate(rfq?.title || "", 70) }))}&body=${encodeURIComponent(shareMessage)}`
     : "#"
   const whatsappUrl = shareUrl ? `https://wa.me/?text=${encodeURIComponent(shareMessage)}` : "#"
 
@@ -110,7 +139,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
       const res = await fetch("/api/rfq-share/create", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ rfqId: rfq.id, email: emailTo.trim() }),
+        body: JSON.stringify({ rfqId: rfq.id, email: emailTo.trim(), channel: "email" }),
       })
       const json = await res.json().catch(() => null)
       if (!res.ok || json?.error || !json?.data?.emailSent) throw new Error(json?.code || "FAILED")
@@ -196,19 +225,20 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
 
               {/* One-tap share targets */}
               <div className="grid grid-cols-2 gap-2">
-                <a href={gmailUrl} target="_blank" rel="noopener noreferrer">
+                <a href={gmailUrl} target="_blank" rel="noopener noreferrer" onClick={() => recordChannel("email")}>
                   <Button variant="outline" className="w-full gap-2 h-11 rounded-xl border-slate-200 hover:border-red-300 hover:bg-red-50 hover:text-red-600 transition-all font-bold">
                     <Mail size={15} />
                     Gmail
                   </Button>
                 </a>
-                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => recordChannel("whatsapp")}>
                   <Button variant="outline" className="w-full gap-2 h-11 rounded-xl border-slate-200 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-600 transition-all font-bold">
                     <MessageCircle size={15} />
                     WhatsApp
                   </Button>
                 </a>
               </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{t("rfq_share_channel_hint")}</p>
 
               {/* Direct branded email from the platform */}
               <div className="pt-3 border-t border-slate-100 space-y-2">

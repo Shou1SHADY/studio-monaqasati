@@ -104,6 +104,10 @@ export function PublicRfqContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorCode, setErrorCode] = useState<string | null>(null)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  // Private follow-up link handed back on submit — the supplier's page for the
+  // rest of the workflow (revised prices, samples, delivery notices).
+  const [offerUrl, setOfferUrl] = useState<string | null>(null)
+  const [offerUrlCopied, setOfferUrlCopied] = useState(false)
   const [executionDurationUnit, setExecutionDurationUnit] = useState("أيام")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -205,6 +209,7 @@ export function PublicRfqContent() {
         toast({ title: t("error_title"), description, variant: "destructive" })
         return
       }
+      setOfferUrl((json?.data?.offerUrl as string) || null)
       setIsSubmitted(true)
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch {
@@ -289,6 +294,44 @@ export function PublicRfqContent() {
               <h1 className="text-2xl font-black text-slate-800">{t("success_title")}</h1>
               <p className="text-slate-600 leading-relaxed">{t("success_desc")}</p>
             </div>
+            {offerUrl && (
+              <div className="p-5 bg-white rounded-2xl border border-accent/25 text-start space-y-3 shadow-sm">
+                <div className="space-y-1">
+                  <p className="font-bold text-slate-800 text-sm">{t("success_track_title")}</p>
+                  <p className="text-sm text-slate-600 leading-relaxed">{t("success_track_desc")}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={offerUrl}
+                    dir="ltr"
+                    onFocus={(e) => e.target.select()}
+                    className="h-11 rounded-xl bg-slate-50 border-slate-200 text-xs font-mono text-slate-600 text-left"
+                    aria-label={t("success_track_title")}
+                  />
+                  <Button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(offerUrl)
+                        setOfferUrlCopied(true)
+                        setTimeout(() => setOfferUrlCopied(false), 2500)
+                      } catch {
+                        toast({ title: t("error_title"), variant: "destructive" })
+                      }
+                    }}
+                    className={cn("h-11 px-4 rounded-xl shrink-0 font-bold", offerUrlCopied && "bg-success hover:bg-success/90")}
+                  >
+                    {offerUrlCopied ? t("success_track_copied") : t("success_track_copy")}
+                  </Button>
+                </div>
+                <a href={offerUrl} className="inline-block">
+                  <Button variant="outline" size="sm" className="rounded-lg font-bold">
+                    {t("success_track_open")}
+                  </Button>
+                </a>
+              </div>
+            )}
             <div className="p-5 bg-gradient-to-br from-primary/5 to-accent/5 rounded-2xl border border-primary/10 text-start space-y-2">
               <p className="font-bold text-slate-800 text-sm">{t("success_register_title")}</p>
               <p className="text-sm text-slate-600 leading-relaxed">{t("success_register_desc")}</p>

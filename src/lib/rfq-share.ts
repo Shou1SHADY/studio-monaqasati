@@ -3,6 +3,11 @@
 
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 
+// Guest links are handed to suppliers outside the platform (Gmail, WhatsApp,
+// ...), so they must always point at the canonical production domain — never a
+// localhost/preview NEXT_PUBLIC_APP_URL.
+export const PUBLIC_BASE_URL = "https://www.mdmaktech.sa"
+
 export type ShareLinkResolution =
   | { ok: true; linkId: string; link: FirebaseFirestore.DocumentData; rfq: FirebaseFirestore.DocumentData; rfqId: string }
   | { ok: false; code: "INVALID_TOKEN" | "NOT_FOUND" | "LINK_EXPIRED" | "LINK_REVOKED" | "RFQ_NOT_FOUND"; status: number }

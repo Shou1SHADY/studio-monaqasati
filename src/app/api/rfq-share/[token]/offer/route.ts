@@ -4,6 +4,9 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
+import { createGuestOfferLink } from "@/lib/guest-offer"
+import { sendEmail, buildGuestOfferReceiptEmail } from "@/lib/email"
+import { normalizeGuestChannel } from "@/utils/guest-offer-workflow"
 
 // Public endpoint: a guest supplier (no account) submits a price offer on an
 // RFQ through a valid share link. The offer lands in the same `offers`
@@ -166,6 +169,9 @@ export async function POST(
       },
       guestMessage: data.message || null,
       shareLinkId: linkId,
+      // The channel the contractor shared on — the rest of the workflow pushes
+      // updates back to this guest on the same channel.
+      guestChannel: normalizeGuestChannel(link.channel),
       createdAt: nowIso,
     }
     if (data.executionDuration) {
@@ -175,6 +181,41 @@ export async function POST(
     if (offerPdfUrl) offerData.offerPdfUrl = offerPdfUrl
 
     const offerRef = await db.collection("offers").add(offerData)
+
+    // --- Private follow-up link: the guest's own page for the rest of the
+    //     workflow (revised prices, sample confirmation, delivery notice) ---
+    let offerUrl: string | null = null
+    try {
+      const guestLink = await createGuestOfferLink({
+        offerId: offerRef.id,
+        rfqId,
+        rfqTitle: (rfq.title as string) || "",
+        contractorId: (rfq.contractorId as string) || null,
+        organizationId: (rfq.organizationId as string) || (rfq.contractorId as string) || null,
+        shareLinkId: linkId,
+        channel: link.channel,
+        email: data.email,
+        phone: data.phone,
+      })
+      offerUrl = guestLink.url
+      await offerRef.update({ guestOfferLinkId: guestLink.linkId }).catch(() => {})
+    } catch (err) {
+      console.error("Failed to create guest offer link:", err)
+    }
+
+    // Receipt email doubles as delivery of that link — every guest leaves an
+    // email address, so this is the one channel that always reaches them.
+    if (offerUrl) {
+      const { subject, html } = buildGuestOfferReceiptEmail({
+        companyName: data.companyName,
+        rfqTitle: (rfq.title as string) || "",
+        price: data.price,
+        offerUrl,
+      })
+      await sendEmail({ to: data.email, subject, html }).catch((err) =>
+        console.error("Failed to send guest offer receipt:", err)
+      )
+    }
 
     // --- Bookkeeping + contractor notification (best effort) ---
     await db
@@ -208,7 +249,7 @@ export async function POST(
         .catch((err) => console.error("Failed to create guest-offer notification:", err))
     }
 
-    return NextResponse.json({ success: true, data: { offerId: offerRef.id } })
+    return NextResponse.json({ success: true, data: { offerId: offerRef.id, offerUrl } })
   } catch (err) {
     console.error("RFQ share guest offer error:", err)
     return errorResponse("Failed to submit the offer", "INTERNAL_ERROR", 500)
