@@ -4,6 +4,7 @@ import * as React from "react"
 import { useState } from "react"
 import { Link } from "@/i18n/routing"
 import { usePathname } from "@/i18n/routing"
+import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import Image from "next/image"
 import {
@@ -38,10 +39,16 @@ import {
 import {
   CONTRACTOR_COMMUNICATION_SECTION,
   SUPPLIER_COMMUNICATION_SECTION,
+  CONTRACTOR_COMPONENTS,
+  SUPPLIER_COMPONENTS,
   resolveActiveContractorComponent,
   resolveActiveSupplierComponent,
+  visibleSections,
+  visibleComponents,
+  hrefPathname,
   type NavItem,
   type NavSection,
+  type PortalComponentDef,
 } from "@/lib/portal-components"
 
 export type { NavItem, NavSection }
@@ -74,15 +81,32 @@ const adminSections: NavSection[] = [
   },
 ]
 
-function childIsActive(children: NavItem[], pathname: string): boolean {
-  return children.some(c => c.href === pathname || (c.children && childIsActive(c.children, pathname)))
+/** An item whose href carries a query string (`/contractor/profile?tab=legal`)
+ * is only active when that query is actually selected — otherwise the tab
+ * deep-links would light up on every visit to the bare page. */
+function hrefIsActive(href: string, pathname: string, search: URLSearchParams): boolean {
+  if (hrefPathname(href) !== pathname) return false
+  const q = href.indexOf("?")
+  if (q === -1) return true
+  const wanted = new URLSearchParams(href.slice(q + 1))
+  for (const [key, value] of wanted.entries()) {
+    if (search.get(key) !== value) return false
+  }
+  return true
 }
 
-function NavItemRenderer({ item, pathname, t, can }: { item: NavItem; pathname: string; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean }) {
+function childIsActive(children: NavItem[], pathname: string, search: URLSearchParams): boolean {
+  return children.some(
+    c => hrefIsActive(c.href, pathname, search) || (c.children && childIsActive(c.children, pathname, search))
+  )
+}
+
+function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean }) {
   if (item.requiredPermission && !can(item.requiredPermission)) return null
   const hasChildren = !!item.children?.length
-  const isChildActive = hasChildren && childIsActive(item.children!, pathname)
-  const isParentActive = pathname === item.href
+  const isChildActive = hasChildren && childIsActive(item.children!, pathname, search)
+  // A parent whose child tab is selected hands the highlight to that child.
+  const isParentActive = hrefIsActive(item.href, pathname, search) && !isChildActive
 
   const [expanded, setExpanded] = useState(isChildActive || isParentActive)
 
@@ -127,10 +151,10 @@ function NavItemRenderer({ item, pathname, t, can }: { item: NavItem; pathname: 
               <SidebarMenuItem key={child.titleKey}>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === child.href}
+                  isActive={hrefIsActive(child.href, pathname, search)}
                   className={cn(
                     "h-9 transition-all",
-                    pathname === child.href
+                    hrefIsActive(child.href, pathname, search)
                       ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent"
                   )}
@@ -169,12 +193,26 @@ function NavItemRenderer({ item, pathname, t, can }: { item: NavItem; pathname: 
   )
 }
 
+/** The pathname decides which module is active, but a member who can't see
+ * any of that module's pages would get a sidebar with nothing but the
+ * communication section — no way back. Fall back to the first module they
+ * can actually use (Project Management always qualifies). */
+function resolveVisibleComponent(
+  active: PortalComponentDef,
+  all: PortalComponentDef[],
+  can: (p: PermissionId) => boolean
+): PortalComponentDef {
+  if (visibleSections(active.sections, can).length > 0) return active
+  return visibleComponents(all, can)[0] ?? active
+}
+
 export function RoleSidebar() {
   const t = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const { can } = usePermissions()
 
   const pathname = usePathname()
+  const search = useSearchParams()
 
   let sections: NavSection[] = []
   let portalTitleKey = ""
@@ -182,14 +220,14 @@ export function RoleSidebar() {
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
-    const activeComponent = resolveActiveSupplierComponent(pathname)
-    sections = [...activeComponent.sections, SUPPLIER_COMMUNICATION_SECTION]
+    const activeComponent = resolveVisibleComponent(resolveActiveSupplierComponent(pathname), SUPPLIER_COMPONENTS, can)
+    sections = [...visibleSections(activeComponent.sections, can), SUPPLIER_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-success"
     dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/contractor")) {
-    const activeComponent = resolveActiveContractorComponent(pathname)
-    sections = [...activeComponent.sections, CONTRACTOR_COMMUNICATION_SECTION]
+    const activeComponent = resolveVisibleComponent(resolveActiveContractorComponent(pathname), CONTRACTOR_COMPONENTS, can)
+    sections = [...visibleSections(activeComponent.sections, can), CONTRACTOR_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-accent"
     dashboardHref = activeComponent.homeHref
@@ -234,7 +272,7 @@ export function RoleSidebar() {
             <SidebarGroupContent>
               <SidebarMenu className="px-3 gap-1">
                 {section.items.map((item) => (
-                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} t={t} can={can} />
+                  <NavItemRenderer key={item.titleKey} item={item} pathname={pathname} search={search} t={t} can={can} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>

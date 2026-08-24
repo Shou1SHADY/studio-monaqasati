@@ -157,3 +157,18 @@ public/                 # Static assets — favicons, OG image, manifest
 - Add `letter-spacing` to Arabic text
 - Use inline styles when Tailwind tokens exist
 - Import from `src/lol/` — deprecated/experimental code
+
+## Deploying & Pushing — ASK FIRST
+
+**NEVER push to production without asking the owner first.** This is absolute and
+applies to every session, no exceptions, no "it's a small change".
+
+Requires explicit approval each time — approval for one push never carries over
+to the next:
+
+- `git push` to `origin/main` (or any remote branch)
+- `firebase deploy` — hosting, functions, `firestore.rules`, `storage.rules`
+- Any command that publishes, releases, or otherwise makes changes live
+
+Committing locally is fine when asked. Stop at the commit, report what's ready,
+and wait for a clear go-ahead before anything leaves the machine.
