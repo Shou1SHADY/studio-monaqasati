@@ -44,6 +44,11 @@ export function useActiveCompanyName(profile: ActiveCompanyProfile | null | unde
   const firestore = useFirestore()
   const activeOrgId = profile?.organizationId || userUid
   const isMember = profile?.organizationRole === "member" && !!activeOrgId && activeOrgId !== userUid
+  // A secondary company (added via the company-switcher, not a team
+  // membership) has its own `organizations/{id}` doc — its `name` there is
+  // the live source of truth, since the `orgMemberships` entry below is only
+  // a snapshot taken when the company was added and goes stale if renamed.
+  const isSecondary = !isMember && !!activeOrgId && !!userUid && activeOrgId !== userUid
 
   const ownerDocRef = useMemoFirebase(() => {
     if (!firestore || !isMember || !activeOrgId) return null
@@ -51,7 +56,19 @@ export function useActiveCompanyName(profile: ActiveCompanyProfile | null | unde
   }, [firestore, isMember, activeOrgId])
   const { data: ownerProfile } = useDoc(ownerDocRef)
 
+  const orgDocRef = useMemoFirebase(() => {
+    if (!firestore || !isSecondary || !activeOrgId) return null
+    return doc(firestore, "organizations", activeOrgId)
+  }, [firestore, isSecondary, activeOrgId])
+  const { data: orgProfile } = useDoc(orgDocRef)
+
   const membershipMatch = (profile?.orgMemberships || []).find((m) => m.organizationId === activeOrgId)?.companyName
+
+  if (isSecondary) {
+    const org = orgProfile as { name?: string } | null
+    return org?.name || membershipMatch || profile?.companyName || profile?.name
+  }
+
   if (membershipMatch) return membershipMatch
 
   if (isMember) {

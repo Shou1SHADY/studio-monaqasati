@@ -746,6 +746,26 @@ service cloud.firestore {
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
       allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+
+      match /opportunities/{opportunityId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/crmContacts/$(contactId)).data.organizationId
+        ));
+        allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+        allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/crmContacts/$(contactId)).data.organizationId
+        ));
+      }
+
+      match /quotations/{quotationId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/crmContacts/$(contactId)).data.organizationId
+        ));
+        allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+        allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/crmContacts/$(contactId)).data.organizationId
+        ));
+      }
     }
 
     // Invoices — scoped to an organization

@@ -36,6 +36,7 @@ import {
   getDocsFromServer,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useTranslations, useLocale } from "next-intl"
 import {
   Users,
@@ -98,6 +99,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
     return doc(firestore, "users", user.uid)
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
+  const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const orgId = profile?.organizationId as string | undefined
   const isOwner = profile?.organizationRole === "owner"
@@ -938,7 +940,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           <DialogHeader>
             <DialogTitle>{t("team_dialog_title")}</DialogTitle>
             <DialogDescription>
-              {t("team_dialog_desc", { company: profile?.companyName || t("team_your_org") })}
+              {t("team_dialog_desc", { company: activeCompanyName || t("team_your_org") })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

@@ -432,6 +432,82 @@ export const COUNTRIES = [
   { value: "KW", labelAr: "الكويت", labelEn: "Kuwait" },
 ]
 
+/** Broader country list for phone-number entry (PhoneInput) — deliberately
+ * separate from COUNTRIES above, which drives the RFQ delivery-location
+ * picker and is tied 1:1 to CITIES_BY_COUNTRY. A contact's phone country
+ * has nothing to do with where materials ship, so it isn't bound by that
+ * same 5-country city-list coupling. */
+export const PHONE_COUNTRIES = [
+  { value: "SA", labelAr: "المملكة العربية السعودية", labelEn: "Saudi Arabia" },
+  { value: "AE", labelAr: "الإمارات العربية المتحدة", labelEn: "United Arab Emirates" },
+  { value: "EG", labelAr: "مصر", labelEn: "Egypt" },
+  { value: "QA", labelAr: "قطر", labelEn: "Qatar" },
+  { value: "KW", labelAr: "الكويت", labelEn: "Kuwait" },
+  { value: "BH", labelAr: "البحرين", labelEn: "Bahrain" },
+  { value: "OM", labelAr: "عُمان", labelEn: "Oman" },
+  { value: "JO", labelAr: "الأردن", labelEn: "Jordan" },
+  { value: "LB", labelAr: "لبنان", labelEn: "Lebanon" },
+  { value: "IQ", labelAr: "العراق", labelEn: "Iraq" },
+  { value: "SY", labelAr: "سوريا", labelEn: "Syria" },
+  { value: "YE", labelAr: "اليمن", labelEn: "Yemen" },
+  { value: "PS", labelAr: "فلسطين", labelEn: "Palestine" },
+  { value: "SD", labelAr: "السودان", labelEn: "Sudan" },
+  { value: "LY", labelAr: "ليبيا", labelEn: "Libya" },
+  { value: "TN", labelAr: "تونس", labelEn: "Tunisia" },
+  { value: "DZ", labelAr: "الجزائر", labelEn: "Algeria" },
+  { value: "MA", labelAr: "المغرب", labelEn: "Morocco" },
+  { value: "TR", labelAr: "تركيا", labelEn: "Turkey" },
+  { value: "IR", labelAr: "إيران", labelEn: "Iran" },
+  { value: "PK", labelAr: "باكستان", labelEn: "Pakistan" },
+  { value: "IN", labelAr: "الهند", labelEn: "India" },
+  { value: "BD", labelAr: "بنغلاديش", labelEn: "Bangladesh" },
+  { value: "LK", labelAr: "سريلانكا", labelEn: "Sri Lanka" },
+  { value: "NP", labelAr: "نيبال", labelEn: "Nepal" },
+  { value: "PH", labelAr: "الفلبين", labelEn: "Philippines" },
+  { value: "ID", labelAr: "إندونيسيا", labelEn: "Indonesia" },
+  { value: "MY", labelAr: "ماليزيا", labelEn: "Malaysia" },
+  { value: "SG", labelAr: "سنغافورة", labelEn: "Singapore" },
+  { value: "TH", labelAr: "تايلاند", labelEn: "Thailand" },
+  { value: "VN", labelAr: "فيتنام", labelEn: "Vietnam" },
+  { value: "CN", labelAr: "الصين", labelEn: "China" },
+  { value: "JP", labelAr: "اليابان", labelEn: "Japan" },
+  { value: "KR", labelAr: "كوريا الجنوبية", labelEn: "South Korea" },
+  { value: "HK", labelAr: "هونغ كونغ", labelEn: "Hong Kong" },
+  { value: "TW", labelAr: "تايوان", labelEn: "Taiwan" },
+  { value: "AU", labelAr: "أستراليا", labelEn: "Australia" },
+  { value: "NZ", labelAr: "نيوزيلندا", labelEn: "New Zealand" },
+  { value: "GB", labelAr: "المملكة المتحدة", labelEn: "United Kingdom" },
+  { value: "IE", labelAr: "أيرلندا", labelEn: "Ireland" },
+  { value: "FR", labelAr: "فرنسا", labelEn: "France" },
+  { value: "DE", labelAr: "ألمانيا", labelEn: "Germany" },
+  { value: "IT", labelAr: "إيطاليا", labelEn: "Italy" },
+  { value: "ES", labelAr: "إسبانيا", labelEn: "Spain" },
+  { value: "PT", labelAr: "البرتغال", labelEn: "Portugal" },
+  { value: "NL", labelAr: "هولندا", labelEn: "Netherlands" },
+  { value: "BE", labelAr: "بلجيكا", labelEn: "Belgium" },
+  { value: "CH", labelAr: "سويسرا", labelEn: "Switzerland" },
+  { value: "AT", labelAr: "النمسا", labelEn: "Austria" },
+  { value: "SE", labelAr: "السويد", labelEn: "Sweden" },
+  { value: "NO", labelAr: "النرويج", labelEn: "Norway" },
+  { value: "DK", labelAr: "الدنمارك", labelEn: "Denmark" },
+  { value: "FI", labelAr: "فنلندا", labelEn: "Finland" },
+  { value: "PL", labelAr: "بولندا", labelEn: "Poland" },
+  { value: "CZ", labelAr: "التشيك", labelEn: "Czech Republic" },
+  { value: "GR", labelAr: "اليونان", labelEn: "Greece" },
+  { value: "RO", labelAr: "رومانيا", labelEn: "Romania" },
+  { value: "RU", labelAr: "روسيا", labelEn: "Russia" },
+  { value: "UA", labelAr: "أوكرانيا", labelEn: "Ukraine" },
+  { value: "US", labelAr: "الولايات المتحدة الأمريكية", labelEn: "United States" },
+  { value: "CA", labelAr: "كندا", labelEn: "Canada" },
+  { value: "MX", labelAr: "المكسيك", labelEn: "Mexico" },
+  { value: "BR", labelAr: "البرازيل", labelEn: "Brazil" },
+  { value: "AR", labelAr: "الأرجنتين", labelEn: "Argentina" },
+  { value: "ZA", labelAr: "جنوب أفريقيا", labelEn: "South Africa" },
+  { value: "NG", labelAr: "نيجيريا", labelEn: "Nigeria" },
+  { value: "KE", labelAr: "كينيا", labelEn: "Kenya" },
+  { value: "ET", labelAr: "إثيوبيا", labelEn: "Ethiopia" },
+]
+
 export const CITIES_BY_COUNTRY: Record<string, string[]> = {
   SA: [
     "الرياض", "جدة", "مكة المكرمة", "المدينة المنورة", "الدمام", "الخبر", "الظهران",
@@ -450,14 +526,82 @@ export function displayCountry(countryCode: string, locale: string): string {
   return locale === "ar" ? c.labelAr : c.labelEn
 }
 
-/** Dial code + national mobile-number length for each country in COUNTRIES —
- * used to validate and format phone numbers as {dialCode}{nationalNumber}. */
-export const PHONE_DIAL_CODES: Record<string, { dialCode: string; nationalLength: number }> = {
-  SA: { dialCode: "+966", nationalLength: 9 }, // 5XXXXXXXX
-  AE: { dialCode: "+971", nationalLength: 9 }, // 5XXXXXXXX
-  EG: { dialCode: "+20", nationalLength: 10 }, // 1XXXXXXXXX
-  QA: { dialCode: "+974", nationalLength: 8 },
-  KW: { dialCode: "+965", nationalLength: 8 },
+/** Dial code + national-number length range for each country in COUNTRIES —
+ * used to validate and format phone numbers as {dialCode}{nationalNumber}.
+ * minLength/maxLength bound the national significant number (excludes the
+ * dial code) per each country's real numbering plan — numbers aren't
+ * force-padded to a single fixed length since most countries' plans allow
+ * a short range (e.g. Italy's mobile/landline split, Germany's regional
+ * variation), not one exact digit count. */
+export const PHONE_DIAL_CODES: Record<string, { dialCode: string; minLength: number; maxLength: number }> = {
+  SA: { dialCode: "+966", minLength: 9, maxLength: 9 },
+  AE: { dialCode: "+971", minLength: 9, maxLength: 9 },
+  EG: { dialCode: "+20", minLength: 10, maxLength: 10 },
+  QA: { dialCode: "+974", minLength: 8, maxLength: 8 },
+  KW: { dialCode: "+965", minLength: 8, maxLength: 8 },
+  BH: { dialCode: "+973", minLength: 8, maxLength: 8 },
+  OM: { dialCode: "+968", minLength: 8, maxLength: 8 },
+  JO: { dialCode: "+962", minLength: 9, maxLength: 9 },
+  LB: { dialCode: "+961", minLength: 7, maxLength: 8 },
+  IQ: { dialCode: "+964", minLength: 10, maxLength: 10 },
+  SY: { dialCode: "+963", minLength: 9, maxLength: 9 },
+  YE: { dialCode: "+967", minLength: 9, maxLength: 9 },
+  PS: { dialCode: "+970", minLength: 9, maxLength: 9 },
+  SD: { dialCode: "+249", minLength: 9, maxLength: 9 },
+  LY: { dialCode: "+218", minLength: 9, maxLength: 10 },
+  TN: { dialCode: "+216", minLength: 8, maxLength: 8 },
+  DZ: { dialCode: "+213", minLength: 9, maxLength: 9 },
+  MA: { dialCode: "+212", minLength: 9, maxLength: 9 },
+  TR: { dialCode: "+90", minLength: 10, maxLength: 10 },
+  IR: { dialCode: "+98", minLength: 10, maxLength: 10 },
+  PK: { dialCode: "+92", minLength: 10, maxLength: 10 },
+  IN: { dialCode: "+91", minLength: 10, maxLength: 10 },
+  BD: { dialCode: "+880", minLength: 10, maxLength: 10 },
+  LK: { dialCode: "+94", minLength: 9, maxLength: 9 },
+  NP: { dialCode: "+977", minLength: 10, maxLength: 10 },
+  PH: { dialCode: "+63", minLength: 10, maxLength: 10 },
+  ID: { dialCode: "+62", minLength: 9, maxLength: 12 },
+  MY: { dialCode: "+60", minLength: 9, maxLength: 10 },
+  SG: { dialCode: "+65", minLength: 8, maxLength: 8 },
+  TH: { dialCode: "+66", minLength: 9, maxLength: 9 },
+  VN: { dialCode: "+84", minLength: 9, maxLength: 10 },
+  CN: { dialCode: "+86", minLength: 11, maxLength: 11 },
+  JP: { dialCode: "+81", minLength: 9, maxLength: 10 },
+  KR: { dialCode: "+82", minLength: 9, maxLength: 10 },
+  HK: { dialCode: "+852", minLength: 8, maxLength: 8 },
+  TW: { dialCode: "+886", minLength: 9, maxLength: 9 },
+  AU: { dialCode: "+61", minLength: 9, maxLength: 9 },
+  NZ: { dialCode: "+64", minLength: 8, maxLength: 10 },
+  GB: { dialCode: "+44", minLength: 10, maxLength: 10 },
+  IE: { dialCode: "+353", minLength: 9, maxLength: 9 },
+  FR: { dialCode: "+33", minLength: 9, maxLength: 9 },
+  DE: { dialCode: "+49", minLength: 10, maxLength: 11 },
+  IT: { dialCode: "+39", minLength: 9, maxLength: 10 },
+  ES: { dialCode: "+34", minLength: 9, maxLength: 9 },
+  PT: { dialCode: "+351", minLength: 9, maxLength: 9 },
+  NL: { dialCode: "+31", minLength: 9, maxLength: 9 },
+  BE: { dialCode: "+32", minLength: 8, maxLength: 9 },
+  CH: { dialCode: "+41", minLength: 9, maxLength: 9 },
+  AT: { dialCode: "+43", minLength: 10, maxLength: 11 },
+  SE: { dialCode: "+46", minLength: 9, maxLength: 9 },
+  NO: { dialCode: "+47", minLength: 8, maxLength: 8 },
+  DK: { dialCode: "+45", minLength: 8, maxLength: 8 },
+  FI: { dialCode: "+358", minLength: 9, maxLength: 10 },
+  PL: { dialCode: "+48", minLength: 9, maxLength: 9 },
+  CZ: { dialCode: "+420", minLength: 9, maxLength: 9 },
+  GR: { dialCode: "+30", minLength: 10, maxLength: 10 },
+  RO: { dialCode: "+40", minLength: 9, maxLength: 9 },
+  RU: { dialCode: "+7", minLength: 10, maxLength: 10 },
+  UA: { dialCode: "+380", minLength: 9, maxLength: 9 },
+  US: { dialCode: "+1", minLength: 10, maxLength: 10 },
+  CA: { dialCode: "+1", minLength: 10, maxLength: 10 },
+  MX: { dialCode: "+52", minLength: 10, maxLength: 10 },
+  BR: { dialCode: "+55", minLength: 10, maxLength: 11 },
+  AR: { dialCode: "+54", minLength: 10, maxLength: 11 },
+  ZA: { dialCode: "+27", minLength: 9, maxLength: 9 },
+  NG: { dialCode: "+234", minLength: 10, maxLength: 10 },
+  KE: { dialCode: "+254", minLength: 9, maxLength: 9 },
+  ET: { dialCode: "+251", minLength: 9, maxLength: 9 },
 }
 
 /** City -> districts, shared by every tender-creation entry point so the same city always offers the same districts. */

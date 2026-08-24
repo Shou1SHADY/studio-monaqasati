@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
+import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -47,6 +48,23 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   const orgMemberships: OrgMembership[] = (profile?.orgMemberships as OrgMembership[] | undefined) || []
   const activeOrgId = (profile?.organizationId as string | undefined) || user?.uid || ""
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
+
+  // The profile-completeness banner checks identity fields, which live on a
+  // secondary company's own organizations/{id} doc, not on users/{uid} — see
+  // src/lib/org-identity.ts. Without this, the banner (and its "complete your
+  // profile" nudge) would judge the WRONG company's completeness.
+  const isSecondaryActiveOrg = isSecondaryOrg(activeOrgId, user?.uid, profile?.organizationRole as string | undefined)
+  const identityOverlayRef = useMemoFirebase(() => {
+    if (!firestore || !isSecondaryActiveOrg || !activeOrgId) return null
+    return identityDocRef(firestore, activeOrgId)
+  }, [firestore, isSecondaryActiveOrg, activeOrgId])
+  const { data: identityOverlay } = useDoc(identityOverlayRef)
+  const resolvedProfileCompleted = isSecondaryActiveOrg
+    ? (identityOverlay as { profileCompleted?: boolean } | null)?.profileCompleted
+    : (profile?.profileCompleted as boolean | undefined)
+  const resolvedLegalDocuments = isSecondaryActiveOrg
+    ? (identityOverlay as { legalDocuments?: { cr?: { url?: string }; vat?: { url?: string } } } | null)?.legalDocuments
+    : (profile?.legalDocuments as { cr?: { url?: string }; vat?: { url?: string } } | undefined)
   // The role the account was created with — the primary company's role, and the
   // fallback for memberships that predate cross-role companies.
   const basePrimaryRole: "Contractor" | "Supplier" =
@@ -885,7 +903,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         
         <main className="flex-1 p-6 md:p-8 overflow-y-auto min-w-0">
           <div className="mx-auto max-w-7xl">
-            {profile && profile.role !== "Admin" && (profile.profileCompleted !== true || !profile.legalDocuments?.cr?.url || !profile.legalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
+            {profile && profile.role !== "Admin" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">
                   <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />

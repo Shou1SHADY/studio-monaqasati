@@ -45,6 +45,9 @@ import {
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
+import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { stripIdentityFields } from "@/lib/identity-fields"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
@@ -97,10 +100,16 @@ export default function AdminSuppliersPage() {
 
   const { data: suppliers, isLoading } = useCollection(suppliersQuery)
   const [localSuppliers, setLocalSuppliers] = useState<any[]>([])
+  // A supplier account switched into a secondary company (added via the
+  // company-switcher) has that company's identity fields on
+  // organizations/{id}, not on its own users/{id} doc — see useIdentityOverlays.
+  const supplierIdentityOverlays = useIdentityOverlays((suppliers || []) as { id: string; organizationId?: string; organizationRole?: string }[])
 
   useEffect(() => {
     if (suppliers) {
-      setLocalSuppliers(suppliers.map((s: any) => {
+      setLocalSuppliers(suppliers.map((row: any) => {
+        const overlay = supplierIdentityOverlays.get(row.id)
+        const s = overlay ? { ...stripIdentityFields(row), ...overlay } : row
         const legalDocs = s.legalDocuments || {}
         // Count how many legal docs have an actual uploaded URL
         const uploadedDocKeys = Object.keys(legalDocs).filter(
@@ -108,6 +117,8 @@ export default function AdminSuppliersPage() {
         )
         return {
           id: s.id,
+          organizationId: row.organizationId,
+          organizationRole: row.organizationRole,
           name: s.name || t("unspecified"),
           contact: s.phone || t("unspecified"),
           email: s.email || "",
@@ -143,8 +154,15 @@ export default function AdminSuppliersPage() {
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
+    const row = localSuppliers.find((s) => s.id === id)
+    // Verification status is a company-identity field — for a secondary
+    // company (added via the company-switcher) it lives on
+    // organizations/{id}, not on the owner's own users/{id} doc.
+    const targetRef = row && isSecondaryOrg(row.organizationId, id, row.organizationRole)
+      ? identityDocRef(firestore, row.organizationId)
+      : doc(firestore, "users", id)
     try {
-      await updateDoc(doc(firestore, "users", id), {
+      await updateDoc(targetRef, {
         isVerified: verify,
         verificationRequested: false
       })

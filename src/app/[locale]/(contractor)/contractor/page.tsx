@@ -4,8 +4,9 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Crown, UsersRound } from "lucide-react"
 import { Link } from "@/i18n/routing"
-import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc } from "firebase/firestore"
+import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
+import { collection, query, where } from "firebase/firestore"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import { useWorkQueue, type WorkQueueItem, type WorkQueueItemType } from "@/hooks/useWorkQueue"
@@ -59,11 +60,7 @@ export default function ContractorDashboard() {
   const locale = useLocale()
   const isRtl = locale === "ar"
 
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile } = useDoc(userDocRef)
+  const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const myOrgId = profile?.organizationId || user?.uid
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
   const { can, isOrgOwner, groups } = usePermissions()
@@ -174,7 +171,7 @@ export default function ContractorDashboard() {
         {/* Component tile grid — one tile per portal component, the badge is a
             real "needs attention" count where one exists (see ITEM_TILE above),
             or a simple total for components with no urgency signal (hr/crm). */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
           {CONTRACTOR_COMPONENTS.map((component) => {
             const accent = COMPONENT_ACCENT_CLASSES[component.accentToken]
             const count = badgeCountByTile.get(component.id) || 0
@@ -183,22 +180,24 @@ export default function ContractorDashboard() {
               <Link
                 key={component.id}
                 href={component.homeHref}
-                className="group relative flex flex-col items-center gap-3 p-6 rounded-2xl bg-white border border-border/60 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="group relative flex flex-col items-center gap-4 py-8 px-6 rounded-2xl bg-white border border-border/60 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                {count > 0 && (
-                  <span
-                    className={cn(
-                      "absolute top-2 h-6 min-w-6 px-1.5 rounded-full text-[11px] font-black text-white flex items-center justify-center shadow-sm",
-                      isRtl ? "right-2" : "left-2",
-                      isUrgent ? "bg-destructive" : "bg-cta"
-                    )}
-                  >
-                    {count}
+                <div className="relative">
+                  <span className={cn("h-[72px] w-[72px] rounded-2xl flex items-center justify-center transition-transform group-hover:scale-105", accent.tile)}>
+                    <component.icon size={30} />
                   </span>
-                )}
-                <span className={cn("h-16 w-16 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-105", accent.tile)}>
-                  <component.icon size={28} />
-                </span>
+                  {count > 0 && (
+                    <span
+                      className={cn(
+                        "absolute -top-2 h-6 min-w-6 px-1.5 rounded-full text-[11px] font-black text-white flex items-center justify-center shadow-sm ring-2 ring-white",
+                        isRtl ? "-right-2" : "-left-2",
+                        isUrgent ? "bg-destructive" : "bg-cta"
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </div>
                 <span className="text-sm font-bold text-foreground text-center leading-tight">
                   {tSidebar(component.labelKey)}
                 </span>

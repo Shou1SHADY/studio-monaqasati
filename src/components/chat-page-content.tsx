@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Send, Loader2, MessageSquare, Shield, Clock, User } from "lucide-react"
 import { useFirestore, useUser, useMemoFirebase, useCollection, useDoc } from "@/firebase"
+import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { stripIdentityFields } from "@/lib/identity-fields"
 import {
   doc, getDoc, setDoc, collection, addDoc, updateDoc, getDocs, increment,
   query, orderBy, where, writeBatch
@@ -151,7 +153,24 @@ export default function ChatPageContent({ backPath }: ChatPageContentProps) {
     return doc(firestore, "users", partnerId)
   }, [firestore, partnerId])
 
-  const { data: partnerProfile } = useDoc(partnerDocRef)
+  const { data: partnerBase } = useDoc(partnerDocRef)
+
+  // If the chat partner has switched into a secondary company (added via
+  // the company-switcher), its identity fields (name/companyName) live on
+  // organizations/{id}, not on its own users/{id} doc — see src/lib/org-identity.ts.
+  const partnerOrgId = (partnerBase as { organizationId?: string } | null)?.organizationId
+  const partnerOrgRole = (partnerBase as { organizationRole?: string } | null)?.organizationRole
+  const partnerIsSecondary = isSecondaryOrg(partnerOrgId, partnerId, partnerOrgRole)
+  const partnerIdentityRef = useMemoFirebase(() => {
+    if (!firestore || !partnerIsSecondary || !partnerOrgId) return null
+    return identityDocRef(firestore, partnerOrgId)
+  }, [firestore, partnerIsSecondary, partnerOrgId])
+  const { data: partnerIdentityOverlay, isLoading: partnerIdentityLoading } = useDoc(partnerIdentityRef)
+  // Wait for the overlay to settle before merging — otherwise the primary
+  // company's stale identity fields would flash through for one render.
+  const partnerProfile = !partnerBase || (partnerIsSecondary && partnerIdentityLoading)
+    ? null
+    : partnerIsSecondary ? { ...stripIdentityFields(partnerBase), ...(partnerIdentityOverlay || {}) } : partnerBase
 
   // Determine partner info
   const partnerInfo = useMemo(() => {

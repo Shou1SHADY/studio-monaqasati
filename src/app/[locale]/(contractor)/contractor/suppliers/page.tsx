@@ -61,6 +61,8 @@ import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
+import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
+import { stripIdentityFields } from "@/lib/identity-fields"
 import { displayCategory, displayCity } from "@/lib/constants"
 
 function fmtDate(val: unknown, locale: string) {
@@ -110,6 +112,10 @@ export default function SuppliersDirectory() {
 
   const { data: fbSuppliers, isLoading: suppliersLoading } = useCollection(suppliersQuery)
   const supplierCompanyNames = useCompanyNamesForMembers((fbSuppliers || []) as any[])
+  // A supplier account that's switched into a secondary company (added via
+  // the company-switcher) has that company's identity fields on
+  // organizations/{id}, not on its own users/{id} doc — see useIdentityOverlays.
+  const supplierIdentityOverlays = useIdentityOverlays((fbSuppliers || []) as { id: string; organizationId?: string; organizationRole?: string }[])
 
   // Fetch contractor's RFQs
   const rfqsQuery = useMemoFirebase(() => {
@@ -333,7 +339,9 @@ export default function SuppliersDirectory() {
   // member with a non-empty value for any field the owner left blank.
   const displaySuppliers = (fbSuppliers || []).length > 0 ? Array.from(suppliersByOrg.entries())
     .map(([orgId, members]) => {
-      const owner = members.find((m) => !m.organizationRole || m.organizationRole === "owner") || members[0]
+      const rawOwner = members.find((m) => !m.organizationRole || m.organizationRole === "owner") || members[0]
+      const ownerOverlay = supplierIdentityOverlays.get(rawOwner.id)
+      const owner = ownerOverlay ? { ...stripIdentityFields(rawOwner), ...ownerOverlay } : rawOwner
       const memberIds = members.map((m) => m.id)
       const pick = (field: string) => owner[field] || members.find((m) => m[field])?.[field]
       const ratings = supplierRatingsMap[orgId]

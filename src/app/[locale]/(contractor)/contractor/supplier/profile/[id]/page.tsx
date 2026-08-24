@@ -29,6 +29,8 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@
 import { collection, doc, query, where, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useCompanyNameFor } from "@/hooks/useActiveCompanyName"
+import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { stripIdentityFields } from "@/lib/identity-fields"
 import { displayCategory, displayCity } from "@/lib/constants"
 import { cn } from "@/lib/utils"
 
@@ -48,7 +50,29 @@ export default function ContractorSupplierProfilePage() {
     if (!firestore || !supplierId) return null
     return doc(firestore, "users", supplierId)
   }, [firestore, supplierId])
-  const { data: supplier, isLoading: isSupplierLoading } = useDoc(supplierDocRef)
+  const { data: supplierBase, isLoading: isSupplierLoading } = useDoc(supplierDocRef)
+
+  // If THIS supplier account has switched into a secondary company (added via
+  // the company-switcher), its identity fields live on organizations/{id},
+  // not on its own users/{id} doc — see src/lib/org-identity.ts. Without this,
+  // a contractor browsing a supplier who owns more than one company would see
+  // whichever company that supplier happened to be switched into last, not
+  // necessarily the one they're viewing this profile for.
+  const supplierOrgId = (supplierBase as { organizationId?: string } | null)?.organizationId
+  const supplierOrgRole = (supplierBase as { organizationRole?: string } | null)?.organizationRole
+  const supplierIsSecondary = isSecondaryOrg(supplierOrgId, supplierId, supplierOrgRole)
+  const supplierIdentityRef = useMemoFirebase(() => {
+    if (!firestore || !supplierIsSecondary || !supplierOrgId) return null
+    return identityDocRef(firestore, supplierOrgId)
+  }, [firestore, supplierIsSecondary, supplierOrgId])
+  const { data: supplierIdentityOverlay, isLoading: supplierIdentityLoading } = useDoc(supplierIdentityRef)
+  // Wait for the overlay to settle before merging — otherwise the primary
+  // company's stale identity fields would flash through for one render
+  // before the secondary company's real (possibly blank) ones arrive.
+  const supplier = !supplierBase || (supplierIsSecondary && supplierIdentityLoading)
+    ? null
+    : supplierIsSecondary ? { ...stripIdentityFields(supplierBase), ...(supplierIdentityOverlay || {}) } : supplierBase
+
   const resolvedCompanyName = useCompanyNameFor(supplier ? { id: supplierId, ...supplier } : null)
 
   // A company's reviews can be scattered across several accounts — the owner's,
@@ -109,7 +133,7 @@ export default function ContractorSupplierProfilePage() {
     }
   }
 
-  if (isSupplierLoading) {
+  if (isSupplierLoading || (!!supplierBase && supplierIsSecondary && supplierIdentityLoading)) {
     return (
       <PortalLayout>
         <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">

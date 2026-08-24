@@ -14,8 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SAUDI_CITIES, displayCity } from "@/lib/constants"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
-import { useUser, useFirestore, useDoc, useMemoFirebase, useStorage } from "@/firebase"
+import { useUser, useFirestore, useMemoFirebase, useStorage } from "@/firebase"
 import { doc, updateDoc } from "firebase/firestore"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { identityDocRef } from "@/lib/org-identity"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -109,12 +111,16 @@ export default function ContractorProfilePage() {
     isVerified: false
   })
 
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  
-  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+  const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
+  // Identity fields (name, phone, CR/tax numbers, legal docs, certificates...)
+  // live on organizations/{organizationId} for a secondary company added via
+  // the company-switcher, and on users/{uid} itself for the primary/solo one —
+  // see src/lib/org-identity.ts. twoFactorEnabled is account-level and always
+  // stays on users/{uid} regardless of which company is active.
+  const identityWriteRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return isSecondary ? identityDocRef(firestore, organizationId) : doc(firestore, "users", user.uid)
+  }, [firestore, user, isSecondary, organizationId])
 
   // Sync with user data
   useEffect(() => {
@@ -142,9 +148,9 @@ export default function ContractorProfilePage() {
   }, [userData, user])
 
   const handleSave = async () => {
-    if (!user || !firestore) return
+    if (!user || !firestore || !identityWriteRef) return
     setIsLoading(true)
-    
+
     const isProfileComplete = Boolean(
       profile.name?.trim() &&
       profile.phone?.trim() &&
@@ -155,7 +161,7 @@ export default function ContractorProfilePage() {
     )
 
     try {
-      await updateDoc(doc(firestore, "users", user.uid), {
+      await updateDoc(identityWriteRef, {
         name: profile.name,
         companyName: profile.name,
         crNumber: profile.crNumber,
@@ -168,10 +174,13 @@ export default function ContractorProfilePage() {
         website: profile.website,
         certificates: profile.certificates,
         legalDocuments: profile.legalDocuments,
-        twoFactorEnabled: profile.twoFactorEnabled || false,
         profileCompleted: isProfileComplete
       })
-      
+      // Account-level, not company identity — always the signed-in user's own doc.
+      await updateDoc(doc(firestore, "users", user.uid), {
+        twoFactorEnabled: profile.twoFactorEnabled || false,
+      })
+
       if (!isProfileComplete) {
         toast({ title: t("profile_toast_saved"), description: t("profile_toast_saved_incomplete") })
       } else {
@@ -211,9 +220,9 @@ export default function ContractorProfilePage() {
       setProfile(prev => ({ ...prev, certificates: updatedCerts }))
       
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             certificates: updatedCerts
           })
         } catch (err) {
@@ -237,9 +246,9 @@ export default function ContractorProfilePage() {
       certificates: updatedCerts
     }))
 
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           certificates: updatedCerts
         })
 
@@ -282,9 +291,9 @@ export default function ContractorProfilePage() {
       }))
 
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             legalDocuments: updatedDocs
           })
         } catch (err) {
@@ -314,9 +323,9 @@ export default function ContractorProfilePage() {
     }))
 
     // Auto-save to firestore
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           legalDocuments: updatedDocs
         })
       } catch (err) {

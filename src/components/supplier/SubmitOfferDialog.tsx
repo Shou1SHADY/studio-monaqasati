@@ -30,6 +30,7 @@ import {
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompanyName"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
 import { collection, addDoc, doc, getDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
@@ -79,12 +80,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const firestore = useFirestore()
   const storage = useStorage()
 
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  
-  const { data: profile } = useDoc(userDocRef)
+  const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const [offerPrice, setOfferPrice] = useState("")

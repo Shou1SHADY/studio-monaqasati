@@ -4,7 +4,7 @@ import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { COUNTRIES, PHONE_DIAL_CODES } from "@/lib/constants"
+import { PHONE_COUNTRIES, PHONE_DIAL_CODES } from "@/lib/constants"
 
 const DEFAULT_COUNTRY = "SA"
 
@@ -44,7 +44,7 @@ export function PhoneInput({
 }) {
   const t = useTranslations("Portal.Shared")
   const { country, national } = useMemo(() => parsePhone(value || ""), [value])
-  const { nationalLength } = PHONE_DIAL_CODES[country] || PHONE_DIAL_CODES[DEFAULT_COUNTRY]
+  const { minLength, maxLength } = PHONE_DIAL_CODES[country] || PHONE_DIAL_CODES[DEFAULT_COUNTRY]
 
   const handleCountryChange = (nextCountry: string) => {
     const dialCode = PHONE_DIAL_CODES[nextCountry]?.dialCode || PHONE_DIAL_CODES[DEFAULT_COUNTRY].dialCode
@@ -52,12 +52,12 @@ export function PhoneInput({
   }
 
   const handleNumberChange = (raw: string) => {
-    const digitsOnly = raw.replace(/\D/g, "").slice(0, nationalLength)
+    const digitsOnly = raw.replace(/\D/g, "").slice(0, maxLength)
     const dialCode = PHONE_DIAL_CODES[country]?.dialCode || PHONE_DIAL_CODES[DEFAULT_COUNTRY].dialCode
     onChange(digitsOnly ? `${dialCode}${digitsOnly}` : "")
   }
 
-  const isIncomplete = national.length > 0 && national.length < nationalLength
+  const isIncomplete = national.length > 0 && national.length < minLength
 
   return (
     <div dir="ltr">
@@ -67,7 +67,7 @@ export function PhoneInput({
             <SelectValue>{PHONE_DIAL_CODES[country]?.dialCode}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {COUNTRIES.map((c) => (
+            {PHONE_COUNTRIES.map((c) => (
               <SelectItem key={c.value} value={c.value}>
                 {PHONE_DIAL_CODES[c.value]?.dialCode} — {locale === "ar" ? c.labelAr : c.labelEn}
               </SelectItem>
@@ -81,12 +81,12 @@ export function PhoneInput({
           value={national}
           onChange={(e) => handleNumberChange(e.target.value)}
           disabled={disabled}
-          placeholder={"5".padEnd(nationalLength, "x")}
+          placeholder={"5".padEnd(minLength, "x")}
           className="h-11 flex-1 text-left"
         />
       </div>
       {isIncomplete && (
-        <p className="text-[11px] text-warning mt-1">{t("phone_incomplete", { count: nationalLength })}</p>
+        <p className="text-[11px] text-warning mt-1">{t("phone_incomplete", { count: minLength })}</p>
       )}
     </div>
   )
