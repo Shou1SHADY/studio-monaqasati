@@ -17,7 +17,9 @@ import {
   resolveActiveContractorComponent,
   resolveActiveSupplierComponent,
   COMPONENT_ACCENT_CLASSES,
+  visibleComponents,
 } from "@/lib/portal-components"
+import { usePermissions } from "@/hooks/usePermissions"
 
 /** Gmail-style waffle-menu trigger — quick-switch between a portal's
  * standalone components. Contractor and supplier only: renders nothing on
@@ -27,12 +29,15 @@ export function AppSwitcher() {
   const tSidebar = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const pathname = usePathname()
+  const { can } = usePermissions()
 
   const isContractor = pathname.startsWith("/contractor")
   const isSupplier = pathname.startsWith("/supplier")
   if (!isContractor && !isSupplier) return null
 
-  const components = isContractor ? CONTRACTOR_COMPONENTS : SUPPLIER_COMPONENTS
+  // Only the modules this member is allowed into — a tile they cannot open
+  // is a dead end, not a discovery hint.
+  const components = visibleComponents(isContractor ? CONTRACTOR_COMPONENTS : SUPPLIER_COMPONENTS, can)
   const activeId = (isContractor ? resolveActiveContractorComponent(pathname) : resolveActiveSupplierComponent(pathname)).id
   const appsHref = isContractor ? "/contractor/apps" : "/supplier/apps"
 

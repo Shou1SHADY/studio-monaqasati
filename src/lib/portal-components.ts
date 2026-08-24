@@ -1,8 +1,8 @@
 // Gmail-style "app switcher" — the contractor and supplier portals are each
 // split into standalone components, mirrored 1:1 by business function so
 // the same icon/color language means the same thing in both portals
-// (Warehouses/Payments/HR/CRM/Users are identical concepts either way; only
-// the "core work" and "RFQ-facing" components differ by role — Project
+// (Inventory/Finance/HR/CRM/Governance are identical concepts either way;
+// only the "core work" and "RFQ-facing" components differ by role — Project
 // Management/Procurement for a contractor buying materials, Order
 // Management/Sales for a supplier fulfilling orders and responding to RFQs).
 // No routes move — every page keeps its existing URL. Which component
@@ -11,6 +11,12 @@
 // / `resolveActiveSupplierComponent` derive which component is active from
 // the current pathname (mirroring the pathname-prefix role-detection
 // already used in role-sidebar.tsx).
+//
+// Every nav item carries the permission that reveals it, so a team member
+// only ever sees the modules and pages their group grants. The sidebar, the
+// app switcher, the launcher page and the home tile grid all funnel through
+// `visibleSections` / `visibleComponents` below. This is UI gating; real
+// enforcement stays in firestore.rules.
 //
 // The admin portal is untouched — this registry only covers contractor/supplier.
 
@@ -39,6 +45,9 @@ import {
   Search,
   History,
   Link2,
+  Boxes,
+  Building2,
+  ScrollText,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 
@@ -86,11 +95,16 @@ export interface PortalComponentDef {
   homeHref: string
   icon: ElementType
   accentToken: AccentToken
+  // Presentation order in the switcher / launcher / tile grid. The array
+  // order itself is resolution order and cannot be reshuffled — see
+  // `resolveActiveComponent`.
+  displayOrder: number
   sections: NavSection[]
 }
 
 // Always reachable regardless of the active component — appended to the
-// bottom of every component's sidebar.
+// bottom of every component's sidebar. Never permission-gated: everyone in
+// an org can be talked to.
 export const CONTRACTOR_COMMUNICATION_SECTION: NavSection = {
   labelKey: "section_communication",
   items: [
@@ -103,7 +117,7 @@ export const CONTRACTOR_COMMUNICATION_SECTION: NavSection = {
 // Order matters: `resolveActiveContractorComponent` checks every entry
 // before "project-management", which is the catch-all default (its home is
 // the bare `/contractor` root, a prefix every other component also sits
-// under).
+// under). Use `displayOrder` to change what the user sees.
 export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
   {
     id: "procurement",
@@ -112,6 +126,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/contractor/rfqs",
     icon: Handshake,
     accentToken: "cta",
+    displayOrder: 3,
     sections: [
       {
         labelKey: "component_procurement",
@@ -120,47 +135,57 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             titleKey: "contractor_rfqs",
             href: "/contractor/rfqs",
             icon: FileText,
+            requiredPermission: "rfq.manage",
             children: [
               { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
             ],
           },
-          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket },
-          { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users },
-          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck },
+          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage" },
+          { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredPermission: "suppliers.manage" },
+          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredPermission: "deliveries.confirm" },
         ],
       },
     ],
   },
   {
+    // Renamed to "Inventory" (المخزون): stock is the subject, warehouses are
+    // one view of it. The module home is the cross-warehouse stock overview;
+    // the warehouse list lives inside.
     id: "warehouses",
-    labelKey: "component_warehouses",
-    descKey: "component_warehouses_desc",
-    homeHref: "/contractor/warehouses",
-    icon: Warehouse,
+    labelKey: "component_inventory",
+    descKey: "component_inventory_desc",
+    homeHref: "/contractor/inventory",
+    icon: Boxes,
     accentToken: "accent",
+    displayOrder: 4,
     sections: [
       {
-        labelKey: "component_warehouses",
+        labelKey: "component_inventory",
         items: [
-          { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse },
-          { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList },
+          { titleKey: "contractor_inventory_overview", href: "/contractor/inventory", icon: Boxes, requiredPermission: "warehouses.manage" },
+          { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
+          { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList, requiredPermission: "warehouses.manage" },
         ],
       },
     ],
   },
   {
+    // Renamed to "Finance" (المالية) — invoices and guarantees were only ever
+    // part of it, and receipts had no home in the nav at all until now.
     id: "payments",
-    labelKey: "component_payments",
-    descKey: "component_payments_desc",
+    labelKey: "component_finance",
+    descKey: "component_finance_desc",
     homeHref: "/contractor/invoices",
     icon: Wallet,
     accentToken: "success",
+    displayOrder: 5,
     sections: [
       {
-        labelKey: "component_payments",
+        labelKey: "component_finance",
         items: [
-          { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt },
-          { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck },
+          { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
+          { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage" },
+          { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
         ],
       },
     ],
@@ -172,11 +197,12 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/contractor/employees",
     icon: Briefcase,
     accentToken: "warning",
+    displayOrder: 6,
     sections: [
       {
         labelKey: "component_hr",
         items: [
-          { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase },
+          { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase, requiredPermission: "employees.manage" },
         ],
       },
     ],
@@ -188,26 +214,40 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/contractor/crm",
     icon: Contact,
     accentToken: "destructive",
+    displayOrder: 1,
     sections: [
       {
         labelKey: "component_crm",
         items: [
-          { titleKey: "component_crm", href: "/contractor/crm", icon: Contact },
+          { titleKey: "component_crm", href: "/contractor/crm", icon: Contact, requiredPermission: "crm.manage" },
         ],
       },
     ],
   },
   {
+    // Renamed to "Settings & Governance" (الإعدادات والحوكمة): the company
+    // record (CR + tax + legal documents) is governance data, so the profile
+    // page moved in here from the Projects catch-all where it was orphaned.
     id: "users",
-    labelKey: "component_users",
-    descKey: "component_users_desc",
-    homeHref: "/contractor/team",
+    labelKey: "component_governance",
+    descKey: "component_governance_desc",
+    homeHref: "/contractor/profile",
     icon: UserCog,
     accentToken: "secondary",
+    displayOrder: 7,
     sections: [
       {
-        labelKey: "component_users",
+        labelKey: "component_governance",
         items: [
+          {
+            titleKey: "contractor_company_profile",
+            href: "/contractor/profile",
+            icon: Building2,
+            requiredPermission: "team.manage",
+            children: [
+              { titleKey: "contractor_company_legal", href: "/contractor/profile?tab=legal", icon: ScrollText, requiredPermission: "team.manage" },
+            ],
+          },
           { titleKey: "contractor_team", href: "/contractor/team", icon: Users, requiredPermission: "team.manage" },
         ],
       },
@@ -220,6 +260,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/contractor",
     icon: LayoutDashboard,
     accentToken: "primary",
+    displayOrder: 2,
     sections: [
       {
         labelKey: "component_project_management",
@@ -229,6 +270,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             titleKey: "contractor_projects",
             href: "/contractor/projects",
             icon: FolderOpen,
+            requiredPermission: "projects.view",
             children: [
               { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "projects.edit" },
             ],
@@ -251,12 +293,13 @@ export const SUPPLIER_COMMUNICATION_SECTION: NavSection = {
 }
 
 // Same 7-slot shape as CONTRACTOR_COMPONENTS, same icon/accent per slot —
-// Warehouses/Payments/HR/CRM/Users are identical concepts to the contractor
-// side. "Order Management" mirrors Project Management (the supplier's core
-// work: orders instead of projects); "Sales" mirrors Procurement (their
-// RFQ-facing pipeline: browsing RFQs and tracking submitted offers, instead
-// of sourcing materials). CRM's home is the existing Connections page —
-// managing contractor relationships already IS a CRM, no stub needed here.
+// Inventory/Finance/HR/CRM/Governance are identical concepts to the
+// contractor side. "Order Management" mirrors Project Management (the
+// supplier's core work: orders instead of projects); "Sales" mirrors
+// Procurement (their RFQ-facing pipeline: browsing RFQs and tracking
+// submitted offers, instead of sourcing materials). CRM's home is the
+// existing Connections page — managing contractor relationships already IS a
+// CRM, no stub needed here.
 export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
   {
     id: "procurement",
@@ -265,45 +308,48 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/supplier/rfqs",
     icon: Handshake,
     accentToken: "cta",
+    displayOrder: 3,
     sections: [
       {
         labelKey: "supplier_component_sales",
         items: [
-          { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search },
-          { titleKey: "supplier_offers", href: "/supplier/offers", icon: History },
+          { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search, requiredPermission: "offers.view" },
+          { titleKey: "supplier_offers", href: "/supplier/offers", icon: History, requiredPermission: "offers.view" },
         ],
       },
     ],
   },
   {
     id: "warehouses",
-    labelKey: "component_warehouses",
-    descKey: "component_warehouses_desc",
+    labelKey: "component_inventory",
+    descKey: "component_inventory_desc",
     homeHref: "/supplier/warehouses",
-    icon: Warehouse,
+    icon: Boxes,
     accentToken: "accent",
+    displayOrder: 4,
     sections: [
       {
-        labelKey: "component_warehouses",
+        labelKey: "component_inventory",
         items: [
-          { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse },
+          { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
         ],
       },
     ],
   },
   {
     id: "payments",
-    labelKey: "component_payments",
-    descKey: "component_payments_desc",
+    labelKey: "component_finance",
+    descKey: "component_finance_desc",
     homeHref: "/supplier/invoices",
     icon: Wallet,
     accentToken: "success",
+    displayOrder: 5,
     sections: [
       {
-        labelKey: "component_payments",
+        labelKey: "component_finance",
         items: [
-          { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt },
-          { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck },
+          { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
+          { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
         ],
       },
     ],
@@ -315,11 +361,12 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/supplier/employees",
     icon: Briefcase,
     accentToken: "warning",
+    displayOrder: 6,
     sections: [
       {
         labelKey: "component_hr",
         items: [
-          { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase },
+          { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase, requiredPermission: "employees.manage" },
         ],
       },
     ],
@@ -331,27 +378,38 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/supplier/connections",
     icon: Contact,
     accentToken: "destructive",
+    displayOrder: 1,
     sections: [
       {
         labelKey: "component_crm",
         items: [
-          { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2 },
+          { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredPermission: "crm.manage" },
         ],
       },
     ],
   },
   {
     id: "users",
-    labelKey: "component_users",
-    descKey: "component_users_desc",
-    homeHref: "/supplier/team",
+    labelKey: "component_governance",
+    descKey: "component_governance_desc",
+    homeHref: "/supplier/profile",
     icon: UserCog,
     accentToken: "secondary",
+    displayOrder: 7,
     sections: [
       {
-        labelKey: "component_users",
+        labelKey: "component_governance",
         items: [
-          { titleKey: "supplier_team", href: "/supplier/team", icon: Users },
+          {
+            titleKey: "supplier_company_profile",
+            href: "/supplier/profile",
+            icon: Building2,
+            requiredPermission: "team.manage",
+            children: [
+              { titleKey: "supplier_company_legal", href: "/supplier/profile?tab=legal", icon: ScrollText, requiredPermission: "team.manage" },
+            ],
+          },
+          { titleKey: "supplier_team", href: "/supplier/team", icon: Users, requiredPermission: "team.manage" },
         ],
       },
     ],
@@ -363,6 +421,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/supplier",
     icon: LayoutDashboard,
     accentToken: "primary",
+    displayOrder: 2,
     sections: [
       {
         labelKey: "supplier_component_order_management",
@@ -375,6 +434,13 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
   },
 ]
 
+/** A nav href may carry a query string (`/contractor/profile?tab=legal`) to
+ * deep-link a tab. Route matching only ever cares about the path. */
+export function hrefPathname(href: string): string {
+  const q = href.indexOf("?")
+  return q === -1 ? href : href.slice(0, q)
+}
+
 /** Exact match or a "/"-bounded prefix — never a bare `startsWith`, so
  * `/contractor/team` doesn't false-match `/contractor/team-chat`. */
 function matchesPrefix(pathname: string, prefix: string): boolean {
@@ -383,7 +449,11 @@ function matchesPrefix(pathname: string, prefix: string): boolean {
 
 function componentOwnsPath(component: PortalComponentDef, pathname: string): boolean {
   return component.sections.some((section) =>
-    section.items.some((item) => matchesPrefix(pathname, item.href) || item.children?.some((c) => matchesPrefix(pathname, c.href)))
+    section.items.some(
+      (item) =>
+        matchesPrefix(pathname, hrefPathname(item.href)) ||
+        item.children?.some((c) => matchesPrefix(pathname, hrefPathname(c.href)))
+    )
   )
 }
 
@@ -407,4 +477,50 @@ export function resolveActiveContractorComponent(pathname: string): PortalCompon
 
 export function resolveActiveSupplierComponent(pathname: string): PortalComponentDef {
   return resolveActiveComponent(SUPPLIER_COMPONENTS, pathname)
+}
+
+// ---------------------------------------------------------------------------
+// Permission-aware views of the registry
+// ---------------------------------------------------------------------------
+
+export type PermissionCheck = (permission: PermissionId) => boolean
+
+function itemIsVisible(item: NavItem, can: PermissionCheck): boolean {
+  return !item.requiredPermission || can(item.requiredPermission)
+}
+
+/** One section's items, filtered to what the caller may see — children
+ * included, so a parent never renders a child the member cannot open. */
+export function visibleItems(items: NavItem[], can: PermissionCheck): NavItem[] {
+  return items
+    .filter((item) => itemIsVisible(item, can))
+    .map((item) =>
+      item.children ? { ...item, children: item.children.filter((c) => itemIsVisible(c, can)) } : item
+    )
+}
+
+/** Sections with every hidden item stripped, and sections left empty by that
+ * filtering dropped entirely — an empty group label is worse than no group. */
+export function visibleSections(sections: NavSection[], can: PermissionCheck): NavSection[] {
+  return sections
+    .map((section) => ({ ...section, items: visibleItems(section.items, can) }))
+    .filter((section) => section.items.length > 0)
+}
+
+/** A module is worth showing only if the member can open something inside it. */
+export function isComponentVisible(component: PortalComponentDef, can: PermissionCheck): boolean {
+  return component.sections.some((section) => visibleItems(section.items, can).length > 0)
+}
+
+/** The modules a member may see, in presentation order. Project Management
+ * always survives (its dashboard item is ungated), so this can never return
+ * an empty launcher. */
+export function visibleComponents(
+  components: PortalComponentDef[],
+  can: PermissionCheck
+): PortalComponentDef[] {
+  return components
+    .filter((component) => isComponentVisible(component, can))
+    .slice()
+    .sort((a, b) => a.displayOrder - b.displayOrder)
 }

@@ -5,7 +5,8 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Link } from "@/i18n/routing"
 import { LayoutGrid, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { SUPPLIER_COMPONENTS, type AccentToken } from "@/lib/portal-components"
+import { SUPPLIER_COMPONENTS, visibleComponents, type AccentToken } from "@/lib/portal-components"
+import { usePermissions } from "@/hooks/usePermissions"
 
 const ACCENT_CLASSES: Record<AccentToken, { tile: string }> = {
   primary: { tile: "bg-primary/10 text-primary" },
@@ -26,6 +27,9 @@ export default function SupplierAppsPage() {
   const tSidebar = useTranslations("Portal.Sidebar")
   const locale = useLocale()
   const isRtl = locale === "ar"
+  const { can } = usePermissions()
+  // The launcher lists what this member can actually open, nothing more.
+  const components = visibleComponents(SUPPLIER_COMPONENTS, can)
 
   return (
     <PortalLayout>
@@ -42,7 +46,7 @@ export default function SupplierAppsPage() {
           {/* No "active" marker here: this launcher page isn't inside any
               component, so the resolver could only ever mark the fallback —
               a permanently-wrong "you are here" signal. */}
-          {SUPPLIER_COMPONENTS.map((component) => {
+          {components.map((component) => {
             const accent = ACCENT_CLASSES[component.accentToken]
             return (
               <Link
