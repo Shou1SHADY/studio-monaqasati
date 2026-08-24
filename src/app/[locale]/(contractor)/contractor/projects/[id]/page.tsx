@@ -843,8 +843,25 @@ export default function ProjectDetailPage() {
     if (!firestore || !projectDocRef || !projectId) return
     setIsDeleting(true)
     try {
-      // Firestore doesn't cascade-delete subcollections — clean up boqItems/boqGroups first,
-      // otherwise they're orphaned (unreachable, but still billed and counted) forever.
+      // Firestore doesn't cascade-delete subcollections or linked documents. Linked
+      // tenders (rfqs) must go first: their boqItems are locked (isEditable:false)
+      // while pushed to a tender, and the boqItems delete rule rejects deleting a
+      // locked item — leaving them locked made the whole project delete throw
+      // "missing permissions". Deleting the rfqs also avoids orphaning tenders that
+      // would otherwise still be live/browsable after their project is gone.
+      const rfqsSnap = await getDocs(query(collection(firestore, "rfqs"), where("projectId", "==", projectId)))
+      for (const rfqDoc of rfqsSnap.docs) {
+        const lockedBoqSnap = await getDocs(
+          query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", rfqDoc.id))
+        )
+        if (!lockedBoqSnap.empty) {
+          const unlockBatch = writeBatch(firestore)
+          lockedBoqSnap.docs.forEach((d) => unlockBatch.update(d.ref, { tenderId: null, isEditable: true }))
+          await unlockBatch.commit()
+        }
+        await deleteDoc(rfqDoc.ref)
+      }
+
       const [itemsSnap, groupsSnap] = await Promise.all([
         getDocs(collection(firestore, "projects", projectId, "boqItems")),
         getDocs(collection(firestore, "projects", projectId, "boqGroups")),
