@@ -257,7 +257,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "project-management",
     labelKey: "component_project_management",
     descKey: "component_project_management_desc",
-    homeHref: "/contractor",
+    homeHref: "/contractor/projects",
     icon: LayoutDashboard,
     accentToken: "primary",
     displayOrder: 2,

@@ -35,13 +35,14 @@ import { Label } from "@/components/ui/label"
 import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { Link } from "@/i18n/routing"
-import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useDoc, useCollection } from "@/firebase"
+import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
 export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
@@ -71,11 +72,7 @@ export default function ContractorRfqsPage() {
   const { user, isUserLoading } = useUser()
   const { can } = usePermissions()
   const canManageRfqs = can("rfq.manage")
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile } = useDoc(userDocRef)
+  const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all" || projectFilter !== "all"
   const clearFilters = () => {
@@ -549,24 +546,23 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   <span className="text-xs font-semibold text-muted-foreground">{t("rfq_select_all")}</span>
                 </div>
               )}
-              {/* Filters Row */}
-              <div className="flex flex-wrap gap-2">
+              {/* Filters Row — a grid, not flex-wrap, so filters line up cleanly at
+                  every breakpoint instead of wrapping unevenly by cumulative width. */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 items-start">
                 {/* Project Filter */}
-                <div className="w-[200px]">
-                  <SearchableSelect
-                    size="md"
-                    value={projectFilter}
-                    onChange={setProjectFilter}
-                    options={[{ value: "all", label: t("rfq_all_projects") }, ...projectOptions]}
-                    placeholder={t("rfq_project_filter")}
-                    searchPlaceholder={t("rfq_search_project")}
-                    noResultsText={t("newrfq_no_results")}
-                  />
-                </div>
+                <SearchableSelect
+                  size="md"
+                  value={projectFilter}
+                  onChange={setProjectFilter}
+                  options={[{ value: "all", label: t("rfq_all_projects") }, ...projectOptions]}
+                  placeholder={t("rfq_project_filter")}
+                  searchPlaceholder={t("rfq_search_project")}
+                  noResultsText={t("newrfq_no_results")}
+                />
 
                 {/* Category Filter */}
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
+                  <SelectTrigger className="h-10 text-sm rounded-xl">
                     <SelectValue placeholder={t("rfq_category_filter")} />
                   </SelectTrigger>
                   <SelectContent className="max-h-72 overflow-y-auto">
@@ -579,7 +575,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
 
                 {/* Location Filter */}
                 <Select value={locationFilter} onValueChange={setLocationFilter}>
-                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
+                  <SelectTrigger className="h-10 text-sm rounded-xl">
                     <SelectValue placeholder={t("rfq_city_filter")} />
                     </SelectTrigger>
                     <SelectContent className="max-h-72 overflow-y-auto">
@@ -591,37 +587,39 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                 </Select>
 
                 {/* Deadline Filter */}
-                <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
-                  <SelectTrigger className="w-[200px] h-10 text-sm rounded-xl">
-                    <SelectValue placeholder={t("rfq_deadline_filter")} />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-72 overflow-y-auto">
-                    <SelectItem value="all">{t("rfq_all_deadlines")}</SelectItem>
-                    <SelectItem value="week">{t("rfq_within_week")}</SelectItem>
-                    <SelectItem value="month">{t("rfq_within_month")}</SelectItem>
-                    <SelectItem value="custom">{t("rfq_custom_date")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                {deadlineFilter === "custom" && (
-                  <input 
-                    type="date" 
-                    value={customDeadline}
-                    onChange={e => setCustomDeadline(e.target.value)}
-                    className="h-10 px-3 rounded-xl border border-input bg-white text-sm w-[140px]"
-                  />
-                )}
-                {hasActiveFilters && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={clearFilters}
-                    className="h-10 text-xs text-muted-foreground hover:text-destructive gap-1"
-                  >
-                    <X size={12} />
-                    {t("rfq_clear_filters")}
-                  </Button>
-                )}
+                <div className="flex items-start gap-2">
+                  <Select value={deadlineFilter} onValueChange={(v: any) => setDeadlineFilter(v)}>
+                    <SelectTrigger className="h-10 text-sm rounded-xl">
+                      <SelectValue placeholder={t("rfq_deadline_filter")} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-72 overflow-y-auto">
+                      <SelectItem value="all">{t("rfq_all_deadlines")}</SelectItem>
+                      <SelectItem value="week">{t("rfq_within_week")}</SelectItem>
+                      <SelectItem value="month">{t("rfq_within_month")}</SelectItem>
+                      <SelectItem value="custom">{t("rfq_custom_date")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {deadlineFilter === "custom" && (
+                    <input
+                      type="date"
+                      value={customDeadline}
+                      onChange={e => setCustomDeadline(e.target.value)}
+                      className="h-10 px-3 rounded-xl border border-input bg-white text-sm w-[140px] shrink-0"
+                    />
+                  )}
+                </div>
               </div>
+              {hasActiveFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="h-8 text-xs text-muted-foreground hover:text-destructive gap-1 w-fit -mt-1"
+                >
+                  <X size={12} />
+                  {t("rfq_clear_filters")}
+                </Button>
+              )}
             </div>
           </CardHeader>
           <CardContent className="p-4 sm:p-6">

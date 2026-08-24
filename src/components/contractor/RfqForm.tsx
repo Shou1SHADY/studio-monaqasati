@@ -29,7 +29,8 @@ import {
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore, useUser, useStorage, useDoc, useMemoFirebase, useCollection } from "@/firebase"
+import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection } from "@/firebase"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
@@ -71,11 +72,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const storage = useStorage()
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile, isLoading: isProfileLoading } = useDoc(userDocRef)
+  const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const [visibilityMode, setVisibilityMode] = useState<"public" | "private">("public")
 

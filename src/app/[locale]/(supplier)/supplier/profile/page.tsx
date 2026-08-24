@@ -62,9 +62,11 @@ import {
 } from "@/components/ui/dialog"
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
-import { useUser, useFirestore, useDoc, useMemoFirebase, useCollection, useStorage } from "@/firebase"
+import { useUser, useFirestore, useMemoFirebase, useCollection, useStorage } from "@/firebase"
 import { doc, updateDoc, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { identityDocRef } from "@/lib/org-identity"
 
 interface Certificate {
   id: string
@@ -161,12 +163,16 @@ export default function SupplierProfilePage() {
     twoFactorEnabled: false
   })
 
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  
-  const { data: userData, isLoading: isUserDataLoading } = useDoc(userDocRef)
+  const { profile: userData, isLoading: isUserDataLoading, organizationId, isSecondary } = useResolvedProfile(isUserLoading ? null : user?.uid)
+  // Identity fields (name, phone, CR/tax numbers, specializations, legal
+  // docs, portfolio...) live on organizations/{organizationId} for a
+  // secondary company added via the company-switcher, and on users/{uid}
+  // itself for the primary/solo one — see src/lib/org-identity.ts.
+  // twoFactorEnabled is account-level and always stays on users/{uid}.
+  const identityWriteRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null
+    return isSecondary ? identityDocRef(firestore, organizationId) : doc(firestore, "users", user.uid)
+  }, [firestore, user, isSecondary, organizationId])
 
   // Fetch reviews for this supplier to show live rating & reviews
   const reviewsQuery = useMemoFirebase(() => {
@@ -300,7 +306,7 @@ export default function SupplierProfilePage() {
   ]
 
   const handleSave = async () => {
-    if (!user || !firestore) return
+    if (!user || !firestore || !identityWriteRef) return
     setIsLoading(true)
 
     const isProfileComplete = Boolean(
@@ -313,7 +319,7 @@ export default function SupplierProfilePage() {
     )
 
     try {
-      await updateDoc(doc(firestore, "users", user.uid), {
+      await updateDoc(identityWriteRef, {
         name: profile.name,
         companyName: profile.name,
         phone: profile.phone,
@@ -328,10 +334,13 @@ export default function SupplierProfilePage() {
         projects: profile.projects,
         companyFiles: profile.companyFiles,
         legalDocuments: profile.legalDocuments,
-        twoFactorEnabled: profile.twoFactorEnabled || false,
         profileCompleted: isProfileComplete
       })
-      
+      // Account-level, not company identity — always the signed-in user's own doc.
+      await updateDoc(doc(firestore, "users", user.uid), {
+        twoFactorEnabled: profile.twoFactorEnabled || false,
+      })
+
       if (!isProfileComplete) {
         toast({ title: t("save_success"), description: t("save_success_incomplete") })
       } else {
@@ -345,7 +354,7 @@ export default function SupplierProfilePage() {
    }
 
   const requestVerification = async () => {
-    if (!user || !firestore) return
+    if (!user || !firestore || !identityWriteRef) return
     if (profile.isVerified || profile.verificationRequested) {
       toast({ title: t("verification_notice"), description: t("verification_notice_desc") })
       return
@@ -362,7 +371,7 @@ export default function SupplierProfilePage() {
       return
     }
     try {
-      await updateDoc(doc(firestore, "users", user.uid), {
+      await updateDoc(identityWriteRef, {
         verificationRequested: true
       })
       setProfile(prev => ({ ...prev, verificationRequested: true }))
@@ -393,9 +402,9 @@ export default function SupplierProfilePage() {
       setProfile(prev => ({ ...prev, specializations: newSpecs }))
       
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             specializations: newSpecs
           })
         } catch (err) {
@@ -425,9 +434,9 @@ export default function SupplierProfilePage() {
       specializations: updatedSpecs
     }))
     
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           specializations: updatedSpecs
         })
       } catch (err) {
@@ -445,9 +454,9 @@ export default function SupplierProfilePage() {
       }))
       
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             specializations: updatedSpecs
           })
         } catch (err) {
@@ -469,9 +478,9 @@ export default function SupplierProfilePage() {
     }))
     
     // Auto-save to firestore
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           certificates: updatedCerts
         })
       } catch (err) {
@@ -517,9 +526,9 @@ export default function SupplierProfilePage() {
       certificates: updatedCerts
     }))
     
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           certificates: updatedCerts
         })
         
@@ -552,9 +561,9 @@ export default function SupplierProfilePage() {
     }))
     
     // Auto-save to firestore to prevent data loss on refresh
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           projects: updatedProjects
         })
       } catch (err) {
@@ -596,9 +605,9 @@ export default function SupplierProfilePage() {
       projects: updatedProjects
     }))
     
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           projects: updatedProjects
         })
 
@@ -639,9 +648,9 @@ export default function SupplierProfilePage() {
       setProfile(prev => ({ ...prev, companyFiles: updatedFiles }))
 
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             companyFiles: updatedFiles
           })
         } catch (err) {
@@ -665,9 +674,9 @@ export default function SupplierProfilePage() {
       companyFiles: updatedFiles
     }))
     
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           companyFiles: updatedFiles
         })
 
@@ -709,9 +718,9 @@ export default function SupplierProfilePage() {
       }))
 
       // Auto-save to firestore
-      if (user && firestore) {
+      if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(doc(firestore, "users", user.uid), {
+          await updateDoc(identityWriteRef, {
             legalDocuments: updatedDocs
           })
         } catch (err) {
@@ -739,9 +748,9 @@ export default function SupplierProfilePage() {
     }))
 
     // Auto-save to firestore
-    if (user && firestore) {
+    if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
+        await updateDoc(identityWriteRef, {
           legalDocuments: updatedDocs
         })
       } catch (err) {

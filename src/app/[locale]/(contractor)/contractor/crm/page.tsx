@@ -4,19 +4,7 @@ import { useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,156 +15,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, deleteDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
-import { PhoneInput } from "@/components/shared/PhoneInput"
-import { Contact, Plus, Pencil, Trash2, Loader2, Mail, Phone, Building2 } from "lucide-react"
+import { CrmContactDialog } from "@/components/contractor/CrmContactDialog"
+import { Contact, Plus, Pencil, Trash2, Loader2, Mail, Phone, Building2, User } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-export type ContactType = "client" | "supplier" | "partner" | "other"
-
-type CrmContact = {
-  id: string
-  name: string
-  type: ContactType
-  company?: string | null
-  phone?: string | null
-  email?: string | null
-  notes?: string | null
-  organizationId: string
-}
-
-const CONTACT_TYPES: ContactType[] = ["client", "supplier", "partner", "other"]
-const TYPE_BADGE_CLASS: Record<ContactType, string> = {
-  client: "bg-cta/10 text-cta border-cta/20",
-  supplier: "bg-accent/10 text-accent border-accent/20",
-  partner: "bg-success/10 text-success border-success/20",
-  other: "bg-muted text-muted-foreground border-border",
-}
-
-function ContactDialog({
-  open,
-  onOpenChange,
-  contact,
-  orgId,
-  t,
-  locale,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  contact?: CrmContact
-  orgId: string
-  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
-  locale: string
-}) {
-  const firestore = useFirestore()
-  const { toast } = useToast()
-  const [isSaving, setIsSaving] = useState(false)
-  const [name, setName] = useState(contact?.name ?? "")
-  const [type, setType] = useState<ContactType>(contact?.type ?? "client")
-  const [company, setCompany] = useState(contact?.company ?? "")
-  const [phone, setPhone] = useState(contact?.phone ?? "")
-  const [email, setEmail] = useState(contact?.email ?? "")
-  const [notes, setNotes] = useState(contact?.notes ?? "")
-
-  const reset = () => {
-    setName(contact?.name ?? "")
-    setType(contact?.type ?? "client")
-    setCompany(contact?.company ?? "")
-    setPhone(contact?.phone ?? "")
-    setEmail(contact?.email ?? "")
-    setNotes(contact?.notes ?? "")
-  }
-
-  const handleSave = async () => {
-    if (!firestore) return
-    if (!name.trim()) {
-      toast({ title: t("crm_validation_error"), variant: "destructive" })
-      return
-    }
-    setIsSaving(true)
-    try {
-      const data = {
-        name: name.trim(),
-        type,
-        company: company.trim() || null,
-        phone: phone || null,
-        email: email.trim() || null,
-        notes: notes.trim() || null,
-        organizationId: orgId,
-        updatedAt: serverTimestamp(),
-      }
-      if (contact) {
-        await updateDoc(doc(firestore, "crmContacts", contact.id), data)
-        toast({ title: t("crm_updated") })
-      } else {
-        await addDoc(collection(firestore, "crmContacts"), { ...data, createdAt: serverTimestamp() })
-        toast({ title: t("crm_created") })
-      }
-      onOpenChange(false)
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) { onOpenChange(next); if (!next) reset() } }}>
-      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"}>
-        <DialogHeader>
-          <DialogTitle>{contact ? t("crm_edit_title") : t("crm_add_title")}</DialogTitle>
-          <DialogDescription>{t("crm_dialog_desc")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="crm-name">{t("crm_name")} *</Label>
-              <Input id="crm-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("crm_name_placeholder")} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("crm_type")} *</Label>
-              <Select value={type} onValueChange={(v) => setType(v as ContactType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CONTACT_TYPES.map((ct) => (
-                    <SelectItem key={ct} value={ct}>{t(`crm_type_${ct}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="crm-company">{t("crm_company")}</Label>
-              <Input id="crm-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("crm_company_placeholder")} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="crm-phone">{t("crm_phone")}</Label>
-            <PhoneInput id="crm-phone" value={phone} onChange={setPhone} disabled={isSaving} locale={locale} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="crm-email">{t("crm_email")}</Label>
-            <Input id="crm-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("crm_email_placeholder")} dir="ltr" />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="crm-notes">{t("crm_notes")}</Label>
-            <Textarea id="crm-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("crm_notes_placeholder")} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("wh_cancel")}</Button>
-          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-            {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
-            {t("wh_save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
+import {
+  CONTACT_TYPES,
+  TYPE_BADGE_CLASS,
+  STATUS_BADGE_CLASS,
+  type ContactType,
+  type CrmContact,
+} from "@/lib/crm"
 
 export default function ContractorCrmPage() {
   const t = useTranslations("Portal.Contractor")
@@ -208,6 +61,14 @@ export default function ContractorCrmPage() {
   const { data: contactsData, isLoading } = useCollection(contactsQuery)
   const list = ((contactsData || []) as CrmContact[]).slice().sort((a, b) => a.name.localeCompare(b.name, locale))
   const filtered = activeType === "all" ? list : list.filter((c) => c.type === activeType)
+
+  const teamQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId) return null
+    return query(collection(firestore, "users"), where("organizationId", "==", myOrgId))
+  }, [firestore, myOrgId])
+  const { data: teamData } = useCollection(teamQuery)
+  const teamMembers = ((teamData || []) as { id: string; name?: string; email?: string }[])
+    .map((m) => ({ id: m.id, name: m.name || m.email || m.id }))
 
   const counts = CONTACT_TYPES.reduce((acc, ct) => {
     acc[ct] = list.filter((c) => c.type === ct).length
@@ -298,42 +159,53 @@ export default function ContractorCrmPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((contact) => (
-              <div key={contact.id} className="rounded-xl border p-4 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="min-w-0">
-                    <p className="font-bold text-primary truncate">{contact.name}</p>
-                    {contact.company && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
-                        <Building2 size={11} />
-                        {contact.company}
-                      </p>
-                    )}
+              <div key={contact.id} className="relative rounded-xl border p-4 hover:shadow-md transition-shadow">
+                <Link href={`/contractor/crm/${contact.id}`} className="absolute inset-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={contact.name} />
+                <div className="relative pointer-events-none">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-primary truncate">{contact.name}</p>
+                      {contact.company && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
+                          <Building2 size={11} />
+                          {contact.company}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <Badge className={cn("text-[10px]", TYPE_BADGE_CLASS[contact.type])}>
+                        {t(`crm_type_${contact.type}`)}
+                      </Badge>
+                      <Badge variant="outline" className={cn("text-[10px]", STATUS_BADGE_CLASS[contact.status || "new"])}>
+                        {t(`crm_status_${contact.status || "new"}`)}
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge className={cn("shrink-0 text-[10px]", TYPE_BADGE_CLASS[contact.type])}>
-                    {t(`crm_type_${contact.type}`)}
-                  </Badge>
+                  {(contact.phone || contact.email) && (
+                    <div className="space-y-1 mt-3 text-xs text-muted-foreground">
+                      {contact.phone && (
+                        <p className="flex items-center gap-1.5" dir="ltr">
+                          <Phone size={11} className="shrink-0" />
+                          {contact.phone}
+                        </p>
+                      )}
+                      {contact.email && (
+                        <p className="flex items-center gap-1.5 truncate" dir="ltr">
+                          <Mail size={11} className="shrink-0" />
+                          {contact.email}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {contact.ownerName && (
+                    <p className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
+                      <User size={11} className="shrink-0" />
+                      {contact.ownerName}
+                    </p>
+                  )}
                 </div>
-                {(contact.phone || contact.email) && (
-                  <div className="space-y-1 mt-3 text-xs text-muted-foreground">
-                    {contact.phone && (
-                      <p className="flex items-center gap-1.5" dir="ltr">
-                        <Phone size={11} className="shrink-0" />
-                        {contact.phone}
-                      </p>
-                    )}
-                    {contact.email && (
-                      <p className="flex items-center gap-1.5 truncate" dir="ltr">
-                        <Mail size={11} className="shrink-0" />
-                        {contact.email}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {contact.notes && (
-                  <p className="text-xs text-muted-foreground/80 mt-3 pt-3 border-t line-clamp-2">{contact.notes}</p>
-                )}
                 {canManageCrm && (
-                  <div className="flex items-center gap-1 justify-end mt-3 pt-3 border-t">
+                  <div className="relative flex items-center gap-1 justify-end mt-3 pt-3 border-t">
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
                       onClick={() => setEditContact(contact)} aria-label={t("crm_edit_title")}>
                       <Pencil size={13} />
@@ -350,13 +222,14 @@ export default function ContractorCrmPage() {
         )}
       </div>
 
-      <ContactDialog open={showAdd} onOpenChange={setShowAdd} orgId={myOrgId} t={t} locale={locale} />
+      <CrmContactDialog open={showAdd} onOpenChange={setShowAdd} orgId={myOrgId} teamMembers={teamMembers} t={t} locale={locale} />
       {editContact && (
-        <ContactDialog
+        <CrmContactDialog
           open={!!editContact}
           onOpenChange={(open) => { if (!open) setEditContact(null) }}
           contact={editContact}
           orgId={myOrgId}
+          teamMembers={teamMembers}
           t={t}
           locale={locale}
         />

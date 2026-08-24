@@ -4,6 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildSupplierInviteEmail, buildTeamInviteEmail } from "@/lib/email"
+import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 
 const bodySchema = z.object({
   email: z.string().trim().toLowerCase().email(),
@@ -48,12 +49,16 @@ export async function POST(req: NextRequest) {
     // --- Load sender profile ---
     const db = getAdminFirestore()
     const senderSnap = await db.collection("users").doc(decoded.uid).get()
-    const sender = senderSnap.data()
-    if (!sender) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
+    const senderBase = senderSnap.data()
+    if (!senderBase) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
+    // The sender's ACTIVE company's identity — a secondary company (added via
+    // the company-switcher) has its own name on organizations/{id}, not on
+    // the sender's own users/{uid} doc — see org-identity-admin.ts.
+    const sender = (await resolveIdentityAdmin(db, decoded.uid, senderBase)) as Record<string, unknown>
 
-    const senderOrgId = (sender.organizationId as string) || decoded.uid
+    const senderOrgId = (senderBase.organizationId as string) || decoded.uid
     const senderOrgName = (sender.companyName as string) || (sender.name as string) || ""
-    const isAdmin = sender.role === "Admin"
+    const isAdmin = senderBase.role === "Admin"
 
     // --- Existing account? (also needed for team-invite validation below) ---
     let targetUid: string | null = null
@@ -70,7 +75,7 @@ export async function POST(req: NextRequest) {
     // ============================ TEAM INVITE ============================
     if (type === "team_invite") {
       // Only the org owner (or platform admin) can invite team members.
-      if (!isAdmin && sender.organizationRole !== "owner") {
+      if (!isAdmin && senderBase.organizationRole !== "owner") {
         return errorResponse("Only the organization owner can invite team members", "FORBIDDEN", 403)
       }
 
@@ -132,7 +137,7 @@ export async function POST(req: NextRequest) {
           organizationId: senderOrgId,
           organizationName: senderOrgName,
           organizationRole: "member",
-          role: (sender.role as string) || "Contractor",
+          role: (senderBase.role as string) || "Contractor",
           groupId: validGroupId,
           status: "pending",
           type: "team_invite",
@@ -192,7 +197,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ========================== SUPPLIER INVITE ==========================
-    if (sender.role !== "Contractor" && !isAdmin) {
+    if (senderBase.role !== "Contractor" && !isAdmin) {
       return errorResponse("Only contractors can invite suppliers", "FORBIDDEN", 403)
     }
     const contractorOrgId = senderOrgId

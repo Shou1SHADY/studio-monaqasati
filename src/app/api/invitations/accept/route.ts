@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
+import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 
 // Called right after a newly registered supplier signs up through an
 // invitation link. Creates the contractor–supplier connection server-side so
@@ -187,6 +188,11 @@ export async function POST(req: NextRequest) {
       return rejectAfterCreate("You cannot accept an invitation from your own organization", "SELF_ACCEPT", 400)
     }
 
+    // Identity fields (companyName, specializations, ...) for display below —
+    // resolved against a secondary company if this account is currently
+    // switched into one, per src/lib/org-identity-admin.ts.
+    const resolvedProfile = (await resolveIdentityAdmin(db, decoded.uid, profile)) as Record<string, unknown>
+
     // --- Create the link unless one is already active ---
     const linksSnap = await db
       .collection("contractorSupplierLinks")
@@ -199,8 +205,8 @@ export async function POST(req: NextRequest) {
       await db.collection("contractorSupplierLinks").add({
         contractorOrgId: inv.contractorOrgId,
         supplierOrgId,
-        supplierName: (profile.companyName as string) || (profile.name as string) || "",
-        supplierCategories: (profile.specializations as string[]) || [],
+        supplierName: (resolvedProfile.companyName as string) || (resolvedProfile.name as string) || "",
+        supplierCategories: (resolvedProfile.specializations as string[]) || [],
         status: "active",
         requestedBy: "contractor",
         requestedAt: FieldValue.serverTimestamp(),
@@ -220,7 +226,7 @@ export async function POST(req: NextRequest) {
     // notifications pages don't have a dedicated action button for this type
     // yet, but the message alone still confirms the connection was made) and
     // the inviting contractor.
-    const acceptedSupplierName = (profile.companyName as string) || (profile.name as string) || decoded.email || ""
+    const acceptedSupplierName = (resolvedProfile.companyName as string) || (resolvedProfile.name as string) || decoded.email || ""
     await db
       .collection("users")
       .doc(decoded.uid)

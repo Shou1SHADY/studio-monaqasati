@@ -45,6 +45,9 @@ import {
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
+import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { stripIdentityFields } from "@/lib/identity-fields"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
@@ -99,10 +102,16 @@ export default function AdminContractorsPage() {
   const { data: contractors, isLoading } = useCollection(contractorsQuery)
   const { data: allRfqs } = useCollection(rfqsQuery)
   const [localContractors, setLocalContractors] = useState<any[]>([])
+  // A contractor account switched into a secondary company (added via the
+  // company-switcher) has that company's identity fields on
+  // organizations/{id}, not on its own users/{id} doc — see useIdentityOverlays.
+  const contractorIdentityOverlays = useIdentityOverlays((contractors || []) as { id: string; organizationId?: string; organizationRole?: string }[])
 
   useEffect(() => {
     if (contractors) {
-      setLocalContractors(contractors.map((c: any) => {
+      setLocalContractors(contractors.map((row: any) => {
+        const overlay = contractorIdentityOverlays.get(row.id)
+        const c = overlay ? { ...stripIdentityFields(row), ...overlay } : row
         const legalDocs = c.legalDocuments || {}
         const uploadedDocKeys = Object.keys(legalDocs).filter(
           k => legalDocs[k]?.url && legalDocs[k].url.length > 0
@@ -112,6 +121,8 @@ export default function AdminContractorsPage() {
 
         return {
           id: c.id,
+          organizationId: row.organizationId,
+          organizationRole: row.organizationRole,
           name: c.name || t("unspecified"),
           contact: c.phone || t("unspecified"),
           email: c.email || "",
@@ -144,8 +155,15 @@ export default function AdminContractorsPage() {
 
   const handleVerify = async (id: string, verify: boolean) => {
     if (!firestore) return
+    const row = localContractors.find((c) => c.id === id)
+    // Verification status is a company-identity field — for a secondary
+    // company (added via the company-switcher) it lives on
+    // organizations/{id}, not on the owner's own users/{id} doc.
+    const targetRef = row && isSecondaryOrg(row.organizationId, id, row.organizationRole)
+      ? identityDocRef(firestore, row.organizationId)
+      : doc(firestore, "users", id)
     try {
-      await updateDoc(doc(firestore, "users", id), {
+      await updateDoc(targetRef, {
         isVerified: verify,
         verificationRequested: false
       })

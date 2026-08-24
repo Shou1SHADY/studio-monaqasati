@@ -4,6 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildRfqShareEmail } from "@/lib/email"
+import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
 
 // Creates (or reuses) a portable guest link for an RFQ. The link lets a
@@ -56,13 +57,17 @@ export async function POST(req: NextRequest) {
       db.collection("users").doc(decoded.uid).get(),
       db.collection("rfqs").doc(rfqId).get(),
     ])
-    const sender = senderSnap.data()
-    if (!sender) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
+    const senderBase = senderSnap.data()
+    if (!senderBase) return errorResponse("User profile not found", "PROFILE_NOT_FOUND", 403)
     if (!rfqSnap.exists) return errorResponse("RFQ not found", "RFQ_NOT_FOUND", 404)
+    // The sender's ACTIVE company's identity — a secondary company (added via
+    // the company-switcher) has its own name on organizations/{id}, not on
+    // the sender's own users/{uid} doc — see org-identity-admin.ts.
+    const sender = (await resolveIdentityAdmin(db, decoded.uid, senderBase)) as Record<string, unknown>
 
     const rfq = rfqSnap.data()!
-    const senderOrgId = (sender.organizationId as string) || decoded.uid
-    const isAdmin = sender.role === "Admin"
+    const senderOrgId = (senderBase.organizationId as string) || decoded.uid
+    const isAdmin = senderBase.role === "Admin"
     const rfqOrgId = (rfq.organizationId as string) || (rfq.contractorId as string)
     if (!isAdmin && rfqOrgId !== senderOrgId) {
       return errorResponse("You can only share your own RFQs", "FORBIDDEN", 403)
