@@ -30,6 +30,23 @@ export interface WorkQueueItem {
   data: Record<string, unknown>
 }
 
+export interface WorkQueueStats {
+  projectsTotal: number
+  projectsOngoing: number
+  rfqsOpen: number
+  offersTotal: number
+  warehousesTotal: number
+  inventoryItemsTotal: number
+  guaranteesActive: number
+}
+
+export interface RecentWorkItem {
+  id: string
+  name: string
+  ms: number
+  href: string
+}
+
 const TIER: Record<WorkQueueItemType, number> = {
   guarantee_expiring: 1,
   rfq_closing_soon: 2,
@@ -121,17 +138,21 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
   // Low-stock items live in a per-warehouse subcollection — can't be expressed as a
   // single top-level query, so fetch once (not real-time) whenever the warehouse list changes.
   const [lowStockItems, setLowStockItems] = useState<Array<{ id: string; warehouseId: string; warehouseName: string; name: string; quantity: number; minStockLevel: number }>>([])
+  const [inventoryItemsTotal, setInventoryItemsTotal] = useState(0)
 
   useEffect(() => {
     if (!firestore || !warehouses || warehouses.length === 0) {
       setLowStockItems([])
+      setInventoryItemsTotal(0)
       return
     }
     let cancelled = false
     ;(async () => {
       const results: typeof lowStockItems = []
+      let itemsTotal = 0
       for (const wh of warehouses as { id: string; name?: string }[]) {
         const snap = await getDocs(collection(firestore, "warehouses", wh.id, "inventoryItems"))
+        itemsTotal += snap.size
         snap.forEach((d) => {
           const item = d.data() as { name?: string; quantity?: number; minStockLevel?: number }
           if (item.minStockLevel != null && (item.quantity ?? 0) <= item.minStockLevel) {
@@ -146,7 +167,10 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
           }
         })
       }
-      if (!cancelled) setLowStockItems(results)
+      if (!cancelled) {
+        setLowStockItems(results)
+        setInventoryItemsTotal(itemsTotal)
+      }
     })()
     return () => { cancelled = true }
   }, [firestore, warehouses])
@@ -291,5 +315,33 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
 
   const isLoading = !rfqs || !offers || !deliveries || !warehouses || !guarantees || !projects
 
-  return { items, isLoading }
+  const stats: WorkQueueStats = {
+    projectsTotal: (projects || []).length,
+    projectsOngoing: (projects || []).filter((p: any) => p.status !== "canceled" && p.status !== "remaining_payment").length,
+    rfqsOpen: (rfqs || []).filter((r: any) => r.status === "New").length,
+    offersTotal: (offers || []).length,
+    warehousesTotal: (warehouses || []).length,
+    inventoryItemsTotal,
+    guaranteesActive: (guarantees || []).filter((g: any) => g.status !== "rejected").length,
+  }
+
+  const recentItems: RecentWorkItem[] = [
+    ...(projects || []).map((p: any) => ({
+      id: `project_${p.id}`,
+      name: (p.name as string) || "",
+      ms: toMs(p.updatedAt) || toMs(p.createdAt),
+      href: `/contractor/projects/${p.id}`,
+    })),
+    ...(rfqs || []).map((r: any) => ({
+      id: `rfq_${r.id}`,
+      name: (r.title as string) || "",
+      ms: toMs(r.updatedAt) || toMs(r.createdAt),
+      href: r.projectId ? `/contractor/projects/${r.projectId}/tenders/${r.id}/offers` : `/contractor/rfqs/${r.id}`,
+    })),
+  ]
+    .filter((x) => x.name && x.ms > 0)
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, 3)
+
+  return { items, isLoading, stats, recentItems }
 }
