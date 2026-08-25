@@ -97,3 +97,8 @@ node_modules
 
 .vscode
 *mdmak-v3.html*
+studio-2889*
+
+# Firebase service-account keys — never commit these
+*firebase-adminsdk*.json
+service-account.json

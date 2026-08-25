@@ -48,6 +48,7 @@ import {
   Boxes,
   Building2,
   ScrollText,
+  Target,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 
@@ -211,7 +212,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "crm",
     labelKey: "component_crm",
     descKey: "component_crm_desc",
-    homeHref: "/contractor/crm",
+    homeHref: "/contractor/crm/leads",
     icon: Contact,
     accentToken: "destructive",
     displayOrder: 1,
@@ -219,7 +220,9 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_crm",
         items: [
-          { titleKey: "component_crm", href: "/contractor/crm", icon: Contact, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_leads", href: "/contractor/crm/leads", icon: Contact, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_opportunities", href: "/contractor/crm/opportunities", icon: Target, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_rfqs", href: "/contractor/crm/rfqs", icon: FileText, requiredPermission: "crm.manage" },
         ],
       },
     ],
@@ -375,7 +378,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     id: "crm",
     labelKey: "component_crm",
     descKey: "supplier_component_crm_desc",
-    homeHref: "/supplier/connections",
+    homeHref: "/supplier/crm/leads",
     icon: Contact,
     accentToken: "destructive",
     displayOrder: 1,
@@ -383,6 +386,12 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_crm",
         items: [
+          { titleKey: "crm_nav_leads", href: "/supplier/crm/leads", icon: Contact, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_opportunities", href: "/supplier/crm/opportunities", icon: Target, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_rfqs", href: "/supplier/crm/rfqs", icon: FileText, requiredPermission: "crm.manage" },
+          // Connections (incoming contractor link requests) is a relationship
+          // inbox, so it belongs under CRM — it just is not one of the three
+          // pipeline pages.
           { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredPermission: "crm.manage" },
         ],
       },
