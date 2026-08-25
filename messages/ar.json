@@ -553,7 +553,7 @@
       "component_governance": "الإعدادات والحوكمة",
       "component_governance_desc": "بيانات المنشأة والسجل التجاري والضريبي وأعضاء الفريق والصلاحيات",
       "contractor_inventory_overview": "نظرة عامة على المخزون",
-      "contractor_receipts": "سندات القبض",
+      "contractor_receipts": "سندات الاستلام",
       "contractor_company_profile": "بيانات المنشأة",
       "contractor_company_legal": "السجل التجاري والضريبي",
       "supplier_company_profile": "بيانات المنشأة",
@@ -565,7 +565,8 @@
       "supplier_component_crm_desc": "علاقاتك وارتباطاتك مع المقاولين",
       "crm_nav_leads": "العملاء المحتملون",
       "crm_nav_opportunities": "الفرص",
-      "crm_nav_rfqs": "طلبات عروض الأسعار"
+      "crm_nav_rfqs": "طلبات عروض الأسعار",
+      "coming_soon": "قريباً"
     },
     "Layout": {
       "app_switcher_label": "تبديل المكون",
@@ -1906,7 +1907,10 @@
       "crm_quote_stat_total": "عروض الأسعار",
       "crm_quote_stat_value": "قيمة العروض",
       "crm_email_invalid": "أدخل بريداً إلكترونياً صحيحاً",
-      "crm_quote_amount_error": "أدخل مبلغاً أكبر من صفر"
+      "crm_quote_amount_error": "أدخل مبلغاً أكبر من صفر",
+      "coming_soon_title": "قريباً",
+      "coming_soon_desc": "هذه الميزة غير متاحة بعد. ستظهر هنا فور إطلاقها.",
+      "coming_soon_back": "العودة إلى لوحة التحكم"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -3317,7 +3321,37 @@
       "proj_waste_ai_error": "تعذّر جلب اقتراح الذكاء الاصطناعي",
       "proj_waste_summary_title": "الهدر في هذا المشروع",
       "proj_waste_taken_label": "مسحوب:",
-      "proj_waste_used_label": "مستخدم:"
+      "proj_waste_used_label": "مستخدم:",
+      "receipts_title": "سندات الاستلام",
+      "receipts_desc": "كل عملية تسليم مؤكدة، مع سند الاستلام الموقّع جاهزاً للطباعة",
+      "receipts_search_placeholder": "ابحث بالمورد أو الوصف أو المستلم أو رقم السند…",
+      "receipts_filter_supplier": "المورد",
+      "receipts_all_suppliers": "كل الموردين",
+      "receipts_filter_project": "المشروع",
+      "receipts_all_projects": "كل المشاريع",
+      "receipts_no_project": "بدون مشروع",
+      "receipts_date_from": "من",
+      "receipts_date_to": "إلى",
+      "receipts_clear_filters": "مسح عوامل التصفية",
+      "receipts_empty_title": "لا توجد سندات استلام بعد",
+      "receipts_empty_desc": "يُنشأ سند استلام لكل عملية تسليم تؤكدها في صفحة استلام البضائع",
+      "receipts_go_to_goods": "الذهاب إلى استلام البضائع",
+      "receipts_no_results": "لا توجد سندات مطابقة",
+      "receipts_no_results_desc": "جرّب كلمة بحث أخرى أو امسح عوامل التصفية",
+      "receipts_showing_count": "{shown} من {total}",
+      "receipts_col_number": "رقم السند",
+      "receipts_col_description": "الوصف",
+      "receipts_col_supplier": "المورد",
+      "receipts_col_delivery_date": "تاريخ التسليم",
+      "receipts_col_confirmed": "تاريخ التأكيد",
+      "receipts_col_project": "المشروع",
+      "receipts_col_actions": "إجراءات",
+      "receipts_view": "فتح السند",
+      "receipts_untitled": "تسليم يدوي",
+      "receipts_stat_total": "السندات",
+      "receipts_stat_this_month": "هذا الشهر",
+      "receipts_stat_suppliers": "الموردون",
+      "receipts_stat_projects": "المشاريع"
     },
     "Admin": {
       "Dashboard": {

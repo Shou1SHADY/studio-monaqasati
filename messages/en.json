@@ -554,7 +554,7 @@
       "component_governance": "Settings & Governance",
       "component_governance_desc": "Company record, CR and tax details, team members and access",
       "contractor_inventory_overview": "Stock Overview",
-      "contractor_receipts": "Receipt Vouchers",
+      "contractor_receipts": "Delivery Receipts",
       "contractor_company_profile": "Company Profile",
       "contractor_company_legal": "CR & Tax Records",
       "supplier_company_profile": "Company Profile",
@@ -566,7 +566,8 @@
       "supplier_component_crm_desc": "Your contractor relationships and connections",
       "crm_nav_leads": "Leads",
       "crm_nav_opportunities": "Opportunities",
-      "crm_nav_rfqs": "RFQs"
+      "crm_nav_rfqs": "RFQs",
+      "coming_soon": "Soon"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -1906,7 +1907,10 @@
       "crm_quote_stat_total": "Quotations",
       "crm_quote_stat_value": "Quoted value",
       "crm_email_invalid": "Enter a valid email address",
-      "crm_quote_amount_error": "Enter an amount greater than zero"
+      "crm_quote_amount_error": "Enter an amount greater than zero",
+      "coming_soon_title": "Coming soon",
+      "coming_soon_desc": "This feature is not available yet. It will appear here once it is released.",
+      "coming_soon_back": "Back to dashboard"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -3317,7 +3321,37 @@
       "proj_waste_ai_error": "Couldn't get an AI suggestion",
       "proj_waste_summary_title": "Waste on this project",
       "proj_waste_taken_label": "Taken:",
-      "proj_waste_used_label": "Used:"
+      "proj_waste_used_label": "Used:",
+      "receipts_title": "Delivery Receipts",
+      "receipts_desc": "Every confirmed delivery, with its signed receipt ready to print",
+      "receipts_search_placeholder": "Search by supplier, description, receiver or receipt no…",
+      "receipts_filter_supplier": "Supplier",
+      "receipts_all_suppliers": "All suppliers",
+      "receipts_filter_project": "Project",
+      "receipts_all_projects": "All projects",
+      "receipts_no_project": "No project",
+      "receipts_date_from": "From",
+      "receipts_date_to": "To",
+      "receipts_clear_filters": "Clear filters",
+      "receipts_empty_title": "No delivery receipts yet",
+      "receipts_empty_desc": "A receipt is created for every delivery you confirm on the Goods Received page",
+      "receipts_go_to_goods": "Go to Goods Received",
+      "receipts_no_results": "No matching receipts",
+      "receipts_no_results_desc": "Try a different search term or clear the filters",
+      "receipts_showing_count": "{shown} of {total}",
+      "receipts_col_number": "Receipt no.",
+      "receipts_col_description": "Description",
+      "receipts_col_supplier": "Supplier",
+      "receipts_col_delivery_date": "Delivered",
+      "receipts_col_confirmed": "Confirmed",
+      "receipts_col_project": "Project",
+      "receipts_col_actions": "Actions",
+      "receipts_view": "Open receipt",
+      "receipts_untitled": "Manual delivery",
+      "receipts_stat_total": "Receipts",
+      "receipts_stat_this_month": "This month",
+      "receipts_stat_suppliers": "Suppliers",
+      "receipts_stat_projects": "Projects"
     },
     "Admin": {
       "Dashboard": {

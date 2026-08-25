@@ -172,6 +172,26 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
     )
   }
 
+  // An unreleased page stays visible so the module's shape is still legible,
+  // but renders as plain text — no Link, no hover, not focusable — so there is
+  // nothing to click and nothing for a keyboard or screen reader to land on.
+  if (item.comingSoon) {
+    return (
+      <SidebarMenuItem>
+        <div
+          aria-disabled="true"
+          className="flex items-center gap-3 h-10 px-3 rounded-md text-sidebar-foreground/40 cursor-not-allowed select-none"
+        >
+          <item.icon className="h-4 w-4 shrink-0" />
+          <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>
+          <span className="ms-auto shrink-0 rounded-full bg-sidebar-accent/60 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-foreground/60">
+            {t("coming_soon")}
+          </span>
+        </div>
+      </SidebarMenuItem>
+    )
+  }
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton

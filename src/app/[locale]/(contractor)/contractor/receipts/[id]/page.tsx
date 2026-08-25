@@ -45,6 +45,9 @@ type Delivery = {
   contractorSignatureData?: string
 }
 
+// NOT gated by RECEIPTS_COMING_SOON: this printable receipt has been live all
+// along, reached from Goods Received and the RFQ offers view. Only the new
+// `/contractor/receipts` register — which never existed before — is held back.
 export default function DeliveryReceiptPage() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()

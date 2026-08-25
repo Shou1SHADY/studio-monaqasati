@@ -51,6 +51,7 @@ import {
   Target,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
+import { RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
 export interface NavItem {
   titleKey: string
@@ -58,6 +59,11 @@ export interface NavItem {
   icon: ElementType
   children?: NavItem[]
   requiredPermission?: PermissionId
+  /** Built but not released — the sidebar renders it dimmed and
+   * non-interactive, and the route itself serves a "coming soon" placeholder.
+   * Driven by a flag in `@/lib/feature-flags`, never hardcoded here, so one
+   * switch covers the nav entry, the routes and the inbound links. */
+  comingSoon?: boolean
 }
 
 export interface NavSection {
@@ -185,7 +191,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         labelKey: "component_finance",
         items: [
           { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
-          { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage" },
+          { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage", comingSoon: RECEIPTS_COMING_SOON },
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
         ],
       },
