@@ -382,6 +382,28 @@ service cloud.firestore {
       );
     }
 
+    // Module access requests — a team member asks the org owner for access to
+    // a portal module they can't open. The owner's uid IS the member's
+    // organizationId, so owner reads/resolves via organizationId == their uid.
+    match /accessRequests/{requestId} {
+      allow create: if isSignedIn()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.organizationId == getOrganizationId()
+        && request.resource.data.status == "pending";
+      allow get, list: if isSignedIn() && (
+        resource == null ||
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.organizationId == request.auth.uid ||
+        isAdmin()
+      );
+      allow update: if isSignedIn() && (
+        resource.data.organizationId == request.auth.uid ||
+        resource.data.requesterId == request.auth.uid
+      );
+      allow delete: if isAdmin()
+        || (isSignedIn() && resource.data.organizationId == request.auth.uid);
+    }
+
     // Guest RFQ share links — created and consumed exclusively by the
     // server (Admin SDK) via /api/rfq-share/*. The tokens inside grant
     // unauthenticated access to an RFQ, so clients must never read them.
