@@ -424,7 +424,7 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
                                         : "bg-success/10 text-success border-success/20"
                                   )}
                                 >
-                                  <span dir="ltr">{contact.paymentDays}d</span>
+                                  <span dir="ltr">{t("crm_days_short", { days: contact.paymentDays })}</span>
                                 </Badge>
                                 {(contact.overdueAmount || 0) > 0 && (
                                   <span className="block text-destructive font-semibold mt-0.5" dir="ltr">

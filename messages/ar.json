@@ -563,8 +563,11 @@
       "supplier_component_sales": "المبيعات",
       "supplier_component_sales_desc": "طلبات عروض الأسعار المطلوب الرد عليها وعروضك المقدَّمة",
       "supplier_component_crm_desc": "علاقاتك وارتباطاتك مع المقاولين",
+      "crm_nav_dashboard": "اللوحة",
       "crm_nav_leads": "العملاء المحتملون",
       "crm_nav_opportunities": "الفرص",
+      "crm_nav_activities": "الأنشطة",
+      "crm_nav_settings": "الإعدادات",
       "coming_soon": "قريباً"
     },
     "Layout": {
@@ -2289,7 +2292,8 @@
       "crm_leads_segment_incomplete": "ناقصة البيانات",
       "crm_leads_col_pipeline": "الفرص المفتوحة",
       "crm_leads_col_payment": "السداد",
-      "crm_leads_open_deals": "{count} مفتوحة"
+      "crm_leads_open_deals": "{count} مفتوحة",
+      "crm_days_short": "{days} يوم"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",

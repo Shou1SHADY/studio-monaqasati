@@ -564,8 +564,11 @@
       "supplier_component_sales": "Sales",
       "supplier_component_sales_desc": "RFQs to respond to and your submitted offers",
       "supplier_component_crm_desc": "Your contractor relationships and connections",
+      "crm_nav_dashboard": "Dashboard",
       "crm_nav_leads": "Leads",
       "crm_nav_opportunities": "Opportunities",
+      "crm_nav_activities": "Activities",
+      "crm_nav_settings": "Settings",
       "coming_soon": "Soon"
     },
     "Layout": {
@@ -2289,7 +2292,8 @@
       "crm_leads_segment_incomplete": "Incomplete",
       "crm_leads_col_pipeline": "Open pipeline",
       "crm_leads_col_payment": "Payment",
-      "crm_leads_open_deals": "{count} open"
+      "crm_leads_open_deals": "{count} open",
+      "crm_days_short": "{days}d"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
