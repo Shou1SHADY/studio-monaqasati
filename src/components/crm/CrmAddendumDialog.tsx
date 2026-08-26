@@ -108,7 +108,7 @@ export function CrmAddendumDialog({
                 autoFocus
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="add-date">{t("crm_addendum_new_date")}</Label>
                 <input

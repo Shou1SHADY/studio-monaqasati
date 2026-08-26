@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Link } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
 import { deleteContactCascade } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
@@ -60,6 +60,7 @@ import {
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmShowMore, CrmSortHeader, CrmToolbar } from "@/components/crm/CrmToolbar"
 import {
+  CRM_ROW_LINK_CLASS,
   CrmEmptyState,
   CrmListSkeleton,
   CrmShell,
@@ -88,6 +89,7 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const canManageCrm = can("crm.manage")
   const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
+  const router = useRouter()
   const base = crmBasePath(portal)
 
   const [view, setView] = useState<"grid" | "table">("grid")
@@ -343,13 +345,13 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
               <TableHeader>
                 <TableRow>
                   <TableHead><CrmSortHeader state={state} sortKey="name" label={t("crm_col_name")} /></TableHead>
-                  <TableHead>{t("crm_party_roles")}</TableHead>
-                  <TableHead>{t("crm_tier")}</TableHead>
-                  <TableHead><CrmSortHeader state={state} sortKey="status" label={t("crm_col_status")} /></TableHead>
+                  <TableHead className="hidden lg:table-cell">{t("crm_party_roles")}</TableHead>
+                  <TableHead className="hidden xl:table-cell">{t("crm_tier")}</TableHead>
+                  <TableHead className="hidden sm:table-cell"><CrmSortHeader state={state} sortKey="status" label={t("crm_col_status")} /></TableHead>
                   <TableHead><CrmSortHeader state={state} sortKey="pipeline" label={t("crm_leads_col_pipeline")} /></TableHead>
-                  <TableHead><CrmSortHeader state={state} sortKey="payment" label={t("crm_leads_col_payment")} /></TableHead>
+                  <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="payment" label={t("crm_leads_col_payment")} /></TableHead>
                   <TableHead><CrmSortHeader state={state} sortKey="health" label={t("crm_health")} /></TableHead>
-                  <TableHead>{t("crm_col_owner")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("crm_col_owner")}</TableHead>
                   {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -361,11 +363,17 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
                       const pipeline = pipelineByContact.get(contact.id)
                       const people = contactPeople(contact)
                       return (
-                        <TableRow key={contact.id}>
-                          <TableCell className={cellPad}>
+                        <TableRow
+                          key={contact.id}
+                          className={cn(CRM_ROW_LINK_CLASS, "group/row")}
+                          onClick={() => router.push(`${base}/leads/${contact.id}`)}
+                        >
+                          <TableCell className={cn("max-w-[220px] lg:max-w-[300px]", cellPad)}>
                             <Link
                               href={`${base}/leads/${contact.id}`}
-                              className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                              onClick={(e) => e.stopPropagation()}
+                              title={contact.name}
+                              className="font-bold text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                             >
                               {contact.name}
                             </Link>
@@ -451,11 +459,11 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
                             <TableCell className={cellPad}>
                               <div className="flex items-center gap-1 justify-end">
                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                  onClick={() => setEditContact(contact)} aria-label={`${t("crm_edit_title")} — ${contact.name}`}>
+                                  onClick={(e) => { e.stopPropagation(); setEditContact(contact) }} aria-label={`${t("crm_edit_title")} — ${contact.name}`}>
                                   <Pencil size={13} />
                                 </Button>
                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                  onClick={() => setDeleteTarget(contact)} aria-label={`${t("crm_delete_btn")} — ${contact.name}`}>
+                                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(contact) }} aria-label={`${t("crm_delete_btn")} — ${contact.name}`}>
                                   <Trash2 size={13} />
                                 </Button>
                               </div>

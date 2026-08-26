@@ -202,7 +202,7 @@ export function CrmValueDialog({
             </div>
 
             {step === "submitted" && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="value-validity">{t("crm_value_validity")}</Label>
                   <Input id="value-validity" type="number" min="1" inputMode="numeric" value={validityDays} onChange={(e) => setValidityDays(e.target.value)} dir="ltr" disabled={isSaving} />
@@ -215,7 +215,7 @@ export function CrmValueDialog({
             )}
 
             {step === "award" && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
                   <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />

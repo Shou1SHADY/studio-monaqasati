@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { Check, ChevronDown, Layers, ListFilter, Rows3, Search, User, X } from "lucide-react"
+import { Check, ChevronDown, ListFilter, Search, SlidersHorizontal, User, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -10,13 +10,15 @@ import { cn } from "@/lib/utils"
 import type { CrmListConfig, CrmListState } from "@/hooks/useCrmListState"
 
 /**
- * The control surface every CRM list shares: saved views, segments with live
- * counts, search, faceted filters with removable chips, grouping, "mine only"
- * and a density toggle.
+ * The control surface every CRM list shares.
  *
- * It renders from the same config the state hook consumes, so a page cannot
- * offer a filter the state does not understand — or hold state no control can
- * reach.
+ * Deliberately three controls wide, not nine. An earlier version put every
+ * facet on the bar as its own dropdown — four filters, a grouping menu, a
+ * density toggle, saved views and a search box all competing on one row, which
+ * on a laptop wrapped into a second row of chrome above the actual data and on
+ * a phone was unusable. Filtering now lives behind one button that carries a
+ * count, view preferences behind another, and the row a person reads first —
+ * the segments — sits on its own line where it belongs.
  */
 export function CrmToolbar<T>({
   config,
@@ -29,16 +31,19 @@ export function CrmToolbar<T>({
   extra?: ReactNode
 }) {
   const t = useTranslations("Portal.Shared")
-  const activeViewLabel =
-    config.savedViews.find((v) => v.key === state.activeView)?.label ?? t("crm_view_custom")
-  const activeGroupLabel = config.groups?.find((g) => g.key === state.group)?.label ?? t("crm_group_none")
+
+  const activeViewLabel = config.savedViews.find((v) => v.key === state.activeView)?.label
+  const activeGroupLabel = config.groups?.find((g) => g.key === state.group)?.label
+  // One number for everything narrowing the list, so the button says how much
+  // is hidden without the user opening it.
+  const filterCount = state.activeChips.length + (state.mineOnly ? 1 : 0)
 
   return (
     <div className="space-y-3">
-      {/* Segments — the coarse cut, with counts that reflect the filters
-          currently applied rather than an unfiltered total. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap rounded-lg border p-0.5 gap-0.5">
+      {/* Segments — the coarse cut, and the thing people reach for first.
+          Scrolls rather than wraps so it stays one predictable line. */}
+      <div className="-mx-1 px-1 overflow-x-auto">
+        <div className="flex w-max min-w-full rounded-lg border p-0.5 gap-0.5">
           {config.segments.map((seg) => (
             <button
               key={seg.key}
@@ -46,7 +51,7 @@ export function CrmToolbar<T>({
               onClick={() => state.setSegment(seg.key)}
               aria-pressed={state.segment === seg.key}
               className={cn(
-                "px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap",
+                "flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 state.segment === seg.key
                   ? "bg-primary text-primary-foreground"
@@ -66,23 +71,9 @@ export function CrmToolbar<T>({
             </button>
           ))}
         </div>
-
-        {config.isMine && (
-          <Button
-            type="button"
-            variant={state.mineOnly ? "default" : "outline"}
-            size="sm"
-            className="gap-1.5 h-9"
-            aria-pressed={state.mineOnly}
-            onClick={() => state.setMineOnly(!state.mineOnly)}
-          >
-            <User size={13} />
-            {t("crm_mine_only")}
-          </Button>
-        )}
       </div>
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
         <div className="relative flex-1 min-w-0">
           <Search size={15} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
           <Input
@@ -94,13 +85,13 @@ export function CrmToolbar<T>({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {config.savedViews.length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5 h-9 max-w-[220px]">
-                  <ListFilter size={13} className="shrink-0" />
-                  <span className="truncate">{activeViewLabel}</span>
+                <Button variant="outline" size="sm" className="h-10 gap-1.5 max-w-[180px]">
+                  <ListFilter size={14} className="shrink-0" />
+                  <span className="truncate">{activeViewLabel ?? t("crm_saved_views")}</span>
                   <ChevronDown size={13} className="shrink-0 opacity-60" />
                 </Button>
               </PopoverTrigger>
@@ -118,60 +109,91 @@ export function CrmToolbar<T>({
             </Popover>
           )}
 
-          {config.facets.map((facet) => {
-            const selected = state.facets[facet.key] ?? []
-            return (
-              <Popover key={facet.key}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={selected.length > 0 ? "secondary" : "outline"}
-                    size="sm"
-                    className="gap-1.5 h-9"
-                  >
-                    {facet.label}
-                    {selected.length > 0 && (
-                      <span className="rounded-full bg-primary/15 text-primary px-1.5 text-[10px] font-bold" dir="ltr">
-                        {selected.length}
-                      </span>
-                    )}
-                    <ChevronDown size={13} className="opacity-60" />
+          {/* Every facet behind one button. The badge is what makes this
+              honest: a filtered list never looks unfiltered. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant={filterCount > 0 ? "secondary" : "outline"} size="sm" className="h-10 gap-1.5">
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">{t("crm_filters")}</span>
+                {filterCount > 0 && (
+                  <span className="rounded-full bg-primary/15 text-primary px-1.5 text-[10px] font-bold" dir="ltr">
+                    {filterCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-0 max-h-[70vh] overflow-y-auto">
+              {config.isMine && (
+                <div className="p-1 border-b">
+                  <OptionRow
+                    label={t("crm_mine_only")}
+                    selected={state.mineOnly}
+                    onSelect={() => state.setMineOnly(!state.mineOnly)}
+                    icon={<User size={13} className="shrink-0 opacity-60" />}
+                  />
+                </div>
+              )}
+              {config.facets.map((facet) => {
+                const selected = state.facets[facet.key] ?? []
+                return (
+                  <div key={facet.key} className="p-1 border-b last:border-b-0">
+                    <div className="flex items-center gap-2 px-2 py-1.5">
+                      <p className="text-[11px] font-bold text-muted-foreground flex-1 truncate">{facet.label}</p>
+                      {selected.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => state.clearFacet(facet.key)}
+                          className="text-[10px] font-semibold text-muted-foreground hover:text-destructive rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {t("crm_clear_filters")}
+                        </button>
+                      )}
+                    </div>
+                    {facet.options.map((option) => (
+                      <OptionRow
+                        key={option.value}
+                        label={option.label}
+                        selected={selected.includes(option.value)}
+                        onSelect={() => state.toggleFacet(facet.key, option.value)}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
+              {filterCount > 0 && (
+                <div className="p-1 border-t sticky bottom-0 bg-popover">
+                  <Button variant="ghost" size="sm" className="w-full gap-1.5 text-muted-foreground hover:text-destructive" onClick={state.clearAll}>
+                    <X size={13} />
+                    {t("crm_clear_all_filters")}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-60 p-1 max-h-80 overflow-y-auto">
-                  {facet.options.map((option) => (
-                    <OptionRow
-                      key={option.value}
-                      label={option.label}
-                      selected={selected.includes(option.value)}
-                      onSelect={() => state.toggleFacet(facet.key, option.value)}
-                    />
-                  ))}
-                  {selected.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => state.clearFacet(facet.key)}
-                      className="mt-1 w-full rounded-md border-t px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {t("crm_clear_filters")}
-                    </button>
-                  )}
-                </PopoverContent>
-              </Popover>
-            )
-          })}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
 
-          {config.groups && config.groups.length > 0 && (
+          {/* Grouping and density are preferences, not filters — they change
+              how the same rows look, so they get their own menu. */}
+          {(config.groups?.length || 0) > 0 && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant={state.group ? "secondary" : "outline"} size="sm" className="gap-1.5 h-9 max-w-[200px]">
-                  <Layers size={13} className="shrink-0" />
-                  <span className="truncate">{activeGroupLabel}</span>
+                <Button
+                  variant={state.group || state.dense ? "secondary" : "outline"}
+                  size="sm"
+                  className="h-10 gap-1.5"
+                  aria-label={t("crm_view_options")}
+                >
+                  <Rows />
+                  <span className="hidden lg:inline truncate max-w-[110px]">
+                    {activeGroupLabel ?? t("crm_view_options")}
+                  </span>
                   <ChevronDown size={13} className="shrink-0 opacity-60" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-56 p-1">
+                <p className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground">{t("crm_group_by")}</p>
                 <OptionRow label={t("crm_group_none")} selected={!state.group} onSelect={() => state.setGroup("")} />
-                {config.groups.map((g) => (
+                {config.groups?.map((g) => (
                   <OptionRow
                     key={g.key}
                     label={g.label}
@@ -179,43 +201,34 @@ export function CrmToolbar<T>({
                     onSelect={() => state.setGroup(g.key)}
                   />
                 ))}
+                <div className="border-t mt-1 pt-1">
+                  <OptionRow
+                    label={t("crm_density")}
+                    selected={state.dense}
+                    onSelect={() => state.setDense(!state.dense)}
+                  />
+                </div>
               </PopoverContent>
             </Popover>
           )}
-
-          <Button
-            type="button"
-            variant={state.dense ? "secondary" : "outline"}
-            size="sm"
-            className="gap-1.5 h-9"
-            aria-pressed={state.dense}
-            onClick={() => state.setDense(!state.dense)}
-          >
-            <Rows3 size={13} />
-            {t("crm_density")}
-          </Button>
 
           {extra}
         </div>
       </div>
 
-      {state.activeChips.length > 0 && (
+      {/* Active filters stay visible outside the popover — otherwise a list
+          filtered down to three rows looks like a list with three rows. */}
+      {(state.activeChips.length > 0 || state.mineOnly) && (
         <div className="flex flex-wrap items-center gap-1.5">
+          {state.mineOnly && (
+            <FilterChip label={t("crm_mine_only")} onRemove={() => state.setMineOnly(false)} />
+          )}
           {state.activeChips.map((chip) => (
-            <span
+            <FilterChip
               key={`${chip.facetKey}:${chip.value}`}
-              className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground"
-            >
-              {chip.label}
-              <button
-                type="button"
-                onClick={() => state.toggleFacet(chip.facetKey, chip.value)}
-                aria-label={`${t("crm_clear_filters")} — ${chip.label}`}
-                className="rounded-full text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <X size={11} />
-              </button>
-            </span>
+              label={chip.label}
+              onRemove={() => state.toggleFacet(chip.facetKey, chip.value)}
+            />
           ))}
           <Button
             variant="ghost"
@@ -237,14 +250,42 @@ export function CrmToolbar<T>({
   )
 }
 
+/** Three stacked lines — the conventional "view options" glyph. */
+function Rows() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
+  )
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  const t = useTranslations("Portal.Shared")
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold text-foreground">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`${t("crm_clear_filters")} — ${label}`}
+        className="rounded-full text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <X size={11} />
+      </button>
+    </span>
+  )
+}
+
 function OptionRow({
   label,
   selected,
   onSelect,
+  icon,
 }: {
   label: string
   selected: boolean
   onSelect: () => void
+  icon?: ReactNode
 }) {
   return (
     <button
@@ -266,6 +307,7 @@ function OptionRow({
       >
         {selected && <Check size={11} />}
       </span>
+      {icon}
       <span className="truncate">{label}</span>
     </button>
   )
@@ -290,7 +332,7 @@ export function CrmSortHeader<T>({
       onClick={() => state.toggleSort(sortKey)}
       aria-sort={active ? (state.sort.direction === 1 ? "ascending" : "descending") : "none"}
       className={cn(
-        "inline-flex items-center gap-1 font-semibold rounded transition-colors",
+        "inline-flex items-center gap-1 font-semibold rounded transition-colors whitespace-nowrap",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active ? "text-primary" : "text-muted-foreground hover:text-foreground",
         className

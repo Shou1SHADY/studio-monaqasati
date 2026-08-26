@@ -101,7 +101,7 @@ export function CrmQuotationDialog({
       },
       content: (
         <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label htmlFor="quote-amount">{t("crm_quote_amount")} <RequiredMark /></Label>
                 <Input id="quote-amount" type="number" min="0" step="any" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} dir="ltr" disabled={isSaving} autoFocus />

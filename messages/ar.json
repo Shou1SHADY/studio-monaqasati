@@ -2309,7 +2309,10 @@
       "crm_contact_step_people": "الأشخاص والتواصل",
       "crm_contact_step_commercial": "الملف التجاري",
       "crm_health_inputs": "مدخلات صحة العلاقة",
-      "crm_health_inputs_hint": "كلها اختيارية — الفراغ يعني غير مقيس، لا نتيجة سيئة"
+      "crm_health_inputs_hint": "كلها اختيارية — الفراغ يعني غير مقيس، لا نتيجة سيئة",
+      "crm_filters": "الفلاتر",
+      "crm_view_options": "العرض",
+      "crm_group_by": "التجميع حسب"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",

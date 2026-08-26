@@ -230,6 +230,26 @@ export function CrmMeter({ percent, tone = "primary" }: { percent: number; tone?
   )
 }
 
+/**
+ * Classes that make a table row read as "this opens something".
+ *
+ * The row is not itself a link: the record's name inside it is, which keeps
+ * the target keyboard-reachable and announced properly. This adds the mouse
+ * affordance on top — a hover tint over the whole row and a pointer cursor —
+ * so the much larger hit area is discoverable without inventing a second,
+ * unfocusable control that does the same thing.
+ */
+export const CRM_ROW_LINK_CLASS =
+  "cursor-pointer transition-colors hover:bg-muted/60 focus-within:bg-muted/40"
+
+/**
+ * Same idea for a card. The whole surface is a link overlay; anything
+ * interactive on top of it must sit in a `relative z-10` container, or it
+ * becomes unclickable.
+ */
+export const CRM_CARD_LINK_CLASS =
+  "group relative rounded-lg border bg-card transition-all hover:border-primary/40 hover:shadow-md focus-within:ring-2 focus-within:ring-ring"
+
 /** Skeleton rows — shown while the Firestore listener settles, so the page
  * does not collapse to a spinner and then jump to a full layout. */
 export function CrmListSkeleton({ rows = 6 }: { rows?: number }) {

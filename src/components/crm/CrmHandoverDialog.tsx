@@ -136,7 +136,7 @@ export function CrmHandoverDialog({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="ho-contract">{t("crm_handover_contract_number")} <RequiredMark /></Label>
                 <Input id="ho-contract" value={contractNumber} onChange={(e) => setContractNumber(e.target.value)} dir="ltr" disabled={isSaving} autoFocus />

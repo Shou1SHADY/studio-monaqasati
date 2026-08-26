@@ -2309,7 +2309,10 @@
       "crm_contact_step_people": "People & contact",
       "crm_contact_step_commercial": "Commercial",
       "crm_health_inputs": "Relationship health inputs",
-      "crm_health_inputs_hint": "All optional — a blank is treated as unmeasured, not as a bad score"
+      "crm_health_inputs_hint": "All optional — a blank is treated as unmeasured, not as a bad score",
+      "crm_filters": "Filters",
+      "crm_view_options": "View",
+      "crm_group_by": "Group by"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",

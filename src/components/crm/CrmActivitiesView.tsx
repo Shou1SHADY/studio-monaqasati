@@ -15,12 +15,9 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +33,7 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
+import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
 import { cn } from "@/lib/utils"
 import {
   ACTIVITY_TYPES,
@@ -43,10 +41,11 @@ import {
   CRM_ACTIVITIES,
   daysUntil,
   formatCrmDate,
-  type ActivityType,
+
   type CrmActivity,
 } from "@/lib/crm"
 import { CrmActivityDialog } from "@/components/crm/CrmActivityDialog"
+import { CrmShowMore, CrmToolbar } from "@/components/crm/CrmToolbar"
 import {
   CrmEmptyState,
   CrmListSkeleton,
@@ -56,8 +55,6 @@ import {
   crmBasePath,
   type CrmPortal,
 } from "@/components/crm/CrmShell"
-
-type DueFilter = "open" | "overdue" | "today" | "week" | "done" | "all"
 
 /**
  * Every call, meeting, site visit, task and email in one list.
@@ -79,10 +76,6 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
   })
   const base = crmBasePath(portal)
 
-  const [search, setSearch] = useState("")
-  const [typeFilter, setTypeFilter] = useState<ActivityType | "all">("all")
-  const [dueFilter, setDueFilter] = useState<DueFilter>("open")
-  const [ownerFilter, setOwnerFilter] = useState("all")
   const [showAdd, setShowAdd] = useState(false)
   const [editActivity, setEditActivity] = useState<CrmActivity | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CrmActivity | null>(null)
@@ -108,44 +101,67 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
     return { open, overdue, today, done }
   }, [activities])
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return activities
-      .filter((a) => {
-        if (typeFilter !== "all" && a.type !== typeFilter) return false
-        if (ownerFilter !== "all") {
-          if (ownerFilter === "__none__" ? !!a.ownerId : a.ownerId !== ownerFilter) return false
-        }
-        const days = daysUntil(a.dueDate)
-        switch (dueFilter) {
-          case "open":
-            if (a.done) return false
-            break
-          case "done":
-            if (!a.done) return false
-            break
-          case "overdue":
-            if (a.done || days === null || days >= 0) return false
-            break
-          case "today":
-            if (a.done || days !== 0) return false
-            break
-          case "week":
-            if (a.done || days === null || days < 0 || days > 7) return false
-            break
-          default:
-            break
-        }
-        if (!q) return true
-        return [a.title, a.contactName, a.opportunityTitle, a.ownerName].some((f) => (f || "").toLowerCase().includes(q))
-      })
-      .sort((a, b) => {
-        // Done sinks; everything else sorts by how soon it is owed, with
-        // undated items last — they are commitments nobody has dated.
-        if (!!a.done !== !!b.done) return a.done ? 1 : -1
-        return (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99")
-      })
-  }, [activities, search, typeFilter, dueFilter, ownerFilter])
+  const listConfig = useMemo<CrmListConfig<CrmActivity>>(
+    () => ({
+      segments: [
+        { key: "open", label: t("crm_activity_due_open"), predicate: (a) => !a.done },
+        {
+          key: "overdue",
+          label: t("crm_activity_due_overdue"),
+          predicate: (a) => { const d = daysUntil(a.dueDate); return !a.done && d !== null && d < 0 },
+        },
+        {
+          key: "today",
+          label: t("crm_activity_due_today"),
+          predicate: (a) => !a.done && daysUntil(a.dueDate) === 0,
+        },
+        {
+          key: "week",
+          label: t("crm_activity_due_week"),
+          predicate: (a) => { const d = daysUntil(a.dueDate); return !a.done && d !== null && d >= 0 && d <= 7 },
+        },
+        { key: "done", label: t("crm_activity_due_done"), predicate: (a) => !!a.done },
+        { key: "all", label: t("crm_tab_all"), predicate: () => true },
+      ],
+      facets: [
+        {
+          key: "type",
+          label: t("crm_activity_type"),
+          options: ACTIVITY_TYPES.map((at) => ({ value: at, label: t(`crm_activity_type_${at}`) })),
+          valueOf: (a) => a.type,
+        },
+        {
+          key: "owner",
+          label: t("crm_owner"),
+          options: teamMembers.map((m) => ({ value: m.id, label: m.name })),
+          valueOf: (a) => a.ownerId ?? null,
+        },
+      ],
+      savedViews: [
+        { key: "open", label: t("crm_activity_due_open"), segment: "open", sort: { key: "due", direction: 1 } },
+        { key: "overdue", label: t("crm_activity_due_overdue"), segment: "overdue", sort: { key: "due", direction: 1 } },
+        { key: "today", label: t("crm_activity_due_today"), segment: "today", sort: { key: "due", direction: 1 } },
+      ],
+      groups: [
+        { key: "type", label: t("crm_activity_type"), keyOf: (a) => t(`crm_activity_type_${a.type}`) },
+        { key: "contact", label: t("crm_opp_contact"), keyOf: (a) => a.contactName || "—" },
+        { key: "owner", label: t("crm_owner"), keyOf: (a) => a.ownerName || t("crm_owner_none") },
+      ],
+      sorts: [
+        // Undated commitments sink: nobody has put a date on them.
+        { key: "due", valueOf: (a) => a.dueDate || "9999-99-99" },
+        { key: "title", valueOf: (a) => a.title || "" },
+      ],
+      searchText: (a) => [a.title, a.contactName, a.opportunityTitle, a.ownerName].filter(Boolean).join(" "),
+      isMine: (a) => !!a.ownerId && teamMembers.some((m) => m.id === a.ownerId),
+      defaultSegment: "open",
+      defaultSort: { key: "due", direction: 1 },
+      pageSize: 20,
+    }),
+    [t, teamMembers]
+  )
+
+  const state = useCrmListState(activities, listConfig, locale)
 
   const toggleDone = async (activity: CrmActivity) => {
     if (!firestore) return
@@ -178,14 +194,6 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
     }
   }
 
-  const hasFilters = !!search || typeFilter !== "all" || dueFilter !== "open" || ownerFilter !== "all"
-  const clearFilters = () => {
-    setSearch("")
-    setTypeFilter("all")
-    setDueFilter("open")
-    setOwnerFilter("all")
-  }
-
   const addButton =
     canManage && contacts.length > 0 ? (
       <Button onClick={() => setShowAdd(true)} className="gap-2">
@@ -209,59 +217,7 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
         <CrmStat icon={CalendarCheck} label={t("crm_activity_stat_done")} value={summary.done} accent="success" />
       </CrmStatRow>
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search size={15} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("crm_activity_search_placeholder")}
-            className="ps-9"
-            aria-label={t("crm_activity_search_placeholder")}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={dueFilter} onValueChange={(v) => setDueFilter(v as DueFilter)}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_activity_filter_due")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(["open", "overdue", "today", "week", "done", "all"] as const).map((f) => (
-                <SelectItem key={f} value={f}>{t(`crm_activity_due_${f}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as ActivityType | "all")}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_activity_filter_type")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crm_activity_all_types")}</SelectItem>
-              {ACTIVITY_TYPES.map((at) => (
-                <SelectItem key={at} value={at}>{t(`crm_activity_type_${at}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_filter_owner")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crm_filter_all_owners")}</SelectItem>
-              <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
-              {teamMembers.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {hasFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground hover:text-destructive">
-              <X size={13} />
-              {t("crm_clear_filters")}
-            </Button>
-          )}
-        </div>
-      </div>
+      {!isLoading && activities.length > 0 && <CrmToolbar config={listConfig} state={state} />}
 
       {isLoading ? (
         <CrmListSkeleton />
@@ -281,16 +237,16 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
             ) : undefined
           }
         />
-      ) : visible.length === 0 ? (
+      ) : state.filtered.length === 0 ? (
         <CrmEmptyState
           icon={Search}
           title={t("crm_no_results")}
           description={t("crm_no_results_desc")}
-          action={<Button variant="outline" size="sm" onClick={clearFilters}>{t("crm_clear_filters")}</Button>}
+          action={<Button variant="outline" size="sm" onClick={state.clearAll}>{t("crm_clear_filters")}</Button>}
         />
       ) : (
         <ul className="rounded-xl border divide-y bg-card">
-          {visible.map((activity) => {
+          {state.visible.map((activity) => {
             const days = daysUntil(activity.dueDate)
             const isOverdue = !activity.done && days !== null && days < 0
             return (
@@ -397,6 +353,9 @@ export function CrmActivitiesView({ portal }: { portal: CrmPortal }) {
             )
           })}
         </ul>
+      )}
+      {!isLoading && state.hasMore && (
+        <div className="rounded-xl border"><CrmShowMore state={state} /></div>
       )}
 
       <CrmActivityDialog

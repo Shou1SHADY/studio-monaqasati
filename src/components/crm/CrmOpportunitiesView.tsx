@@ -5,6 +5,8 @@ import { useLocale, useTranslations } from "next-intl"
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore"
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   CalendarDays,
   Coins,
   Contact,
@@ -30,7 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { Link } from "@/i18n/routing"
+import { Link, useRouter } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
 import { deleteOpportunityCascade } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
@@ -70,6 +72,8 @@ import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
 import { CrmShowMore, CrmSortHeader, CrmToolbar } from "@/components/crm/CrmToolbar"
 import {
+  CRM_CARD_LINK_CLASS,
+  CRM_ROW_LINK_CLASS,
   CrmEmptyState,
   CrmListSkeleton,
   CrmShell,
@@ -88,6 +92,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const canManageCrm = can("crm.manage")
   const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
   const { profile } = useCrmOrgProfile()
+  const router = useRouter()
   const base = crmBasePath(portal)
 
   const [view, setView] = useState<"board" | "list">("board")
@@ -354,6 +359,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                           canManage={canManageCrm}
                           isMoving={movingId === opp.id}
                           blocking={gatesRemaining(opp, { profile }).length}
+                          eligibility={checkEligibility(opp, profile)}
                           onMove={(next) => void moveStage(opp, next)}
                           onEdit={() => setEditOpp(opp)}
                           onDelete={() => setDeleteTarget(opp)}
@@ -398,16 +404,21 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {/* Eleven columns do not fit a phone. Rather than force a
+                      horizontal scroll through everything, the secondary ones
+                      drop out at each breakpoint — the name, value and date
+                      survive to the narrowest screen because those are what
+                      the list is scanned for. */}
                   <TableHead><CrmSortHeader state={state} sortKey="title" label={t("crm_opp_title")} /></TableHead>
-                  <TableHead>{t("crm_opp_contact")}</TableHead>
-                  <TableHead>{t("crm_opp_track")}</TableHead>
-                  <TableHead>{t("crm_opp_scope")}</TableHead>
-                  <TableHead>{t("crm_col_stage")}</TableHead>
+                  <TableHead className="hidden md:table-cell">{t("crm_opp_contact")}</TableHead>
+                  <TableHead className="hidden xl:table-cell">{t("crm_opp_track")}</TableHead>
+                  <TableHead className="hidden xl:table-cell">{t("crm_opp_scope")}</TableHead>
+                  <TableHead className="hidden sm:table-cell">{t("crm_col_stage")}</TableHead>
                   <TableHead><CrmSortHeader state={state} sortKey="value" label={t("crm_col_value")} /></TableHead>
-                  <TableHead><CrmSortHeader state={state} sortKey="probability" label={t("crm_opp_probability")} /></TableHead>
-                  <TableHead><CrmSortHeader state={state} sortKey="date" label={t("crm_col_close_date")} /></TableHead>
-                  <TableHead>{t("crm_eligibility")}</TableHead>
-                  <TableHead><CrmSortHeader state={state} sortKey="owner" label={t("crm_owner")} /></TableHead>
+                  <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="probability" label={t("crm_opp_probability")} /></TableHead>
+                  <TableHead className="hidden md:table-cell"><CrmSortHeader state={state} sortKey="date" label={t("crm_col_close_date")} /></TableHead>
+                  <TableHead className="hidden xl:table-cell">{t("crm_eligibility")}</TableHead>
+                  <TableHead className="hidden lg:table-cell"><CrmSortHeader state={state} sortKey="owner" label={t("crm_owner")} /></TableHead>
                   {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -427,51 +438,73 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       const scope = primaryScope(opp)
                       const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
                       return (
-                        <TableRow key={opp.id}>
-                          <TableCell className={cn("font-bold text-foreground", cellPad)}>
-                            <Link
-                              href={`${base}/opportunities/${opp.id}`}
-                              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                            >
-                              {opp.title}
-                            </Link>
+                        // The row navigates on click for the mouse; the title
+                        // inside it stays the real link so keyboard and screen
+                        // readers get a proper target.
+                        <TableRow
+                          key={opp.id}
+                          className={cn(CRM_ROW_LINK_CLASS, "group/row")}
+                          onClick={() => router.push(`${base}/opportunities/${opp.id}`)}
+                        >
+                          {/* Titles are free text and some are pasted
+                              paragraphs. Without a ceiling one of those makes
+                              its row 400px tall and squashes every other
+                              column into a sliver. */}
+                          <TableCell className={cn("font-bold text-foreground max-w-[260px] lg:max-w-[360px]", cellPad)}>
+                            <span className="flex items-start gap-1.5">
+                              <Link
+                                href={`${base}/opportunities/${opp.id}`}
+                                onClick={(e) => e.stopPropagation()}
+                                title={opp.title}
+                                className="text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                              >
+                                {opp.title}
+                              </Link>
+                              <ChevronArrow />
+                            </span>
+                            {/* On narrow screens the dropped columns collapse
+                                into a sub-line rather than vanishing. */}
+                            <span className="md:hidden block text-[11px] font-normal text-muted-foreground truncate mt-0.5">
+                              {[opp.contactName, t(`crm_opp_stage_${opp.stage}`)].filter(Boolean).join(" · ")}
+                            </span>
                             {rowState !== "open" && (
                               <Badge variant="outline" className={cn("ms-2 text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[rowState])}>
                                 {t(`crm_state_${rowState}`)}
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className={cellPad}>
+                          <TableCell className={cn("hidden md:table-cell", cellPad)}>
                             <Link
                               href={`${base}/leads/${opp.contactId}`}
+                              onClick={(e) => e.stopPropagation()}
                               className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                             >
                               {opp.contactName || t("crm_opp_contact")}
                             </Link>
                           </TableCell>
-                          <TableCell className={cellPad}>
+                          <TableCell className={cn("hidden xl:table-cell", cellPad)}>
                             <Badge variant="outline" className={cn("text-[10px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
                               {t(`crm_track_${opportunityTrack(opp)}`)}
                             </Badge>
                           </TableCell>
-                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                          <TableCell className={cn("hidden xl:table-cell text-xs text-muted-foreground", cellPad)}>
                             {scope ? t(`crm_scope_${scope}`) : opp.customScopeType || "—"}
                             {extraScopes > 0 && <span className="ms-1 text-[10px]" dir="ltr">+{extraScopes}</span>}
                           </TableCell>
-                          <TableCell className={cellPad}>
+                          <TableCell className={cn("hidden sm:table-cell", cellPad)}>
                             <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>
                               {t(`crm_opp_stage_${opp.stage}`)}
                             </Badge>
                           </TableCell>
-                          <TableCell className={cn("font-bold", cellPad)} dir="ltr">
+                          <TableCell className={cn("font-bold whitespace-nowrap", cellPad)} dir="ltr">
                             {formatSar(opp.awardedValue || opp.submittedPrice || opp.value, locale)}
                           </TableCell>
-                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)} dir="ltr">
+                          <TableCell className={cn("hidden lg:table-cell text-xs text-muted-foreground", cellPad)} dir="ltr">
                             {typeof opp.probability === "number" ? `${opp.probability}%` : "—"}
                           </TableCell>
-                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                          <TableCell className={cn("hidden md:table-cell text-xs text-muted-foreground", cellPad)}>
                             {opp.expectedCloseDate ? (
-                              <span className={cn("inline-flex items-center gap-1", open && days !== null && days < 0 && "text-destructive font-semibold")}>
+                              <span className={cn("inline-flex items-center gap-1 whitespace-nowrap", open && days !== null && days < 0 && "text-destructive font-semibold")}>
                                 <CalendarDays size={11} />
                                 <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
                                 {open && days !== null && days < 0 && <AlertTriangle size={11} />}
@@ -480,21 +513,24 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                               t("crm_opp_no_close_date")
                             )}
                           </TableCell>
-                          <TableCell className={cellPad}>
+                          <TableCell className={cn("hidden xl:table-cell", cellPad)}>
                             <EligibilityBadge check={checkEligibility(opp, profile)} />
                           </TableCell>
-                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                          <TableCell className={cn("hidden lg:table-cell text-xs text-muted-foreground", cellPad)}>
                             {opp.ownerName || t("crm_owner_none")}
                           </TableCell>
                           {canManageCrm && (
                             <TableCell className={cellPad}>
+                              {/* Without stopPropagation these would edit AND
+                                  navigate, landing the user on the detail page
+                                  with a dialog open behind them. */}
                               <div className="flex items-center gap-1 justify-end">
                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                  onClick={() => setEditOpp(opp)} aria-label={`${t("crm_opp_edit_title")} — ${opp.title}`}>
+                                  onClick={(e) => { e.stopPropagation(); setEditOpp(opp) }} aria-label={`${t("crm_opp_edit_title")} — ${opp.title}`}>
                                   <Pencil size={13} />
                                 </Button>
                                 <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                  onClick={() => setDeleteTarget(opp)} aria-label={`${t("crm_opp_delete_confirm_title")} — ${opp.title}`}>
+                                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(opp) }} aria-label={`${t("crm_opp_delete_confirm_title")} — ${opp.title}`}>
                                   <Trash2 size={13} />
                                 </Button>
                               </div>
@@ -617,6 +653,15 @@ export function EligibilityBadge({ check }: { check: EligibilityCheck }) {
   )
 }
 
+/**
+ * A deal on the board.
+ *
+ * Carries the same facts as a table row — value, probability, eligibility,
+ * owner, what is blocking it — because a person who switches to the board
+ * should not lose information, only rearrange it. The whole card navigates to
+ * the deal; the stage select and the row of actions sit above that overlay so
+ * they stay usable.
+ */
 function OpportunityCard({
   opp,
   detailHref,
@@ -624,6 +669,7 @@ function OpportunityCard({
   canManage,
   isMoving,
   blocking,
+  eligibility,
   onMove,
   onEdit,
   onDelete,
@@ -634,6 +680,7 @@ function OpportunityCard({
   canManage: boolean
   isMoving: boolean
   blocking: number
+  eligibility: EligibilityCheck
   onMove: (stage: OpportunityStage) => void
   onEdit: () => void
   onDelete: () => void
@@ -647,53 +694,82 @@ function OpportunityCard({
   const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
 
   return (
-    <article className="rounded-lg border bg-card p-3 space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <Link
-          href={detailHref}
-          className="text-sm font-bold text-foreground hover:text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-        >
-          {opp.title}
-        </Link>
-        <Badge variant="outline" className={cn("shrink-0 text-[9px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
-          {t(`crm_track_${opportunityTrack(opp)}`)}
-        </Badge>
-      </div>
-      {(scope || opp.customScopeType) && (
-        <p className="text-[10px] text-muted-foreground truncate">
-          {scope ? t(`crm_scope_${scope}`) : opp.customScopeType}
-          {extraScopes > 0 && <span dir="ltr"> +{extraScopes}</span>}
-        </p>
-      )}
+    <article className={cn(CRM_CARD_LINK_CLASS, "p-3")}>
+      {/* Whole-card target sits UNDERNEATH the controls below. */}
       <Link
-        href={contactHref}
-        className="block text-xs text-primary hover:underline truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-      >
-        {opp.contactName || t("crm_opp_open_contact")}
-      </Link>
-      <p className="text-sm font-black text-foreground" dir="ltr">{formatSar(opp.value, locale)}</p>
-      {/* What is actually stopping this card from moving right. */}
-      {blocking > 0 && (
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-          <AlertTriangle size={11} className="shrink-0 text-warning" />
-          {t("crm_gates_blocking", { count: blocking })}
-        </p>
-      )}
-      {opp.expectedCloseDate && (
-        <p
-          className={cn(
-            "text-[11px] flex items-center gap-1",
-            isOverdue ? "text-destructive font-semibold" : isDueSoon ? "text-warning font-semibold" : "text-muted-foreground"
-          )}
+        href={detailHref}
+        className="absolute inset-0 rounded-lg focus:outline-none"
+        aria-label={opp.title}
+        tabIndex={-1}
+      />
+
+      <div className="relative pointer-events-none space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <Link
+            href={detailHref}
+            className="pointer-events-auto text-sm font-bold text-foreground group-hover:text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          >
+            {opp.title}
+          </Link>
+          <Badge variant="outline" className={cn("shrink-0 text-[9px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
+            {t(`crm_track_${opportunityTrack(opp)}`)}
+          </Badge>
+        </div>
+
+        {(scope || opp.customScopeType) && (
+          <p className="text-[10px] text-muted-foreground truncate">
+            {scope ? t(`crm_scope_${scope}`) : opp.customScopeType}
+            {extraScopes > 0 && <span dir="ltr"> +{extraScopes}</span>}
+          </p>
+        )}
+
+        <Link
+          href={contactHref}
+          className="pointer-events-auto block text-xs text-primary hover:underline truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
         >
-          <CalendarDays size={11} className="shrink-0" />
-          <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
-          {isOverdue && <span>· {t("crm_opp_overdue")}</span>}
-          {!isOverdue && isDueSoon && <span>· {t("crm_opp_due_soon", { days })}</span>}
-        </p>
-      )}
+          {opp.contactName || t("crm_opp_open_contact")}
+        </Link>
+
+        {/* Value and confidence read together — one is meaningless without
+            the other when comparing two cards. */}
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-sm font-black text-foreground" dir="ltr">{formatSar(opp.value, locale)}</span>
+          {typeof opp.probability === "number" && (
+            <span className="text-[11px] font-bold text-muted-foreground" dir="ltr">{opp.probability}%</span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <EligibilityBadge check={eligibility} />
+          {opp.ownerName && (
+            <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{opp.ownerName}</span>
+          )}
+        </div>
+
+        {blocking > 0 && (
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <AlertTriangle size={11} className="shrink-0 text-warning" />
+            {t("crm_gates_blocking", { count: blocking })}
+          </p>
+        )}
+
+        {opp.expectedCloseDate && (
+          <p
+            className={cn(
+              "text-[11px] flex items-center gap-1",
+              isOverdue ? "text-destructive font-semibold" : isDueSoon ? "text-warning font-semibold" : "text-muted-foreground"
+            )}
+          >
+            <CalendarDays size={11} className="shrink-0" />
+            <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
+            {isOverdue && <span>· {t("crm_opp_overdue")}</span>}
+            {!isOverdue && isDueSoon && <span>· {t("crm_opp_due_soon", { days })}</span>}
+          </p>
+        )}
+      </div>
+
       {canManage && (
-        <div className="flex items-center gap-1 pt-2 border-t">
+        <div className="relative z-10 flex items-center gap-1 pt-2 mt-2 border-t">
           {/* Stage moves are a Select rather than drag-and-drop: it is
               keyboard-reachable, works on touch, and needs no extra dependency. */}
           <Select value={opp.stage} onValueChange={(v) => onMove(v as OpportunityStage)} disabled={isMoving}>
@@ -717,5 +793,19 @@ function OpportunityCard({
         </div>
       )}
     </article>
+  )
+}
+
+/** Small directional cue that a row or card opens a detail page. Fades in on
+ * hover so it does not add noise to a dense table at rest. */
+function ChevronArrow() {
+  const locale = useLocale()
+  const Icon = locale === "ar" ? ArrowLeft : ArrowRight
+  return (
+    <Icon
+      size={12}
+      className="shrink-0 opacity-0 -translate-x-1 rtl:translate-x-1 transition-all text-primary group-hover/row:opacity-100 group-hover/row:translate-x-0"
+      aria-hidden="true"
+    />
   )
 }
