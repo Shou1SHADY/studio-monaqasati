@@ -1,25 +1,18 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useLocale, useTranslations } from "next-intl"
+import { useTranslations } from "next-intl"
+import { useLocale } from "next-intl"
+import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { Contact as ContactIcon, Plus, Trash2, UserPlus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
-import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { PhoneInput } from "@/components/shared/PhoneInput"
-import { Loader2, Plus, Trash2 } from "lucide-react"
 import type { TeamMember } from "@/hooks/useCrmData"
 import { renameContactReferences } from "@/lib/crm-writes"
 import { cn } from "@/lib/utils"
@@ -44,9 +37,19 @@ import {
   type PartyRole,
   type PartyType,
 } from "@/lib/crm"
+import { CrmFieldGroup, CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const NONE = "__none__"
 
+/**
+ * Create or edit a party.
+ *
+ * Three steps, because the form covers three separable jobs: identifying the
+ * organization, recording the humans inside it, and describing how they behave
+ * commercially. Only the first is required — the rest can be filled in as the
+ * relationship develops, which is how these records actually get built.
+ */
 export function CrmContactDialog({
   open,
   onOpenChange,
@@ -66,6 +69,7 @@ export function CrmContactDialog({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+
   const [isSaving, setIsSaving] = useState(false)
   const [name, setName] = useState("")
   const [type, setType] = useState<ContactType>("client")
@@ -139,15 +143,7 @@ export function CrmContactDialog({
   const handleSave = async () => {
     if (!firestore || isSaving) return
     const trimmedName = name.trim()
-    if (!trimmedName) {
-      toast({ title: t("crm_validation_error"), variant: "destructive" })
-      return
-    }
     const trimmedEmail = email.trim()
-    if (trimmedEmail && !EMAIL_RE.test(trimmedEmail)) {
-      setEmailError(true)
-      return
-    }
 
     setIsSaving(true)
     try {
@@ -188,8 +184,9 @@ export function CrmContactDialog({
 
       if (contact) {
         await updateDoc(doc(firestore, CRM_CONTACTS, contact.id), data)
-        // `contactName` is denormalised onto opportunities and quotations so
-        // the org-wide lists render in one query — a rename has to reach them.
+        // `contactName` is denormalised onto opportunities, quotations and
+        // activities so the org-wide lists render in one query — a rename has
+        // to reach them.
         if (contact.name !== trimmedName) {
           await renameContactReferences(firestore, contact.id, orgId, trimmedName)
         }
@@ -209,24 +206,30 @@ export function CrmContactDialog({
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
-      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{contact ? t("crm_edit_title") : t("crm_add_title")}</DialogTitle>
-          <DialogDescription>{t("crm_dialog_desc")}</DialogDescription>
-        </DialogHeader>
-        <form
-          className="space-y-4 py-2"
-          onSubmit={(e) => { e.preventDefault(); void handleSave() }}
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="crm-name">{t("crm_name")} *</Label>
-              <Input id="crm-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("crm_name_placeholder")} disabled={isSaving} autoFocus />
-            </div>
+  const steps: CrmFormStep[] = [
+    {
+      id: "identity",
+      title: t("crm_contact_step_identity"),
+      validate: () => (name.trim() ? null : t("crm_validation_error")),
+      content: (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="crm-name">
+              {t("crm_name")} <RequiredMark />
+            </Label>
+            <Input
+              id="crm-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("crm_name_placeholder")}
+              disabled={isSaving}
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="crm-type">{t("crm_type")} *</Label>
+              <Label htmlFor="crm-type">{t("crm_type")}</Label>
               <Select value={type} onValueChange={(v) => setType(v as ContactType)} disabled={isSaving}>
                 <SelectTrigger id="crm-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -237,7 +240,23 @@ export function CrmContactDialog({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="crm-entity">{t("crm_entity_type")} *</Label>
+              <Label htmlFor="crm-party-type">{t("crm_party_type")}</Label>
+              <Select
+                value={partyType || NONE}
+                onValueChange={(v) => setPartyType(v === NONE ? "" : (v as PartyType))}
+                disabled={isSaving}
+              >
+                <SelectTrigger id="crm-party-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>{t("crm_not_specified")}</SelectItem>
+                  {PARTY_TYPES.map((pt) => (
+                    <SelectItem key={pt} value={pt}>{t(`crm_party_type_${pt}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-entity">{t("crm_entity_type")}</Label>
               <Select value={entityType} onValueChange={(v) => setEntityType(v as EntityType)} disabled={isSaving}>
                 <SelectTrigger id="crm-entity"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -247,32 +266,15 @@ export function CrmContactDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="crm-party-type">{t("crm_party_type")}</Label>
-              <Select
-                value={partyType || "__none__"}
-                onValueChange={(v) => setPartyType(v === "__none__" ? "" : (v as PartyType))}
-                disabled={isSaving}
-              >
-                <SelectTrigger id="crm-party-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t("crm_not_specified")}</SelectItem>
-                  {PARTY_TYPES.map((pt) => (
-                    <SelectItem key={pt} value={pt}>{t(`crm_party_type_${pt}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="crm-company">{t("crm_company")}</Label>
-              <Input id="crm-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("crm_company_placeholder")} disabled={isSaving} />
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-city">{t("crm_city")}</Label>
+              <Input id="crm-city" value={city} onChange={(e) => setCity(e.target.value)} disabled={isSaving} />
             </div>
           </div>
 
-          {/* Roles are multi-valued: the same company is regularly a client on
+          {/* Roles are multi-valued: the same company is routinely a client on
               one job and the main contractor we subcontract for on another. */}
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium mb-1.5">{t("crm_party_roles")}</legend>
+          <CrmFieldGroup label={t("crm_party_roles")}>
             <div className="flex flex-wrap gap-1.5">
               {PARTY_ROLES.map((role) => (
                 <button
@@ -291,76 +293,70 @@ export function CrmContactDialog({
                 </button>
               ))}
             </div>
-          </fieldset>
-          <div className="space-y-1.5">
-            <Label htmlFor="crm-phone">{t("crm_phone")}</Label>
-            <PhoneInput id="crm-phone" value={phone} onChange={setPhone} disabled={isSaving} locale={locale} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="crm-email">{t("crm_email")}</Label>
-            <Input
-              id="crm-email"
-              type="email"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(false) }}
-              onBlur={(e) => setEmailError(!!e.target.value.trim() && !EMAIL_RE.test(e.target.value.trim()))}
-              placeholder={t("crm_email_placeholder")}
-              dir="ltr"
-              disabled={isSaving}
-              aria-invalid={emailError}
-              aria-describedby={emailError ? "crm-email-error" : undefined}
-            />
-            {emailError && (
-              <p id="crm-email-error" className="text-xs text-destructive">{t("crm_email_invalid")}</p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          </CrmFieldGroup>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label htmlFor="crm-status">{t("crm_status")}</Label>
-              <Select value={status} onValueChange={(v) => setStatus(v as LeadStatus)} disabled={isSaving}>
-                <SelectTrigger id="crm-status"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {LEAD_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{t(`crm_status_${s}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="crm-company">{t("crm_company")}</Label>
+              <Input id="crm-company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder={t("crm_company_placeholder")} disabled={isSaving} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="crm-source">{t("crm_source")}</Label>
-              <Select value={source} onValueChange={(v) => setSource(v as LeadSource)} disabled={isSaving}>
-                <SelectTrigger id="crm-source"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {LEAD_SOURCES.map((s) => (
-                    <SelectItem key={s} value={s}>{t(`crm_source_${s}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor="crm-owner">{t("crm_owner")}</Label>
-              <Select value={ownerId || "__none__"} onValueChange={(v) => setOwnerId(v === "__none__" ? "" : v)} disabled={isSaving}>
-                <SelectTrigger id="crm-owner"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
-                  {teamMembers.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="crm-cr">{t("crm_cr_number")}</Label>
+              <Input id="crm-cr" value={crNumber} onChange={(e) => setCrNumber(e.target.value)} dir="ltr" disabled={isSaving} />
             </div>
           </div>
-          {/* The people we actually deal with. Parties are organizations; the
-              work happens with named individuals, and "who do I call" is the
-              question this record exists to answer. */}
-          <fieldset className="rounded-xl border p-4 space-y-3">
-            <legend className="px-1.5 text-xs font-bold text-muted-foreground">{t("crm_people_section")}</legend>
-            {people.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{t("crm_people_empty")}</p>
-            ) : (
-              people.map((person, index) => (
+        </>
+      ),
+    },
+    {
+      id: "people",
+      title: t("crm_contact_step_people"),
+      validate: () => {
+        const trimmed = email.trim()
+        if (trimmed && !EMAIL_RE.test(trimmed)) {
+          setEmailError(true)
+          return t("crm_email_invalid")
+        }
+        const badPerson = people.find((p) => p.name.trim() && p.email?.trim() && !EMAIL_RE.test(p.email.trim()))
+        return badPerson ? t("crm_email_invalid") : null
+      },
+      content: (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-phone">{t("crm_phone")}</Label>
+              <PhoneInput id="crm-phone" value={phone} onChange={setPhone} disabled={isSaving} locale={locale} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-email">{t("crm_email")}</Label>
+              <Input
+                id="crm-email"
+                type="email"
+                value={email}
+                onChange={(e) => { setEmail(e.target.value); if (emailError) setEmailError(false) }}
+                onBlur={(e) => setEmailError(!!e.target.value.trim() && !EMAIL_RE.test(e.target.value.trim()))}
+                placeholder={t("crm_email_placeholder")}
+                dir="ltr"
+                disabled={isSaving}
+                aria-invalid={emailError}
+                aria-describedby={emailError ? "crm-email-error" : undefined}
+              />
+              {emailError && (
+                <p id="crm-email-error" className="text-xs text-destructive">{t("crm_email_invalid")}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Parties are organizations; work happens with named individuals,
+              and "who do I call" is the question this record exists to answer. */}
+          <CrmFieldGroup label={t("crm_people_section")} hint={people.length === 0 ? t("crm_people_empty") : undefined}>
+            <div className="space-y-2">
+              {people.map((person, index) => (
                 <div key={index} className="rounded-lg border bg-muted/20 p-3 space-y-2">
                   <div className="flex items-center gap-2">
+                    <span className="grid place-items-center h-6 w-6 shrink-0 rounded-full bg-primary/10 text-[11px] font-bold text-primary" dir="ltr">
+                      {index + 1}
+                    </span>
                     <Input
                       value={person.name}
                       onChange={(e) => updatePerson(index, { name: e.target.value })}
@@ -407,67 +403,109 @@ export function CrmContactDialog({
                     />
                   </div>
                 </div>
-              ))
-            )}
-            <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addPerson} disabled={isSaving}>
-              <Plus size={13} />
-              {t("crm_person_add")}
-            </Button>
-          </fieldset>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="gap-1.5 w-full" onClick={addPerson} disabled={isSaving}>
+                <UserPlus size={14} />
+                {t("crm_person_add")}
+              </Button>
+            </div>
+          </CrmFieldGroup>
+        </>
+      ),
+    },
+    {
+      id: "commercial",
+      title: t("crm_contact_step_commercial"),
+      content: (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-status">{t("crm_status")}</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as LeadStatus)} disabled={isSaving}>
+                <SelectTrigger id="crm-status"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {LEAD_STATUSES.map((s) => (
+                    <SelectItem key={s} value={s}>{t(`crm_status_${s}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-source">{t("crm_source")}</Label>
+              <Select value={source} onValueChange={(v) => setSource(v as LeadSource)} disabled={isSaving}>
+                <SelectTrigger id="crm-source"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {LEAD_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>{t(`crm_source_${s}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-tier">{t("crm_tier")}</Label>
+              <Select value={tier} onValueChange={(v) => setTier(v as ContactTier)} disabled={isSaving}>
+                <SelectTrigger id="crm-tier"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONTACT_TIERS.map((tr) => (
+                    <SelectItem key={tr} value={tr}>{t(`crm_tier_${tr}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="crm-owner">{t("crm_owner")}</Label>
+              <Select value={ownerId || NONE} onValueChange={(v) => setOwnerId(v === NONE ? "" : v)} disabled={isSaving}>
+                <SelectTrigger id="crm-owner"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>{t("crm_owner_none")}</SelectItem>
+                  {teamMembers.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-          {/* Commercial profile — every field optional. These feed the
-              relationship-health score, which deliberately treats a blank as
+          {/* These feed the relationship-health score, which treats a blank as
               "unmeasured" rather than assuming the worst. */}
-          <fieldset className="rounded-xl border p-4 space-y-4">
-            <legend className="px-1.5 text-xs font-bold text-muted-foreground">{t("crm_commercial_section")}</legend>
-            <div className="grid grid-cols-2 gap-4">
+          <CrmFieldGroup label={t("crm_health_inputs")} hint={t("crm_health_inputs_hint")}>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="crm-city">{t("crm_city")}</Label>
-                <Input id="crm-city" value={city} onChange={(e) => setCity(e.target.value)} disabled={isSaving} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="crm-cr">{t("crm_cr_number")}</Label>
-                <Input id="crm-cr" value={crNumber} onChange={(e) => setCrNumber(e.target.value)} dir="ltr" disabled={isSaving} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="crm-tier">{t("crm_tier")}</Label>
-                <Select value={tier} onValueChange={(v) => setTier(v as ContactTier)} disabled={isSaving}>
-                  <SelectTrigger id="crm-tier"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CONTACT_TIERS.map((tr) => (
-                      <SelectItem key={tr} value={tr}>{t(`crm_tier_${tr}`)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="crm-satisfaction">{t("crm_satisfaction")}</Label>
+                <Label htmlFor="crm-satisfaction" className="text-xs">{t("crm_satisfaction")}</Label>
                 <Input id="crm-satisfaction" type="number" min="0" max="100" inputMode="numeric" value={satisfaction} onChange={(e) => setSatisfaction(e.target.value)} dir="ltr" disabled={isSaving} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="crm-payment-days">{t("crm_payment_days")}</Label>
+                <Label htmlFor="crm-payment-days" className="text-xs">{t("crm_payment_days")}</Label>
                 <Input id="crm-payment-days" type="number" min="0" inputMode="numeric" value={paymentDays} onChange={(e) => setPaymentDays(e.target.value)} dir="ltr" disabled={isSaving} />
-                <p className="text-[11px] text-muted-foreground">{t("crm_payment_days_hint")}</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="crm-overdue">{t("crm_overdue_amount")}</Label>
+                <Label htmlFor="crm-overdue" className="text-xs">{t("crm_overdue_amount")}</Label>
                 <Input id="crm-overdue" type="number" min="0" step="any" inputMode="decimal" value={overdueAmount} onChange={(e) => setOverdueAmount(e.target.value)} dir="ltr" disabled={isSaving} />
               </div>
             </div>
-          </fieldset>
+          </CrmFieldGroup>
+
           <div className="space-y-1.5">
             <Label htmlFor="crm-notes">{t("crm_notes")}</Label>
-            <Textarea id="crm-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("crm_notes_placeholder")} disabled={isSaving} />
+            <Textarea id="crm-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("crm_notes_placeholder")} disabled={isSaving} rows={3} />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
-            <Button type="submit" disabled={isSaving} className="gap-2">
-              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {t("crm_save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </>
+      ),
+    },
+  ]
+
+  return (
+    <CrmFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={contact ? ContactIcon : Plus}
+      title={contact ? t("crm_edit_title") : t("crm_add_title")}
+      description={t("crm_dialog_desc")}
+      steps={steps}
+      isSaving={isSaving}
+      submitLabel={t("crm_save")}
+      onSubmit={() => void handleSave()}
+      size="lg"
+    />
   )
 }

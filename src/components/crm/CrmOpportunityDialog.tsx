@@ -1,24 +1,16 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Button } from "@/components/ui/button"
+import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { CheckCircle2, Target } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
-import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2 } from "lucide-react"
 import type { TeamMember } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
 import {
@@ -31,8 +23,11 @@ import {
   SCOPE_ACTIVITY,
   SCOPE_TYPES,
   TENDER_ROUTES,
+  TRACK_BADGE_CLASS,
+  formatSar,
   historyEntry,
   opportunityTrack,
+  partyRoles,
   trackDateLabelKey,
   type ClassificationActivity,
   type ContractKind,
@@ -44,6 +39,7 @@ import {
   type ScopeType,
   type TenderRoute,
 } from "@/lib/crm"
+import { CrmFieldGroup, CrmFormDialog, CrmReviewRow, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 
 /** The probability steps a rep actually reasons in. A free-number field here
  * invites false precision — nobody's deal is 63% likely. */
@@ -54,6 +50,51 @@ export const DATE_INPUT_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
   "disabled:cursor-not-allowed disabled:opacity-50"
 
+const NONE = "__none__"
+
+/** Chip toggle used for scope, probability and similar small option sets. */
+function Chip({
+  selected,
+  onClick,
+  disabled,
+  children,
+}: {
+  selected: boolean
+  onClick: () => void
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      disabled={disabled}
+      className={cn(
+        "px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        selected ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Create or edit an opportunity.
+ *
+ * Split into three steps because the form asks about three unrelated things:
+ * what kind of deal this is and who it is with, what the work actually is, and
+ * what we think it is worth. Presenting a dozen fields as one wall made a
+ * routine task read as paperwork.
+ *
+ * The stage is deliberately NOT settable when creating. Every deal starts at
+ * the first stage and earns its way forward by clearing gates; letting someone
+ * open one directly at "won" would route around the entire mechanism this
+ * module exists to enforce.
+ */
 export function CrmOpportunityDialog({
   open,
   onOpenChange,
@@ -76,6 +117,8 @@ export function CrmOpportunityDialog({
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const isEdit = !!opportunity
+
   const [isSaving, setIsSaving] = useState(false)
   const [contactId, setContactId] = useState("")
   const [title, setTitle] = useState("")
@@ -100,7 +143,7 @@ export function CrmOpportunityDialog({
     setTitle(opportunity?.title ?? "")
     setTrack(opportunity ? opportunityTrack(opportunity) : "tender")
     setStage(opportunity?.stage ?? "new")
-    setValue(opportunity?.value != null ? String(opportunity.value) : "")
+    setValue(opportunity?.value != null && opportunity.value > 0 ? String(opportunity.value) : "")
     setProbability(typeof opportunity?.probability === "number" ? opportunity.probability : 40)
     setExpectedCloseDate(opportunity?.expectedCloseDate ?? "")
     setOwnerId(opportunity?.ownerId ?? "")
@@ -122,29 +165,32 @@ export function CrmOpportunityDialog({
   const derivedActivity: ClassificationActivity | null =
     scopeTypes.length > 0 ? SCOPE_ACTIVITY[scopeTypes[0]] : customScopeType.trim() ? customScopeActivity : null
 
+  const selectedContact = contacts.find((c) => c.id === contactId)
+
+  // Consultants first — that is what this field is for — but the whole list
+  // stays reachable, because the role may simply not have been recorded yet.
+  const consultantOptions = useMemo(() => {
+    const others = contacts.filter((c) => c.id !== contactId)
+    const isConsultant = (c: CrmContact) => partyRoles(c).includes("consultant")
+    return [...others.filter(isConsultant), ...others.filter((c) => !isConsultant(c))]
+  }, [contacts, contactId])
+
+  const parsedValue = parseFloat(value)
+  const numericValue = Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0
+
   const handleSave = async () => {
     if (!firestore || isSaving) return
-    if (!title.trim()) {
-      toast({ title: t("crm_opp_validation_error"), variant: "destructive" })
-      return
-    }
-    if (!contactId) {
-      toast({ title: t("crm_opp_contact_required"), variant: "destructive" })
-      return
-    }
-
     setIsSaving(true)
     try {
       const contact = contacts.find((c) => c.id === contactId)
       const owner = teamMembers.find((m) => m.id === ownerId)
-      const parsedValue = parseFloat(value)
       const data = {
         contactId,
         contactName: contact?.name ?? opportunity?.contactName ?? null,
         title: title.trim(),
         track,
         stage,
-        value: Number.isFinite(parsedValue) ? Math.max(0, parsedValue) : 0,
+        value: numericValue,
         probability,
         expectedCloseDate: expectedCloseDate || null,
         ownerId: owner?.id || null,
@@ -168,10 +214,11 @@ export function CrmOpportunityDialog({
       } else {
         await addDoc(collection(firestore, CRM_OPPORTUNITIES), {
           ...data,
+          stage: "new",
           state: "open",
           completedGates: [],
           approvalStatus: "none",
-          stageHistory: [historyEntry(stage, owner?.name ?? null)],
+          stageHistory: [historyEntry("new", owner?.name ?? null)],
           addenda: [],
           createdAt: serverTimestamp(),
         })
@@ -186,35 +233,20 @@ export function CrmOpportunityDialog({
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
-      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{opportunity ? t("crm_opp_edit_title") : t("crm_opp_add_title")}</DialogTitle>
-          <DialogDescription>{t("crm_opp_dialog_desc")}</DialogDescription>
-        </DialogHeader>
-        <form className="space-y-4 py-2" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
-          {!fixedContactId && (
-            <div className="space-y-1.5">
-              <Label htmlFor="opp-contact">{t("crm_opp_contact")} *</Label>
-              <Select value={contactId} onValueChange={setContactId} disabled={isSaving}>
-                <SelectTrigger id="opp-contact"><SelectValue placeholder={t("crm_opp_contact_placeholder")} /></SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {contacts.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                      {c.company ? ` — ${c.company}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {/* The track picks the checklist this deal has to clear, so it is
-              chosen before anything else and shown as cards rather than a
-              select — the difference between the three actually matters. */}
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium mb-1.5">{t("crm_opp_track")}</legend>
+  const steps: CrmFormStep[] = [
+    {
+      id: "basics",
+      title: t("crm_opp_step_basics"),
+      validate: () => {
+        if (!contactId) return t("crm_opp_contact_required")
+        if (!title.trim()) return t("crm_opp_validation_error")
+        return null
+      },
+      content: (
+        <>
+          {/* The track picks the checklist this deal has to clear, so it comes
+              first and is shown as cards — the difference actually matters. */}
+          <CrmFieldGroup label={t("crm_opp_track")}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {OPPORTUNITY_TRACKS.map((tr) => (
                 <button
@@ -234,12 +266,44 @@ export function CrmOpportunityDialog({
                 </button>
               ))}
             </div>
-          </fieldset>
+          </CrmFieldGroup>
+
+          {!fixedContactId && (
+            <div className="space-y-1.5">
+              <Label htmlFor="opp-contact">
+                {t("crm_opp_contact")} <RequiredMark />
+              </Label>
+              <Select value={contactId} onValueChange={setContactId} disabled={isSaving}>
+                <SelectTrigger id="opp-contact"><SelectValue placeholder={t("crm_opp_contact_placeholder")} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {contacts.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.company ? ` — ${c.company}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="space-y-1.5">
-            <Label htmlFor="opp-title">{t("crm_opp_title")} *</Label>
-            <Input id="opp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("crm_opp_title_placeholder")} disabled={isSaving} autoFocus />
+            <Label htmlFor="opp-title">
+              {t("crm_opp_title")} <RequiredMark />
+            </Label>
+            <Input
+              id="opp-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={t("crm_opp_title_placeholder")}
+              disabled={isSaving}
+              autoFocus
+            />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          {/* Stage only appears when editing — a new deal always starts at the
+              beginning and clears its gates to move. */}
+          {isEdit && (
             <div className="space-y-1.5">
               <Label htmlFor="opp-stage">{t("crm_opp_stage")}</Label>
               <Select value={stage} onValueChange={(v) => setStage(v as OpportunityStage)} disabled={isSaving}>
@@ -251,42 +315,28 @@ export function CrmOpportunityDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="opp-value">{t("crm_opp_estimated_value")}</Label>
-              <Input id="opp-value" type="number" min="0" step="any" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} dir="ltr" disabled={isSaving} />
-              <p className="text-[11px] text-muted-foreground">{t("crm_opp_estimated_value_hint")}</p>
-            </div>
-          </div>
-          {/* Scope of work. Multi-select because a single job routinely spans
-              structure and MEP, and the FIRST pick drives which classification
-              grade the bid will be judged against. */}
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium mb-1.5">{t("crm_opp_scope")}</legend>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "scope",
+      title: t("crm_opp_step_scope"),
+      content: (
+        <>
+          <CrmFieldGroup label={t("crm_opp_scope")} hint={t("crm_opp_scope_hint")}>
             <div className="flex flex-wrap gap-1.5">
               {SCOPE_TYPES.map((scope) => {
                 const index = scopeTypes.indexOf(scope)
-                const selected = index !== -1
                 return (
-                  <button
-                    key={scope}
-                    type="button"
-                    onClick={() => toggleScope(scope)}
-                    aria-pressed={selected}
-                    disabled={isSaving}
-                    className={cn(
-                      "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      selected ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                    )}
-                  >
+                  <Chip key={scope} selected={index !== -1} onClick={() => toggleScope(scope)} disabled={isSaving}>
                     {t(`crm_scope_${scope}`)}
                     {index === 0 && <span className="ms-1" aria-hidden="true">★</span>}
-                  </button>
+                  </Chip>
                 )
               })}
             </div>
-            <p className="text-[11px] text-muted-foreground">{t("crm_opp_scope_hint")}</p>
-          </fieldset>
+          </CrmFieldGroup>
 
           <div className="space-y-1.5">
             <Label htmlFor="opp-custom-scope">{t("crm_opp_custom_scope")}</Label>
@@ -316,20 +366,22 @@ export function CrmOpportunityDialog({
                 </Select>
               </div>
             )}
-            {derivedActivity && (
+            {derivedActivity ? (
               <p className="text-[11px] text-muted-foreground">
                 {t("crm_opp_activity_derived", { activity: t(`crm_activity_class_${derivedActivity}`) })}
               </p>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">{t("crm_opp_scope_none_hint")}</p>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="opp-route">{t("crm_opp_route")}</Label>
-              <Select value={route || "__none__"} onValueChange={(v) => setRoute(v === "__none__" ? "" : (v as TenderRoute))} disabled={isSaving}>
+              <Select value={route || NONE} onValueChange={(v) => setRoute(v === NONE ? "" : (v as TenderRoute))} disabled={isSaving}>
                 <SelectTrigger id="opp-route"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">{t("crm_not_specified")}</SelectItem>
+                  <SelectItem value={NONE}>{t("crm_not_specified")}</SelectItem>
                   {TENDER_ROUTES.map((r) => (
                     <SelectItem key={r} value={r}>{t(`crm_route_${r}`)}</SelectItem>
                   ))}
@@ -338,10 +390,10 @@ export function CrmOpportunityDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="opp-kind">{t("crm_opp_contract_kind")}</Label>
-              <Select value={contractKind || "__none__"} onValueChange={(v) => setContractKind(v === "__none__" ? "" : (v as ContractKind))} disabled={isSaving}>
+              <Select value={contractKind || NONE} onValueChange={(v) => setContractKind(v === NONE ? "" : (v as ContractKind))} disabled={isSaving}>
                 <SelectTrigger id="opp-kind"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">{t("crm_not_specified")}</SelectItem>
+                  <SelectItem value={NONE}>{t("crm_not_specified")}</SelectItem>
                   {CONTRACT_KINDS.map((k) => (
                     <SelectItem key={k} value={k}>{t(`crm_contract_kind_${k}`)}</SelectItem>
                   ))}
@@ -350,10 +402,10 @@ export function CrmOpportunityDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="opp-source">{t("crm_opp_source")}</Label>
-              <Select value={source || "__none__"} onValueChange={(v) => setSource(v === "__none__" ? "" : (v as OpportunitySource))} disabled={isSaving}>
+              <Select value={source || NONE} onValueChange={(v) => setSource(v === NONE ? "" : (v as OpportunitySource))} disabled={isSaving}>
                 <SelectTrigger id="opp-source"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">{t("crm_not_specified")}</SelectItem>
+                  <SelectItem value={NONE}>{t("crm_not_specified")}</SelectItem>
                   {OPPORTUNITY_SOURCES.map((s) => (
                     <SelectItem key={s} value={s}>{t(`crm_opp_source_${s}`)}</SelectItem>
                   ))}
@@ -363,79 +415,137 @@ export function CrmOpportunityDialog({
             <div className="space-y-1.5">
               <Label htmlFor="opp-consultant">{t("crm_opp_consultant")}</Label>
               <Select
-                value={consultantContactId || "__none__"}
-                onValueChange={(v) => setConsultantContactId(v === "__none__" ? "" : v)}
+                value={consultantContactId || NONE}
+                onValueChange={(v) => setConsultantContactId(v === NONE ? "" : v)}
                 disabled={isSaving}
               >
                 <SelectTrigger id="opp-consultant"><SelectValue /></SelectTrigger>
                 <SelectContent className="max-h-72">
-                  <SelectItem value="__none__">{t("crm_not_specified")}</SelectItem>
-                  {contacts
-                    .filter((c) => c.id !== contactId)
-                    .map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium mb-1.5">{t("crm_opp_probability")}</legend>
-            <div className="flex flex-wrap gap-1.5">
-              {PROBABILITY_STEPS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setProbability(p)}
-                  aria-pressed={probability === p}
-                  disabled={isSaving}
-                  dir="ltr"
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    probability === p ? "bg-primary text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  {p}%
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground">{t("crm_opp_probability_hint")}</p>
-          </fieldset>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              {/* The same field means three different things — bid deadline,
-                  offer validity, contract expiry — so it is labelled by track. */}
-              <Label htmlFor="opp-date">{t(trackDateLabelKey(track))}</Label>
-              <input id="opp-date" type="date" value={expectedCloseDate} onChange={(e) => setExpectedCloseDate(e.target.value)} dir="ltr" disabled={isSaving} className={DATE_INPUT_CLASS} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="opp-owner">{t("crm_owner")}</Label>
-              <Select value={ownerId || "__none__"} onValueChange={(v) => setOwnerId(v === "__none__" ? "" : v)} disabled={isSaving}>
-                <SelectTrigger id="opp-owner"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
-                  {teamMembers.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  <SelectItem value={NONE}>{t("crm_not_specified")}</SelectItem>
+                  {consultantOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          <div className="space-y-1.5">
+            {/* The same field means three different things — bid deadline,
+                offer validity, contract expiry — so it is labelled by track. */}
+            <Label htmlFor="opp-date">{t(trackDateLabelKey(track))}</Label>
+            <input
+              id="opp-date"
+              type="date"
+              value={expectedCloseDate}
+              onChange={(e) => setExpectedCloseDate(e.target.value)}
+              dir="ltr"
+              disabled={isSaving}
+              className={DATE_INPUT_CLASS}
+            />
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "value",
+      title: t("crm_opp_step_value"),
+      content: (
+        <>
+          <div className="space-y-1.5">
+            <Label htmlFor="opp-value">{t("crm_opp_estimated_value")}</Label>
+            <Input
+              id="opp-value"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              dir="ltr"
+              disabled={isSaving}
+            />
+            <p className="text-[11px] text-muted-foreground">{t("crm_opp_estimated_value_hint")}</p>
+          </div>
+
+          <CrmFieldGroup label={t("crm_opp_probability")} hint={t("crm_opp_probability_hint")}>
+            <div className="flex flex-wrap gap-1.5">
+              {PROBABILITY_STEPS.map((p) => (
+                <Chip key={p} selected={probability === p} onClick={() => setProbability(p)} disabled={isSaving}>
+                  <span dir="ltr">{p}%</span>
+                </Chip>
+              ))}
+            </div>
+          </CrmFieldGroup>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="opp-owner">{t("crm_owner")}</Label>
+            <Select value={ownerId || NONE} onValueChange={(v) => setOwnerId(v === NONE ? "" : v)} disabled={isSaving}>
+              <SelectTrigger id="opp-owner"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>{t("crm_owner_none")}</SelectItem>
+                {teamMembers.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="opp-notes">{t("crm_notes")}</Label>
-            <Textarea id="opp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSaving} />
+            <Textarea id="opp-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSaving} rows={3} />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
-            <Button type="submit" disabled={isSaving} className="gap-2">
-              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {t("crm_save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+
+          {/* What saving will produce, before it is produced. */}
+          <div className="rounded-lg border bg-muted/30">
+            <p className="px-3 py-2 text-[11px] font-bold text-muted-foreground border-b">{t("crm_opp_review")}</p>
+            <CrmReviewRow label={t("crm_opp_track")}>
+              <Badge variant="outline" className={cn("text-[10px]", TRACK_BADGE_CLASS[track])}>
+                {t(`crm_track_${track}`)}
+              </Badge>
+            </CrmReviewRow>
+            <CrmReviewRow label={t("crm_opp_contact")}>
+              {selectedContact?.name || <span className="text-muted-foreground font-normal">—</span>}
+            </CrmReviewRow>
+            <CrmReviewRow label={t("crm_opp_scope")}>
+              {scopeTypes.length || customScopeType.trim() ? (
+                [...scopeTypes.map((s) => t(`crm_scope_${s}`)), customScopeType.trim()].filter(Boolean).join(" · ")
+              ) : (
+                <span className="text-muted-foreground font-normal">{t("crm_not_specified")}</span>
+              )}
+            </CrmReviewRow>
+            <CrmReviewRow label={t("crm_opp_estimated_value")}>
+              {numericValue > 0 ? (
+                <span dir="ltr">{formatSar(numericValue, locale)}</span>
+              ) : (
+                <span className="text-muted-foreground font-normal">{t("crm_opp_no_estimate_note")}</span>
+              )}
+            </CrmReviewRow>
+            {!isEdit && (
+              <p className="px-3 py-2 flex items-start gap-2 text-[11px] text-muted-foreground border-t">
+                <CheckCircle2 size={12} className="mt-0.5 shrink-0 text-cta" aria-hidden="true" />
+                <span>{t("crm_opp_starts_at_first_stage")}</span>
+              </p>
+            )}
+          </div>
+        </>
+      ),
+    },
+  ]
+
+  return (
+    <CrmFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={Target}
+      title={isEdit ? t("crm_opp_edit_title") : t("crm_opp_add_title")}
+      description={t("crm_opp_dialog_desc")}
+      steps={steps}
+      isSaving={isSaving}
+      submitLabel={t("crm_save")}
+      onSubmit={() => void handleSave()}
+      size="lg"
+    />
   )
 }
+

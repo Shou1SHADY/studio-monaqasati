@@ -3,20 +3,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore"
-import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { ShieldCheck, ShieldAlert, Coins } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 import { useCrmApproval } from "@/hooks/useCrmApproval"
 import { cn } from "@/lib/utils"
 import {
@@ -62,6 +54,7 @@ export function CrmValueDialog({
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
+
   const firestore = useFirestore()
   const { toast } = useToast()
   const { approvalLimit, needsEscalation } = useCrmApproval()
@@ -183,110 +176,118 @@ export function CrmValueDialog({
     }
   }
 
+  const steps: CrmFormStep[] = [
+    {
+      id: "value",
+      title: t(`crm_value_${step}_label`),
+      validate: () => {
+        return parsed > 0 ? null : t("crm_value_required")
+      },
+      content: (
+        <>
+            <div className="space-y-1.5">
+              <Label htmlFor="value-amount">{t(`crm_value_${step}_label`)} <RequiredMark /></Label>
+              <Input
+                id="value-amount"
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                dir="ltr"
+                disabled={isSaving}
+                autoFocus
+              />
+            </div>
+
+            {step === "submitted" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="value-validity">{t("crm_value_validity")}</Label>
+                  <Input id="value-validity" type="number" min="1" inputMode="numeric" value={validityDays} onChange={(e) => setValidityDays(e.target.value)} dir="ltr" disabled={isSaving} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="value-terms">{t("crm_value_payment_terms")}</Label>
+                  <Input id="value-terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder={t("crm_value_payment_terms_placeholder")} disabled={isSaving} />
+                </div>
+              </div>
+            )}
+
+            {step === "award" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
+                  <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="value-rank">{t("crm_value_rank")}</Label>
+                  <Input id="value-rank" type="number" min="1" inputMode="numeric" value={ourRank} onChange={(e) => setOurRank(e.target.value)} dir="ltr" disabled={isSaving} />
+                </div>
+              </div>
+            )}
+
+            {/* Consequence preview — what saving this number will mean. */}
+            {(previewMargin !== null || escalates || isPartial || step === "submitted") && (
+              <div className="rounded-lg border bg-muted/30 divide-y text-sm">
+                {previewMargin !== null && (
+                  <p className="px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{t("crm_margin")}</span>
+                    <span className={cn("font-black", previewMargin >= 12 ? "text-success" : "text-warning")} dir="ltr">
+                      {previewMargin}%
+                    </span>
+                  </p>
+                )}
+                {step === "submitted" && (
+                  <p className="px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{t("crm_approval_limit")}</span>
+                    <span className="font-bold" dir="ltr">
+                      {approvalLimit === Number.POSITIVE_INFINITY ? "∞" : formatSar(approvalLimit, locale)}
+                    </span>
+                  </p>
+                )}
+                {step === "submitted" && parsed > 0 && (
+                  <p className="px-3 py-2 flex items-center gap-2">
+                    {escalates ? (
+                      <>
+                        <ShieldAlert size={14} className="text-warning shrink-0" />
+                        <span className="text-warning font-semibold">{t("crm_approval_needs_higher")}</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck size={14} className="text-success shrink-0" />
+                        <span className="text-success font-semibold">{t("crm_approval_within_limit")}</span>
+                      </>
+                    )}
+                  </p>
+                )}
+                {isPartial && (
+                  <p className="px-3 py-2 flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{t("crm_award_partial")}</span>
+                    <span className="font-black text-warning" dir="ltr">
+                      {Math.round((parsed / (opportunity.submittedPrice || 1)) * 100)}%
+                    </span>
+                  </p>
+                )}
+              </div>
+            )}
+        </>
+      ),
+    },
+  ]
+
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
-      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t(`crm_value_${step}_title`)}</DialogTitle>
-          <DialogDescription>{t(`crm_value_${step}_desc`)}</DialogDescription>
-        </DialogHeader>
-        <form className="space-y-4 py-2" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
-          <div className="space-y-1.5">
-            <Label htmlFor="value-amount">{t(`crm_value_${step}_label`)} *</Label>
-            <Input
-              id="value-amount"
-              type="number"
-              min="0"
-              step="any"
-              inputMode="decimal"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              dir="ltr"
-              disabled={isSaving}
-              autoFocus
-            />
-          </div>
-
-          {step === "submitted" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="value-validity">{t("crm_value_validity")}</Label>
-                <Input id="value-validity" type="number" min="1" inputMode="numeric" value={validityDays} onChange={(e) => setValidityDays(e.target.value)} dir="ltr" disabled={isSaving} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="value-terms">{t("crm_value_payment_terms")}</Label>
-                <Input id="value-terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder={t("crm_value_payment_terms_placeholder")} disabled={isSaving} />
-              </div>
-            </div>
-          )}
-
-          {step === "award" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
-                <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="value-rank">{t("crm_value_rank")}</Label>
-                <Input id="value-rank" type="number" min="1" inputMode="numeric" value={ourRank} onChange={(e) => setOurRank(e.target.value)} dir="ltr" disabled={isSaving} />
-              </div>
-            </div>
-          )}
-
-          {/* Consequence preview — what saving this number will mean. */}
-          {(previewMargin !== null || escalates || isPartial || step === "submitted") && (
-            <div className="rounded-lg border bg-muted/30 divide-y text-sm">
-              {previewMargin !== null && (
-                <p className="px-3 py-2 flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t("crm_margin")}</span>
-                  <span className={cn("font-black", previewMargin >= 12 ? "text-success" : "text-warning")} dir="ltr">
-                    {previewMargin}%
-                  </span>
-                </p>
-              )}
-              {step === "submitted" && (
-                <p className="px-3 py-2 flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t("crm_approval_limit")}</span>
-                  <span className="font-bold" dir="ltr">
-                    {approvalLimit === Number.POSITIVE_INFINITY ? "∞" : formatSar(approvalLimit, locale)}
-                  </span>
-                </p>
-              )}
-              {step === "submitted" && parsed > 0 && (
-                <p className="px-3 py-2 flex items-center gap-2">
-                  {escalates ? (
-                    <>
-                      <ShieldAlert size={14} className="text-warning shrink-0" />
-                      <span className="text-warning font-semibold">{t("crm_approval_needs_higher")}</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck size={14} className="text-success shrink-0" />
-                      <span className="text-success font-semibold">{t("crm_approval_within_limit")}</span>
-                    </>
-                  )}
-                </p>
-              )}
-              {isPartial && (
-                <p className="px-3 py-2 flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t("crm_award_partial")}</span>
-                  <span className="font-black text-warning" dir="ltr">
-                    {Math.round((parsed / (opportunity.submittedPrice || 1)) * 100)}%
-                  </span>
-                </p>
-              )}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
-            <Button type="submit" disabled={isSaving} className="gap-2">
-              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {t("crm_save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <CrmFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={Coins}
+      title={t(`crm_value_${step}_title`)}
+      description={t(`crm_value_${step}_desc`)}
+      steps={steps}
+      isSaving={isSaving}
+      submitLabel={t("crm_save")}
+      onSubmit={() => void handleSave()}
+      size="md"
+    />
   )
 }

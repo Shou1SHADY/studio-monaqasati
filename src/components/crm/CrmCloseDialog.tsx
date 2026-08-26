@@ -1,25 +1,17 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useLocale, useTranslations } from "next-intl"
+import { useTranslations } from "next-intl"
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore"
-import { Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 import { createFollowUp } from "@/lib/crm-writes"
 import {
   CRM_OPPORTUNITIES,
@@ -60,7 +52,7 @@ export function CrmCloseDialog({
   opportunity: CrmOpportunity
 }) {
   const t = useTranslations("Portal.Shared")
-  const locale = useLocale()
+
   const firestore = useFirestore()
   const { toast } = useToast()
 
@@ -141,97 +133,101 @@ export function CrmCloseDialog({
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
-      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t(mode === "lost" ? "crm_close_lost_title" : "crm_hold_title")}</DialogTitle>
-          <DialogDescription>{t(mode === "lost" ? "crm_close_lost_desc" : "crm_hold_desc")}</DialogDescription>
-        </DialogHeader>
-        <form className="space-y-4 py-2" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
-          {mode === "lost" ? (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="close-reason">{t("crm_lost_reason")} *</Label>
-                <Select value={lostReason} onValueChange={(v) => setLostReason(v as LostReason)} disabled={isSaving}>
-                  <SelectTrigger id="close-reason"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {LOST_REASONS.map((r) => (
-                      <SelectItem key={r} value={r}>{t(`crm_lost_reason_${r}`)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+  const steps: CrmFormStep[] = [
+    {
+      id: "close",
+      title: t(mode === "lost" ? "crm_close_lost_btn" : "crm_hold_btn"),
+      validate: () => {
+        return null
+      },
+      content: (
+        <>
+            {mode === "lost" ? (
+              <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="close-competitor">{t("crm_lost_competitor")}</Label>
-                  <Input id="close-competitor" value={competitor} onChange={(e) => setCompetitor(e.target.value)} disabled={isSaving} />
+                  <Label htmlFor="close-reason">{t("crm_lost_reason")} <RequiredMark /></Label>
+                  <Select value={lostReason} onValueChange={(v) => setLostReason(v as LostReason)} disabled={isSaving}>
+                    <SelectTrigger id="close-reason"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {LOST_REASONS.map((r) => (
+                        <SelectItem key={r} value={r}>{t(`crm_lost_reason_${r}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="close-competitor">{t("crm_lost_competitor")}</Label>
+                    <Input id="close-competitor" value={competitor} onChange={(e) => setCompetitor(e.target.value)} disabled={isSaving} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="close-price">{t("crm_lost_winning_price")}</Label>
+                    <Input id="close-price" type="number" min="0" step="any" inputMode="decimal" value={competitorPrice} onChange={(e) => setCompetitorPrice(e.target.value)} dir="ltr" disabled={isSaving} />
+                  </div>
+                </div>
+                {gap !== null && (
+                  <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">{t("crm_lost_price_gap")}</span>
+                    <span className="font-black text-destructive" dir="ltr">{gap > 0 ? "+" : ""}{gap}%</span>
+                  </p>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="close-lesson">{t("crm_lost_lesson")}</Label>
+                  <Textarea id="close-lesson" value={lesson} onChange={(e) => setLesson(e.target.value)} placeholder={t("crm_lost_lesson_placeholder")} disabled={isSaving} />
+                </div>
+                <div className="flex items-start gap-2.5 rounded-lg border p-3">
+                  <Checkbox
+                    id="close-keep"
+                    checked={keepRelationship}
+                    onCheckedChange={(v) => setKeepRelationship(v === true)}
+                    disabled={isSaving}
+                    className="mt-0.5"
+                  />
+                  <Label htmlFor="close-keep" className="text-sm font-normal cursor-pointer">
+                    {t("crm_lost_keep_relationship")}
+                    <span className="block text-[11px] text-muted-foreground mt-0.5">
+                      {t("crm_lost_keep_relationship_hint")}
+                    </span>
+                  </Label>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="hold-reason">{t("crm_hold_reason")} <RequiredMark /></Label>
+                  <Select value={holdReason} onValueChange={(v) => setHoldReason(v as HoldReason)} disabled={isSaving}>
+                    <SelectTrigger id="hold-reason"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {HOLD_REASONS.map((r) => (
+                        <SelectItem key={r} value={r}>{t(`crm_hold_reason_${r}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="close-price">{t("crm_lost_winning_price")}</Label>
-                  <Input id="close-price" type="number" min="0" step="any" inputMode="decimal" value={competitorPrice} onChange={(e) => setCompetitorPrice(e.target.value)} dir="ltr" disabled={isSaving} />
+                  <Label htmlFor="hold-until">{t("crm_hold_revisit")}</Label>
+                  <input id="hold-until" type="date" value={holdUntil} onChange={(e) => setHoldUntil(e.target.value)} dir="ltr" disabled={isSaving} className={DATE_INPUT_CLASS} />
+                  <p className="text-[11px] text-muted-foreground">{t("crm_hold_revisit_hint")}</p>
                 </div>
-              </div>
-              {gap !== null && (
-                <p className="rounded-lg border bg-muted/30 px-3 py-2 text-sm flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">{t("crm_lost_price_gap")}</span>
-                  <span className="font-black text-destructive" dir="ltr">{gap > 0 ? "+" : ""}{gap}%</span>
-                </p>
-              )}
-              <div className="space-y-1.5">
-                <Label htmlFor="close-lesson">{t("crm_lost_lesson")}</Label>
-                <Textarea id="close-lesson" value={lesson} onChange={(e) => setLesson(e.target.value)} placeholder={t("crm_lost_lesson_placeholder")} disabled={isSaving} />
-              </div>
-              <div className="flex items-start gap-2.5 rounded-lg border p-3">
-                <Checkbox
-                  id="close-keep"
-                  checked={keepRelationship}
-                  onCheckedChange={(v) => setKeepRelationship(v === true)}
-                  disabled={isSaving}
-                  className="mt-0.5"
-                />
-                <Label htmlFor="close-keep" className="text-sm font-normal cursor-pointer">
-                  {t("crm_lost_keep_relationship")}
-                  <span className="block text-[11px] text-muted-foreground mt-0.5">
-                    {t("crm_lost_keep_relationship_hint")}
-                  </span>
-                </Label>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                <Label htmlFor="hold-reason">{t("crm_hold_reason")} *</Label>
-                <Select value={holdReason} onValueChange={(v) => setHoldReason(v as HoldReason)} disabled={isSaving}>
-                  <SelectTrigger id="hold-reason"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {HOLD_REASONS.map((r) => (
-                      <SelectItem key={r} value={r}>{t(`crm_hold_reason_${r}`)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="hold-until">{t("crm_hold_revisit")}</Label>
-                <input id="hold-until" type="date" value={holdUntil} onChange={(e) => setHoldUntil(e.target.value)} dir="ltr" disabled={isSaving} className={DATE_INPUT_CLASS} />
-                <p className="text-[11px] text-muted-foreground">{t("crm_hold_revisit_hint")}</p>
-              </div>
-            </>
-          )}
+              </>
+            )}
+        </>
+      ),
+    },
+  ]
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
-            <Button
-              type="submit"
-              disabled={isSaving}
-              className={mode === "lost" ? "gap-2 bg-destructive hover:bg-destructive/90" : "gap-2"}
-            >
-              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
-              {t(mode === "lost" ? "crm_close_lost_btn" : "crm_hold_btn")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+  return (
+    <CrmFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      icon={XCircle}
+      title={t(mode === "lost" ? "crm_close_lost_title" : "crm_hold_title")}
+      description={t(mode === "lost" ? "crm_close_lost_desc" : "crm_hold_desc")}
+      steps={steps}
+      isSaving={isSaving}
+      submitLabel={t(mode === "lost" ? "crm_close_lost_btn" : "crm_hold_btn")}
+      onSubmit={() => void handleSave()}
+      size="md"
+    />
   )
 }
