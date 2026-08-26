@@ -806,7 +806,34 @@ export function WarehouseInventoryPanel({
             )}
           </div>
         )}
-        {variant === "embedded" && <div className="flex-1" />}
+        {variant === "embedded" && (
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Warehouse size={16} className="text-primary shrink-0" />
+              <h2 className="text-sm font-bold text-foreground truncate">{wh?.name ?? t("wh_page_title")}</h2>
+              {isCentralHere && (
+                <Badge className="bg-accent/10 text-accent border-accent/30 gap-1 font-bold shrink-0">
+                  <Star size={10} />
+                  {t("wh_central_badge")}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap mt-0.5 text-[11px] text-muted-foreground">
+              {wh?.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin size={10} />
+                  {wh.location}
+                </span>
+              )}
+              {!isCentralHere && myCentral && (
+                <span className="flex items-center gap-1">
+                  <ArrowDownToLine size={10} />
+                  {t("inv_supplied_by", { name: myCentral.name })}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         {!isCentralHere && myCentral && canManageWarehouses && (
           <Button variant="outline" onClick={() => setShowPull(true)} className="gap-2 shrink-0 border-accent/40 text-accent hover:bg-accent/5 hover:text-accent">
             <ArrowDownToLine size={15} />
@@ -865,7 +892,7 @@ export function WarehouseInventoryPanel({
                   const isLow = item.minStockLevel != null && item.quantity <= item.minStockLevel
                   const isUnitTracked = item.trackingMode === "unit"
                   return (
-                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-l-2 border-warning" : "")}>
+                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-s-2 border-warning" : "")}>
                       <td className="py-3 px-4 font-semibold text-primary">
                         {item.name}
                         {isUnitTracked && (

@@ -169,7 +169,7 @@ function StatusBadge({ status, t }: { status: string; t: (key: string) => string
   )
 }
 
-type BоqItem = {
+type BoqItem = {
   id: string
   itemNo: string
   descriptionAr: string
@@ -199,7 +199,7 @@ type BoqGroupMeta = {
   categoryAr: string
 }
 
-const columnHelper = createColumnHelper<BоqItem>()
+const columnHelper = createColumnHelper<BoqItem>()
 
 // One BOQ table row, memoized so a single state commit (a drop, a keystroke in one cell, a row
 // add/delete) re-renders ONLY the rows whose data actually changed instead of every input in
@@ -214,7 +214,7 @@ const BoqTableRow = memo(
     isLastAdded,
     rowRefs,
   }: {
-    row: Row<BоqItem>
+    row: Row<BoqItem>
     columns: readonly unknown[]
     zebra: boolean
     isLastAdded: boolean
@@ -291,7 +291,7 @@ export default function ProjectDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   // BOQ state
-  const [boqItems, setBoqItems] = useState<BоqItem[]>([])
+  const [boqItems, setBoqItems] = useState<BoqItem[]>([])
   const [boqGroups, setBoqGroups] = useState<BoqGroupMeta[]>([])
   const [boqParsing, setBoqParsing] = useState(false)
   const [boqSaving, setBoqSaving] = useState(false)
@@ -444,7 +444,7 @@ export default function ProjectDetailPage() {
   const connectedSupplierOrgIds: string[] = (connectedTenderLinks || []).map((l: any) => l.supplierOrgId)
 
   // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
-  const [unlinkTarget, setUnlinkTarget] = useState<BоqItem | null>(null)
+  const [unlinkTarget, setUnlinkTarget] = useState<BoqItem | null>(null)
   const [isUnlinking, setIsUnlinking] = useState(false)
 
   const [tenderDeleteTarget, setTenderDeleteTarget] = useState<{ id: string; title?: string } | null>(null)
@@ -710,13 +710,13 @@ export default function ProjectDetailPage() {
   // Fetch BOQ items + sections from Firestore — always reflects server state. Returns the
   // freshly-fetched data (not just setState) so callers that need to act on it immediately
   // (e.g. publish) don't read stale values from the current render's closure.
-  const fetchBoqItems = useCallback(async (): Promise<{ items: BоqItem[]; groups: BoqGroupMeta[] }> => {
+  const fetchBoqItems = useCallback(async (): Promise<{ items: BoqItem[]; groups: BoqGroupMeta[] }> => {
     if (!firestore || !projectId) return { items: [], groups: [] }
     const [itemsSnap, groupsSnap] = await Promise.all([
       getDocs(collection(firestore, "projects", projectId, "boqItems")),
       getDocs(collection(firestore, "projects", projectId, "boqGroups")),
     ])
-    const items: BоqItem[] = itemsSnap.docs.map((d) => {
+    const items: BoqItem[] = itemsSnap.docs.map((d) => {
       const data = d.data()
       return {
         id: d.id,
@@ -896,7 +896,7 @@ export default function ProjectDetailPage() {
           toast({ title: t("proj_boq_parse_error"), variant: "destructive" })
           return
         }
-        const parsed: BоqItem[] = result.items.map((item) => ({
+        const parsed: BoqItem[] = result.items.map((item) => ({
           id: item.id,
           itemNo: item.itemNo,
           descriptionAr: item.descriptionAr,
@@ -936,15 +936,18 @@ export default function ProjectDetailPage() {
   // Returns the freshly-synced items/groups plus a map of temp id -> real Firestore id for any
   // newly-created rows, so a caller like Publish can act on the post-save state without racing
   // React's setState. `silent` skips the "saved" toast (used when auto-invoked from Publish).
-  const saveBoq = async (opts?: { silent?: boolean }): Promise<{ items: BоqItem[]; groups: BoqGroupMeta[]; idMap: Map<string, string> } | null> => {
+  // `items` persists an explicit list instead of the `boqItems` state — needed by callers that
+  // build rows and must save them in the same tick, before React has flushed setState.
+  const saveBoq = async (opts?: { silent?: boolean; items?: BoqItem[] }): Promise<{ items: BoqItem[]; groups: BoqGroupMeta[]; idMap: Map<string, string> } | null> => {
     if (!firestore || !projectId) return null
+    const itemsToSave = opts?.items ?? boqItems
     setBoqSaving(true)
     try {
       const colRef = collection(firestore, "projects", projectId, "boqItems")
       const groupsColRef = collection(firestore, "projects", projectId, "boqGroups")
       const [existing, existingGroups] = await Promise.all([getDocs(colRef), getDocs(groupsColRef)])
       const existingIds = new Set(existing.docs.map((d) => d.id))
-      const currentIds = new Set(boqItems.filter((i) => existingIds.has(i.id)).map((i) => i.id))
+      const currentIds = new Set(itemsToSave.filter((i) => existingIds.has(i.id)).map((i) => i.id))
       const existingGroupIds = new Set(existingGroups.docs.map((d) => d.id))
       const currentGroupIds = new Set(boqGroups.map((g) => g.id))
 
@@ -961,7 +964,7 @@ export default function ProjectDetailPage() {
         if (!currentGroupIds.has(d.id)) batch.delete(d.ref)
       })
 
-      boqItems.forEach((item) => {
+      itemsToSave.forEach((item) => {
         if (item.isEditable === false) return
         const isNew = !existingIds.has(item.id)
         const ref = isNew ? doc(colRef) : doc(colRef, item.id)
@@ -1046,7 +1049,7 @@ export default function ProjectDetailPage() {
   // Update BOQ cell — locked rows never accept edits (also enforced server-side)
   // useCallback with empty deps keeps this reference stable across renders (only functional setState is used),
   // which lets boqColumns stay memoized — without it, table cells remount on every keystroke and lose focus.
-  const updateBoqCell = useCallback((rowIndex: number, field: keyof BоqItem, value: string | boolean) => {
+  const updateBoqCell = useCallback((rowIndex: number, field: keyof BoqItem, value: string | boolean) => {
     setBoqItems((prev) =>
       prev.map((item, i) => (i === rowIndex && item.isEditable !== false ? { ...item, [field]: value } : item))
     )
@@ -1120,7 +1123,7 @@ export default function ProjectDetailPage() {
 
   // Split an item out of its current section into a brand-new one — mirrors the same
   // title-defaulting convention as src/utils/boq-groups.ts's splitItemToNewGroup.
-  const splitItemToNewGroup = useCallback((item: BоqItem) => {
+  const splitItemToNewGroup = useCallback((item: BoqItem) => {
     if (!firestore || !projectId) return
     const newId = doc(collection(firestore, "projects", projectId, "boqGroups")).id
     const titleAr = item.descriptionAr ? item.descriptionAr.substring(0, 60) : `توريد ${item.suggestedCategory || ""}`
@@ -1164,7 +1167,7 @@ export default function ProjectDetailPage() {
       const { items: freshItems, groups: freshGroups, idMap } = saved
       const remappedDeselected = new Set([...deselectedIds].map((id) => idMap.get(id) ?? id))
 
-      const itemsByGroup = new Map<string, BоqItem[]>()
+      const itemsByGroup = new Map<string, BoqItem[]>()
       freshItems.forEach((item) => {
         if (!item.groupId || item.isEditable === false || remappedDeselected.has(item.id)) return
         if (!itemsByGroup.has(item.groupId)) itemsByGroup.set(item.groupId, [])
@@ -1664,7 +1667,7 @@ export default function ProjectDetailPage() {
 
   // Shared row/table renderer for both grouped sections and the Unassigned bucket —
   // reuses the single memoized boqTable's header/cell definitions, just scoped to a row subset.
-  const renderBoqRows = (rows: Row<BоqItem>[]) => (
+  const renderBoqRows = (rows: Row<BoqItem>[]) => (
     <table className="w-full text-sm" style={{ minWidth: 640 }}>
       <thead>
         {boqTable.getHeaderGroups().map((hg) => (
@@ -1770,13 +1773,13 @@ export default function ProjectDetailPage() {
               {typedProject.projectType && (
                 <Badge variant="outline" className="text-xs gap-1">
                   <Tag size={11} />
-                  {t(typedProject.projectType as Parameters<typeof t>[0])}
+                  {translateOrRaw(t, typedProject.projectType)}
                 </Badge>
               )}
               {typedProject.clientType && (
                 <Badge variant="outline" className="text-xs gap-1">
                   <Building2 size={11} />
-                  {t(typedProject.clientType as Parameters<typeof t>[0])}
+                  {translateOrRaw(t, typedProject.clientType)}
                 </Badge>
               )}
             </div>
@@ -2071,24 +2074,32 @@ export default function ProjectDetailPage() {
                 </div>
               )}
 
-              {wasteStats.totalTaken > 0 && (
-                <div className={cn(
-                  "flex items-center justify-between gap-4 flex-wrap rounded-xl border px-4 py-3",
-                  wasteStats.wastePercent > (typedProject?.wasteTargetPercent ?? 12) ? "bg-amber-50 border-amber-200" : "bg-success/5 border-success/20"
-                )}>
-                  <div className="flex items-center gap-2">
-                    <Scissors size={16} className={wasteStats.wastePercent > (typedProject?.wasteTargetPercent ?? 12) ? "text-amber-600" : "text-success"} />
-                    <span className="text-sm font-bold text-slate-700">{t("proj_waste_summary_title")}</span>
+              {wasteStats.totalTaken > 0 && (() => {
+                const target = typedProject?.wasteTargetPercent ?? 12
+                const over = wasteStats.wastePercent > target
+                return (
+                  <div className={cn(
+                    "flex items-center justify-between gap-4 flex-wrap rounded-xl border px-4 py-3",
+                    over ? "bg-warning/10 border-warning/20" : "bg-success/5 border-success/20"
+                  )}>
+                    <div className="flex items-center gap-2">
+                      <Scissors size={16} className={over ? "text-warning" : "text-success"} />
+                      <span className="text-sm font-bold text-foreground">{t("proj_waste_summary_title")}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                      <span>{t("proj_waste_taken_label")} <b className="text-foreground" dir="ltr">{wasteStats.totalTaken}</b></span>
+                      <span>{t("proj_waste_used_label")} <b className="text-foreground" dir="ltr">{wasteStats.totalUsed}</b></span>
+                      {/* dir="ltr" on the numbers only — see the note in the consume dialog. */}
+                      <span className={cn("font-bold", over ? "text-warning" : "text-success")}>
+                        <span dir="ltr">{wasteStats.wastePercent}%</span>{" "}
+                        <span className="font-normal">
+                          ({t("proj_waste_target_label")} <span dir="ltr">{target}%</span>)
+                        </span>
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                    <span>{t("proj_waste_taken_label")} <b className="text-slate-700" dir="ltr">{wasteStats.totalTaken}</b></span>
-                    <span>{t("proj_waste_used_label")} <b className="text-slate-700" dir="ltr">{wasteStats.totalUsed}</b></span>
-                    <span className={cn("font-bold", wasteStats.wastePercent > (typedProject?.wasteTargetPercent ?? 12) ? "text-amber-600" : "text-success")} dir="ltr">
-                      {wasteStats.wastePercent}% <span className="font-normal">({t("proj_waste_target_label")} {typedProject?.wasteTargetPercent ?? 12}%)</span>
-                    </span>
-                  </div>
-                </div>
-              )}
+                )
+              })()}
 
               <div className="flex items-center justify-between gap-3 flex-wrap bg-white border border-slate-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2138,9 +2149,9 @@ export default function ProjectDetailPage() {
                     <Layers size={14} />
                     {t("proj_boq_add_section")}
                   </Button>
-                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && (
+                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && boqLoaded && (
                     <Button variant="outline" size="sm" onClick={() => { setSuggestedTakenQtys({}); setIsConsumeDialogOpen(true) }}
-                      className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50">
+                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5">
                       <Warehouse size={14} />
                       {t("proj_boq_consume_btn")}
                     </Button>
@@ -3071,6 +3082,7 @@ export default function ProjectDetailPage() {
           t={t}
           onConsume={async (rows, exceptionReason) => {
             if (!firestore || !typedProject?.warehouseId || !user) return
+            if (!boqLoaded) throw new Error("boq_not_loaded") // never save against a half-loaded list
             const newRows = rows.map((r, i) => ({
               id: `new_wh_${Date.now()}_${i}`,
               itemNo: String(boqItems.length + i + 1),
@@ -3084,8 +3096,13 @@ export default function ProjectDetailPage() {
               groupId: null,
               unitBarcodes: r.unitBarcodes || null,
             }))
-            setBoqItems((prev) => [...prev, ...newRows])
-            const actorName = profile?.name || user.email || "عضو الفريق"
+            // Persist the BOQ rows FIRST. Stock deduction and waste records are already
+            // committed writes — if the BOQ save fails after them, the user is left with
+            // stock gone and no line to show for it. Saving first means a failure here
+            // aborts before anything irreversible happens, and the dialog stays open.
+            const saved = await saveBoq({ silent: true, items: [...boqItems, ...newRows] })
+            if (!saved) throw new Error("boq_save_failed") // saveBoq already surfaced the error
+            const actorName = profile?.name || user.email || t("proj_team_member_fallback")
             for (const r of rows) {
               await updateDoc(
                 doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId),
@@ -3149,6 +3166,13 @@ export default function ProjectDetailPage() {
       )}
     </PortalLayout>
   )
+}
+
+/** Translates a stored, free-form value only when a message actually exists for it —
+ * otherwise next-intl renders the literal key path into the UI. */
+function translateOrRaw(t: ReturnType<typeof useTranslations<"Portal.Contractor">>, value: string): string {
+  const key = value as Parameters<typeof t>[0]
+  return t.has(key) ? t(key) : value
 }
 
 type UnitSelection = { unitId: string; barcode: string; wasted: boolean }
@@ -3216,7 +3240,7 @@ function UnitPickerDialog({
                     <span className="font-mono truncate">{u.barcode}</span>
                   </label>
                   {sel && (
-                    <label className="flex items-center gap-1.5 text-xs text-amber-700 shrink-0 cursor-pointer">
+                    <label className="flex items-center gap-1.5 text-xs text-warning shrink-0 cursor-pointer">
                       <Checkbox checked={sel.wasted} onCheckedChange={() => onToggleWasted(u.id)} />
                       {t("proj_waste_mark_wasted")}
                     </label>
@@ -3630,6 +3654,12 @@ function ConsumeFromWarehouseDialog({
             {t("proj_boq_consume_title")}
           </DialogTitle>
           <DialogDescription>{t("proj_boq_consume_desc")}</DialogDescription>
+          <div className="flex">
+            <span className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+              <Scissors size={10} />
+              {t("proj_waste_target_label")} <span dir="ltr">{wasteTargetPercent}%</span>
+            </span>
+          </div>
         </DialogHeader>
         <div className="border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
@@ -3642,7 +3672,7 @@ function ConsumeFromWarehouseDialog({
                   {t("proj_boq_consume_available")}
                 </th>
                 <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-28", isRtl ? "text-right" : "text-left")}>
-                  {t("goods_manual_item_qty")}
+                  {t("proj_waste_taken_qty")}
                 </th>
                 <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-28", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_used_qty")}
@@ -3725,7 +3755,8 @@ function ConsumeFromWarehouseDialog({
                               onClick={() => handleAiSuggest(item)}
                               disabled={taken <= 0 || aiSuggestingId === item.id}
                               title={t("proj_waste_ai_suggest_btn")}
-                              className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 disabled:opacity-30 transition-colors"
+                              aria-label={t("proj_waste_ai_suggest_btn")}
+                              className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-primary hover:bg-primary/5 disabled:opacity-30 transition-colors"
                             >
                               {aiSuggestingId === item.id ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
                             </button>
@@ -3733,7 +3764,7 @@ function ConsumeFromWarehouseDialog({
                         </td>
                       </>
                     )}
-                    <td className={cn("px-3 py-2 tabular-nums font-semibold text-xs", rowWaste > wasteTargetPercent ? "text-amber-600" : "text-muted-foreground")}>
+                    <td className={cn("px-3 py-2 tabular-nums font-semibold text-xs", rowWaste > wasteTargetPercent ? "text-warning" : "text-muted-foreground")} dir="ltr">
                       {taken > 0 ? `${rowWaste.toFixed(1)}%` : "—"}
                     </td>
                     <td className="px-2 py-1">
@@ -3761,20 +3792,33 @@ function ConsumeFromWarehouseDialog({
         </div>
 
         {rows.length > 0 && (
-          <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-slate-50 rounded-xl text-sm">
+          <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-muted rounded-xl text-sm">
             <span className="text-muted-foreground">{t("proj_waste_total_label")}</span>
-            <span className={cn("font-bold", overTarget ? "text-amber-600" : "text-success")} dir="ltr">
-              {overallWastePercent}% <span className="text-xs text-muted-foreground font-normal">({t("proj_waste_target_label")} {wasteTargetPercent}%)</span>
+            {/* dir="ltr" belongs on the numbers only — wrapping the Arabic label in it
+                detaches the "%" from its digits under the bidi algorithm. */}
+            <span className={cn("font-bold", overTarget ? "text-warning" : "text-success")}>
+              <span dir="ltr">{overallWastePercent}%</span>{" "}
+              <span className="text-xs text-muted-foreground font-normal">
+                ({t("proj_waste_target_label")} <span dir="ltr">{wasteTargetPercent}%</span>)
+              </span>
             </span>
           </div>
         )}
 
         {overTarget && (
-          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3.5">
-            <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
-              <AlertTriangle size={13} className="shrink-0" />
+          <div className="space-y-2 rounded-xl border border-warning/20 bg-warning/10 p-3.5">
+            <p className="text-sm font-bold text-warning flex items-center gap-1.5">
+              <AlertTriangle size={14} className="shrink-0" />
               {t("proj_waste_warning_title")}
             </p>
+            <p className="text-xs text-warning/90">
+              {t("proj_waste_warning_gap", {
+                percent: overallWastePercent,
+                target: wasteTargetPercent,
+                gap: parseFloat((overallWastePercent - wasteTargetPercent).toFixed(1)),
+              })}
+            </p>
+            <p className="text-xs text-muted-foreground">{t("proj_waste_warning_desc")}</p>
             <div className="space-y-1.5">
               <Label htmlFor="waste-reason" className="text-xs font-bold">{t("proj_waste_reason_label")}</Label>
               <Textarea
@@ -3783,10 +3827,13 @@ function ConsumeFromWarehouseDialog({
                 value={exceptionReason}
                 onChange={(e) => setExceptionReason(e.target.value)}
                 placeholder={t("proj_waste_reason_placeholder")}
-                className="text-sm resize-none bg-white"
+                className="text-sm resize-none bg-background"
+                aria-describedby="waste-reason-hint"
               />
-              {exceptionReason.trim().length > 0 && exceptionReason.trim().length < 8 && (
-                <p className="text-[11px] text-destructive">{t("proj_waste_reason_required")}</p>
+              {/* Shown while the reason is too short INCLUDING when empty — otherwise the
+                  confirm button sits disabled with nothing explaining why. */}
+              {exceptionReason.trim().length < 8 && (
+                <p id="waste-reason-hint" className="text-[11px] text-destructive">{t("proj_waste_reason_required")}</p>
               )}
             </div>
           </div>
@@ -3799,7 +3846,7 @@ function ConsumeFromWarehouseDialog({
           <Button
             onClick={handleSubmit}
             disabled={isSaving || (overTarget && exceptionReason.trim().length < 8)}
-            className={cn("gap-2", overTarget && "bg-amber-600 hover:bg-amber-700")}
+            className={cn("gap-2", overTarget && "bg-warning text-warning-foreground hover:bg-warning/90")}
           >
             {isSaving && <Loader2 size={14} className="animate-spin" />}
             {overTarget ? t("proj_waste_confirm_anyway") : t("proj_boq_consume_btn")}

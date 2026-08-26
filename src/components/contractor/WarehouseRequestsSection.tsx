@@ -398,10 +398,23 @@ export function WarehouseRequestsSection({
   }
 
   if (allRequests.length === 0) {
-    return warehouseId ? null : (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-        <ClipboardList size={48} className="text-muted-foreground/20" />
-        <p className="font-bold text-muted-foreground">{t("requests_empty_title")}</p>
+    if (!warehouseId) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+          <ClipboardList size={48} className="text-muted-foreground/20" />
+          <p className="font-bold text-muted-foreground">{t("requests_empty_title")}</p>
+        </div>
+      )
+    }
+    return (
+      <div className="space-y-3" dir={isRtl ? "rtl" : "ltr"}>
+        <h3 className="font-bold text-sm flex items-center gap-2 text-foreground">
+          <ClipboardList size={15} className="text-primary" />
+          {t("requests_section_title")}
+        </h3>
+        <p className="text-xs text-muted-foreground border border-dashed rounded-xl px-4 py-6 text-center">
+          {t("inv_requests_empty")}
+        </p>
       </div>
     )
   }
