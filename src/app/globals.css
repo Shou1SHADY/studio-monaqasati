@@ -169,6 +169,18 @@
 }
 
 /* Allow tracking on purely Latin/numeric elements (e.g. badges with uppercase latin) */
+/* Letter-spacing breaks the cursive joins between Arabic letters, which is why the
+   project rules forbid it there. Tailwind's tracking-* utilities are sprinkled across
+   shared components that render Arabic under RTL — section labels, table headers,
+   money-flow captions — so neutralise them structurally rather than hunting call
+   sites one at a time. `.tracking-latin` below stays the explicit opt-in for genuine
+   Latin runs (SKU, RFQ) that still want spacing in an RTL page. */
+[dir="rtl"] .tracking-wide,
+[dir="rtl"] .tracking-wider,
+[dir="rtl"] .tracking-widest {
+  letter-spacing: normal;
+}
+
 [dir="rtl"] .tracking-latin {
   letter-spacing: 0.1em !important;
 }

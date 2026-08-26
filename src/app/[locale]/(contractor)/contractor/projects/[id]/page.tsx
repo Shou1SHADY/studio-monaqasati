@@ -24,6 +24,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -94,6 +96,7 @@ import {
   Package,
   GripVertical,
   ChevronDown,
+  MoreHorizontal,
   ChevronRight,
   FolderInput,
   Eye,
@@ -1671,13 +1674,16 @@ export default function ProjectDetailPage() {
     <table className="w-full text-sm" style={{ minWidth: 640 }}>
       <thead>
         {boqTable.getHeaderGroups().map((hg) => (
-          <tr key={hg.id} className="border-b border-slate-100 bg-slate-50">
+          <tr key={hg.id} className="border-b bg-muted/50">
             {hg.headers.map((header) => (
               <th
                 key={header.id}
                 className={cn(
-                  "px-3 py-2.5 text-xs font-bold text-slate-500 uppercase tracking-wide",
-                  isRtl ? "text-right" : "text-left"
+                  "px-3 py-2.5 text-xs font-bold text-muted-foreground whitespace-nowrap",
+                  // `uppercase` and letter-spacing are Latin typographic devices. Applied
+                  // to Arabic, tracking breaks the cursive joins between letters — the
+                  // project rules forbid it outright — and uppercase does nothing.
+                  isRtl ? "text-right" : "text-left uppercase tracking-wide"
                 )}
                 style={{ width: header.column.columnDef.size }}
               >
@@ -1830,21 +1836,30 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {/* Tab nav. Nine tabs with Arabic labels don't fit at most widths; without
-            nowrap they squeezed and broke each label across two lines. They keep their
-            natural width now and the strip scrolls instead. */}
-        <div className="flex gap-1 border-b border-border overflow-x-auto scrollbar-hide">
+        {/* Tab nav — a wrapping segmented control rather than an underlined strip.
+            The tab count is dynamic (five fixed plus however many sections are
+            enabled), so any single-row layout eventually overflows: it either broke
+            each Arabic label across two lines, or scrolled sideways with no obvious
+            sign there was more. Wrapping keeps every tab visible at every width and
+            needs no interaction to discover. */}
+        <div
+          role="tablist"
+          aria-label={t("proj_tabs_label")}
+          className="flex flex-wrap items-center gap-1 p-1 rounded-xl border bg-muted/40"
+        >
           {tabs.map((tab) => (
-            <div key={tab.key} className="flex items-center shrink-0">
+            <div key={tab.key} className="flex items-center">
               <button
                 type="button"
+                role="tab"
                 onClick={() => handleTabChange(tab.key)}
+                aria-selected={activeTab === tab.key}
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-1.5 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                   activeTab === tab.key
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
+                    ? "bg-background text-primary shadow-sm font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-background/60"
                 )}
               >
                 <span className="shrink-0">{tab.icon}</span>
@@ -1859,7 +1874,7 @@ export default function ProjectDetailPage() {
                   }}
                   aria-label={t("proj_boq_add_row")}
                   title={t("proj_boq_add_row")}
-                  className="h-6 w-6 -ms-1 mb-1 rounded-md flex items-center justify-center text-primary bg-primary/10 hover:bg-primary/20 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  className="h-6 w-6 ms-0.5 me-1 rounded-md flex items-center justify-center text-primary bg-primary/10 hover:bg-primary/20 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                 >
                   <Plus size={13} />
                 </button>
@@ -2059,13 +2074,13 @@ export default function ProjectDetailPage() {
               {/* Stats bar */}
               {(boqItems.length > 0 || boqGroups.length > 0) && (
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-white border border-t-2 border-t-cta rounded-xl px-4 py-3">
+                  <div className="bg-card border border-t-2 border-t-cta rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_items")}</p>
-                    <p className="text-xl font-black text-slate-800 mt-0.5">{boqItems.length}</p>
+                    <p className="text-xl font-black text-foreground mt-0.5 tabular-nums" dir="ltr">{boqItems.length}</p>
                   </div>
-                  <div className="bg-white border border-t-2 border-t-success rounded-xl px-4 py-3">
+                  <div className="bg-card border border-t-2 border-t-success rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_sections")}</p>
-                    <p className="text-xl font-black text-slate-800 mt-0.5">{boqGroups.length}</p>
+                    <p className="text-xl font-black text-foreground mt-0.5 tabular-nums" dir="ltr">{boqGroups.length}</p>
                   </div>
                   <div className="bg-accent/5 border border-t-2 border-t-accent rounded-xl px-4 py-3">
                     <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_total")}</p>
@@ -2090,46 +2105,19 @@ export default function ProjectDetailPage() {
                 />
               )}
 
-              <div className="flex items-center justify-between gap-3 flex-wrap bg-white border border-slate-200 rounded-xl p-3">
+              {/* Toolbar. This was eight buttons of equal weight competing in one row.
+                  Grouped by how often each is actually reached for: building the sheet
+                  on the left, the two warehouse actions behind one menu, and the two
+                  commit actions on the right. Everything rarely used moved behind «⋯». */}
+              <div className="flex items-center justify-between gap-3 flex-wrap bg-card border rounded-xl p-2.5">
+                <input
+                  ref={boqFileRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={handleBoqFile}
+                />
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input
-                    ref={boqFileRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    className="hidden"
-                    onChange={handleBoqFile}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => boqFileRef.current?.click()}
-                    disabled={boqParsing}
-                    className="gap-1.5"
-                  >
-                    {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
-                    {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
-                    {!boqParsing && <span className="text-muted-foreground text-xs">({t("proj_boq_upload_hint")})</span>}
-                  </Button>
-                  {boqItems.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const editableIds = allBoqRows.filter(r => r.original.isEditable !== false).map(r => r.original.id)
-                        const allDeselected = editableIds.every(id => deselectedIds.has(id))
-                        if (allDeselected) {
-                          setDeselectedIds(new Set())
-                        } else {
-                          setDeselectedIds(new Set(editableIds))
-                        }
-                      }}
-                      className="gap-1.5 text-muted-foreground h-8 text-xs"
-                    >
-                      {allBoqRows.filter(r => r.original.isEditable !== false).every(r => deselectedIds.has(r.original.id))
-                        ? t("rfq_select_all")
-                        : t("rfq_deselect_all")}
-                    </Button>
-                  )}
                   <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                     <Plus size={14} />
                     {t("proj_boq_add_row")}
@@ -2138,22 +2126,74 @@ export default function ProjectDetailPage() {
                     <Layers size={14} />
                     {t("proj_boq_add_section")}
                   </Button>
-                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && boqLoaded && (
-                    <Button variant="outline" size="sm" onClick={() => { setSuggestedTakenQtys({}); setIsConsumeDialogOpen(true) }}
-                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5">
-                      <Warehouse size={14} />
-                      {t("proj_boq_consume_btn")}
-                    </Button>
-                  )}
-                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && boqItems.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={() => setIsSuggestMaterialsOpen(true)}
-                      className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5">
-                      <Sparkles size={14} />
-                      {t("proj_suggest_materials_btn")}
-                    </Button>
-                  )}
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="gap-1.5 px-2" aria-label={t("proj_boq_more_actions")}>
+                        <MoreHorizontal size={16} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align={isRtl ? "end" : "start"} className="w-60">
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        {t("proj_boq_more_actions")}
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onSelect={() => boqFileRef.current?.click()} disabled={boqParsing} className="gap-2">
+                        {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                        <span className="flex-1">{boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}</span>
+                        <span className="text-[10px] text-muted-foreground">{t("proj_boq_upload_hint")}</span>
+                      </DropdownMenuItem>
+                      {boqItems.length > 0 && (() => {
+                        const editableRows = allBoqRows.filter((r) => r.original.isEditable !== false)
+                        const allDeselected = editableRows.every((r) => deselectedIds.has(r.original.id))
+                        return (
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onSelect={() =>
+                              setDeselectedIds(allDeselected ? new Set() : new Set(editableRows.map((r) => r.original.id)))
+                            }
+                          >
+                            <Checkbox checked={!allDeselected} className="pointer-events-none" />
+                            {allDeselected ? t("rfq_select_all") : t("rfq_deselect_all")}
+                          </DropdownMenuItem>
+                        )
+                      })()}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap ps-3 border-s border-slate-200">
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Both warehouse actions behind one trigger — they belong together and
+                      only exist when the project actually has stock linked to it. */}
+                  {typedProject?.warehouseId && linkedInventoryItems.length > 0 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-1.5 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary">
+                          <Warehouse size={14} />
+                          {t("proj_boq_warehouse_menu")}
+                          <ChevronDown size={13} className="opacity-60" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align={isRtl ? "start" : "end"} className="w-64">
+                        <DropdownMenuItem
+                          className="gap-2"
+                          disabled={!boqLoaded}
+                          onSelect={() => { setSuggestedTakenQtys({}); setIsConsumeDialogOpen(true) }}
+                        >
+                          <Warehouse size={14} />
+                          {t("proj_boq_consume_btn")}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="gap-2"
+                          disabled={boqItems.length === 0}
+                          onSelect={() => setIsSuggestMaterialsOpen(true)}
+                        >
+                          <Sparkles size={14} />
+                          {t("proj_suggest_materials_btn")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                   <Button size="sm" onClick={() => saveBoq()} disabled={boqSaving || (boqItems.length === 0 && boqGroups.length === 0)} className="gap-1.5">
                     {boqSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
                     {t("proj_boq_save")}
@@ -2172,12 +2212,25 @@ export default function ProjectDetailPage() {
               </div>
 
               {boqItems.length === 0 && boqGroups.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-16 bg-slate-50 rounded-xl border border-dashed text-center gap-3">
+                <div className="flex flex-col items-center justify-center p-16 bg-muted/30 rounded-xl border border-dashed text-center gap-3">
                   <TableProperties size={40} className="text-muted-foreground/30" />
                   <div>
-                    <p className="font-semibold text-slate-700">{t("proj_boq_empty")}</p>
+                    <p className="font-semibold text-foreground">{t("proj_boq_empty")}</p>
                     <p className="text-sm text-muted-foreground mt-1">{t("proj_boq_empty_desc")}</p>
                   </div>
+                  {/* An empty sheet is the one moment importing matters most, and the
+                      toolbar offered no way in — the upload sat unlabelled behind «⋯». */}
+                  <div className="flex items-center gap-2 flex-wrap justify-center mt-1">
+                    <Button size="sm" onClick={() => boqFileRef.current?.click()} disabled={boqParsing} className="gap-1.5">
+                      {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                      {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
+                      <Plus size={14} />
+                      {t("proj_boq_add_row")}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t("proj_boq_upload_hint")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -2196,7 +2249,7 @@ export default function ProjectDetailPage() {
                       <div
                         key={group.id}
                         data-boq-dropzone={group.id}
-                        className="rounded-xl border border-primary/10 bg-white overflow-hidden transition-all shadow-sm"
+                        className="rounded-xl border border-primary/10 bg-card overflow-hidden transition-all shadow-sm"
                       >
                         <div className="flex items-center gap-1.5 p-3 bg-primary/5 border-b-2 border-primary/15 flex-wrap">
                           <button
@@ -2204,7 +2257,7 @@ export default function ProjectDetailPage() {
                             onClick={() => toggleGroupCollapsed(group.id)}
                             aria-label={isCollapsed ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
                             aria-expanded={!isCollapsed}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                           >
                             {isCollapsed ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
                           </button>
@@ -2214,7 +2267,7 @@ export default function ProjectDetailPage() {
                               <Input
                                 value={group.titleAr}
                                 onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
-                                className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-white truncate"
+                                className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-background truncate"
                                 dir="rtl"
                               />
                             </TooltipTrigger>
@@ -2243,7 +2296,7 @@ export default function ProjectDetailPage() {
                           )}
                           {unlockedGroupRows.length > 0 && (
                             <div
-                              className="flex items-center gap-1.5 h-7 px-1.5 rounded-lg hover:bg-white transition-colors cursor-pointer shrink-0"
+                              className="flex items-center gap-1.5 h-7 px-1.5 rounded-lg hover:bg-background transition-colors cursor-pointer shrink-0"
                               onClick={() => setGroupSelected(group.id, !allGroupSelected)}
                               title={t("boq_select_item")}
                             >
@@ -2277,7 +2330,7 @@ export default function ProjectDetailPage() {
                             <button
                               type="button"
                               onClick={() => addBoqRow(group.id)}
-                              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                             >
                               <Plus size={13} />
                               {t("proj_boq_add_row")}
@@ -2291,15 +2344,15 @@ export default function ProjectDetailPage() {
                   {/* Unassigned — always shown as a drop target */}
                   <div
                     data-boq-dropzone="unassigned"
-                    className="rounded-xl border border-dashed border-slate-300 bg-white overflow-hidden transition-all shadow-sm"
+                    className="rounded-xl border border-dashed border-border bg-card overflow-hidden transition-all shadow-sm"
                   >
-                    <div className="flex items-center gap-2 p-3 bg-slate-50/60 border-b-2 border-slate-200">
+                    <div className="flex items-center gap-2 p-3 bg-muted/50 border-b-2 border-border">
                       <button
                         type="button"
                         onClick={() => toggleGroupCollapsed("unassigned")}
                         aria-label={collapsedGroups.has("unassigned") ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
                         aria-expanded={!collapsedGroups.has("unassigned")}
-                        className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                        className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                       >
                         {collapsedGroups.has("unassigned") ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
                       </button>
@@ -2319,7 +2372,7 @@ export default function ProjectDetailPage() {
                         <button
                           type="button"
                           onClick={() => addBoqRow(null)}
-                          className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                          className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-primary/5 border-t border-dashed border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                         >
                           <Plus size={13} />
                           {t("proj_boq_add_row")}
@@ -2349,7 +2402,7 @@ export default function ProjectDetailPage() {
                   )}
                 </CardTitle>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex items-center rounded-lg border border-slate-200 p-0.5">
+                  <div className="flex items-center rounded-lg border p-0.5">
                     <button
                       type="button"
                       onClick={() => setTenderViewMode("grid")}
