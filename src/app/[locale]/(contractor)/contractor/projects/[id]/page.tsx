@@ -1830,22 +1830,24 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {/* Tab nav */}
-        <div className="flex gap-1 border-b border-slate-200">
+        {/* Tab nav. Nine tabs with Arabic labels don't fit at most widths; without
+            nowrap they squeezed and broke each label across two lines. They keep their
+            natural width now and the strip scrolls instead. */}
+        <div className="flex gap-1 border-b border-border overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => (
-            <div key={tab.key} className="flex items-center">
+            <div key={tab.key} className="flex items-center shrink-0">
               <button
                 type="button"
                 onClick={() => handleTabChange(tab.key)}
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "flex items-center gap-1.5 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors rounded-t-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                   activeTab === tab.key
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 )}
               >
-                {tab.icon}
+                <span className="shrink-0">{tab.icon}</span>
                 {tab.label}
               </button>
               {tab.key === "boq" && (
@@ -3807,25 +3809,25 @@ function ConsumeFromWarehouseDialog({
         )}
 
         <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm min-w-[600px]">
+          <table className="w-full text-sm min-w-[660px]">
             <thead>
               <tr className="bg-muted border-b">
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("goods_manual_item_name")}
                 </th>
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-24", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("proj_boq_consume_available")}
                 </th>
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-28", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_taken_qty")}
                 </th>
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-28", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_used_qty")}
                 </th>
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-20", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_percent_col")}
                 </th>
-                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-40", isRtl ? "text-right" : "text-left")}>
+                <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs whitespace-nowrap", isRtl ? "text-right" : "text-left")}>
                   {t("proj_waste_boq_item_col")}
                 </th>
               </tr>

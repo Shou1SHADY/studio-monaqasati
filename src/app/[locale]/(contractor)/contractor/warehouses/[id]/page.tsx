@@ -6,17 +6,9 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { Link } from "@/i18n/routing"
 import { useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { doc } from "firebase/firestore"
-import { Warehouse, ArrowRight, Star } from "lucide-react"
+import { ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
-
-type WarehouseDoc = {
-  id: string
-  name: string
-  location: string
-  description?: string
-  isCentral?: boolean
-}
 
 export default function ContractorWarehouseDetailPage() {
   const t = useTranslations("Portal.Contractor")
@@ -34,34 +26,23 @@ export default function ContractorWarehouseDetailPage() {
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
 
-  const warehouseRef = useMemoFirebase(() => {
-    if (!firestore || !warehouseId) return null
-    return doc(firestore, "warehouses", warehouseId)
-  }, [firestore, warehouseId])
-  const { data: warehouse } = useDoc(warehouseRef)
-  const wh = warehouse as WarehouseDoc | null
+  // The warehouse document is not read here any more — the panel subscribes to it
+  // for the header it now owns, and a second listener on the same doc was waste.
 
   return (
     <PortalLayout>
       <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
-        <div className="flex items-center gap-3">
-          <Link href="/contractor/warehouses" className="text-muted-foreground hover:text-primary transition-colors">
-            <ArrowRight size={18} className={cn(isRtl ? "" : "rotate-180")} />
-          </Link>
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <Warehouse size={20} className="text-primary" />
-              <h1 className="text-xl font-black text-primary">{wh?.name ?? t("wh_page_title")}</h1>
-              {wh?.isCentral && (
-                <span className="inline-flex items-center gap-1 text-[10px] font-black text-accent bg-accent/10 border border-accent/30 rounded-full px-2 py-0.5">
-                  <Star size={10} />
-                  {t("wh_central_badge")}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <WarehouseInventoryPanel warehouseId={warehouseId} orgId={myOrgId} variant="embedded" />
+        {/* Only the back link lives here — the panel renders the warehouse's name,
+            badge and location, so duplicating them produced two identical headings. */}
+        <Link
+          href="/contractor/warehouses"
+          aria-label={t("wh_page_title")}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+        >
+          <ArrowRight size={16} className={cn(isRtl ? "" : "rotate-180")} />
+          {t("wh_page_title")}
+        </Link>
+        <WarehouseInventoryPanel warehouseId={warehouseId} orgId={myOrgId} variant="full" />
       </div>
     </PortalLayout>
   )

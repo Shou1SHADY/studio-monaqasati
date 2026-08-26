@@ -969,56 +969,44 @@ export function WarehouseInventoryPanel({
 
   return (
     <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
-      {/* Header */}
+      {/* One header for both variants. They used to be two near-identical blocks, which
+          is how the standalone warehouse page ended up printing the name and «مركزي»
+          badge twice — once itself, once here. The panel owns the warehouse identity
+          now; `variant` only decides how loudly it's said. */}
       <div className="flex items-center gap-3">
-        {variant === "full" && (
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <Warehouse size={20} className="text-primary" />
-              <h1 className="text-xl font-black text-primary">{wh?.name ?? t("wh_page_title")}</h1>
-              {isCentralHere && (
-                <Badge className="bg-accent/10 text-accent border-accent/30 gap-1 font-bold">
-                  <Star size={11} />
-                  {t("wh_central_badge")}
-                </Badge>
-              )}
-            </div>
-            {wh?.location && (
-              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                <MapPin size={11} />
-                {wh.location}
-              </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Warehouse size={variant === "full" ? 20 : 16} className="text-primary shrink-0" />
+            {variant === "full" ? (
+              <h1 className="text-xl font-black text-primary truncate">{wh?.name ?? t("wh_page_title")}</h1>
+            ) : (
+              <h2 className="text-sm font-bold text-foreground truncate">{wh?.name ?? t("wh_page_title")}</h2>
+            )}
+            {isCentralHere && (
+              <Badge className="bg-accent/10 text-accent border-accent/30 gap-1 font-bold shrink-0">
+                <Star size={variant === "full" ? 11 : 10} />
+                {t("wh_central_badge")}
+              </Badge>
             )}
           </div>
-        )}
-        {variant === "embedded" && (
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Warehouse size={16} className="text-primary shrink-0" />
-              <h2 className="text-sm font-bold text-foreground truncate">{wh?.name ?? t("wh_page_title")}</h2>
-              {isCentralHere && (
-                <Badge className="bg-accent/10 text-accent border-accent/30 gap-1 font-bold shrink-0">
-                  <Star size={10} />
-                  {t("wh_central_badge")}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-3 flex-wrap mt-0.5 text-[11px] text-muted-foreground">
-              {wh?.location && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={10} />
-                  {wh.location}
-                </span>
-              )}
-              {!isCentralHere && myCentral && (
-                <span className="flex items-center gap-1">
-                  <ArrowDownToLine size={10} />
-                  {t("inv_supplied_by", { name: myCentral.name })}
-                </span>
-              )}
-            </div>
+          <div className={cn(
+            "flex items-center gap-3 flex-wrap mt-0.5 text-muted-foreground",
+            variant === "full" ? "text-xs" : "text-[11px]"
+          )}>
+            {wh?.location && (
+              <span className="flex items-center gap-1">
+                <MapPin size={variant === "full" ? 11 : 10} />
+                {wh.location}
+              </span>
+            )}
+            {!isCentralHere && myCentral && (
+              <span className="flex items-center gap-1">
+                <ArrowDownToLine size={variant === "full" ? 11 : 10} />
+                {t("inv_supplied_by", { name: myCentral.name })}
+              </span>
+            )}
           </div>
-        )}
+        </div>
         {!isCentralHere && myCentral && canManageWarehouses && (
           <Button variant="outline" onClick={() => setShowPull(true)} className="gap-2 shrink-0 border-accent/40 text-accent hover:bg-accent/5 hover:text-accent">
             <ArrowDownToLine size={15} />
@@ -1146,12 +1134,12 @@ export function WarehouseInventoryPanel({
             <table className="w-full text-sm">
               <thead className="bg-muted/30 border-b">
                 <tr>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_name")}</th>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_sku")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_qty")}</th>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_unit")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_unit_cost")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_min_stock")}</th>
+                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_name")}</th>
+                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_sku")}</th>
+                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_qty")}</th>
+                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_unit")}</th>
+                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_unit_cost")}</th>
+                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_min_stock")}</th>
                   <th className="py-3 px-4 w-28" />
                 </tr>
               </thead>
@@ -1177,8 +1165,8 @@ export function WarehouseInventoryPanel({
                         )}
                       </td>
                       <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{item.sku || "—"}</td>
-                      <td className="py-3 px-4 text-center font-bold" dir="ltr">{item.quantity}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{formatUnit(t as (k: string) => string, item)}</td>
+                      <td className="py-3 px-4 text-center font-bold tabular-nums" dir="ltr">{item.quantity}</td>
+                      <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatUnit(t as (k: string) => string, item)}</td>
                       <td className="py-3 px-4 text-center text-muted-foreground tabular-nums">
                         {item.unitCost != null ? (
                           <span dir="ltr">{nf(item.unitCost)}</span>
@@ -1186,7 +1174,7 @@ export function WarehouseInventoryPanel({
                           <span className="text-muted-foreground/50">—</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-center text-muted-foreground" dir="ltr">
+                      <td className="py-3 px-4 text-center text-muted-foreground tabular-nums" dir="ltr">
                         {item.minStockLevel ?? "—"}
                       </td>
                       <td className="py-3 px-4">

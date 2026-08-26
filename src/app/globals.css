@@ -222,9 +222,13 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Custom scrollbar — desktop only */
+/* Custom scrollbar — desktop only.
+   `height` matters as much as `width`: it governs HORIZONTAL scrollbars, and
+   without it any overflow-x container (tab strips, wide tables) fell back to the
+   browser's default bar height while still painting the dark thumb — reading as a
+   heavy slab under the content rather than a scrollbar. */
 @media (min-width: 768px) {
-  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
   ::-webkit-scrollbar-thumb:hover { background: #475569; }
