@@ -2,7 +2,7 @@
 
 import type { ElementType, ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Contact, Target, FileText } from "lucide-react"
+import { Contact, Target, LayoutDashboard, ClipboardList, Settings } from "lucide-react"
 import { Link, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 
@@ -12,16 +12,22 @@ export function crmBasePath(portal: CrmPortal): string {
   return portal === "contractor" ? "/contractor/crm" : "/supplier/crm"
 }
 
+// RFQs used to sit here as a fourth tab. They were never CRM records — an RFQ
+// is a live procurement document owned by the RFQ module, and mirroring it
+// under Relations gave two places to look for one thing. The CRM now ends at
+// the handover: a won deal generates a project, and procurement takes over.
 const CRM_TABS: Array<{ segment: string; labelKey: string; icon: ElementType }> = [
+  { segment: "dashboard", labelKey: "crm_nav_dashboard", icon: LayoutDashboard },
   { segment: "leads", labelKey: "crm_nav_leads", icon: Contact },
   { segment: "opportunities", labelKey: "crm_nav_opportunities", icon: Target },
-  { segment: "rfqs", labelKey: "crm_nav_rfqs", icon: FileText },
+  { segment: "activities", labelKey: "crm_nav_activities", icon: ClipboardList },
+  { segment: "settings", labelKey: "crm_nav_settings", icon: Settings },
 ]
 
 /**
- * The three CRM pages share one header: title, description, primary action and
- * the tab rail that moves between them. The rail is real links (not client
- * state) so each page keeps its own URL, is bookmarkable, and the sidebar's
+ * The CRM pages share one header: title, description, primary action and the
+ * tab rail that moves between them. The rail is real links (not client state)
+ * so each page keeps its own URL, is bookmarkable, and the sidebar's
  * active-item resolution still works.
  */
 export function CrmShell({
@@ -153,6 +159,74 @@ export function CrmEmptyState({
       {description && <p className="text-sm text-muted-foreground/70 max-w-sm">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
+  )
+}
+
+/** A titled section box. The dashboard and the opportunity detail page are
+ * both grids of these, so the chrome is defined once. */
+export function CrmPanel({
+  title,
+  subtitle,
+  icon: Icon,
+  action,
+  children,
+  className,
+}: {
+  title: string
+  subtitle?: string
+  icon?: ElementType
+  action?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section className={cn("rounded-xl border bg-card overflow-hidden", className)}>
+      <header className="px-4 py-3 border-b flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+            {Icon && <Icon size={15} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+            <span className="truncate">{title}</span>
+          </h2>
+          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </header>
+      {children}
+    </section>
+  )
+}
+
+/** One label/value line inside a `CrmPanel`. */
+export function CrmRow({
+  label,
+  children,
+  className,
+}: {
+  label: ReactNode
+  children?: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("px-4 py-2.5 flex items-center justify-between gap-3 border-b last:border-b-0 text-sm", className)}>
+      <span className="text-muted-foreground min-w-0 truncate">{label}</span>
+      <span className="shrink-0 flex items-center gap-2 font-semibold text-foreground">{children}</span>
+    </div>
+  )
+}
+
+/** Horizontal proportion bar — pipeline stages, capacity, gate progress. */
+export function CrmMeter({ percent, tone = "primary" }: { percent: number; tone?: "primary" | "success" | "warning" | "destructive" }) {
+  const clamped = Math.max(0, Math.min(100, Math.round(percent)))
+  const fill = {
+    primary: "bg-primary",
+    success: "bg-success",
+    warning: "bg-warning",
+    destructive: "bg-destructive",
+  }[tone]
+  return (
+    <span className="block h-1.5 rounded-full bg-muted overflow-hidden" role="presentation">
+      <span className={cn("block h-full rounded-full transition-[width]", fill)} style={{ width: `${clamped}%` }} />
+    </span>
   )
 }
 

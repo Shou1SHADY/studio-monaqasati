@@ -1,0 +1,292 @@
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore"
+import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { useFirestore } from "@/firebase"
+import { useToast } from "@/hooks/use-toast"
+import { useCrmApproval } from "@/hooks/useCrmApproval"
+import { cn } from "@/lib/utils"
+import {
+  CRM_OPPORTUNITIES,
+  CRM_QUOTATIONS,
+  formatSar,
+  generateQuotationNumber,
+  type CrmOpportunity,
+  type CrmQuotation,
+} from "@/lib/crm"
+
+/** Which rung of the value ladder this dialog is filling in. */
+export type ValueStep = "estimate" | "cost" | "submitted" | "award"
+
+/**
+ * One dialog for the four rungs of the value ladder, because they are the same
+ * interaction — type a figure, see what it implies, save — and splitting them
+ * into four components would have duplicated the margin maths four times.
+ *
+ * Two rungs have consequences beyond the number:
+ *  - `submitted` writes a new quotation version, so the price that was actually
+ *    sent to the client is never overwritten by a re-price, and routes the
+ *    figure for approval when it exceeds the member's limit.
+ *  - `award` closes the deal as won and captures who we were bidding against.
+ */
+export function CrmValueDialog({
+  open,
+  onOpenChange,
+  step,
+  opportunity,
+  orgId,
+  /** Highest existing version number, so a re-price becomes v2, v3 … */
+  quotationCount = 0,
+  currentUserName,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  step: ValueStep
+  opportunity: CrmOpportunity
+  orgId: string
+  quotationCount?: number
+  currentUserName?: string | null
+}) {
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const { approvalLimit, needsEscalation } = useCrmApproval()
+
+  const [isSaving, setIsSaving] = useState(false)
+  const [amount, setAmount] = useState("")
+  const [validityDays, setValidityDays] = useState("30")
+  const [paymentTerms, setPaymentTerms] = useState("")
+  const [bidderCount, setBidderCount] = useState("")
+  const [ourRank, setOurRank] = useState("1")
+
+  useEffect(() => {
+    if (!open) return
+    const seed =
+      step === "estimate"
+        ? opportunity.value
+        : step === "cost"
+          ? opportunity.approvedCost
+          : step === "submitted"
+            // A first offer defaults to cost + 12%, which is a starting point to
+            // argue with rather than a number anyone has to compute by hand.
+            ? opportunity.submittedPrice || (opportunity.approvedCost ? Math.round(opportunity.approvedCost * 1.12) : null)
+            : opportunity.awardedValue || opportunity.submittedPrice
+    setAmount(seed != null && seed > 0 ? String(seed) : "")
+    setValidityDays("30")
+    setPaymentTerms("")
+    setBidderCount(opportunity.bidderCount != null ? String(opportunity.bidderCount) : "")
+    setOurRank(opportunity.ourRank != null ? String(opportunity.ourRank) : "1")
+  }, [open, step, opportunity])
+
+  const parsed = useMemo(() => {
+    const n = parseFloat(amount)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }, [amount])
+
+  // Margin previewed against whichever cost figure exists — the approved cost
+  // for a submitted price, the estimate for a cost being entered.
+  const previewMargin = useMemo(() => {
+    if (step === "cost" && parsed > 0 && opportunity.value > 0) {
+      return Math.round(((opportunity.value - parsed) / opportunity.value) * 1000) / 10
+    }
+    if ((step === "submitted" || step === "award") && parsed > 0 && (opportunity.approvedCost || 0) > 0) {
+      return Math.round(((parsed - (opportunity.approvedCost || 0)) / parsed) * 1000) / 10
+    }
+    return null
+  }, [step, parsed, opportunity.value, opportunity.approvedCost])
+
+  const escalates = step === "submitted" && parsed > 0 && needsEscalation(parsed)
+  const isPartial = step === "award" && parsed > 0 && (opportunity.submittedPrice || 0) > 0 && parsed < (opportunity.submittedPrice || 0)
+
+  const handleSave = async () => {
+    if (!firestore || isSaving) return
+    if (parsed <= 0) {
+      toast({ title: t("crm_value_required"), variant: "destructive" })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const oppRef = doc(firestore, CRM_OPPORTUNITIES, opportunity.id)
+
+      if (step === "estimate") {
+        await updateDoc(oppRef, { value: parsed, updatedAt: serverTimestamp() })
+      } else if (step === "cost") {
+        await updateDoc(oppRef, { approvedCost: parsed, updatedAt: serverTimestamp() })
+      } else if (step === "submitted") {
+        const version = quotationCount + 1
+        const quotation: Omit<CrmQuotation, "id"> = {
+          contactId: opportunity.contactId,
+          contactName: opportunity.contactName ?? null,
+          opportunityId: opportunity.id,
+          version,
+          quotationNumber: generateQuotationNumber(),
+          amount: parsed,
+          status: "sent",
+          date: new Date().toISOString().slice(0, 10),
+          validityDays: parseInt(validityDays, 10) || null,
+          paymentTerms: paymentTerms.trim() || null,
+          notes: null,
+          organizationId: orgId,
+        }
+        await addDoc(collection(firestore, CRM_QUOTATIONS), {
+          ...quotation,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+        await updateDoc(oppRef, {
+          submittedPrice: parsed,
+          approvalStatus: escalates ? "pending" : "approved",
+          approvalAmount: parsed,
+          approvedByName: escalates ? null : currentUserName || null,
+          updatedAt: serverTimestamp(),
+        })
+      } else {
+        await updateDoc(oppRef, {
+          awardedValue: parsed,
+          stage: "won",
+          state: "won",
+          bidderCount: parseInt(bidderCount, 10) || null,
+          ourRank: parseInt(ourRank, 10) || null,
+          updatedAt: serverTimestamp(),
+        })
+      }
+
+      toast({
+        title:
+          step === "submitted" && escalates
+            ? t("crm_price_escalated")
+            : step === "award"
+              ? t("crm_award_recorded")
+              : t("crm_value_saved"),
+      })
+      onOpenChange(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("crm_save_error"), variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t(`crm_value_${step}_title`)}</DialogTitle>
+          <DialogDescription>{t(`crm_value_${step}_desc`)}</DialogDescription>
+        </DialogHeader>
+        <form className="space-y-4 py-2" onSubmit={(e) => { e.preventDefault(); void handleSave() }}>
+          <div className="space-y-1.5">
+            <Label htmlFor="value-amount">{t(`crm_value_${step}_label`)} *</Label>
+            <Input
+              id="value-amount"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              dir="ltr"
+              disabled={isSaving}
+              autoFocus
+            />
+          </div>
+
+          {step === "submitted" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="value-validity">{t("crm_value_validity")}</Label>
+                <Input id="value-validity" type="number" min="1" inputMode="numeric" value={validityDays} onChange={(e) => setValidityDays(e.target.value)} dir="ltr" disabled={isSaving} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="value-terms">{t("crm_value_payment_terms")}</Label>
+                <Input id="value-terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder={t("crm_value_payment_terms_placeholder")} disabled={isSaving} />
+              </div>
+            </div>
+          )}
+
+          {step === "award" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
+                <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="value-rank">{t("crm_value_rank")}</Label>
+                <Input id="value-rank" type="number" min="1" inputMode="numeric" value={ourRank} onChange={(e) => setOurRank(e.target.value)} dir="ltr" disabled={isSaving} />
+              </div>
+            </div>
+          )}
+
+          {/* Consequence preview — what saving this number will mean. */}
+          {(previewMargin !== null || escalates || isPartial || step === "submitted") && (
+            <div className="rounded-lg border bg-muted/30 divide-y text-sm">
+              {previewMargin !== null && (
+                <p className="px-3 py-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{t("crm_margin")}</span>
+                  <span className={cn("font-black", previewMargin >= 12 ? "text-success" : "text-warning")} dir="ltr">
+                    {previewMargin}%
+                  </span>
+                </p>
+              )}
+              {step === "submitted" && (
+                <p className="px-3 py-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{t("crm_approval_limit")}</span>
+                  <span className="font-bold" dir="ltr">
+                    {approvalLimit === Number.POSITIVE_INFINITY ? "∞" : formatSar(approvalLimit, locale)}
+                  </span>
+                </p>
+              )}
+              {step === "submitted" && parsed > 0 && (
+                <p className="px-3 py-2 flex items-center gap-2">
+                  {escalates ? (
+                    <>
+                      <ShieldAlert size={14} className="text-warning shrink-0" />
+                      <span className="text-warning font-semibold">{t("crm_approval_needs_higher")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={14} className="text-success shrink-0" />
+                      <span className="text-success font-semibold">{t("crm_approval_within_limit")}</span>
+                    </>
+                  )}
+                </p>
+              )}
+              {isPartial && (
+                <p className="px-3 py-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{t("crm_award_partial")}</span>
+                  <span className="font-black text-warning" dir="ltr">
+                    {Math.round((parsed / (opportunity.submittedPrice || 1)) * 100)}%
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("crm_cancel")}</Button>
+            <Button type="submit" disabled={isSaving} className="gap-2">
+              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
+              {t("crm_save")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}

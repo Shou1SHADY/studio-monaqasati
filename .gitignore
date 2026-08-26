@@ -102,3 +102,6 @@ studio-2889*
 # Firebase service-account keys — never commit these
 *firebase-adminsdk*.json
 service-account.json
+
+# C:\Users\MCYF8797\Mdak\studio-monaqasati\index.html
+index.html

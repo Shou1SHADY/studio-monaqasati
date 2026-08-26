@@ -2,12 +2,12 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { deleteDoc, doc, serverTimestamp, updateDoc } from "firebase/firestore"
+import { doc, serverTimestamp, updateDoc } from "firebase/firestore"
 import {
   AlertTriangle,
   CalendarDays,
-  Contact,
   Coins,
+  Contact,
   Loader2,
   Pencil,
   Plus,
@@ -15,13 +15,11 @@ import {
   Target,
   Trash2,
   Trophy,
-  X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,9 +32,12 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Link } from "@/i18n/routing"
 import { useFirestore } from "@/firebase"
+import { deleteOpportunityCascade } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
+import { useCrmOrgProfile } from "@/hooks/useCrmOrgProfile"
+import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
 import { cn } from "@/lib/utils"
 import {
   CRM_OPPORTUNITIES,
@@ -44,17 +45,30 @@ import {
   OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGE_BADGE_CLASS,
   OPPORTUNITY_STAGE_BAR_CLASS,
+  OPPORTUNITY_STATE_BADGE_CLASS,
+  OPPORTUNITY_TRACKS,
+  SCOPE_TYPES,
+  TRACK_BADGE_CLASS,
+  checkEligibility,
   daysUntil,
   formatCrmDate,
   formatSar,
   formatSarCompact,
+  gatesRemaining,
+  historyEntry,
+  isOpportunityOpen,
+  opportunityState,
+  opportunityTrack,
+  primaryScope,
   summarizeOpportunities,
   toDate,
   type CrmOpportunity,
+  type EligibilityCheck,
   type OpportunityStage,
 } from "@/lib/crm"
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
+import { CrmShowMore, CrmSortHeader, CrmToolbar } from "@/components/crm/CrmToolbar"
 import {
   CrmEmptyState,
   CrmListSkeleton,
@@ -73,10 +87,9 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const canManageCrm = can("crm.manage")
   const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
+  const { profile } = useCrmOrgProfile()
   const base = crmBasePath(portal)
 
-  const [search, setSearch] = useState("")
-  const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all")
   const [view, setView] = useState<"board" | "list">("board")
   const [showAdd, setShowAdd] = useState(false)
   const [showAddContact, setShowAddContact] = useState(false)
@@ -87,38 +100,104 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
 
   const summary = useMemo(() => summarizeOpportunities(opportunities), [opportunities])
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return opportunities
-      .filter((opp) => {
-        if (stageFilter !== "all" && opp.stage !== stageFilter) return false
-        if (!q) return true
-        return [opp.title, opp.contactName, opp.rfqTitle].some((f) => (f || "").toLowerCase().includes(q))
-      })
-      .sort((a, b) => {
-        // Deals with a close date lead, soonest first — an opportunity with no
-        // date is one nobody has committed to and belongs at the bottom.
-        const aDate = toDate(a.expectedCloseDate)?.getTime()
-        const bDate = toDate(b.expectedCloseDate)?.getTime()
-        if (aDate && bDate) return aDate - bDate
-        if (aDate) return -1
-        if (bDate) return 1
-        return (b.value || 0) - (a.value || 0)
-      })
-  }, [opportunities, stageFilter, search])
+  const listConfig = useMemo<CrmListConfig<CrmOpportunity>>(
+    () => ({
+      segments: [
+        { key: "open", label: t("crm_state_open"), predicate: isOpportunityOpen },
+        { key: "won", label: t("crm_state_won"), predicate: (o) => opportunityState(o) === "won" },
+        { key: "handed_over", label: t("crm_state_handed_over"), predicate: (o) => opportunityState(o) === "handed_over" },
+        { key: "on_hold", label: t("crm_state_on_hold"), predicate: (o) => opportunityState(o) === "on_hold" },
+        { key: "lost", label: t("crm_state_lost"), predicate: (o) => opportunityState(o) === "lost" },
+        { key: "all", label: t("crm_tab_all"), predicate: () => true },
+      ],
+      facets: [
+        {
+          key: "track",
+          label: t("crm_opp_track"),
+          options: OPPORTUNITY_TRACKS.map((tr) => ({ value: tr, label: t(`crm_track_${tr}`) })),
+          valueOf: (o) => opportunityTrack(o),
+        },
+        {
+          key: "stage",
+          label: t("crm_col_stage"),
+          options: OPPORTUNITY_STAGES.map((s) => ({ value: s, label: t(`crm_opp_stage_${s}`) })),
+          valueOf: (o) => o.stage,
+        },
+        {
+          key: "scope",
+          label: t("crm_opp_scope"),
+          options: SCOPE_TYPES.map((s) => ({ value: s, label: t(`crm_scope_${s}`) })),
+          valueOf: (o) => o.scopeTypes ?? [],
+        },
+        {
+          key: "owner",
+          label: t("crm_owner"),
+          options: teamMembers.map((m) => ({ value: m.id, label: m.name })),
+          valueOf: (o) => o.ownerId ?? null,
+        },
+      ],
+      savedViews: [
+        { key: "all_open", label: t("crm_view_all_open"), segment: "open", sort: { key: "date", direction: 1 }, group: "stage" },
+        { key: "by_track", label: t("crm_view_by_track"), segment: "open", sort: { key: "date", direction: 1 }, group: "track" },
+        { key: "awarded_not_handed", label: t("crm_view_awarded_not_handed"), segment: "won", sort: { key: "value", direction: -1 } },
+        { key: "handed_over", label: t("crm_view_handed_over"), segment: "handed_over", sort: { key: "value", direction: -1 } },
+        { key: "loss_analysis", label: t("crm_view_loss_analysis"), segment: "lost", sort: { key: "value", direction: -1 } },
+        { key: "on_hold", label: t("crm_view_on_hold"), segment: "on_hold", sort: { key: "value", direction: -1 } },
+      ],
+      groups: [
+        { key: "stage", label: t("crm_col_stage"), keyOf: (o) => t(`crm_opp_stage_${o.stage}`) },
+        { key: "track", label: t("crm_opp_track"), keyOf: (o) => t(`crm_track_${opportunityTrack(o)}`) },
+        { key: "owner", label: t("crm_owner"), keyOf: (o) => o.ownerName || t("crm_owner_none") },
+        { key: "contact", label: t("crm_opp_contact"), keyOf: (o) => o.contactName || "—" },
+      ],
+      sorts: [
+        { key: "title", valueOf: (o) => o.title || "" },
+        { key: "value", valueOf: (o) => o.value || 0 },
+        { key: "probability", valueOf: (o) => o.probability ?? 0 },
+        // Undated deals sort last: nobody has committed to them.
+        { key: "date", valueOf: (o) => toDate(o.expectedCloseDate)?.getTime() ?? Number.MAX_SAFE_INTEGER },
+        { key: "owner", valueOf: (o) => o.ownerName || "" },
+      ],
+      searchText: (o) =>
+        [o.title, o.contactName, o.ownerName, o.contractNumber, o.customScopeType].filter(Boolean).join(" "),
+      isMine: (o) => !!o.ownerId && teamMembers.some((m) => m.id === o.ownerId),
+      defaultSegment: "open",
+      defaultSort: { key: "date", direction: 1 },
+      defaultGroup: "",
+      pageSize: 15,
+    }),
+    [t, teamMembers]
+  )
 
+  const state = useCrmListState(opportunities, listConfig, locale)
+
+  // The board always shows open deals by stage, filtered by the toolbar — a
+  // pipeline column full of closed deals is not a pipeline.
   const byStage = useMemo(() => {
     const map = new Map<OpportunityStage, CrmOpportunity[]>()
     for (const stage of OPPORTUNITY_STAGES) map.set(stage, [])
-    for (const opp of visible) map.get(opp.stage)?.push(opp)
+    for (const opp of state.filtered) {
+      if (isOpportunityOpen(opp)) map.get(opp.stage)?.push(opp)
+    }
     return map
-  }, [visible])
+  }, [state.filtered])
+
+  const outcomes = useMemo(() => {
+    const of = (s: string) => state.filtered.filter((o) => opportunityState(o) === s)
+    return { won: of("won"), handedOver: of("handed_over"), onHold: of("on_hold"), lost: of("lost") }
+  }, [state.filtered])
 
   const moveStage = async (opp: CrmOpportunity, stage: OpportunityStage) => {
     if (!firestore || stage === opp.stage) return
     setMovingId(opp.id)
     try {
-      await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), { stage, updatedAt: serverTimestamp() })
+      await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), {
+        stage,
+        // Reaching won/lost from the board is an outcome, not just a column.
+        ...(stage === "won" ? { state: "won" } : stage === "lost" ? { state: "lost" } : { state: "open" }),
+        stageHistory: [...(opp.stageHistory ?? []), historyEntry(stage, opp.ownerName)],
+        updatedAt: serverTimestamp(),
+      })
       toast({ title: t("crm_opp_stage_updated") })
     } catch (err) {
       console.error(err)
@@ -132,7 +211,9 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
     if (!firestore || !deleteTarget) return
     setIsDeleting(true)
     try {
-      await deleteDoc(doc(firestore, CRM_OPPORTUNITIES, deleteTarget.id))
+      // Offer versions belong to the deal and go with it; logged activities
+      // survive with their deal reference cleared.
+      await deleteOpportunityCascade(firestore, deleteTarget.id, deleteTarget.organizationId || orgId)
       toast({ title: t("crm_opp_deleted") })
       setDeleteTarget(null)
     } catch (err) {
@@ -159,7 +240,28 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
     )
   ) : undefined
 
-  const hasActiveFilters = !!search || stageFilter !== "all"
+  const viewSwitch = (
+    <div className="flex rounded-lg border p-0.5">
+      {(["board", "list"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => setView(mode)}
+          aria-pressed={view === mode}
+          className={cn(
+            "px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            view === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {t(mode === "board" ? "crm_opp_view_board" : "crm_opp_view_list")}
+        </button>
+      ))}
+    </div>
+  )
+
+  const cellPad = state.dense ? "py-1.5" : ""
+  const columnCount = canManageCrm ? 11 : 10
 
   return (
     <CrmShell
@@ -182,55 +284,9 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
         />
       </CrmStatRow>
 
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search size={15} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("crm_opp_search_placeholder")}
-            className="ps-9"
-            aria-label={t("crm_opp_search_placeholder")}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={stageFilter} onValueChange={(v) => setStageFilter(v as OpportunityStage | "all")}>
-            <SelectTrigger className="w-[160px]" aria-label={t("crm_opp_filter_stage")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crm_opp_filter_all_stages")}</SelectItem>
-              {OPPORTUNITY_STAGES.map((s) => (
-                <SelectItem key={s} value={s}>{t(`crm_opp_stage_${s}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex rounded-lg border p-0.5">
-            {(["board", "list"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setView(mode)}
-                aria-pressed={view === mode}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  view === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {t(mode === "board" ? "crm_opp_view_board" : "crm_opp_view_list")}
-              </button>
-            ))}
-          </div>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStageFilter("all") }}
-              className="gap-1 text-muted-foreground hover:text-destructive">
-              <X size={13} />
-              {t("crm_clear_filters")}
-            </Button>
-          )}
-        </div>
-      </div>
+      {!isLoading && opportunities.length > 0 && (
+        <CrmToolbar config={listConfig} state={state} extra={viewSwitch} />
+      )}
 
       {isLoading ? (
         <CrmListSkeleton />
@@ -258,17 +314,15 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
             </Button>
           ) : undefined}
         />
-      ) : visible.length === 0 ? (
+      ) : state.filtered.length === 0 ? (
         <CrmEmptyState
           icon={Search}
           title={t("crm_no_results")}
           description={t("crm_no_results_desc")}
-          action={<Button variant="outline" size="sm" onClick={() => { setSearch(""); setStageFilter("all") }}>{t("crm_clear_filters")}</Button>}
+          action={<Button variant="outline" size="sm" onClick={state.clearAll}>{t("crm_clear_filters")}</Button>}
         />
       ) : view === "board" ? (
         <div className="space-y-4">
-          {/* Open stages as columns; won/lost are outcomes, not queues, so they
-              get one summary strip instead of two columns that only ever grow. */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {OPEN_OPPORTUNITY_STAGES.map((stage) => {
               const items = byStage.get(stage) || []
@@ -295,10 +349,12 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                         <OpportunityCard
                           key={opp.id}
                           opp={opp}
+                          detailHref={`${base}/opportunities/${opp.id}`}
                           contactHref={`${base}/leads/${opp.contactId}`}
                           canManage={canManageCrm}
                           isMoving={movingId === opp.id}
-                          onMove={(stage) => void moveStage(opp, stage)}
+                          blocking={gatesRemaining(opp, { profile }).length}
+                          onMove={(next) => void moveStage(opp, next)}
                           onEdit={() => setEditOpp(opp)}
                           onDelete={() => setDeleteTarget(opp)}
                         />
@@ -310,101 +366,149 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
             })}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {(["won", "lost"] as const).map((stage) => {
-              const items = byStage.get(stage) || []
-              const value = items.reduce((sum, o) => sum + (o.value || 0), 0)
+          {/* Outcomes, not queues. Won and handed-over are split because the
+              gap between them is real work someone still owes. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {([
+              { outcome: "won" as const, items: outcomes.won },
+              { outcome: "handed_over" as const, items: outcomes.handedOver },
+              { outcome: "on_hold" as const, items: outcomes.onHold },
+              { outcome: "lost" as const, items: outcomes.lost },
+            ]).map(({ outcome, items }) => {
+              const value = items.reduce((sum, o) => sum + (o.awardedValue || o.submittedPrice || o.value || 0), 0)
               return (
-                <div key={stage} className="rounded-xl border p-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[stage])}>
-                      {t(`crm_opp_stage_${stage}`)}
+                <div key={outcome} className="rounded-xl border p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <Badge variant="outline" className={cn("text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[outcome])}>
+                      {t(`crm_state_${outcome}`)}
                     </Badge>
-                    <p className="text-lg font-black text-foreground mt-1.5" dir="ltr">{formatSar(value, locale)}</p>
+                    <span className="text-sm font-black text-foreground shrink-0" dir="ltr">{items.length}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => { setStageFilter(stage); setView("list") }}
-                    className="text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded px-1"
-                  >
-                    {items.length}
-                  </button>
+                  <p className="text-base font-black text-foreground mt-2 truncate" dir="ltr">
+                    {formatSarCompact(value, locale)}
+                  </p>
                 </div>
               )
             })}
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("crm_opp_title")}</TableHead>
-                <TableHead>{t("crm_opp_contact")}</TableHead>
-                <TableHead>{t("crm_col_stage")}</TableHead>
-                <TableHead>{t("crm_col_value")}</TableHead>
-                <TableHead>{t("crm_col_close_date")}</TableHead>
-                {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visible.map((opp) => {
-                const days = daysUntil(opp.expectedCloseDate)
-                const isOpen = opp.stage !== "won" && opp.stage !== "lost"
-                return (
-                  <TableRow key={opp.id}>
-                    <TableCell className="font-bold text-foreground">
-                      {opp.title}
-                      {opp.rfqTitle && (
-                        <p className="text-[11px] font-normal text-muted-foreground truncate">
-                          {t("crm_opp_linked_rfq")}: {opp.rfqTitle}
-                        </p>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        href={`${base}/leads/${opp.contactId}`}
-                        className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                      >
-                        {opp.contactName || t("crm_opp_contact")}
-                      </Link>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>
-                        {t(`crm_opp_stage_${opp.stage}`)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-bold" dir="ltr">{formatSar(opp.value, locale)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {opp.expectedCloseDate ? (
-                        <span className={cn("inline-flex items-center gap-1", isOpen && days !== null && days < 0 && "text-destructive font-semibold")}>
-                          <CalendarDays size={11} />
-                          <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
-                          {isOpen && days !== null && days < 0 && <AlertTriangle size={11} />}
-                        </span>
-                      ) : (
-                        t("crm_opp_no_close_date")
-                      )}
-                    </TableCell>
-                    {canManageCrm && (
-                      <TableCell>
-                        <div className="flex items-center gap-1 justify-end">
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                            onClick={() => setEditOpp(opp)} aria-label={`${t("crm_opp_edit_title")} — ${opp.title}`}>
-                            <Pencil size={13} />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => setDeleteTarget(opp)} aria-label={`${t("crm_opp_delete_confirm_title")} — ${opp.title}`}>
-                            <Trash2 size={13} />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+        <div className="rounded-xl border overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead><CrmSortHeader state={state} sortKey="title" label={t("crm_opp_title")} /></TableHead>
+                  <TableHead>{t("crm_opp_contact")}</TableHead>
+                  <TableHead>{t("crm_opp_track")}</TableHead>
+                  <TableHead>{t("crm_opp_scope")}</TableHead>
+                  <TableHead>{t("crm_col_stage")}</TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="value" label={t("crm_col_value")} /></TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="probability" label={t("crm_opp_probability")} /></TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="date" label={t("crm_col_close_date")} /></TableHead>
+                  <TableHead>{t("crm_eligibility")}</TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="owner" label={t("crm_owner")} /></TableHead>
+                  {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {state.grouped.map((bucket) => (
+                  <GroupFragment
+                    key={bucket.key || "__all"}
+                    label={bucket.label}
+                    count={bucket.rows.length}
+                    value={formatSarCompact(bucket.rows.reduce((sum, o) => sum + (o.value || 0), 0), locale)}
+                    colSpan={columnCount}
+                  >
+                    {bucket.rows.map((opp) => {
+                      const days = daysUntil(opp.expectedCloseDate)
+                      const open = isOpportunityOpen(opp)
+                      const rowState = opportunityState(opp)
+                      const scope = primaryScope(opp)
+                      const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
+                      return (
+                        <TableRow key={opp.id}>
+                          <TableCell className={cn("font-bold text-foreground", cellPad)}>
+                            <Link
+                              href={`${base}/opportunities/${opp.id}`}
+                              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                            >
+                              {opp.title}
+                            </Link>
+                            {rowState !== "open" && (
+                              <Badge variant="outline" className={cn("ms-2 text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[rowState])}>
+                                {t(`crm_state_${rowState}`)}
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <Link
+                              href={`${base}/leads/${opp.contactId}`}
+                              className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                            >
+                              {opp.contactName || t("crm_opp_contact")}
+                            </Link>
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <Badge variant="outline" className={cn("text-[10px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
+                              {t(`crm_track_${opportunityTrack(opp)}`)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                            {scope ? t(`crm_scope_${scope}`) : opp.customScopeType || "—"}
+                            {extraScopes > 0 && <span className="ms-1 text-[10px]" dir="ltr">+{extraScopes}</span>}
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>
+                              {t(`crm_opp_stage_${opp.stage}`)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn("font-bold", cellPad)} dir="ltr">
+                            {formatSar(opp.awardedValue || opp.submittedPrice || opp.value, locale)}
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)} dir="ltr">
+                            {typeof opp.probability === "number" ? `${opp.probability}%` : "—"}
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                            {opp.expectedCloseDate ? (
+                              <span className={cn("inline-flex items-center gap-1", open && days !== null && days < 0 && "text-destructive font-semibold")}>
+                                <CalendarDays size={11} />
+                                <span>{formatCrmDate(opp.expectedCloseDate, locale)}</span>
+                                {open && days !== null && days < 0 && <AlertTriangle size={11} />}
+                              </span>
+                            ) : (
+                              t("crm_opp_no_close_date")
+                            )}
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <EligibilityBadge check={checkEligibility(opp, profile)} />
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                            {opp.ownerName || t("crm_owner_none")}
+                          </TableCell>
+                          {canManageCrm && (
+                            <TableCell className={cellPad}>
+                              <div className="flex items-center gap-1 justify-end">
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditOpp(opp)} aria-label={`${t("crm_opp_edit_title")} — ${opp.title}`}>
+                                  <Pencil size={13} />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setDeleteTarget(opp)} aria-label={`${t("crm_opp_delete_confirm_title")} — ${opp.title}`}>
+                                  <Trash2 size={13} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      )
+                    })}
+                  </GroupFragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <CrmShowMore state={state} />
         </div>
       )}
 
@@ -451,19 +555,85 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   )
 }
 
+/** A group header row followed by its rows, or just the rows when grouping is
+ * off (the header is skipped when the bucket has no label). */
+function GroupFragment({
+  label,
+  count,
+  value,
+  colSpan,
+  children,
+}: {
+  label: string
+  count: number
+  value: string
+  colSpan: number
+  children: React.ReactNode
+}) {
+  if (!label) return <>{children}</>
+  return (
+    <>
+      <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableCell colSpan={colSpan} className="py-2">
+          <span className="flex items-center gap-2 text-xs font-black text-foreground">
+            {label}
+            <span className="rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground" dir="ltr">
+              {count}
+            </span>
+            <span className="ms-auto font-bold text-muted-foreground" dir="ltr">{value}</span>
+          </span>
+        </TableCell>
+      </TableRow>
+      {children}
+    </>
+  )
+}
+
+/** Can we even bid on this? Renders "unknown" rather than "no" whenever the
+ * question has not been set up — an unconfigured profile must not read as a
+ * failed check. */
+export function EligibilityBadge({ check }: { check: EligibilityCheck }) {
+  const t = useTranslations("Portal.Shared")
+  if (check.unknown) {
+    return (
+      <Badge variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border">
+        {t(`crm_eligibility_${check.unknown}`)}
+      </Badge>
+    )
+  }
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px]",
+        check.eligible
+          ? "bg-success/10 text-success border-success/20"
+          : "bg-destructive/10 text-destructive border-destructive/20"
+      )}
+      title={t("crm_eligibility_detail", { required: check.required ?? 0, held: check.held ?? 0 })}
+    >
+      {t(check.eligible ? "crm_eligibility_yes" : "crm_eligibility_no")}
+    </Badge>
+  )
+}
+
 function OpportunityCard({
   opp,
+  detailHref,
   contactHref,
   canManage,
   isMoving,
+  blocking,
   onMove,
   onEdit,
   onDelete,
 }: {
   opp: CrmOpportunity
+  detailHref: string
   contactHref: string
   canManage: boolean
   isMoving: boolean
+  blocking: number
   onMove: (stage: OpportunityStage) => void
   onEdit: () => void
   onDelete: () => void
@@ -473,10 +643,28 @@ function OpportunityCard({
   const days = daysUntil(opp.expectedCloseDate)
   const isOverdue = days !== null && days < 0
   const isDueSoon = days !== null && days >= 0 && days <= 7
+  const scope = primaryScope(opp)
+  const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
 
   return (
     <article className="rounded-lg border bg-card p-3 space-y-2">
-      <p className="text-sm font-bold text-foreground line-clamp-2">{opp.title}</p>
+      <div className="flex items-start justify-between gap-2">
+        <Link
+          href={detailHref}
+          className="text-sm font-bold text-foreground hover:text-primary hover:underline line-clamp-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        >
+          {opp.title}
+        </Link>
+        <Badge variant="outline" className={cn("shrink-0 text-[9px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
+          {t(`crm_track_${opportunityTrack(opp)}`)}
+        </Badge>
+      </div>
+      {(scope || opp.customScopeType) && (
+        <p className="text-[10px] text-muted-foreground truncate">
+          {scope ? t(`crm_scope_${scope}`) : opp.customScopeType}
+          {extraScopes > 0 && <span dir="ltr"> +{extraScopes}</span>}
+        </p>
+      )}
       <Link
         href={contactHref}
         className="block text-xs text-primary hover:underline truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
@@ -484,6 +672,13 @@ function OpportunityCard({
         {opp.contactName || t("crm_opp_open_contact")}
       </Link>
       <p className="text-sm font-black text-foreground" dir="ltr">{formatSar(opp.value, locale)}</p>
+      {/* What is actually stopping this card from moving right. */}
+      {blocking > 0 && (
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+          <AlertTriangle size={11} className="shrink-0 text-warning" />
+          {t("crm_gates_blocking", { count: blocking })}
+        </p>
+      )}
       {opp.expectedCloseDate && (
         <p
           className={cn(

@@ -5,9 +5,11 @@ import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import {
+  CRM_ACTIVITIES,
   CRM_CONTACTS,
   CRM_OPPORTUNITIES,
   CRM_QUOTATIONS,
+  type CrmActivity,
   type CrmContact,
   type CrmOpportunity,
   type CrmQuotation,
@@ -25,10 +27,14 @@ export interface TeamMember {
  * queries identical across the contractor and supplier portals — the ONLY
  * thing separating the two portals' data is this `organizationId`.
  *
- * Opportunities and quotations are opt-in: the leads list does not need them,
- * so it does not pay for the listener.
+ * Opportunities, quotations and activities are opt-in: the leads list does not
+ * need them, so it does not pay for the listener.
  */
-export function useCrmData(options?: { opportunities?: boolean; quotations?: boolean }) {
+export function useCrmData(options?: {
+  opportunities?: boolean
+  quotations?: boolean
+  activities?: boolean
+}) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { organizationId, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
@@ -58,9 +64,16 @@ export function useCrmData(options?: { opportunities?: boolean; quotations?: boo
   }, [firestore, orgId, options?.quotations])
   const { data: quotesData, isLoading: quotesLoading } = useCollection(quotesQuery)
 
+  const activitiesQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId || !options?.activities) return null
+    return query(collection(firestore, CRM_ACTIVITIES), where("organizationId", "==", orgId))
+  }, [firestore, orgId, options?.activities])
+  const { data: activitiesData, isLoading: activitiesLoading } = useCollection(activitiesQuery)
+
   const contacts = useMemo(() => (contactsData || []) as CrmContact[], [contactsData])
   const opportunities = useMemo(() => (oppsData || []) as CrmOpportunity[], [oppsData])
   const quotations = useMemo(() => (quotesData || []) as CrmQuotation[], [quotesData])
+  const activities = useMemo(() => (activitiesData || []) as CrmActivity[], [activitiesData])
 
   const teamMembers = useMemo<TeamMember[]>(
     () =>
@@ -83,12 +96,14 @@ export function useCrmData(options?: { opportunities?: boolean; quotations?: boo
     contactsById,
     opportunities,
     quotations,
+    activities,
     teamMembers,
     isLoading:
       isUserLoading ||
       isProfileLoading ||
       contactsLoading ||
       (!!options?.opportunities && oppsLoading) ||
-      (!!options?.quotations && quotesLoading),
+      (!!options?.quotations && quotesLoading) ||
+      (!!options?.activities && activitiesLoading),
   }
 }

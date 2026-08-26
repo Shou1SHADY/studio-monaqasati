@@ -15,12 +15,9 @@ import {
   Trophy,
   User,
   Users,
-  X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   AlertDialog,
@@ -38,20 +35,30 @@ import { deleteContactCascade } from "@/lib/crm-writes"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
+import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
 import { cn } from "@/lib/utils"
 import {
+  CONTACT_TIERS,
   CONTACT_TYPES,
+  HEALTH_BAND_CLASS,
   LEAD_STATUSES,
+  PARTY_ROLES,
+  PARTY_TYPES,
   STATUS_BADGE_CLASS,
+  TIER_BADGE_CLASS,
   TYPE_BADGE_CLASS,
-  contactMatchesSearch,
-  summarizeLeads,
+  contactHealth,
+  contactPeople,
+  formatSarCompact,
+  isOpportunityOpen,
+  opportunityState,
+  partyRoles,
   toDate,
-  type ContactType,
   type CrmContact,
   type LeadStatus,
 } from "@/lib/crm"
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
+import { CrmShowMore, CrmSortHeader, CrmToolbar } from "@/components/crm/CrmToolbar"
 import {
   CrmEmptyState,
   CrmListSkeleton,
@@ -61,8 +68,7 @@ import {
   crmBasePath,
   type CrmPortal,
 } from "@/components/crm/CrmShell"
-
-type SortKey = "name" | "recent" | "status"
+import { summarizeLeads } from "@/lib/crm"
 
 /** Status ordering for the "Status" sort — pipeline order, not alphabetical. */
 const STATUS_RANK: Record<LeadStatus, number> = {
@@ -81,16 +87,10 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
   const { toast } = useToast()
   const { can } = usePermissions()
   const canManageCrm = can("crm.manage")
-  const { orgId, contacts, teamMembers, isLoading } = useCrmData()
+  const { orgId, contacts, opportunities, teamMembers, isLoading } = useCrmData({ opportunities: true })
   const base = crmBasePath(portal)
 
-  const [search, setSearch] = useState("")
-  const [typeFilter, setTypeFilter] = useState<ContactType | "all">("all")
-  const [statusFilter, setStatusFilter] = useState<LeadStatus | "all">("all")
-  const [ownerFilter, setOwnerFilter] = useState<string>("all")
-  const [sortKey, setSortKey] = useState<SortKey>("name")
   const [view, setView] = useState<"grid" | "table">("grid")
-
   const [showAdd, setShowAdd] = useState(false)
   const [editContact, setEditContact] = useState<CrmContact | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CrmContact | null>(null)
@@ -98,45 +98,124 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
 
   const summary = useMemo(() => summarizeLeads(contacts), [contacts])
 
-  const typeCounts = useMemo(() => {
-    const counts = { all: contacts.length } as Record<ContactType | "all", number>
-    for (const ct of CONTACT_TYPES) counts[ct] = 0
-    for (const c of contacts) if (c.type in counts) counts[c.type]++
-    return counts
-  }, [contacts])
-
-  const visible = useMemo(() => {
-    const filtered = contacts.filter((c) => {
-      if (typeFilter !== "all" && c.type !== typeFilter) return false
-      if (statusFilter !== "all" && (c.status || "new") !== statusFilter) return false
-      if (ownerFilter !== "all") {
-        if (ownerFilter === "__none__" ? !!c.ownerId : c.ownerId !== ownerFilter) return false
+  /** Per-party pipeline, computed once instead of inside every row. */
+  const pipelineByContact = useMemo(() => {
+    const map = new Map<string, { open: number; openValue: number; won: number }>()
+    for (const opp of opportunities) {
+      const row = map.get(opp.contactId) ?? { open: 0, openValue: 0, won: 0 }
+      if (isOpportunityOpen(opp)) {
+        row.open++
+        row.openValue += opp.value || 0
+      } else {
+        const state = opportunityState(opp)
+        if (state === "won" || state === "handed_over") row.won++
       }
-      return contactMatchesSearch(c, search)
-    })
+      map.set(opp.contactId, row)
+    }
+    return map
+  }, [opportunities])
 
-    const collator = new Intl.Collator(locale === "ar" ? "ar" : "en")
-    return filtered.sort((a, b) => {
-      if (sortKey === "name") return collator.compare(a.name || "", b.name || "")
-      if (sortKey === "status") {
-        const diff = STATUS_RANK[a.status || "new"] - STATUS_RANK[b.status || "new"]
-        return diff !== 0 ? diff : collator.compare(a.name || "", b.name || "")
-      }
-      const aTime = toDate(a.createdAt)?.getTime() ?? 0
-      const bTime = toDate(b.createdAt)?.getTime() ?? 0
-      return bTime - aTime
-    })
-  }, [contacts, typeFilter, statusFilter, ownerFilter, search, sortKey, locale])
+  const healthOf = (contact: CrmContact) => contactHealth(contact, pipelineByContact.get(contact.id)?.won ?? 0)
 
-  const hasActiveFilters =
-    !!search || typeFilter !== "all" || statusFilter !== "all" || ownerFilter !== "all"
+  const listConfig = useMemo<CrmListConfig<CrmContact>>(
+    () => ({
+      segments: [
+        { key: "all", label: t("crm_tab_all"), predicate: () => true },
+        {
+          key: "active",
+          label: t("crm_leads_segment_active"),
+          predicate: (c) => (pipelineByContact.get(c.id)?.open ?? 0) > 0,
+        },
+        {
+          key: "contracted",
+          label: t("crm_leads_segment_contracted"),
+          predicate: (c) => (pipelineByContact.get(c.id)?.won ?? 0) > 0,
+        },
+        {
+          key: "risk",
+          label: t("crm_leads_segment_risk"),
+          predicate: (c) => (c.overdueAmount || 0) > 0 || (c.paymentDays || 0) > 100,
+        },
+        {
+          key: "incomplete",
+          label: t("crm_leads_segment_incomplete"),
+          predicate: (c) => contactPeople(c).length === 0 && !c.phone && !c.email,
+        },
+      ],
+      facets: [
+        {
+          key: "type",
+          label: t("crm_type"),
+          options: CONTACT_TYPES.map((ct) => ({ value: ct, label: t(`crm_type_${ct}`) })),
+          valueOf: (c) => c.type,
+        },
+        {
+          key: "partyType",
+          label: t("crm_party_type"),
+          options: PARTY_TYPES.map((pt) => ({ value: pt, label: t(`crm_party_type_${pt}`) })),
+          valueOf: (c) => c.partyType ?? null,
+        },
+        {
+          key: "role",
+          label: t("crm_party_roles"),
+          options: PARTY_ROLES.map((r) => ({ value: r, label: t(`crm_party_role_${r}`) })),
+          valueOf: (c) => partyRoles(c),
+        },
+        {
+          key: "status",
+          label: t("crm_status"),
+          options: LEAD_STATUSES.map((s) => ({ value: s, label: t(`crm_status_${s}`) })),
+          valueOf: (c) => c.status || "new",
+        },
+        {
+          key: "tier",
+          label: t("crm_tier"),
+          options: CONTACT_TIERS.map((tr) => ({ value: tr, label: t(`crm_tier_${tr}`) })),
+          valueOf: (c) => c.tier ?? null,
+        },
+        {
+          key: "owner",
+          label: t("crm_owner"),
+          options: teamMembers.map((m) => ({ value: m.id, label: m.name })),
+          valueOf: (c) => c.ownerId ?? null,
+        },
+      ],
+      savedViews: [
+        { key: "all", label: t("crm_view_all_parties"), segment: "all", sort: { key: "name", direction: 1 } },
+        { key: "active", label: t("crm_leads_segment_active"), segment: "active", sort: { key: "pipeline", direction: -1 } },
+        { key: "contracted", label: t("crm_leads_segment_contracted"), segment: "contracted", sort: { key: "name", direction: 1 } },
+        { key: "risk", label: t("crm_leads_segment_risk"), segment: "risk", sort: { key: "overdue", direction: -1 } },
+        { key: "incomplete", label: t("crm_leads_segment_incomplete"), segment: "incomplete", sort: { key: "name", direction: 1 } },
+      ],
+      groups: [
+        { key: "partyType", label: t("crm_party_type"), keyOf: (c) => (c.partyType ? t(`crm_party_type_${c.partyType}`) : t("crm_not_specified")) },
+        { key: "type", label: t("crm_type"), keyOf: (c) => t(`crm_type_${c.type}`) },
+        { key: "owner", label: t("crm_owner"), keyOf: (c) => c.ownerName || t("crm_owner_none") },
+        { key: "city", label: t("crm_city"), keyOf: (c) => c.city || "—" },
+      ],
+      sorts: [
+        { key: "name", valueOf: (c) => c.name || "" },
+        { key: "status", valueOf: (c) => STATUS_RANK[c.status || "new"] },
+        { key: "recent", valueOf: (c) => -(toDate(c.createdAt)?.getTime() ?? 0) },
+        { key: "pipeline", valueOf: (c) => pipelineByContact.get(c.id)?.openValue ?? 0 },
+        { key: "payment", valueOf: (c) => c.paymentDays ?? 0 },
+        { key: "overdue", valueOf: (c) => c.overdueAmount ?? 0 },
+        { key: "health", valueOf: (c) => healthOf(c).score },
+      ],
+      searchText: (c) =>
+        [c.name, c.company, c.phone, c.email, c.ownerName, c.city, c.crNumber]
+          .concat(contactPeople(c).flatMap((p) => [p.name, p.title ?? "", p.phone ?? ""]))
+          .filter(Boolean)
+          .join(" "),
+      isMine: (c) => !!c.ownerId && teamMembers.some((m) => m.id === c.ownerId),
+      defaultSegment: "all",
+      defaultSort: { key: "name", direction: 1 },
+      pageSize: 18,
+    }),
+    [t, teamMembers, pipelineByContact]
+  )
 
-  const clearFilters = () => {
-    setSearch("")
-    setTypeFilter("all")
-    setStatusFilter("all")
-    setOwnerFilter("all")
-  }
+  const state = useCrmListState(contacts, listConfig, locale)
 
   const handleDelete = async () => {
     if (!firestore || !deleteTarget) return
@@ -160,6 +239,29 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
     </Button>
   ) : undefined
 
+  const viewSwitch = (
+    <div className="flex rounded-lg border p-0.5">
+      {(["grid", "table"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => setView(mode)}
+          aria-pressed={view === mode}
+          className={cn(
+            "px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            view === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {t(mode === "grid" ? "crm_view_grid" : "crm_view_table")}
+        </button>
+      ))}
+    </div>
+  )
+
+  const cellPad = state.dense ? "py-1.5" : ""
+  const columnCount = canManageCrm ? 9 : 8
+
   return (
     <CrmShell
       portal={portal}
@@ -175,107 +277,9 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
         <CrmStat icon={Trophy} label={t("crm_stat_win_rate")} value={`${summary.winRate}%`} accent="accent" />
       </CrmStatRow>
 
-      {/* Relationship-type rail — always rendered so a filtered-to-empty list
-          still offers a way back, which the old tabs did not. */}
-      <div className="flex flex-wrap gap-2">
-        {(["all", ...CONTACT_TYPES] as const).map((ct) => (
-          <button
-            key={ct}
-            type="button"
-            onClick={() => setTypeFilter(ct)}
-            aria-pressed={typeFilter === ct}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              typeFilter === ct
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted/40 text-muted-foreground hover:bg-muted"
-            )}
-          >
-            {ct === "all" ? t("crm_tab_all") : t(`crm_type_${ct}`)}
-            <span
-              className={cn(
-                "ms-1.5 rounded-full px-1.5 text-xs",
-                typeFilter === ct ? "bg-white/20" : "bg-background/70"
-              )}
-            >
-              {typeCounts[ct] ?? 0}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
-        <div className="relative flex-1 min-w-0">
-          <Search size={15} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("crm_search_placeholder")}
-            className="ps-9"
-            aria-label={t("crm_search_placeholder")}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as LeadStatus | "all")}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_filter_status")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crm_filter_all_statuses")}</SelectItem>
-              {LEAD_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>{t(`crm_status_${s}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_filter_owner")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("crm_filter_all_owners")}</SelectItem>
-              <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
-              {teamMembers.map((m) => (
-                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
-            <SelectTrigger className="w-[150px]" aria-label={t("crm_sort_label")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="name">{t("crm_sort_name")}</SelectItem>
-              <SelectItem value="recent">{t("crm_sort_recent")}</SelectItem>
-              <SelectItem value="status">{t("crm_sort_status")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <div className="flex rounded-lg border p-0.5">
-            {(["grid", "table"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setView(mode)}
-                aria-pressed={view === mode}
-                aria-label={t(mode === "grid" ? "crm_view_grid" : "crm_view_table")}
-                className={cn(
-                  "px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  view === mode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {t(mode === "grid" ? "crm_view_grid" : "crm_view_table")}
-              </button>
-            ))}
-          </div>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 text-muted-foreground hover:text-destructive">
-              <X size={13} />
-              {t("crm_clear_filters")}
-            </Button>
-          )}
-        </div>
-      </div>
+      {!isLoading && contacts.length > 0 && (
+        <CrmToolbar config={listConfig} state={state} extra={viewSwitch} />
+      )}
 
       {isLoading ? (
         <CrmListSkeleton />
@@ -291,97 +295,182 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
             </Button>
           ) : undefined}
         />
-      ) : visible.length === 0 ? (
+      ) : state.filtered.length === 0 ? (
         <CrmEmptyState
           icon={Search}
           title={t("crm_no_results")}
           description={t("crm_no_results_desc")}
-          action={<Button variant="outline" size="sm" onClick={clearFilters}>{t("crm_clear_filters")}</Button>}
+          action={<Button variant="outline" size="sm" onClick={state.clearAll}>{t("crm_clear_filters")}</Button>}
         />
-      ) : (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {t("crm_showing_count", { shown: visible.length, total: contacts.length })}
-          </p>
-          {view === "grid" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {visible.map((contact) => (
-                <ContactCard
-                  key={contact.id}
-                  contact={contact}
-                  href={`${base}/leads/${contact.id}`}
-                  canManage={canManageCrm}
-                  onEdit={() => setEditContact(contact)}
-                  onDelete={() => setDeleteTarget(contact)}
-                />
-              ))}
+      ) : view === "grid" ? (
+        <div className="space-y-4">
+          {state.grouped.map((bucket) => (
+            <div key={bucket.key || "__all"} className="space-y-3">
+              {bucket.label && (
+                <h2 className="flex items-center gap-2 text-xs font-black text-foreground">
+                  {bucket.label}
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] font-bold text-muted-foreground" dir="ltr">
+                    {bucket.rows.length}
+                  </span>
+                </h2>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {bucket.rows.map((contact) => (
+                  <ContactCard
+                    key={contact.id}
+                    contact={contact}
+                    href={`${base}/leads/${contact.id}`}
+                    health={healthOf(contact)}
+                    openDeals={pipelineByContact.get(contact.id)?.open ?? 0}
+                    canManage={canManageCrm}
+                    onEdit={() => setEditContact(contact)}
+                    onDelete={() => setDeleteTarget(contact)}
+                  />
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="rounded-xl border overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("crm_col_name")}</TableHead>
-                    <TableHead>{t("crm_col_type")}</TableHead>
-                    <TableHead>{t("crm_col_status")}</TableHead>
-                    <TableHead>{t("crm_col_contact")}</TableHead>
-                    <TableHead>{t("crm_col_owner")}</TableHead>
-                    {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visible.map((contact) => (
-                    <TableRow key={contact.id}>
-                      <TableCell>
-                        <Link
-                          href={`${base}/leads/${contact.id}`}
-                          className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                        >
-                          {contact.name}
-                        </Link>
-                        {contact.company && (
-                          <p className="text-xs text-muted-foreground truncate">{contact.company}</p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={cn("text-[10px]", TYPE_BADGE_CLASS[contact.type])}>
-                          {t(`crm_type_${contact.type}`)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={cn("text-[10px]", STATUS_BADGE_CLASS[contact.status || "new"])}>
-                          {t(`crm_status_${contact.status || "new"}`)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {contact.phone && <span className="block" dir="ltr">{contact.phone}</span>}
-                        {contact.email && <span className="block truncate" dir="ltr">{contact.email}</span>}
-                        {!contact.phone && !contact.email && "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {contact.ownerName || t("crm_owner_none")}
-                      </TableCell>
-                      {canManageCrm && (
-                        <TableCell>
-                          <div className="flex items-center gap-1 justify-end">
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                              onClick={() => setEditContact(contact)} aria-label={t("crm_edit_title")}>
-                              <Pencil size={13} />
-                            </Button>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteTarget(contact)} aria-label={t("crm_delete_btn")}>
-                              <Trash2 size={13} />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          ))}
+          {state.hasMore && (
+            <Button variant="outline" size="sm" className="w-full" onClick={state.showMore}>
+              {t("crm_show_more", { count: state.matching - state.shown })}
+            </Button>
           )}
-        </>
+        </div>
+      ) : (
+        <div className="rounded-xl border overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead><CrmSortHeader state={state} sortKey="name" label={t("crm_col_name")} /></TableHead>
+                  <TableHead>{t("crm_party_roles")}</TableHead>
+                  <TableHead>{t("crm_tier")}</TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="status" label={t("crm_col_status")} /></TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="pipeline" label={t("crm_leads_col_pipeline")} /></TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="payment" label={t("crm_leads_col_payment")} /></TableHead>
+                  <TableHead><CrmSortHeader state={state} sortKey="health" label={t("crm_health")} /></TableHead>
+                  <TableHead>{t("crm_col_owner")}</TableHead>
+                  {canManageCrm && <TableHead className="text-end">{t("crm_col_actions")}</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {state.grouped.map((bucket) => (
+                  <GroupFragment key={bucket.key || "__all"} label={bucket.label} count={bucket.rows.length} colSpan={columnCount}>
+                    {bucket.rows.map((contact) => {
+                      const health = healthOf(contact)
+                      const pipeline = pipelineByContact.get(contact.id)
+                      const people = contactPeople(contact)
+                      return (
+                        <TableRow key={contact.id}>
+                          <TableCell className={cellPad}>
+                            <Link
+                              href={`${base}/leads/${contact.id}`}
+                              className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                            >
+                              {contact.name}
+                            </Link>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {[contact.partyType ? t(`crm_party_type_${contact.partyType}`) : null, contact.city]
+                                .filter(Boolean)
+                                .join(" · ") || contact.company || "—"}
+                            </p>
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <div className="flex flex-wrap gap-1">
+                              {partyRoles(contact).map((role) => (
+                                <Badge key={role} variant="outline" className="text-[10px] bg-muted text-muted-foreground border-border">
+                                  {t(`crm_party_role_${role}`)}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            {contact.tier ? (
+                              <Badge variant="outline" className={cn("text-[10px]", TIER_BADGE_CLASS[contact.tier])}>
+                                {contact.tier}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <Badge variant="outline" className={cn("text-[10px]", STATUS_BADGE_CLASS[contact.status || "new"])}>
+                              {t(`crm_status_${contact.status || "new"}`)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn("text-xs", cellPad)}>
+                            {pipeline && pipeline.open > 0 ? (
+                              <span>
+                                <span className="font-bold text-foreground" dir="ltr">{pipeline.open}</span>
+                                <span className="block text-muted-foreground" dir="ltr">
+                                  {formatSarCompact(pipeline.openValue, locale)}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cn("text-xs", cellPad)}>
+                            {typeof contact.paymentDays === "number" ? (
+                              <span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px]",
+                                    contact.paymentDays > 100
+                                      ? "bg-destructive/10 text-destructive border-destructive/20"
+                                      : contact.paymentDays > 70
+                                        ? "bg-warning/10 text-warning border-warning/20"
+                                        : "bg-success/10 text-success border-success/20"
+                                  )}
+                                >
+                                  <span dir="ltr">{contact.paymentDays}d</span>
+                                </Badge>
+                                {(contact.overdueAmount || 0) > 0 && (
+                                  <span className="block text-destructive font-semibold mt-0.5" dir="ltr">
+                                    {formatSarCompact(contact.overdueAmount, locale)}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className={cellPad}>
+                            <Badge variant="outline" className={cn("text-[10px]", HEALTH_BAND_CLASS[health.band])}>
+                              <span dir="ltr">{health.score}</span>
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn("text-xs text-muted-foreground", cellPad)}>
+                            {contact.ownerName || t("crm_owner_none")}
+                            {people.length > 0 && (
+                              <span className="block text-[10px]">{t("crm_people_count", { count: people.length })}</span>
+                            )}
+                          </TableCell>
+                          {canManageCrm && (
+                            <TableCell className={cellPad}>
+                              <div className="flex items-center gap-1 justify-end">
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                  onClick={() => setEditContact(contact)} aria-label={`${t("crm_edit_title")} — ${contact.name}`}>
+                                  <Pencil size={13} />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setDeleteTarget(contact)} aria-label={`${t("crm_delete_btn")} — ${contact.name}`}>
+                                  <Trash2 size={13} />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      )
+                    })}
+                  </GroupFragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <CrmShowMore state={state} />
+        </div>
       )}
 
       <CrmContactDialog open={showAdd} onOpenChange={setShowAdd} orgId={orgId} teamMembers={teamMembers} />
@@ -420,20 +509,56 @@ export function CrmLeadsView({ portal }: { portal: CrmPortal }) {
   )
 }
 
+function GroupFragment({
+  label,
+  count,
+  colSpan,
+  children,
+}: {
+  label: string
+  count: number
+  colSpan: number
+  children: React.ReactNode
+}) {
+  if (!label) return <>{children}</>
+  return (
+    <>
+      <TableRow className="bg-muted/40 hover:bg-muted/40">
+        <TableCell colSpan={colSpan} className="py-2">
+          <span className="flex items-center gap-2 text-xs font-black text-foreground">
+            {label}
+            <span className="rounded-full bg-background px-1.5 text-[10px] font-bold text-muted-foreground" dir="ltr">
+              {count}
+            </span>
+          </span>
+        </TableCell>
+      </TableRow>
+      {children}
+    </>
+  )
+}
+
 function ContactCard({
   contact,
   href,
+  health,
+  openDeals,
   canManage,
   onEdit,
   onDelete,
 }: {
   contact: CrmContact
   href: string
+  health: ReturnType<typeof contactHealth>
+  openDeals: number
   canManage: boolean
   onEdit: () => void
   onDelete: () => void
 }) {
   const t = useTranslations("Portal.Shared")
+  const people = contactPeople(contact)
+  // The first named person is the one someone will actually call.
+  const primaryPerson = people[0]
 
   return (
     <div className="group relative rounded-xl border bg-card p-4 transition-shadow hover:shadow-md focus-within:ring-2 focus-within:ring-ring">
@@ -445,10 +570,10 @@ function ContactCard({
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
             <p className="font-bold text-primary truncate">{contact.name}</p>
-            {contact.company && (
+            {(contact.partyType || contact.company) && (
               <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
                 <Building2 size={11} className="shrink-0" />
-                {contact.company}
+                {contact.partyType ? t(`crm_party_type_${contact.partyType}`) : contact.company}
               </p>
             )}
           </div>
@@ -461,22 +586,59 @@ function ContactCard({
             </Badge>
           </div>
         </div>
-        {(contact.phone || contact.email) && (
-          <div className="space-y-1 mt-3 text-xs text-muted-foreground">
-            {contact.phone && (
+
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          {contact.tier && (
+            <Badge variant="outline" className={cn("text-[10px]", TIER_BADGE_CLASS[contact.tier])}>
+              {contact.tier}
+            </Badge>
+          )}
+          <Badge variant="outline" className={cn("text-[10px]", HEALTH_BAND_CLASS[health.band])}>
+            {t("crm_health")} <span dir="ltr" className="ms-1">{health.score}</span>
+          </Badge>
+          {openDeals > 0 && (
+            <Badge variant="outline" className="text-[10px] bg-cta/10 text-cta border-cta/20">
+              {t("crm_leads_open_deals", { count: openDeals })}
+            </Badge>
+          )}
+        </div>
+
+        {primaryPerson ? (
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p className="flex items-center gap-1.5 truncate">
+              <User size={11} className="shrink-0" />
+              <span className="font-semibold text-foreground">{primaryPerson.name}</span>
+              {primaryPerson.title && <span className="truncate">· {primaryPerson.title}</span>}
+            </p>
+            {primaryPerson.phone && (
               <p className="flex items-center gap-1.5" dir="ltr">
                 <Phone size={11} className="shrink-0" />
-                {contact.phone}
+                {primaryPerson.phone}
               </p>
             )}
-            {contact.email && (
-              <p className="flex items-center gap-1.5 truncate" dir="ltr">
-                <Mail size={11} className="shrink-0" />
-                {contact.email}
-              </p>
+            {people.length > 1 && (
+              <p className="text-[10px]">{t("crm_people_count", { count: people.length })}</p>
             )}
           </div>
+        ) : (
+          (contact.phone || contact.email) && (
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {contact.phone && (
+                <p className="flex items-center gap-1.5" dir="ltr">
+                  <Phone size={11} className="shrink-0" />
+                  {contact.phone}
+                </p>
+              )}
+              {contact.email && (
+                <p className="flex items-center gap-1.5 truncate" dir="ltr">
+                  <Mail size={11} className="shrink-0" />
+                  {contact.email}
+                </p>
+              )}
+            </div>
+          )
         )}
+
         <p className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
           <User size={11} className="shrink-0" />
           {contact.ownerName || t("crm_owner_none")}

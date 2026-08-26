@@ -8,11 +8,14 @@ import {
   ArrowRight,
   Building2,
   CalendarDays,
+  ClipboardList,
   Coins,
   Contact,
   FileText,
+  Hash,
   Loader2,
   Mail,
+  MapPin,
   Pencil,
   Phone,
   Plus,
@@ -38,19 +41,26 @@ import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
-import { deleteContactCascade } from "@/lib/crm-writes"
+import { deleteContactCascade, deleteOpportunityCascade } from "@/lib/crm-writes"
 import { cn } from "@/lib/utils"
 import {
+  ACTIVITY_TYPE_BADGE_CLASS,
   CRM_CONTACTS,
-  CRM_OPPORTUNITIES,
   CRM_QUOTATIONS,
+  HEALTH_BAND_CLASS,
   OPPORTUNITY_STAGE_BADGE_CLASS,
+  OPPORTUNITY_STATE_BADGE_CLASS,
   QUOTATION_STATUS_BADGE_CLASS,
   STATUS_BADGE_CLASS,
+  TIER_BADGE_CLASS,
+  TRACK_BADGE_CLASS,
   TYPE_BADGE_CLASS,
+  contactHealth,
   daysUntil,
   formatCrmDate,
   formatSar,
+  opportunityState,
+  opportunityTrack,
   summarizeOpportunities,
   type CrmContact,
   type CrmOpportunity,
@@ -59,6 +69,7 @@ import {
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
 import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
+import { CrmActivityDialog } from "@/components/crm/CrmActivityDialog"
 import { CrmEmptyState, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
 
 export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
@@ -74,9 +85,10 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const canManageCrm = can("crm.manage")
   const base = crmBasePath(portal)
 
-  const { orgId, opportunities, quotations, teamMembers, isLoading: isCrmLoading } = useCrmData({
+  const { orgId, opportunities, quotations, activities, teamMembers, isLoading: isCrmLoading } = useCrmData({
     opportunities: true,
     quotations: true,
+    activities: true,
   })
 
   const contactRef = useMemoFirebase(() => {
@@ -94,6 +106,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const [showAddQuote, setShowAddQuote] = useState(false)
   const [editQuote, setEditQuote] = useState<CrmQuotation | null>(null)
   const [deleteQuote, setDeleteQuote] = useState<CrmQuotation | null>(null)
+  const [showAddActivity, setShowAddActivity] = useState(false)
 
   const raw = contactData as (Omit<CrmContact, "id"> | null)
   // A contact from another organization must read as "not found", not as a
@@ -109,6 +122,17 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const contactQuotations = useMemo(
     () => quotations.filter((q) => q.contactId === contactId),
     [quotations, contactId]
+  )
+  const contactActivities = useMemo(
+    () =>
+      activities
+        .filter((a) => a.contactId === contactId)
+        // Open first, soonest-due first; undated commitments sink to the end.
+        .sort((a, b) => {
+          if (!!a.done !== !!b.done) return a.done ? 1 : -1
+          return (a.dueDate || "9999-99-99").localeCompare(b.dueDate || "9999-99-99")
+        }),
+    [activities, contactId]
   )
   const oppSummary = useMemo(() => summarizeOpportunities(contactOpportunities), [contactOpportunities])
   const quotedValue = useMemo(
@@ -133,7 +157,8 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const handleDeleteOpp = async () => {
     if (!firestore || !deleteOpp) return
     try {
-      await deleteDoc(doc(firestore, CRM_OPPORTUNITIES, deleteOpp.id))
+      // Takes the deal's offer versions with it and unlinks its activities.
+      await deleteOpportunityCascade(firestore, deleteOpp.id, deleteOpp.organizationId || orgId)
       toast({ title: t("crm_opp_deleted") })
     } catch (err) {
       console.error(err)
@@ -181,6 +206,10 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
     )
   }
 
+  // Plain function, not a hook — safe to compute after the early returns
+  // above, which is the only place `contact` is known to be non-null.
+  const health = contactHealth(contact, oppSummary.won)
+
   return (
     <>
       <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
@@ -199,6 +228,16 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
               <Badge className={cn("text-[10px]", TYPE_BADGE_CLASS[contact.type])}>{t(`crm_type_${contact.type}`)}</Badge>
               <Badge variant="outline" className={cn("text-[10px]", STATUS_BADGE_CLASS[contact.status || "new"])}>
                 {t(`crm_status_${contact.status || "new"}`)}
+              </Badge>
+              {contact.tier && (
+                <Badge variant="outline" className={cn("text-[10px]", TIER_BADGE_CLASS[contact.tier])}>
+                  {t(`crm_tier_${contact.tier}`)}
+                </Badge>
+              )}
+              {/* Satisfaction, payment behaviour and repeat business in one
+                  number — the thing a rep needs before picking up the phone. */}
+              <Badge variant="outline" className={cn("text-[10px]", HEALTH_BAND_CLASS[health.band])} title={t("crm_health")}>
+                {t("crm_health")} <span dir="ltr">{health.score}</span>
               </Badge>
             </div>
             {contact.company && (
@@ -252,6 +291,24 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
           {contact.entityType && (
             <InfoField icon={Building2} label={t("crm_entity_type")}>{t(`crm_entity_${contact.entityType}`)}</InfoField>
           )}
+          {contact.city && <InfoField icon={MapPin} label={t("crm_city")}>{contact.city}</InfoField>}
+          {contact.crNumber && (
+            <InfoField icon={Hash} label={t("crm_cr_number")}>
+              <span dir="ltr">{contact.crNumber}</span>
+            </InfoField>
+          )}
+          {typeof contact.paymentDays === "number" && (
+            <InfoField icon={Coins} label={t("crm_payment_days")}>
+              <span dir="ltr" className={cn(contact.paymentDays > 60 && "text-destructive font-semibold")}>
+                {contact.paymentDays}
+              </span>
+            </InfoField>
+          )}
+          {typeof contact.satisfaction === "number" && (
+            <InfoField icon={Tag} label={t("crm_satisfaction")}>
+              <span dir="ltr">{contact.satisfaction}</span>
+            </InfoField>
+          )}
           {contact.notes && (
             <div className="sm:col-span-2 text-sm text-muted-foreground bg-muted/40 rounded-lg p-3 whitespace-pre-wrap">
               {contact.notes}
@@ -289,14 +346,21 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
                   <li key={opp.id} className="flex items-center justify-between gap-3 px-5 py-3.5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-bold text-sm text-foreground truncate">{opp.title}</p>
+                        <Link
+                          href={`${base}/opportunities/${opp.id}`}
+                          className="font-bold text-sm text-primary hover:underline truncate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        >
+                          {opp.title}
+                        </Link>
+                        <Badge variant="outline" className={cn("text-[10px]", TRACK_BADGE_CLASS[opportunityTrack(opp)])}>
+                          {t(`crm_track_${opportunityTrack(opp)}`)}
+                        </Badge>
                         <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opp.stage])}>
                           {t(`crm_opp_stage_${opp.stage}`)}
                         </Badge>
-                        {opp.rfqId && (
-                          <Badge variant="outline" className="text-[10px] gap-1">
-                            <FileText size={9} />
-                            {t("crm_opp_linked_rfq")}
+                        {opportunityState(opp) !== "open" && (
+                          <Badge variant="outline" className={cn("text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[opportunityState(opp)])}>
+                            {t(`crm_state_${opportunityState(opp)}`)}
                           </Badge>
                         )}
                       </div>
@@ -384,7 +448,68 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
             </ul>
           )}
         </section>
+
+        {/* Activities — the record of contact with this party. */}
+        <section className="rounded-xl border overflow-hidden">
+          <header className="flex items-center justify-between px-5 py-3.5 border-b bg-muted/30">
+            <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+              <ClipboardList size={15} className="text-primary" />
+              {t("crm_nav_activities")}
+              {contactActivities.length > 0 && (
+                <Badge variant="secondary" className="bg-primary/10 text-primary font-bold border-none">
+                  {contactActivities.length}
+                </Badge>
+              )}
+            </h2>
+            {canManageCrm && (
+              <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowAddActivity(true)}>
+                <Plus size={13} />
+                {t("crm_activity_add_btn")}
+              </Button>
+            )}
+          </header>
+          {contactActivities.length === 0 ? (
+            <p className="p-8 text-center text-sm text-muted-foreground">{t("crm_activities_empty")}</p>
+          ) : (
+            <ul className="divide-y">
+              {contactActivities.slice(0, 8).map((activity) => {
+                const due = daysUntil(activity.dueDate)
+                return (
+                  <li key={activity.id} className="flex items-center gap-3 px-5 py-3">
+                    <Badge variant="outline" className={cn("shrink-0 text-[10px]", ACTIVITY_TYPE_BADGE_CLASS[activity.type])}>
+                      {t(`crm_activity_type_${activity.type}`)}
+                    </Badge>
+                    <span className={cn("min-w-0 flex-1 text-sm", activity.done && "line-through text-muted-foreground")}>
+                      {activity.title}
+                    </span>
+                    {activity.dueDate && (
+                      <span
+                        className={cn(
+                          "shrink-0 text-[11px] font-semibold",
+                          !activity.done && due !== null && due < 0 ? "text-destructive" : "text-muted-foreground"
+                        )}
+                        dir="ltr"
+                      >
+                        {formatCrmDate(activity.dueDate, locale)}
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
       </div>
+
+      <CrmActivityDialog
+        open={showAddActivity}
+        onOpenChange={setShowAddActivity}
+        orgId={orgId}
+        contacts={contact ? [contact] : []}
+        opportunities={contactOpportunities}
+        teamMembers={teamMembers}
+        fixedContactId={contactId}
+      />
 
       <CrmContactDialog
         open={showEdit}

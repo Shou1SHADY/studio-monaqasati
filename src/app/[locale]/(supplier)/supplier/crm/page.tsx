@@ -4,5 +4,5 @@ import { redirect } from "@/i18n/routing"
  * redirect rather than a page of its own. */
 export default async function SupplierCrmPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params
-  redirect({ href: "/supplier/crm/leads", locale })
+  redirect({ href: "/supplier/crm/dashboard", locale })
 }

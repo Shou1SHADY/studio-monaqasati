@@ -23,6 +23,7 @@
 import type { ElementType } from "react"
 import {
   LayoutDashboard,
+  SlidersHorizontal,
   FolderOpen,
   PlusCircle,
   FileText,
@@ -218,7 +219,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "crm",
     labelKey: "component_crm",
     descKey: "component_crm_desc",
-    homeHref: "/contractor/crm/leads",
+    homeHref: "/contractor/crm/dashboard",
     icon: Contact,
     accentToken: "destructive",
     displayOrder: 1,
@@ -226,9 +227,11 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_crm",
         items: [
+          { titleKey: "crm_nav_dashboard", href: "/contractor/crm/dashboard", icon: LayoutDashboard, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_leads", href: "/contractor/crm/leads", icon: Contact, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_opportunities", href: "/contractor/crm/opportunities", icon: Target, requiredPermission: "crm.manage" },
-          { titleKey: "crm_nav_rfqs", href: "/contractor/crm/rfqs", icon: FileText, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_activities", href: "/contractor/crm/activities", icon: ClipboardList, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_settings", href: "/contractor/crm/settings", icon: SlidersHorizontal, requiredPermission: "crm.manage" },
         ],
       },
     ],
@@ -384,7 +387,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     id: "crm",
     labelKey: "component_crm",
     descKey: "supplier_component_crm_desc",
-    homeHref: "/supplier/crm/leads",
+    homeHref: "/supplier/crm/dashboard",
     icon: Contact,
     accentToken: "destructive",
     displayOrder: 1,
@@ -392,11 +395,13 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_crm",
         items: [
+          { titleKey: "crm_nav_dashboard", href: "/supplier/crm/dashboard", icon: LayoutDashboard, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_leads", href: "/supplier/crm/leads", icon: Contact, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_opportunities", href: "/supplier/crm/opportunities", icon: Target, requiredPermission: "crm.manage" },
-          { titleKey: "crm_nav_rfqs", href: "/supplier/crm/rfqs", icon: FileText, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_activities", href: "/supplier/crm/activities", icon: ClipboardList, requiredPermission: "crm.manage" },
+          { titleKey: "crm_nav_settings", href: "/supplier/crm/settings", icon: SlidersHorizontal, requiredPermission: "crm.manage" },
           // Connections (incoming contractor link requests) is a relationship
-          // inbox, so it belongs under CRM — it just is not one of the three
+          // inbox, so it belongs under CRM — it just is not one of the
           // pipeline pages.
           { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredPermission: "crm.manage" },
         ],
