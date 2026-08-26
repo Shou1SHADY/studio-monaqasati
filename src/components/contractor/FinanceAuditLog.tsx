@@ -8,7 +8,7 @@
 // previously) shows the exact same trail instead of keeping its own copy.
 
 import { useTranslations, useLocale } from "next-intl"
-import { BookMarked, Receipt, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
+import { BookMarked, Receipt, CheckCircle2, AlertTriangle, Loader2, Undo2 } from "lucide-react"
 import { useFinanceAuditLog, type FinanceAuditLogEntry } from "@/hooks/useFinanceAuditLog"
 import { formatCurrency } from "@/utils/invoice-utils"
 import { cn } from "@/lib/utils"
@@ -26,36 +26,42 @@ function fmtDateTime(val: unknown, locale: string) {
 function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: string; t: ReturnType<typeof useTranslations<"Portal.Contractor">> }) {
   const isBudgetException = entry.action === "budget_exception_override"
   const isWasteException = entry.action === "waste_threshold_exceeded"
+  const isReversal = entry.action === "waste_record_reversed"
   const isException = isBudgetException || isWasteException
   const isCollected = entry.action === "ipc_collected"
   const meta = entry.meta || {}
+  // A reversal is quantity-denominated like a waste event, not money-denominated.
+  const isQuantityEntry = isWasteException || isReversal
 
-  const Icon = isException ? AlertTriangle : isCollected ? CheckCircle2 : Receipt
+  const Icon = isException ? AlertTriangle : isReversal ? Undo2 : isCollected ? CheckCircle2 : Receipt
+  // Every action gets an explicit branch — the old chain ended in a bare fallback,
+  // so any new action silently rendered as "budget override".
   const label =
     entry.action === "ipc_submitted" ? t("finance_audit_ipc_submitted") :
     entry.action === "ipc_collected" ? t("finance_audit_ipc_collected") :
     isWasteException ? t("finance_audit_waste_exceeded") :
+    isReversal ? t("finance_audit_waste_reversed") :
     t("finance_audit_budget_override")
 
   return (
     <div
       className={cn(
         "flex items-start gap-3 px-4 py-3 rounded-xl border text-sm",
-        isException ? "bg-amber-50/70 border-amber-200/70" : "bg-slate-50 border-slate-100"
+        isException ? "bg-warning/10 border-warning/20" : "bg-muted border-border"
       )}
     >
       <div className={cn(
         "h-8 w-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
-        isException ? "bg-amber-100 text-amber-700" : isCollected ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
+        isException ? "bg-warning/15 text-warning" : isCollected ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
       )}>
         <Icon size={15} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-slate-700">
-            <span className="font-bold text-slate-900">{entry.actorName}</span>{" "}
+          <p className="text-foreground">
+            <span className="font-bold text-foreground">{entry.actorName}</span>{" "}
             {label}{" "}
-            {isWasteException ? (
+            {isQuantityEntry ? (
               <span className="font-semibold" dir="ltr">
                 {entry.amount} {typeof meta.unit === "string" ? meta.unit : ""}
               </span>
@@ -63,30 +69,32 @@ function EntryRow({ entry, locale, t }: { entry: FinanceAuditLogEntry; locale: s
               <span className="font-semibold" dir="ltr">{formatCurrency(entry.amount, locale)}</span>
             )}
           </p>
-          <span className="text-xs text-slate-400 shrink-0" suppressHydrationWarning>{fmtDateTime(entry.createdAt, locale)}</span>
+          <span className="text-xs text-muted-foreground shrink-0" suppressHydrationWarning>{fmtDateTime(entry.createdAt, locale)}</span>
         </div>
-        {isException && (
+        {/* Reversals carry a written justification too — without them here, the one
+            thing a reader wants to know about a correction stays hidden. */}
+        {(isException || isReversal) && (
           <div className="mt-1.5 space-y-1">
             {typeof meta.rfqTitle === "string" && meta.rfqTitle && (
-              <p className="text-xs text-slate-500 truncate">{meta.rfqTitle}</p>
+              <p className="text-xs text-muted-foreground truncate">{meta.rfqTitle}</p>
             )}
             {typeof meta.itemName === "string" && meta.itemName && (
-              <p className="text-xs text-slate-500 truncate">{meta.itemName}</p>
+              <p className="text-xs text-muted-foreground truncate">{meta.itemName}</p>
             )}
             {isBudgetException && typeof meta.overageAmount === "number" && (
-              <p className="text-xs font-semibold text-amber-700" dir="ltr">
+              <p className="text-xs font-semibold text-warning" dir="ltr">
                 {t("passport_overage_label")} {formatCurrency(meta.overageAmount, locale)}
               </p>
             )}
             {isWasteException && typeof meta.wastePercent === "number" && (
-              <p className="text-xs font-semibold text-amber-700" dir="ltr">
+              <p className="text-xs font-semibold text-warning" dir="ltr">
                 {t("passport_waste_percent_label")} {meta.wastePercent}%
                 {typeof meta.targetPercent === "number" ? ` (${t("passport_waste_target_label")} ${meta.targetPercent}%)` : ""}
               </p>
             )}
             {entry.reason && (
-              <p className="text-xs text-slate-600 bg-white/70 rounded-lg px-2.5 py-1.5 border border-amber-100">
-                <span className="font-bold text-amber-800">{t("passport_reason_label")}</span> {entry.reason}
+              <p className="text-xs text-muted-foreground bg-background/70 rounded-lg px-2.5 py-1.5 border border-warning/20">
+                <span className="font-bold text-warning">{t("passport_reason_label")}</span> {entry.reason}
               </p>
             )}
           </div>
@@ -105,7 +113,7 @@ export function FinanceAuditLog({ projectId }: { projectId: string | undefined }
   return (
     <div className="space-y-3" dir={isRtl ? "rtl" : "ltr"}>
       <div>
-        <h3 className="font-bold text-base flex items-center gap-2 text-slate-800">
+        <h3 className="font-bold text-base flex items-center gap-2 text-foreground">
           <BookMarked size={16} className="text-primary" />
           {t("passport_title")}
         </h3>

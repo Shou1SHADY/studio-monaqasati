@@ -131,7 +131,8 @@ import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { logFinanceAudit } from "@/lib/finance-audit"
-import { useProjectWasteStats } from "@/hooks/useProjectWasteStats"
+import { WasteLedger } from "@/components/contractor/WasteLedger"
+import { WASTE_REASON_CODES, wasteReasonMessageKey } from "@/lib/waste-reasons"
 import { useCentralWarehouse, resolveCentralForRegion } from "@/hooks/useCentralWarehouse"
 import { suggestWastePercent } from "@/ai/flows/suggest-waste-percent-flow"
 import { suggestBoqMaterials } from "@/ai/flows/suggest-boq-materials-flow"
@@ -415,7 +416,6 @@ export default function ProjectDetailPage() {
     return doc(firestore, "users", user.uid)
   }, [firestore, user])
   const { data: profile } = useDoc(userDocRef)
-  const wasteStats = useProjectWasteStats(isDeleting ? undefined : projectId)
 
   // Tenders with an accepted offer can't be edited/deleted even before they're formally Awarded
   const acceptedOffersQuery = useMemoFirebase(() => {
@@ -705,7 +705,7 @@ export default function ProjectDetailPage() {
     return collection(firestore, "warehouses", wid, "inventoryItems")
   }, [firestore, typedProject?.warehouseId])
   const { data: linkedInventoryData } = useCollection(linkedWarehouseInventoryQuery)
-  const linkedInventoryItems = (linkedInventoryData || []) as { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  const linkedInventoryItems = (linkedInventoryData || []) as { id: string; name: string; unit: string; unitCode?: string | null; unitCost?: number | null; quantity: number; trackingMode?: "unit" | null }[]
 
   // Fetch BOQ items + sections from Firestore — always reflects server state. Returns the
   // freshly-fetched data (not just setState) so callers that need to act on it immediately
@@ -2074,32 +2074,19 @@ export default function ProjectDetailPage() {
                 </div>
               )}
 
-              {wasteStats.totalTaken > 0 && (() => {
-                const target = typedProject?.wasteTargetPercent ?? 12
-                const over = wasteStats.wastePercent > target
-                return (
-                  <div className={cn(
-                    "flex items-center justify-between gap-4 flex-wrap rounded-xl border px-4 py-3",
-                    over ? "bg-warning/10 border-warning/20" : "bg-success/5 border-success/20"
-                  )}>
-                    <div className="flex items-center gap-2">
-                      <Scissors size={16} className={over ? "text-warning" : "text-success"} />
-                      <span className="text-sm font-bold text-foreground">{t("proj_waste_summary_title")}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
-                      <span>{t("proj_waste_taken_label")} <b className="text-foreground" dir="ltr">{wasteStats.totalTaken}</b></span>
-                      <span>{t("proj_waste_used_label")} <b className="text-foreground" dir="ltr">{wasteStats.totalUsed}</b></span>
-                      {/* dir="ltr" on the numbers only — see the note in the consume dialog. */}
-                      <span className={cn("font-bold", over ? "text-warning" : "text-success")}>
-                        <span dir="ltr">{wasteStats.wastePercent}%</span>{" "}
-                        <span className="font-normal">
-                          ({t("proj_waste_target_label")} <span dir="ltr">{target}%</span>)
-                        </span>
-                      </span>
-                    </div>
-                  </div>
-                )
-              })()}
+              {/* The waste ledger carries the same headline numbers this used to show,
+                  but backed by the entries they're computed from — so the percentage
+                  can be checked, corrected, and exported instead of just believed. */}
+              {projectId && !isDeleting && (
+                <WasteLedger
+                  projectId={projectId}
+                  projectName={typedProject?.name || ""}
+                  wasteTargetPercent={typedProject?.wasteTargetPercent ?? 12}
+                  canManage={can("projects.edit")}
+                  t={t}
+                  locale={locale}
+                />
+              )}
 
               <div className="flex items-center justify-between gap-3 flex-wrap bg-white border border-slate-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -3103,34 +3090,68 @@ export default function ProjectDetailPage() {
             const saved = await saveBoq({ silent: true, items: [...boqItems, ...newRows] })
             if (!saved) throw new Error("boq_save_failed") // saveBoq already surfaced the error
             const actorName = profile?.name || user.email || t("proj_team_member_fallback")
+
+            // Everything irreversible goes in ONE batch: stock deduction, barcode-unit
+            // status flips, and the waste records that account for them. These used to be
+            // separate awaits in a loop, so a failure on row 3 left rows 1-2 deducted with
+            // no way to tell from the UI. A batch either lands whole or not at all.
+            //
+            // The BOQ save above is still its own commit — saveBoq is shared with six other
+            // callers and owns its batch. That boundary is deliberate and safe in this
+            // order: if this batch fails, the BOQ has rows the user can see and delete,
+            // whereas the reverse order loses stock silently.
+            const batchId = `issue_${Date.now()}`
+            const unitWrites = rows.reduce((n, r) => n + (r.unitIds?.length || 0), 0)
+            const totalWrites = rows.length * 2 + unitWrites
+            // Firestore caps a batch at 500 operations. Splitting would put us back to
+            // partial commits, so refuse and tell the user to issue in two passes instead.
+            if (totalWrites > 500) throw new Error("too_many_writes")
+
+            const batch = writeBatch(firestore)
             for (const r of rows) {
-              await updateDoc(
+              batch.update(
                 doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId),
                 { quantity: increment(-r.quantityTaken), updatedAt: serverTimestamp() }
               )
-              if (r.unitIds?.length) {
-                for (const unitId of r.unitIds) {
-                  await updateDoc(
-                    doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId, "units", unitId),
-                    {
-                      status: "consumed",
-                      consumedAt: serverTimestamp(),
-                      consumedProjectId: projectId,
-                      consumedProjectName: typedProject.name || "",
-                      updatedAt: serverTimestamp(),
-                    }
-                  )
-                }
+              for (const unitId of r.unitIds || []) {
+                batch.update(
+                  doc(firestore, "warehouses", typedProject.warehouseId!, "inventoryItems", r.inventoryItemId, "units", unitId),
+                  {
+                    status: "consumed",
+                    consumedAt: serverTimestamp(),
+                    consumedProjectId: projectId,
+                    consumedProjectName: typedProject.name || "",
+                    updatedAt: serverTimestamp(),
+                  }
+                )
               }
-              await addDoc(collection(firestore, "projects", projectId, "wasteRecords"), {
+              const wasted = Math.max(0, r.quantityTaken - r.quantityUsed)
+              batch.set(doc(collection(firestore, "projects", projectId, "wasteRecords")), {
+                type: "consumption",
+                batchId,
+                // Needed to reverse this row later: without the source item id (and the
+                // unit ids, not just their barcodes) a correction can't put the stock back.
+                inventoryItemId: r.inventoryItemId,
+                warehouseId: typedProject.warehouseId!,
+                unitIds: r.unitIds?.length ? r.unitIds : null,
                 boqItemId: r.boqItemId ?? null,
                 itemName: r.itemName,
                 unit: r.unit,
+                unitCode: r.unitCode ?? null,
                 quantityTaken: r.quantityTaken,
                 quantityUsed: r.quantityUsed,
                 wastePercent: r.quantityTaken > 0
-                  ? parseFloat((((r.quantityTaken - r.quantityUsed) / r.quantityTaken) * 100).toFixed(1))
+                  ? parseFloat(((wasted / r.quantityTaken) * 100).toFixed(1))
                   : 0,
+                // Cost is snapshotted, never joined at read time — repricing an item
+                // must not silently rewrite what past waste cost the project.
+                unitCost: r.unitCost ?? null,
+                wasteValue: r.unitCost != null ? parseFloat((wasted * r.unitCost).toFixed(2)) : null,
+                reasonCode: wasted > 0 ? (r.reasonCode ?? null) : null,
+                reasonNote: wasted > 0 && r.reasonNote ? r.reasonNote : null,
+                // The over-target justification lives on every row of its batch, so the
+                // ledger can answer "why" from the record itself instead of a side channel.
+                exceptionReason: exceptionReason ?? null,
                 unitBarcodes: r.unitBarcodes || null,
                 wastedUnitBarcodes: r.wastedUnitBarcodes?.length ? r.wastedUnitBarcodes : null,
                 recordedByUserId: user.uid,
@@ -3138,6 +3159,7 @@ export default function ProjectDetailPage() {
                 createdAt: serverTimestamp(),
               })
             }
+            await batch.commit()
             if (exceptionReason) {
               const totalTaken = rows.reduce((s, r) => s + r.quantityTaken, 0)
               const totalUsed = rows.reduce((s, r) => s + r.quantityUsed, 0)
@@ -3182,6 +3204,12 @@ type ConsumeRow = {
   quantityTaken: number
   quantityUsed: number
   unit: string
+  unitCode?: string | null
+  /** Snapshotted at issue time so later price edits can't rewrite historical waste value. */
+  unitCost?: number | null
+  /** Canonical waste category — only meaningful when this row actually wasted something. */
+  reasonCode?: string | null
+  reasonNote?: string | null
   unitIds?: string[]
   unitBarcodes?: string[]
   wastedUnitBarcodes?: string[]
@@ -3218,33 +3246,104 @@ function UnitPickerDialog({
   const { data, isLoading } = useCollection(unitsRef)
   const units = (data || []) as { id: string; barcode: string }[]
 
+  const [scan, setScan] = useState("")
+  useEffect(() => { if (!open) setScan("") }, [open])
+
+  const query_ = scan.trim().toLowerCase()
+  const visible = units.filter((u) => !query_ || u.barcode.toLowerCase().includes(query_))
+  const wastedCount = selected.filter((s) => s.wasted).length
+
+  /** A barcode scanner types the code then presses Enter — treat an exact match as a
+   *  toggle so the storekeeper never has to touch the mouse. */
+  const handleScanSubmit = () => {
+    const hit = units.find((u) => u.barcode.toLowerCase() === query_)
+    if (!hit) return
+    onToggleUnit(hit.id, hit.barcode)
+    setScan("")
+  }
+
+  const selectAllVisible = () => {
+    visible.forEach((u) => {
+      if (!selected.some((s) => s.unitId === u.id)) onToggleUnit(u.id, u.barcode)
+    })
+  }
+  const clearAll = () => {
+    selected.forEach((s) => onToggleUnit(s.unitId, s.barcode))
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-md max-h-[75vh] overflow-y-auto">
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("proj_waste_select_units_title", { name: item?.name || "" })}</DialogTitle>
           <DialogDescription>{t("proj_waste_select_units_desc")}</DialogDescription>
         </DialogHeader>
+
+        {units.length > 0 && (
+          <div className="space-y-2">
+            <div className="relative">
+              <Barcode size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
+              <Input
+                value={scan}
+                onChange={(e) => setScan(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleScanSubmit() } }}
+                placeholder={t("proj_waste_scan_placeholder")}
+                aria-label={t("proj_waste_scan_placeholder")}
+                dir="ltr"
+                autoFocus
+                className="ps-9 font-mono text-sm"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {t("proj_waste_units_summary", { selected: selected.length, total: units.length })}
+                {wastedCount > 0 && (
+                  <span className="text-warning font-semibold"> · {t("proj_waste_units_wasted_count", { count: wastedCount })}</span>
+                )}
+              </span>
+              <span className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={selectAllVisible}
+                  disabled={visible.every((u) => selected.some((s) => s.unitId === u.id))}>
+                  {t("proj_waste_select_all")}
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearAll} disabled={selected.length === 0}>
+                  {t("proj_waste_clear_all")}
+                </Button>
+              </span>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-8"><Loader2 className="animate-spin text-muted-foreground" size={22} /></div>
         ) : units.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">{t("inv_unit_empty")}</p>
+        ) : visible.length === 0 ? (
+          <div className="py-6 text-center space-y-2">
+            <p className="text-sm text-muted-foreground">{t("inv_no_results")}</p>
+            <Button variant="ghost" size="sm" onClick={() => setScan("")}>{t("inv_clear_filters")}</Button>
+          </div>
         ) : (
-          <div className="border rounded-lg divide-y overflow-hidden">
-            {units.map((u) => {
+          <div className="border rounded-lg divide-y overflow-hidden max-h-[45vh] overflow-y-auto">
+            {visible.map((u) => {
               const sel = selected.find((s) => s.unitId === u.id)
               return (
-                <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                <div key={u.id} className={cn("flex items-center justify-between gap-2 px-3 py-2 text-sm", sel && "bg-primary/5")}>
                   <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
                     <Checkbox checked={!!sel} onCheckedChange={() => onToggleUnit(u.id, u.barcode)} />
                     <span className="font-mono truncate">{u.barcode}</span>
                   </label>
-                  {sel && (
-                    <label className="flex items-center gap-1.5 text-xs text-warning shrink-0 cursor-pointer">
-                      <Checkbox checked={sel.wasted} onCheckedChange={() => onToggleWasted(u.id)} />
-                      {t("proj_waste_mark_wasted")}
-                    </label>
-                  )}
+                  {/* Rendered for every row, disabled until picked — showing it only on
+                      selection made each click shuffle the row's layout. */}
+                  <label
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs shrink-0",
+                      sel ? "text-warning cursor-pointer" : "text-muted-foreground/40 cursor-not-allowed"
+                    )}
+                  >
+                    <Checkbox checked={!!sel?.wasted} disabled={!sel} onCheckedChange={() => onToggleWasted(u.id)} />
+                    {t("proj_waste_mark_wasted")}
+                  </label>
                 </div>
               )
             })}
@@ -3279,7 +3378,7 @@ function SuggestMaterialsDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
   boqItems: { id: string; descriptionAr: string; descriptionEn: string; quantity: string; unit: string }[]
-  inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  inventoryItems: { id: string; name: string; unit: string; unitCode?: string | null; unitCost?: number | null; quantity: number; trackingMode?: "unit" | null }[]
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   locale: string
   /** boqLinks maps each affected warehouse item to the BOQ line that suggested it —
@@ -3376,7 +3475,7 @@ function SuggestMaterialsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles size={18} className="text-amber-500" />
@@ -3485,7 +3584,7 @@ function ConsumeFromWarehouseDialog({
   open: boolean
   onOpenChange: (v: boolean) => void
   warehouseId: string
-  inventoryItems: { id: string; name: string; unit: string; quantity: number; trackingMode?: "unit" | null }[]
+  inventoryItems: { id: string; name: string; unit: string; unitCode?: string | null; unitCost?: number | null; quantity: number; trackingMode?: "unit" | null }[]
   /** BOQ lines this project's warehouse pull can be attributed to, for the per-row link picker. */
   boqItems: { id: string; descriptionAr: string; descriptionEn: string }[]
   wasteTargetPercent: number
@@ -3507,7 +3606,12 @@ function ConsumeFromWarehouseDialog({
   const [boqLinks, setBoqLinks] = useState<Record<string, string>>({})
   const [pickerItemId, setPickerItemId] = useState<string | null>(null)
   const [aiSuggestingId, setAiSuggestingId] = useState<string | null>(null)
+  // Per-row waste categorisation — a project-level "why" can't tell you that the
+  // marble broke in transit while the rebar was ordinary offcut.
+  const [reasonCodes, setReasonCodes] = useState<Record<string, string>>({})
+  const [reasonNotes, setReasonNotes] = useState<Record<string, string>>({})
   const [exceptionReason, setExceptionReason] = useState("")
+  const [itemSearch, setItemSearch] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const { toast } = useToast()
   const isRtl = locale === "ar"
@@ -3519,7 +3623,10 @@ function ConsumeFromWarehouseDialog({
     setUnitSelections({})
     setBoqLinks({})
     setPickerItemId(null)
+    setReasonCodes({})
+    setReasonNotes({})
     setExceptionReason("")
+    setItemSearch("")
   }
 
   // Seed from AI suggestions (or any other caller-provided defaults) each time
@@ -3592,51 +3699,75 @@ function ConsumeFromWarehouseDialog({
   const rows: ConsumeRow[] = inventoryItems
     .filter((item) => item.trackingMode === "unit" ? (unitSelections[item.id]?.length || 0) > 0 : Number(takenQtys[item.id]) > 0)
     .map((item) => {
+      const common = {
+        inventoryItemId: item.id,
+        itemName: item.name,
+        unit: item.unit,
+        unitCode: item.unitCode ?? null,
+        unitCost: item.unitCost ?? null,
+        reasonCode: reasonCodes[item.id] || null,
+        reasonNote: reasonNotes[item.id]?.trim() || null,
+        boqItemId: boqLinks[item.id] || null,
+      }
       if (item.trackingMode === "unit") {
         const sel = unitSelections[item.id] || []
         const wasted = sel.filter((u) => u.wasted)
         return {
-          inventoryItemId: item.id,
-          itemName: item.name,
-          unit: item.unit,
+          ...common,
           quantityTaken: sel.length,
           quantityUsed: sel.length - wasted.length,
           unitIds: sel.map((u) => u.unitId),
           unitBarcodes: sel.map((u) => u.barcode),
           wastedUnitBarcodes: wasted.map((u) => u.barcode),
-          boqItemId: boqLinks[item.id] || null,
         }
       }
       const taken = Number(takenQtys[item.id]) || 0
       const usedRaw = usedQtys[item.id]
       const used = usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken
-      return {
-        inventoryItemId: item.id,
-        itemName: item.name,
-        quantityTaken: taken,
-        quantityUsed: used,
-        unit: item.unit,
-        boqItemId: boqLinks[item.id] || null,
-      }
+      return { ...common, quantityTaken: taken, quantityUsed: used }
     })
   const totalTaken = rows.reduce((s, r) => s + r.quantityTaken, 0)
   const totalUsed = rows.reduce((s, r) => s + r.quantityUsed, 0)
   const overallWastePercent = totalTaken > 0 ? parseFloat((((totalTaken - totalUsed) / totalTaken) * 100).toFixed(1)) : 0
   const overTarget = rows.length > 0 && overallWastePercent > wasteTargetPercent
+  const wastingRows = rows.filter((r) => r.quantityTaken - r.quantityUsed > 0)
+  const missingReasons = overTarget && wastingRows.some((r) => !reasonCodes[r.inventoryItemId])
+  // A row asking for more than the warehouse holds must block the submit, not get
+  // silently clamped on the way to Firestore.
+  const overStockRows = rows.filter((r) => {
+    const src = inventoryItems.find((i) => i.id === r.inventoryItemId)
+    return !!src && r.quantityTaken > src.quantity
+  })
+  const itemQuery = itemSearch.trim().toLowerCase()
+  const visibleItems = inventoryItems.filter(
+    (i) => !itemQuery || i.name.toLowerCase().includes(itemQuery)
+  )
+  // Value the waste only from rows that actually carry a cost — a total that silently
+  // treats "no price on file" as zero is worse than no total at all.
+  const pricedWasting = wastingRows.filter((r) => r.unitCost != null)
+  const wasteValue = pricedWasting.reduce((s, r) => s + (r.quantityTaken - r.quantityUsed) * (r.unitCost || 0), 0)
+  const canSubmit = !isSaving && !missingReasons && overStockRows.length === 0
+    && !(overTarget && exceptionReason.trim().length < 8)
 
   const handleSubmit = async () => {
     if (rows.length === 0) {
       toast({ title: t("proj_boq_consume_empty"), variant: "destructive" })
       return
     }
-    if (overTarget && exceptionReason.trim().length < 8) return
+    if (!canSubmit) return
     setIsSaving(true)
     try {
       await onConsume(rows, overTarget ? exceptionReason.trim() : undefined)
       reset()
       onOpenChange(false)
-    } catch {
-      toast({ title: t("proj_boq_consume_error"), variant: "destructive" })
+    } catch (err) {
+      // The batch cap is a real, actionable condition — don't bury it under the
+      // generic failure message, the user needs to know to split the issue in two.
+      const isTooLarge = err instanceof Error && err.message === "too_many_writes"
+      toast({
+        title: isTooLarge ? t("proj_boq_consume_too_large") : t("proj_boq_consume_error"),
+        variant: "destructive",
+      })
     } finally {
       setIsSaving(false)
     }
@@ -3647,7 +3778,7 @@ function ConsumeFromWarehouseDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={(v) => { if (!isSaving) { onOpenChange(v); if (!v) reset() } }}>
-      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-3xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Warehouse size={18} />
@@ -3661,10 +3792,24 @@ function ConsumeFromWarehouseDialog({
             </span>
           </div>
         </DialogHeader>
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
+        {/* Search only earns its space once the list is long enough to scroll. */}
+        {inventoryItems.length > 6 && (
+          <div className="relative">
+            <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
+            <Input
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder={t("proj_waste_item_search_placeholder")}
+              aria-label={t("proj_waste_item_search_placeholder")}
+              className="ps-9 h-9 text-sm"
+            />
+          </div>
+        )}
+
+        <div className="border rounded-lg overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
-              <tr className="bg-slate-50 border-b">
+              <tr className="bg-muted border-b">
                 <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs", isRtl ? "text-right" : "text-left")}>
                   {t("goods_manual_item_name")}
                 </th>
@@ -3686,7 +3831,17 @@ function ConsumeFromWarehouseDialog({
               </tr>
             </thead>
             <tbody>
-              {inventoryItems.map((item) => {
+              {visibleItems.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-8 text-center">
+                    <p className="text-sm text-muted-foreground">{t("inv_no_results")}</p>
+                    <Button variant="ghost" size="sm" className="mt-1" onClick={() => setItemSearch("")}>
+                      {t("inv_clear_filters")}
+                    </Button>
+                  </td>
+                </tr>
+              )}
+              {visibleItems.map((item) => {
                 const isUnitTracked = item.trackingMode === "unit"
                 const unitSel = unitSelections[item.id] || []
                 const taken = isUnitTracked ? unitSel.length : (Number(takenQtys[item.id]) || 0)
@@ -3696,7 +3851,7 @@ function ConsumeFromWarehouseDialog({
                   : (usedRaw !== undefined && usedRaw !== "" ? Math.min(taken, Math.max(0, Number(usedRaw))) : taken)
                 const rowWaste = taken > 0 ? Math.max(0, ((taken - used) / taken) * 100) : 0
                 return (
-                  <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50">
+                  <tr key={item.id} className="border-b last:border-0 hover:bg-muted/50">
                     <td className="px-3 py-2 font-medium">
                       {item.name}
                       {isUnitTracked && (
@@ -3725,7 +3880,7 @@ function ConsumeFromWarehouseDialog({
                       </td>
                     ) : (
                       <>
-                        <td className="px-2 py-1">
+                        <td className="px-2 py-1.5 align-top">
                           <Input
                             type="number"
                             min={0}
@@ -3734,10 +3889,11 @@ function ConsumeFromWarehouseDialog({
                             onChange={(e) => handleTakenChange(item.id, e.target.value)}
                             placeholder="0"
                             dir="ltr"
-                            className="h-8 text-sm tabular-nums"
+                            aria-invalid={taken > item.quantity}
+                            className={cn("h-8 text-sm tabular-nums", taken > item.quantity && "border-destructive focus-visible:ring-destructive")}
                           />
                         </td>
-                        <td className="px-2 py-1">
+                        <td className="px-2 py-1.5 align-top">
                           <div className="flex items-center gap-1">
                             <Input
                               type="number"
@@ -3791,17 +3947,105 @@ function ConsumeFromWarehouseDialog({
           </table>
         </div>
 
+        {/* The `max` attribute doesn't stop typing, so an over-stock figure would reach
+            Firestore and fail there. Named here rather than as a 10px string wedged
+            under the input, which the row height couldn't hold. */}
+        {overStockRows.length > 0 && (
+          <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3.5 py-2.5">
+            <AlertTriangle size={14} className="text-destructive shrink-0 mt-0.5" />
+            <div className="text-xs text-destructive space-y-0.5">
+              <p className="font-bold">{t("proj_waste_over_stock_title")}</p>
+              {overStockRows.map((r) => {
+                const src = inventoryItems.find((i) => i.id === r.inventoryItemId)
+                return (
+                  <p key={r.inventoryItemId}>
+                    {r.itemName} — {t("proj_waste_over_stock", { available: src?.quantity ?? 0 })}
+                  </p>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tells the user why the confirm button is inert, instead of leaving them to
+            press it and get a toast. */}
+        {rows.length === 0 && visibleItems.length > 0 && (
+          <p className="px-3 py-2.5 rounded-xl border border-dashed text-xs text-muted-foreground text-center">
+            {t("proj_waste_nothing_selected")}
+          </p>
+        )}
+
         {rows.length > 0 && (
           <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-muted rounded-xl text-sm">
-            <span className="text-muted-foreground">{t("proj_waste_total_label")}</span>
+            <span className="text-muted-foreground">
+              {t("proj_waste_total_label")}
+              <span className="ms-1.5 text-xs">({t("proj_waste_rows_count", { count: rows.length })})</span>
+            </span>
             {/* dir="ltr" belongs on the numbers only — wrapping the Arabic label in it
                 detaches the "%" from its digits under the bidi algorithm. */}
-            <span className={cn("font-bold", overTarget ? "text-warning" : "text-success")}>
-              <span dir="ltr">{overallWastePercent}%</span>{" "}
-              <span className="text-xs text-muted-foreground font-normal">
-                ({t("proj_waste_target_label")} <span dir="ltr">{wasteTargetPercent}%</span>)
+            <span className="flex items-center gap-2 flex-wrap">
+              {wasteValue > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  <span dir="ltr">{wasteValue.toFixed(2)}</span> {t("offers_currency_sar")}
+                  {pricedWasting.length < wastingRows.length && ` (${t("proj_waste_value_partial")})`}
+                </span>
+              )}
+              <span className={cn("font-bold", overTarget ? "text-warning" : "text-success")}>
+                <span dir="ltr">{overallWastePercent}%</span>{" "}
+                <span className="text-xs text-muted-foreground font-normal">
+                  ({t("proj_waste_target_label")} <span dir="ltr">{wasteTargetPercent}%</span>)
+                </span>
               </span>
             </span>
+          </div>
+        )}
+
+        {/* Categorise each wasting row. Optional under target (don't tax the common
+            case), required once the batch goes over it — that's the point at which
+            "where is this waste coming from" stops being a nice-to-have. */}
+        {wastingRows.length > 0 && (
+          <div className="space-y-2.5 rounded-xl border p-3.5">
+            <div className="flex items-center gap-1.5">
+              <Scissors size={13} className="text-muted-foreground shrink-0" />
+              <p className="text-sm font-bold text-foreground">{t("proj_waste_reasons_title")}</p>
+              <span className="text-xs text-muted-foreground">
+                {overTarget ? t("proj_waste_reasons_required") : t("proj_waste_reasons_optional")}
+              </span>
+            </div>
+            {wastingRows.map((r) => (
+              <div key={r.inventoryItemId} className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{r.itemName}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t("proj_waste_reason_row_hint", {
+                      qty: parseFloat((r.quantityTaken - r.quantityUsed).toFixed(2)),
+                      unit: r.unit,
+                    })}
+                  </p>
+                </div>
+                <Select
+                  value={reasonCodes[r.inventoryItemId] || ""}
+                  onValueChange={(v) => setReasonCodes((prev) => ({ ...prev, [r.inventoryItemId]: v }))}
+                >
+                  <SelectTrigger
+                    className={cn(
+                      "h-9 sm:w-56",
+                      overTarget && !reasonCodes[r.inventoryItemId] && "border-destructive"
+                    )}
+                    aria-label={t("proj_waste_reasons_title")}
+                  >
+                    <SelectValue placeholder={t("proj_waste_reason_select_placeholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WASTE_REASON_CODES.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {t(wasteReasonMessageKey(code) as Parameters<typeof t>[0])}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
           </div>
         )}
 
@@ -3845,7 +4089,7 @@ function ConsumeFromWarehouseDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isSaving || (overTarget && exceptionReason.trim().length < 8)}
+            disabled={!canSubmit || rows.length === 0}
             className={cn("gap-2", overTarget && "bg-warning text-warning-foreground hover:bg-warning/90")}
           >
             {isSaving && <Loader2 size={14} className="animate-spin" />}

@@ -3,6 +3,7 @@ import { Inter, Noto_Sans_Arabic } from 'next/font/google';
 import Script from 'next/script';
 import '../globals.css';
 import { Toaster } from '@/components/ui/toaster';
+import { BodyPointerEventsGuard } from '@/components/BodyPointerEventsGuard';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
@@ -124,6 +125,7 @@ export default async function RootLayout({
           <StructuredData />
           {children}
           <Toaster />
+          <BodyPointerEventsGuard />
         </NextIntlClientProvider>
       </body>
     </html>

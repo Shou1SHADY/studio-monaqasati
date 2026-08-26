@@ -127,11 +127,11 @@ describe("translation coverage", () => {
     const missingInAr = enKeys.filter((k) => !(k in flat.ar))
     const missingInEn = arKeys.filter((k) => !(k in flat.en))
 
-    // `rfq_status_new` predates these guards; it is tracked separately so the
-    // suite stays honest rather than green-by-exclusion.
-    const KNOWN_GAPS = ["Portal.Shared.rfq_status_new", "Portal.Sidebar.contractor_suppliers"]
-    expect(missingInAr.filter((k) => !KNOWN_GAPS.includes(k))).toEqual([])
-    expect(missingInEn.filter((k) => !KNOWN_GAPS.includes(k))).toEqual([])
+    // Both historical gaps are now closed — `Portal.Shared.rfq_status_new` gained its
+    // English string (it was rendering as a raw key on the supplier RFQ list) and the
+    // unused, empty `Portal.Sidebar.contractor_suppliers` was removed. No exclusions.
+    expect(missingInAr).toEqual([])
+    expect(missingInEn).toEqual([])
   })
 
   it("uses the same interpolation placeholders in every locale", () => {

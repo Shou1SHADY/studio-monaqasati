@@ -37,8 +37,9 @@ import {
   validateRequest,
   type TransferValidationError,
 } from "@/lib/warehouse-requests"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
 
 type InventoryItem = {
   id: string
@@ -46,6 +47,10 @@ type InventoryItem = {
   sku?: string
   quantity: number
   unit: string
+  /** Canonical unit key — absent on rows created before the unit vocabulary existed. */
+  unitCode?: string | null
+  /** Cost of one unit in SAR. Optional: needed to value stock and waste, not to track it. */
+  unitCost?: number | null
   minStockLevel?: number
   trackingMode?: "unit" | null
 }
@@ -90,22 +95,49 @@ function ItemDialog({
   const [name, setName] = useState(item?.name ?? "")
   const [sku, setSku] = useState(item?.sku ?? "")
   const [quantity, setQuantity] = useState(item?.quantity?.toString() ?? "0")
+  // An existing row keeps its canonical code if it has one; a legacy row with only
+  // free text opens on "__custom__" so editing it never silently rewrites its unit.
+  const initialUnitCode = isKnownUnitCode(item?.unitCode) ? item.unitCode : (item ? "__custom__" : "")
+  const [unitCode, setUnitCode] = useState<string>(initialUnitCode)
   const [unit, setUnit] = useState(item?.unit ?? "")
+  const [unitCost, setUnitCost] = useState(item?.unitCost != null ? String(item.unitCost) : "")
   const [minStockLevel, setMinStockLevel] = useState(item?.minStockLevel?.toString() ?? "")
   const [isUnitTracked, setIsUnitTracked] = useState(item?.trackingMode === "unit")
+  // Errors surface next to the field that caused them. A toast alone never says
+  // *which* input is wrong.
+  const [showErrors, setShowErrors] = useState(false)
 
   const reset = () => {
     setName(item?.name ?? "")
     setSku(item?.sku ?? "")
     setQuantity(item?.quantity?.toString() ?? "0")
+    setUnitCode(initialUnitCode)
     setUnit(item?.unit ?? "")
+    setUnitCost(item?.unitCost != null ? String(item.unitCost) : "")
     setMinStockLevel(item?.minStockLevel?.toString() ?? "")
     setIsUnitTracked(item?.trackingMode === "unit")
+    setShowErrors(false) // otherwise a failed attempt greets the next open with stale errors
   }
+
+  // The canonical label is the source of truth when a code is picked; `unit` still
+  // gets written so every existing reader (BOQ rows, waste records, the supplier
+  // portal) keeps working without a data migration.
+  // "" means nothing picked yet (a brand-new item) — that's an unset state, not a
+  // custom unit, so the free-text box stays hidden until "other" is actually chosen.
+  const isCustomUnit = unitCode === "__custom__"
+  const resolvedUnit = unitCode === ""
+    ? ""
+    : isCustomUnit
+      ? unit.trim()
+      : t(unitMessageKey(unitCode) as Parameters<typeof t>[0])
+
+  const nameError = !name.trim()
+  const unitError = !resolvedUnit
 
   const handleSave = async () => {
     if (!firestore) return
-    if (!name.trim() || !unit.trim()) {
+    if (nameError || unitError) {
+      setShowErrors(true)
       toast({ title: t("inv_item_validation_error"), variant: "destructive" })
       return
     }
@@ -115,7 +147,9 @@ function ItemDialog({
         name: name.trim(),
         sku: sku.trim() || null,
         quantity: isUnitTracked ? (item?.quantity ?? 0) : Math.max(0, parseFloat(quantity) || 0),
-        unit: unit.trim(),
+        unit: resolvedUnit,
+        unitCode: isCustomUnit ? null : unitCode,
+        unitCost: unitCost.trim() ? Math.max(0, parseFloat(unitCost) || 0) : null,
         minStockLevel: minStockLevel ? Math.max(0, parseFloat(minStockLevel) || 0) : null,
         trackingMode: isUnitTracked ? "unit" : null,
         organizationId: orgId,
@@ -150,7 +184,18 @@ function ItemDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2 space-y-1.5">
               <Label htmlFor="item-name">{t("inv_item_name")} *</Label>
-              <Input id="item-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("inv_item_name_placeholder")} />
+              <Input
+                id="item-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("inv_item_name_placeholder")}
+                aria-invalid={showErrors && nameError}
+                aria-describedby={showErrors && nameError ? "item-name-error" : undefined}
+                className={cn(showErrors && nameError && "border-destructive focus-visible:ring-destructive")}
+              />
+              {showErrors && nameError && (
+                <p id="item-name-error" className="text-[11px] text-destructive">{t("inv_item_name_required")}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-sku">{t("inv_item_sku")}</Label>
@@ -158,13 +203,54 @@ function ItemDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-unit">{t("inv_item_unit")} *</Label>
-              <Input id="item-unit" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder={t("inv_item_unit_placeholder")} />
+              <Select value={unitCode} onValueChange={setUnitCode}>
+                <SelectTrigger
+                  id="item-unit"
+                  aria-invalid={showErrors && unitError}
+                  className={cn(showErrors && unitError && "border-destructive focus:ring-destructive")}
+                >
+                  <SelectValue placeholder={t("inv_item_unit_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {INVENTORY_UNIT_CODES.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {t(unitMessageKey(code) as Parameters<typeof t>[0])}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__custom__">{t("inv_item_unit_custom")}</SelectItem>
+                </SelectContent>
+              </Select>
+              {isCustomUnit && (
+                <Input
+                  aria-label={t("inv_item_unit_custom")}
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  placeholder={t("inv_item_unit_placeholder")}
+                  aria-invalid={showErrors && unitError}
+                  className={cn("mt-1.5", showErrors && unitError && "border-destructive focus-visible:ring-destructive")}
+                />
+              )}
+              {showErrors && unitError && (
+                <p className="text-[11px] text-destructive">{t("inv_item_unit_required")}</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-qty">{t("inv_item_qty")} *</Label>
               <Input id="item-qty" type="number" min="0" value={isUnitTracked ? (item?.quantity ?? 0) : quantity}
                 onChange={(e) => setQuantity(e.target.value)} disabled={isUnitTracked} dir="ltr" />
               {isUnitTracked && <p className="text-[11px] text-muted-foreground">{t("inv_item_qty_unit_managed")}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="item-cost">{t("inv_item_unit_cost")}</Label>
+              <div className="relative">
+                <Input id="item-cost" type="number" min="0" step="0.01" value={unitCost}
+                  onChange={(e) => setUnitCost(e.target.value)} placeholder={t("inv_item_unit_cost_placeholder")}
+                  dir="ltr" className="pe-12" />
+                <span className="absolute top-1/2 -translate-y-1/2 end-3 text-xs text-muted-foreground pointer-events-none">
+                  {t("offers_currency_sar")}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t("inv_item_unit_cost_hint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-min">{t("inv_item_min_stock")}</Label>
@@ -221,16 +307,32 @@ function UnitsDialog({
   const [barcode, setBarcode] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const [busyUnitId, setBusyUnitId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | Unit["status"]>("all")
+  // Deleting a unit and marking one damaged both move stock and cannot be undone.
+  // The confirmation is inline rather than a nested modal — stacking a second
+  // overlay on top of this one is heavier than the decision warrants.
+  const [pending, setPending] = useState<{ unitId: string; action: "delete" | "damage" } | null>(null)
 
   const unitsRef = useMemoFirebase(() => {
     if (!firestore || !warehouseId || !item?.id) return null
     return collection(firestore, "warehouses", warehouseId, "inventoryItems", item.id, "units")
   }, [firestore, warehouseId, item?.id])
   const { data: unitsData, isLoading } = useCollection(unitsRef)
-  const units = ((unitsData || []) as Unit[]).slice().sort((a, b) => {
+  const allUnits = ((unitsData || []) as Unit[]).slice().sort((a, b) => {
     const order = { in_stock: 0, damaged: 1, consumed: 2 }
     return order[a.status] - order[b.status]
   })
+  const counts = {
+    all: allUnits.length,
+    in_stock: allUnits.filter((u) => u.status === "in_stock").length,
+    damaged: allUnits.filter((u) => u.status === "damaged").length,
+    consumed: allUnits.filter((u) => u.status === "consumed").length,
+  }
+  const q = search.trim().toLowerCase()
+  const units = allUnits
+    .filter((u) => statusFilter === "all" || u.status === statusFilter)
+    .filter((u) => !q || u.barcode.toLowerCase().includes(q))
 
   const itemRef = () => doc(firestore!, "warehouses", warehouseId, "inventoryItems", item.id)
 
@@ -264,6 +366,7 @@ function UnitsDialog({
 
   const handleMarkDamaged = async (unitId: string) => {
     if (!firestore) return
+    setPending(null)
     setBusyUnitId(unitId)
     try {
       await updateDoc(doc(firestore, "warehouses", warehouseId, "inventoryItems", item.id, "units", unitId), {
@@ -282,6 +385,7 @@ function UnitsDialog({
 
   const handleDelete = async (u: Unit) => {
     if (!firestore) return
+    setPending(null)
     setBusyUnitId(u.id)
     try {
       await deleteDoc(doc(firestore, "warehouses", warehouseId, "inventoryItems", item.id, "units", u.id))
@@ -330,16 +434,63 @@ function UnitsDialog({
           </Button>
         </div>
 
+        {/* Status filter doubles as the at-a-glance breakdown — a barcode-tracked item
+            with 200 units is otherwise a wall of identical-looking rows. */}
+        {allUnits.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {(["all", "in_stock", "damaged", "consumed"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatusFilter(s)}
+                aria-pressed={statusFilter === s}
+                disabled={s !== "all" && counts[s] === 0}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors",
+                  "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  statusFilter === s ? "bg-primary text-primary-foreground border-primary" : "text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {s === "all" ? t("inv_unit_filter_all") : t(`inv_unit_status_${s}` as Parameters<typeof t>[0])}
+                <span className="ms-1.5 tabular-nums" dir="ltr">{counts[s]}</span>
+              </button>
+            ))}
+            {allUnits.length > 8 && (
+              <div className="relative flex-1 min-w-[140px]">
+                <Search size={13} className="absolute top-1/2 -translate-y-1/2 start-2.5 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("inv_unit_search_placeholder")}
+                  aria-label={t("inv_unit_search_placeholder")}
+                  dir="ltr"
+                  className="h-8 ps-8 text-xs font-mono"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 size={24} className="animate-spin text-muted-foreground" />
           </div>
-        ) : units.length === 0 ? (
+        ) : allUnits.length === 0 ? (
           <div className="py-10 text-center text-sm text-muted-foreground">{t("inv_unit_empty")}</div>
+        ) : units.length === 0 ? (
+          <div className="py-8 text-center space-y-2">
+            <p className="text-sm text-muted-foreground">{t("inv_no_results")}</p>
+            <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setStatusFilter("all") }}>
+              {t("inv_clear_filters")}
+            </Button>
+          </div>
         ) : (
-          <div className="border rounded-lg divide-y overflow-hidden">
-            {units.map((u) => (
-              <div key={u.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+          <div className="border rounded-lg divide-y overflow-hidden max-h-[45vh] overflow-y-auto">
+            {units.map((u) => {
+              const isPending = pending?.unitId === u.id
+              return (
+              <div key={u.id} className={cn("flex items-center justify-between gap-2 px-3 py-2 text-sm", isPending && "bg-destructive/5")}>
                 <div className="min-w-0 flex items-center gap-2">
                   <span className="font-mono font-semibold text-foreground truncate">{u.barcode}</span>
                   {statusBadge(u.status)}
@@ -347,22 +498,37 @@ function UnitsDialog({
                     <span className="text-xs text-muted-foreground truncate">— {u.consumedProjectName}</span>
                   )}
                 </div>
-                {u.status !== "consumed" && (
+                {/* Both actions move stock and can't be undone, so the row asks first
+                    instead of acting on a single stray click. */}
+                {isPending ? (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs font-semibold text-destructive">
+                      {pending.action === "delete" ? t("inv_unit_delete_confirm") : t("inv_unit_damage_confirm")}
+                    </span>
+                    <Button size="sm" variant="destructive" className="h-7 px-2 text-xs"
+                      onClick={() => (pending.action === "delete" ? handleDelete(u) : handleMarkDamaged(u.id))}>
+                      {t("inv_unit_confirm_yes")}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setPending(null)}>
+                      {t("wh_cancel")}
+                    </Button>
+                  </div>
+                ) : u.status !== "consumed" ? (
                   <div className="flex items-center gap-1 shrink-0">
                     {u.status === "in_stock" && (
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-warning"
-                        onClick={() => handleMarkDamaged(u.id)} disabled={busyUnitId === u.id} aria-label={t("inv_unit_mark_damaged")}>
+                        onClick={() => setPending({ unitId: u.id, action: "damage" })} disabled={busyUnitId === u.id} aria-label={t("inv_unit_mark_damaged")}>
                         {busyUnitId === u.id ? <Loader2 size={12} className="animate-spin" /> : <Ban size={12} />}
                       </Button>
                     )}
                     <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(u)} disabled={busyUnitId === u.id} aria-label={t("wh_delete_btn")}>
-                      <X size={12} />
+                      onClick={() => setPending({ unitId: u.id, action: "delete" })} disabled={busyUnitId === u.id} aria-label={t("wh_delete_btn")}>
+                      {busyUnitId === u.id ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
                     </Button>
                   </div>
-                )}
+                ) : null}
               </div>
-            ))}
+            )})}
           </div>
         )}
 
@@ -731,6 +897,9 @@ export function WarehouseInventoryPanel({
   const [transferItem, setTransferItem] = useState<InventoryItem | null>(null)
   const [showPull, setShowPull] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [search, setSearch] = useState("")
+  const [sortKey, setSortKey] = useState<"name" | "quantity" | "value">("name")
+  const [lowOnly, setLowOnly] = useState(false)
 
   const warehouseRef = useMemoFirebase(() => {
     if (!firestore || !warehouseId) return null
@@ -781,6 +950,22 @@ export function WarehouseInventoryPanel({
   }
 
   const lowStockItems = list.filter((it) => it.minStockLevel != null && it.quantity <= it.minStockLevel)
+  const itemValue = (it: InventoryItem) => (it.unitCost != null ? it.unitCost * it.quantity : 0)
+  const totalStockValue = list.reduce((sum, it) => sum + itemValue(it), 0)
+  const pricedCount = list.filter((it) => it.unitCost != null).length
+
+  const q = search.trim().toLowerCase()
+  const visibleItems = list
+    .filter((it) => !lowOnly || (it.minStockLevel != null && it.quantity <= it.minStockLevel))
+    .filter((it) => !q || it.name.toLowerCase().includes(q) || (it.sku || "").toLowerCase().includes(q))
+    .slice()
+    .sort((a, b) => {
+      if (sortKey === "quantity") return b.quantity - a.quantity
+      if (sortKey === "value") return itemValue(b) - itemValue(a)
+      // Arabic and Latin names sort together only under a locale-aware collator.
+      return a.name.localeCompare(b.name, locale === "ar" ? "ar" : "en")
+    })
+  const nf = (n: number) => n.toLocaleString(locale === "ar" ? "ar-SA" : "en-US", { maximumFractionDigits: 2 })
 
   return (
     <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
@@ -848,13 +1033,8 @@ export function WarehouseInventoryPanel({
         )}
       </div>
 
-      {/* Low stock alert */}
-      {lowStockItems.length > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-warning/10 border border-warning/20 rounded-lg text-sm text-warning">
-          <AlertTriangle size={16} className="shrink-0" />
-          <span className="font-semibold">{t("inv_low_stock_alert", { count: lowStockItems.length })}</span>
-        </div>
-      )}
+      {/* The low-stock count lives in the stat row below, where it's also the control
+          that filters the table — a separate banner said the same thing twice. */}
 
       {/* Items table */}
       {isLoading ? (
@@ -874,7 +1054,94 @@ export function WarehouseInventoryPanel({
           )}
         </div>
       ) : (
-        <div className="rounded-xl border overflow-hidden">
+        <div className="space-y-3">
+          {/* Search / sort / filter — the list is unusable past a couple of dozen rows without it. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("inv_search_placeholder")}
+                aria-label={t("inv_search_placeholder")}
+                className="ps-9 h-9"
+              />
+            </div>
+            <Select value={sortKey} onValueChange={(v) => setSortKey(v as typeof sortKey)}>
+              <SelectTrigger className="h-9 w-auto gap-2" aria-label={t("inv_sort_label")}>
+                <ArrowUpDown size={13} className="text-muted-foreground shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">{t("inv_sort_name")}</SelectItem>
+                <SelectItem value="quantity">{t("inv_sort_qty")}</SelectItem>
+                <SelectItem value="value">{t("inv_sort_value")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {lowOnly && (
+              <Button type="button" variant="outline" size="sm" onClick={() => setLowOnly(false)} className="h-9 gap-1.5">
+                <AlertTriangle size={13} className="text-warning" />
+                {t("inv_filter_low_only")}
+                <X size={12} className="text-muted-foreground" />
+              </Button>
+            )}
+          </div>
+
+          {/* At-a-glance state of the warehouse. Low stock is a button because it's the
+              one number you act on, and clicking it filters the table to those rows. */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="rounded-xl border bg-muted/40 px-3.5 py-2.5">
+              <p className="text-[11px] font-semibold text-muted-foreground">{t("inv_stat_items")}</p>
+              <p className="text-lg font-black text-foreground tabular-nums" dir="ltr">{nf(list.length)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLowOnly((v) => !v)}
+              disabled={lowStockItems.length === 0}
+              aria-pressed={lowOnly}
+              className={cn(
+                "rounded-xl border px-3.5 py-2.5 text-start transition-colors",
+                "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "disabled:cursor-default",
+                lowStockItems.length === 0 ? "bg-muted/40" : lowOnly ? "border-warning bg-warning/15" : "border-warning/30 bg-warning/5 hover:bg-warning/10"
+              )}
+            >
+              <p className={cn("text-[11px] font-semibold", lowStockItems.length > 0 ? "text-warning" : "text-muted-foreground")}>
+                {t("inv_stat_low_stock")}
+              </p>
+              <p className={cn("text-lg font-black tabular-nums", lowStockItems.length > 0 ? "text-warning" : "text-foreground")} dir="ltr">
+                {nf(lowStockItems.length)}
+              </p>
+            </button>
+            <div className="rounded-xl border bg-muted/40 px-3.5 py-2.5 col-span-2 sm:col-span-1">
+              <p className="text-[11px] font-semibold text-muted-foreground">{t("inv_stock_value_label")}</p>
+              {totalStockValue > 0 ? (
+                <p className="text-lg font-black text-foreground tabular-nums">
+                  <span dir="ltr">{nf(totalStockValue)}</span>
+                  <span className="text-xs font-semibold text-muted-foreground ms-1">{t("offers_currency_sar")}</span>
+                  {pricedCount < list.length && (
+                    <span className="block text-[10px] font-normal text-muted-foreground">
+                      {t("inv_stock_value_partial", { priced: pricedCount, total: list.length })}
+                    </span>
+                  )}
+                </p>
+              ) : (
+                // Zero would read as "this stock is worthless" rather than "no prices yet".
+                <p className="text-xs text-muted-foreground mt-1.5">{t("inv_stock_value_unknown")}</p>
+              )}
+            </div>
+          </div>
+
+          {visibleItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2 text-center rounded-xl border border-dashed">
+              <Search size={28} className="text-muted-foreground/30" />
+              <p className="text-sm font-semibold text-muted-foreground">{t("inv_no_results")}</p>
+              <Button variant="ghost" size="sm" onClick={() => { setSearch(""); setLowOnly(false) }}>
+                {t("inv_clear_filters")}
+              </Button>
+            </div>
+          ) : (
+          <div className="rounded-xl border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/30 border-b">
@@ -883,16 +1150,17 @@ export function WarehouseInventoryPanel({
                   <th className={`py-3 px-4 font-bold text-muted-foreground ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_sku")}</th>
                   <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_qty")}</th>
                   <th className={`py-3 px-4 font-bold text-muted-foreground ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_unit")}</th>
+                  <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_unit_cost")}</th>
                   <th className="py-3 px-4 font-bold text-muted-foreground text-center">{t("inv_item_min_stock")}</th>
                   <th className="py-3 px-4 w-28" />
                 </tr>
               </thead>
               <tbody>
-                {list.map((item, idx) => {
+                {visibleItems.map((item, idx) => {
                   const isLow = item.minStockLevel != null && item.quantity <= item.minStockLevel
                   const isUnitTracked = item.trackingMode === "unit"
                   return (
-                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-s-2 border-warning" : "")}>
+                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-background" : "bg-muted/10", isLow ? "border-s-2 border-warning" : "")}>
                       <td className="py-3 px-4 font-semibold text-primary">
                         {item.name}
                         {isUnitTracked && (
@@ -910,7 +1178,14 @@ export function WarehouseInventoryPanel({
                       </td>
                       <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{item.sku || "—"}</td>
                       <td className="py-3 px-4 text-center font-bold" dir="ltr">{item.quantity}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{item.unit}</td>
+                      <td className="py-3 px-4 text-muted-foreground">{formatUnit(t as (k: string) => string, item)}</td>
+                      <td className="py-3 px-4 text-center text-muted-foreground tabular-nums">
+                        {item.unitCost != null ? (
+                          <span dir="ltr">{nf(item.unitCost)}</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-center text-muted-foreground" dir="ltr">
                         {item.minStockLevel ?? "—"}
                       </td>
@@ -949,6 +1224,8 @@ export function WarehouseInventoryPanel({
               </tbody>
             </table>
           </div>
+          </div>
+          )}
         </div>
       )}
 
