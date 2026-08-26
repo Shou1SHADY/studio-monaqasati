@@ -156,13 +156,18 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     ],
   },
   {
-    // Renamed to "Inventory" (المخزون): stock is the subject, warehouses are
-    // one view of it. The module home is the cross-warehouse stock overview;
-    // the warehouse list lives inside.
+    // Named "Inventory" (المخزون): stock is the subject, warehouses are one
+    // view of it.
+    //
+    // The home used to be `/contractor/inventory` — a cross-warehouse "Stock
+    // Overview" that was planned, listed both here and as a sidebar item, and
+    // never actually built. Opening Inventory from the app switcher 404'd
+    // because of it. Until that page exists the warehouse list is the home,
+    // which is what the supplier side has always done.
     id: "warehouses",
     labelKey: "component_inventory",
     descKey: "component_inventory_desc",
-    homeHref: "/contractor/inventory",
+    homeHref: "/contractor/warehouses",
     icon: Boxes,
     accentToken: "accent",
     displayOrder: 4,
@@ -170,7 +175,6 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_inventory",
         items: [
-          { titleKey: "contractor_inventory_overview", href: "/contractor/inventory", icon: Boxes, requiredPermission: "warehouses.manage" },
           { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
           { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList, requiredPermission: "warehouses.manage" },
         ],
