@@ -17,7 +17,11 @@
 import { config } from "dotenv"
 import { resolve } from "path"
 
-config({ path: resolve(process.cwd(), ".env.local") })
+// Which project to seed comes from the env file: `.env.local` (production —
+// the historical default) or, with `--env .env.uat`, the UAT project.
+const envArgIdx = process.argv.indexOf("--env")
+const ENV_FILE = envArgIdx !== -1 ? process.argv[envArgIdx + 1] : ".env.local"
+config({ path: resolve(process.cwd(), ENV_FILE) })
 
 import { initializeApp, cert, getApps, applicationDefault } from "firebase-admin/app"
 import { getAuth, type Auth } from "firebase-admin/auth"
