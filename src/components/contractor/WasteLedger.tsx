@@ -65,6 +65,10 @@ export function WasteLedger({
   const { toast } = useToast()
   const stats = useProjectWasteStats(projectId)
   const [expanded, setExpanded] = useState(false)
+  // The entry table stays folded away by default. This sits above the BOQ sheet, and
+  // the headline row already answers the question most visits are asking — how much
+  // waste, against what target. Opening it is for auditing a specific entry.
+  const [showEntries, setShowEntries] = useState(false)
   const [reverseTarget, setReverseTarget] = useState<WasteRecord | null>(null)
   const [reverseReason, setReverseReason] = useState("")
   const [isReversing, setIsReversing] = useState(false)
@@ -207,13 +211,19 @@ export function WasteLedger({
         "flex items-center justify-between gap-4 flex-wrap px-4 py-3 border-b",
         over ? "bg-warning/10" : "bg-muted"
       )}>
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setShowEntries((v) => !v)}
+          aria-expanded={showEntries}
+          className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
           <Scissors size={16} className={over ? "text-warning" : "text-success"} />
           <span className="text-sm font-bold text-foreground">{t("ledger_title")}</span>
           <Badge variant="outline" className="text-[10px] font-semibold">
             {t("ledger_entry_count", { count: stats.activeRecords.length })}
           </Badge>
-        </div>
+          <ChevronDown size={14} className={cn("text-muted-foreground transition-transform", showEntries && "rotate-180")} />
+        </button>
         <div className="flex items-center gap-4 flex-wrap text-xs text-muted-foreground">
           <span>{t("proj_waste_taken_label")} <b className="text-foreground" dir="ltr">{nf(stats.totalTaken)}</b></span>
           <span>{t("proj_waste_used_label")} <b className="text-foreground" dir="ltr">{nf(stats.totalUsed)}</b></span>
@@ -238,7 +248,7 @@ export function WasteLedger({
       </div>
 
       {/* Where the waste comes from */}
-      {stats.byReason.length > 0 && (
+      {showEntries && stats.byReason.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap px-4 py-2.5 border-b bg-background">
           <span className="text-xs text-muted-foreground">{t("ledger_by_reason_label")}</span>
           {stats.byReason.map((r) => (
@@ -250,6 +260,7 @@ export function WasteLedger({
         </div>
       )}
 
+      {showEntries && (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/30 border-b">
@@ -342,8 +353,9 @@ export function WasteLedger({
           </tbody>
         </table>
       </div>
+      )}
 
-      {stats.records.length > 5 && (
+      {showEntries && stats.records.length > 5 && (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}

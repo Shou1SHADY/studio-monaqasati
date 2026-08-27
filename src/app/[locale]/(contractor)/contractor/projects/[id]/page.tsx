@@ -1844,7 +1844,7 @@ export default function ProjectDetailPage() {
         <div
           role="tablist"
           aria-label={t("proj_tabs_label")}
-          className="flex flex-wrap items-center gap-1 p-1 rounded-xl border bg-muted/40"
+          className="flex flex-wrap items-center gap-0.5 p-1 rounded-xl border bg-muted/40"
         >
           {tabs.map((tab) => (
             <div key={tab.key} className="flex items-center">
@@ -1855,7 +1855,7 @@ export default function ProjectDetailPage() {
                 aria-selected={activeTab === tab.key}
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  "flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                   activeTab === tab.key
                     ? "bg-background text-primary shadow-sm font-semibold"
                     : "text-muted-foreground hover:text-foreground hover:bg-background/60"
@@ -2071,37 +2071,27 @@ export default function ProjectDetailPage() {
             {/* Main BOQ area */}
             <div className="flex-1 min-w-0 space-y-4">
               {/* Stats bar */}
+              {/* Three numbers do not need three tall cards. As a single strip this band
+                  drops from 72px to roughly 40px, which is 30px of the sheet you can
+                  actually see — the grand total still carries the visual weight. */}
               {(boqItems.length > 0 || boqGroups.length > 0) && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-card border border-t-2 border-t-cta rounded-xl px-4 py-3">
-                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_items")}</p>
-                    <p className="text-xl font-black text-foreground mt-0.5 tabular-nums" dir="ltr">{boqItems.length}</p>
-                  </div>
-                  <div className="bg-card border border-t-2 border-t-success rounded-xl px-4 py-3">
-                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_stat_sections")}</p>
-                    <p className="text-xl font-black text-foreground mt-0.5 tabular-nums" dir="ltr">{boqGroups.length}</p>
-                  </div>
-                  <div className="bg-accent/5 border border-t-2 border-t-accent rounded-xl px-4 py-3">
-                    <p className="text-xs text-muted-foreground font-semibold">{t("proj_boq_total")}</p>
-                    <p className="text-xl font-black text-primary mt-0.5">
+                <div className="flex items-center gap-x-5 gap-y-1 flex-wrap rounded-xl border bg-card px-4 py-2 text-sm">
+                  <span className="flex items-baseline gap-1.5">
+                    <b className="font-black text-foreground tabular-nums" dir="ltr">{boqItems.length}</b>
+                    <span className="text-xs text-muted-foreground">{t("proj_boq_stat_items")}</span>
+                  </span>
+                  <span className="h-3.5 w-px bg-border" aria-hidden />
+                  <span className="flex items-baseline gap-1.5">
+                    <b className="font-black text-foreground tabular-nums" dir="ltr">{boqGroups.length}</b>
+                    <span className="text-xs text-muted-foreground">{t("proj_boq_stat_sections")}</span>
+                  </span>
+                  <span className="flex items-baseline gap-1.5 ms-auto">
+                    <span className="text-xs text-muted-foreground">{t("proj_boq_total")}</span>
+                    <b className="font-black text-primary">
                       {boqGrandTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
-                    </p>
-                  </div>
+                    </b>
+                  </span>
                 </div>
-              )}
-
-              {/* The waste ledger carries the same headline numbers this used to show,
-                  but backed by the entries they're computed from — so the percentage
-                  can be checked, corrected, and exported instead of just believed. */}
-              {projectId && !isDeleting && (
-                <WasteLedger
-                  projectId={projectId}
-                  projectName={typedProject?.name || ""}
-                  wasteTargetPercent={typedProject?.wasteTargetPercent ?? 12}
-                  canManage={can("projects.edit")}
-                  t={t}
-                  locale={locale}
-                />
               )}
 
               {/* Toolbar. Grouped by weight rather than hidden: importing a BOQ and
@@ -2159,7 +2149,7 @@ export default function ProjectDetailPage() {
                   })()}
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap ms-auto">
                   {/* Both warehouse actions behind one trigger — they belong together and
                       only exist when the project actually has stock linked to it. */}
                   {typedProject?.warehouseId && linkedInventoryItems.length > 0 && (
@@ -2378,6 +2368,19 @@ export default function ProjectDetailPage() {
                     )}
                   </div>
                 </div>
+              )}
+              {/* Sits below the sheet, not above it. This reports on the BOQ rather than
+                  introducing it, and as a band above the toolbar it pushed the actual
+                  work off the first screen. */}
+              {projectId && !isDeleting && (
+                <WasteLedger
+                  projectId={projectId}
+                  projectName={typedProject?.name || ""}
+                  wasteTargetPercent={typedProject?.wasteTargetPercent ?? 12}
+                  canManage={can("projects.edit")}
+                  t={t}
+                  locale={locale}
+                />
               )}
             </div>
 

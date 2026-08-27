@@ -46,6 +46,12 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
     if (typeof window !== "undefined" && window.innerWidth < 768) setOpen(false)
   }, [])
 
+  // Auto-collapse tracks the catalog until the user takes over. An empty catalog was
+  // holding 256px open to say "nothing here", which squeezed the BOQ toolbar onto a
+  // second row. Once someone opens or closes it themselves, their choice sticks.
+  const [userToggled, setUserToggled] = useState(false)
+  const toggleOpen = () => { setUserToggled(true); setOpen((v) => !v) }
+
   const materialsQuery = useMemoFirebase(() => {
     if (!firestore) return null
     return query(collection(firestore, "procurementMaterials"), orderBy("name"))
@@ -53,6 +59,11 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
 
   const { data: rawMaterials, isLoading } = useCollection(materialsQuery)
   const materials = (rawMaterials || []) as Material[]
+
+  useEffect(() => {
+    if (isLoading || userToggled) return
+    if (materials.length === 0) setOpen(false)
+  }, [isLoading, materials.length, userToggled])
 
   const categories = useMemo(() => {
     const cats = new Set(materials.map((m) => m.category).filter(Boolean))
@@ -73,7 +84,7 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
   if (!open) {
     return (
       <button
-        onClick={() => setOpen(true)}
+        onClick={toggleOpen}
         className={cn(
           "flex-shrink-0 flex flex-col items-center justify-center gap-2 w-10 bg-slate-50 border border-slate-200 rounded-xl text-muted-foreground hover:text-primary hover:border-primary/30 hover:bg-primary/5 transition-all py-6",
           isRtl ? "border-r-2" : "border-l-2"
@@ -105,7 +116,7 @@ export function ProcurementSidebar({ onAddMaterial }: ProcurementSidebarProps) {
           <span className="text-xs font-bold text-slate-700">{t("procurement_sidebar_title")}</span>
         </div>
         <button
-          onClick={() => setOpen(false)}
+          onClick={toggleOpen}
           className="text-muted-foreground hover:text-slate-700 transition-colors"
           aria-label="Close"
         >
