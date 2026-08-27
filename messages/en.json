@@ -3904,7 +3904,6 @@
       "proj_waste_rows_count": "{count} items",
       "proj_waste_over_stock_title": "Requested more than the warehouse holds",
       "proj_tabs_label": "Project sections",
-      "proj_boq_more_actions": "More actions",
       "proj_boq_warehouse_menu": "Warehouse"
     },
     "Admin": {

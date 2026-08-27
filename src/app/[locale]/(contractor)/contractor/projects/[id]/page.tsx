@@ -24,8 +24,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -96,7 +94,8 @@ import {
   Package,
   GripVertical,
   ChevronDown,
-  MoreHorizontal,
+  CheckSquare,
+  Square,
   ChevronRight,
   FolderInput,
   Eye,
@@ -2105,10 +2104,11 @@ export default function ProjectDetailPage() {
                 />
               )}
 
-              {/* Toolbar. This was eight buttons of equal weight competing in one row.
-                  Grouped by how often each is actually reached for: building the sheet
-                  on the left, the two warehouse actions behind one menu, and the two
-                  commit actions on the right. Everything rarely used moved behind «⋯». */}
+              {/* Toolbar. Grouped by weight rather than hidden: importing a BOQ and
+                  selecting which rows go out to tender are both core to the workflow,
+                  so they stay on the surface. Crowding is handled by button *weight* —
+                  outline for the sheet-building actions, ghost for selection — and by
+                  keeping the two warehouse actions behind one trigger. */}
               <div className="flex items-center justify-between gap-3 flex-wrap bg-card border rounded-xl p-2.5">
                 <input
                   ref={boqFileRef}
@@ -2118,6 +2118,17 @@ export default function ProjectDetailPage() {
                   onChange={handleBoqFile}
                 />
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => boqFileRef.current?.click()}
+                    disabled={boqParsing}
+                    className="gap-1.5"
+                    title={t("proj_boq_upload_hint")}
+                  >
+                    {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                    {boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => addBoqRow()} className="gap-1.5">
                     <Plus size={14} />
                     {t("proj_boq_add_row")}
@@ -2126,40 +2137,26 @@ export default function ProjectDetailPage() {
                     <Layers size={14} />
                     {t("proj_boq_add_section")}
                   </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-1.5 px-2" aria-label={t("proj_boq_more_actions")}>
-                        <MoreHorizontal size={16} />
+                  {boqItems.length > 0 && (() => {
+                    const editableRows = allBoqRows.filter((r) => r.original.isEditable !== false)
+                    const allDeselected = editableRows.every((r) => deselectedIds.has(r.original.id))
+                    return (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setDeselectedIds(allDeselected ? new Set() : new Set(editableRows.map((r) => r.original.id)))
+                        }
+                        className="gap-1.5 text-muted-foreground h-8 text-xs"
+                      >
+                        {/* An icon, not a <Checkbox> — Radix renders that as a <button>,
+                            and a button inside a button is invalid HTML that trips
+                            React's hydration check. */}
+                        {allDeselected ? <Square size={13} /> : <CheckSquare size={13} />}
+                        {allDeselected ? t("rfq_select_all") : t("rfq_deselect_all")}
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align={isRtl ? "end" : "start"} className="w-60">
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                        {t("proj_boq_more_actions")}
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onSelect={() => boqFileRef.current?.click()} disabled={boqParsing} className="gap-2">
-                        {boqParsing ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
-                        <span className="flex-1">{boqParsing ? t("proj_boq_parsing") : t("proj_boq_upload")}</span>
-                        <span className="text-[10px] text-muted-foreground">{t("proj_boq_upload_hint")}</span>
-                      </DropdownMenuItem>
-                      {boqItems.length > 0 && (() => {
-                        const editableRows = allBoqRows.filter((r) => r.original.isEditable !== false)
-                        const allDeselected = editableRows.every((r) => deselectedIds.has(r.original.id))
-                        return (
-                          <DropdownMenuItem
-                            className="gap-2"
-                            onSelect={() =>
-                              setDeselectedIds(allDeselected ? new Set() : new Set(editableRows.map((r) => r.original.id)))
-                            }
-                          >
-                            <Checkbox checked={!allDeselected} className="pointer-events-none" />
-                            {allDeselected ? t("rfq_select_all") : t("rfq_deselect_all")}
-                          </DropdownMenuItem>
-                        )
-                      })()}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    )
+                  })()}
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
