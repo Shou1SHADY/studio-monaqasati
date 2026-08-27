@@ -1744,7 +1744,7 @@
       "crm_delete_confirm_title": "حذف جهة الاتصال",
       "crm_delete_confirm_desc": "هل أنت متأكد من حذف «{name}»؟ لا يمكن التراجع عن هذا الإجراء.",
       "crm_delete_btn": "حذف",
-      "crm_entity_type": "نوع الجهة",
+      "crm_entity_type": "الصفة القانونية",
       "crm_entity_individual": "فرد",
       "crm_entity_company": "شركة",
       "crm_status": "الحالة",

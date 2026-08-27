@@ -1743,7 +1743,7 @@
       "crm_delete_confirm_title": "Delete Contact",
       "crm_delete_confirm_desc": "Are you sure you want to delete \"{name}\"? This cannot be undone.",
       "crm_delete_btn": "Delete",
-      "crm_entity_type": "Entity Type",
+      "crm_entity_type": "Legal form",
       "crm_entity_individual": "Individual",
       "crm_entity_company": "Company",
       "crm_status": "Status",
