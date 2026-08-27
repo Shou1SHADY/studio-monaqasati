@@ -6,6 +6,8 @@ import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/fi
 import { ShieldCheck, ShieldAlert, Coins } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
@@ -14,10 +16,14 @@ import { cn } from "@/lib/utils"
 import {
   CRM_OPPORTUNITIES,
   CRM_QUOTATIONS,
+  WON_REASONS,
   formatSar,
   generateQuotationNumber,
+  historyEntry,
+  stageHistory,
   type CrmOpportunity,
   type CrmQuotation,
+  type WonReason,
 } from "@/lib/crm"
 
 /** Which rung of the value ladder this dialog is filling in. */
@@ -65,6 +71,8 @@ export function CrmValueDialog({
   const [paymentTerms, setPaymentTerms] = useState("")
   const [bidderCount, setBidderCount] = useState("")
   const [ourRank, setOurRank] = useState("1")
+  const [wonReason, setWonReason] = useState<WonReason | "">("")
+  const [wonNote, setWonNote] = useState("")
 
   useEffect(() => {
     if (!open) return
@@ -83,6 +91,8 @@ export function CrmValueDialog({
     setPaymentTerms("")
     setBidderCount(opportunity.bidderCount != null ? String(opportunity.bidderCount) : "")
     setOurRank(opportunity.ourRank != null ? String(opportunity.ourRank) : "1")
+    setWonReason(opportunity.wonReason ?? "")
+    setWonNote(opportunity.wonNote ?? "")
   }, [open, step, opportunity])
 
   const parsed = useMemo(() => {
@@ -109,6 +119,10 @@ export function CrmValueDialog({
     if (!firestore || isSaving) return
     if (parsed <= 0) {
       toast({ title: t("crm_value_required"), variant: "destructive" })
+      return
+    }
+    if (step === "award" && !wonReason) {
+      toast({ title: t("crm_won_reason_required"), variant: "destructive" })
       return
     }
 
@@ -149,12 +163,18 @@ export function CrmValueDialog({
           updatedAt: serverTimestamp(),
         })
       } else {
+        // The award is the ONLY path to "won". It writes the outcome, the
+        // reason, and the history entry together so none can exist alone.
+        const alreadyWon = opportunity.stage === "won"
         await updateDoc(oppRef, {
           awardedValue: parsed,
           stage: "won",
-          state: "won",
+          state: opportunity.state === "handed_over" ? "handed_over" : "won",
+          wonReason: wonReason || null,
+          wonNote: wonNote.trim() || null,
           bidderCount: parseInt(bidderCount, 10) || null,
           ourRank: parseInt(ourRank, 10) || null,
+          ...(alreadyWon ? {} : { stageHistory: [...stageHistory(opportunity), historyEntry("won", currentUserName)] }),
           updatedAt: serverTimestamp(),
         })
       }
@@ -181,7 +201,9 @@ export function CrmValueDialog({
       id: "value",
       title: t(`crm_value_${step}_label`),
       validate: () => {
-        return parsed > 0 ? null : t("crm_value_required")
+        if (parsed <= 0) return t("crm_value_required")
+        if (step === "award" && !wonReason) return t("crm_won_reason_required")
+        return null
       },
       content: (
         <>
@@ -215,16 +237,45 @@ export function CrmValueDialog({
             )}
 
             {step === "award" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
+                    <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="value-rank">{t("crm_value_rank")}</Label>
+                    <Input id="value-rank" type="number" min="1" inputMode="numeric" value={ourRank} onChange={(e) => setOurRank(e.target.value)} dir="ltr" disabled={isSaving} />
+                  </div>
+                </div>
+
+                {/* Why we won, next to what we won. A pipeline that only
+                    explains its losses teaches half a lesson. */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="value-bidders">{t("crm_value_bidders")}</Label>
-                  <Input id="value-bidders" type="number" min="0" inputMode="numeric" value={bidderCount} onChange={(e) => setBidderCount(e.target.value)} dir="ltr" disabled={isSaving} />
+                  <Label htmlFor="value-won-reason">{t("crm_won_reason")} <RequiredMark /></Label>
+                  <Select value={wonReason} onValueChange={(v) => setWonReason(v as WonReason)} disabled={isSaving}>
+                    <SelectTrigger id="value-won-reason">
+                      <SelectValue placeholder={t("crm_won_reason_placeholder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {WON_REASONS.map((r) => (
+                        <SelectItem key={r} value={r}>{t(`crm_won_reason_${r}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="value-rank">{t("crm_value_rank")}</Label>
-                  <Input id="value-rank" type="number" min="1" inputMode="numeric" value={ourRank} onChange={(e) => setOurRank(e.target.value)} dir="ltr" disabled={isSaving} />
+                  <Label htmlFor="value-won-note">{t("crm_won_note")}</Label>
+                  <Textarea
+                    id="value-won-note"
+                    rows={2}
+                    value={wonNote}
+                    onChange={(e) => setWonNote(e.target.value)}
+                    placeholder={t("crm_won_note_placeholder")}
+                    disabled={isSaving}
+                  />
                 </div>
-              </div>
+              </>
             )}
 
             {/* Consequence preview — what saving this number will mean. */}

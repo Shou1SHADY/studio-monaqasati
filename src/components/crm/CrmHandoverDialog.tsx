@@ -78,16 +78,23 @@ export function CrmHandoverDialog({
 
   const contractValue = opportunityBestValue(opportunity)
 
+  const pm = teamMembers.find((m) => m.id === projectManagerId)
+  const requester = teamMembers.find((m) => m.id === user?.uid)
+
   const handleSubmit = async () => {
     if (!firestore || !user || isSaving) return
     if (!contractNumber.trim()) {
       toast({ title: t("crm_handover_contract_required"), variant: "destructive" })
       return
     }
+    // A handover without a named PM is a project nobody knows they own.
+    if (!pm) {
+      toast({ title: t("crm_handover_pm_required"), variant: "destructive" })
+      return
+    }
 
     setIsSaving(true)
     try {
-      const pm = teamMembers.find((m) => m.id === projectManagerId)
       const projectId = await createProjectFromOpportunity(firestore, {
         opportunity,
         contact,
@@ -97,9 +104,19 @@ export function CrmHandoverDialog({
         durationMonths: parseInt(durationMonths, 10) || null,
         advancePercent: parseFloat(advancePercent) || null,
         retentionPercent: parseFloat(retentionPercent) || null,
-        projectManagerName: pm?.name || null,
+        projectManagerId: pm.id,
+        projectManagerName: pm.name,
+        projectManagerGroupId: pm.defaultGroupId ?? null,
+        requestedByName: requester?.name ?? user.displayName ?? null,
         notes: notes.trim() || null,
         kickoffTitle: t("crm_handover_kickoff_title", { project: opportunity.title }),
+        notification: {
+          title: t("crm_handover_notif_title"),
+          message: t("crm_handover_notif_message", {
+            project: opportunity.title,
+            by: requester?.name ?? user.displayName ?? "",
+          }),
+        },
       })
       toast({ title: t("crm_handover_done") })
       onOpenChange(false)
@@ -117,7 +134,9 @@ export function CrmHandoverDialog({
       id: "handover",
       title: t("crm_handover_btn"),
       validate: () => {
-        return contractNumber.trim() ? null : t("crm_handover_contract_required")
+        if (!contractNumber.trim()) return t("crm_handover_contract_required")
+        if (!projectManagerId) return t("crm_handover_pm_required")
+        return null
       },
       content: (
         <>
@@ -146,16 +165,16 @@ export function CrmHandoverDialog({
                 <Input id="ho-duration" type="number" min="1" inputMode="numeric" value={durationMonths} onChange={(e) => setDurationMonths(e.target.value)} dir="ltr" disabled={isSaving} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ho-pm">{t("crm_handover_pm")}</Label>
-                <Select value={projectManagerId || "__none__"} onValueChange={(v) => setProjectManagerId(v === "__none__" ? "" : v)} disabled={isSaving}>
+                <Label htmlFor="ho-pm">{t("crm_handover_pm")} <RequiredMark /></Label>
+                <Select value={projectManagerId} onValueChange={setProjectManagerId} disabled={isSaving}>
                   <SelectTrigger id="ho-pm"><SelectValue placeholder={t("crm_owner_placeholder")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none__">{t("crm_owner_none")}</SelectItem>
                     {teamMembers.map((m) => (
                       <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">{t("crm_handover_pm_hint")}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ho-advance">{t("crm_handover_advance")}</Label>
@@ -175,7 +194,7 @@ export function CrmHandoverDialog({
             {/* What saving actually does, stated before it happens — this write
                 creates a record in another module and cannot be undone here. */}
             <ul className="rounded-lg border border-cta/20 bg-cta/5 p-3 space-y-1.5 text-xs text-foreground">
-              {["crm_handover_effect_project", "crm_handover_effect_sections", "crm_handover_effect_closed"].map((key) => (
+              {["crm_handover_effect_project", "crm_handover_effect_pm", "crm_handover_effect_sections", "crm_handover_effect_closed"].map((key) => (
                 <li key={key} className="flex items-start gap-2">
                   <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-cta" aria-hidden="true" />
                   <span>{t(key)}</span>

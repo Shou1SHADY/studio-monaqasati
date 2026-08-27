@@ -3,9 +3,11 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -20,9 +22,12 @@ import {
   historyEntry,
   isoDateIn,
   opportunityBestValue,
+  stageHistory,
   type ActivityType,
   type CrmContact,
   type CrmOpportunity,
+  type HandoverStatus,
+  type ProjectHandover,
 } from "@/lib/crm"
 import { defaultEnabledSections } from "@/lib/project-sections"
 
@@ -146,10 +151,19 @@ export interface HandoverInput {
   durationMonths: number | null
   advancePercent: number | null
   retentionPercent: number | null
+  /** The project manager being asked to take the project. Required: a
+   * handover nobody is asked to accept is a project nobody knows about. */
+  projectManagerId: string
   projectManagerName?: string | null
+  /** The PM's default permission group, copied onto the project assignment. */
+  projectManagerGroupId?: string | null
+  /** Who is handing over — where a rejection gets reported back to. */
+  requestedByName?: string | null
   notes?: string | null
   /** Title for the auto-created kickoff meeting. Localised by the caller. */
   kickoffTitle?: string
+  /** Notification copy for the PM. Localised by the caller. */
+  notification?: { title: string; message: string }
 }
 
 /**
@@ -172,6 +186,18 @@ export async function createProjectFromOpportunity(
   const { opportunity, contact, orgId, userId } = input
 
   const budget = opportunityBestValue(opportunity)
+
+  const handover: ProjectHandover = {
+    status: "pending",
+    pmId: input.projectManagerId,
+    pmName: input.projectManagerName?.trim() || null,
+    requestedByUserId: userId,
+    requestedByName: input.requestedByName?.trim() || null,
+    requestedAt: new Date().toISOString(),
+    respondedAt: null,
+    rejectReason: null,
+    opportunityId: opportunity.id,
+  }
 
   const projectRef = await addDoc(collection(firestore, "projects"), {
     organizationId: orgId || userId,
@@ -196,24 +222,57 @@ export async function createProjectFromOpportunity(
     durationMonths: input.durationMonths ?? null,
     advancePercent: input.advancePercent ?? null,
     retentionPercent: input.retentionPercent ?? null,
+    projectManagerId: input.projectManagerId,
     projectManagerName: input.projectManagerName?.trim() || null,
+    handover,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
 
+  // The PM becomes a member of the project with the same group they hold
+  // org-wide, so the project shows up in their list and the permission rules
+  // treat them exactly as a manually assigned member would be.
+  await setDoc(
+    doc(firestore, "projects", projectRef.id, "members", input.projectManagerId),
+    {
+      userId: input.projectManagerId,
+      groupId: input.projectManagerGroupId ?? null,
+      organizationId: orgId || userId,
+      addedBy: userId,
+      viaHandover: true,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  )
+
   await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opportunity.id), {
     state: "handed_over",
     stage: "won",
-    stageHistory: [...(opportunity.stageHistory ?? []), historyEntry("handed_over", input.projectManagerName)],
+    stageHistory: [...(opportunity.stageHistory ?? []), historyEntry("handed_over", input.requestedByName ?? null)],
     projectId: projectRef.id,
     contractNumber: input.contractNumber.trim() || null,
     durationMonths: input.durationMonths ?? null,
     advancePercent: input.advancePercent ?? null,
     retentionPercent: input.retentionPercent ?? null,
+    projectManagerId: input.projectManagerId,
     projectManagerName: input.projectManagerName?.trim() || null,
+    handoverStatus: "pending",
+    handoverRejectReason: null,
     handedOverAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
+
+  // Tell the PM. Without this the project exists and nobody who has to run
+  // it knows — which is the gap the whole accept/reject step exists to close.
+  if (input.notification) {
+    await notifyUser(firestore, input.projectManagerId, {
+      ...input.notification,
+      type: "project_handover",
+      organizationId: orgId || userId,
+      projectId: projectRef.id,
+      opportunityId: opportunity.id,
+    })
+  }
 
   // A handed-over project that nobody kicks off is how a signed contract sits
   // untouched for three weeks. Best-effort — the handover already succeeded.
@@ -230,6 +289,95 @@ export async function createProjectFromOpportunity(
   })
 
   return projectRef.id
+}
+
+/**
+ * In-app notification for one user. Same shape the invitation and offer
+ * routes write, so the notifications page renders it without a new branch.
+ * Best-effort: a notification that fails must not fail the action it reports.
+ */
+async function notifyUser(
+  firestore: Firestore,
+  userId: string,
+  data: { title: string; message: string; type: string } & Record<string, unknown>
+): Promise<void> {
+  try {
+    await addDoc(collection(firestore, "users", userId, "notifications"), {
+      ...data,
+      createdAt: new Date().toISOString(),
+      read: false,
+    })
+  } catch (err) {
+    console.error("Failed to write notification", err)
+  }
+}
+
+export interface HandoverResponseInput {
+  projectId: string
+  handover: ProjectHandover
+  decision: Exclude<HandoverStatus, "pending">
+  /** Required when rejecting. */
+  reason?: string | null
+  /** The responding PM. */
+  userId: string
+  userName?: string | null
+  /** Notification copy for whoever handed the project over. Localised by the caller. */
+  notification?: { title: string; message: string }
+}
+
+/**
+ * The PM's answer to a handover.
+ *
+ * Accepting stamps the project and the deal. Rejecting sends the deal back to
+ * "won" so the CRM can hand it to someone else; the project stays, marked
+ * rejected, because deleting another module's record from the CRM is not
+ * this function's call. Either way the person who handed it over is told.
+ */
+export async function respondToHandover(firestore: Firestore, input: HandoverResponseInput): Promise<void> {
+  const respondedAt = new Date().toISOString()
+  const reason = input.decision === "rejected" ? input.reason?.trim() || null : null
+  const nextHandover: ProjectHandover = {
+    ...input.handover,
+    status: input.decision,
+    respondedAt,
+    rejectReason: reason,
+  }
+
+  await updateDoc(doc(firestore, "projects", input.projectId), {
+    handover: nextHandover,
+    updatedAt: serverTimestamp(),
+  })
+
+  const opportunityId = input.handover.opportunityId
+  if (opportunityId) {
+    const oppRef = doc(firestore, CRM_OPPORTUNITIES, opportunityId)
+    const snap = await getDoc(oppRef)
+    if (snap.exists()) {
+      const opp = snap.data() as CrmOpportunity
+      const event = input.decision === "accepted" ? "handover_accepted" : "handover_rejected"
+      await updateDoc(oppRef, {
+        handoverStatus: input.decision,
+        handoverRejectReason: reason,
+        // A rejected handover is a won deal again — the project it produced
+        // is not the one that will be run, so the link is dropped too.
+        ...(input.decision === "rejected"
+          ? { state: "won", projectId: null, projectManagerId: null, projectManagerName: null }
+          : {}),
+        stageHistory: [...stageHistory(opp), historyEntry(event, input.userName ?? null)],
+        updatedAt: serverTimestamp(),
+      })
+    }
+  }
+
+  const requester = input.handover.requestedByUserId
+  if (requester && requester !== input.userId && input.notification) {
+    await notifyUser(firestore, requester, {
+      ...input.notification,
+      type: input.decision === "accepted" ? "project_handover_accepted" : "project_handover_rejected",
+      projectId: input.projectId,
+      opportunityId: opportunityId ?? null,
+    })
+  }
 }
 
 /** Suggested contract number for a handover: `C-<year>/<sequence>`. */

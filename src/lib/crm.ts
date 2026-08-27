@@ -388,7 +388,48 @@ export const HOLD_REASONS: HoldReason[] = [
   "our_capacity",
 ]
 
+/**
+ * Why we won. Recorded at award time, next to the awarded value, because a
+ * pipeline that only explains its losses teaches half a lesson.
+ */
+export type WonReason = "price" | "relationship" | "quality" | "speed" | "sole_bidder" | "other"
+export const WON_REASONS: WonReason[] = ["price", "relationship", "quality", "speed", "sole_bidder", "other"]
+
 export type ApprovalStatus = "none" | "pending" | "approved"
+
+// ---------------------------------------------------------------------------
+// Handover to Projects
+//
+// A won deal is not a project until a project manager has agreed to run it.
+// The handover therefore carries its own status, mirrored on the project
+// document (where the PM acts on it) and summarised on the opportunity.
+// ---------------------------------------------------------------------------
+
+export type HandoverStatus = "pending" | "accepted" | "rejected"
+
+export const HANDOVER_BADGE_CLASS: Record<HandoverStatus, string> = {
+  pending: "bg-warning/10 text-warning border-warning/20",
+  accepted: "bg-success/10 text-success border-success/20",
+  rejected: "bg-destructive/10 text-destructive border-destructive/20",
+}
+
+/** Stored on `projects/{id}.handover`. */
+export interface ProjectHandover {
+  status: HandoverStatus
+  /** The project manager asked to take the project. */
+  pmId: string
+  pmName?: string | null
+  /** Who handed it over, so a rejection has somewhere to go back to. */
+  requestedByUserId?: string | null
+  requestedByName?: string | null
+  /** ISO strings — this object lives inside a map, where server timestamps
+   * are fine, but the client also reads it back synchronously. */
+  requestedAt: string
+  respondedAt?: string | null
+  rejectReason?: string | null
+  /** The opportunity this project came from. */
+  opportunityId?: string | null
+}
 
 // ---------------------------------------------------------------------------
 // Audit trail and addenda
@@ -396,7 +437,13 @@ export type ApprovalStatus = "none" | "pending" | "approved"
 
 /** What a history entry records. Stages plus the terminal moves that are not
  * stages — a deal being handed over, parked, or brought back. */
-export type HistoryEvent = OpportunityStage | "handed_over" | "on_hold" | "reactivated"
+export type HistoryEvent =
+  | OpportunityStage
+  | "handed_over"
+  | "handover_accepted"
+  | "handover_rejected"
+  | "on_hold"
+  | "reactivated"
 
 export interface StageHistoryEntry {
   event: HistoryEvent
@@ -500,6 +547,9 @@ export interface CrmOpportunity {
   approvedByName?: string | null
 
   // --- outcome ------------------------------------------------------------
+  /** Why we won — required at award time. */
+  wonReason?: WonReason | null
+  wonNote?: string | null
   lostReason?: LostReason | null
   lostToCompetitor?: string | null
   competitorPrice?: number | null
@@ -517,8 +567,13 @@ export interface CrmOpportunity {
   durationMonths?: number | null
   advancePercent?: number | null
   retentionPercent?: number | null
+  projectManagerId?: string | null
   projectManagerName?: string | null
   handedOverAt?: unknown
+  /** Mirror of `projects/{projectId}.handover.status`, so the pipeline can
+   * show "waiting for the PM" without reading every project. */
+  handoverStatus?: HandoverStatus | null
+  handoverRejectReason?: string | null
 
   // --- renewals -----------------------------------------------------------
   /** For a renewal-track deal: the handed-over deal whose contract is expiring.
@@ -609,6 +664,49 @@ export function nextStage(opp: CrmOpportunity): OpportunityStage | null {
 
 export function canAdvanceStage(opp: CrmOpportunity, ctx?: GateContext): boolean {
   return isOpportunityOpen(opp) && gatesRemaining(opp, ctx).length === 0 && nextStage(opp) !== null
+}
+
+/** Why a generic stage move is refused. `null` means it is allowed. */
+export type StageMoveBlock =
+  /** The deal is not open (won, lost, parked, handed over). */
+  | "closed"
+  /** Won and lost are outcomes recorded from inside the record, never a column. */
+  | "terminal"
+  /** Moving forward while this stage's checklist is incomplete. */
+  | "gates"
+  /** Jumping more than one stage ahead. */
+  | "skip"
+  /** Already there. */
+  | "same"
+
+/**
+ * The ONE rule for moving a deal between pipeline columns, shared by the board,
+ * the table and anything else that offers a stage picker.
+ *
+ * A move is legal when it is one step forward with every gate of the current
+ * stage satisfied, or any number of steps backward (a deal can always be
+ * demoted — a wrongly ticked gate is not a reason to strand it). Won and lost
+ * are never reachable this way: they go through the award and close dialogs,
+ * which insist on a value and a reason.
+ */
+export function stageMoveBlock(
+  opp: CrmOpportunity,
+  target: OpportunityStage,
+  ctx?: GateContext
+): StageMoveBlock | null {
+  if (target === opp.stage) return "same"
+  if (!isOpportunityOpen(opp)) return "closed"
+  if (target === "won" || target === "lost") return "terminal"
+  const from = OPEN_OPPORTUNITY_STAGES.indexOf(opp.stage)
+  const to = OPEN_OPPORTUNITY_STAGES.indexOf(target)
+  if (from === -1 || to === -1) return "closed"
+  if (to < from) return null
+  if (to > from + 1) return "skip"
+  return gatesRemaining(opp, ctx).length === 0 ? null : "gates"
+}
+
+export function canMoveToStage(opp: CrmOpportunity, target: OpportunityStage, ctx?: GateContext): boolean {
+  return stageMoveBlock(opp, target, ctx) === null
 }
 
 // ---------------------------------------------------------------------------

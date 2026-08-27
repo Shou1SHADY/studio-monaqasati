@@ -7,6 +7,8 @@ import { useRouter, Link } from "@/i18n/routing"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
+import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import type { ProjectHandover } from "@/lib/crm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -681,6 +683,8 @@ export default function ProjectDetailPage() {
     organizationId?: string
     createdAt?: unknown
     enabledSections?: string[]
+    /** Present when the project came from a won CRM deal. */
+    handover?: ProjectHandover | null
   } | null
 
   const enabledSectionIds = ((typedProject?.enabledSections?.length
@@ -1767,6 +1771,17 @@ export default function ProjectDetailPage() {
   return (
     <PortalLayout>
       <div className="space-y-5 max-w-5xl mx-auto">
+        {/* A project handed over from the CRM waits here for its PM to
+            accept it — above the header, because until they do the project
+            has no owner. */}
+        {typedProject.handover && (
+          <ProjectHandoverBanner
+            projectId={projectId}
+            projectName={typedProject.name || ""}
+            handover={typedProject.handover}
+          />
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">

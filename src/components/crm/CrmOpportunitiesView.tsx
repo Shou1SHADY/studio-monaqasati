@@ -7,10 +7,13 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Building2,
   CalendarDays,
   Coins,
   Contact,
+  ExternalLink,
   Loader2,
+  Lock,
   Pencil,
   Plus,
   Search,
@@ -43,6 +46,7 @@ import { useCrmListState, type CrmListConfig } from "@/hooks/useCrmListState"
 import { cn } from "@/lib/utils"
 import {
   CRM_OPPORTUNITIES,
+  HANDOVER_BADGE_CLASS,
   OPEN_OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGE_BADGE_CLASS,
@@ -62,11 +66,16 @@ import {
   opportunityState,
   opportunityTrack,
   primaryScope,
+  stageHistory,
+  stageMoveBlock,
   summarizeOpportunities,
   toDate,
   type CrmOpportunity,
   type EligibilityCheck,
+  type GateContext,
   type OpportunityStage,
+  type OpportunityState,
+  type StageMoveBlock,
 } from "@/lib/crm"
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
@@ -83,6 +92,9 @@ import {
   type CrmPortal,
 } from "@/components/crm/CrmShell"
 
+/** Outcome columns on the board, in the order the segments list them. */
+const OUTCOME_COLUMNS = ["won", "handed_over", "on_hold", "lost"] as const satisfies readonly Exclude<OpportunityState, "open">[]
+
 export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -94,6 +106,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const { profile } = useCrmOrgProfile()
   const router = useRouter()
   const base = crmBasePath(portal)
+  const projectsBase = portal === "contractor" ? "/contractor/projects" : "/supplier/projects"
 
   const [view, setView] = useState<"board" | "list">("board")
   const [showAdd, setShowAdd] = useState(false)
@@ -176,30 +189,54 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
 
   const state = useCrmListState(opportunities, listConfig, locale)
 
-  // The board always shows open deals by stage, filtered by the toolbar — a
-  // pipeline column full of closed deals is not a pipeline.
-  const byStage = useMemo(() => {
-    const map = new Map<OpportunityStage, CrmOpportunity[]>()
-    for (const stage of OPPORTUNITY_STAGES) map.set(stage, [])
-    for (const opp of state.filtered) {
-      if (isOpportunityOpen(opp)) map.get(opp.stage)?.push(opp)
-    }
-    return map
-  }, [state.filtered])
+  const gateCtx = useMemo<GateContext>(() => ({ profile }), [profile])
 
-  const outcomes = useMemo(() => {
-    const of = (s: string) => state.filtered.filter((o) => opportunityState(o) === s)
-    return { won: of("won"), handedOver: of("handed_over"), onHold: of("on_hold"), lost: of("lost") }
-  }, [state.filtered])
+  // The board and the table render the SAME rows — `state.visible`, after the
+  // segment, the filters, the sort and the page limit. The board only
+  // rearranges them: open deals fall into their stage column, everything
+  // else into a column per outcome. A won deal that the table lists must be
+  // a card the board shows, or the two views are two different truths.
+  const columns = useMemo(() => {
+    const byStage = new Map<OpportunityStage, CrmOpportunity[]>()
+    for (const stage of OPEN_OPPORTUNITY_STAGES) byStage.set(stage, [])
+    const byOutcome = new Map<Exclude<OpportunityState, "open">, CrmOpportunity[]>()
+    for (const outcome of OUTCOME_COLUMNS) byOutcome.set(outcome, [])
+    for (const opp of state.visible) {
+      const s = opportunityState(opp)
+      if (s === "open") byStage.get(opp.stage)?.push(opp)
+      else byOutcome.get(s)?.push(opp)
+    }
+    // Stage columns appear whenever the segment can contain open deals.
+    // Outcome columns: all four under "all" (same quarter width as the stage
+    // row above, so cards keep their shape), just the chosen one under an
+    // outcome segment, and none under "open" — there they would be four
+    // empty boxes.
+    const showStages = state.segment === "open" || state.segment === "all"
+    const stages = showStages ? OPEN_OPPORTUNITY_STAGES.map((stage) => ({ stage, items: byStage.get(stage) ?? [] })) : []
+    const outcomes = OUTCOME_COLUMNS
+      .map((outcome) => ({ outcome, items: byOutcome.get(outcome) ?? [] }))
+      .filter((col) => state.segment === "all" || state.segment === col.outcome || col.items.length > 0)
+    return { stages, outcomes }
+  }, [state.visible, state.segment])
 
   const moveStage = async (opp: CrmOpportunity, stage: OpportunityStage) => {
     if (!firestore || stage === opp.stage) return
+    // Re-check at the moment of the write, not just when the menu rendered:
+    // a gate may have been unticked in another tab since.
+    const block = stageMoveBlock(opp, stage, gateCtx)
+    if (block) {
+      toast({
+        title: t(block === "gates" ? "crm_move_blocked_gates" : "crm_move_blocked_terminal"),
+        description: t("crm_move_open_record"),
+        variant: "destructive",
+      })
+      return
+    }
     setMovingId(opp.id)
     try {
       await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opp.id), {
         stage,
-        // Reaching won/lost from the board is an outcome, not just a column.
-        ...(stage === "won" ? { state: "won" } : stage === "lost" ? { state: "lost" } : { state: "open" }),
+        state: "open",
         stageHistory: [...(opp.stageHistory ?? []), historyEntry(stage, opp.ownerName)],
         updatedAt: serverTimestamp(),
       })
@@ -328,75 +365,86 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
         />
       ) : view === "board" ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {OPEN_OPPORTUNITY_STAGES.map((stage) => {
-              const items = byStage.get(stage) || []
-              const columnValue = items.reduce((sum, o) => sum + (o.value || 0), 0)
-              return (
-                <section key={stage} className="rounded-xl border bg-muted/20 overflow-hidden flex flex-col">
-                  <div className={cn("h-1", OPPORTUNITY_STAGE_BAR_CLASS[stage])} aria-hidden="true" />
-                  <header className="px-3 py-2.5 flex items-center justify-between gap-2 border-b bg-card">
-                    <h2 className="text-xs font-black text-foreground truncate">{t(`crm_opp_stage_${stage}`)}</h2>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[10px] font-bold text-muted-foreground" dir="ltr">
-                        {formatSarCompact(columnValue, locale)}
-                      </span>
-                      <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px]">
-                        {items.length}
-                      </Badge>
-                    </div>
-                  </header>
-                  <div className="p-2 space-y-2 flex-1 min-h-[80px]">
-                    {items.length === 0 ? (
-                      <p className="text-xs text-muted-foreground/60 text-center py-6">{t("crm_opp_stage_empty")}</p>
-                    ) : (
-                      items.map((opp) => (
-                        <OpportunityCard
-                          key={opp.id}
-                          opp={opp}
-                          detailHref={`${base}/opportunities/${opp.id}`}
-                          contactHref={`${base}/leads/${opp.contactId}`}
-                          canManage={canManageCrm}
-                          isMoving={movingId === opp.id}
-                          blocking={gatesRemaining(opp, { profile }).length}
-                          eligibility={checkEligibility(opp, profile)}
-                          onMove={(next) => void moveStage(opp, next)}
-                          onEdit={() => setEditOpp(opp)}
-                          onDelete={() => setDeleteTarget(opp)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </section>
-              )
-            })}
-          </div>
+          {columns.stages.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {columns.stages.map(({ stage, items }) => (
+                <BoardColumn
+                  key={stage}
+                  title={t(`crm_opp_stage_${stage}`)}
+                  barClass={OPPORTUNITY_STAGE_BAR_CLASS[stage]}
+                  count={items.length}
+                  value={formatSarCompact(items.reduce((sum, o) => sum + (o.value || 0), 0), locale)}
+                  emptyLabel={t("crm_opp_stage_empty")}
+                >
+                  {items.map((opp) => (
+                    <OpportunityCard
+                      key={opp.id}
+                      opp={opp}
+                      detailHref={`${base}/opportunities/${opp.id}`}
+                      contactHref={`${base}/leads/${opp.contactId}`}
+                      projectHref={opp.projectId ? `${projectsBase}/${opp.projectId}` : null}
+                      canManage={canManageCrm}
+                      isMoving={movingId === opp.id}
+                      blocking={gatesRemaining(opp, gateCtx).length}
+                      eligibility={checkEligibility(opp, profile)}
+                      moveBlock={(target) => stageMoveBlock(opp, target, gateCtx)}
+                      onMove={(next) => void moveStage(opp, next)}
+                      onEdit={() => setEditOpp(opp)}
+                      onDelete={() => setDeleteTarget(opp)}
+                    />
+                  ))}
+                </BoardColumn>
+              ))}
+            </div>
+          )}
 
-          {/* Outcomes, not queues. Won and handed-over are split because the
-              gap between them is real work someone still owes. */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {([
-              { outcome: "won" as const, items: outcomes.won },
-              { outcome: "handed_over" as const, items: outcomes.handedOver },
-              { outcome: "on_hold" as const, items: outcomes.onHold },
-              { outcome: "lost" as const, items: outcomes.lost },
-            ]).map(({ outcome, items }) => {
-              const value = items.reduce((sum, o) => sum + (o.awardedValue || o.submittedPrice || o.value || 0), 0)
-              return (
-                <div key={outcome} className="rounded-xl border p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <Badge variant="outline" className={cn("text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[outcome])}>
-                      {t(`crm_state_${outcome}`)}
-                    </Badge>
-                    <span className="text-sm font-black text-foreground shrink-0" dir="ltr">{items.length}</span>
-                  </div>
-                  <p className="text-base font-black text-foreground mt-2 truncate" dir="ltr">
-                    {formatSarCompact(value, locale)}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
+          {/* Outcomes are columns too — the same cards the table lists, not a
+              count. Won and handed-over stay separate because the gap between
+              them is real work someone still owes. */}
+          {columns.outcomes.length > 0 && (
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-4",
+                columns.outcomes.length > 1 && "sm:grid-cols-2",
+                columns.outcomes.length > 2 && "xl:grid-cols-4"
+              )}
+            >
+              {columns.outcomes.map(({ outcome, items }) => (
+                <BoardColumn
+                  key={outcome}
+                  title={t(`crm_state_${outcome}`)}
+                  barClass={OUTCOME_BAR_CLASS[outcome]}
+                  wide={columns.stages.length === 0 && columns.outcomes.length === 1}
+                  count={items.length}
+                  value={formatSarCompact(
+                    items.reduce((sum, o) => sum + (o.awardedValue || o.submittedPrice || o.value || 0), 0),
+                    locale
+                  )}
+                  emptyLabel={t("crm_opp_stage_empty")}
+                >
+                  {items.map((opp) => (
+                    <OpportunityCard
+                      key={opp.id}
+                      opp={opp}
+                      detailHref={`${base}/opportunities/${opp.id}`}
+                      contactHref={`${base}/leads/${opp.contactId}`}
+                      projectHref={opp.projectId ? `${projectsBase}/${opp.projectId}` : null}
+                      canManage={canManageCrm}
+                      isMoving={movingId === opp.id}
+                      blocking={0}
+                      eligibility={checkEligibility(opp, profile)}
+                      moveBlock={(target) => stageMoveBlock(opp, target, gateCtx)}
+                      onMove={(next) => void moveStage(opp, next)}
+                      onEdit={() => setEditOpp(opp)}
+                      onDelete={() => setDeleteTarget(opp)}
+                    />
+                  ))}
+                </BoardColumn>
+              ))}
+            </div>
+          )}
+
+          <CrmShowMore state={state} />
         </div>
       ) : (
         <div className="rounded-xl border overflow-hidden">
@@ -470,6 +518,11 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                             {rowState !== "open" && (
                               <Badge variant="outline" className={cn("ms-2 text-[10px]", OPPORTUNITY_STATE_BADGE_CLASS[rowState])}>
                                 {t(`crm_state_${rowState}`)}
+                              </Badge>
+                            )}
+                            {rowState === "handed_over" && opp.handoverStatus && (
+                              <Badge variant="outline" className={cn("ms-1 text-[10px]", HANDOVER_BADGE_CLASS[opp.handoverStatus])}>
+                                {t(`crm_handover_status_${opp.handoverStatus}`)}
                               </Badge>
                             )}
                           </TableCell>
@@ -653,23 +706,86 @@ export function EligibilityBadge({ check }: { check: EligibilityCheck }) {
   )
 }
 
+/** Column accent for the outcome columns — matches the state badges. */
+const OUTCOME_BAR_CLASS: Record<Exclude<OpportunityState, "open">, string> = {
+  won: "bg-success",
+  handed_over: "bg-primary",
+  on_hold: "bg-warning",
+  lost: "bg-destructive",
+}
+
+/** One column of the board: a coloured rule, a header with count and value,
+ * and the cards. Shared by stage and outcome columns so they read as one board. */
+function BoardColumn({
+  title,
+  barClass,
+  count,
+  value,
+  emptyLabel,
+  wide = false,
+  children,
+}: {
+  title: string
+  barClass: string
+  count: number
+  value: string
+  emptyLabel: string
+  /** The column has the whole row to itself (a single outcome segment), so
+   * cards flow in a grid instead of one stretched stack. */
+  wide?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-xl border bg-muted/20 overflow-hidden flex flex-col">
+      <div className={cn("h-1", barClass)} aria-hidden="true" />
+      <header className="px-3 py-2.5 flex items-center justify-between gap-2 border-b bg-card">
+        <h2 className="text-xs font-black text-foreground truncate">{title}</h2>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[10px] font-bold text-muted-foreground" dir="ltr">{value}</span>
+          <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px]">
+            {count}
+          </Badge>
+        </div>
+      </header>
+      <div
+        className={cn(
+          "p-2 flex-1 min-h-[80px]",
+          wide ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 content-start" : "space-y-2"
+        )}
+      >
+        {count === 0 ? (
+          <p className={cn("text-xs text-muted-foreground/60 text-center py-6", wide && "col-span-full")}>{emptyLabel}</p>
+        ) : (
+          children
+        )}
+      </div>
+    </section>
+  )
+}
+
 /**
  * A deal on the board.
  *
  * Carries the same facts as a table row — value, probability, eligibility,
- * owner, what is blocking it — because a person who switches to the board
- * should not lose information, only rearrange it. The whole card navigates to
- * the deal; the stage select and the row of actions sit above that overlay so
- * they stay usable.
+ * owner, state, what is blocking it — because a person who switches to the
+ * board should not lose information, only rearrange it. The whole card
+ * navigates to the deal; the stage select and the row of actions sit above
+ * that overlay so they stay usable.
+ *
+ * The stage select obeys the same rule as the detail page: one step forward
+ * only once the gates are cleared, any step back, and never straight to won
+ * or lost — those are recorded inside the record with a value and a reason.
  */
 function OpportunityCard({
   opp,
   detailHref,
   contactHref,
+  projectHref,
   canManage,
   isMoving,
   blocking,
   eligibility,
+  moveBlock,
   onMove,
   onEdit,
   onDelete,
@@ -677,10 +793,12 @@ function OpportunityCard({
   opp: CrmOpportunity
   detailHref: string
   contactHref: string
+  projectHref: string | null
   canManage: boolean
   isMoving: boolean
   blocking: number
   eligibility: EligibilityCheck
+  moveBlock: (target: OpportunityStage) => StageMoveBlock | null
   onMove: (stage: OpportunityStage) => void
   onEdit: () => void
   onDelete: () => void
@@ -688,13 +806,22 @@ function OpportunityCard({
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const days = daysUntil(opp.expectedCloseDate)
-  const isOverdue = days !== null && days < 0
-  const isDueSoon = days !== null && days >= 0 && days <= 7
+  const state = opportunityState(opp)
+  const isOpen = state === "open"
+  const isOverdue = isOpen && days !== null && days < 0
+  const isDueSoon = isOpen && days !== null && days >= 0 && days <= 7
   const scope = primaryScope(opp)
   const extraScopes = (opp.scopeTypes?.length ?? 0) - 1
+  const shownValue = opp.awardedValue || opp.submittedPrice || opp.value
+  const outcomeAt = isOpen ? null : stageHistory(opp).at(-1)?.at ?? null
 
   return (
-    <article className={cn(CRM_CARD_LINK_CLASS, "p-3")}>
+    // A flex column: the facts take what they need, the action row is pinned
+    // to the bottom. In a grid the cell stretches the card to the row's
+    // height, so every card's buttons sit on one line no matter how long its
+    // title ran; in a stacked column the card stays as tall as its content
+    // (no `h-full` — that would stretch it to the column's full height).
+    <article className={cn(CRM_CARD_LINK_CLASS, "p-3 flex flex-col")}>
       {/* Whole-card target sits UNDERNEATH the controls below. */}
       <Link
         href={detailHref}
@@ -703,7 +830,7 @@ function OpportunityCard({
         tabIndex={-1}
       />
 
-      <div className="relative pointer-events-none space-y-2">
+      <div className="relative pointer-events-none space-y-2 flex-1">
         <div className="flex items-start justify-between gap-2">
           <Link
             href={detailHref}
@@ -715,6 +842,14 @@ function OpportunityCard({
             {t(`crm_track_${opportunityTrack(opp)}`)}
           </Badge>
         </div>
+
+        {/* The column header already names the stage or outcome; only what
+            it does NOT say — where the handover stands — earns a badge. */}
+        {state === "handed_over" && opp.handoverStatus && (
+          <Badge variant="outline" className={cn("text-[9px]", HANDOVER_BADGE_CLASS[opp.handoverStatus])}>
+            {t(`crm_handover_status_${opp.handoverStatus}`)}
+          </Badge>
+        )}
 
         {(scope || opp.customScopeType) && (
           <p className="text-[10px] text-muted-foreground truncate">
@@ -733,8 +868,8 @@ function OpportunityCard({
         {/* Value and confidence read together — one is meaningless without
             the other when comparing two cards. */}
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-sm font-black text-foreground" dir="ltr">{formatSar(opp.value, locale)}</span>
-          {typeof opp.probability === "number" && (
+          <span className="text-sm font-black text-foreground" dir="ltr">{formatSar(shownValue, locale)}</span>
+          {typeof opp.probability === "number" && isOpen && (
             <span className="text-[11px] font-bold text-muted-foreground" dir="ltr">{opp.probability}%</span>
           )}
         </div>
@@ -753,7 +888,9 @@ function OpportunityCard({
           </p>
         )}
 
-        {opp.expectedCloseDate && (
+        {/* Open deals count down to their close date; decided ones show when
+            they were decided — an "expected close" on an awarded deal is noise. */}
+        {isOpen && opp.expectedCloseDate && (
           <p
             className={cn(
               "text-[11px] flex items-center gap-1",
@@ -766,22 +903,65 @@ function OpportunityCard({
             {!isOverdue && isDueSoon && <span>· {t("crm_opp_due_soon", { days })}</span>}
           </p>
         )}
+        {!isOpen && outcomeAt && (
+          <p className="text-[11px] flex items-center gap-1 text-muted-foreground">
+            <CalendarDays size={11} className="shrink-0" />
+            <span>{formatCrmDate(outcomeAt, locale)}</span>
+          </p>
+        )}
       </div>
 
       {canManage && (
-        <div className="relative z-10 flex items-center gap-1 pt-2 mt-2 border-t">
-          {/* Stage moves are a Select rather than drag-and-drop: it is
-              keyboard-reachable, works on touch, and needs no extra dependency. */}
-          <Select value={opp.stage} onValueChange={(v) => onMove(v as OpportunityStage)} disabled={isMoving}>
-            <SelectTrigger className="h-7 text-[11px] flex-1" aria-label={t("crm_opp_stage")}>
-              {isMoving ? <Loader2 size={11} className="animate-spin" /> : <SelectValue />}
-            </SelectTrigger>
-            <SelectContent>
-              {OPPORTUNITY_STAGES.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">{t(`crm_opp_stage_${s}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="relative z-10 flex items-center gap-1 pt-2 mt-3 border-t">
+          {isOpen ? (
+            /* Stage moves are a Select rather than drag-and-drop: it is
+               keyboard-reachable, works on touch, and needs no extra dependency.
+               Only the open stages are offered, and a forward step stays
+               disabled until the gates are cleared — the same rule the
+               detail page enforces. Won and lost are not on the list at all. */
+            <Select value={opp.stage} onValueChange={(v) => onMove(v as OpportunityStage)} disabled={isMoving}>
+              <SelectTrigger className="h-7 text-[11px] flex-1" aria-label={t("crm_opp_stage")}>
+                {isMoving ? <Loader2 size={11} className="animate-spin" /> : <SelectValue />}
+              </SelectTrigger>
+              <SelectContent>
+                {OPEN_OPPORTUNITY_STAGES.map((s) => {
+                  const block = moveBlock(s)
+                  const disabled = block !== null && block !== "same"
+                  return (
+                    <SelectItem
+                      key={s}
+                      value={s}
+                      disabled={disabled}
+                      className="text-xs"
+                      title={block === "gates" ? t("crm_gates_blocking", { count: blocking }) : undefined}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {disabled && <Lock size={10} className="opacity-60" aria-hidden="true" />}
+                        {t(`crm_opp_stage_${s}`)}
+                      </span>
+                    </SelectItem>
+                  )
+                })}
+                <p className="px-2 pt-1.5 pb-1 text-[10px] text-muted-foreground border-t mt-1">
+                  {t("crm_move_won_hint")}
+                </p>
+              </SelectContent>
+            </Select>
+          ) : projectHref ? (
+            <Button asChild size="sm" variant="outline" className="h-7 flex-1 gap-1 text-[11px]">
+              <Link href={projectHref}>
+                <Building2 size={11} />
+                {t("crm_handover_open_project")}
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild size="sm" variant="outline" className="h-7 flex-1 gap-1 text-[11px]">
+              <Link href={detailHref}>
+                <ExternalLink size={11} />
+                {t("crm_open_record")}
+              </Link>
+            </Button>
+          )}
           <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-primary"
             onClick={onEdit} aria-label={`${t("crm_opp_edit_title")} — ${opp.title}`}>
             <Pencil size={12} />

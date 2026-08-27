@@ -18,6 +18,10 @@ import {
 export interface TeamMember {
   id: string
   name: string
+  /** The member's default permission group — copied onto a project
+   * assignment when a deal is handed to them, so their project access
+   * matches their org access. */
+  defaultGroupId?: string | null
 }
 
 /**
@@ -77,9 +81,10 @@ export function useCrmData(options?: {
 
   const teamMembers = useMemo<TeamMember[]>(
     () =>
-      ((teamData || []) as { id: string; name?: string; email?: string }[]).map((m) => ({
+      ((teamData || []) as { id: string; name?: string; email?: string; defaultGroupId?: string | null }[]).map((m) => ({
         id: m.id,
         name: m.name || m.email || m.id,
+        defaultGroupId: m.defaultGroupId ?? null,
       })),
     [teamData]
   )

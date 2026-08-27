@@ -493,15 +493,25 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if isSignedIn();
+      // A CRM handover creates the project too — that path is gated by
+      // crm.close and is only allowed to write a project that names its deal.
       allow create: if isContractor()
         && request.resource.data.organizationId == getOrganizationId()
-        && hasOrgPermission('projects.edit');
+        && (hasOrgPermission('projects.edit')
+            || (hasOrgPermission('crm.close')
+                && ('sourceOpportunityId' in request.resource.data)
+                && request.resource.data.sourceOpportunityId is string));
       // Editing needs projects.edit; publishing flows also update the project
-      // doc (linked rfqIds), so projects.publish qualifies too.
+      // doc (linked rfqIds), so projects.publish qualifies too. The project
+      // manager named in a pending handover may answer it — and touch nothing
+      // else — regardless of their group.
       allow update: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && (hasProjectPermission(projectId, 'projects.edit')
-                || hasProjectPermission(projectId, 'projects.publish')));
+                || hasProjectPermission(projectId, 'projects.publish')
+                || (('handover' in resource.data)
+                    && resource.data.handover.pmId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['handover', 'updatedAt']))));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && hasProjectPermission(projectId, 'projects.delete'));
@@ -546,6 +556,14 @@ service cloud.firestore {
         allow create, update, delete: if isAdmin() || (isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && hasOrgPermission('team.manage'));
+        // A CRM handover seats the project manager on the project it just
+        // created — one member, flagged as such, on a project that names its deal.
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && hasOrgPermission('crm.close')
+          && ('sourceOpportunityId' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && request.resource.data.viaHandover == true
+          && request.resource.data.userId == memberId;
       }
 
       // BOQ groups (sections) — plain org-scoped CRUD, same org as the project.
@@ -804,11 +822,29 @@ service cloud.firestore {
     // subcollections of crmContacts (rules above, kept until
     // scripts/migrate-crm-subcollections.ts has run everywhere), which made
     // an org-wide read impossible without a collection-group index.
+    // Closing a deal — the write that first sets its state to won / lost /
+    // handed_over, or its stage to won / lost — needs `crm.close` (mirrors
+    // src/lib/permissions.ts). Every other edit is open to org members, as
+    // is a project manager's rejection sending a deal back to "won".
+    function closesOpportunity() {
+      let oldState = ('state' in resource.data) ? resource.data.state : 'open';
+      let newState = ('state' in request.resource.data) ? request.resource.data.state : 'open';
+      let oldStage = ('stage' in resource.data) ? resource.data.stage : '';
+      let newStage = ('stage' in request.resource.data) ? request.resource.data.stage : '';
+      return (oldState == 'open' && newState in ['won', 'lost', 'handed_over'])
+        || (newState == 'handed_over' && oldState != 'handed_over')
+        || (newStage in ['won', 'lost'] && !(oldStage in ['won', 'lost']));
+    }
+
     match /crmOpportunities/{opportunityId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
-      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId))
+        && !(('state' in request.resource.data) && request.resource.data.state in ['won', 'lost', 'handed_over'])
+        && !(('stage' in request.resource.data) && request.resource.data.stage in ['won', 'lost']);
+      allow update: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (!closesOpportunity() || hasOrgPermission('crm.close'))));
+      allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
     match /crmQuotations/{quotationId} {

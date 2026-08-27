@@ -18,7 +18,7 @@ import {
   CONTRACT_KINDS,
   CRM_OPPORTUNITIES,
   OPPORTUNITY_SOURCES,
-  OPPORTUNITY_STAGES,
+  OPPORTUNITY_STAGE_BADGE_CLASS,
   OPPORTUNITY_TRACKS,
   SCOPE_ACTIVITY,
   SCOPE_TYPES,
@@ -34,7 +34,6 @@ import {
   type CrmContact,
   type CrmOpportunity,
   type OpportunitySource,
-  type OpportunityStage,
   type OpportunityTrack,
   type ScopeType,
   type TenderRoute,
@@ -123,7 +122,6 @@ export function CrmOpportunityDialog({
   const [contactId, setContactId] = useState("")
   const [title, setTitle] = useState("")
   const [track, setTrack] = useState<OpportunityTrack>("tender")
-  const [stage, setStage] = useState<OpportunityStage>("new")
   const [value, setValue] = useState("")
   const [probability, setProbability] = useState(40)
   const [expectedCloseDate, setExpectedCloseDate] = useState("")
@@ -142,7 +140,6 @@ export function CrmOpportunityDialog({
     setContactId(opportunity?.contactId ?? fixedContactId ?? "")
     setTitle(opportunity?.title ?? "")
     setTrack(opportunity ? opportunityTrack(opportunity) : "tender")
-    setStage(opportunity?.stage ?? "new")
     setValue(opportunity?.value != null && opportunity.value > 0 ? String(opportunity.value) : "")
     setProbability(typeof opportunity?.probability === "number" ? opportunity.probability : 40)
     setExpectedCloseDate(opportunity?.expectedCloseDate ?? "")
@@ -189,7 +186,6 @@ export function CrmOpportunityDialog({
         contactName: contact?.name ?? opportunity?.contactName ?? null,
         title: title.trim(),
         track,
-        stage,
         value: numericValue,
         probability,
         expectedCloseDate: expectedCloseDate || null,
@@ -301,19 +297,19 @@ export function CrmOpportunityDialog({
             />
           </div>
 
-          {/* Stage only appears when editing — a new deal always starts at the
-              beginning and clears its gates to move. */}
-          {isEdit && (
+          {/* The stage is shown, never edited, here. A deal moves by clearing
+              its gates on the detail page (or one step at a time on the
+              board); an edit form that could set "won" was the back door
+              every rule elsewhere was written to close. */}
+          {isEdit && opportunity && (
             <div className="space-y-1.5">
-              <Label htmlFor="opp-stage">{t("crm_opp_stage")}</Label>
-              <Select value={stage} onValueChange={(v) => setStage(v as OpportunityStage)} disabled={isSaving}>
-                <SelectTrigger id="opp-stage"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {OPPORTUNITY_STAGES.map((s) => (
-                    <SelectItem key={s} value={s}>{t(`crm_opp_stage_${s}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>{t("crm_opp_stage")}</Label>
+              <div className="flex flex-wrap items-center gap-2 min-h-10 rounded-md border bg-muted/30 px-3 py-2">
+                <Badge className={cn("text-[10px]", OPPORTUNITY_STAGE_BADGE_CLASS[opportunity.stage])}>
+                  {t(`crm_opp_stage_${opportunity.stage}`)}
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">{t("crm_opp_stage_readonly_hint")}</span>
+              </div>
             </div>
           )}
         </>

@@ -31,16 +31,18 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Link, useRouter } from "@/i18n/routing"
-import { useFirestore } from "@/firebase"
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmApproval } from "@/hooks/useCrmApproval"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
+import { PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus } from "@/lib/project-status"
 import {
   ACTIVITY_TYPE_BADGE_CLASS,
   CRM_ACTIVITIES,
   CRM_OPPORTUNITIES,
+  HANDOVER_BADGE_CLASS,
   OPEN_OPPORTUNITY_STAGES,
   OPPORTUNITY_STAGE_BADGE_CLASS,
   OPPORTUNITY_STATE_BADGE_CLASS,
@@ -100,6 +102,8 @@ const LADDER: Array<{ step: ValueStep; field: keyof CrmOpportunity }> = [
  */
 export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
+  // Project status labels live with the projects module.
+  const tProject = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const params = useParams()
@@ -109,6 +113,9 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const { toast } = useToast()
   const { can } = usePermissions()
   const canManage = can("crm.manage")
+  // Closing — award, loss, handover — is its own permission. Working the
+  // pipeline and declaring its outcome are different levels of trust.
+  const canClose = can("crm.close")
   const { approvalLimit, canApprovePrices } = useCrmApproval()
 
   const { orgId, contacts, contactsById, opportunities, quotations, activities, teamMembers, isLoading } =
@@ -125,6 +132,15 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
     () => opportunities.find((o) => o.id === opportunityId) ?? null,
     [opportunities, opportunityId]
   )
+
+  // The project this deal became, so its current stage shows here — the
+  // CRM's view of a deal does not end at the handover.
+  const projectRef = useMemoFirebase(() => {
+    if (!firestore || !opportunity?.projectId) return null
+    return doc(firestore, "projects", opportunity.projectId)
+  }, [firestore, opportunity?.projectId])
+  const { data: project } = useDoc(projectRef)
+  const projectStatus = project ? resolveProjectStatus((project as { status?: string }).status) : null
 
   const [showEdit, setShowEdit] = useState(false)
   const [valueStep, setValueStep] = useState<ValueStep | null>(null)
@@ -279,16 +295,56 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
       </header>
 
       {/* ---- outcome banners ------------------------------------------- */}
+      {state === "won" && (
+        <div className="rounded-xl border border-success/20 bg-success/5 p-4 flex items-start gap-3">
+          <Trophy size={18} className="text-success shrink-0 mt-0.5" />
+          <div className="min-w-0 space-y-1 flex-1">
+            <p className="font-bold text-sm text-foreground">
+              {t("crm_state_won_banner")}
+              {opp.wonReason && ` — ${t(`crm_won_reason_${opp.wonReason}`)}`}
+            </p>
+            {opp.wonNote && <p className="text-xs text-foreground/80">{opp.wonNote}</p>}
+            {opp.handoverStatus === "rejected" && (
+              <p className="text-xs text-destructive flex items-start gap-1.5 pt-1">
+                <XCircle size={13} className="shrink-0 mt-0.5" />
+                <span>
+                  {t("crm_handover_rejected_banner", { pm: opp.projectManagerName || "" })}
+                  {opp.handoverRejectReason && ` — ${opp.handoverRejectReason}`}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {state === "handed_over" && (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 flex flex-wrap items-center gap-3">
           <Building2 size={18} className="text-primary shrink-0" />
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-sm text-foreground">{t("crm_state_handed_over_banner")}</p>
+            <p className="font-bold text-sm text-foreground flex flex-wrap items-center gap-2">
+              {t("crm_state_handed_over_banner")}
+              {opp.handoverStatus && (
+                <Badge variant="outline" className={cn("text-[10px]", HANDOVER_BADGE_CLASS[opp.handoverStatus])}>
+                  {t(`crm_handover_status_${opp.handoverStatus}`)}
+                </Badge>
+              )}
+              {projectStatus && (
+                <Badge variant="outline" className={cn("text-[10px]", PROJECT_STATUS_BADGE_CLASSES[projectStatus])}>
+                  {t("crm_handover_project_status")}: {tProject(projectStatusLabelKey(projectStatus))}
+                </Badge>
+              )}
+            </p>
             <p className="text-xs text-muted-foreground">
               {[opp.contractNumber, opp.durationMonths ? t("crm_handover_months", { months: opp.durationMonths }) : null, opp.projectManagerName]
                 .filter(Boolean)
                 .join(" · ") || formatCrmDate(opp.handedOverAt, locale)}
             </p>
+            {opp.wonReason && (
+              <p className="text-xs text-muted-foreground">
+                {t("crm_won_reason")}: {t(`crm_won_reason_${opp.wonReason}`)}
+                {opp.wonNote && ` — ${opp.wonNote}`}
+              </p>
+            )}
           </div>
           {opp.projectId && (
             <Button asChild variant="outline" size="sm" className="gap-1.5 shrink-0">
@@ -418,10 +474,11 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
               // with nothing submitted is a typo.
               const previous = index === 0 ? Infinity : ((opp[LADDER[index - 1].field] as number | null) || 0)
               const unlocked = index === 0 || previous > 0
+              // The award rung IS the "won" button, so it follows the close
+              // permission rather than the general manage one.
               const editable =
-                canManage &&
                 unlocked &&
-                (rung.step === "award" ? state === "open" || state === "won" : isOpen)
+                (rung.step === "award" ? canClose && (state === "open" || state === "won") : canManage && isOpen)
               return (
                 <li key={rung.step} className="px-4 py-3 flex items-center gap-3">
                   <span
@@ -543,38 +600,48 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
                   <Button
                     size="sm"
                     className="gap-1.5"
-                    disabled={!canManage || busy || remaining > 0}
+                    disabled={!canClose || busy || remaining > 0}
                     onClick={() => setValueStep("award")}
+                    title={!canClose ? t("crm_close_no_permission") : undefined}
                   >
                     <Trophy size={13} />
                     {t("crm_record_award_btn")}
                   </Button>
                 )}
                 {canManage && (
-                  <>
-                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCloseMode("hold")}>
-                      <Pause size={13} />
-                      {t("crm_hold_btn")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 text-destructive hover:text-destructive"
-                      onClick={() => setCloseMode("lost")}
-                    >
-                      <XCircle size={13} />
-                      {t("crm_close_lost_btn")}
-                    </Button>
-                  </>
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setCloseMode("hold")}>
+                    <Pause size={13} />
+                    {t("crm_hold_btn")}
+                  </Button>
+                )}
+                {canClose && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-destructive hover:text-destructive"
+                    onClick={() => setCloseMode("lost")}
+                  >
+                    <XCircle size={13} />
+                    {t("crm_close_lost_btn")}
+                  </Button>
                 )}
               </div>
+              {canManage && !canClose && (
+                <p className="text-[11px] text-muted-foreground">{t("crm_close_no_permission")}</p>
+              )}
             </div>
           )}
 
           {state === "won" && (
             <div className="p-4 border-t space-y-3 bg-success/5">
               <p className="text-xs text-muted-foreground">{t("crm_handover_prompt")}</p>
-              <Button size="sm" className="gap-1.5" disabled={!canManage} onClick={() => setShowHandover(true)}>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                disabled={!canClose}
+                onClick={() => setShowHandover(true)}
+                title={!canClose ? t("crm_close_no_permission") : undefined}
+              >
                 <Building2 size={13} />
                 {t("crm_handover_btn")}
               </Button>
@@ -827,17 +894,19 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
             })}
             {/* Terminal events are not stages, so they sit after the ladder. */}
             {history
-              .filter((h) => h.event === "lost" || h.event === "handed_over" || h.event === "on_hold" || h.event === "reactivated")
+              .filter((h) => !OPEN_OPPORTUNITY_STAGES.includes(h.event as never) && h.event !== "won")
               .map((entry, index) => (
                 <li key={`${entry.event}-${index}`} className="flex items-start gap-3 pt-1">
                   <span
                     className={cn(
                       "grid place-items-center h-6 w-6 rounded-full shrink-0",
-                      entry.event === "lost" ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary"
+                      entry.event === "lost" || entry.event === "handover_rejected"
+                        ? "bg-destructive/15 text-destructive"
+                        : "bg-primary/15 text-primary"
                     )}
                     aria-hidden="true"
                   >
-                    {entry.event === "lost" ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+                    {entry.event === "lost" || entry.event === "handover_rejected" ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
                   </span>
                   <span className="min-w-0 flex-1 pt-0.5">
                     <span className="block text-sm text-foreground">{t(`crm_history_${entry.event}`)}</span>
