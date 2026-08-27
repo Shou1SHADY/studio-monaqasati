@@ -15,9 +15,9 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { collection, doc, increment, serverTimestamp, writeBatch } from "firebase/firestore"
+import { doc, increment, serverTimestamp, writeBatch } from "firebase/firestore"
 import { useFirestore, useUser } from "@/firebase"
-import { useProjectWasteStats, type WasteRecord } from "@/hooks/useProjectWasteStats"
+import { useWasteStats, wasteRecordsCollection, type WasteRecord, type WasteScope } from "@/hooks/useProjectWasteStats"
 import { isKnownWasteReason, wasteReasonMessageKey } from "@/lib/waste-reasons"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { useToast } from "@/hooks/use-toast"
@@ -46,14 +46,16 @@ function recordDate(value: unknown): Date | null {
 }
 
 export function WasteLedger({
-  projectId,
+  scope,
   projectName,
   wasteTargetPercent,
   canManage,
   t,
   locale,
 }: {
-  projectId: string
+  /** Whose records: a project's, or a warehouse's standalone ones. */
+  scope: WasteScope
+  /** Name for the export file — the project, or the warehouse. */
   projectName: string
   wasteTargetPercent: number
   canManage: boolean
@@ -63,7 +65,8 @@ export function WasteLedger({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
-  const stats = useProjectWasteStats(projectId)
+  const stats = useWasteStats(scope)
+  const projectId = scope.projectId ?? scope.warehouseId
   const [expanded, setExpanded] = useState(false)
   // The entry table stays folded away by default. This sits above the BOQ sheet, and
   // the headline row already answers the question most visits are asking — how much
@@ -150,7 +153,7 @@ export function WasteLedger({
       }
       // The counter-entry. Quantities are negated so any future consumer that sums
       // the raw collection still arrives at the right net figure.
-      batch.set(doc(collection(firestore, "projects", projectId, "wasteRecords")), {
+      batch.set(doc(wasteRecordsCollection(firestore, scope)), {
         type: "reversal",
         reversesRecordId: rec.id,
         batchId: rec.batchId ?? null,
@@ -177,16 +180,19 @@ export function WasteLedger({
       })
       await batch.commit()
 
-      logFinanceAudit(firestore, projectId, {
-        action: "waste_record_reversed",
-        actorId: user.uid,
-        actorName,
-        targetType: "wasteConsumption",
-        targetId: rec.id,
-        amount: Math.max(0, rec.quantityTaken - rec.quantityUsed),
-        reason: reverseReason.trim(),
-        meta: { itemName: rec.itemName, unit: rec.unit, quantityRestored: rec.quantityTaken },
-      })
+      // The finance trail is per project; a warehouse's standalone waste has none.
+      if (scope.projectId) {
+        logFinanceAudit(firestore, scope.projectId, {
+          action: "waste_record_reversed",
+          actorId: user.uid,
+          actorName,
+          targetType: "wasteConsumption",
+          targetId: rec.id,
+          amount: Math.max(0, rec.quantityTaken - rec.quantityUsed),
+          reason: reverseReason.trim(),
+          meta: { itemName: rec.itemName, unit: rec.unit, quantityRestored: rec.quantityTaken },
+        })
+      }
 
       toast({ title: t("ledger_reverse_success") })
       setReverseTarget(null)

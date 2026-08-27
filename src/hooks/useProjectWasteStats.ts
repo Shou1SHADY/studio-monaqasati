@@ -10,7 +10,7 @@
 // points back at the original. Both sides are then excluded from the totals here
 // while staying visible in the ledger, so the audit trail is never rewritten.
 
-import { collection } from "firebase/firestore"
+import { collection, type Firestore } from "firebase/firestore"
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase"
 
 export interface WasteRecord {
@@ -131,14 +131,38 @@ export function aggregateWasteRecords(all: WasteRecord[]): Omit<ProjectWasteStat
   }
 }
 
-export function useProjectWasteStats(projectId: string | undefined | null): ProjectWasteStats {
+/**
+ * Where a set of waste records lives.
+ *
+ * Waste recorded against a project sits under the project, so the project's
+ * waste percentage and BOQ stay the single source. Waste recorded with no
+ * project — a supplier cutting slabs, a contractor's yard — sits under the
+ * warehouse it came out of. Both are the same document shape.
+ */
+export type WasteScope = { projectId: string; warehouseId?: undefined } | { warehouseId: string; projectId?: undefined }
+
+export function wasteRecordsCollection(firestore: Firestore, scope: WasteScope) {
+  return scope.projectId
+    ? collection(firestore, "projects", scope.projectId, "wasteRecords")
+    : collection(firestore, "warehouses", scope.warehouseId as string, "wasteRecords")
+}
+
+export function useWasteStats(scope: WasteScope | null | undefined): ProjectWasteStats {
   const firestore = useFirestore()
+  const projectId = scope?.projectId ?? null
+  const warehouseId = scope?.warehouseId ?? null
 
   const wasteQuery = useMemoFirebase(() => {
-    if (!firestore || !projectId) return null
-    return collection(firestore, "projects", projectId, "wasteRecords")
-  }, [firestore, projectId])
+    if (!firestore || (!projectId && !warehouseId)) return null
+    return projectId
+      ? collection(firestore, "projects", projectId, "wasteRecords")
+      : collection(firestore, "warehouses", warehouseId as string, "wasteRecords")
+  }, [firestore, projectId, warehouseId])
   const { data, isLoading } = useCollection(wasteQuery)
 
   return { ...aggregateWasteRecords((data || []) as WasteRecord[]), isLoading }
+}
+
+export function useProjectWasteStats(projectId: string | undefined | null): ProjectWasteStats {
+  return useWasteStats(projectId ? { projectId } : null)
 }

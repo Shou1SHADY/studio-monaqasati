@@ -917,6 +917,20 @@ service cloud.firestore {
       // between the company's central warehouse and a project warehouse is
       // recorded here (on the CENTRAL warehouse's doc). Append-only for the
       // org — history can't be rewritten client-side.
+      // Waste recorded straight from a warehouse — no project. Same document
+      // shape as projects/{id}/wasteRecords and, like it, append-only: a
+      // mistake is corrected with a reversal entry, never an edit.
+      match /wasteRecords/{recordId} {
+        allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
+          get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId
+        ));
+        allow create: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId)
+          && hasOrgPermission('warehouses.manage')
+          && request.resource.data.recordedByUserId == request.auth.uid;
+        allow update, delete: if isAdmin();
+      }
+
       match /transfers/{transferId} {
         allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(
           get(/databases/$(database)/documents/warehouses/$(warehouseId)).data.organizationId

@@ -50,6 +50,7 @@ import {
   Building2,
   ScrollText,
   Target,
+  Scissors,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -177,6 +178,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
           { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList, requiredPermission: "warehouses.manage" },
+          { titleKey: "inventory_waste", href: "/contractor/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
         ],
       },
     ],
@@ -348,6 +350,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         labelKey: "component_inventory",
         items: [
           { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
+          { titleKey: "inventory_waste", href: "/supplier/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
         ],
       },
     ],
