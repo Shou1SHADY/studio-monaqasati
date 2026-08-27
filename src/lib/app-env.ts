@@ -9,7 +9,13 @@
  */
 export type AppEnv = "prod" | "uat"
 
-export const APP_ENV: AppEnv = process.env.NEXT_PUBLIC_APP_ENV === "uat" ? "uat" : "prod"
+/** The UAT Firebase project. A build bound to it is UAT whatever else is set. */
+export const UAT_PROJECT_ID = "mdmaktech-uat"
+
+export const APP_ENV: AppEnv =
+  process.env.NEXT_PUBLIC_APP_ENV === "uat" || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === UAT_PROJECT_ID
+    ? "uat"
+    : "prod"
 
 export const IS_UAT = APP_ENV === "uat"
 
