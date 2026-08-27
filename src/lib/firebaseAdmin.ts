@@ -40,11 +40,13 @@ export function getAdminStorage(): Storage {
   return getStorage(getAdminApp())
 }
 
-// Same bucket the client SDK writes to (see src/firebase/config.ts).
+// Same bucket the client SDK writes to (see src/firebase/config.ts). The
+// production fallback is refused on UAT for the same reason as there.
 export function getStorageBucketName(): string {
-  return (
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||
-    "studio-2889504658-6ee2a.firebasestorage.app"
-  )
+  const configured = process.env.FIREBASE_STORAGE_BUCKET || process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+  if (configured) return configured
+  if (process.env.NEXT_PUBLIC_APP_ENV === "uat") {
+    throw new Error("[firebase-admin] FIREBASE_STORAGE_BUCKET is not set — a UAT server must not fall back to the production bucket")
+  }
+  return "studio-2889504658-6ee2a.firebasestorage.app"
 }

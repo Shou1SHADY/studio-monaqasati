@@ -2,9 +2,9 @@ name: CI - مدماك تيك
 
 on:
   push:
-    branches: [main, develop, 'feature/*']
+    branches: [main, uat, develop, 'feature/*']
   pull_request:
-    branches: [main, develop]
+    branches: [main, uat, develop]
 
 env:
   NODE_VERSION: '20.x'

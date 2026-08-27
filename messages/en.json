@@ -2303,6 +2303,7 @@
       "crm_lost_followup_title": "Follow up after losing: {deal}",
       "crm_handover_kickoff_title": "Kickoff meeting — {project}",
       "crm_saved_views": "Views",
+      "env_ribbon_uat": "Test environment — data here is for testing, this is not the live site",
       "crm_view_custom": "Custom view",
       "crm_group_none": "No grouping",
       "crm_density": "Density",

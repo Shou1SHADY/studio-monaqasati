@@ -9,6 +9,8 @@ import { getMessages } from 'next-intl/server';
 import { routing } from '@/i18n/routing';
 import { notFound } from 'next/navigation';
 import StructuredData from '@/components/StructuredData';
+import { EnvironmentRibbon } from '@/components/EnvironmentRibbon';
+import { IS_UAT, SITE_URL } from '@/lib/app-env';
 
 const notoSansArabic = Noto_Sans_Arabic({
   subsets: ['arabic'],
@@ -37,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const descEn = "Saudi Arabia's leading B2B procurement platform connecting contractors with trusted suppliers for steel, cement, electrical, HVAC, paints, sanitary ware, insulation, flooring, and doors. Streamline RFQ, compare quotes, and manage construction sourcing intelligently.";
 
   return {
-    metadataBase: new URL('https://mdmaktech.sa'),
+    metadataBase: new URL(SITE_URL),
     title: locale === 'ar' ? titleAr : titleEn,
     description: locale === 'ar' ? descAr : descEn,
     keywords: locale === 'ar'
@@ -46,13 +48,17 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     authors: [{ name: 'Mdmak Tech' }],
     creator: 'Mdmak Tech',
     publisher: 'Mdmak Tech',
-    robots: {
-      index: true,
-      follow: true,
-      'max-snippet': -1,
-      'max-image-preview': 'large',
-      'max-video-preview': -1,
-    },
+    // UAT must never be indexed — a tester's site showing up next to the real one
+    // in search results is the fastest way to confuse a customer.
+    robots: IS_UAT
+      ? { index: false, follow: false, nocache: true }
+      : {
+          index: true,
+          follow: true,
+          'max-snippet': -1,
+          'max-image-preview': 'large',
+          'max-video-preview': -1,
+        },
     manifest: '/site.webmanifest',
     icons: {
       icon: [
@@ -123,6 +129,7 @@ export default async function RootLayout({
         </Script>
         <NextIntlClientProvider messages={messages}>
           <StructuredData />
+          <EnvironmentRibbon />
           {children}
           <Toaster />
           <BodyPointerEventsGuard />

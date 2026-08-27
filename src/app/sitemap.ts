@@ -1,6 +1,8 @@
 import { MetadataRoute } from 'next'
 
-const BASE_URL = 'https://mdmaktech.sa'
+import { SITE_URL } from '@/lib/app-env'
+
+const BASE_URL = SITE_URL
 
 const publicRoutes: Array<{ path: string; lastModified: string }> = [
   { path: '/',        lastModified: '2026-06-17' },

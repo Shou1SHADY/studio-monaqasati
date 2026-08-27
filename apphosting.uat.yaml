@@ -1,0 +1,78 @@
+# Firebase App Hosting — UAT backend overrides.
+#
+# Applied on top of apphosting.yaml when the backend's environment name is
+# "uat" (set when creating the backend in the mdmaktech-uat project). Every
+# NEXT_PUBLIC_* value is baked into the bundle at build time, so they must be
+# available at BUILD as well as RUNTIME.
+#
+# Secrets are NOT written here. Create them once per project with
+#   firebase apphosting:secrets:set <NAME> --project uat
+# and reference them below with `secret:` instead of `value:`.
+# https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
+
+runConfig:
+  maxInstances: 1
+
+env:
+  - variable: NEXT_PUBLIC_APP_ENV
+    value: uat
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://uat.mdmaktech.sa
+    availability: [BUILD, RUNTIME]
+
+  # Web SDK config for the mdmaktech-uat project.
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: mdmaktech-uat
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:265884033669:web:a3a488fc31d68c55227fec"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: AIzaSyComlALEqelppL2K6n1H5_5dvPcn69064M
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: mdmaktech-uat.firebaseapp.com
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: mdmaktech-uat.firebasestorage.app
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "265884033669"
+    availability: [BUILD, RUNTIME]
+  - variable: NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
+    value: G-7P83BJZR2C
+    availability: [BUILD, RUNTIME]
+
+  # Server side. The Admin SDK on App Hosting authenticates with the backend's
+  # own service account (no key needed); it only has to know which project.
+  - variable: FIREBASE_PROJECT_ID
+    value: mdmaktech-uat
+    availability: [RUNTIME]
+  - variable: FIREBASE_STORAGE_BUCKET
+    value: mdmaktech-uat.firebasestorage.app
+    availability: [RUNTIME]
+
+  # Third-party keys — set each with `firebase apphosting:secrets:set`, then
+  # uncomment. Use UAT/test keys where the provider offers them.
+  # - variable: RESEND_API_KEY
+  #   secret: RESEND_API_KEY
+  # - variable: GROQ_API_KEY
+  #   secret: GROQ_API_KEY
+  # - variable: OPENROUTER_API_KEY
+  #   secret: OPENROUTER_API_KEY
+  # - variable: NEXT_PUBLIC_GEMINI_API_KEY
+  #   secret: GEMINI_API_KEY
+  #   availability: [BUILD, RUNTIME]
+  # - variable: TWILIO_ACCOUNT_SID
+  #   secret: TWILIO_ACCOUNT_SID
+  # - variable: TWILIO_AUTH_TOKEN
+  #   secret: TWILIO_AUTH_TOKEN
+  # - variable: TWILIO_PHONE_NUMBER
+  #   secret: TWILIO_PHONE_NUMBER
+  # - variable: UPSTASH_REDIS_REST_URL
+  #   secret: UPSTASH_REDIS_REST_URL
+  # - variable: UPSTASH_REDIS_REST_TOKEN
+  #   secret: UPSTASH_REDIS_REST_TOKEN
+  # - variable: EMAIL_FROM
+  #   value: "Mdmak Tech UAT <no-reply@uat.mdmaktech.sa>"

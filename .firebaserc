@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "studio-2889504658-6ee2a",
+    "prod": "studio-2889504658-6ee2a",
+    "uat": "mdmaktech-uat"
+  }
+}

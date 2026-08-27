@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 
-const BASE_URL = 'https://mdmaktech.sa'
+import { SITE_URL } from '@/lib/app-env'
+
+const BASE_URL = SITE_URL
 
 export function alternatesForPath(path: string, locale: string) {
   const arPath = path === '/' ? BASE_URL : `${BASE_URL}${path}`

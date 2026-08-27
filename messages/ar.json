@@ -2304,6 +2304,7 @@
       "crm_lost_followup_title": "متابعة بعد الخسارة: {deal}",
       "crm_handover_kickoff_title": "اجتماع بدء المشروع — {project}",
       "crm_saved_views": "العروض",
+      "env_ribbon_uat": "بيئة اختبار — البيانات هنا تجريبية وليست الموقع الحقيقي",
       "crm_view_custom": "عرض مخصّص",
       "crm_group_none": "بدون تجميع",
       "crm_density": "الكثافة",
