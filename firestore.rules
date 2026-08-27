@@ -528,17 +528,18 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
 
+        // A fully drawn (locked) line accepts only the draw bookkeeping: an RFQ
+        // being deleted hands its quantity back (`draws`/`drawnQuantity`
+        // shrink, the line may reopen), or the whole line is unlocked. Nothing
+        // else on a locked row may change.
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && (
             resource.data.isEditable != false
             ||
-            (
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isEditable', 'tenderId', 'updatedAt'])
-              && request.resource.data.isEditable == true
-              && request.resource.data.tenderId == null
-            )
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['isEditable', 'tenderId', 'draws', 'drawnQuantity', 'updatedAt'])
           );
 
         allow delete: if isSignedIn()

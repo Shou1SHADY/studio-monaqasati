@@ -36,7 +36,8 @@ import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, Ma
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, getDocs, writeBatch, arrayRemove } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
+import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
@@ -184,16 +185,8 @@ const handleBatchPublish = async () => {
     for (const rfq of eligible) {
       try {
         if (rfq.projectId) {
-          const boqSnap = await getDocs(
-            query(collection(firestore, "projects", rfq.projectId, "boqItems"), where("tenderId", "==", rfq.id))
-          )
-          if (!boqSnap.empty) {
-            const batch = writeBatch(firestore)
-            boqSnap.docs.forEach((d) => {
-              batch.update(d.ref, { tenderId: null, isEditable: true })
-            })
-            await batch.commit()
-          }
+          // Hand the RFQ's BOQ draws back before it goes.
+          await releaseBoqDrawsForRfq(firestore, rfq.projectId, rfq.id)
           await updateDoc(doc(firestore, "projects", rfq.projectId), { rfqIds: arrayRemove(rfq.id) })
         }
         await deleteDoc(doc(firestore, "rfqs", rfq.id))
@@ -219,19 +212,10 @@ const handleBatchPublish = async () => {
     if (!firestore || !deleteTarget) return
     setIsDeleting(true)
     try {
-      // Unlock any BOQ items that were pushed to this tender before deleting it —
-      // matches the Firestore rule's allowed "unlock" transition.
+      // Hand the tender's BOQ draws back before deleting it — matches the
+      // Firestore rule's allowed "release" transition on a locked row.
       if (deleteTarget.projectId) {
-        const boqSnap = await getDocs(
-          query(collection(firestore, "projects", deleteTarget.projectId, "boqItems"), where("tenderId", "==", deleteTarget.id))
-        )
-        if (!boqSnap.empty) {
-          const batch = writeBatch(firestore)
-          boqSnap.docs.forEach((d) => {
-            batch.update(d.ref, { tenderId: null, isEditable: true })
-          })
-          await batch.commit()
-        }
+        await releaseBoqDrawsForRfq(firestore, deleteTarget.projectId, deleteTarget.id)
         await updateDoc(doc(firestore, "projects", deleteTarget.projectId), { rfqIds: arrayRemove(deleteTarget.id) })
       }
 

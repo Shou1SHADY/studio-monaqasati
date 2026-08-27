@@ -132,6 +132,7 @@ import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { recordWasteConsumption } from "@/lib/waste-writes"
+import { applyDraw, boqRemaining, releaseAllDraws, releaseBoqDrawsForRfq, type BoqDraw } from "@/lib/boq-draws"
 import { WasteRecordDialog } from "@/components/inventory/WasteRecordDialog"
 import { WasteLedger } from "@/components/contractor/WasteLedger"
 import { useCentralWarehouse, resolveCentralForRegion } from "@/hooks/useCentralWarehouse"
@@ -192,6 +193,10 @@ type BoqItem = {
   groupId: string | null
   requiresWarranty?: boolean
   unitBarcodes?: string[] | null
+  /** Sum of every active draw — what has already gone out to RFQs. */
+  drawnQuantity?: number
+  /** One entry per RFQ that drew from this line (see lib/boq-draws). */
+  draws?: BoqDraw[]
 }
 
 type BoqGroupMeta = {
@@ -317,6 +322,9 @@ export default function ProjectDetailPage() {
   const [publishCity, setPublishCity] = useState("")
   const [publishDistrict, setPublishDistrict] = useState("")
   const [publishDeadline, setPublishDeadline] = useState("")
+  // Quantity to draw per item for THIS request, keyed by item id. Absent means
+  // "everything that is left" — the common case, so nobody types anything.
+  const [publishQtys, setPublishQtys] = useState<Record<string, string>>({})
   const [isPublishing, setIsPublishing] = useState(false)
 
   useEffect(() => {
@@ -542,16 +550,8 @@ export default function ProjectDetailPage() {
     if (!firestore || !tenderDeleteTarget || !projectId) return
     setIsDeletingTender(true)
     try {
-      const boqSnap = await getDocs(
-        query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", tenderDeleteTarget.id))
-      )
-      if (!boqSnap.empty) {
-        const batch = writeBatch(firestore)
-        boqSnap.docs.forEach((d) => {
-          batch.update(d.ref, { tenderId: null, isEditable: true })
-        })
-        await batch.commit()
-      }
+      // Hand the RFQ's draws back to the BOQ lines before it goes.
+      await releaseBoqDrawsForRfq(firestore, projectId, tenderDeleteTarget.id)
       await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(tenderDeleteTarget.id) })
       await deleteDoc(doc(firestore, "rfqs", tenderDeleteTarget.id))
       toast({ title: t("rfq_delete_success") })
@@ -633,16 +633,7 @@ export default function ProjectDetailPage() {
     const failedIds: string[] = []
     for (const r of eligible) {
       try {
-        const boqSnap = await getDocs(
-          query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", r.id))
-        )
-        if (!boqSnap.empty) {
-          const batch = writeBatch(firestore)
-          boqSnap.docs.forEach((d) => {
-            batch.update(d.ref, { tenderId: null, isEditable: true })
-          })
-          await batch.commit()
-        }
+        await releaseBoqDrawsForRfq(firestore, projectId, r.id)
         await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(r.id) })
         await deleteDoc(doc(firestore, "rfqs", r.id))
         deleted++
@@ -742,6 +733,8 @@ export default function ProjectDetailPage() {
         groupId: data.groupId || null,
         requiresWarranty: !!data.requiresWarranty,
         unitBarcodes: data.unitBarcodes || null,
+        drawnQuantity: Number(data.drawnQuantity) || 0,
+        draws: Array.isArray(data.draws) ? (data.draws as BoqDraw[]) : [],
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -853,14 +846,7 @@ export default function ProjectDetailPage() {
       // would otherwise still be live/browsable after their project is gone.
       const rfqsSnap = await getDocs(query(collection(firestore, "rfqs"), where("projectId", "==", projectId)))
       for (const rfqDoc of rfqsSnap.docs) {
-        const lockedBoqSnap = await getDocs(
-          query(collection(firestore, "projects", projectId, "boqItems"), where("tenderId", "==", rfqDoc.id))
-        )
-        if (!lockedBoqSnap.empty) {
-          const unlockBatch = writeBatch(firestore)
-          lockedBoqSnap.docs.forEach((d) => unlockBatch.update(d.ref, { tenderId: null, isEditable: true }))
-          await unlockBatch.commit()
-        }
+        await releaseBoqDrawsForRfq(firestore, projectId, rfqDoc.id)
         await deleteDoc(rfqDoc.ref)
       }
 
@@ -966,6 +952,22 @@ export default function ProjectDetailPage() {
         if (!currentGroupIds.has(d.id)) batch.delete(d.ref)
       })
 
+      // A line's total can never drop below what RFQs have already drawn from it —
+      // that would make the remaining quantity negative and the draws a lie.
+      const belowDrawn = itemsToSave.find(
+        (item) => item.isEditable !== false && (item.drawnQuantity || 0) > 0 && (Number(item.quantity) || 0) < (item.drawnQuantity || 0)
+      )
+      if (belowDrawn) {
+        toast({
+          title: t("proj_boq_qty_below_drawn", {
+            item: belowDrawn.descriptionAr || belowDrawn.descriptionEn || belowDrawn.itemNo,
+            drawn: belowDrawn.drawnQuantity || 0,
+          }),
+          variant: "destructive",
+        })
+        return null
+      }
+
       itemsToSave.forEach((item) => {
         if (item.isEditable === false) return
         const isNew = !existingIds.has(item.id)
@@ -987,8 +989,12 @@ export default function ProjectDetailPage() {
           subCategoryNameAr: item.subCategoryNameAr || "",
           suggestedCategory: item.suggestedCategory || "",
           suggestedSubCategory: item.suggestedSubCategory || "",
-          tenderId: null,
+          // A partially drawn line stays editable but keeps its draws — a bulk save
+          // must never quietly forget what RFQs already took.
+          tenderId: item.tenderId ?? null,
           isEditable: true,
+          drawnQuantity: item.drawnQuantity || 0,
+          draws: item.draws ?? [],
           groupId: item.groupId || null,
           requiresWarranty: !!item.requiresWarranty,
           unitBarcodes: item.unitBarcodes || null,
@@ -1059,22 +1065,26 @@ export default function ProjectDetailPage() {
 
   // Delete BOQ row — locked rows cannot be deleted (also enforced server-side)
   const deleteBoqRow = useCallback((rowIndex: number) => {
+    // A line with quantity already out on RFQs cannot simply vanish — the RFQs
+    // would point at nothing. Release its draws (delete the RFQs) first.
+    const target = boqItems[rowIndex]
+    if (target && (target.drawnQuantity || 0) > 0) {
+      toast({ title: t("proj_boq_delete_drawn_blocked"), variant: "destructive" })
+      return
+    }
     setBoqItems((prev) => {
       const item = prev[rowIndex]
       if (item?.isEditable === false) return prev
       return prev.filter((_, i) => i !== rowIndex)
     })
-  }, [])
+  }, [boqItems, toast, t])
 
   // Remove the tender lock from a single BOQ item (the one write transition the rules allow on a locked row)
   const unlockBoqItem = useCallback(async (itemId: string) => {
     if (!firestore || !projectId) return
     try {
-      await updateDoc(doc(firestore, "projects", projectId, "boqItems", itemId), {
-        isEditable: true,
-        tenderId: null,
-        updatedAt: serverTimestamp(),
-      })
+      // Hands back every draw at once; the RFQs themselves are untouched.
+      await updateDoc(doc(firestore, "projects", projectId, "boqItems", itemId), releaseAllDraws())
       await fetchBoqItems()
       toast({ title: t("proj_boq_unlocked") })
     } catch (err) {
@@ -1168,10 +1178,25 @@ export default function ProjectDetailPage() {
 
       const { items: freshItems, groups: freshGroups, idMap } = saved
       const remappedDeselected = new Set([...deselectedIds].map((id) => idMap.get(id) ?? id))
+      // New rows get real ids on save; the quantities typed against their
+      // temporary ids follow them.
+      const remappedQtys = new Map<string, string>()
+      for (const [id, q] of Object.entries(publishQtys)) remappedQtys.set(idMap.get(id) ?? id, q)
+
+      // Per item: how much THIS request draws. Defaults to everything left;
+      // anything typed must be a positive amount no larger than that.
+      const drawFor = (item: BoqItem): number => {
+        const remaining = boqRemaining(item)
+        const typed = remappedQtys.get(item.id)
+        if (typed === undefined || typed === "") return remaining
+        const n = Number(typed)
+        return Number.isFinite(n) ? Math.min(remaining, Math.max(0, n)) : remaining
+      }
 
       const itemsByGroup = new Map<string, BoqItem[]>()
       freshItems.forEach((item) => {
         if (!item.groupId || item.isEditable === false || remappedDeselected.has(item.id)) return
+        if (drawFor(item) <= 0) return
         if (!itemsByGroup.has(item.groupId)) itemsByGroup.set(item.groupId, [])
         itemsByGroup.get(item.groupId)!.push(item)
       })
@@ -1198,15 +1223,19 @@ export default function ProjectDetailPage() {
             products: selectedItems.map((item) => ({
               name: item.descriptionAr || item.descriptionEn,
               nameEn: item.descriptionEn,
-              quantity: Number(item.quantity) || 0,
+              // The drawn quantity, not the line's total — the BOQ stays the
+              // reference and this request is one phase of it.
+              quantity: drawFor(item),
               unitOfMeasure: item.unit,
               description: item.descriptionAr ? `${item.descriptionAr}\n${item.descriptionEn}` : item.descriptionEn,
               category: item.suggestedCategory || group.categoryAr,
               subCategory: item.suggestedSubCategory || "",
               boqItemNo: item.itemNo,
+              boqItemId: item.id,
+              boqTotalQuantity: Number(item.quantity) || 0,
               requiresWarranty: !!item.requiresWarranty,
             })),
-            quantity: String(selectedItems.reduce((s, i) => s + (Number(i.quantity) || 0), 0)),
+            quantity: String(selectedItems.reduce((s, i) => s + drawFor(i), 0)),
             notes: selectedItems.map((i) => i.descriptionAr || i.descriptionEn).join("\n"),
             deadline: publishDeadline,
             city: publishCity,
@@ -1228,13 +1257,15 @@ export default function ProjectDetailPage() {
           created++
           await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(newRfqRef.id) })
 
+          // Record the draw on each line. The line locks only if nothing is
+          // left — a phased request leaves it open for the next phase.
+          const drawAt = new Date().toISOString()
           const lockBatch = writeBatch(firestore)
           selectedItems.forEach((item) => {
-            lockBatch.update(doc(firestore, "projects", projectId, "boqItems", item.id), {
-              tenderId: newRfqRef.id,
-              isEditable: false,
-              updatedAt: serverTimestamp(),
-            })
+            lockBatch.update(
+              doc(firestore, "projects", projectId, "boqItems", item.id),
+              applyDraw(item, { rfqId: newRfqRef.id, quantity: drawFor(item), at: drawAt, rfqTitle: group.titleAr })
+            )
           })
           await lockBatch.commit()
         }
@@ -1242,6 +1273,7 @@ export default function ProjectDetailPage() {
         toast({ title: t("boq_success_title"), description: t("boq_success_desc", { count: created }) })
         setIsPublishDialogOpen(false)
         setDeselectedIds(new Set())
+        setPublishQtys({})
         setPublishShipmentMode("single")
         setPublishCity("")
         setPublishDistrict("")
@@ -1476,18 +1508,43 @@ export default function ProjectDetailPage() {
     }),
     columnHelper.accessor("quantity", {
       header: () => <span>{t("proj_boq_qty")}</span>,
-      cell: ({ row, getValue }) => (
-        <Input
-          value={getValue()}
-          onChange={(e) => updateBoqCell(row.index, "quantity", e.target.value)}
-          disabled={row.original.isEditable === false}
-          draggable={false}
-          className="h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60"
-          type="number"
-          min={0}
-        />
-      ),
-      size: 80,
+      cell: ({ row, getValue }) => {
+        const item = row.original
+        const drawn = item.drawnQuantity || 0
+        const total = Number(item.quantity) || 0
+        const remaining = boqRemaining(item)
+        const pct = total > 0 ? Math.min(100, Math.round((drawn / total) * 100)) : 0
+        return (
+          <div className="flex flex-col gap-0.5 py-0.5">
+            <Input
+              value={getValue()}
+              onChange={(e) => updateBoqCell(row.index, "quantity", e.target.value)}
+              disabled={item.isEditable === false}
+              draggable={false}
+              className={cn(
+                "h-8 text-xs border-0 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30 rounded-md px-2 text-center disabled:opacity-60",
+                drawn > 0 && total < drawn && "text-destructive"
+              )}
+              type="number"
+              min={drawn}
+              title={drawn > 0 ? t("proj_boq_drawn_hint", { drawn, remaining }) : undefined}
+            />
+            {/* What RFQs have already taken, and what is left to draw. Only
+                shown once a phase has gone out — most lines never need it. */}
+            {drawn > 0 && (
+              <div className="px-2 space-y-0.5">
+                <div className="h-1 rounded-full bg-muted overflow-hidden" aria-hidden="true">
+                  <div className={cn("h-full rounded-full", remaining > 0 ? "bg-cta" : "bg-success")} style={{ width: `${pct}%` }} />
+                </div>
+                <p className="text-[10px] text-muted-foreground whitespace-nowrap" dir="ltr">
+                  {t("proj_boq_drawn_hint", { drawn, remaining })}
+                </p>
+              </div>
+            )}
+          </div>
+        )
+      },
+      size: 110,
     }),
     columnHelper.accessor("unit", {
       header: () => <span>{t("proj_boq_unit")}</span>,
@@ -1665,6 +1722,15 @@ export default function ProjectDetailPage() {
   const totalSelectedForPublish = useMemo(() => allBoqRows.filter(
     (r) => r.original.groupId && publishableGroupIds.has(r.original.groupId) && r.original.isEditable !== false && !deselectedIds.has(r.original.id)
   ).length, [allBoqRows, publishableGroupIds, deselectedIds])
+  // A typed draw that is zero, negative, or more than the line has left blocks
+  // the publish — the same rule handlePublish clamps by, surfaced before the click.
+  const hasInvalidDraw = useMemo(() => boqItems.some((i) => {
+    if (!i.groupId || !publishableGroupIds.has(i.groupId) || i.isEditable === false || deselectedIds.has(i.id)) return false
+    const typed = publishQtys[i.id]
+    if (typed === undefined || typed === "") return false
+    const n = Number(typed)
+    return !Number.isFinite(n) || n <= 0 || n > boqRemaining(i)
+  }), [boqItems, publishableGroupIds, deselectedIds, publishQtys])
   const canPublish = publishableGroupIds.size > 0
 
   // Shared row/table renderer for both grouped sections and the Unassigned bucket —
@@ -2985,6 +3051,48 @@ export default function ProjectDetailPage() {
                 className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
               />
             </div>
+            {/* How much of each line THIS request draws. The BOQ total is the
+                reference; a phase takes part of it and the rest stays for later. */}
+            <div className="space-y-1.5">
+              <Label>{t("boq_draw_qty_label")}</Label>
+              <p className="text-xs text-muted-foreground">{t("boq_draw_qty_desc")}</p>
+              <div className="border rounded-lg divide-y max-h-56 overflow-y-auto">
+                {boqItems
+                  .filter((i) => i.groupId && publishableGroupIds.has(i.groupId) && i.isEditable !== false && !deselectedIds.has(i.id))
+                  .map((item) => {
+                    const remaining = boqRemaining(item)
+                    const typed = publishQtys[item.id]
+                    const value = typed === undefined ? String(remaining) : typed
+                    const n = Number(value)
+                    const invalid = value !== "" && (!Number.isFinite(n) || n <= 0 || n > remaining)
+                    const drawn = item.drawnQuantity || 0
+                    return (
+                      <div key={item.id} className="flex items-center gap-3 px-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">{item.descriptionAr || item.descriptionEn || item.itemNo}</p>
+                          <p className="text-[11px] text-muted-foreground" dir="ltr">
+                            {drawn > 0
+                              ? t("boq_draw_of_remaining_drawn", { remaining, total: Number(item.quantity) || 0, drawn, unit: item.unit })
+                              : t("boq_draw_of_remaining", { remaining, unit: item.unit })}
+                          </p>
+                        </div>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={remaining}
+                          step="any"
+                          value={value}
+                          onChange={(e) => setPublishQtys((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                          dir="ltr"
+                          aria-invalid={invalid}
+                          aria-label={t("boq_draw_qty_label")}
+                          className={cn("h-8 w-28 text-sm tabular-nums", invalid && "border-destructive focus-visible:ring-destructive")}
+                        />
+                      </div>
+                    )
+                  })}
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
               {isRtl
                 ? `${publishableGroupIds.size} طلب عروض أسعار سيُنشأ من ${totalSelectedForPublish} بند محدد`
@@ -2997,7 +3105,8 @@ export default function ProjectDetailPage() {
             </Button>
             <Button
               onClick={handlePublish}
-              disabled={isPublishing || !publishDeadline || !publishCity}
+              disabled={isPublishing || !publishDeadline || !publishCity || hasInvalidDraw}
+              title={hasInvalidDraw ? t("boq_draw_invalid") : undefined}
               className="gap-2"
             >
               {isPublishing ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
