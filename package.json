@@ -29,7 +29,8 @@
     "validate:full": "powershell -ExecutionPolicy Bypass -File scripts/validate-app.ps1 -Full",
     "ci": "npm run typecheck && npm run lint && npm run build && npm run test",
     "prepare": "node scripts/prepare.js",
-    "migrate:crm": "tsx scripts/migrate-crm-subcollections.ts"
+    "migrate:crm": "tsx scripts/migrate-crm-subcollections.ts",
+    "backfill:mobile": "tsx scripts/backfill-mobile-records.ts"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",
