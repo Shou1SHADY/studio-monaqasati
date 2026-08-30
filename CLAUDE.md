@@ -158,6 +158,53 @@ public/                 # Static assets — favicons, OG image, manifest
 - Use inline styles when Tailwind tokens exist
 - Import from `src/lol/` — deprecated/experimental code
 
+## Branches & Environments
+
+| Branch | Deploys to | Firebase project | URL |
+|---|---|---|---|
+| `main` | **Production** — Vercel, auto-deploys on push | `studio-2889504658-6ee2a` | https://mdmaktech.sa |
+| `uat` | **UAT** — Firebase App Hosting backend `studio-monaqasati` (us-east4, env name `uat`), auto-deploys on push | `mdmaktech-uat` | https://studio-monaqasati--mdmaktech-uat.us-east4.hosted.app |
+
+The two projects share nothing — separate Auth, Firestore, Storage. UAT is
+seeded with demo accounts (`scripts/seed-demo-workflow.ts --env .env.uat`);
+their passwords are in `..\uat-seed-accounts-*.txt`, outside the repo.
+
+**Rules that keep the branches honest:**
+
+1. **`uat` must never be behind `main`.** Work lands on `main` directly (team
+   habit). After *every* push to `main`, merge it into `uat` and push:
+   `git checkout uat && git merge main && git push origin uat`. Claude does the
+   merge locally on request; the push follows the approval rule below.
+2. **Never rewrite `uat`.** No `git branch -f uat`, no force-push once `uat`
+   has its own commits — merge in both directions instead. If the same fix is
+   needed on both branches, commit it once and merge; do not cherry-pick the
+   same patch onto both (it makes the graph lie about what was tested).
+3. **Something to try on UAT before prod?** Commit on `uat`, push `uat`, test,
+   then merge `uat → main` (PR or `git merge uat` on `main`). That is the only
+   time `uat` should be ahead of `main`.
+4. **Per-environment config lives in exactly three places:**
+   `apphosting.uat.yaml` (UAT build/runtime vars), Vercel's dashboard (prod
+   vars), and the switch in `src/lib/app-env.ts`. `apphosting.yaml` is shared
+   by every App Hosting backend — never put environment-specific values in it.
+   A secret referenced in either yaml must already exist in that project's
+   Secret Manager, or the build fails.
+5. **`NEXT_PUBLIC_*` must be read as a literal `process.env.NEXT_PUBLIC_X`.**
+   Reading through `process.env[name]` compiles to `undefined` in the browser
+   (this broke UAT login once). The Firebase web config comes from App
+   Hosting's `FIREBASE_WEBAPP_CONFIG` via `next.config.ts`; a UAT build
+   refuses to fall back to production values by design.
+6. **Firestore rules and indexes are files, not console clicks.** Edit
+   `firestore.rules` / `firestore.indexes.json`, deploy to UAT first
+   (`--project uat`), then to prod (`--project prod`, with approval). An index
+   created only in the console is invisible to UAT and to the next project.
+7. **Scripts that touch Firestore** default to production (`.env.local`).
+   Pass `--env .env.uat` to target UAT, and say which project a script is
+   about to hit before running it.
+
+Open decision: prod is on Vercel and UAT on App Hosting. For a true mirror,
+either move UAT to a Vercel branch deployment of `uat` or move prod to App
+Hosting — see the session notes from 2026-08-27.
+
 ## Deploying & Pushing — ASK FIRST
 
 **NEVER push to production without asking the owner first.** This is absolute and
