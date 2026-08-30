@@ -145,8 +145,10 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
           </div>
         </SidebarMenuItem>
 
+        {/* Logical properties on the child list, not ml/pl/border-l — in Arabic
+            the physical versions put the indent and its rule on the wrong side. */}
         {expanded && (
-          <div className="ml-4 border-l border-sidebar-border/50 pl-2">
+          <div className="ms-4 border-s border-sidebar-border/50 ps-2">
             {item.children!.filter((child) => !child.requiredPermission || can(child.requiredPermission)).map((child) => (
               <SidebarMenuItem key={child.titleKey}>
                 <SidebarMenuButton
@@ -178,9 +180,12 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
   if (item.comingSoon) {
     return (
       <SidebarMenuItem>
+        {/* px-2, not px-3: SidebarMenuButton's base padding is p-2, so a wider
+            inset here left the dimmed row's icon 4px out of line with every
+            other item in the list. */}
         <div
           aria-disabled="true"
-          className="flex items-center gap-3 h-10 px-3 rounded-md text-sidebar-foreground/40 cursor-not-allowed select-none"
+          className="flex items-center gap-3 h-10 px-2 rounded-md text-sidebar-foreground/40 cursor-not-allowed select-none"
         >
           <item.icon className="h-4 w-4 shrink-0" />
           <span className="text-sm font-medium truncate">{t(item.titleKey)}</span>

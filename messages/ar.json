@@ -2346,7 +2346,9 @@
       "crm_health_inputs_hint": "كلها اختيارية — الفراغ يعني غير مقيس، لا نتيجة سيئة",
       "crm_filters": "الفلاتر",
       "crm_view_options": "العرض",
-      "crm_group_by": "التجميع حسب"
+      "crm_group_by": "التجميع حسب",
+      "breadcrumb_label": "مسار التنقل",
+      "breadcrumb_back_to": "العودة إلى {name}"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -2736,9 +2738,6 @@
       "tiles_locked_count": "{count} وحدات خارج صلاحيتك",
       "home_kpi_guarantees_label": "ضمانات سارية",
       "home_kpi_guarantees_exp_label": "ضمانات تنتهي قريباً",
-      "home_preview_label": "عرض تجريبي للصلاحيات",
-      "home_preview_owner": "مالك الشركة (أنت)",
-      "home_preview_modules": "{count} من {total} وحدات",
       "tile_no_permission": "لا تملك صلاحية",
       "tile_request_access": "اطلب الصلاحية",
       "tile_request_sent": "تم إرسال الطلب",
@@ -3756,18 +3755,6 @@
       "cancel_confirm_btn": "إلغاء الطلب",
       "requests_empty_title": "لا توجد طلبات سحب بعد",
       "requests_page_desc": "كل طلبات السحب من جميع مستودعاتك المركزية، في مكان واحد",
-      "procurement_sidebar_title": "دليل المواد والأسعار",
-      "procurement_search": "بحث عن مادة...",
-      "procurement_material_name": "اسم المادة",
-      "procurement_ref_price": "السعر المرجعي (ريال)",
-      "procurement_qty_used": "الكمية المستهلكة",
-      "procurement_unit": "الوحدة",
-      "procurement_category": "الفئة",
-      "procurement_no_materials": "لا توجد مواد في الدليل بعد",
-      "procurement_add_to_boq": "إضافة للجدول",
-      "procurement_toggle": "دليل المواد",
-      "procurement_loading": "جاري تحميل الدليل...",
-      "procurement_all_categories": "كل الفئات",
       "catalog_page_title": "سوق المواد السريع",
       "catalog_page_desc": "اختر المواد التي طلبتها من قبل وأنشئ طلب عروض أسعار في ثوانٍ",
       "catalog_search_placeholder": "ابحث عن مادة...",
@@ -3985,7 +3972,8 @@
       "proj_waste_rows_count": "{count} صنف",
       "proj_waste_over_stock_title": "كمية مطلوبة أكبر من المتاح في المستودع",
       "proj_tabs_label": "أقسام المشروع",
-      "proj_boq_warehouse_menu": "المستودع"
+      "proj_boq_warehouse_menu": "المستودع",
+      "newrfq_step_notes_files": "ملاحظات ومرفقات"
     },
     "Admin": {
       "Dashboard": {

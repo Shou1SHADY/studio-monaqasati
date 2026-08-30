@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
+import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
@@ -31,6 +32,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { companyPortalPath, switchActiveCompany, switchErrorCode, type SwitchProfile } from "@/lib/company-switch"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -78,19 +80,26 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (!firestore || !user || m.organizationId === activeOrgId) return
     setSwitchingOrgId(m.organizationId)
     try {
-      const targetRole = membershipRole(m)
       // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
       // listeners still mounted for the instant before navigation would throw.
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
-      await updateDoc(doc(firestore, "users", user.uid), { organizationId: m.organizationId, role: targetRole })
+      const targetRole = await switchActiveCompany({
+        firestore,
+        uid: user.uid,
+        membership: m,
+        profile: profile as SwitchProfile | null,
+      })
       // The target company may operate in the other portal — navigate to its
       // root (full navigation also restarts every org-scoped listener cleanly).
-      const portal = targetRole === "Supplier" ? "/supplier" : "/contractor"
-      window.location.href = (locale === "ar" ? "" : `/${locale}`) + portal
+      window.location.href = companyPortalPath(targetRole, locale)
     } catch (err) {
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
       console.error(err)
-      toast({ title: tShared("company_switcher_error"), variant: "destructive" })
+      toast({
+        title: tShared("company_switcher_error"),
+        description: switchErrorCode(err),
+        variant: "destructive",
+      })
       setSwitchingOrgId(null)
     }
   }
@@ -901,8 +910,14 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto min-w-0">
+        {/* The dashboard home opens on the greeting hero, which carries its own
+            padding and a solid background. A full p-8 above it read as dead space
+            between the quick-search bar and the greeting, so the top inset is
+            trimmed there only — every other page keeps the standard breathing room. */}
+        <main className={cn("flex-1 p-6 md:p-8 overflow-y-auto min-w-0", isContractorDashboardHome && "pt-4 md:pt-4")}>
           <div className="mx-auto max-w-7xl">
+            {/* Every portal page except the two dashboard roots gets a way back up. */}
+            <PortalBreadcrumbs />
             {profile && profile.role !== "Admin" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">

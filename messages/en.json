@@ -2346,7 +2346,9 @@
       "crm_filters": "Filters",
       "crm_view_options": "View",
       "crm_group_by": "Group by",
-      "rfq_status_new": "New"
+      "rfq_status_new": "New",
+      "breadcrumb_label": "Breadcrumb",
+      "breadcrumb_back_to": "Back to {name}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -2736,9 +2738,6 @@
       "tiles_locked_count": "{count} modules outside your access",
       "home_kpi_guarantees_label": "Active guarantees",
       "home_kpi_guarantees_exp_label": "Guarantees expiring",
-      "home_preview_label": "Preview permissions as",
-      "home_preview_owner": "Company owner (you)",
-      "home_preview_modules": "{count} of {total} modules",
       "tile_no_permission": "No access",
       "tile_request_access": "Request access",
       "tile_request_sent": "Request sent",
@@ -3756,18 +3755,6 @@
       "cancel_confirm_btn": "Cancel request",
       "requests_empty_title": "No withdrawal requests yet",
       "requests_page_desc": "Every request across your central warehouses, in one place",
-      "procurement_sidebar_title": "Materials Price Guide",
-      "procurement_search": "Search materials...",
-      "procurement_material_name": "Material Name",
-      "procurement_ref_price": "Reference Price (SAR)",
-      "procurement_qty_used": "Qty Used",
-      "procurement_unit": "Unit",
-      "procurement_category": "Category",
-      "procurement_no_materials": "No materials in catalog yet",
-      "procurement_add_to_boq": "Add to BOQ",
-      "procurement_toggle": "Materials Guide",
-      "procurement_loading": "Loading catalog...",
-      "procurement_all_categories": "All Categories",
       "catalog_page_title": "Quick Materials Catalog",
       "catalog_page_desc": "Select materials you've requested before and create an RFQ in seconds",
       "catalog_search_placeholder": "Search materials...",
@@ -3985,7 +3972,8 @@
       "proj_waste_rows_count": "{count} items",
       "proj_waste_over_stock_title": "Requested more than the warehouse holds",
       "proj_tabs_label": "Project sections",
-      "proj_boq_warehouse_menu": "Warehouse"
+      "proj_boq_warehouse_menu": "Warehouse",
+      "newrfq_step_notes_files": "Notes & Files"
     },
     "Admin": {
       "Dashboard": {

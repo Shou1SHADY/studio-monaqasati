@@ -103,5 +103,11 @@ studio-2889*
 *firebase-adminsdk*.json
 service-account.json
 
+# Throwaway diagnostic scripts (.tmp-diag-rules.cjs and friends). These read the
+# service-account key above and dump live state to a scratch path, so they are
+# strictly local — note the `*.tmp` rule further up does NOT cover them, it only
+# matches names ENDING in .tmp.
+.tmp-*
+
 # C:\Users\MCYF8797\Mdak\studio-monaqasati\index.html
 index.html

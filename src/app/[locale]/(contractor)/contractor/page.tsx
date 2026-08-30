@@ -4,10 +4,8 @@ import { useState } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Crown, UsersRound, History, ChevronLeft, ChevronRight, Lock, Eye, Check, KeyRound, Loader2 } from "lucide-react"
+import { Crown, UsersRound, History, ChevronLeft, ChevronRight, Lock, Check, KeyRound, Loader2 } from "lucide-react"
 import { Link } from "@/i18n/routing"
-import { can as resolvePermission, type PermissionId } from "@/lib/permissions"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
@@ -148,18 +146,7 @@ export default function ContractorDashboard() {
   const todayLabel = new Date().toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", { weekday: "long", day: "numeric", month: "long" })
   const myGroup = groups.find((g) => g.id === profile?.defaultGroupId)
 
-  // Owner-only "preview as group": renders the whole dashboard exactly as a
-  // member of that permission group would see it, via the same resolver used
-  // for real members. Purely visual — no data or writes are affected.
-  const [previewGroupId, setPreviewGroupId] = useState<string | null>(null)
-  const previewGroup = isOrgOwner && previewGroupId ? groups.find((g) => g.id === previewGroupId) : undefined
-  const effectiveCan = previewGroup
-    ? (permission: PermissionId) =>
-        resolvePermission(permission, { organizationRole: "member", defaultGroupId: previewGroup.id, groups, projectGroupId: undefined })
-    : can
-  const effectiveIsOwner = previewGroup ? false : isOrgOwner
-
-  const roleChip = previewGroup ? previewGroup.name : isOrgOwner ? t("role_owner_chip") : myGroup?.name || null
+  const roleChip = isOrgOwner ? t("role_owner_chip") : myGroup?.name || null
 
   const employeesQuery = useMemoFirebase(() => {
     if (!firestore || !myOrgId) return null
@@ -177,14 +164,14 @@ export default function ContractorDashboard() {
   // top-priorities card) if this member can actually act on it — a finance
   // member shouldn't be nudged about RFQ decisions they can't take.
   const itemPermission: Record<WorkQueueItemType, boolean> = {
-    guarantee_expiring: effectiveCan("offers.accept") || effectiveCan("invoices.manage"),
-    rfq_decision: effectiveCan("offers.view") || effectiveCan("rfq.manage"),
-    rfq_closing_soon: effectiveCan("rfq.manage") || effectiveCan("rfq.create"),
-    rfq_no_offers: effectiveCan("rfq.manage") || effectiveCan("rfq.create"),
-    delivery_confirm: effectiveCan("deliveries.confirm"),
-    project_waiting_approval: effectiveCan("projects.edit") || effectiveCan("projects.publish"),
-    low_stock: effectiveCan("warehouses.manage"),
-    team_invite_pending: effectiveCan("team.manage"),
+    guarantee_expiring: can("offers.accept") || can("invoices.manage"),
+    rfq_decision: can("offers.view") || can("rfq.manage"),
+    rfq_closing_soon: can("rfq.manage") || can("rfq.create"),
+    rfq_no_offers: can("rfq.manage") || can("rfq.create"),
+    delivery_confirm: can("deliveries.confirm"),
+    project_waiting_approval: can("projects.edit") || can("projects.publish"),
+    low_stock: can("warehouses.manage"),
+    team_invite_pending: can("team.manage"),
   }
   const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid)
   const queueItems = allQueueItems.filter((item) => itemPermission[item.type])
@@ -213,7 +200,7 @@ export default function ContractorDashboard() {
 
   // Permission-aware tiles: a module the member can't open anything inside is
   // shown locked (or hidden via the toggle) — same gate as sidebar/launcher.
-  const accessibleById = new Map(sortedComponents.map((c) => [c.id, isComponentVisible(c, effectiveCan)]))
+  const accessibleById = new Map(sortedComponents.map((c) => [c.id, isComponentVisible(c, can)]))
   const accessibleCount = sortedComponents.filter((c) => accessibleById.get(c.id)).length
   const lockedCount = sortedComponents.length - accessibleCount
   const [showLocked, setShowLocked] = useState(true)
@@ -223,22 +210,15 @@ export default function ContractorDashboard() {
   // the hero keeps the same size and shape for every role. Finance-leaning
   // members fall through to real guarantees data (invoices aren't live yet).
   const guaranteesExpiringCount = allQueueItems.filter((i) => i.type === "guarantee_expiring").length
-  const canFinance = effectiveCan("invoices.manage") || effectiveCan("offers.accept")
+  const canFinance = can("invoices.manage") || can("offers.accept")
   const kpis = [
-    { key: "projects", allowed: effectiveCan("projects.view") || effectiveCan("projects.edit"), value: ongoingProjectsCount, label: t("home_kpi_ongoing_label"), dot: false },
+    { key: "projects", allowed: can("projects.view") || can("projects.edit"), value: ongoingProjectsCount, label: t("home_kpi_ongoing_label"), dot: false },
     { key: "decisions", allowed: true, value: queueItems.length, label: t("home_kpi_decisions_label"), dot: queueItems.length > 0 },
-    { key: "rfqs", allowed: effectiveCan("rfq.manage") || effectiveCan("rfq.create"), value: stats.rfqsOpen, label: t("home_kpi_open_rfqs_label"), dot: false },
-    { key: "offers", allowed: effectiveCan("offers.view"), value: stats.offersTotal, label: t("home_kpi_offers_label"), dot: false },
+    { key: "rfqs", allowed: can("rfq.manage") || can("rfq.create"), value: stats.rfqsOpen, label: t("home_kpi_open_rfqs_label"), dot: false },
+    { key: "offers", allowed: can("offers.view"), value: stats.offersTotal, label: t("home_kpi_offers_label"), dot: false },
     { key: "guarantees", allowed: canFinance, value: stats.guaranteesActive, label: t("home_kpi_guarantees_label"), dot: false },
     { key: "guarantees_exp", allowed: canFinance, value: guaranteesExpiringCount, label: t("home_kpi_guarantees_exp_label"), dot: guaranteesExpiringCount > 0 },
   ].filter((k) => k.allowed).slice(0, 3)
-
-  // Modules each group can open — shown in the preview picker ("4 of 7 modules").
-  const groupModuleCount = (groupId: string) => {
-    const groupCan = (permission: PermissionId) =>
-      resolvePermission(permission, { organizationRole: "member", defaultGroupId: groupId, groups, projectGroupId: undefined })
-    return sortedComponents.filter((c) => isComponentVisible(c, groupCan)).length
-  }
 
   // Access requests this member already sent — locked tiles show "request sent"
   // instead of the button, and the create is skipped while one is pending.
@@ -307,33 +287,6 @@ export default function ContractorDashboard() {
   return (
     <PortalLayout>
       <div className="space-y-6 pb-10">
-        {/* Owner-only: preview the dashboard as one of the org's permission groups. */}
-        {isOrgOwner && groups.length > 0 && (
-          <div className="flex justify-end -mb-2">
-            <Select value={previewGroupId ?? "owner"} onValueChange={(v) => setPreviewGroupId(v === "owner" ? null : v)}>
-              <SelectTrigger
-                className="h-8 gap-1.5 rounded-lg border-border bg-white text-foreground text-[11.5px] font-semibold hover:bg-muted/50 w-auto"
-                aria-label={t("home_preview_label")}
-              >
-                <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align={isRtl ? "start" : "end"}>
-                <div className="px-2 py-1.5 text-[10.5px] font-bold text-muted-foreground">{t("home_preview_label")}</div>
-                <SelectItem value="owner" className="text-xs">{t("home_preview_owner")}</SelectItem>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id} className="text-xs">
-                    {g.name}
-                    <span className="text-muted-foreground ms-1.5">
-                      {t("home_preview_modules", { count: groupModuleCount(g.id), total: sortedComponents.length })}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
         {/* Hero — rounded card, greeting block at the start, KPIs at the end,
             over a navy→blue gradient with a brick-outline wall and a teal glow. */}
         <div
@@ -365,7 +318,7 @@ export default function ContractorDashboard() {
               </span>
               {roleChip && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/15 text-[11.5px] font-bold text-slate-200 whitespace-nowrap">
-                  {effectiveIsOwner ? <Crown className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}
+                  {isOrgOwner ? <Crown className="h-3 w-3" /> : <UsersRound className="h-3 w-3" />}
                   {roleChip}
                 </span>
               )}
@@ -380,7 +333,7 @@ export default function ContractorDashboard() {
               <span>{todayLabel}</span>
               <i className="h-[3px] w-[3px] rounded-full bg-slate-500" />
               <span>
-                {effectiveIsOwner || lockedCount === 0
+                {isOrgOwner || lockedCount === 0
                   ? t("home_perms_all")
                   : t("home_perms_partial", { n: accessibleCount, total: sortedComponents.length })}
               </span>
@@ -448,7 +401,7 @@ export default function ContractorDashboard() {
                   </span>
                   <span className="text-xs text-muted-foreground/50">—</span>
                   <div className="mt-auto pt-2.5 border-t border-border/40 flex items-center min-h-[34px]">
-                    {previewGroup || isOrgOwner ? (
+                    {isOrgOwner ? (
                       <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/60">
                         <Lock size={13} />
                         {t("tile_no_permission")}

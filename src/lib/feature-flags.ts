@@ -23,3 +23,23 @@
  * the Finance → سندات الاستلام sidebar entry (see portal-components.ts).
  */
 export const RECEIPTS_COMING_SOON = true
+
+/**
+ * سوق المواد — the quick materials catalog at `/contractor/catalog`.
+ *
+ * Held back pending a decision on whether it earns its place: the premise is
+ * to surface frequently repeated materials, but cement, rebar and ceramic
+ * recur on essentially every project, so the shortlist adds little over the
+ * normal RFQ flow. The likely salvage is to point it at material requests
+ * rather than RFQs.
+ *
+ * Dimmed rather than deleted, so the feature is one boolean away from either
+ * outcome. `upsertCatalogItems` in RfqForm deliberately KEEPS writing
+ * `contractorCatalog` while this is on — the recurring-item history is what
+ * makes the page worth anything on the day it ships, and it costs nothing to
+ * accrue in the meantime.
+ *
+ * Set to `false` to release, or delete this flag together with the route,
+ * `ContractorCatalog.tsx`, the nav entry and the `catalog_*` message keys.
+ */
+export const CATALOG_COMING_SOON = true
