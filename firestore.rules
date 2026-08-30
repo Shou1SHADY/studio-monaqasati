@@ -115,7 +115,7 @@ service cloud.firestore {
             && (
               !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role'])
               || request.resource.data.role
-                 == get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.get('role', resource.data.role)
+                 == get(/databases/$(database)/documents/invitations/$(request.auth.token.email)).data.get('role', resource.data.get('role', ''))
             )
           )
           || (
@@ -123,7 +123,7 @@ service cloud.firestore {
             // secondary company — may only record the CURRENT effective primary
             // role, never invent a different one.
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['primaryRole', 'orgMemberships', 'updatedAt'])
-            && request.resource.data.primaryRole == resource.data.get('primaryRole', resource.data.role)
+            && request.resource.data.primaryRole == resource.data.get('primaryRole', resource.data.get('role', ''))
           )
           || (
             // Multi-company switch: an account may only switch its active
@@ -141,12 +141,12 @@ service cloud.firestore {
             && (
               (
                 request.resource.data.organizationId == userId
-                && request.resource.data.role == resource.data.get('primaryRole', resource.data.role)
+                && request.resource.data.role == resource.data.get('primaryRole', resource.data.get('role', ''))
               )
               || (
                 exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
                 && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('ownerUserId', '') == userId
-                && request.resource.data.role == get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('role', resource.data.role)
+                && request.resource.data.role == get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('role', resource.data.get('role', ''))
               )
             )
           )
