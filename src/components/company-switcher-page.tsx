@@ -21,15 +21,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import type { OrgMembership } from "@/hooks/useActiveCompanyName"
+import { companyPortalPath, switchActiveCompany, switchErrorCode, type CompanyRole } from "@/lib/company-switch"
 import { Building2, PlusCircle, CheckCircle2, Loader2, ArrowLeftRight, HardHat, Truck } from "lucide-react"
-
-type CompanyRole = "Contractor" | "Supplier"
-
-export function companyPortalPath(role: string | undefined, locale: string): string {
-  const portal = role === "Supplier" ? "/supplier" : "/contractor"
-  // localePrefix is "as-needed": Arabic (default) has no prefix, others do.
-  return (locale === "ar" ? "" : `/${locale}`) + portal
-}
 
 export function RoleBadge({ role, t }: { role: CompanyRole; t: ReturnType<typeof useTranslations<"Portal.Shared">> }) {
   const isSupplier = role === "Supplier"
@@ -98,14 +91,14 @@ export function CompanySwitcherPage() {
     if (!firestore || !user || m.organizationId === currentOrgId) return
     setSwitchingId(m.organizationId)
     try {
-      const targetRole = membershipRole(m)
       // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
       // listeners still mounted for the instant before navigation would throw.
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
-      await updateDoc(doc(firestore, "users", user.uid), {
-        organizationId: m.organizationId,
-        role: targetRole,
-        updatedAt: serverTimestamp(),
+      const targetRole = await switchActiveCompany({
+        firestore,
+        uid: user.uid,
+        membership: m,
+        profile: typedProfile,
       })
       toast({ title: t("company_switcher_switched") })
       // Every org-scoped listener across the app (team groups, projects, RFQs, ...)
@@ -117,7 +110,11 @@ export function CompanySwitcherPage() {
     } catch (err) {
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
       console.error(err)
-      toast({ title: t("company_switcher_error"), variant: "destructive" })
+      toast({
+        title: t("company_switcher_error"),
+        description: switchErrorCode(err),
+        variant: "destructive",
+      })
       setSwitchingId(null)
     }
   }

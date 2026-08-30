@@ -32,6 +32,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
+import { companyPortalPath, switchActiveCompany, switchErrorCode, type SwitchProfile } from "@/lib/company-switch"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -79,19 +80,26 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (!firestore || !user || m.organizationId === activeOrgId) return
     setSwitchingOrgId(m.organizationId)
     try {
-      const targetRole = membershipRole(m)
       // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
       // listeners still mounted for the instant before navigation would throw.
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
-      await updateDoc(doc(firestore, "users", user.uid), { organizationId: m.organizationId, role: targetRole })
+      const targetRole = await switchActiveCompany({
+        firestore,
+        uid: user.uid,
+        membership: m,
+        profile: profile as SwitchProfile | null,
+      })
       // The target company may operate in the other portal — navigate to its
       // root (full navigation also restarts every org-scoped listener cleanly).
-      const portal = targetRole === "Supplier" ? "/supplier" : "/contractor"
-      window.location.href = (locale === "ar" ? "" : `/${locale}`) + portal
+      window.location.href = companyPortalPath(targetRole, locale)
     } catch (err) {
       ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
       console.error(err)
-      toast({ title: tShared("company_switcher_error"), variant: "destructive" })
+      toast({
+        title: tShared("company_switcher_error"),
+        description: switchErrorCode(err),
+        variant: "destructive",
+      })
       setSwitchingOrgId(null)
     }
   }

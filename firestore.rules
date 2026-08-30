@@ -133,6 +133,10 @@ service cloud.firestore {
             // be a Supplier company owned by a Contractor account, or vice
             // versa) but only to the target org's declared role; switching back
             // to the primary org restores the account's original primaryRole.
+            // Both the existence check and the field defaults matter: reading
+            // `.data` off a missing doc — or a missing field off a present one —
+            // is an evaluation ERROR, which denies the write outright instead of
+            // falling through to a clean "not your company" refusal.
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'role', 'updatedAt'])
             && (
               (
@@ -140,7 +144,8 @@ service cloud.firestore {
                 && request.resource.data.role == resource.data.get('primaryRole', resource.data.role)
               )
               || (
-                get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.ownerUserId == userId
+                exists(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId))
+                && get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('ownerUserId', '') == userId
                 && request.resource.data.role == get(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('role', resource.data.role)
               )
             )
