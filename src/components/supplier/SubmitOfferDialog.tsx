@@ -35,6 +35,7 @@ import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
 import { collection, addDoc, doc, getDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
+import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 
 interface DeliveryBatch {
   id: string
@@ -393,7 +394,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         >
           <DialogTitle className="sr-only">{t("offer_submit_title")}</DialogTitle>
 
-          {profile && !profile.profileCompleted ? (
+          {REQUIRE_COMPLETE_PROFILE && profile && !profile.profileCompleted ? (
             <div className="p-8 text-center space-y-6">
               <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto border border-amber-200">
                 <AlertCircle size={32} />

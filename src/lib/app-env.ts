@@ -19,5 +19,15 @@ export const APP_ENV: AppEnv =
 
 export const IS_UAT = APP_ENV === "uat"
 
+/**
+ * Whether an account must complete its company profile (CR and VAT documents,
+ * contact details) before it may publish RFQs or submit offers.
+ *
+ * Enforced in production, where it is a real compliance requirement. UAT runs
+ * on seeded demo accounts that have no genuine commercial register to upload,
+ * so the same gate there only blocks the workflows UAT exists to exercise.
+ */
+export const REQUIRE_COMPLETE_PROFILE = !IS_UAT
+
 /** Public origin of this deployment, without a trailing slash. */
 export const SITE_URL: string = (process.env.NEXT_PUBLIC_APP_URL || "https://mdmaktech.sa").replace(/\/$/, "")

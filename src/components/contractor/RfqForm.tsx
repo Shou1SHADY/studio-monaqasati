@@ -37,6 +37,7 @@ import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayDistrict, displayCountry } from "@/lib/constants"
 import { cn } from "@/lib/utils"
+import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ProductRowEditor, type ProductRow, makeEmptyProductRow } from "@/components/shared/ProductRowEditor"
 
@@ -222,7 +223,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     )
   }
 
-  if (profile && !profile.profileCompleted) {
+  if (REQUIRE_COMPLETE_PROFILE && profile && !profile.profileCompleted) {
     return (
       <PortalLayout>
         <div className="max-w-md mx-auto py-12 text-center space-y-6 bg-white rounded-[2rem] p-8 border border-slate-100 shadow-xl mt-12" dir={locale === "ar" ? "rtl" : "ltr"}>
