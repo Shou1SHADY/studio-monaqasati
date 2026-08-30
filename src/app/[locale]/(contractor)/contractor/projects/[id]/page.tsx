@@ -118,7 +118,6 @@ import {
   createColumnHelper,
   type Row,
 } from "@tanstack/react-table"
-import { ProcurementSidebar } from "@/components/contractor/ProcurementSidebar"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { CATEGORIES_DATA, PREDEFINED_CATEGORIES, displayCategory, SAUDI_CITIES, CITIES_DISTRICTS, displayCity, displayDistrict } from "@/lib/constants"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
@@ -1398,26 +1397,6 @@ export default function ProjectDetailPage() {
     window.addEventListener("keydown", onKeyDown)
   }, [moveItemToGroup])
 
-  // Add material from procurement sidebar
-  const handleAddMaterial = (material: { name: string; unit: string; refPrice: number }) => {
-    setBoqItems((prev) => [
-      ...prev,
-      {
-        id: `mat_${Date.now()}`,
-        itemNo: String(prev.length + 1),
-        descriptionAr: material.name,
-        descriptionEn: "",
-        quantity: "",
-        unit: material.unit,
-        unitPrice: String(material.refPrice),
-        sheet: "",
-        tenderId: null,
-        isEditable: true,
-        groupId: null,
-      },
-    ])
-  }
-
   // TanStack table columns — memoized so cell renderers keep a stable identity across renders.
   // flexRender creates a fresh React element per render; if the cell function itself were a new
   // reference every render (as it was before this array was memoized), React treats it as a different
@@ -1739,12 +1718,12 @@ export default function ProjectDetailPage() {
     <table className="w-full text-sm" style={{ minWidth: 640 }}>
       <thead>
         {boqTable.getHeaderGroups().map((hg) => (
-          <tr key={hg.id} className="border-b bg-muted/50">
+          <tr key={hg.id}>
             {hg.headers.map((header) => (
               <th
                 key={header.id}
                 className={cn(
-                  "px-3 py-2.5 text-xs font-bold text-muted-foreground whitespace-nowrap",
+                  "px-3 py-2 text-xs font-bold text-muted-foreground whitespace-nowrap bg-muted/40 border-b",
                   // `uppercase` and letter-spacing are Latin typographic devices. Applied
                   // to Arabic, tracking breaks the cursive joins between letters — the
                   // project rules forbid it outright — and uppercase does nothing.
@@ -2144,9 +2123,7 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: BOQ ── */}
         {activeTab === "boq" && (
-          <div className="flex gap-4">
-            {/* Main BOQ area */}
-            <div className="flex-1 min-w-0 space-y-4">
+          <div className="space-y-4">
               {/* Stats bar */}
               {/* Three numbers do not need three tall cards. As a single strip this band
                   drops from 72px to roughly 40px, which is 30px of the sheet you can
@@ -2313,76 +2290,97 @@ export default function ProjectDetailPage() {
                       <div
                         key={group.id}
                         data-boq-dropzone={group.id}
-                        className="rounded-xl border border-primary/10 bg-card overflow-hidden transition-all shadow-sm"
+                        className="rounded-xl border border-border bg-card overflow-hidden transition-all shadow-sm"
                       >
-                        <div className="flex items-center gap-1.5 p-3 bg-primary/5 border-b-2 border-primary/15 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => toggleGroupCollapsed(group.id)}
-                            aria-label={isCollapsed ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
-                            aria-expanded={!isCollapsed}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                          >
-                            {isCollapsed ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
-                          </button>
-                          <Layers size={14} className="text-primary shrink-0" />
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Input
-                                value={group.titleAr}
-                                onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
-                                className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-background truncate"
-                                dir="rtl"
-                              />
-                            </TooltipTrigger>
-                            {group.titleAr && group.titleAr.length > 40 && (
-                              <TooltipContent className="max-w-xs" side="bottom">{group.titleAr}</TooltipContent>
-                            )}
-                          </Tooltip>
-                          <div className="w-44 shrink-0">
-                            <SearchableSelect
-                              size="sm"
-                              value={group.categoryAr}
-                              onChange={(v) => updateBoqGroup(group.id, "categoryAr", v)}
-                              options={Object.keys(CATEGORIES_DATA).map((cat) => ({ value: cat, label: displayCategory(cat, locale) }))}
-                              placeholder={t("newrfq_select_category")}
-                              searchPlaceholder={t("newrfq_search_category")}
-                              noResultsText={t("newrfq_no_results")}
-                            />
-                          </div>
-                          <Badge variant="outline" className="text-[10px] shrink-0">
-                            {t("proj_boq_items_count", { count: groupRows.length })}
-                          </Badge>
-                          {groupTotal > 0 && (
-                            <Badge variant="outline" className="text-[10px] shrink-0 border-primary/20 text-primary font-bold" dir="ltr">
-                              {groupTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
-                            </Badge>
-                          )}
-                          {unlockedGroupRows.length > 0 && (
-                            <div
-                              className="flex items-center gap-1.5 h-7 px-1.5 rounded-lg hover:bg-background transition-colors cursor-pointer shrink-0"
-                              onClick={() => setGroupSelected(group.id, !allGroupSelected)}
-                              title={t("boq_select_item")}
+                        {/* Two tiers, not one wrapping cram. The identity of the
+                            section (name, size, money) is the first line and is all
+                            most people ever read; the things you set once — its
+                            category — and the destructive action sit on a quieter
+                            second line that only exists while the section is open. */}
+                        <div className="bg-primary/[0.04] border-b border-primary/15">
+                          <div className="flex items-center gap-2 px-3 py-2.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleGroupCollapsed(group.id)}
+                              aria-label={isCollapsed ? t("proj_boq_expand_section") : t("proj_boq_collapse_section")}
+                              aria-expanded={!isCollapsed}
+                              className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                             >
-                              <Checkbox
-                                checked={allGroupSelected ? true : someGroupSelected ? "indeterminate" : false}
-                                onCheckedChange={(checked) => setGroupSelected(group.id, !!checked)}
-                                onClick={(e) => e.stopPropagation()}
-                                aria-label={t("boq_select_item")}
-                              />
-                              <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">
-                                {selectedGroupCount}/{unlockedGroupRows.length}
-                              </span>
+                              {isCollapsed ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
+                            </button>
+                            <Layers size={14} className="text-primary shrink-0" />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Input
+                                  value={group.titleAr}
+                                  onChange={(e) => updateBoqGroup(group.id, "titleAr", e.target.value)}
+                                  className="h-8 text-sm font-bold flex-1 min-w-[140px] rounded-lg bg-background truncate"
+                                  dir="rtl"
+                                />
+                              </TooltipTrigger>
+                              {group.titleAr && group.titleAr.length > 40 && (
+                                <TooltipContent className="max-w-xs" side="bottom">{group.titleAr}</TooltipContent>
+                              )}
+                            </Tooltip>
+
+                            {/* Counts and money read as text, not as a row of pills —
+                                two outline badges next to a badge-shaped select made
+                                the band look like a toolbar rather than a heading. */}
+                            <span className="hidden sm:flex items-baseline gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap">
+                              <b className="font-bold text-foreground tabular-nums" dir="ltr">{groupRows.length}</b>
+                              {t("proj_boq_stat_items")}
+                            </span>
+                            {groupTotal > 0 && (
+                              <>
+                                <span className="hidden sm:block h-3.5 w-px bg-border shrink-0" aria-hidden="true" />
+                                <span className="shrink-0 text-xs font-bold text-primary tabular-nums whitespace-nowrap" dir="ltr">
+                                  {groupTotal.toLocaleString(locale === "ar" ? "ar-SA" : "en-US")} {t("offers_currency_sar")}
+                                </span>
+                              </>
+                            )}
+                            {unlockedGroupRows.length > 0 && (
+                              <div
+                                className="flex items-center gap-1.5 h-7 px-1.5 rounded-lg hover:bg-background transition-colors cursor-pointer shrink-0"
+                                onClick={() => setGroupSelected(group.id, !allGroupSelected)}
+                                title={t("boq_select_item")}
+                              >
+                                <Checkbox
+                                  checked={allGroupSelected ? true : someGroupSelected ? "indeterminate" : false}
+                                  onCheckedChange={(checked) => setGroupSelected(group.id, !!checked)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label={t("boq_select_item")}
+                                />
+                                <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap tabular-nums">
+                                  {selectedGroupCount}/{unlockedGroupRows.length}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {!isCollapsed && (
+                            <div className="flex items-center gap-2 px-3 pb-2.5 ps-12">
+                              <div className="w-52 max-w-full">
+                                <SearchableSelect
+                                  size="sm"
+                                  value={group.categoryAr}
+                                  onChange={(v) => updateBoqGroup(group.id, "categoryAr", v)}
+                                  options={Object.keys(CATEGORIES_DATA).map((cat) => ({ value: cat, label: displayCategory(cat, locale) }))}
+                                  placeholder={t("newrfq_select_category")}
+                                  searchPlaceholder={t("newrfq_search_category")}
+                                  noResultsText={t("newrfq_no_results")}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => deleteBoqGroup(group.id)}
+                                aria-label={t("proj_boq_delete_section")}
+                                className="ms-auto h-7 px-2 rounded-lg inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                              >
+                                <Trash2 size={13} />
+                                <span className="hidden sm:inline">{t("proj_boq_delete_section")}</span>
+                              </button>
                             </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => deleteBoqGroup(group.id)}
-                            aria-label={t("proj_boq_delete_section")}
-                            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                          >
-                            <Trash2 size={13} />
-                          </button>
                         </div>
                         {!isCollapsed && (
                           <>
@@ -2410,7 +2408,11 @@ export default function ProjectDetailPage() {
                     data-boq-dropzone="unassigned"
                     className="rounded-xl border border-dashed border-border bg-card overflow-hidden transition-all shadow-sm"
                   >
-                    <div className="flex items-center gap-2 p-3 bg-muted/50 border-b-2 border-border">
+                    {/* Same band metrics as a real section — px-3 py-2.5, same
+                        chevron, same count treatment — so the two read as one
+                        sheet. Only the dashed border and muted ground say
+                        "these rows are not filed yet". */}
+                    <div className="flex items-center gap-2 px-3 py-2.5 bg-muted/40 border-b border-border">
                       <button
                         type="button"
                         onClick={() => toggleGroupCollapsed("unassigned")}
@@ -2421,10 +2423,11 @@ export default function ProjectDetailPage() {
                         {collapsedGroups.has("unassigned") ? <ChevronRight size={15} className="rtl-flip" /> : <ChevronDown size={15} />}
                       </button>
                       <Package size={14} className="text-muted-foreground shrink-0" />
-                      <span className="text-sm font-bold text-muted-foreground">{t("boq_unassigned")}</span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {t("proj_boq_items_count", { count: unassignedBoqRows.length })}
-                      </Badge>
+                      <span className="text-sm font-bold text-muted-foreground flex-1 min-w-0 truncate">{t("boq_unassigned")}</span>
+                      <span className="flex items-baseline gap-1.5 shrink-0 text-xs text-muted-foreground whitespace-nowrap">
+                        <b className="font-bold text-foreground tabular-nums" dir="ltr">{unassignedBoqRows.length}</b>
+                        {t("proj_boq_stat_items")}
+                      </span>
                     </div>
                     {!collapsedGroups.has("unassigned") && (
                       <>
@@ -2459,10 +2462,6 @@ export default function ProjectDetailPage() {
                   locale={locale}
                 />
               )}
-            </div>
-
-            {/* Procurement sidebar */}
-            <ProcurementSidebar onAddMaterial={handleAddMaterial} />
           </div>
         )}
 

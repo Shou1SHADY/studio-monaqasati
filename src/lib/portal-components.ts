@@ -53,7 +53,7 @@ import {
   Scissors,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
-import { RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
+import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
 export interface NavItem {
   titleKey: string
@@ -149,7 +149,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
               { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
             ],
           },
-          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage" },
+          { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
           { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredPermission: "suppliers.manage" },
           { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredPermission: "deliveries.confirm" },
         ],
@@ -550,4 +550,65 @@ export function visibleComponents(
     .filter((component) => isComponentVisible(component, can))
     .slice()
     .sort((a, b) => a.displayOrder - b.displayOrder)
+}
+
+// ---------------------------------------------------------------------------
+// Breadcrumb trail
+// ---------------------------------------------------------------------------
+
+export interface NavCrumb {
+  titleKey: string
+  href: string
+}
+
+/**
+ * The registry's path to `pathname`: the module that owns the route, then the
+ * deepest nav item (with its parent, when the match is a child) whose href
+ * prefixes it.
+ *
+ * Deliberately stops at the registry. A detail route like
+ * `/contractor/projects/{id}` resolves to the Projects crumb and no further —
+ * the registry has no name for a record, and a crumb reading "abc123" is worse
+ * than no crumb at all. The page itself already shows the record's title.
+ */
+export function resolveNavTrail(
+  components: PortalComponentDef[],
+  pathname: string
+): { component: PortalComponentDef; crumbs: NavCrumb[] } {
+  const component = resolveActiveComponent(components, pathname)
+  const crumbs: NavCrumb[] = []
+
+  // Longest match wins: `/contractor/warehouses/requests` must resolve to the
+  // Requests item, not to the Warehouses item it also sits under.
+  let best: { item: NavItem; parent?: NavItem; length: number } | null = null
+  const consider = (item: NavItem, parent?: NavItem) => {
+    const path = hrefPathname(item.href)
+    if (!matchesPrefix(pathname, path)) return
+    if (!best || path.length > best.length) best = { item, parent, length: path.length }
+  }
+  for (const section of component.sections) {
+    for (const item of section.items) {
+      consider(item)
+      item.children?.forEach((child) => consider(child, item))
+    }
+  }
+
+  if (best) {
+    const match = best as { item: NavItem; parent?: NavItem }
+    if (match.parent) crumbs.push({ titleKey: match.parent.titleKey, href: match.parent.href })
+    crumbs.push({ titleKey: match.item.titleKey, href: match.item.href })
+  }
+
+  return {
+    component,
+    crumbs: crumbs.filter((c) => {
+      const path = hrefPathname(c.href)
+      // The module's own home is rendered as the module crumb — don't say it twice.
+      if (path === hrefPathname(component.homeHref)) return false
+      // The portal root (`/contractor`, `/supplier`) prefixes every route in its
+      // portal, so the dashboard item matches everything. The bar already opens
+      // with that root, so as a crumb it is only ever a duplicate.
+      return path.split("/").filter(Boolean).length > 1
+    }),
+  }
 }

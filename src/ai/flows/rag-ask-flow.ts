@@ -250,7 +250,6 @@ ${roleCapabilities('ar', role)}
 - إنشاء مشروع: /contractor/projects/new
 - استلام البضائع: /contractor/goods-received
 - دليل الموردين: /contractor/my-suppliers
-- سوق المواد السريع: /contractor/catalog
 
 للمورد:
 - طلبات العروض المتاحة: /supplier/rfqs
@@ -328,7 +327,6 @@ For Contractor:
 - New project: /contractor/projects/new
 - Goods received: /contractor/goods-received
 - Supplier directory: /contractor/my-suppliers
-- Quick Materials Catalog: /contractor/catalog
 
 For Supplier:
 - Available RFQs: /supplier/rfqs

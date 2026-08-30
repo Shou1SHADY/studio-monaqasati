@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { LanguageSwitcher } from "@/components/ui/LanguageSwitcher"
 import { AppSwitcher } from "@/components/layout/app-switcher"
+import { PortalBreadcrumbs } from "@/components/layout/portal-breadcrumbs"
 import { useUser, useDoc, useFirestore, useMemoFirebase, useCollection } from "@/firebase"
 import { useLocale, useTranslations } from "next-intl"
 import { doc, collection, query, where, orderBy, limit, updateDoc } from "firebase/firestore"
@@ -901,8 +902,14 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         
-        <main className="flex-1 p-6 md:p-8 overflow-y-auto min-w-0">
+        {/* The dashboard home opens on the greeting hero, which carries its own
+            padding and a solid background. A full p-8 above it read as dead space
+            between the quick-search bar and the greeting, so the top inset is
+            trimmed there only — every other page keeps the standard breathing room. */}
+        <main className={cn("flex-1 p-6 md:p-8 overflow-y-auto min-w-0", isContractorDashboardHome && "pt-4 md:pt-4")}>
           <div className="mx-auto max-w-7xl">
+            {/* Every portal page except the two dashboard roots gets a way back up. */}
+            <PortalBreadcrumbs />
             {profile && profile.role !== "Admin" && (resolvedProfileCompleted !== true || !resolvedLegalDocuments?.cr?.url || !resolvedLegalDocuments?.vat?.url) && pathname !== `/${profile.role.toLowerCase()}/profile` && (
               <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
                 <div className="flex items-center gap-3 text-amber-800">

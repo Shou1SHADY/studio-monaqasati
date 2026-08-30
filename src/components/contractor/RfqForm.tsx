@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   FileText,
   MapPin,
+  Paperclip,
   Zap,
   Loader2,
   Trash2,
@@ -334,7 +335,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     return errors
   }
 
-  const validateStep2 = (): ValidationError[] => {
+  // Step 2 (notes + attachments) is entirely optional, so it has no validator —
+  // `nextStep` waves it through.
+  const validateStep3 = (): ValidationError[] => {
     const errors: ValidationError[] = []
 
     if (!formData.city) {
@@ -366,7 +369,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   }
 
   const nextStep = () => {
-    const errors = step === 1 ? validateStep1() : step === 2 ? validateStep2() : []
+    const errors = step === 1 ? validateStep1() : []
 
     if (errors.length > 0) {
       showErrors(errors)
@@ -439,8 +442,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
     // Perform full validation
     const step1Errors = validateStep1()
-    const step2Errors = validateStep2()
-    const allErrors = [...step1Errors, ...step2Errors]
+    const step3Errors = validateStep3()
+    const allErrors = [...step1Errors, ...step3Errors]
 
     if (allErrors.length > 0) {
       // If we are at step 1 but there are errors in step 2 (shouldn't happen often)
@@ -648,7 +651,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 mb-8">
           {[
             { step: 1, label: t("newrfq_step_request_details"), icon: FileText },
-            { step: 2, label: t("newrfq_step_location_date"), icon: MapPin },
+            { step: 2, label: t("newrfq_step_notes_files"), icon: Paperclip },
+            { step: 3, label: t("newrfq_step_location_date"), icon: MapPin },
           ].map(({ step: s, label, icon: Icon }, idx) => (
             <div key={s} className="flex items-center">
               <button
@@ -666,7 +670,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 {step > s ? <CheckCircle2 size={20} /> : <Icon size={20} />}
                 <span className="font-bold text-xs sm:text-sm">{label}</span>
               </button>
-              {idx < 1 && (
+              {idx < 2 && (
                 locale === 'ar' ? <ChevronLeft size={20} className="mx-1 sm:mx-2 text-slate-300" /> : <ChevronRight size={20} className="mx-1 sm:mx-2 text-slate-300" />
               )}
             </div>
@@ -757,7 +761,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     onFieldTouched={(id, field) => clearError(`product_${id}_${field}`)}
                   />
                 </div>
+              </div>
+            )}
 
+            {/* Notes and attachments — optional, and previously the tail of step 1,
+                where they stretched the first screen past the point anyone scrolled.
+                On their own step the required work (title + products) fits without
+                scrolling and this stays skippable. */}
+            {step === 2 && (
+              <div className="p-8 space-y-8">
                 <div className="space-y-4 p-6 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                   <Label className="text-base font-bold text-slate-700">{t("newrfq_additional_notes")}</Label>
                   <Textarea
@@ -825,7 +837,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
               </div>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <div className="p-8 space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
@@ -1006,7 +1018,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
               {t("newrfq_prev")}
             </Button>
 
-            {step === 1 ? (
+            {step < 3 ? (
               <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
                 {t("newrfq_next")}
                 {locale === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
