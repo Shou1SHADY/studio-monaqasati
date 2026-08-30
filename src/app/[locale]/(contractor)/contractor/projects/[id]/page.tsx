@@ -89,6 +89,7 @@ import {
   Building2,
   Tag,
   Lock,
+  Globe,
   Send,
   Lightbulb,
   Layers,
@@ -134,6 +135,7 @@ import { recordWasteConsumption } from "@/lib/waste-writes"
 import { applyDraw, boqRemaining, releaseAllDraws, releaseBoqDrawsForRfq, type BoqDraw } from "@/lib/boq-draws"
 import { WasteRecordDialog } from "@/components/inventory/WasteRecordDialog"
 import { WasteLedger } from "@/components/contractor/WasteLedger"
+import { SupplierRecipientsPicker, buildSupplierOptions, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
 import { useCentralWarehouse, resolveCentralForRegion } from "@/hooks/useCentralWarehouse"
 import { suggestBoqMaterials } from "@/ai/flows/suggest-boq-materials-flow"
 import {
@@ -449,6 +451,12 @@ export default function ProjectDetailPage() {
   }, [firestore, user, profile])
   const { data: connectedTenderLinks } = useCollection(connectedTenderLinksQuery)
   const connectedSupplierOrgIds: string[] = (connectedTenderLinks || []).map((l: any) => l.supplierOrgId)
+  // Same list, same order as the RFQ form's picker — favourites first.
+  const supplierOptions: SupplierOption[] = buildSupplierOptions(
+    connectedTenderLinks as any[],
+    ((profile as any)?.favoriteSuppliers as string[]) || [],
+    t("suppliers_registered_supplier")
+  )
 
   // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
   const [unlinkTarget, setUnlinkTarget] = useState<BoqItem | null>(null)
@@ -463,6 +471,8 @@ export default function ProjectDetailPage() {
   const [showBulkTenderDeleteDialog, setShowBulkTenderDeleteDialog] = useState(false)
   const [tenderViewMode, setTenderViewMode] = useState<"grid" | "list">("grid")
   const [republishTarget, setRepublishTarget] = useState<{ id: string; title?: string } | null>(null)
+  const [republishVisibility, setRepublishVisibility] = useState<"public" | "private">("public")
+  const [republishRecipients, setRepublishRecipients] = useState<string[]>([])
   const [republishDeadline, setRepublishDeadline] = useState("")
   const [isRepublishingTender, setIsRepublishingTender] = useState(false)
 
@@ -495,6 +505,35 @@ export default function ProjectDetailPage() {
     return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>
   }
 
+  /**
+   * What publishing writes. Deliberately re-uses the tender's OWN visibility
+   * and recipient list: those were chosen on the form that created it, and a
+   * publish button is not the place to silently re-decide them. A public
+   * tender still records the connected suppliers, who see published tenders
+   * regardless of specialisation; a private one that carries no list of its
+   * own predates the picker, so it keeps meaning "everyone connected".
+   */
+  const publishFields = (rfq: any) => {
+    const isPrivate = rfq?.visibility === "private"
+    const saved: string[] = Array.isArray(rfq?.allowedSupplierOrgIds) ? rfq.allowedSupplierOrgIds : []
+    return {
+      status: "New",
+      visibility: isPrivate ? "private" : "public",
+      allowedSupplierOrgIds: isPrivate && saved.length > 0 ? saved : connectedSupplierOrgIds,
+      publishedAt: new Date().toISOString(),
+    }
+  }
+
+  /** Opens the republish dialog on the audience the tender already has, so
+   *  reopening an unanswered private tender keeps its suppliers unless the
+   *  contractor changes them. */
+  const seedRepublishAudience = (rfqId: string) => {
+    const tender = ((linkedRfqs as any[]) || []).find((r) => r.id === rfqId)
+    const saved: string[] = Array.isArray(tender?.allowedSupplierOrgIds) ? tender.allowedSupplierOrgIds : []
+    setRepublishVisibility(tender?.visibility === "private" ? "private" : "public")
+    setRepublishRecipients(saved.length > 0 ? saved : connectedSupplierOrgIds)
+  }
+
   const handlePublishTender = async (rfqId: string) => {
     if (!firestore) return
     const missingFields = getIncompletePublishFields(profile, locale)
@@ -508,12 +547,11 @@ export default function ProjectDetailPage() {
     }
     setPublishingTenderId(rfqId)
     try {
-      await updateDoc(doc(firestore, "rfqs", rfqId), {
-        status: "New",
-        visibility: "public",
-        allowedSupplierOrgIds: connectedSupplierOrgIds,
-        publishedAt: new Date().toISOString(),
-      })
+      // Publish it as it was written. Forcing "public" here threw away a
+      // draft's private audience — a tender addressed to two chosen suppliers
+      // went out to the whole market on a button that only said "publish".
+      const draft = ((linkedRfqs as any[]) || []).find((r) => r.id === rfqId)
+      await updateDoc(doc(firestore, "rfqs", rfqId), publishFields(draft))
       toast({ title: t("rfq_batch_publish_title") })
     } catch (err) {
       console.error(err)
@@ -530,8 +568,8 @@ export default function ProjectDetailPage() {
       await updateDoc(doc(firestore, "rfqs", republishTarget.id), {
         deadline: republishDeadline,
         status: "New",
-        visibility: "public",
-        allowedSupplierOrgIds: connectedSupplierOrgIds,
+        visibility: republishVisibility,
+        allowedSupplierOrgIds: republishVisibility === "private" ? republishRecipients : [],
         publishedAt: new Date().toISOString(),
       })
       toast({ title: t("rfq_republish_success") })
@@ -595,12 +633,7 @@ export default function ProjectDetailPage() {
     const failedIds: string[] = []
     for (const r of eligible) {
       try {
-        await updateDoc(doc(firestore, "rfqs", r.id), {
-          status: "New",
-          visibility: "public",
-          allowedSupplierOrgIds: connectedSupplierOrgIds,
-          publishedAt: new Date().toISOString(),
-        })
+        await updateDoc(doc(firestore, "rfqs", r.id), publishFields(r))
         published++
       } catch (err) {
         console.error(err)
@@ -2709,7 +2742,11 @@ export default function ProjectDetailPage() {
                                     <TooltipTrigger asChild>
                                       <button
                                         type="button"
-                                        onClick={() => { setRepublishTarget({ id: r.id, title: r.title }); setRepublishDeadline("") }}
+                                        onClick={() => {
+                                          setRepublishTarget({ id: r.id, title: r.title })
+                                          setRepublishDeadline("")
+                                          seedRepublishAudience(r.id)
+                                        }}
                                         className="h-7 w-7 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 transition-colors"
                                       >
                                         <RotateCw size={14} />
@@ -2838,7 +2875,11 @@ export default function ProjectDetailPage() {
                                 variant="outline"
                                 size="sm"
                                 className="w-full gap-1.5 text-xs h-8 text-amber-600 border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-400"
-                                onClick={() => { setRepublishTarget({ id: r.id, title: r.title }); setRepublishDeadline("") }}
+                                onClick={() => {
+                                          setRepublishTarget({ id: r.id, title: r.title })
+                                          setRepublishDeadline("")
+                                          seedRepublishAudience(r.id)
+                                        }}
                               >
                                 <RotateCw size={13} />
                                 {t("rfq_republish")}
@@ -3143,7 +3184,7 @@ export default function ProjectDetailPage() {
               {t("rfq_republish_desc", { title: republishTarget?.title || "" })}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             <div className="space-y-2">
               <Label>{t("rfq_republish_deadline_label")}</Label>
               <input
@@ -3154,10 +3195,56 @@ export default function ProjectDetailPage() {
                 min={new Date().toISOString().split("T")[0]}
               />
             </div>
+
+            {/* Reopening a tender is the moment to reconsider who sees it —
+                the first round going unanswered is usually why it is here. */}
+            <div className="space-y-2">
+              <Label>{t("newrfq_visibility_label")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { mode: "public" as const, icon: Globe, label: t("newrfq_visibility_public") },
+                  { mode: "private" as const, icon: Lock, label: t("newrfq_visibility_private") },
+                ]).map(({ mode, icon: Icon, label }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setRepublishVisibility(mode)}
+                    disabled={isRepublishingTender}
+                    className={cn(
+                      "flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      republishVisibility === mode
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                    )}
+                  >
+                    <Icon size={16} className="shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {republishVisibility === "private" && (
+              <SupplierRecipientsPicker
+                id="republish-recipients"
+                options={supplierOptions}
+                selected={republishRecipients}
+                onChange={setRepublishRecipients}
+                disabled={isRepublishingTender}
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setRepublishTarget(null); setRepublishDeadline("") }} disabled={isRepublishingTender}>{t("cancel")}</Button>
-            <Button onClick={handleRepublishTender} disabled={!republishDeadline || isRepublishingTender}>
+            <Button
+              onClick={handleRepublishTender}
+              disabled={
+                !republishDeadline ||
+                isRepublishingTender ||
+                (republishVisibility === "private" && supplierOptions.length > 0 && republishRecipients.length === 0)
+              }
+            >
               {isRepublishingTender ? <Loader2 className="animate-spin" size={14} /> : <RotateCw size={14} />}
               {t("rfq_republish_confirm")}
             </Button>
