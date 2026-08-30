@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
-import { CheckCircle2, Target } from "lucide-react"
+import { CheckCircle2, Plus, Target } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,6 +39,7 @@ import {
   type TenderRoute,
 } from "@/lib/crm"
 import { CrmFieldGroup, CrmFormDialog, CrmReviewRow, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
+import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 
 /** The probability steps a rep actually reasons in. A free-number field here
  * invites false precision — nobody's deal is 63% likely. */
@@ -50,6 +51,10 @@ export const DATE_INPUT_CLASS =
   "disabled:cursor-not-allowed disabled:opacity-50"
 
 const NONE = "__none__"
+
+/** Sentinel select value: the "add a contact" action at the foot of the
+ * contact list, handled in onValueChange rather than stored. */
+const ADD_CONTACT = "__add_contact__"
 
 /** Chip toggle used for scope, probability and similar small option sets. */
 function Chip({
@@ -134,6 +139,7 @@ export function CrmOpportunityDialog({
   const [contractKind, setContractKind] = useState<ContractKind | "">("")
   const [source, setSource] = useState<OpportunitySource | "">("")
   const [consultantContactId, setConsultantContactId] = useState("")
+  const [showAddContact, setShowAddContact] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -269,7 +275,19 @@ export function CrmOpportunityDialog({
               <Label htmlFor="opp-contact">
                 {t("crm_opp_contact")} <RequiredMark />
               </Label>
-              <Select value={contactId} onValueChange={setContactId} disabled={isSaving}>
+              <Select
+                value={contactId}
+                onValueChange={(value) => {
+                  // The last entry is an action, not a contact — opening the
+                  // contact form must not leave the sentinel in the field.
+                  if (value === ADD_CONTACT) {
+                    setShowAddContact(true)
+                    return
+                  }
+                  setContactId(value)
+                }}
+                disabled={isSaving}
+              >
                 <SelectTrigger id="opp-contact"><SelectValue placeholder={t("crm_opp_contact_placeholder")} /></SelectTrigger>
                 <SelectContent className="max-h-72">
                   {contacts.map((c) => (
@@ -278,6 +296,18 @@ export function CrmOpportunityDialog({
                       {c.company ? ` — ${c.company}` : ""}
                     </SelectItem>
                   ))}
+                  {/* A deal needs a party, and the one you want is often the one
+                      that isn't recorded yet. Leaving to the contacts page would
+                      throw away everything typed into this form so far. */}
+                  <SelectItem
+                    value={ADD_CONTACT}
+                    className={cn(contacts.length > 0 && "mt-1 border-t border-border", "font-semibold text-primary focus:text-primary")}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Plus size={14} />
+                      {t("crm_add_btn")}
+                    </span>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -530,18 +560,31 @@ export function CrmOpportunityDialog({
   ]
 
   return (
-    <CrmFormDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      icon={Target}
-      title={isEdit ? t("crm_opp_edit_title") : t("crm_opp_add_title")}
-      description={t("crm_opp_dialog_desc")}
-      steps={steps}
-      isSaving={isSaving}
-      submitLabel={t("crm_save")}
-      onSubmit={() => void handleSave()}
-      size="lg"
-    />
+    <>
+      <CrmFormDialog
+        open={open}
+        onOpenChange={onOpenChange}
+        icon={Target}
+        title={isEdit ? t("crm_opp_edit_title") : t("crm_opp_add_title")}
+        description={t("crm_opp_dialog_desc")}
+        steps={steps}
+        isSaving={isSaving}
+        submitLabel={t("crm_save")}
+        onSubmit={() => void handleSave()}
+        size="lg"
+      />
+      {/* Opens over this form, which keeps its state — the point of adding a
+          contact from here is not having to abandon the deal being written.
+          The new party lands in `contacts` through the parent's listener; the
+          id comes back on save so it is already selected when this closes. */}
+      <CrmContactDialog
+        open={showAddContact}
+        onOpenChange={setShowAddContact}
+        orgId={orgId}
+        teamMembers={teamMembers}
+        onSaved={(newContactId) => setContactId(newContactId)}
+      />
+    </>
   )
 }
 
