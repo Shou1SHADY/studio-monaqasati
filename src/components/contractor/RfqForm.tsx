@@ -27,7 +27,6 @@ import {
   AlertCircle,
   Globe,
   Lock,
-  Heart,
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -41,6 +40,7 @@ import { cn } from "@/lib/utils"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ProductRowEditor, type ProductRow, makeEmptyProductRow } from "@/components/shared/ProductRowEditor"
+import { SupplierRecipientsPicker, buildSupplierOptions, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
 
 interface ValidationError {
   field: string
@@ -94,41 +94,17 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { data: connectedLinks } = useCollection(connectedLinksQuery)
   const connectedSupplierOrgIds: string[] = connectedLinks?.map((l: any) => l.supplierOrgId) || []
 
-  // Who a private RFQ can be addressed to, favourites first.
-  //
-  // The list is every CONNECTED supplier rather than only the favourited ones:
-  // favouriting a supplier already creates the connection (see the suppliers
-  // page), so favourites are a subset of this — filtering down to them would
-  // quietly drop suppliers the contractor connected to any other way. They are
-  // pinned to the top and badged instead, which is what makes the common case
-  // a one-click choice without narrowing the uncommon one.
+  // Who a private RFQ can be addressed to — see buildSupplierOptions for why
+  // this is every connected supplier rather than only the favourited ones.
   const favoriteSupplierIds: string[] = (profile as any)?.favoriteSuppliers || []
-  const supplierOptions: { orgId: string; name: string; isFavorite: boolean }[] = useMemo(() => {
-    const seen = new Set<string>()
-    const options = (connectedLinks || []).reduce((acc: { orgId: string; name: string; isFavorite: boolean }[], link: any) => {
-      if (!link.supplierOrgId || seen.has(link.supplierOrgId)) return acc
-      seen.add(link.supplierOrgId)
-      acc.push({
-        orgId: link.supplierOrgId,
-        name: link.supplierName || t("suppliers_registered_supplier"),
-        // Links born of a favourite carry that origin, which also catches
-        // legacy favourites recorded against a team member's id rather than
-        // the company's.
-        isFavorite: favoriteSupplierIds.includes(link.supplierOrgId) || link.requestedBy === "contractor_favorite",
-      })
-      return acc
-    }, [])
-    return options.sort((a, b) => (a.isFavorite === b.isFavorite ? a.name.localeCompare(b.name) : a.isFavorite ? -1 : 1))
-  }, [connectedLinks, favoriteSupplierIds.join(","), t])
+  const supplierOptions: SupplierOption[] = useMemo(
+    () => buildSupplierOptions(connectedLinks as any[], favoriteSupplierIds, t("suppliers_registered_supplier")),
+    [connectedLinks, favoriteSupplierIds.join(","), t]
+  )
 
   /** Who the RFQ actually reaches — the explicit picks, or everyone connected
    * while the contractor has not narrowed it down. */
   const selectedRecipients: string[] = privateRecipients ?? connectedSupplierOrgIds
-  const toggleRecipient = (orgId: string) =>
-    setPrivateRecipients((prev) => {
-      const base = prev ?? connectedSupplierOrgIds
-      return base.includes(orgId) ? base.filter((id) => id !== orgId) : [...base, orgId]
-    })
 
   // ── All useState/useRef hooks MUST be declared before any early returns ──
 
@@ -1051,80 +1027,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       supplier, so the contractor who does not care keeps the
                       old one-click behaviour, while the one who does can send
                       to a couple of trusted names instead of the whole list. */}
-                  {visibilityMode === "private" && supplierOptions.length > 0 && (
-                    <div id="rfq-recipients" className="mt-4">
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div>
-                          <p className="text-sm font-bold text-foreground">{t("newrfq_visibility_recipients_label")}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{t("newrfq_visibility_recipients_hint")}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPrivateRecipients(
-                              selectedRecipients.length === supplierOptions.length
-                                ? []
-                                : supplierOptions.map((o) => o.orgId)
-                            )
-                          }
-                          className="text-xs font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-1 py-0.5"
-                        >
-                          {selectedRecipients.length === supplierOptions.length
-                            ? t("newrfq_visibility_clear_all")
-                            : t("newrfq_visibility_select_all")}
-                        </button>
-                      </div>
-
-                      <div className="mt-2.5 max-h-52 overflow-y-auto rounded-xl border border-border bg-white divide-y divide-border">
-                        {supplierOptions.map((option) => {
-                          const isSelected = selectedRecipients.includes(option.orgId)
-                          return (
-                            <label
-                              key={option.orgId}
-                              className={cn(
-                                "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
-                                isSelected ? "bg-primary/5" : "hover:bg-muted/50"
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleRecipient(option.orgId)}
-                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                              />
-                              <span className="text-sm font-semibold text-foreground truncate flex-1">{option.name}</span>
-                              {option.isFavorite && (
-                                <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex items-center gap-1">
-                                  <Heart size={9} className="fill-amber-500 text-amber-500" />
-                                  {t("newrfq_visibility_favorite")}
-                                </span>
-                              )}
-                            </label>
-                          )
-                        })}
-                      </div>
-
-                      <p
-                        className={cn(
-                          "text-xs mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border w-fit font-semibold",
-                          selectedRecipients.length > 0
-                            ? "text-success bg-success/10 border-success/20"
-                            : "text-amber-700 bg-amber-50 border-amber-200"
-                        )}
-                      >
-                        {selectedRecipients.length > 0 ? (
-                          <CheckCircle2 size={11} className="shrink-0" />
-                        ) : (
-                          <AlertCircle size={11} className="shrink-0" />
-                        )}
-                        {selectedRecipients.length > 0
-                          ? t("newrfq_visibility_selected_count", {
-                              selected: selectedRecipients.length,
-                              total: supplierOptions.length,
-                            })
-                          : t("newrfq_val_recipients_required")}
-                      </p>
-                    </div>
+                  {visibilityMode === "private" && (
+                    <SupplierRecipientsPicker
+                      className="mt-4"
+                      options={supplierOptions}
+                      selected={selectedRecipients}
+                      onChange={setPrivateRecipients}
+                    />
                   )}
                 </div>
               </div>
