@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
@@ -27,6 +27,7 @@ import {
   AlertCircle,
   Globe,
   Lock,
+  Heart,
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
@@ -77,6 +78,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const [visibilityMode, setVisibilityMode] = useState<"public" | "private">("public")
+  // Which suppliers a private RFQ goes to. null means "not narrowed" — every
+  // connected supplier, which is what private meant before this picker existed
+  // and stays the default so an untouched form behaves exactly as it used to.
+  const [privateRecipients, setPrivateRecipients] = useState<string[] | null>(null)
 
   const connectedLinksQuery = useMemoFirebase(() => {
     if (!user || !firestore || !profile) return null
@@ -89,7 +94,44 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { data: connectedLinks } = useCollection(connectedLinksQuery)
   const connectedSupplierOrgIds: string[] = connectedLinks?.map((l: any) => l.supplierOrgId) || []
 
+  // Who a private RFQ can be addressed to, favourites first.
+  //
+  // The list is every CONNECTED supplier rather than only the favourited ones:
+  // favouriting a supplier already creates the connection (see the suppliers
+  // page), so favourites are a subset of this — filtering down to them would
+  // quietly drop suppliers the contractor connected to any other way. They are
+  // pinned to the top and badged instead, which is what makes the common case
+  // a one-click choice without narrowing the uncommon one.
+  const favoriteSupplierIds: string[] = (profile as any)?.favoriteSuppliers || []
+  const supplierOptions: { orgId: string; name: string; isFavorite: boolean }[] = useMemo(() => {
+    const seen = new Set<string>()
+    const options = (connectedLinks || []).reduce((acc: { orgId: string; name: string; isFavorite: boolean }[], link: any) => {
+      if (!link.supplierOrgId || seen.has(link.supplierOrgId)) return acc
+      seen.add(link.supplierOrgId)
+      acc.push({
+        orgId: link.supplierOrgId,
+        name: link.supplierName || t("suppliers_registered_supplier"),
+        // Links born of a favourite carry that origin, which also catches
+        // legacy favourites recorded against a team member's id rather than
+        // the company's.
+        isFavorite: favoriteSupplierIds.includes(link.supplierOrgId) || link.requestedBy === "contractor_favorite",
+      })
+      return acc
+    }, [])
+    return options.sort((a, b) => (a.isFavorite === b.isFavorite ? a.name.localeCompare(b.name) : a.isFavorite ? -1 : 1))
+  }, [connectedLinks, favoriteSupplierIds.join(","), t])
+
+  /** Who the RFQ actually reaches — the explicit picks, or everyone connected
+   * while the contractor has not narrowed it down. */
+  const selectedRecipients: string[] = privateRecipients ?? connectedSupplierOrgIds
+  const toggleRecipient = (orgId: string) =>
+    setPrivateRecipients((prev) => {
+      const base = prev ?? connectedSupplierOrgIds
+      return base.includes(orgId) ? base.filter((id) => id !== orgId) : [...base, orgId]
+    })
+
   // ── All useState/useRef hooks MUST be declared before any early returns ──
+
   const [formData, setFormData] = useState({
     title: "",
     country: "SA",
@@ -155,6 +197,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             pdfStoragePath: data.pdfStoragePath || null
           })
           setVisibilityMode(data.visibility === "private" ? "private" : "public")
+          // An empty list on an existing RFQ means it predates this picker, so
+          // leave it null — "everyone connected", the rule it was saved under.
+          setPrivateRecipients(Array.isArray(data.allowedSupplierOrgIds) && data.allowedSupplierOrgIds.length > 0 ? data.allowedSupplierOrgIds : null)
           if (data.products?.length) {
             setProducts(data.products.map((p: any, idx: number) => ({
               id: (idx + 1).toString(),
@@ -349,6 +394,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       errors.push({ field: "deadline", message: t("newrfq_val_deadline_required") })
     }
 
+    // A private RFQ addressed to nobody is invisible to every supplier —
+    // publishing it would look like success and then produce silence.
+    if (visibilityMode === "private" && connectedSupplierOrgIds.length > 0 && selectedRecipients.length === 0) {
+      errors.push({ field: "rfq-recipients", message: t("newrfq_val_recipients_required") })
+    }
+
     return errors
   }
 
@@ -496,7 +547,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
         visibility: visibilityMode,
-        allowedSupplierOrgIds: visibilityMode === "private" ? [...connectedSupplierOrgIds] : [],
+        allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
         requiresWarranty: validProducts.some(p => p.requiresWarranty),
         updatedAt: new Date().toISOString()
@@ -571,7 +622,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
         visibility: visibilityMode,
-        allowedSupplierOrgIds: visibilityMode === "private" ? [...connectedSupplierOrgIds] : [],
+        allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
         requiresWarranty: catProducts.some(p => p.requiresWarranty),
         createdByUserId: user.uid,
@@ -996,11 +1047,84 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       {t("newrfq_visibility_no_suppliers")}
                     </p>
                   )}
-                  {visibilityMode === "private" && connectedSupplierOrgIds.length > 0 && (
-                    <p className="text-xs text-success mt-2 flex items-center gap-1.5 bg-success/10 px-2.5 py-1.5 rounded-lg border border-success/20 w-fit font-semibold">
-                      <CheckCircle2 size={11} className="shrink-0" />
-                      {t("newrfq_visibility_supplier_count", { count: connectedSupplierOrgIds.length })}
-                    </p>
+                  {/* Addressing a private RFQ. Defaults to every connected
+                      supplier, so the contractor who does not care keeps the
+                      old one-click behaviour, while the one who does can send
+                      to a couple of trusted names instead of the whole list. */}
+                  {visibilityMode === "private" && supplierOptions.length > 0 && (
+                    <div id="rfq-recipients" className="mt-4">
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{t("newrfq_visibility_recipients_label")}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{t("newrfq_visibility_recipients_hint")}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPrivateRecipients(
+                              selectedRecipients.length === supplierOptions.length
+                                ? []
+                                : supplierOptions.map((o) => o.orgId)
+                            )
+                          }
+                          className="text-xs font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-1 py-0.5"
+                        >
+                          {selectedRecipients.length === supplierOptions.length
+                            ? t("newrfq_visibility_clear_all")
+                            : t("newrfq_visibility_select_all")}
+                        </button>
+                      </div>
+
+                      <div className="mt-2.5 max-h-52 overflow-y-auto rounded-xl border border-border bg-white divide-y divide-border">
+                        {supplierOptions.map((option) => {
+                          const isSelected = selectedRecipients.includes(option.orgId)
+                          return (
+                            <label
+                              key={option.orgId}
+                              className={cn(
+                                "flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors",
+                                isSelected ? "bg-primary/5" : "hover:bg-muted/50"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleRecipient(option.orgId)}
+                                className="h-4 w-4 shrink-0 rounded border-slate-300 text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                              />
+                              <span className="text-sm font-semibold text-foreground truncate flex-1">{option.name}</span>
+                              {option.isFavorite && (
+                                <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex items-center gap-1">
+                                  <Heart size={9} className="fill-amber-500 text-amber-500" />
+                                  {t("newrfq_visibility_favorite")}
+                                </span>
+                              )}
+                            </label>
+                          )
+                        })}
+                      </div>
+
+                      <p
+                        className={cn(
+                          "text-xs mt-2 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border w-fit font-semibold",
+                          selectedRecipients.length > 0
+                            ? "text-success bg-success/10 border-success/20"
+                            : "text-amber-700 bg-amber-50 border-amber-200"
+                        )}
+                      >
+                        {selectedRecipients.length > 0 ? (
+                          <CheckCircle2 size={11} className="shrink-0" />
+                        ) : (
+                          <AlertCircle size={11} className="shrink-0" />
+                        )}
+                        {selectedRecipients.length > 0
+                          ? t("newrfq_visibility_selected_count", {
+                              selected: selectedRecipients.length,
+                              total: supplierOptions.length,
+                            })
+                          : t("newrfq_val_recipients_required")}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
