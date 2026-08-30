@@ -32,7 +32,16 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
-import { companyPortalPath, switchActiveCompany, switchErrorCode, type SwitchProfile } from "@/lib/company-switch"
+import { CompanySwitchOverlay } from "@/components/layout/company-switch-overlay"
+import {
+  beginCompanySwitch,
+  companyPortalPath,
+  endCompanySwitch,
+  isCompanySwitchInFlight,
+  switchActiveCompany,
+  switchErrorCode,
+  type SwitchProfile,
+} from "@/lib/company-switch"
 
 export function PortalLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser()
@@ -80,9 +89,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     if (!firestore || !user || m.organizationId === activeOrgId) return
     setSwitchingOrgId(m.organizationId)
     try {
-      // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
-      // listeners still mounted for the instant before navigation would throw.
-      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
+      // Freezes everything that reacts to the profile until the navigation
+      // below replaces the document — see the flag's note in lib/company-switch.
+      beginCompanySwitch()
       const targetRole = await switchActiveCompany({
         firestore,
         uid: user.uid,
@@ -93,7 +102,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
       // root (full navigation also restarts every org-scoped listener cleanly).
       window.location.href = companyPortalPath(targetRole, locale)
     } catch (err) {
-      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
+      endCompanySwitch()
       console.error(err)
       toast({
         title: tShared("company_switcher_error"),
@@ -178,6 +187,11 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   // Role-based redirect guard — chat now lives inside role groups, no exception needed
   React.useEffect(() => {
+    // A switch in flight has ALREADY changed profile.role and is one beat away
+    // from a full navigation to that role's portal. Redirecting here as well
+    // paints the destination client-side first, so the switch looks like two
+    // page loads: this page, a pause, then the same page again.
+    if (isCompanySwitchInFlight()) return
     if (profile && profile.role && basePath !== "chat") {
       if (profile.role === "Supplier" && basePath !== "supplier") {
         router.push("/supplier")
@@ -617,6 +631,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
+      <CompanySwitchOverlay show={!!switchingOrgId} />
       {!isContractorDashboardHome && <RoleSidebar />}
       <SidebarInset>
         <header className={cn("sticky top-0 z-50 flex h-14 items-center gap-2 md:gap-4 border-b bg-background px-3 md:px-6 shadow-sm", isAdminOverview && "md:ml-24")}>

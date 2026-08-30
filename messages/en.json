@@ -1513,6 +1513,7 @@
       "company_switcher_cr_label": "CR number (optional)",
       "company_switcher_name_required": "Please enter a company name",
       "company_switcher_added": "Company added successfully",
+      "company_switcher_switching": "Switching company…",
       "company_switcher_switched": "Switched to the selected company",
       "company_switcher_error": "Something went wrong, please try again",
       "company_switcher_primary_badge": "Primary",

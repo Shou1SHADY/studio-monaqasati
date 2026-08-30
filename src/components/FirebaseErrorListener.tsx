@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { isCompanySwitchInFlight } from '@/lib/company-switch';
 
 /**
  * An invisible component that listens for globally emitted 'permission-error' events
@@ -24,7 +25,7 @@ export function FirebaseErrorListener() {
       // navigation lands — a known, benign teardown race, not a rules bug. The
       // switch handlers raise this flag just before their write; the page that
       // follows is a fresh load, so the flag can never suppress a real error.
-      if (typeof window !== 'undefined' && (window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight) {
+      if (isCompanySwitchInFlight()) {
         console.warn('Suppressed transient permission error during company switch:', error.message);
         return;
       }

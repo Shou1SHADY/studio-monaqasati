@@ -1513,6 +1513,7 @@
       "company_switcher_cr_label": "رقم السجل التجاري (اختياري)",
       "company_switcher_name_required": "يرجى إدخال اسم الشركة",
       "company_switcher_added": "تمت إضافة الشركة بنجاح",
+      "company_switcher_switching": "جارٍ التبديل إلى الشركة…",
       "company_switcher_switched": "تم التبديل إلى الشركة المحددة",
       "company_switcher_error": "حدث خطأ، حاول مرة أخرى",
       "company_switcher_primary_badge": "الأساسية",

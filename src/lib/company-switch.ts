@@ -25,6 +25,39 @@ export interface SwitchProfile {
   primaryRole?: CompanyRole
 }
 
+// --- In-flight flag ---------------------------------------------------------
+//
+// A switch commits a write that changes both the active organizationId AND the
+// account's role, then hands the browser a full navigation to the target
+// portal. In the gap between the two, the local Firestore listener has already
+// reported the new profile, so anything reacting to `profile.role` fires
+// against a document that is about to be thrown away:
+//
+//   - PortalLayout's role guard would client-side push() to the other portal,
+//     painting a whole page the full navigation then repaints a second later
+//   - every org-scoped listener still mounted re-queries under the new org and
+//     can raise a transient permission error (FirebaseErrorListener)
+//
+// Neither is a real condition, so both are suppressed for the moment the flag
+// is up. It lives on `window` rather than in React state because the readers
+// sit in different trees, and it can never go stale: the flag is only ever
+// raised immediately before a navigation that replaces the document, and the
+// one path that does not navigate (a failed switch) lowers it by hand.
+
+type SwitchWindow = Window & { __companySwitchInFlight?: boolean }
+
+export function beginCompanySwitch(): void {
+  if (typeof window !== "undefined") (window as SwitchWindow).__companySwitchInFlight = true
+}
+
+export function endCompanySwitch(): void {
+  if (typeof window !== "undefined") (window as SwitchWindow).__companySwitchInFlight = false
+}
+
+export function isCompanySwitchInFlight(): boolean {
+  return typeof window !== "undefined" && !!(window as SwitchWindow).__companySwitchInFlight
+}
+
 /**
  * The role the account must carry while `targetOrgId` is the active company.
  *

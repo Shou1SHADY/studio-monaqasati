@@ -21,7 +21,15 @@ import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from "next-intl"
 import { cn } from "@/lib/utils"
 import type { OrgMembership } from "@/hooks/useActiveCompanyName"
-import { companyPortalPath, switchActiveCompany, switchErrorCode, type CompanyRole } from "@/lib/company-switch"
+import { CompanySwitchOverlay } from "@/components/layout/company-switch-overlay"
+import {
+  beginCompanySwitch,
+  companyPortalPath,
+  endCompanySwitch,
+  switchActiveCompany,
+  switchErrorCode,
+  type CompanyRole,
+} from "@/lib/company-switch"
 import { Building2, PlusCircle, CheckCircle2, Loader2, ArrowLeftRight, HardHat, Truck } from "lucide-react"
 
 export function RoleBadge({ role, t }: { role: CompanyRole; t: ReturnType<typeof useTranslations<"Portal.Shared">> }) {
@@ -91,16 +99,17 @@ export function CompanySwitcherPage() {
     if (!firestore || !user || m.organizationId === currentOrgId) return
     setSwitchingId(m.organizationId)
     try {
-      // Mutes the benign teardown race in FirebaseErrorListener: org-scoped
-      // listeners still mounted for the instant before navigation would throw.
-      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = true
+      // Freezes everything that reacts to the profile until the navigation
+      // below replaces the document — see the flag's note in lib/company-switch.
+      beginCompanySwitch()
       const targetRole = await switchActiveCompany({
         firestore,
         uid: user.uid,
         membership: m,
         profile: typedProfile,
       })
-      toast({ title: t("company_switcher_switched") })
+      // No success toast: the document is replaced within the same beat, so it
+      // would flash unread. The overlay below is what confirms the switch.
       // Every org-scoped listener across the app (team groups, projects, RFQs, ...)
       // needs to re-subscribe against the new organizationId — and the target
       // company may live in the OTHER portal entirely. A full navigation to the
@@ -108,7 +117,7 @@ export function CompanySwitcherPage() {
       // above has committed, landing on the correct contractor/supplier side.
       window.location.href = companyPortalPath(targetRole, locale)
     } catch (err) {
-      ;(window as unknown as { __companySwitchInFlight?: boolean }).__companySwitchInFlight = false
+      endCompanySwitch()
       console.error(err)
       toast({
         title: t("company_switcher_error"),
@@ -166,6 +175,9 @@ export function CompanySwitcherPage() {
 
   return (
     <PortalLayout>
+      {/* PortalLayout has its own overlay, but it is driven by the navbar
+          switcher's state — this page switches through its own handler. */}
+      <CompanySwitchOverlay show={!!switchingId} />
       <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
