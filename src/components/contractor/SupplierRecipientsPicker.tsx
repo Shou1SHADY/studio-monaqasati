@@ -1,7 +1,9 @@
 "use client"
 
 import { useTranslations } from "next-intl"
+import { collection, documentId, query, where } from "firebase/firestore"
 import { CheckCircle2, AlertCircle, Heart } from "lucide-react"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { cn } from "@/lib/utils"
 
 export interface SupplierOption {
@@ -9,6 +11,10 @@ export interface SupplierOption {
   name: string
   isFavorite: boolean
 }
+
+/** Favourites first, then alphabetical. */
+const byFavoriteThenName = (a: SupplierOption, b: SupplierOption) =>
+  a.isFavorite === b.isFavorite ? a.name.localeCompare(b.name) : a.isFavorite ? -1 : 1
 
 /**
  * The suppliers a private RFQ can be addressed to, favourites first.
@@ -40,9 +46,73 @@ export function buildSupplierOptions(
       isFavorite: favoriteSupplierIds.includes(link.supplierOrgId) || link.requestedBy === "contractor_favorite",
     })
   }
-  return options.sort((a, b) =>
-    a.isFavorite === b.isFavorite ? a.name.localeCompare(b.name) : a.isFavorite ? -1 : 1
-  )
+  return options.sort(byFavoriteThenName)
+}
+
+/**
+ * The full recipient list: connected suppliers PLUS favourites that have no
+ * link record of their own.
+ *
+ * Favouriting from the supplier directory creates the link, but favouriting
+ * from a supplier's profile page never did, so an account can hold favourites
+ * that no link query returns — the supplier reads "مورد مفضل · غير مرتبط بعد".
+ * Building the picker from links alone told those contractors they had no
+ * suppliers at all. Nothing about addressing an RFQ needs the link: visibility
+ * is decided by `allowedSupplierOrgIds`, which is matched against the
+ * supplier's org id directly.
+ *
+ * Unlinked favourites carry no cached name, so they are resolved by id against
+ * both shapes an id can take — a solo supplier's `users` doc, or a secondary
+ * company's `organizations` doc.
+ */
+export function useSupplierRecipientOptions(
+  links: { supplierOrgId?: string; supplierName?: string; requestedBy?: string }[] | null | undefined,
+  favoriteSupplierIds: string[],
+  fallbackName: string
+): SupplierOption[] {
+  const firestore = useFirestore()
+  const linked = buildSupplierOptions(links, favoriteSupplierIds, fallbackName)
+
+  const linkedIds = new Set(linked.map((o) => o.orgId))
+  // Firestore's `in` caps at 30; a contractor with more unlinked favourites
+  // than that sees the first 30 — and every connected supplier regardless.
+  const unlinkedFavoriteIds = Array.from(
+    new Set(favoriteSupplierIds.filter((id) => id && !linkedIds.has(id)))
+  ).slice(0, 30)
+  // The ids (not the array identity) are the real dependency.
+  const unlinkedKey = unlinkedFavoriteIds.join(",")
+
+  const favoriteUsersQuery = useMemoFirebase(() => {
+    if (!firestore || unlinkedFavoriteIds.length === 0) return null
+    return query(collection(firestore, "users"), where(documentId(), "in", unlinkedFavoriteIds))
+  }, [firestore, unlinkedKey])
+  const { data: favoriteUsers } = useCollection(favoriteUsersQuery)
+
+  const favoriteOrgsQuery = useMemoFirebase(() => {
+    if (!firestore || unlinkedFavoriteIds.length === 0) return null
+    return query(collection(firestore, "organizations"), where(documentId(), "in", unlinkedFavoriteIds))
+  }, [firestore, unlinkedKey])
+  const { data: favoriteOrgs } = useCollection(favoriteOrgsQuery)
+
+  const nameById = new Map<string, string>()
+  for (const u of (favoriteUsers || []) as { id: string; companyName?: string; name?: string }[]) {
+    const name = u.companyName || u.name
+    if (name) nameById.set(u.id, name)
+  }
+  // An organizations doc wins: for a secondary company it is the company's own
+  // identity, while the users doc under the same id is only its owner's.
+  for (const o of (favoriteOrgs || []) as { id: string; name?: string; companyName?: string }[]) {
+    const name = o.name || o.companyName
+    if (name) nameById.set(o.id, name)
+  }
+
+  const unlinked: SupplierOption[] = unlinkedFavoriteIds.map((orgId) => ({
+    orgId,
+    name: nameById.get(orgId) || fallbackName,
+    isFavorite: true,
+  }))
+
+  return [...linked, ...unlinked].sort(byFavoriteThenName)
 }
 
 /**

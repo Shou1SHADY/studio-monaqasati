@@ -135,7 +135,7 @@ import { recordWasteConsumption } from "@/lib/waste-writes"
 import { applyDraw, boqRemaining, releaseAllDraws, releaseBoqDrawsForRfq, type BoqDraw } from "@/lib/boq-draws"
 import { WasteRecordDialog } from "@/components/inventory/WasteRecordDialog"
 import { WasteLedger } from "@/components/contractor/WasteLedger"
-import { SupplierRecipientsPicker, buildSupplierOptions, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
+import { SupplierRecipientsPicker, useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 import { useCentralWarehouse, resolveCentralForRegion } from "@/hooks/useCentralWarehouse"
 import { suggestBoqMaterials } from "@/ai/flows/suggest-boq-materials-flow"
 import {
@@ -451,12 +451,14 @@ export default function ProjectDetailPage() {
   }, [firestore, user, profile])
   const { data: connectedTenderLinks } = useCollection(connectedTenderLinksQuery)
   const connectedSupplierOrgIds: string[] = (connectedTenderLinks || []).map((l: any) => l.supplierOrgId)
-  // Same list, same order as the RFQ form's picker — favourites first.
-  const supplierOptions: SupplierOption[] = buildSupplierOptions(
+  // Same list, same order as the RFQ form's picker — connected suppliers plus
+  // favourites that never got a link record, favourites first.
+  const supplierOptions = useSupplierRecipientOptions(
     connectedTenderLinks as any[],
     ((profile as any)?.favoriteSuppliers as string[]) || [],
     t("suppliers_registered_supplier")
   )
+  const allRecipientIds = supplierOptions.map((o) => o.orgId)
 
   // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
   const [unlinkTarget, setUnlinkTarget] = useState<BoqItem | null>(null)
@@ -519,7 +521,7 @@ export default function ProjectDetailPage() {
     return {
       status: "New",
       visibility: isPrivate ? "private" : "public",
-      allowedSupplierOrgIds: isPrivate && saved.length > 0 ? saved : connectedSupplierOrgIds,
+      allowedSupplierOrgIds: isPrivate ? (saved.length > 0 ? saved : allRecipientIds) : connectedSupplierOrgIds,
       publishedAt: new Date().toISOString(),
     }
   }
@@ -531,7 +533,7 @@ export default function ProjectDetailPage() {
     const tender = ((linkedRfqs as any[]) || []).find((r) => r.id === rfqId)
     const saved: string[] = Array.isArray(tender?.allowedSupplierOrgIds) ? tender.allowedSupplierOrgIds : []
     setRepublishVisibility(tender?.visibility === "private" ? "private" : "public")
-    setRepublishRecipients(saved.length > 0 ? saved : connectedSupplierOrgIds)
+    setRepublishRecipients(saved.length > 0 ? saved : allRecipientIds)
   }
 
   const handlePublishTender = async (rfqId: string) => {

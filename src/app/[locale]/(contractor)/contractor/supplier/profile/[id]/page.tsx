@@ -26,7 +26,7 @@ import {
   Building2
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { collection, doc, query, where, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import { collection, doc, query, where, updateDoc, addDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useCompanyNameFor } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
@@ -114,9 +114,43 @@ export default function ContractorSupplierProfilePage() {
 
   const isFavorite = profile?.favoriteSuppliers?.includes(supplierId) || false
 
+  // Whether this supplier is already linked, so favouriting does not add a
+  // second link for one the contractor is connected to already.
+  const existingLinkQuery = useMemoFirebase(() => {
+    const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid
+    if (!firestore || !myOrgId || !supplierId) return null
+    return query(
+      collection(firestore, "contractorSupplierLinks"),
+      where("contractorOrgId", "==", myOrgId),
+      where("supplierOrgId", "==", supplierId)
+    )
+  }, [firestore, profile, user, supplierId])
+  const { data: existingLinks } = useCollection(existingLinkQuery)
+
   const toggleFavorite = async () => {
     if (!userDocRef || !profile) return
     try {
+      // Favouriting means "I already work with them", so it also creates the
+      // connection — exactly as the supplier directory does. Without this, a
+      // supplier favourited from their own profile stayed unlinked, showing as
+      // "مورد مفضل · غير مرتبط بعد" and missing from every list built on links.
+      if (!isFavorite && firestore) {
+        const myOrgId = (profile as { organizationId?: string }).organizationId || user?.uid
+        const alreadyLinked = (existingLinks || []).length > 0
+        if (myOrgId && !alreadyLinked) {
+          await addDoc(collection(firestore, "contractorSupplierLinks"), {
+            contractorOrgId: myOrgId,
+            supplierOrgId: supplierId,
+            supplierName: supplier?.companyName || supplier?.name || "",
+            supplierCategories: supplier?.specializations || [],
+            status: "active",
+            requestedBy: "contractor_favorite",
+            requestedAt: serverTimestamp(),
+            connectedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          })
+        }
+      }
       await updateDoc(userDocRef, {
         favoriteSuppliers: isFavorite ? arrayRemove(supplierId) : arrayUnion(supplierId)
       })

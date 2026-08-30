@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ProductRowEditor, type ProductRow, makeEmptyProductRow } from "@/components/shared/ProductRowEditor"
-import { SupplierRecipientsPicker, buildSupplierOptions, type SupplierOption } from "@/components/contractor/SupplierRecipientsPicker"
+import { SupplierRecipientsPicker, useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
 
 interface ValidationError {
   field: string
@@ -92,19 +92,20 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     )
   }, [firestore, user, profile])
   const { data: connectedLinks } = useCollection(connectedLinksQuery)
-  const connectedSupplierOrgIds: string[] = connectedLinks?.map((l: any) => l.supplierOrgId) || []
 
-  // Who a private RFQ can be addressed to — see buildSupplierOptions for why
-  // this is every connected supplier rather than only the favourited ones.
+  // Who a private RFQ can be addressed to — connected suppliers plus any
+  // favourite that never got a link record. See the hook for why both.
   const favoriteSupplierIds: string[] = (profile as any)?.favoriteSuppliers || []
-  const supplierOptions: SupplierOption[] = useMemo(
-    () => buildSupplierOptions(connectedLinks as any[], favoriteSupplierIds, t("suppliers_registered_supplier")),
-    [connectedLinks, favoriteSupplierIds.join(","), t]
+  const supplierOptions = useSupplierRecipientOptions(
+    connectedLinks as any[],
+    favoriteSupplierIds,
+    t("suppliers_registered_supplier")
   )
+  const allRecipientIds = supplierOptions.map((o) => o.orgId)
 
   /** Who the RFQ actually reaches — the explicit picks, or everyone connected
    * while the contractor has not narrowed it down. */
-  const selectedRecipients: string[] = privateRecipients ?? connectedSupplierOrgIds
+  const selectedRecipients: string[] = privateRecipients ?? allRecipientIds
 
   // ── All useState/useRef hooks MUST be declared before any early returns ──
 
@@ -372,7 +373,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
     // A private RFQ addressed to nobody is invisible to every supplier —
     // publishing it would look like success and then produce silence.
-    if (visibilityMode === "private" && connectedSupplierOrgIds.length > 0 && selectedRecipients.length === 0) {
+    if (visibilityMode === "private" && supplierOptions.length > 0 && selectedRecipients.length === 0) {
       errors.push({ field: "rfq-recipients", message: t("newrfq_val_recipients_required") })
     }
 
@@ -1017,7 +1018,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       : t("newrfq_visibility_public_desc")}
                   </p>
 
-                  {visibilityMode === "private" && connectedSupplierOrgIds.length === 0 && (
+                  {visibilityMode === "private" && supplierOptions.length === 0 && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                       <AlertCircle size={11} className="shrink-0" />
                       {t("newrfq_visibility_no_suppliers")}
