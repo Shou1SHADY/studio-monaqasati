@@ -135,7 +135,10 @@ only draw bookkeeping may change on a locked line.
 
 ## Environments
 
-- **Prod:** mdmaktech.sa (Firebase project `studio-2889504658-6ee2a`, App Hosting)
+- **Prod:** mdmaktech.sa — the SITE runs on **Vercel** (project owned by a teammate's
+  Vercel account; server env vars live there, in Vercel → Settings → Environment
+  Variables). Data/auth is Firebase project `studio-2889504658-6ee2a`. The
+  apphosting.yaml files are for a planned App Hosting setup — no backend exists yet.
 - **UAT:** `mdmaktech-uat` App Hosting backend, `uat` branch — noindex ribbon,
   relaxed profile-completion, config derived from `FIREBASE_WEBAPP_CONFIG`.
   Environment detection lives in `src/lib/app-env.ts`.
