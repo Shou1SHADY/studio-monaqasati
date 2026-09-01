@@ -66,18 +66,25 @@ src/
   app/
     [locale]/           # All public pages (ar/en)
       (admin)/          # Admin portal (route group)
-      (contractor)/     # Contractor portal (route group)
-      (supplier)/       # Supplier portal (route group)
+      (contractor)/     # Contractor portal — dashboard tile grid at /contractor,
+                        #   modules: projects (BOQ, tenders), rfqs, crm/{leads,
+                        #   opportunities,rfqs}, inventory/warehouses, invoices/
+                        #   guarantees (finance), employees (HR), profile/team
+      (supplier)/       # Supplier portal (mirrors contractor structure incl. crm/)
+      offer/[token]/    # Guest supplier offer page (no account needed)
+      rfq/[token]/      # Guest RFQ share page
       about/ contact/ pricing/ privacy/ terms/
       layout.tsx        # Root layout — fonts, metadata, providers
       page.tsx          # Landing page (imports content.tsx)
       content.tsx       # Heavy landing page content — ~48KB
-    api/                # Next.js API routes
+    api/                # Next.js API routes (invitations, rfq-share, guest-offer, ...)
     globals.css         # CSS vars + Tailwind base + RTL rules
   components/
     ui/                 # shadcn/ui primitives (DO NOT touch unless fixing)
-    layout/             # Navbar, Footer, Sidebar shared layout
+    layout/             # Navbar, Footer, Sidebar, portal-layout, app-switcher
+    contractor/         # Contractor-specific components (RfqForm, RfqOffersView, ...)
     supplier/           # Supplier-specific components
+    crm/                # CRM views/dialogs shared by both portals (CrmShell, ...)
     StructuredData.tsx  # JSON-LD structured data (SEO)
   firebase/             # Firebase client/server configs
   hooks/                # Custom React hooks (useXxx)
@@ -89,6 +96,7 @@ src/
   utils/                # Shared utilities
 messages/               # Translation JSON files (ar.json, en.json)
 public/                 # Static assets — favicons, OG image, manifest
+scripts/                # Ops scripts (demo seed, data repair, migrations)
 ```
 
 ## Key Utilities
@@ -98,8 +106,39 @@ public/                 # Static assets — favicons, OG image, manifest
 | `src/lib/seo.ts` | `alternatesForPath()` + `buildPageMetadata()` — use for all page metadata & hreflang |
 | `src/lib/utils.ts` | `cn()` class merger — always use instead of `clsx` |
 | `src/i18n/routing.ts` | `Link`, `useRouter`, `redirect` — locale-aware navigation |
+| `src/lib/portal-components.ts` | Registry of portal modules (tiles/sidebar/launcher) + `visibleComponents`/`isComponentVisible` permission gating |
+| `src/lib/permissions.ts` | Team permission model — `can()`, `TeamGroup`, seeded groups, `crm.close` etc. Mirrored by firestore.rules helpers |
+| `src/hooks/usePermissions.ts` | Client hook resolving the current member's `can()` (project-level group overrides default) |
+| `src/lib/org-identity.ts` / `org-identity-admin.ts` / `identity-fields.ts` | Multi-company identity resolution — a secondary company's identity lives on `organizations/{id}`, never merge with naive spread (use `stripIdentityFields`) |
+| `src/hooks/useResolvedProfile.ts` | The active company's resolved profile (waits for the identity overlay — never returns a half-merged profile) |
+| `src/hooks/useWorkQueue.ts` | Cross-module "needs your action" queue + org stats feeding the contractor dashboard |
+| `src/lib/crm.ts` / `crm-writes.ts` | CRM domain types, tracks/gates/value ladder, deal→project handover writes |
+| `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
+
+## Firestore Collections (top-level)
+
+`users` (+ `notifications`, `2fa` subcolls) · `organizations` (secondary companies) ·
+`teamGroups` (permission groups) · `invitations` · `accessRequests` (member asks owner
+for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
+`wasteRecords`) · `rfqs` (+ `inquiries`) · `offers` · `deliveries` · `guarantees` ·
+`warehouses` (+ `inventoryItems`, `transfers`, `wasteRecords`) · `crmContacts` ·
+`crmOpportunities` · `crmQuotations` · `crmActivities` · `crmOrgProfile` (doc id =
+orgId) · `invoices` · `rfqShareLinks` · `guestOfferLinks` (server-only)
+
+Permission notes: org **owner** passes every check; members get their group's
+permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM deal
+needs `crm.close`. A deal handover may create a project + seat its PM without
+`projects.edit`. BOQ lines lock while drawn into a tender (`isEditable:false`) —
+only draw bookkeeping may change on a locked line.
+
+## Environments
+
+- **Prod:** mdmaktech.sa (Firebase project `studio-2889504658-6ee2a`, App Hosting)
+- **UAT:** `mdmaktech-uat` App Hosting backend, `uat` branch — noindex ribbon,
+  relaxed profile-completion, config derived from `FIREBASE_WEBAPP_CONFIG`.
+  Environment detection lives in `src/lib/app-env.ts`.
 
 
 ## Design System
@@ -172,3 +211,22 @@ to the next:
 
 Committing locally is fine when asked. Stop at the commit, report what's ready,
 and wait for a clear go-ahead before anything leaves the machine.
+
+## Pull Before Commit/Push — ALWAYS
+
+Multiple sessions work on this repo concurrently. Before ANY commit or push:
+`git fetch origin` and check `HEAD..origin/main` — merge first if origin is ahead.
+This matters most for **firestore.rules**: deploying a stale local copy silently
+wipes the other session's rules from production. After pulling, verify live rules
+still match git before touching them.
+
+## Deploying firestore.rules (CLI doesn't work here)
+
+`firebase deploy` fails in this environment. Rules are deployed via the
+`firebaserules.googleapis.com` REST API using `google-auth-library` with the
+same service-account creds firebase-admin uses (`FIREBASE_PROJECT_ID` /
+`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` from `.env.local`, loaded via
+`dotenv`): POST a ruleset with the file content, then PATCH
+`releases/cloud.firestore` to point at it, then GET the release back to verify.
+Run the script from the project root so `node_modules` resolve. The same API
+(GET release → GET ruleset source) is how to diff live rules against git.

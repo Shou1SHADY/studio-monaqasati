@@ -38,6 +38,7 @@ import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
 import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
+import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
@@ -135,6 +136,7 @@ const handleBatchPublish = async () => {
         + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
       variant: failedIds.length > 0 ? "destructive" : undefined,
     });
+    void notifyFavoriteSuppliersOfPublish(user, eligible.map((r: any) => r.id).filter((id: string) => !failedIds.includes(id)))
     // Keep failed items selected so the user can retry; drop everything else.
     setSelectedRfqs(failedIds);
     setIsPublishing(false);
@@ -148,6 +150,7 @@ const handleBatchPublish = async () => {
         status: "New",
         publishedAt: new Date().toISOString()
       })
+      void notifyFavoriteSuppliersOfPublish(user, [rfqId])
       toast({ title: t("rfq_publish_draft_success"), description: t("rfq_publish_draft_desc") })
     } catch (err) {
       console.error(err)
@@ -244,6 +247,7 @@ const handleBatchPublish = async () => {
         visibility: "public",
         publishedAt: new Date().toISOString()
       })
+      void notifyFavoriteSuppliersOfPublish(user, [republishTarget.id])
       toast({
         title: t("rfq_republish_success"),
       })
