@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
-import { sendSms, normalizePhoneE164, isSmsConfigured } from "@/lib/sms"
+import { sendDirectMessage, normalizePhoneE164, isSmsConfigured } from "@/lib/sms"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
 
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
         }
         const phone = phoneCache.get(supplierId)
         if (!phone) continue
-        const result = await sendSms({ to: phone, body: smsBody })
+        const result = await sendDirectMessage({ to: phone, body: smsBody })
         if (result.sent) sentIds.push(supplierId)
       }
 
