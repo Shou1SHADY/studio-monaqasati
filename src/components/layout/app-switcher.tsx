@@ -30,7 +30,7 @@ export function AppSwitcher() {
   const locale = useLocale()
   const pathname = usePathname()
   const { can } = usePermissions()
-
+  
   const isContractor = pathname.startsWith("/contractor")
   const isSupplier = pathname.startsWith("/supplier")
   if (!isContractor && !isSupplier) return null
