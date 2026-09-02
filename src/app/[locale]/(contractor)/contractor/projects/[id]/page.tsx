@@ -69,6 +69,7 @@ import {
   writeBatch,
   arrayRemove,
   arrayUnion,
+  increment,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -148,7 +149,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler } from "lucide-react"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -199,6 +200,8 @@ type BoqItem = {
   drawnQuantity?: number
   /** One entry per RFQ that drew from this line (see lib/boq-draws). */
   draws?: BoqDraw[]
+  /** Running total of site measurements (see lib/ipc.ts). */
+  executedQuantity?: number
 }
 
 type BoqGroupMeta = {
@@ -463,6 +466,11 @@ export default function ProjectDetailPage() {
 
   // Unlink-from-RFQ confirmation — holds the locked BOQ item pending the user's confirmation.
   const [unlinkTarget, setUnlinkTarget] = useState<BoqItem | null>(null)
+  const [measureTarget, setMeasureTarget] = useState<BoqItem | null>(null)
+  const [measureQty, setMeasureQty] = useState("")
+  const [measureNote, setMeasureNote] = useState("")
+  const [measureDate, setMeasureDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [isMeasuring, setIsMeasuring] = useState(false)
   const [isUnlinking, setIsUnlinking] = useState(false)
 
   const [tenderDeleteTarget, setTenderDeleteTarget] = useState<{ id: string; title?: string } | null>(null)
@@ -773,6 +781,7 @@ export default function ProjectDetailPage() {
         unitBarcodes: data.unitBarcodes || null,
         drawnQuantity: Number(data.drawnQuantity) || 0,
         draws: Array.isArray(data.draws) ? (data.draws as BoqDraw[]) : [],
+        executedQuantity: Number(data.executedQuantity) || 0,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -869,6 +878,50 @@ export default function ProjectDetailPage() {
       toast({ title: t("generic_error_title"), variant: "destructive" })
     } finally {
       setIsCreatingWarehouse(false)
+    }
+  }
+
+  const handleRecordMeasurement = async () => {
+    if (!firestore || !user || !projectId || !measureTarget) return
+    const qty = Number(measureQty)
+    if (!qty || isNaN(qty)) {
+      toast({ title: t("measure_qty_required"), variant: "destructive" })
+      return
+    }
+    setIsMeasuring(true)
+    try {
+      const batch = writeBatch(firestore)
+      const mRef = doc(collection(firestore, "projects", projectId, "measurements"))
+      batch.set(mRef, {
+        boqItemId: measureTarget.id,
+        itemNo: measureTarget.itemNo || "",
+        description: measureTarget.descriptionAr || measureTarget.descriptionEn || "",
+        unit: measureTarget.unit || "",
+        quantity: qty,
+        measuredAt: measureDate,
+        note: measureNote.trim() || null,
+        claimId: null,
+        recordedByUserId: user.uid,
+        recordedByName: (profile as { name?: string } | null)?.name || user.email || "",
+        createdAt: serverTimestamp(),
+      })
+      batch.update(doc(firestore, "projects", projectId, "boqItems", measureTarget.id), {
+        executedQuantity: increment(qty),
+        updatedAt: serverTimestamp(),
+      })
+      await batch.commit()
+      setBoqItems((prev) =>
+        prev.map((i) => (i.id === measureTarget.id ? { ...i, executedQuantity: (i.executedQuantity || 0) + qty } : i))
+      )
+      toast({ title: t("measure_saved") })
+      setMeasureTarget(null)
+      setMeasureQty("")
+      setMeasureNote("")
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("generic_error_title"), variant: "destructive" })
+    } finally {
+      setIsMeasuring(false)
     }
   }
 
@@ -1606,6 +1659,47 @@ export default function ProjectDetailPage() {
         )
       },
       size: 100,
+    }),
+    columnHelper.display({
+      id: "executed",
+      header: () => (
+        <span className="flex items-center gap-1" title={t("proj_boq_executed_col")}>
+          <Ruler size={12} />
+          {t("proj_boq_executed_col")}
+        </span>
+      ),
+      cell: ({ row }) => {
+        const item = row.original
+        const qty = Number(item.quantity) || 0
+        const executed = item.executedQuantity || 0
+        const pct = qty > 0 ? Math.min(100, (executed / qty) * 100) : 0
+        const overrun = qty > 0 && executed > qty
+        return (
+          <div className="flex items-center gap-1.5 px-1">
+            <div className="flex-1 min-w-[52px]">
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full", overrun ? "bg-destructive" : pct >= 100 ? "bg-success" : "bg-cta")}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className={cn("text-[10px] whitespace-nowrap mt-0.5", overrun ? "text-destructive font-bold" : "text-muted-foreground")} dir="ltr">
+                {executed.toLocaleString()} / {qty ? qty.toLocaleString() : "–"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMeasureTarget(item)}
+              aria-label={t("measure_record_btn")}
+              title={t("measure_record_btn")}
+              className="h-6 w-6 shrink-0 rounded-md grid place-items-center text-cta hover:bg-cta/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Ruler size={13} />
+            </button>
+          </div>
+        )
+      },
+      size: 130,
     }),
     columnHelper.display({
       id: "warranty",
@@ -2942,7 +3036,7 @@ export default function ProjectDetailPage() {
 
         {/* ── Dynamic section tabs ── */}
         {activeTab === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
-          <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} />
+          <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} canEditTerms={can("projects.edit")} />
         )}
         {activeTab === "store" && dynamicTabs.includes("store" as SectionId) && (
           typedProject.warehouseId ? (
@@ -2992,6 +3086,51 @@ export default function ProjectDetailPage() {
             <Button onClick={handleSaveSections} disabled={isSavingSections} className="gap-2">
               {isSavingSections ? <Loader2 size={15} className="animate-spin" /> : null}
               {t("proj_manage_sections_save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record site measurement */}
+      <Dialog open={!!measureTarget} onOpenChange={(open) => { if (!isMeasuring && !open) setMeasureTarget(null) }}>
+        <DialogContent dir={isRtl ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ruler size={18} className="text-cta" />
+              {t("measure_dialog_title")}
+            </DialogTitle>
+            <DialogDescription>
+              {measureTarget?.itemNo ? `${measureTarget.itemNo} — ` : ""}
+              {(isRtl ? measureTarget?.descriptionAr || measureTarget?.descriptionEn : measureTarget?.descriptionEn || measureTarget?.descriptionAr) || ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="measure-qty">{t("measure_qty_label")} ({measureTarget?.unit || "–"}) *</Label>
+                <Input id="measure-qty" type="number" value={measureQty} onChange={(e) => setMeasureQty(e.target.value)} dir="ltr" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="measure-date">{t("measure_date_label")}</Label>
+                <Input id="measure-date" type="date" value={measureDate} onChange={(e) => setMeasureDate(e.target.value)} dir="ltr" />
+              </div>
+            </div>
+            {measureTarget && Number(measureQty) > 0 &&
+              (measureTarget.executedQuantity || 0) + Number(measureQty) > (Number(measureTarget.quantity) || 0) &&
+              Number(measureTarget.quantity) > 0 && (
+                <p className="text-xs text-warning font-semibold">{t("measure_overrun_warning")}</p>
+              )}
+            <p className="text-xs text-muted-foreground">{t("measure_reversal_hint")}</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="measure-note">{t("measure_note_label")}</Label>
+              <Textarea id="measure-note" rows={2} value={measureNote} onChange={(e) => setMeasureNote(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMeasureTarget(null)} disabled={isMeasuring}>{t("cancel")}</Button>
+            <Button onClick={handleRecordMeasurement} disabled={isMeasuring} className="gap-2">
+              {isMeasuring ? <Loader2 size={15} className="animate-spin" /> : <Ruler size={15} />}
+              {t("measure_record_btn")}
             </Button>
           </DialogFooter>
         </DialogContent>

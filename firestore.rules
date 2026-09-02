@@ -560,8 +560,10 @@ service cloud.firestore {
           && (
             resource.data.isEditable != false
             ||
+            // executedQuantity: site measurements accumulate on locked lines
+            // too — being drawn into a tender doesn't stop work on site.
             request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['isEditable', 'tenderId', 'draws', 'drawnQuantity', 'updatedAt'])
+              .hasOnly(['isEditable', 'tenderId', 'draws', 'drawnQuantity', 'executedQuantity', 'updatedAt'])
           );
 
         allow delete: if isSignedIn()
@@ -601,8 +603,33 @@ service cloud.firestore {
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
       }
 
-      // Minimal IPC/claims (مستخلصات) — bare-bones: submit, then flip to collected.
-      // No edit/reject flow; amount/description are immutable once submitted.
+      // Site measurement ledger (حصر الكميات المنفذة) — one entry per quantity
+      // recorded against a BOQ line. Append-only: corrections are negative
+      // entries; the only mutation is a claim stamping claimId onto entries it
+      // consumed (once — a claimed entry is never re-claimed or un-claimed).
+      match /measurements/{measurementId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
+          && request.resource.data.recordedByUserId == request.auth.uid
+          && request.resource.data.get('claimId', null) == null;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && hasProjectPermission(projectId, 'invoices.manage')
+          && resource.data.get('claimId', null) == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimId'])
+          && request.resource.data.claimId is string;
+
+        allow delete: if isAdmin();
+      }
+
+      // IPC/claims (مستخلصات) — generated from unclaimed measurements (lines,
+      // retention/advance/VAT totals) or entered manually; submit, then flip
+      // to collected. Content is immutable once submitted.
       match /ipcClaims/{claimId} {
         allow read: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
