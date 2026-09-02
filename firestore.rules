@@ -100,7 +100,16 @@ service cloud.firestore {
       // doc addressed to the caller's email, which acts as the authorization).
       // Without this, anyone could write organizationId and join any org.
       allow update: if isAdmin()
-        || (isOwner(userId) && (
+        || (isOwner(userId)
+        // Supplier specializations and coverage cities go live only through
+        // admin approval: suppliers submit pendingSpecializations /
+        // pendingCoverageCities and an admin copies them onto the live fields.
+        // Anchored on primaryRole so switching into a secondary company can't
+        // sidestep the gate on the primary supplier identity.
+        && !(resource.data.get('primaryRole', resource.data.get('role', '')) == 'Supplier'
+             && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasAny(['specializations', 'coverageCities']))
+        && (
           // `role` and `primaryRole` are as security-sensitive as the org fields:
           // role gates entire portals (and isAdmin()), primaryRole anchors what
           // switching back to the primary company restores. Self-writes to them
@@ -199,8 +208,16 @@ service cloud.firestore {
     match /organizations/{orgId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid;
-      allow update: if isSignedIn() && resource.data.ownerUserId == request.auth.uid;
+      // Supplier-company specializations/coverage follow the same admin-approval
+      // gate as the primary supplier identity on users/{uid}.
+      allow create: if isSignedIn() && request.resource.data.ownerUserId == request.auth.uid
+        && !(request.resource.data.get('role', '') == 'Supplier'
+             && request.resource.data.keys().hasAny(['specializations', 'coverageCities']));
+      allow update: if isAdmin()
+        || (isSignedIn() && resource.data.ownerUserId == request.auth.uid
+            && !(resource.data.get('role', '') == 'Supplier'
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                      .hasAny(['specializations', 'coverageCities'])));
       allow delete: if isAdmin();
     }
 

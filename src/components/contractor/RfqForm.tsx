@@ -34,6 +34,7 @@ import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection } fro
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
+import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { CITIES_BY_COUNTRY, COUNTRIES, CITIES_DISTRICTS, displayCity, displayDistrict, displayCountry } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -532,6 +533,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
       try {
         await updateDoc(doc(firestore, "rfqs", editId), rfqData)
+        if (status === "New") void notifyFavoriteSuppliersOfPublish(user, [editId])
         toast({
           title: t("newrfq_toast_updated"),
           description: t("newrfq_toast_updated_desc"),
@@ -658,6 +660,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Update recurring-items catalog — fire and forget, doesn't block the success flow
       const orgId = (profile as Record<string, string>)?.organizationId || user.uid
       upsertCatalogItems(firestore, user.uid, orgId, validProducts).catch(console.error)
+      void notifyFavoriteSuppliersOfPublish(user, createdRfqIds)
 
       toast({
         title: t("newrfq_toast_published"),

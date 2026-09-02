@@ -132,6 +132,7 @@ import { FinanceAuditLog } from "@/components/contractor/FinanceAuditLog"
 import { MoneyFlowViz } from "@/components/contractor/MoneyFlowViz"
 import { WarehouseInventoryPanel } from "@/components/contractor/WarehouseInventoryPanel"
 import { recordWasteConsumption } from "@/lib/waste-writes"
+import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { applyDraw, boqRemaining, releaseAllDraws, releaseBoqDrawsForRfq, type BoqDraw } from "@/lib/boq-draws"
 import { WasteRecordDialog } from "@/components/inventory/WasteRecordDialog"
 import { WasteLedger } from "@/components/contractor/WasteLedger"
@@ -554,6 +555,7 @@ export default function ProjectDetailPage() {
       // went out to the whole market on a button that only said "publish".
       const draft = ((linkedRfqs as any[]) || []).find((r) => r.id === rfqId)
       await updateDoc(doc(firestore, "rfqs", rfqId), publishFields(draft))
+      void notifyFavoriteSuppliersOfPublish(user, [rfqId])
       toast({ title: t("rfq_batch_publish_title") })
     } catch (err) {
       console.error(err)
@@ -574,6 +576,7 @@ export default function ProjectDetailPage() {
         allowedSupplierOrgIds: republishVisibility === "private" ? republishRecipients : [],
         publishedAt: new Date().toISOString(),
       })
+      void notifyFavoriteSuppliersOfPublish(user, [republishTarget.id])
       toast({ title: t("rfq_republish_success") })
       setRepublishTarget(null)
       setRepublishDeadline("")
@@ -648,6 +651,7 @@ export default function ProjectDetailPage() {
         + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
       variant: failedIds.length > 0 ? "destructive" : undefined,
     })
+    void notifyFavoriteSuppliersOfPublish(user, eligible.map((r) => r.id).filter((id) => !failedIds.includes(id)))
     setSelectedTenderIds(failedIds)
     setIsBulkPublishingTenders(false)
   }

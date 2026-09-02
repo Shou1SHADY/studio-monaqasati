@@ -17,7 +17,8 @@ export const IDENTITY_FIELD_KEYS = [
   "name", "companyName", "crNumber", "taxNumber", "city", "location",
   "phone", "phoneNumber", "description", "website", "certificates",
   "legalDocuments", "isVerified", "profileCompleted", "specializations",
-  "coverageCities", "projects", "companyFiles", "verificationRequested",
+  "coverageCities", "pendingSpecializations", "pendingCoverageCities",
+  "projects", "companyFiles", "verificationRequested",
 ] as const
 
 export function stripIdentityFields<T extends Record<string, unknown>>(obj: T): Partial<T> {

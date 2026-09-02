@@ -63,7 +63,7 @@ import {
 import { suggestSupplierSpecializations } from "@/ai/flows/suggest-supplier-specializations-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useUser, useFirestore, useMemoFirebase, useCollection, useStorage } from "@/firebase"
-import { doc, updateDoc, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
+import { doc, updateDoc, deleteField, collection, query as firestoreQuery, orderBy, where } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { identityDocRef } from "@/lib/org-identity"
@@ -174,6 +174,26 @@ export default function SupplierProfilePage() {
     return isSecondary ? identityDocRef(firestore, organizationId) : doc(firestore, "users", user.uid)
   }, [firestore, user, isSecondary, organizationId])
 
+  // Specializations and coverage cities go live only after admin approval —
+  // Firestore rules reject supplier writes to the live fields, so all edits
+  // land on pending* and an admin copies them over (admin suppliers page).
+  const approvedSpecializations = (userData?.specializations as string[] | undefined) ?? []
+  const approvedCoverageCities = (userData?.coverageCities as string[] | undefined) ?? []
+  const hasPendingSpecs = userData?.pendingSpecializations != null
+  const hasPendingCoverage = userData?.pendingCoverageCities != null
+
+  const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x))
+
+  const pendingSpecsPayload = (specs: string[]) =>
+    sameSet(specs, approvedSpecializations)
+      ? { pendingSpecializations: deleteField() }
+      : { pendingSpecializations: specs }
+
+  const pendingCoveragePayload = (citiesList: string[]) =>
+    sameSet(citiesList, approvedCoverageCities)
+      ? { pendingCoverageCities: deleteField() }
+      : { pendingCoverageCities: citiesList }
+
   // Fetch reviews for this supplier to show live rating & reviews
   const reviewsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null
@@ -227,9 +247,9 @@ export default function SupplierProfilePage() {
         taxNumber: userData.taxNumber || "",
         city: userData.city || "",
         location: userData.location || "",
-        coverageCities: userData.coverageCities || [],
+        coverageCities: userData.pendingCoverageCities ?? userData.coverageCities ?? [],
         description: userData.description || "",
-        specializations: userData.specializations || [],
+        specializations: userData.pendingSpecializations ?? userData.specializations ?? [],
         certificates: userData.certificates || [],
         projects: userData.projects || [],
         companyFiles: userData.companyFiles || [],
@@ -327,14 +347,14 @@ export default function SupplierProfilePage() {
         taxNumber: profile.taxNumber || "",
         city: profile.city,
         location: profile.location,
-        coverageCities: profile.coverageCities,
         description: profile.description,
-        specializations: profile.specializations,
         certificates: profile.certificates,
         projects: profile.projects,
         companyFiles: profile.companyFiles,
         legalDocuments: profile.legalDocuments,
-        profileCompleted: isProfileComplete
+        profileCompleted: isProfileComplete,
+        ...pendingSpecsPayload(profile.specializations),
+        ...pendingCoveragePayload(profile.coverageCities),
       })
       // Account-level, not company identity — always the signed-in user's own doc.
       await updateDoc(doc(firestore, "users", user.uid), {
@@ -404,14 +424,12 @@ export default function SupplierProfilePage() {
       // Auto-save to firestore
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
-            specializations: newSpecs
-          })
+          await updateDoc(identityWriteRef, pendingSpecsPayload(newSpecs))
         } catch (err) {
           console.error("Auto-save failed:", err)
         }
       }
-      
+
       toast({
         title: t("ai_success"),
         description: t("ai_success_desc"),
@@ -433,12 +451,10 @@ export default function SupplierProfilePage() {
       ...prev,
       specializations: updatedSpecs
     }))
-    
+
     if (user && firestore && identityWriteRef) {
       try {
-        await updateDoc(identityWriteRef, {
-          specializations: updatedSpecs
-        })
+        await updateDoc(identityWriteRef, pendingSpecsPayload(updatedSpecs))
       } catch (err) {
         console.error("Auto-save failed:", err)
       }
@@ -452,13 +468,10 @@ export default function SupplierProfilePage() {
         ...prev,
         specializations: updatedSpecs
       }))
-      
-      // Auto-save to firestore
+
       if (user && firestore && identityWriteRef) {
         try {
-          await updateDoc(identityWriteRef, {
-            specializations: updatedSpecs
-          })
+          await updateDoc(identityWriteRef, pendingSpecsPayload(updatedSpecs))
         } catch (err) {
           console.error("Auto-save failed:", err)
         }
@@ -1087,7 +1100,15 @@ export default function SupplierProfilePage() {
 
                   <div className="grid grid-cols-1 gap-8 mt-8">
                     <div className="space-y-4">
-                      <Label className="text-slate-700 font-bold">{t("coverage_cities_label")} <span className="text-slate-400 text-xs font-normal mx-1">({t("optional")})</span></Label>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Label className="text-slate-700 font-bold">{t("coverage_cities_label")} <span className="text-slate-400 text-xs font-normal mx-1">({t("optional")})</span></Label>
+                        {hasPendingCoverage && (
+                          <Badge className="bg-warning/10 text-warning border-warning/20 text-[11px] font-bold">
+                            {t("specs_pending_admin")}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t("specs_approval_note")}</p>
                       <div className="flex gap-2">
                         <Input 
                           placeholder={t("add_city_placeholder")}
@@ -1179,8 +1200,15 @@ export default function SupplierProfilePage() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-lg font-bold text-slate-700">{t("current_specializations")}</Label>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Label className="text-lg font-bold text-slate-700">{t("current_specializations")}</Label>
+                      {hasPendingSpecs && (
+                        <Badge className="bg-warning/10 text-warning border-warning/20 text-[11px] font-bold">
+                          {t("specs_pending_admin")}
+                        </Badge>
+                      )}
+                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm" className="rounded-full h-9 border-dashed px-4">
@@ -1197,7 +1225,8 @@ export default function SupplierProfilePage() {
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>
-                  
+                  <p className="text-xs text-muted-foreground">{t("specs_approval_note")}</p>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {profile.specializations.length > 0 ? profile.specializations.map(spec => (
                       <div key={spec} className="p-4 bg-white rounded-xl border border-slate-100 flex items-center justify-between hover:border-primary/30 transition-all shadow-sm group">

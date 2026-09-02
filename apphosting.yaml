@@ -26,3 +26,9 @@ env:
     secret: UPSTASH_REDIS_REST_URL
   - variable: UPSTASH_REDIS_REST_TOKEN
     secret: UPSTASH_REDIS_REST_TOKEN
+  - variable: TWILIO_ACCOUNT_SID
+    secret: TWILIO_ACCOUNT_SID
+  - variable: TWILIO_AUTH_TOKEN
+    secret: TWILIO_AUTH_TOKEN
+  - variable: TWILIO_PHONE_NUMBER
+    secret: TWILIO_PHONE_NUMBER
