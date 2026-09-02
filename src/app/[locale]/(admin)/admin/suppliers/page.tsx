@@ -23,7 +23,8 @@ import {
   Award,
   ExternalLink,
   AlertCircle,
-  Trash2
+  Trash2,
+  Zap
 } from "lucide-react"
 import {
   Dialog,
@@ -43,7 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase"
-import { collection, query, where, updateDoc, doc, limit } from "firebase/firestore"
+import { collection, query, where, updateDoc, doc, limit, deleteField, addDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
@@ -127,6 +128,10 @@ export default function AdminSuppliersPage() {
           taxNumber: s.taxNumber || "",
           category: s.specializations?.[0] || t("unspecified"),
           specializations: s.specializations || [],
+          coverageCities: s.coverageCities || [],
+          pendingSpecializations: s.pendingSpecializations ?? null,
+          pendingCoverageCities: s.pendingCoverageCities ?? null,
+          hasSpecsRequest: s.pendingSpecializations != null || s.pendingCoverageCities != null,
           verified: s.isVerified || false,
           verificationRequested: s.verificationRequested || false,
           status: s.isVerified ? t("status_active") : s.verificationRequested ? t("status_pending") : t("status_review"),
@@ -146,8 +151,10 @@ export default function AdminSuppliersPage() {
           const getTs = (ts: any) => ts?.seconds ? ts.seconds * 1000 : ts?.toDate ? ts.toDate().getTime() : new Date(ts || 0).getTime()
           return getTs(b.createdAt) - getTs(a.createdAt)
         }
-        if (a.verificationRequested === b.verificationRequested) return 0
-        return a.verificationRequested ? -1 : 1
+        const aPending = a.verificationRequested || a.hasSpecsRequest
+        const bPending = b.verificationRequested || b.hasSpecsRequest
+        if (aPending === bPending) return 0
+        return aPending ? -1 : 1
       }))
     }
   }, [suppliers, sortBy])
@@ -176,6 +183,43 @@ export default function AdminSuppliersPage() {
         setSelectedSupplier((prev: any) => prev ? { ...prev, verified: verify, verificationRequested: false, status: verify ? t("status_active") : t("status_review") } : prev)
       }
       toast({ title: verify ? t("verified_success") : t("unverified_success"), description: t("update_desc") })
+    } catch (e: any) {
+      toast({ title: t("error"), description: e.message, variant: "destructive" })
+    }
+  }
+
+  const handleSpecsDecision = async (id: string, approve: boolean) => {
+    if (!firestore) return
+    const row = localSuppliers.find((s) => s.id === id)
+    if (!row?.hasSpecsRequest) return
+    const targetRef = isSecondaryOrg(row.organizationId, id, row.organizationRole)
+      ? identityDocRef(firestore, row.organizationId)
+      : doc(firestore, "users", id)
+    try {
+      await updateDoc(targetRef, {
+        ...(approve && row.pendingSpecializations ? { specializations: row.pendingSpecializations } : {}),
+        ...(approve && row.pendingCoverageCities ? { coverageCities: row.pendingCoverageCities } : {}),
+        pendingSpecializations: deleteField(),
+        pendingCoverageCities: deleteField(),
+      })
+      await addDoc(collection(firestore, "users", id, "notifications"), {
+        title: approve ? t("specs_approved_notif_title") : t("specs_rejected_notif_title"),
+        message: approve ? t("specs_approved_notif_msg") : t("specs_rejected_notif_msg"),
+        type: "specs_decision",
+        createdAt: new Date().toISOString(),
+        read: false,
+      })
+      const applied = (s: any) => ({
+        ...s,
+        specializations: approve && s.pendingSpecializations ? s.pendingSpecializations : s.specializations,
+        coverageCities: approve && s.pendingCoverageCities ? s.pendingCoverageCities : s.coverageCities,
+        pendingSpecializations: null,
+        pendingCoverageCities: null,
+        hasSpecsRequest: false,
+      })
+      setLocalSuppliers(prev => prev.map(s => (s.id === id ? applied(s) : s)))
+      if (selectedSupplier?.id === id) setSelectedSupplier((prev: any) => (prev ? applied(prev) : prev))
+      toast({ title: approve ? t("specs_approved_toast") : t("specs_rejected_toast") })
     } catch (e: any) {
       toast({ title: t("error"), description: e.message, variant: "destructive" })
     }
@@ -450,8 +494,15 @@ export default function AdminSuppliersPage() {
                       )}
                       {isVisible("verification_req") && (
                         <TableCell className="hidden sm:table-cell">
-                          {s.verificationRequested ? (
-                            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">{t("request_submitted")}</Badge>
+                          {s.verificationRequested || s.hasSpecsRequest ? (
+                            <div className="flex flex-col gap-1">
+                              {s.verificationRequested && (
+                                <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-xs">{t("request_submitted")}</Badge>
+                              )}
+                              {s.hasSpecsRequest && (
+                                <Badge className="bg-cta/10 text-cta border-cta/20 text-xs">{t("specs_request_badge")}</Badge>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
@@ -543,6 +594,62 @@ export default function AdminSuppliersPage() {
                     </div>
                   )}
                 </div>
+
+                {selectedSupplier.hasSpecsRequest && (
+                  <>
+                    <Separator />
+                    <div className="space-y-3 p-4 rounded-xl bg-cta/5 border border-cta/20">
+                      <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                        <Zap size={18} className="text-cta" />
+                        {t("specs_request_title")}
+                      </h4>
+                      {selectedSupplier.pendingSpecializations && (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-bold text-muted-foreground">{t("specs_requested_specializations")}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedSupplier.pendingSpecializations.map((spec: string) => (
+                              <Badge key={spec} className={selectedSupplier.specializations.includes(spec) ? "bg-slate-100 text-slate-600 text-xs" : "bg-cta/10 text-cta border-cta/20 text-xs"}>
+                                {spec}
+                              </Badge>
+                            ))}
+                            {selectedSupplier.pendingSpecializations.length === 0 && (
+                              <span className="text-xs text-muted-foreground">{t("specs_requested_empty")}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {selectedSupplier.pendingCoverageCities && (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-bold text-muted-foreground">{t("specs_requested_coverage")}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedSupplier.pendingCoverageCities.map((city: string) => (
+                              <Badge key={city} className={selectedSupplier.coverageCities.includes(city) ? "bg-slate-100 text-slate-600 text-xs" : "bg-cta/10 text-cta border-cta/20 text-xs"}>
+                                {city}
+                              </Badge>
+                            ))}
+                            {selectedSupplier.pendingCoverageCities.length === 0 && (
+                              <span className="text-xs text-muted-foreground">{t("specs_requested_empty")}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" onClick={() => handleSpecsDecision(selectedSupplier.id, true)} className="gap-1.5">
+                          <CheckCircle2 size={14} />
+                          {t("specs_approve")}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSpecsDecision(selectedSupplier.id, false)}
+                          className="text-destructive border-destructive/20 hover:bg-destructive/5"
+                        >
+                          {t("specs_reject")}
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <Separator />
 
