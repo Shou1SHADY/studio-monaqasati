@@ -19,6 +19,8 @@ import {
   type CrmQuotation,
   type QuotationStatus,
 } from "@/lib/crm"
+import { createWorkOrderFromQuotation } from "@/lib/manufacturing"
+import { useUser } from "@/firebase"
 
 export function CrmQuotationDialog({
   open,
@@ -38,6 +40,7 @@ export function CrmQuotationDialog({
   const t = useTranslations("Portal.Shared")
 
   const firestore = useFirestore()
+  const { user } = useUser()
   const { toast } = useToast()
   const [isSaving, setIsSaving] = useState(false)
   const [amount, setAmount] = useState("")
@@ -73,15 +76,45 @@ export function CrmQuotationDialog({
         organizationId: orgId,
         updatedAt: serverTimestamp(),
       }
+      let quotationId = quotation?.id
+      let quotationNumber = quotation?.quotationNumber
       if (quotation) {
         await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), data)
       } else {
-        await addDoc(collection(firestore, CRM_QUOTATIONS), {
+        quotationNumber = generateQuotationNumber()
+        const ref = await addDoc(collection(firestore, CRM_QUOTATIONS), {
           ...data,
-          quotationNumber: generateQuotationNumber(),
+          quotationNumber,
           createdAt: serverTimestamp(),
         })
+        quotationId = ref.id
       }
+
+      // Acceptance is the manufacturing trigger: the first flip to "accepted"
+      // spawns a work order routed through the org's department chain —
+      // unless one already exists for this quotation, or every requested good
+      // is already sitting in a warehouse (see the lib).
+      const becameAccepted = status === "accepted" && quotation?.status !== "accepted"
+      if (becameAccepted && quotationId && user && !(quotation as { workOrderId?: string } | undefined)?.workOrderId) {
+        try {
+          const workOrderId = await createWorkOrderFromQuotation(firestore, {
+            organizationId: orgId,
+            quotationId,
+            quotationNumber: quotationNumber || "",
+            amount: parsed,
+            contactId,
+            contactName: contactName ?? null,
+            opportunityId: quotation?.opportunityId ?? null,
+            userId: user.uid,
+            userName: user.email || "",
+          })
+          if (workOrderId) toast({ title: t("crm_quote_work_order_created") })
+        } catch (err) {
+          console.error("Work order auto-create failed:", err)
+          toast({ title: t("crm_quote_work_order_failed"), variant: "destructive" })
+        }
+      }
+
       toast({ title: t("crm_quote_saved") })
       onOpenChange(false)
     } catch (err) {

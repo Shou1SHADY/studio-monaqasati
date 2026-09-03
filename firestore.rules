@@ -311,7 +311,17 @@ service cloud.firestore {
       allow create: if isAdmin()
         || isSupplier()
         || (isSignedIn() && request.resource.data.supplierId == request.auth.uid)
-        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId());
+        || (isSignedIn() && request.resource.data.organizationId == getOrganizationId())
+        // Direct award: the CONTRACTOR creates the accepted offer on behalf of
+        // the chosen supplier — only on their own RFQ, only born accepted, and
+        // only with the same permission that accepting an offer requires.
+        || (isSignedIn()
+            && request.resource.data.get('directAward', false) == true
+            && request.resource.data.status == 'مقبول'
+            && request.resource.data.contractorOrgId == getOrganizationId()
+            && request.resource.data.rfqId is string
+            && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
+            && hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data, 'offers.accept'));
       // Supplier can update their own offer; contractor-side updates (accept /
       // reject / reduction / sample requests) additionally require the
       // offers.accept permission (org owners always have it).
@@ -914,6 +924,32 @@ service cloud.firestore {
         && (isAdmin() || isOrgMember(organizationId))
         && request.resource.data.organizationId == organizationId;
       allow delete: if isSignedIn() && (isAdmin() || isOrgMember(organizationId));
+    }
+
+    // Manufacturing (تصنيع) — the org's ordered department chain and the work
+    // orders that travel through it. Every org member may read (assignees need
+    // their stages); the chain itself needs manufacturing.manage; a work order
+    // is created by manufacturing.manage or by crm.close (the quotation-accept
+    // hook); stage-flow updates are open to members but locked to the flow
+    // fields — everything else needs manufacturing.manage.
+    match /manufacturingDepartments/{departmentId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('manufacturing.manage');
+      allow update, delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('manufacturing.manage'));
+    }
+
+    match /workOrders/{orderId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('crm.close'));
+      allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (hasOrgPermission('manufacturing.manage')
+            || request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'updatedAt'])));
+      allow delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('manufacturing.manage'));
     }
 
     // CRM activities — calls, meetings, site visits, tasks and emails.

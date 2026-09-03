@@ -68,9 +68,16 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
     const dialog = triggerRef.current.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]')
     const dRect = dialog?.getBoundingClientRect()
     setPortalTarget(dialog ?? null)
+    // A trigger squeezed into a table cell can be far too narrow to read the
+    // options in — the popup takes a usable minimum width and shifts back from
+    // the container edge instead of inheriting the squeeze.
+    const containerLeft = dRect?.left ?? 0
+    const containerRight = dRect?.right ?? window.innerWidth
+    const width = Math.min(Math.max(rect.width, 280), containerRight - containerLeft - 16)
+    const left = Math.max(8, Math.min(rect.left - containerLeft, containerRight - containerLeft - width - 8))
     setCoords({
-      left: rect.left - (dRect?.left ?? 0),
-      width: rect.width,
+      left,
+      width,
       maxHeight: Math.min(PREFERRED_POPUP_HEIGHT, Math.max(120, openUpward ? spaceAbove : spaceBelow)),
       ...(openUpward
         ? { bottom: (dRect ? dRect.bottom : viewportHeight) - rect.top + POPUP_GAP }
@@ -232,7 +239,7 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
                   )}>
                     {isSelected && <Check size={8} className="text-white" strokeWidth={3} />}
                   </div>
-                  <span className={isSelected ? "font-bold text-primary" : "text-slate-700"}>{opt.label}</span>
+                  <span className={cn("min-w-0 flex-1 break-words", isSelected ? "font-bold text-primary" : "text-slate-700")}>{opt.label}</span>
                 </button>
               )
             })}
