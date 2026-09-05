@@ -32,11 +32,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { FileText, Eye, Calendar, Search, Package, ArrowRight, Loader2, Send, MapPin, X, File, Download, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
+import { FileText, Eye, Calendar, Search, Package, Loader2, Send, MapPin, X, File, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
 import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { useSearchParams } from "next/navigation"
@@ -228,6 +228,7 @@ const handleBatchPublish = async () => {
       })
       setDeleteTarget(null)
     } catch (error) {
+      console.error(error)
       toast({
         title: t("rfq_delete_failed"),
         variant: "destructive"
@@ -254,6 +255,7 @@ const handleBatchPublish = async () => {
       setRepublishTarget(null)
       setRepublishDeadline("")
     } catch (error) {
+      console.error(error)
       toast({
         title: t("rfq_republish_failed"),
         variant: "destructive"
@@ -378,13 +380,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
 
   const getStatusBadge = (rfq: any) => {
     if (rfq.status === "Draft") {
-      return <Badge className="bg-slate-100 text-slate-600 border-slate-300 font-bold">{t("rfq_badge_draft")}</Badge>;
+      return <Badge className="bg-muted text-muted-foreground border-transparent font-bold">{t("rfq_badge_draft")}</Badge>;
     }
-    
+
     if (rfq.status === "Awarded") {
       return <Badge className="bg-success/10 text-success border-success/20 font-bold">{t("rfq_badge_awarded")}</Badge>;
     }
-    
+
     if (rfq.deadline) {
       const deadlineDate = new Date(rfq.deadline);
       const today = new Date();
@@ -393,8 +395,43 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         return <Badge className="bg-destructive/10 text-destructive border-none font-bold">{t("rfq_badge_expired")}</Badge>;
       }
     }
-    
-    return <Badge className="bg-blue-50 text-blue-600 border-none font-bold">{t("rfq_badge_open")}</Badge>;
+
+    return <Badge className="bg-cta/10 text-cta border-none font-bold">{t("rfq_badge_open")}</Badge>;
+  }
+
+  // Colored strip along a grid card's top edge — the status reads at a glance
+  // before any text does, and stays visible however tall the card grows.
+  const statusAccent = (rfq: any) => {
+    if (rfq.status === "Draft") return "bg-muted-foreground/30"
+    if (rfq.status === "Awarded") return "bg-success"
+    if (isExpired(rfq)) return "bg-destructive"
+    return "bg-cta"
+  }
+
+  /** Days from today to the deadline, midnight-normalized; null when unset. */
+  const daysUntilDeadline = (rfq: any): number | null => {
+    if (!rfq.deadline) return null
+    const deadline = new Date(rfq.deadline)
+    deadline.setHours(0, 0, 0, 0)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return Math.round((deadline.getTime() - today.getTime()) / 86400000)
+  }
+
+  // Urgency pill next to the deadline — an active tender closing within days is
+  // the one thing on this page that has to jump out. Expired tenders already
+  // say so through the status badge, so no second pill for them.
+  const deadlineUrgency = (rfq: any) => {
+    if (rfq.status !== "New") return null
+    const days = daysUntilDeadline(rfq)
+    if (days === null || days < 0) return null
+    if (days === 0) {
+      return <span className="text-[10px] font-bold text-destructive bg-destructive/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">{t("rfq_due_today")}</span>
+    }
+    if (days <= 3) {
+      return <span className="text-[10px] font-bold text-warning bg-warning/10 px-1.5 py-0.5 rounded-md whitespace-nowrap">{t("rfq_days_left", { days })}</span>
+    }
+    return <span className="text-[10px] font-semibold text-muted-foreground whitespace-nowrap">{t("rfq_days_left", { days })}</span>
   }
 
   return (
@@ -439,7 +476,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          <CardHeader className="bg-white border-b pb-4">
+          <CardHeader className="bg-muted/30 border-b pb-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -447,7 +484,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                     <FileText className="text-primary" size={20} />
                     {t("rfq_tender_list")}
                   </CardTitle>
-                  <div className="flex items-center rounded-lg border border-slate-200 p-0.5">
+                  <div className="flex items-center rounded-lg border border-border p-0.5 bg-background">
                     <button
                       type="button"
                       onClick={() => setViewMode("grid")}
@@ -456,6 +493,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       aria-pressed={viewMode === "grid"}
                       className={cn(
                         "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         viewMode === "grid" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
@@ -469,6 +507,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       aria-pressed={viewMode === "list"}
                       className={cn(
                         "h-7 w-7 rounded-md flex items-center justify-center transition-colors",
+                        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         viewMode === "list" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground"
                       )}
                     >
@@ -494,7 +533,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         onClick={() => setShowBulkDeleteDialog(true)}
                         disabled={isBulkDeleting}
                         variant="outline"
-                        className="gap-2 rounded-lg border-red-200 text-red-600 hover:bg-red-50"
+                        className="gap-2 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         size="sm"
                       >
                         <Trash2 size={14} />
@@ -513,25 +552,28 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   )}
                   {selectedRfqs.length === 0 && (
                     <div className="relative">
-                      <Search className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400", locale === 'ar' ? 'right-3' : 'left-3')} size={18} />
+                      <Search className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" size={18} />
                       <Input
                         placeholder={t("rfq_search_placeholder")}
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        className={cn("w-full sm:w-64 h-10 rounded-xl bg-slate-50 border-slate-200 focus:bg-white cursor-pointer", locale === 'ar' ? 'pr-10' : 'pl-10')}
+                        className="w-full sm:w-64 h-10 rounded-xl bg-background border-border ps-10"
                       />
                     </div>
                   )}
                 </div>
               </div>
-              {filteredRfqs.length > 0 && (
-                <div className="flex items-center gap-1.5 cursor-pointer w-fit" onClick={selectAll}>
+              {/* Grid view only — the table carries its own select-all in its header row */}
+              {filteredRfqs.length > 0 && viewMode === "grid" && (
+                <div className="flex items-center gap-1.5 w-fit">
                   <Checkbox
+                    id="rfq-select-all"
                     checked={selectedRfqs.length > 0 && selectedRfqs.length === filteredRfqs.length ? true : selectedRfqs.length > 0 ? "indeterminate" : false}
                     onCheckedChange={selectAll}
-                    onClick={(e) => e.stopPropagation()}
                   />
-                  <span className="text-xs font-semibold text-muted-foreground">{t("rfq_select_all")}</span>
+                  <Label htmlFor="rfq-select-all" className="text-xs font-semibold text-muted-foreground cursor-pointer">
+                    {t("rfq_select_all")}
+                  </Label>
                 </div>
               )}
               {/* Filters Row — a grid, not flex-wrap, so filters line up cleanly at
@@ -592,7 +634,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       type="date"
                       value={customDeadline}
                       onChange={e => setCustomDeadline(e.target.value)}
-                      className="h-10 px-3 rounded-xl border border-input bg-white text-sm w-[140px] shrink-0"
+                      className="h-10 px-3 rounded-xl border border-input bg-background text-sm w-[140px] shrink-0"
                     />
                   )}
                 </div>
@@ -618,10 +660,10 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
               </div>
             )}
             {error && (
-              <div className="p-10 text-center space-y-4 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-red-600 font-bold">{t("rfq_error_fetching")}</p>
+              <div className="p-10 text-center space-y-4 bg-destructive/5 border border-destructive/20 rounded-xl">
+                <p className="text-destructive font-bold">{t("rfq_error_fetching")}</p>
                 {process.env.NODE_ENV === "development" && (
-                  <p className="text-red-500 text-sm break-all" dir="ltr">{error.message}</p>
+                  <p className="text-destructive/80 text-sm break-all" dir="ltr">{error.message}</p>
                 )}
               </div>
             )}
@@ -651,76 +693,94 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             )}
             {!isLoading && filteredRfqs.length > 0 && viewMode === "grid" && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {filteredRfqs.map((rfq: any) => (
-                  <Card key={rfq.id} className="group relative overflow-hidden border-slate-200/60 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 bg-white/60 backdrop-blur-xl flex flex-col">
+                {filteredRfqs.map((rfq: any) => {
+                  const isSelected = selectedRfqs.includes(rfq.id)
+                  const offersHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
+                  return (
+                  <Card
+                    key={rfq.id}
+                    className={cn(
+                      "group relative overflow-hidden border-border hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 transition-all duration-300 flex flex-col",
+                      isSelected && "border-primary/60 ring-2 ring-primary/20"
+                    )}
+                  >
+                    <div className={cn("h-1 w-full shrink-0", statusAccent(rfq))} aria-hidden="true" />
                     <CardContent className="p-5 flex flex-col flex-1">
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Checkbox
-                            checked={selectedRfqs.includes(rfq.id)}
-                            onCheckedChange={() => toggleSelectRfq(rfq.id)}
-                            className={cn("cursor-pointer", locale === 'ar' ? 'ml-2' : 'mr-2')}
-                          />
-                          <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none px-2.5 py-1">
-                            {displayCategory(rfq.category, locale)}
-                          </Badge>
-                          {rfq.subCategory && (
-                            <Badge variant="outline" className="text-slate-600 border-slate-200 bg-white/50 px-2.5 py-1">
-                              {displaySubcategory(rfq.subCategory, locale)}
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-mono bg-slate-100 px-2 py-1 rounded-md">{rfq.id.substring(0, 8)}</span>
-                      </div>
-                      
-                      <div className="space-y-1 mb-3">
-                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-2">
-                          {rfq.title}
-                        </h3>
-                        <div className="flex items-center gap-2 mt-2 flex-wrap">
-                          <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 bg-slate-50 w-fit px-2 py-1 rounded-md">
-                            <Package size={14} className="text-primary" />
-                            {rfq.products && rfq.products.length > 0 
-                              ? t("rfq_products_count", { count: rfq.products.length })
-                              : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
-                            }
-                          </div>
-                          <div className="flex items-center gap-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 w-fit px-2 py-1 rounded-md border border-emerald-100">
-                            <FileText size={14} className="text-emerald-500" />
-                            {rfq.offersCount || 0} {locale === 'ar' ? 'عروض' : 'Offers'}
-                          </div>
-                        </div>
+                      {/* Selection, status and id share one calm top row — the status
+                          badge used to be buried mid-card next to the deadline. */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleSelectRfq(rfq.id)}
+                          aria-label={rfq.title}
+                          className="cursor-pointer"
+                        />
+                        {getStatusBadge(rfq)}
+                        <span className="flex-1" />
+                        <span className="text-[10px] text-muted-foreground font-mono bg-muted px-2 py-1 rounded-md" dir="ltr">{rfq.id.substring(0, 8)}</span>
                       </div>
 
-                      <div className="space-y-3 pt-4 border-t border-slate-100/80 mt-auto mb-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 text-xs text-slate-600">
-                            <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
-                              <User size={12} className="text-slate-500" />
-                            </div>
-                            <span className="truncate">{t("rfq_by_label")} <span className="font-bold text-slate-700">{rfq.createdByUserName || t("rfq_admin_label")}</span></span>
-                          </div>
+                      <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
+                        {rfq.title}
+                      </h3>
+
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/15 border-none">
+                          {displayCategory(rfq.category, locale)}
+                        </Badge>
+                        {rfq.subCategory && (
+                          <Badge variant="outline" className="text-muted-foreground border-border">
+                            {displaySubcategory(rfq.subCategory, locale)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-3 flex-wrap">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground bg-muted/60 px-2 py-1 rounded-md">
+                          <Package size={13} className="text-primary" />
+                          {rfq.products && rfq.products.length > 0
+                            ? t("rfq_products_count", { count: rfq.products.length })
+                            : t("rfq_quantity_label", { qty: rfq.quantity, unit: rfq.unitOfMeasure })
+                          }
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-600">
-                          <div className="w-6 h-6 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                            <MapPin size={12} className="text-blue-600" />
-                          </div>
-                          <span className="truncate">{displayCity(rfq.city, locale)} - {displayCity(rfq.district, locale)}</span>
+                        {/* The offers count is the number the contractor came to check —
+                            it links straight to the offers page and goes green once bids exist. */}
+                        <Link
+                          href={offersHref}
+                          className={cn(
+                            "flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md transition-colors",
+                            "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                            (rfq.offersCount || 0) > 0
+                              ? "text-success bg-success/10 border border-success/20 hover:bg-success/20"
+                              : "text-muted-foreground bg-muted/60 hover:bg-muted"
+                          )}
+                        >
+                          <FileText size={13} />
+                          {t("rfq_offers_count", { count: rfq.offersCount || 0 })}
+                        </Link>
+                      </div>
+
+                      <div className="space-y-2 pt-3 border-t border-border/60 mt-4 mb-4">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <MapPin size={13} className="text-cta shrink-0" />
+                          <span className="truncate">{displayCity(rfq.city, locale)}{rfq.district ? ` — ${displayCity(rfq.district, locale)}` : ""}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-600" suppressHydrationWarning>
-                          <div className="w-6 h-6 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
-                            <Calendar size={12} className="text-amber-600" />
-                          </div>
-                          {t("rfq_deadline_label", { date: rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set") })}
-                          {getStatusBadge(rfq)}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap" suppressHydrationWarning>
+                          <Calendar size={13} className="text-warning shrink-0" />
+                          <span>{t("rfq_deadline_label", { date: rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set") })}</span>
+                          {deadlineUrgency(rfq)}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <User size={13} className="shrink-0" />
+                          <span className="truncate">{t("rfq_by_label")} <span className="font-bold text-foreground">{rfq.createdByUserName || t("rfq_admin_label")}</span></span>
                         </div>
                         {rfq.pdfUrl && (
-                          <a 
-                            href={rfq.pdfUrl} 
-                            target="_blank" 
+                          <a
+                            href={rfq.pdfUrl}
+                            target="_blank"
                             rel="noopener noreferrer"
                             download
-                            className="flex items-center gap-2 text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors w-fit"
+                            className="flex items-center gap-1.5 text-xs font-semibold bg-cta/10 text-cta px-2 py-1 rounded-md hover:bg-cta/20 transition-colors w-fit focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <File size={12} />
@@ -728,16 +788,16 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </a>
                         )}
                       </div>
-                      
-                      <div className="flex gap-2">
-                        <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`} className="flex-1">
-                          <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
+
+                      <div className="flex gap-2 mt-auto">
+                        <Link href={offersHref} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all">
                             <Eye size={14} />
                             {t("rfq_view_offers")}
                           </Button>
                         </Link>
-                        <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers?tab=inquiries` : `/contractor/rfqs/${rfq.id}/offers?tab=inquiries`} className="flex-1">
-                          <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-slate-200 hover:bg-primary hover:text-white hover:border-primary transition-all">
+                        <Link href={`${offersHref}?tab=inquiries`} className="flex-1">
+                          <Button variant="outline" size="sm" className="w-full gap-1 text-sm h-9 rounded-lg border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all">
                             <MessageCircle size={14} />
                             {t("rfq_inquiries")}
                           </Button>
@@ -750,7 +810,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                 size="sm"
                                 onClick={() => setShareTarget(rfq)}
                                 aria-label={t("rfq_share_title")}
-                                className="h-9 w-9 p-0 rounded-lg border-slate-200 text-accent hover:bg-accent hover:text-white hover:border-accent transition-all shrink-0"
+                                className="h-9 w-9 p-0 rounded-lg border-border text-accent hover:bg-accent hover:text-accent-foreground hover:border-accent transition-all shrink-0"
                               >
                                 <Share2 size={14} />
                               </Button>
@@ -764,7 +824,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           {rfq.status === "Draft" && (
                             <Button
                               size="sm"
-                              className="w-full gap-1 text-sm h-8 rounded-lg bg-success hover:bg-success/90 text-white transition-all"
+                              className="w-full gap-1 text-sm h-8 rounded-lg bg-success hover:bg-success/90 text-success-foreground transition-all"
                               onClick={() => handlePublishDraft(rfq.id)}
                               disabled={publishingDraftId === rfq.id}
                             >
@@ -777,7 +837,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <div className="flex gap-2">
                           {canEdit(rfq) && (
                             <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} className="flex-1 min-w-0">
-                              <Button variant="ghost" size="sm" title={t("rfq_edit_tender")} className="w-full gap-1 text-sm h-8 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all">
+                              <Button variant="ghost" size="sm" title={t("rfq_edit_tender")} className="w-full gap-1 text-sm h-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
                                 <Pencil size={14} className="shrink-0" />
                                 <span className="truncate">{t("rfq_edit_short")}</span>
                               </Button>
@@ -788,7 +848,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                               variant="ghost"
                               size="sm"
                               title={t("rfq_delete_tender")}
-                              className="flex-1 min-w-0 gap-1 text-sm h-8 rounded-lg text-red-500 hover:text-red-700 hover:bg-red-50 transition-all"
+                              className="flex-1 min-w-0 gap-1 text-sm h-8 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 transition-all"
                               onClick={() => setDeleteTarget(rfq)}
                             >
                               <Trash2 size={14} className="shrink-0" />
@@ -803,7 +863,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="w-full gap-1 text-sm h-8 rounded-lg text-amber-600 border-amber-300 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-400 transition-all"
+                            className="w-full gap-1 text-sm h-8 rounded-lg text-warning border-warning/40 hover:bg-warning/10 hover:text-warning hover:border-warning/60 transition-all"
                             onClick={() => { setRepublishTarget(rfq); setRepublishDeadline("") }}
                           >
                             <RotateCw size={14} />
@@ -813,48 +873,81 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       )}
                     </CardContent>
                   </Card>
-                ))}
+                )})}
               </div>
             )}
             {!isLoading && filteredRfqs.length > 0 && viewMode === "list" && (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-xl border">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-8"></TableHead>
-                      <TableHead className="text-right">{t("rfq_id_col")}</TableHead>
-                      <TableHead className="text-right">{t("proj_rfqs")}</TableHead>
-                      <TableHead className="text-right">{t("rfq_category_filter")}</TableHead>
-                      <TableHead className="text-right">{t("rfq_city_filter")}</TableHead>
-                      <TableHead className="text-right">{t("rfq_deadline_col")}</TableHead>
-                      <TableHead className="text-right">{t("proj_status")}</TableHead>
-                      <TableHead className="text-right">{t("proj_offers_count_label")}</TableHead>
-                      <TableHead className="text-left"></TableHead>
+                    {/* text-start (not text-right) so the table aligns correctly in BOTH
+                        directions — the hardcoded right-alignment broke the English view */}
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={selectedRfqs.length > 0 && selectedRfqs.length === filteredRfqs.length ? true : selectedRfqs.length > 0 ? "indeterminate" : false}
+                          onCheckedChange={selectAll}
+                          aria-label={t("rfq_select_all")}
+                        />
+                      </TableHead>
+                      <TableHead className="text-start">{t("rfq_id_col")}</TableHead>
+                      <TableHead className="text-start">{t("proj_rfqs")}</TableHead>
+                      <TableHead className="text-start">{t("rfq_category_filter")}</TableHead>
+                      <TableHead className="text-start">{t("rfq_city_filter")}</TableHead>
+                      <TableHead className="text-start">{t("rfq_deadline_col")}</TableHead>
+                      <TableHead className="text-start">{t("proj_status")}</TableHead>
+                      <TableHead className="text-center">{t("proj_offers_count_label")}</TableHead>
+                      <TableHead className="text-end"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredRfqs.map((rfq: any) => (
-                      <TableRow key={rfq.id}>
+                    {filteredRfqs.map((rfq: any) => {
+                      const isSelected = selectedRfqs.includes(rfq.id)
+                      const offersHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
+                      return (
+                      <TableRow key={rfq.id} className={cn(isSelected && "bg-primary/5 hover:bg-primary/10")}>
                         <TableCell>
-                          <Checkbox checked={selectedRfqs.includes(rfq.id)} onCheckedChange={() => toggleSelectRfq(rfq.id)} />
+                          <Checkbox checked={isSelected} onCheckedChange={() => toggleSelectRfq(rfq.id)} aria-label={rfq.title} />
                         </TableCell>
-                        <TableCell className="font-mono text-xs text-slate-400">{rfq.id.substring(0, 8)}</TableCell>
-                        <TableCell className="font-bold text-slate-800 max-w-[200px] truncate">{rfq.title}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{displayCategory(rfq.category, locale)}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground" dir="ltr">{rfq.id.substring(0, 8)}</TableCell>
+                        <TableCell className="max-w-[260px]">
+                          <Link
+                            href={offersHref}
+                            title={rfq.title}
+                            className="block truncate font-bold text-foreground hover:text-primary transition-colors rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            {rfq.title}
+                          </Link>
+                          {rfq.subCategory && (
+                            <span className="block truncate text-[11px] text-muted-foreground">{displaySubcategory(rfq.subCategory, locale)}</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{displayCategory(rfq.category, locale)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{displayCity(rfq.city, locale)}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap" suppressHydrationWarning>
-                          {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set")}
+                        <TableCell className="text-sm whitespace-nowrap" suppressHydrationWarning>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale) : t("rfq_not_set")}</span>
+                            {deadlineUrgency(rfq)}
+                          </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(rfq)}</TableCell>
-                        <TableCell className="text-sm">{rfq.offersCount || 0}</TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-center">
+                          <span
+                            className={cn(
+                              "inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md text-xs font-bold tabular-nums",
+                              (rfq.offersCount || 0) > 0 ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+                            )}
+                            dir="ltr"
+                          >
+                            {rfq.offersCount || 0}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`}>
-                                  <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
-                                    <Eye size={14} />
-                                  </button>
+                                <Link href={offersHref} aria-label={t("rfq_view_offers")} className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
+                                  <Eye size={14} />
                                 </Link>
                               </TooltipTrigger>
                               <TooltipContent>{t("rfq_view_offers")}</TooltipContent>
@@ -866,7 +959,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                     type="button"
                                     onClick={() => setShareTarget(rfq)}
                                     aria-label={t("rfq_share_title")}
-                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors"
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-accent hover:bg-accent/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                                   >
                                     <Share2 size={14} />
                                   </button>
@@ -877,10 +970,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                             {canManageRfqs && canEdit(rfq) && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`}>
-                                    <button type="button" className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
-                                      <Pencil size={14} />
-                                    </button>
+                                  <Link href={rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`} aria-label={t("rfq_edit_tender")} className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1">
+                                    <Pencil size={14} />
                                   </Link>
                                 </TooltipTrigger>
                                 <TooltipContent>{t("rfq_edit_tender")}</TooltipContent>
@@ -893,7 +984,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                     type="button"
                                     onClick={() => handlePublishDraft(rfq.id)}
                                     disabled={publishingDraftId === rfq.id}
-                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-success hover:bg-success/10 transition-colors disabled:opacity-50"
+                                    aria-label={t("rfq_publish_draft")}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-success hover:bg-success/10 transition-colors disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                                   >
                                     {publishingDraftId === rfq.id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
                                   </button>
@@ -907,7 +999,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                   <button
                                     type="button"
                                     onClick={() => setDeleteTarget(rfq)}
-                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    aria-label={t("rfq_delete_tender")}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -921,7 +1014,8 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                                   <button
                                     type="button"
                                     onClick={() => { setRepublishTarget(rfq); setRepublishDeadline("") }}
-                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-amber-600 hover:bg-amber-50 transition-colors"
+                                    aria-label={t("rfq_republish")}
+                                    className="h-7 w-7 rounded-lg flex items-center justify-center text-warning hover:bg-warning/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                                   >
                                     <RotateCw size={14} />
                                   </button>
@@ -932,7 +1026,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               </div>
@@ -975,7 +1069,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                 type="date"
                 value={republishDeadline}
                 onChange={e => setRepublishDeadline(e.target.value)}
-                className="h-10 w-full px-3 rounded-xl border border-input bg-white text-sm"
+                className="h-10 w-full px-3 rounded-xl border border-input bg-background text-sm"
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>

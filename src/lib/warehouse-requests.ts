@@ -23,6 +23,8 @@ export interface WarehouseRequestDoc {
   itemId: string
   itemName: string
   unit: string
+  /** Item-type section snapshot — so the stock lands in the same section at the destination. */
+  typeId?: string | null
   /** The originally requested amount — never changed after creation, for audit. */
   quantity: number
   /** What actually left the source at release time — defaults to `quantity`,
@@ -89,7 +91,7 @@ export async function createWarehouseRequest(params: CreateRequestParams): Promi
     const itemRef = doc(firestore, "warehouses", fromWarehouseId, "inventoryItems", itemId)
     const itemSnap = await tx.get(itemRef)
     if (!itemSnap.exists()) throw new Error("insufficient_stock")
-    const item = itemSnap.data() as TransferItemState & { name: string; unit: string }
+    const item = itemSnap.data() as TransferItemState & { name: string; unit: string; typeId?: string | null }
     const revalidated = validateTransfer({ sourceItem: item, quantity, fromWarehouseId, toWarehouseId })
     if (revalidated) throw new Error(revalidated)
 
@@ -99,6 +101,7 @@ export async function createWarehouseRequest(params: CreateRequestParams): Promi
       itemId,
       itemName: item.name,
       unit: item.unit,
+      typeId: item.typeId ?? null,
       quantity,
       fromWarehouseId,
       toWarehouseId,
@@ -198,6 +201,7 @@ export async function confirmWarehouseRequestReceipt(params: {
         unit: request.unit,
         minStockLevel: null,
         trackingMode: null,
+        typeId: request.typeId ?? null,
         organizationId: request.organizationId,
         warehouseId: request.toWarehouseId,
         createdAt: serverTimestamp(),

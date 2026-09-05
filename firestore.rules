@@ -969,6 +969,19 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
+    // Org-defined inventory item types (beyond the built-in materials /
+    // equipment) — shown as sections in every warehouse. Editing the
+    // vocabulary needs warehouses.manage, same as the stock it categorizes.
+    match /inventoryItemTypes/{typeId} {
+      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('warehouses.manage');
+      allow update, delete: if isSignedIn() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId) && hasOrgPermission('warehouses.manage')));
+    }
+
     // Warehouses — scoped to an organization, with inventory items subcollection
     match /warehouses/{warehouseId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
