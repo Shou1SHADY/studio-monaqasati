@@ -3,8 +3,12 @@ import {
   nextWorkOrderNumber,
   advanceStages,
   splitByStock,
+  computeMaterialCost,
+  overdrawnInputs,
+  effectiveOutput,
   type MfgDepartment,
   type WorkOrderStage,
+  type WorkOrderInputItem,
 } from "@/lib/manufacturing"
 
 const departments: MfgDepartment[] = [
@@ -54,6 +58,56 @@ describe("nextWorkOrderNumber", () => {
   it("increments past the highest, treating missing numbers as 0", () => {
     expect(nextWorkOrderNumber([])).toBe(1)
     expect(nextWorkOrderNumber([{ orderNumber: 7 }, {}, { orderNumber: 2 }])).toBe(8)
+  })
+})
+
+describe("computeMaterialCost", () => {
+  const inputs: WorkOrderInputItem[] = [
+    { inventoryItemId: "a", name: "خشب زان", quantity: 10, unit: "لوح", unitCost: 120 },
+    { inventoryItemId: "b", name: "مفصلات", quantity: 40, unit: "قطعة", unitCost: 4.5 },
+  ]
+
+  it("sums quantity times cost", () => {
+    expect(computeMaterialCost(inputs)).toEqual({ cost: 1380, allPriced: true })
+  })
+
+  it("flags unpriced inputs without inventing zeros into the total", () => {
+    const { cost, allPriced } = computeMaterialCost([
+      ...inputs,
+      { inventoryItemId: "c", name: "غراء", quantity: 2, unit: "عبوة", unitCost: null },
+    ])
+    expect(cost).toBe(1380)
+    expect(allPriced).toBe(false)
+  })
+})
+
+describe("overdrawnInputs", () => {
+  it("returns rows exceeding the source stock, including unknown items", () => {
+    const rows = overdrawnInputs(
+      [
+        { inventoryItemId: "a", name: "x", quantity: 5, unit: "", unitCost: null },
+        { inventoryItemId: "b", name: "y", quantity: 8, unit: "", unitCost: null },
+        { inventoryItemId: "ghost", name: "z", quantity: 1, unit: "", unitCost: null },
+      ],
+      [
+        { id: "a", quantity: 10 },
+        { id: "b", quantity: 7 },
+      ]
+    )
+    expect(rows.map((r) => r.inventoryItemId)).toEqual(["b", "ghost"])
+  })
+})
+
+describe("effectiveOutput", () => {
+  it("prefers the explicit output", () => {
+    expect(effectiveOutput({ output: { name: "باب", quantity: 5, unit: "قطعة" }, items: [], title: "t" }).name).toBe("باب")
+  })
+
+  it("falls back to the first item, then to the title", () => {
+    expect(effectiveOutput({ output: null, items: [{ name: "دولاب", quantity: 3, unit: "قطعة" }], title: "t" }))
+      .toEqual({ name: "دولاب", quantity: 3, unit: "قطعة" })
+    expect(effectiveOutput({ output: null, items: [], title: "أمر خاص" }))
+      .toEqual({ name: "أمر خاص", quantity: 1, unit: "" })
   })
 })
 

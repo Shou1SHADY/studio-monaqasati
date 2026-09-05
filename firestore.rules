@@ -947,7 +947,7 @@ service cloud.firestore {
       allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && (hasOrgPermission('manufacturing.manage')
             || request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'updatedAt'])));
+                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt', 'updatedAt'])));
       allow delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && hasOrgPermission('manufacturing.manage'));
     }

@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, serverTimestamp } from "firebase/firestore"
-import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck } from "lucide-react"
+import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, serverTimestamp } from "firebase/firestore"
+import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,9 +27,14 @@ import {
   buildStagesFromDepartments,
   nextWorkOrderNumber,
   advanceStages,
+  computeMaterialCost,
+  overdrawnInputs,
+  effectiveOutput,
+  ensureOutboundWarehouse,
+  deliverWorkOrder,
   type MfgDepartment,
   type WorkOrder,
-  type WorkOrderItem,
+  type WorkOrderInputItem,
 } from "@/lib/manufacturing"
 
 type Member = { id: string; name?: string; email?: string }
@@ -78,6 +83,29 @@ export function ManufacturingView() {
   }, [firestore, orgId])
   const { data: membersData } = useCollection(membersQuery)
   const members = (membersData || []) as Member[]
+
+  const warehousesQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, "warehouses"), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: warehousesData } = useCollection(warehousesQuery)
+  const orgWarehouses = (warehousesData || []) as Array<{ id: string; name: string; projectId?: string | null; isOutbound?: boolean }>
+
+  const projectsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, "projects"), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: projectsData } = useCollection(projectsQuery)
+  const orgProjects = (projectsData || []) as Array<{ id: string; name: string }>
+
+  // Raw-material picker: the inventory of whichever source warehouse is chosen.
+  const [sourceWarehouseId, setSourceWarehouseId] = useState("")
+  const sourceItemsQuery = useMemoFirebase(() => {
+    if (!firestore || !sourceWarehouseId) return null
+    return collection(firestore, "warehouses", sourceWarehouseId, "inventoryItems")
+  }, [firestore, sourceWarehouseId])
+  const { data: sourceItemsData } = useCollection(sourceItemsQuery)
+  const sourceItems = (sourceItemsData || []) as Array<{ id: string; name: string; quantity: number; unit: string; unitCost?: number | null }>
 
   const [statusFilter, setStatusFilter] = useState<"open" | "done" | "all">("open")
   const visibleOrders = orders.filter((o) => statusFilter === "all" || o.status === statusFilter)
@@ -139,9 +167,19 @@ export function ManufacturingView() {
   const [isCreating, setIsCreating] = useState(false)
   const [orderTitle, setOrderTitle] = useState("")
   const [orderDue, setOrderDue] = useState("")
-  const [orderItems, setOrderItems] = useState<Array<{ name: string; quantity: string; unit: string }>>([
-    { name: "", quantity: "", unit: "" },
+  const [orderProjectId, setOrderProjectId] = useState("")
+  const [inputRows, setInputRows] = useState<Array<{ inventoryItemId: string; quantity: string }>>([
+    { inventoryItemId: "", quantity: "" },
   ])
+  const [outName, setOutName] = useState("")
+  const [outQty, setOutQty] = useState("")
+  const [outUnit, setOutUnit] = useState("")
+
+  const resetCreate = () => {
+    setOrderTitle(""); setOrderDue(""); setOrderProjectId("")
+    setSourceWarehouseId(""); setInputRows([{ inventoryItemId: "", quantity: "" }])
+    setOutName(""); setOutQty(""); setOutUnit("")
+  }
 
   const createOrder = async () => {
     if (!firestore || !user || isCreating) return
@@ -153,16 +191,52 @@ export function ManufacturingView() {
       toast({ title: t("mfg_no_departments_error"), variant: "destructive" })
       return
     }
+    // Manufacturing consumes only from inventory — every order draws real stock.
+    const inputs: WorkOrderInputItem[] = inputRows
+      .filter((r) => r.inventoryItemId && Number(r.quantity) > 0)
+      .map((r) => {
+        const src = sourceItems.find((i) => i.id === r.inventoryItemId)!
+        return {
+          inventoryItemId: r.inventoryItemId,
+          name: src?.name || "",
+          quantity: Number(r.quantity),
+          unit: src?.unit || "",
+          unitCost: src?.unitCost ?? null,
+        }
+      })
+    if (!sourceWarehouseId || inputs.length === 0) {
+      toast({ title: t("mfg_inputs_required"), variant: "destructive" })
+      return
+    }
+    const overdrawn = overdrawnInputs(inputs, sourceItems)
+    if (overdrawn.length > 0) {
+      toast({ title: t("mfg_inputs_over_stock", { item: overdrawn[0].name }), variant: "destructive" })
+      return
+    }
+    if (!outName.trim() || !(Number(outQty) > 0)) {
+      toast({ title: t("mfg_output_required"), variant: "destructive" })
+      return
+    }
     setIsCreating(true)
     try {
-      const items: WorkOrderItem[] = orderItems
-        .filter((i) => i.name.trim())
-        .map((i) => ({ name: i.name.trim(), quantity: Number(i.quantity) || 0, unit: i.unit.trim() }))
-      await addDoc(collection(firestore, WORK_ORDERS), {
+      const { cost } = computeMaterialCost(inputs)
+      const project = orgProjects.find((p) => p.id === orderProjectId)
+      const batch = writeBatch(firestore)
+      const orderRef = doc(collection(firestore, WORK_ORDERS))
+      batch.set(orderRef, {
         organizationId: orgId,
         orderNumber: nextWorkOrderNumber(orders),
         title: orderTitle.trim(),
-        items,
+        items: [],
+        inputs,
+        sourceWarehouseId,
+        sourceWarehouseName: orgWarehouses.find((w) => w.id === sourceWarehouseId)?.name || "",
+        materialCost: cost,
+        output: { name: outName.trim(), quantity: Number(outQty), unit: outUnit.trim() },
+        projectId: orderProjectId || null,
+        projectName: project?.name || null,
+        deliveredTo: null,
+        deliveredAt: null,
         source: { kind: "manual" },
         status: "open",
         currentStageIndex: 0,
@@ -174,16 +248,52 @@ export function ManufacturingView() {
         updatedAt: serverTimestamp(),
         completedAt: null,
       })
-      toast({ title: t("mfg_order_created") })
+      for (const input of inputs) {
+        batch.update(doc(firestore, "warehouses", sourceWarehouseId, "inventoryItems", input.inventoryItemId), {
+          quantity: increment(-input.quantity),
+          updatedAt: serverTimestamp(),
+        })
+      }
+      await batch.commit()
+      toast({ title: t("mfg_order_created_stock", { count: inputs.length }) })
       setShowCreate(false)
-      setOrderTitle("")
-      setOrderDue("")
-      setOrderItems([{ name: "", quantity: "", unit: "" }])
+      resetCreate()
     } catch (err) {
       console.error(err)
       toast({ title: t("mfg_save_error"), variant: "destructive" })
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  // ── Deliver finished output ──
+  const [deliverDest, setDeliverDest] = useState("")
+  const [isDelivering, setIsDelivering] = useState(false)
+
+  const handleDeliver = async (order: WorkOrder) => {
+    if (!firestore || !deliverDest || isDelivering) return
+    setIsDelivering(true)
+    try {
+      let destination
+      if (deliverDest === "__outbound__") {
+        const outbound = await ensureOutboundWarehouse(firestore, orgId)
+        destination = { warehouseId: outbound.id, warehouseName: outbound.name, kind: "outbound" as const }
+      } else {
+        const wh = orgWarehouses.find((w) => w.id === deliverDest)!
+        destination = {
+          warehouseId: wh.id,
+          warehouseName: wh.name,
+          kind: wh.isOutbound ? ("outbound" as const) : wh.projectId ? ("project" as const) : ("central" as const),
+        }
+      }
+      await deliverWorkOrder(firestore, order, destination)
+      toast({ title: t("mfg_delivered_toast", { warehouse: destination.warehouseName }) })
+      setDeliverDest("")
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("mfg_save_error"), variant: "destructive" })
+    } finally {
+      setIsDelivering(false)
     }
   }
 
@@ -426,37 +536,90 @@ export function ManufacturingView() {
       )}
 
       {/* Create order */}
-      <Dialog open={showCreate} onOpenChange={(open) => { if (!isCreating) setShowCreate(open) }}>
-        <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-lg">
+      <Dialog open={showCreate} onOpenChange={(open) => { if (!isCreating) { setShowCreate(open); if (!open) resetCreate() } }}>
+        <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t("mfg_new_order_title")}</DialogTitle>
             <DialogDescription>{t("mfg_new_order_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="mfg-title">{t("mfg_order_title_label")} *</Label>
-              <Input id="mfg-title" value={orderTitle} onChange={(e) => setOrderTitle(e.target.value)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="mfg-title">{t("mfg_order_title_label")} *</Label>
+                <Input id="mfg-title" value={orderTitle} onChange={(e) => setOrderTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mfg-due">{t("mfg_due_label")}</Label>
+                <Input id="mfg-due" type="date" dir="ltr" value={orderDue} onChange={(e) => setOrderDue(e.target.value)} />
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="mfg-due">{t("mfg_due_label")}</Label>
-              <Input id="mfg-due" type="date" dir="ltr" value={orderDue} onChange={(e) => setOrderDue(e.target.value)} />
+            {orgProjects.length > 0 && (
+              <div className="space-y-1.5">
+                <Label>{t("mfg_project_label")}</Label>
+                <Select value={orderProjectId || "__none__"} onValueChange={(v) => setOrderProjectId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{t("mfg_no_project")}</SelectItem>
+                    {orgProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="rounded-xl border bg-muted/20 p-3.5 space-y-3">
+              <Label className="flex items-center gap-1.5"><Boxes size={14} className="text-cta" />{t("mfg_inputs_title")} *</Label>
+              <Select value={sourceWarehouseId} onValueChange={(v) => { setSourceWarehouseId(v); setInputRows([{ inventoryItemId: "", quantity: "" }]) }}>
+                <SelectTrigger><SelectValue placeholder={t("mfg_source_warehouse")} /></SelectTrigger>
+                <SelectContent>
+                  {orgWarehouses.filter((w) => !w.isOutbound).map((w) => (
+                    <SelectItem key={w.id} value={w.id}>{w.name}{w.projectId ? ` — ${t("mfg_wh_project_tag")}` : ""}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {sourceWarehouseId && inputRows.map((row, i) => {
+                const src = sourceItems.find((s) => s.id === row.inventoryItemId)
+                const over = src && Number(row.quantity) > src.quantity
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <Select value={row.inventoryItemId || undefined} onValueChange={(v) => setInputRows((p) => p.map((x, j) => (j === i ? { ...x, inventoryItemId: v } : x)))}>
+                      <SelectTrigger className="flex-1 h-9 text-xs"><SelectValue placeholder={t("mfg_pick_material")} /></SelectTrigger>
+                      <SelectContent>
+                        {sourceItems.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                            {s.name} — {t("mfg_available", { qty: s.quantity, unit: s.unit })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal"
+                      value={row.quantity}
+                      onChange={(e) => setInputRows((p) => p.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))}
+                      className={cn("w-24 h-9", over && "border-destructive ring-1 ring-destructive")}
+                    />
+                    <button type="button" onClick={() => setInputRows((p) => p.filter((_, j) => j !== i))} disabled={inputRows.length === 1} aria-label={t("mfg_remove_item")} className="h-8 w-8 shrink-0 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )
+              })}
+              {sourceWarehouseId && (
+                <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setInputRows((p) => [...p, { inventoryItemId: "", quantity: "" }])}>
+                  <Plus size={13} />
+                  {t("mfg_add_item")}
+                </Button>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>{t("mfg_items_label")}</Label>
-              {orderItems.map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <Input placeholder={t("mfg_item_name")} value={item.name} onChange={(e) => setOrderItems((p) => p.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} className="flex-1" />
-                  <Input placeholder={t("mfg_item_qty")} dir="ltr" inputMode="numeric" value={item.quantity} onChange={(e) => setOrderItems((p) => p.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} className="w-20" />
-                  <Input placeholder={t("mfg_item_unit")} value={item.unit} onChange={(e) => setOrderItems((p) => p.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} className="w-24" />
-                  <button type="button" onClick={() => setOrderItems((p) => p.filter((_, j) => j !== i))} disabled={orderItems.length === 1} aria-label={t("mfg_remove_item")} className="h-8 w-8 shrink-0 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => setOrderItems((p) => [...p, { name: "", quantity: "", unit: "" }])}>
-                <Plus size={13} />
-                {t("mfg_add_item")}
-              </Button>
+
+            <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2">
+              <Label className="flex items-center gap-1.5"><PackageCheck size={14} className="text-success" />{t("mfg_output_title")} *</Label>
+              <div className="flex items-center gap-2">
+                <Input placeholder={t("mfg_output_name")} value={outName} onChange={(e) => setOutName(e.target.value)} className="flex-1 h-9" />
+                <Input placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal" value={outQty} onChange={(e) => setOutQty(e.target.value)} className="w-24 h-9" />
+                <Input placeholder={t("mfg_item_unit")} value={outUnit} onChange={(e) => setOutUnit(e.target.value)} className="w-24 h-9" />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -488,15 +651,80 @@ export function ManufacturingView() {
                 </DialogDescription>
               </DialogHeader>
 
-              {detail.items.length > 0 && (
-                <div className="rounded-xl border bg-muted/20 p-3 space-y-1">
+              {(detail.inputs?.length || detail.items.length > 0 || detail.output) && (
+                <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2.5">
+                  {detail.inputs && detail.inputs.length > 0 && (
+                    <div>
+                      <p className="text-[11px] font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Boxes size={12} />
+                        {t("mfg_inputs_from", { warehouse: detail.sourceWarehouseName || "" })}
+                      </p>
+                      <div className="mt-1.5 space-y-1">
+                        {detail.inputs.map((input, i) => (
+                          <p key={i} className="text-sm flex items-center justify-between gap-2">
+                            <span className="font-semibold">{input.name}</span>
+                            <span className="text-muted-foreground text-xs tabular-nums" dir="ltr">
+                              {input.quantity} {input.unit}{input.unitCost != null ? ` × ${input.unitCost.toLocaleString()}` : ""}
+                            </span>
+                          </p>
+                        ))}
+                      </div>
+                      {detail.materialCost != null && detail.materialCost > 0 && (
+                        <p className="mt-2 text-xs font-bold text-cta flex items-center justify-between border-t border-border/50 pt-2">
+                          {t("mfg_material_cost")}
+                          <span dir="ltr" className="tabular-nums">{detail.materialCost.toLocaleString()} {t("mfg_sar")}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {detail.items.map((item, i) => (
                     <p key={i} className="text-sm flex items-center gap-2">
                       <span className="font-semibold">{item.name}</span>
                       <span className="text-muted-foreground text-xs" dir="ltr">{item.quantity} {item.unit}</span>
                     </p>
                   ))}
+                  {detail.output && (
+                    <p className="text-sm flex items-center justify-between gap-2 border-t border-border/50 pt-2">
+                      <span className="flex items-center gap-1.5 font-bold text-success"><PackageCheck size={14} />{detail.output.name}</span>
+                      <span className="text-muted-foreground text-xs tabular-nums" dir="ltr">{detail.output.quantity} {detail.output.unit}</span>
+                    </p>
+                  )}
                 </div>
+              )}
+
+              {/* Delivery — the user decides where the finished item lands:
+                  a project warehouse, back to a central one, or the virtual
+                  distribution warehouse for goods awaiting delivery. */}
+              {detail.status === "done" && !detail.deliveredTo && (
+                <div className="rounded-xl border border-success/30 bg-success/5 p-3.5 space-y-2.5">
+                  <p className="text-sm font-bold text-success flex items-center gap-1.5">
+                    <Truck size={15} />
+                    {t("mfg_deliver_title", { name: effectiveOutput(detail).name })}
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={deliverDest || undefined} onValueChange={setDeliverDest}>
+                      <SelectTrigger className="h-9 w-64 text-xs"><SelectValue placeholder={t("mfg_deliver_placeholder")} /></SelectTrigger>
+                      <SelectContent>
+                        {orgWarehouses.filter((w) => !w.isOutbound).map((w) => (
+                          <SelectItem key={w.id} value={w.id} className="text-xs">
+                            {w.name}{w.projectId ? ` — ${t("mfg_wh_project_tag")}` : ""}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__outbound__" className="text-xs">{t("mfg_outbound_option")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button size="sm" className="gap-1.5 h-9" onClick={() => handleDeliver(detail)} disabled={!deliverDest || isDelivering}>
+                      {isDelivering ? <Loader2 size={13} className="animate-spin" /> : <Truck size={13} />}
+                      {t("mfg_deliver_btn")}
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {detail.deliveredTo && (
+                <p className="text-xs font-semibold text-success flex items-center gap-1.5">
+                  <CheckCircle2 size={13} />
+                  {t("mfg_delivered_line", { warehouse: detail.deliveredTo.warehouseName })}
+                </p>
               )}
 
               <div className="space-y-0">
