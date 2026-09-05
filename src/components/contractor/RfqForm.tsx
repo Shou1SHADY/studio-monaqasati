@@ -27,12 +27,13 @@ import {
   AlertCircle,
   Globe,
   Lock,
+  Handshake,
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
-import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
+import { collection, doc, getDoc, setDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
@@ -78,11 +79,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const storage = useStorage()
   const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
-  const [visibilityMode, setVisibilityMode] = useState<"public" | "private">("public")
+  const [visibilityMode, setVisibilityMode] = useState<"public" | "private" | "direct">("public")
   // Which suppliers a private RFQ goes to. null means "not narrowed" — every
   // connected supplier, which is what private meant before this picker existed
   // and stays the default so an untouched form behaves exactly as it used to.
   const [privateRecipients, setPrivateRecipients] = useState<string[] | null>(null)
+  // Direct award: one supplier, an agreed price, no offer round at all — the
+  // RFQ is born Awarded with an accepted offer.
+  const [directSupplierOrgId, setDirectSupplierOrgId] = useState("")
+  const [directPrice, setDirectPrice] = useState("")
 
   const connectedLinksQuery = useMemoFirebase(() => {
     if (!user || !firestore || !profile) return null
@@ -489,6 +494,23 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
     )
 
+    if (visibilityMode === "direct" && !isEditing) {
+      if (status === "Draft") {
+        toast({ title: t("newrfq_direct_no_draft"), variant: "destructive" })
+        return
+      }
+      if (!directSupplierOrgId || !(Number(directPrice) > 0)) {
+        toast({ title: t("newrfq_direct_missing"), variant: "destructive" })
+        return
+      }
+      if (new Set(validProducts.map(p => p.category)).size > 1) {
+        // Multi-category submissions split into several RFQs — one agreed price
+        // can't be divided across them, so a direct award stays single-category.
+        toast({ title: t("newrfq_direct_multi_category"), variant: "destructive" })
+        return
+      }
+    }
+
     setIsSubmitting(true)
 
     const redirectTarget = projectId ? `/contractor/projects/${projectId}?tab=rfqs` : "/contractor/rfqs"
@@ -599,9 +621,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         notes: formData.notes,
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
-        status: status,
-        visibility: visibilityMode,
-        allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
+        status: visibilityMode === "direct" ? "Awarded" : status,
+        visibility: visibilityMode === "direct" ? "private" : visibilityMode,
+        allowedSupplierOrgIds:
+          visibilityMode === "direct" ? [directSupplierOrgId]
+          : visibilityMode === "private" ? [...selectedRecipients]
+          : [],
+        ...(visibilityMode === "direct" ? { directAward: true, awardedAt: new Date().toISOString() } : {}),
         orderedFromMdmakDirect: false,
         requiresWarranty: catProducts.some(p => p.requiresWarranty),
         createdByUserId: user.uid,
@@ -656,6 +682,79 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       setProducts([{ id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
       setStep(1)
       setIsSubmitting(false)
+    } else if (visibilityMode === "direct") {
+      // Born awarded: the accepted offer, the chat, and the supplier's
+      // notification are created here — the same end-state the accept flow in
+      // RfqOffersView produces, minus the offer round.
+      try {
+        const rfqId = createdRfqIds[0]
+        const rfqTitle = formData.title
+        const supplierOption = supplierOptions.find((o) => o.orgId === directSupplierOrgId)
+        const supplierName = supplierOption?.name || ""
+        // The picked id is an ORG id; the notification inbox needs a USER id —
+        // a primary org's id IS its owner's uid, a secondary org names its owner.
+        let supplierUserId = directSupplierOrgId
+        const supplierUserSnap = await getDoc(doc(firestore, "users", directSupplierOrgId))
+        if (!supplierUserSnap.exists()) {
+          const orgSnap = await getDoc(doc(firestore, "organizations", directSupplierOrgId))
+          supplierUserId = (orgSnap.data()?.ownerUserId as string) || directSupplierOrgId
+        }
+        const contractorOrgId = (profile as Record<string, string>)?.organizationId || user.uid
+        const price = String(Number(directPrice))
+
+        const offerRef = await addDoc(collection(firestore, "offers"), {
+          directAward: true,
+          supplierId: supplierUserId,
+          organizationId: directSupplierOrgId,
+          supplierName,
+          companyName: supplierName,
+          submittedByUserId: user.uid,
+          submittedByUserName: profile?.name || user.email || "",
+          rfqId,
+          rfqTitle,
+          projectId: projectId || null,
+          contractorId: user.uid,
+          contractorOrgId,
+          price,
+          deliveryLocation: formData.city,
+          deliveryBatches: [{ location: formData.city, deliveryDate: formData.deadline, price, quantity: "" }],
+          status: "مقبول",
+          decidedByUserId: user.uid,
+          decidedByUserName: profile?.name || user.email || "",
+          decidedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        })
+        await setDoc(doc(firestore, "chats", offerRef.id), {
+          offerId: offerRef.id,
+          rfqId,
+          rfqTitle,
+          contractorId: user.uid,
+          contractorOrgId,
+          supplierId: supplierUserId,
+          supplierOrgId: directSupplierOrgId,
+          createdAt: new Date().toISOString(),
+        })
+        await addDoc(collection(firestore, "users", supplierUserId, "notifications"), {
+          userId: supplierUserId,
+          organizationId: directSupplierOrgId,
+          type: "direct_award",
+          title: t("direct_award_notif_title"),
+          message: t("direct_award_notif_msg", { title: rfqTitle, price: Number(directPrice).toLocaleString() }),
+          offerId: offerRef.id,
+          rfqId,
+          rfqTitle,
+          createdAt: new Date().toISOString(),
+          read: false,
+        })
+      } catch (err) {
+        console.error("Direct award post-create failed:", err)
+        toast({ title: t("newrfq_direct_partial_error"), variant: "destructive" })
+        setIsSubmitting(false)
+        return
+      }
+
+      toast({ title: t("newrfq_direct_success"), description: t("newrfq_direct_success_desc") })
+      router.push(redirectTarget)
     } else {
       // Update recurring-items catalog — fire and forget, doesn't block the success flow
       const orgId = (profile as Record<string, string>)?.organizationId || user.uid
@@ -989,14 +1088,17 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 {/* Visibility mode */}
                 <div className={cn(
                   "p-5 rounded-2xl border transition-all duration-200",
-                  visibilityMode === "private" ? "bg-primary/5 border-primary/20" : "bg-muted/40 border-border"
+                  visibilityMode !== "public" ? "bg-primary/5 border-primary/20" : "bg-muted/40 border-border"
                 )}>
                   <p className="text-sm font-bold text-foreground mb-3">{t("newrfq_visibility_label")}</p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className={cn("grid grid-cols-1 gap-2", isEditing ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
                     {([
                       { mode: "public" as const, icon: Globe, label: t("newrfq_visibility_public") },
                       { mode: "private" as const, icon: Lock, label: t("newrfq_visibility_private") },
+                      // A direct award can only be BORN — turning an existing open
+                      // tender into one would orphan submitted offers.
+                      ...(isEditing ? [] : [{ mode: "direct" as const, icon: Handshake, label: t("newrfq_visibility_direct") }]),
                     ]).map(({ mode, icon: Icon, label }) => (
                       <button
                         key={mode}
@@ -1016,16 +1118,46 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   </div>
 
                   <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                    {visibilityMode === "private"
-                      ? t("newrfq_visibility_private_desc")
-                      : t("newrfq_visibility_public_desc")}
+                    {visibilityMode === "direct"
+                      ? t("newrfq_visibility_direct_desc")
+                      : visibilityMode === "private"
+                        ? t("newrfq_visibility_private_desc")
+                        : t("newrfq_visibility_public_desc")}
                   </p>
 
-                  {visibilityMode === "private" && supplierOptions.length === 0 && (
+                  {visibilityMode !== "public" && supplierOptions.length === 0 && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
                       <AlertCircle size={11} className="shrink-0" />
                       {t("newrfq_visibility_no_suppliers")}
                     </p>
+                  )}
+
+                  {visibilityMode === "direct" && supplierOptions.length > 0 && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label>{t("newrfq_direct_supplier_label")} *</Label>
+                        <SearchableSelect
+                          value={directSupplierOrgId}
+                          onChange={setDirectSupplierOrgId}
+                          options={supplierOptions.map((o) => ({ value: o.orgId, label: o.name }))}
+                          placeholder={t("newrfq_direct_supplier_label")}
+                          searchPlaceholder={t("newrfq_direct_supplier_label")}
+                          noResultsText={t("newrfq_visibility_no_suppliers")}
+                          size="md"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="direct-price">{t("newrfq_direct_price_label")} *</Label>
+                        <Input
+                          id="direct-price"
+                          inputMode="numeric"
+                          dir="ltr"
+                          className="h-10 rounded-xl border-slate-200"
+                          value={directPrice}
+                          onChange={(e) => setDirectPrice(e.target.value.replace(/[^\d.]/g, ""))}
+                        />
+                      </div>
+                    </div>
                   )}
                   {/* Addressing a private RFQ. Defaults to every connected
                       supplier, so the contractor who does not care keeps the

@@ -51,6 +51,7 @@ import {
   ScrollText,
   Target,
   Scissors,
+  Factory,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -80,6 +81,7 @@ export type PortalComponentId =
   | "payments"
   | "hr"
   | "crm"
+  | "manufacturing"
   | "users"
 
 export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive"
@@ -239,6 +241,22 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "crm_nav_activities", href: "/contractor/crm/activities", icon: ClipboardList, requiredPermission: "crm.manage" },
           { titleKey: "crm_nav_settings", href: "/contractor/crm/settings", icon: SlidersHorizontal, requiredPermission: "crm.manage" },
         ],
+      },
+    ],
+  },
+  {
+    id: "manufacturing",
+    labelKey: "component_manufacturing",
+    descKey: "component_manufacturing_desc",
+    homeHref: "/contractor/manufacturing",
+    icon: Factory,
+    accentToken: "warning",
+    displayOrder: 8,
+    sections: [
+      {
+        labelKey: "component_manufacturing",
+        // Ungated: stage assignees are plain members and must reach their tasks.
+        items: [{ titleKey: "component_manufacturing", href: "/contractor/manufacturing", icon: Factory }],
       },
     ],
   },
@@ -412,6 +430,21 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           // pipeline pages.
           { titleKey: "supplier_connections", href: "/supplier/connections", icon: Link2, requiredPermission: "crm.manage" },
         ],
+      },
+    ],
+  },
+  {
+    id: "manufacturing",
+    labelKey: "component_manufacturing",
+    descKey: "supplier_component_manufacturing_desc",
+    homeHref: "/supplier/manufacturing",
+    icon: Factory,
+    accentToken: "warning",
+    displayOrder: 8,
+    sections: [
+      {
+        labelKey: "component_manufacturing",
+        items: [{ titleKey: "component_manufacturing", href: "/supplier/manufacturing", icon: Factory }],
       },
     ],
   },

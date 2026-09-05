@@ -37,9 +37,11 @@ import {
   validateRequest,
   type TransferValidationError,
 } from "@/lib/warehouse-requests"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown, Shapes, Wrench, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
+import { DEFAULT_ITEM_TYPE, composeItemTypeOptions, resolveItemTypeId, type CustomItemType, type ItemTypeOption } from "@/lib/inventory-types"
+import { useInventoryItemTypes } from "@/hooks/useInventoryItemTypes"
 
 type InventoryItem = {
   id: string
@@ -53,6 +55,10 @@ type InventoryItem = {
   unitCost?: number | null
   minStockLevel?: number
   trackingMode?: "unit" | null
+  /** Section this item belongs to — a built-in code (materials/equipment) or a custom
+   * type's doc id. Absent on rows created before types existed; those resolve to the
+   * default (materials) section. */
+  typeId?: string | null
 }
 
 type WarehouseDoc = {
@@ -78,6 +84,8 @@ function ItemDialog({
   item,
   warehouseId,
   orgId,
+  typeOptions,
+  defaultTypeId,
   t,
   locale,
 }: {
@@ -86,6 +94,9 @@ function ItemDialog({
   item?: InventoryItem
   warehouseId: string
   orgId: string
+  typeOptions: ItemTypeOption[]
+  /** Preselected type for a new item — the section whose add button opened the dialog. */
+  defaultTypeId: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   locale: string
 }) {
@@ -102,6 +113,7 @@ function ItemDialog({
   const [unit, setUnit] = useState(item?.unit ?? "")
   const [unitCost, setUnitCost] = useState(item?.unitCost != null ? String(item.unitCost) : "")
   const [minStockLevel, setMinStockLevel] = useState(item?.minStockLevel?.toString() ?? "")
+  const [typeId, setTypeId] = useState<string>(item ? resolveItemTypeId(item.typeId, typeOptions) : defaultTypeId)
   const [isUnitTracked, setIsUnitTracked] = useState(item?.trackingMode === "unit")
   // Errors surface next to the field that caused them. A toast alone never says
   // *which* input is wrong.
@@ -115,6 +127,7 @@ function ItemDialog({
     setUnit(item?.unit ?? "")
     setUnitCost(item?.unitCost != null ? String(item.unitCost) : "")
     setMinStockLevel(item?.minStockLevel?.toString() ?? "")
+    setTypeId(item ? resolveItemTypeId(item.typeId, typeOptions) : defaultTypeId)
     setIsUnitTracked(item?.trackingMode === "unit")
     setShowErrors(false) // otherwise a failed attempt greets the next open with stale errors
   }
@@ -151,6 +164,7 @@ function ItemDialog({
         unitCode: isCustomUnit ? null : unitCode,
         unitCost: unitCost.trim() ? Math.max(0, parseFloat(unitCost) || 0) : null,
         minStockLevel: minStockLevel ? Math.max(0, parseFloat(minStockLevel) || 0) : null,
+        typeId,
         trackingMode: isUnitTracked ? "unit" : null,
         organizationId: orgId,
         warehouseId,
@@ -196,6 +210,19 @@ function ItemDialog({
               {showErrors && nameError && (
                 <p id="item-name-error" className="text-[11px] text-destructive">{t("inv_item_name_required")}</p>
               )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="item-type">{t("inv_item_type")}</Label>
+              <Select value={typeId} onValueChange={setTypeId}>
+                <SelectTrigger id="item-type">
+                  <SelectValue placeholder={t("inv_item_type_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {typeOptions.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-sku">{t("inv_item_sku")}</Label>
@@ -270,6 +297,109 @@ function ItemDialog({
           </div>
           {!!item && (
             <p className="text-[11px] text-muted-foreground -mt-2">{t("inv_item_unit_tracking_locked")}</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>{t("wh_cancel")}</Button>
+          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+            {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
+            {t("wh_save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Create or rename an org-level item type — a custom section (beyond the built-in
+ * materials/equipment) that appears in every warehouse the company owns. */
+function TypeDialog({
+  open,
+  onOpenChange,
+  existing,
+  existingOptions,
+  orgId,
+  t,
+  locale,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  existing?: CustomItemType
+  existingOptions: ItemTypeOption[]
+  orgId: string
+  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
+  locale: string
+}) {
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [name, setName] = useState(existing?.name ?? "")
+  const [isSaving, setIsSaving] = useState(false)
+  const [showError, setShowError] = useState(false)
+
+  const trimmed = name.trim()
+  // A second «حفارات» section would be indistinguishable from the first.
+  const isDuplicate = !!trimmed && existingOptions.some(
+    (o) => o.id !== existing?.id && o.label.trim().toLowerCase() === trimmed.toLowerCase()
+  )
+  const nameError = !trimmed || isDuplicate
+
+  const handleSave = async () => {
+    if (!firestore) return
+    if (nameError) {
+      setShowError(true)
+      return
+    }
+    setIsSaving(true)
+    try {
+      if (existing) {
+        await updateDoc(doc(firestore, "inventoryItemTypes", existing.id), {
+          name: trimmed,
+          updatedAt: serverTimestamp(),
+        })
+      } else {
+        await addDoc(collection(firestore, "inventoryItemTypes"), {
+          name: trimmed,
+          organizationId: orgId,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        })
+      }
+      toast({ title: t("inv_type_saved") })
+      onOpenChange(false)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("inv_type_save_error"), variant: "destructive" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) onOpenChange(next) }}>
+      <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Shapes size={17} className="text-primary" />
+            {existing ? t("inv_type_edit_title") : t("inv_type_add_title")}
+          </DialogTitle>
+          <DialogDescription>{t("inv_type_dialog_desc")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5 py-2">
+          <Label htmlFor="type-name">{t("inv_type_name")} *</Label>
+          <Input
+            id="type-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("inv_type_name_placeholder")}
+            aria-invalid={showError && nameError}
+            className={cn(showError && nameError && "border-destructive focus-visible:ring-destructive")}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
+          />
+          {showError && !trimmed && (
+            <p className="text-[11px] text-destructive">{t("inv_type_name_required")}</p>
+          )}
+          {showError && isDuplicate && (
+            <p className="text-[11px] text-destructive">{t("inv_type_name_duplicate")}</p>
           )}
         </div>
         <DialogFooter>
@@ -890,7 +1020,9 @@ export function WarehouseInventoryPanel({
   const { user } = useUser()
   const canManageWarehouses = can("warehouses.manage")
 
-  const [showAdd, setShowAdd] = useState(false)
+  // Non-null = the add dialog is open, preseeded with this type (the section
+  // whose + was clicked, or the default for the header button).
+  const [addItemType, setAddItemType] = useState<string | null>(null)
   const [editItem, setEditItem] = useState<InventoryItem | null>(null)
   const [deleteItem, setDeleteItem] = useState<InventoryItem | null>(null)
   const [unitsItem, setUnitsItem] = useState<InventoryItem | null>(null)
@@ -900,6 +1032,12 @@ export function WarehouseInventoryPanel({
   const [search, setSearch] = useState("")
   const [sortKey, setSortKey] = useState<"name" | "quantity" | "value">("name")
   const [lowOnly, setLowOnly] = useState(false)
+  const [showAddType, setShowAddType] = useState(false)
+  const [editType, setEditType] = useState<CustomItemType | null>(null)
+  const [deleteType, setDeleteType] = useState<CustomItemType | null>(null)
+  const [isDeletingType, setIsDeletingType] = useState(false)
+  const [dragItem, setDragItem] = useState<InventoryItem | null>(null)
+  const [dragOverType, setDragOverType] = useState<string | null>(null)
 
   const warehouseRef = useMemoFirebase(() => {
     if (!firestore || !warehouseId) return null
@@ -931,6 +1069,9 @@ export function WarehouseInventoryPanel({
   const { data: items, isLoading } = useCollection(itemsRef)
   const list = (items || []) as InventoryItem[]
 
+  const { customTypes, isLoading: typesLoading } = useInventoryItemTypes(orgId)
+  const typeOptions = composeItemTypeOptions(t as (k: string) => string, customTypes, locale)
+
   const warehouseNameById = new Map<string, string>()
   ;[...centrals, ...projectWarehouses].forEach((w) => { if (w) warehouseNameById.set(w.id, w.name) })
 
@@ -946,6 +1087,39 @@ export function WarehouseInventoryPanel({
       toast({ title: t("inv_item_save_error"), variant: "destructive" })
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleDropOnType = async (targetTypeId: string) => {
+    const item = dragItem
+    setDragItem(null)
+    setDragOverType(null)
+    if (!firestore || !item || resolveItemTypeId(item.typeId, typeOptions) === targetTypeId) return
+    try {
+      await updateDoc(doc(firestore, "warehouses", warehouseId, "inventoryItems", item.id), {
+        typeId: targetTypeId,
+        updatedAt: serverTimestamp(),
+      })
+      const label = typeOptions.find((o) => o.id === targetTypeId)?.label ?? ""
+      toast({ title: t("inv_type_moved", { type: label }) })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("inv_type_move_error"), variant: "destructive" })
+    }
+  }
+
+  const handleDeleteType = async () => {
+    if (!firestore || !deleteType) return
+    setIsDeletingType(true)
+    try {
+      await deleteDoc(doc(firestore, "inventoryItemTypes", deleteType.id))
+      toast({ title: t("inv_type_deleted") })
+      setDeleteType(null)
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("inv_type_save_error"), variant: "destructive" })
+    } finally {
+      setIsDeletingType(false)
     }
   }
 
@@ -1014,7 +1188,13 @@ export function WarehouseInventoryPanel({
           </Button>
         )}
         {canManageWarehouses && (
-          <Button onClick={() => setShowAdd(true)} className="gap-2 shrink-0">
+          <Button variant="outline" onClick={() => setShowAddType(true)} className="gap-2 shrink-0">
+            <Shapes size={15} />
+            {t("inv_type_add_btn")}
+          </Button>
+        )}
+        {canManageWarehouses && (
+          <Button onClick={() => setAddItemType(DEFAULT_ITEM_TYPE)} className="gap-2 shrink-0">
             <Plus size={16} />
             {t("inv_item_add_btn")}
           </Button>
@@ -1024,8 +1204,8 @@ export function WarehouseInventoryPanel({
       {/* The low-stock count lives in the stat row below, where it's also the control
           that filters the table — a separate banner said the same thing twice. */}
 
-      {/* Items table */}
-      {isLoading ? (
+      {/* Items, grouped into one section per type */}
+      {isLoading || typesLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 size={32} className="animate-spin text-muted-foreground" />
         </div>
@@ -1035,7 +1215,7 @@ export function WarehouseInventoryPanel({
           <p className="font-bold text-muted-foreground">{t("inv_item_empty_title")}</p>
           <p className="text-sm text-muted-foreground/70">{t("inv_item_empty_desc")}</p>
           {canManageWarehouses && (
-            <Button onClick={() => setShowAdd(true)} variant="outline" className="gap-2 mt-2">
+            <Button onClick={() => setAddItemType(DEFAULT_ITEM_TYPE)} variant="outline" className="gap-2 mt-2">
               <Plus size={14} />
               {t("inv_item_add_btn")}
             </Button>
@@ -1129,89 +1309,172 @@ export function WarehouseInventoryPanel({
               </Button>
             </div>
           ) : (
-          <div className="rounded-xl border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/30 border-b">
-                <tr>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_name")}</th>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_sku")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_qty")}</th>
-                  <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_unit")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_unit_cost")}</th>
-                  <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_min_stock")}</th>
-                  <th className="py-3 px-4 w-28" />
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.map((item, idx) => {
-                  const isLow = item.minStockLevel != null && item.quantity <= item.minStockLevel
-                  const isUnitTracked = item.trackingMode === "unit"
-                  return (
-                    <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-background" : "bg-muted/10", isLow ? "border-s-2 border-warning" : "")}>
-                      <td className="py-3 px-4 font-semibold text-primary">
-                        {item.name}
-                        {isUnitTracked && (
-                          <Badge variant="outline" className="ms-2 text-primary border-primary/20 text-[10px] py-0 gap-1">
-                            <Barcode size={9} />
-                            {t("inv_item_unit_tracking_badge")}
-                          </Badge>
-                        )}
-                        {isLow && (
-                          <Badge variant="outline" className="ms-2 text-warning border-warning/30 text-[10px] py-0">
-                            <AlertTriangle size={9} className="me-1" />
-                            {t("inv_low_stock_badge")}
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{item.sku || "—"}</td>
-                      <td className="py-3 px-4 text-center font-bold tabular-nums" dir="ltr">{item.quantity}</td>
-                      <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatUnit(t as (k: string) => string, item)}</td>
-                      <td className="py-3 px-4 text-center text-muted-foreground tabular-nums">
-                        {item.unitCost != null ? (
-                          <span dir="ltr">{nf(item.unitCost)}</span>
-                        ) : (
-                          <span className="text-muted-foreground/50">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-center text-muted-foreground tabular-nums" dir="ltr">
-                        {item.minStockLevel ?? "—"}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1 justify-end">
-                          {isUnitTracked && (
+          <div className="space-y-4">
+            {typeOptions.map((opt) => {
+              const sectionItems = visibleItems.filter((it) => resolveItemTypeId(it.typeId, typeOptions) === opt.id)
+              // While searching/filtering, an empty section is noise; idle, it stays
+              // visible as the drop target and the place to add that type's first item.
+              if (sectionItems.length === 0 && (q !== "" || lowOnly)) return null
+              const custom = opt.builtIn ? null : customTypes.find((c) => c.id === opt.id) ?? null
+              const isDropTarget = dragOverType === opt.id && !!dragItem && resolveItemTypeId(dragItem.typeId, typeOptions) !== opt.id
+              const SectionIcon = opt.id === "materials" ? Package : opt.id === "equipment" ? Wrench : Shapes
+              return (
+                <section
+                  key={opt.id}
+                  onDragOver={(e) => {
+                    if (!dragItem) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = "move"
+                    if (dragOverType !== opt.id) setDragOverType(opt.id)
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      setDragOverType((v) => (v === opt.id ? null : v))
+                    }
+                  }}
+                  onDrop={(e) => { e.preventDefault(); handleDropOnType(opt.id) }}
+                  className={cn(
+                    "rounded-xl border p-3 sm:p-4 space-y-3 transition-colors",
+                    isDropTarget && "border-accent bg-accent/5"
+                  )}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <SectionIcon size={15} className="text-primary shrink-0" />
+                    <h3 className="text-sm font-bold text-foreground">{opt.label}</h3>
+                    <Badge variant="outline" className="text-muted-foreground tabular-nums" dir="ltr">{nf(sectionItems.length)}</Badge>
+                    <div className="flex-1" />
+                    {canManageWarehouses && (
+                      <div className="flex items-center gap-1">
+                        {custom && (
+                          <>
                             <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                              onClick={() => setUnitsItem(item)} aria-label={t("inv_unit_manage_btn")}>
-                              <Barcode size={13} />
+                              onClick={() => setEditType(custom)} aria-label={t("inv_type_edit_title")}>
+                              <Pencil size={13} />
                             </Button>
-                          )}
-                          {canManageWarehouses && !isUnitTracked && item.quantity > 0 && (isCentralHere ? myProjectWarehouses.length > 0 : !!myCentral) && (
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-accent"
-                              onClick={() => setTransferItem(item)}
-                              aria-label={isCentralHere ? t("transfer_btn") : t("return_btn")}>
-                              <ArrowLeftRight size={13} />
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteType(custom)} aria-label={t("wh_delete_btn")}>
+                              <Trash2 size={13} />
                             </Button>
-                          )}
-                          {canManageWarehouses && (
-                            <>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                                onClick={() => setEditItem(item)} aria-label={t("inv_item_edit_title")}>
-                                <Pencil size={13} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => setDeleteItem(item)} aria-label={t("wh_delete_btn")}>
-                                <Trash2 size={13} />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                          </>
+                        )}
+                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-muted-foreground hover:text-primary"
+                          onClick={() => setAddItemType(opt.id)}>
+                          <Plus size={13} />
+                          {t("inv_item_add_btn")}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {sectionItems.length === 0 ? (
+                    <p className="rounded-lg border border-dashed py-6 px-3 text-center text-xs text-muted-foreground">
+                      {t("inv_type_section_empty")}
+                    </p>
+                  ) : (
+                  <div className="rounded-xl border overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/30 border-b">
+                        <tr>
+                          <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_name")}</th>
+                          <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_sku")}</th>
+                          <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_qty")}</th>
+                          <th className={`py-3 px-4 font-bold text-muted-foreground whitespace-nowrap ${isRtl ? "text-right" : "text-left"}`}>{t("inv_item_unit")}</th>
+                          <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_unit_cost")}</th>
+                          <th className="py-3 px-4 font-bold text-muted-foreground text-center whitespace-nowrap">{t("inv_item_min_stock")}</th>
+                          <th className="py-3 px-4 w-28" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sectionItems.map((item, idx) => {
+                          const isLow = item.minStockLevel != null && item.quantity <= item.minStockLevel
+                          const isUnitTracked = item.trackingMode === "unit"
+                          return (
+                            <tr
+                              key={item.id}
+                              draggable={canManageWarehouses}
+                              onDragStart={(e) => {
+                                setDragItem(item)
+                                e.dataTransfer.effectAllowed = "move"
+                                e.dataTransfer.setData("text/plain", item.id)
+                              }}
+                              onDragEnd={() => { setDragItem(null); setDragOverType(null) }}
+                              className={cn(
+                                idx % 2 === 0 ? "bg-background" : "bg-muted/10",
+                                isLow ? "border-s-2 border-warning" : "",
+                                dragItem?.id === item.id && "opacity-40"
+                              )}
+                            >
+                              <td className="py-3 px-4 font-semibold text-primary">
+                                {canManageWarehouses && (
+                                  <GripVertical size={12} className="inline-block align-middle me-1.5 text-muted-foreground/40 cursor-grab" aria-hidden="true" />
+                                )}
+                                {item.name}
+                                {isUnitTracked && (
+                                  <Badge variant="outline" className="ms-2 text-primary border-primary/20 text-[10px] py-0 gap-1">
+                                    <Barcode size={9} />
+                                    {t("inv_item_unit_tracking_badge")}
+                                  </Badge>
+                                )}
+                                {isLow && (
+                                  <Badge variant="outline" className="ms-2 text-warning border-warning/30 text-[10px] py-0">
+                                    <AlertTriangle size={9} className="me-1" />
+                                    {t("inv_low_stock_badge")}
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-muted-foreground font-mono text-xs">{item.sku || "—"}</td>
+                              <td className="py-3 px-4 text-center font-bold tabular-nums" dir="ltr">{item.quantity}</td>
+                              <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">{formatUnit(t as (k: string) => string, item)}</td>
+                              <td className="py-3 px-4 text-center text-muted-foreground tabular-nums">
+                                {item.unitCost != null ? (
+                                  <span dir="ltr">{nf(item.unitCost)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground/50">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 text-center text-muted-foreground tabular-nums" dir="ltr">
+                                {item.minStockLevel ?? "—"}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-1 justify-end">
+                                  {isUnitTracked && (
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                      onClick={() => setUnitsItem(item)} aria-label={t("inv_unit_manage_btn")}>
+                                      <Barcode size={13} />
+                                    </Button>
+                                  )}
+                                  {canManageWarehouses && !isUnitTracked && item.quantity > 0 && (isCentralHere ? myProjectWarehouses.length > 0 : !!myCentral) && (
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-accent"
+                                      onClick={() => setTransferItem(item)}
+                                      aria-label={isCentralHere ? t("transfer_btn") : t("return_btn")}>
+                                      <ArrowLeftRight size={13} />
+                                    </Button>
+                                  )}
+                                  {canManageWarehouses && (
+                                    <>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                        onClick={() => setEditItem(item)} aria-label={t("inv_item_edit_title")}>
+                                        <Pencil size={13} />
+                                      </Button>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                        onClick={() => setDeleteItem(item)} aria-label={t("wh_delete_btn")}>
+                                        <Trash2 size={13} />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  </div>
+                  )}
+                </section>
+              )
+            })}
           </div>
           )}
         </div>
@@ -1258,13 +1521,49 @@ export function WarehouseInventoryPanel({
         />
       )}
 
-      <ItemDialog open={showAdd} onOpenChange={setShowAdd} warehouseId={warehouseId} orgId={orgId} t={t} locale={locale} />
+      {/* Mounted per open so the preseeded type (the section whose + was clicked)
+          lands in the dialog's initial state. */}
+      {addItemType !== null && (
+        <ItemDialog
+          open
+          onOpenChange={(open) => { if (!open) setAddItemType(null) }}
+          warehouseId={warehouseId}
+          orgId={orgId}
+          typeOptions={typeOptions}
+          defaultTypeId={addItemType}
+          t={t}
+          locale={locale}
+        />
+      )}
       {editItem && (
         <ItemDialog
           open={!!editItem}
           onOpenChange={(open) => { if (!open) setEditItem(null) }}
           item={editItem}
           warehouseId={warehouseId}
+          orgId={orgId}
+          typeOptions={typeOptions}
+          defaultTypeId={DEFAULT_ITEM_TYPE}
+          t={t}
+          locale={locale}
+        />
+      )}
+      {showAddType && (
+        <TypeDialog
+          open
+          onOpenChange={(open) => { if (!open) setShowAddType(false) }}
+          existingOptions={typeOptions}
+          orgId={orgId}
+          t={t}
+          locale={locale}
+        />
+      )}
+      {editType && (
+        <TypeDialog
+          open
+          onOpenChange={(open) => { if (!open) setEditType(null) }}
+          existing={editType}
+          existingOptions={typeOptions}
           orgId={orgId}
           t={t}
           locale={locale}
@@ -1281,6 +1580,23 @@ export function WarehouseInventoryPanel({
           locale={locale}
         />
       )}
+
+      <AlertDialog open={!!deleteType} onOpenChange={(open) => { if (!open) setDeleteType(null) }}>
+        <AlertDialogContent dir={isRtl ? "rtl" : "ltr"}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("inv_type_delete_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("inv_type_delete_confirm_desc", { name: deleteType?.name ?? "" })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingType}>{t("wh_cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteType} disabled={isDeletingType}
+              className="bg-destructive hover:bg-destructive/90 gap-2">
+              {isDeletingType ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {t("wh_delete_btn")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteItem} onOpenChange={(open) => { if (!open) setDeleteItem(null) }}>
         <AlertDialogContent dir={isRtl ? "rtl" : "ltr"}>

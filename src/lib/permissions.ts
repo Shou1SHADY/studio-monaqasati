@@ -23,6 +23,7 @@ export const PERMISSION_IDS = [
   // Projects. Split from `crm.manage` so a sales rep can work the pipeline
   // without being able to declare a win.
   "crm.close",
+  "manufacturing.manage",
   "team.manage",
 ] as const
 

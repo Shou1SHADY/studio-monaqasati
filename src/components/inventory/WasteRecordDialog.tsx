@@ -370,8 +370,11 @@ export function WasteRecordDialog({
     (r) => reasonCodes[r.inventoryItemId] === "other" && !(reasonNotes[r.inventoryItemId] || "").trim()
   )
   // A row asking for more than the warehouse holds must block the submit, not get
-  // silently clamped on the way to Firestore.
-  const overStockRows = rows.filter((r) => {
+  // silently clamped on the way to Firestore. Frozen while saving: Firestore's
+  // latency compensation applies the deduction to the live inventory listener the
+  // instant the batch is issued, so validating against it mid-save flashed a
+  // false "over stock" error for the very quantities being committed.
+  const overStockRows = isSaving ? [] : rows.filter((r) => {
     const src = inventoryItems.find((i) => i.id === r.inventoryItemId)
     return !!src && r.quantityTaken > src.quantity
   })
@@ -553,7 +556,7 @@ export function WasteRecordDialog({
                       {taken > 0 ? `${rowWaste.toFixed(1)}%` : "—"}
                     </td>
                     {hasBoq && (
-                      <td className="px-2 py-1">
+                      <td className="px-2 py-1 min-w-[210px]">
                         <SearchableSelect
                           value={boqLinks[item.id] || "__none__"}
                           onChange={(v) => setBoqLink(item.id, v === "__none__" ? "" : v)}
