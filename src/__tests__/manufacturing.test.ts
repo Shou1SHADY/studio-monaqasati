@@ -10,6 +10,23 @@ import {
   type WorkOrderStage,
   type WorkOrderInputItem,
 } from "@/lib/manufacturing"
+import { quotationItemsTotal } from "@/lib/crm"
+
+describe("quotationItemsTotal", () => {
+  it("sums quantity × unitPrice across lines", () => {
+    expect(
+      quotationItemsTotal([
+        { name: "رمل", quantity: 10, unit: "م3", unitPrice: 250 },
+        { name: "باب", quantity: 4, unit: "قطعة", unitPrice: 1800 },
+      ])
+    ).toBe(9700)
+  })
+
+  it("rounds to 2 decimals and handles empty lists", () => {
+    expect(quotationItemsTotal([{ name: "x", quantity: 3, unit: "", unitPrice: 0.1 }])).toBe(0.3)
+    expect(quotationItemsTotal([])).toBe(0)
+  })
+})
 
 const departments: MfgDepartment[] = [
   { id: "cut", organizationId: "o", name: "القص", order: 2 },

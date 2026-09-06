@@ -30,7 +30,7 @@ import {
 
 describe("SECTION_REGISTRY", () => {
   it("has exactly 18 sections", () => {
-    expect(SECTION_IDS.length).toBe(18)
+    expect(SECTION_IDS.length).toBe(19)
   })
 
   it("has no duplicate ids", () => {
@@ -79,7 +79,7 @@ describe("SECTION_REGISTRY", () => {
 
   it("marks exactly the expected sections as built vs ghost", () => {
     const built = SECTION_IDS.filter((id) => SECTION_REGISTRY[id].status === "built").sort()
-    expect(built).toEqual(["collect", "contract", "ipc", "procure", "receive", "store"].sort())
+    expect(built).toEqual(["collect", "contract", "ipc", "mfg", "procure", "receive", "store"].sort())
   })
 })
 

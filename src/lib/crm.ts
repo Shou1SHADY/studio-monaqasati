@@ -893,6 +893,20 @@ export function needsHigherApproval(amount: number, limit: number): boolean {
 
 export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected"
 export const QUOTATION_STATUSES: QuotationStatus[] = ["draft", "sent", "accepted", "rejected"]
+
+/** A line on the quotation template — picked from inventory or free-typed.
+ * On acceptance these become the auto work order's requested items, so the
+ * stock check can route only the missing goods to manufacturing. */
+export interface QuotationItem {
+  name: string
+  quantity: number
+  unit: string
+  unitPrice: number
+}
+
+export function quotationItemsTotal(items: QuotationItem[]): number {
+  return Math.round(items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0) * 100) / 100
+}
 export const QUOTATION_STATUS_BADGE_CLASS: Record<QuotationStatus, string> = {
   draft: "bg-muted text-muted-foreground border-border",
   sent: "bg-cta/10 text-cta border-cta/20",
@@ -911,6 +925,8 @@ export interface CrmQuotation {
   version?: number | null
   quotationNumber: string
   amount: number
+  /** When present, `amount` is their computed total. */
+  items?: QuotationItem[] | null
   status: QuotationStatus
   date?: string | null
   /** How many days the price holds. */
