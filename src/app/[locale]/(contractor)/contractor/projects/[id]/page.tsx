@@ -149,7 +149,8 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory } from "lucide-react"
+import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -1915,7 +1916,7 @@ export default function ProjectDetailPage() {
     ...dynamicTabs.map((id) => ({
       key: id as ActiveTab,
       label: tShared(sectionLabelKey(id)),
-      icon: id === "ipc" ? <Receipt size={15} /> : id === "store" ? <Warehouse size={15} /> : <Sparkles size={15} />,
+      icon: id === "ipc" ? <Receipt size={15} /> : id === "store" ? <Warehouse size={15} /> : id === "mfg" ? <Factory size={15} /> : <Sparkles size={15} />,
     })),
   ]
 
@@ -3061,7 +3062,10 @@ export default function ProjectDetailPage() {
             </Card>
           )
         )}
-        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && activeTab !== "store" && (
+        {activeTab === "mfg" && dynamicTabs.includes("mfg" as SectionId) && (
+          <ManufacturingView projectId={projectId} projectName={typedProject.name || ""} />
+        )}
+        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && activeTab !== "store" && activeTab !== "mfg" && (
           <ComingSoonTab sectionId={activeTab as SectionId} tShared={tShared} />
         )}
       </div>

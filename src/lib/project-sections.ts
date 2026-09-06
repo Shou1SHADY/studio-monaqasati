@@ -1,4 +1,4 @@
-// Project "sections" catalog (أقسام المشروع) — single source of truth for the 18
+// Project "sections" catalog (أقسام المشروع) — single source of truth for the 19
 // toggleable project features shown as tabs on the project detail page. Mirrors
 // src/lib/permissions.ts's catalog pattern, but this is NOT a permission system:
 // it controls which tabs/UI surfaces are visible on a project, not who can act
@@ -32,7 +32,7 @@ export const SECTION_IDS = [
   "contract", "procure", "docs",
   "receive", "store", "mats",
   "invoice", "pay", "cost", "ipc", "collect",
-  "daily", "progress", "vo", "subs",
+  "mfg", "daily", "progress", "vo", "subs",
   "qa", "hse", "rfi",
 ] as const
 export type SectionId = (typeof SECTION_IDS)[number]
@@ -52,6 +52,7 @@ export const SECTION_REGISTRY: Record<SectionId, SectionDef> = {
   ipc: { id: "ipc", group: "money", required: false, dependsOn: ["progress"], stages: ["claim"], reconciliationId: "r5", source: "mix", status: "built", tabRoute: "ipc" },
   collect: { id: "collect", group: "money", required: false, dependsOn: ["ipc"], stages: ["coll"], reconciliationId: "r6", source: "mix", status: "built", tabRoute: "ipc" },
 
+  mfg: { id: "mfg", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "mfg" },
   daily: { id: "daily", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "ghost", tabRoute: "daily" },
   progress: { id: "progress", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "ghost", tabRoute: "progress" },
   vo: { id: "vo", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "ghost", tabRoute: "vo" },

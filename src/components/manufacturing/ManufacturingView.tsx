@@ -39,7 +39,17 @@ import {
 
 type Member = { id: string; name?: string; email?: string }
 
-export function ManufacturingView() {
+export function ManufacturingView({
+  projectId,
+  projectName,
+}: {
+  /** When set, the view is embedded in that project's page: orders are scoped
+   * to the project, new orders are pre-linked to it, and the org-level chrome
+   * (page header, department manager) is hidden. */
+  projectId?: string
+  projectName?: string
+} = {}) {
+  const embedded = !!projectId
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
@@ -72,9 +82,13 @@ export function ManufacturingView() {
     return query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId))
   }, [firestore, orgId])
   const { data: ordersData, isLoading: ordersLoading } = useCollection(ordersQuery)
-  const orders = useMemo(
+  const allOrders = useMemo(
     () => (((ordersData || []) as WorkOrder[]).sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0))),
     [ordersData]
+  )
+  const orders = useMemo(
+    () => (projectId ? allOrders.filter((o) => o.projectId === projectId) : allOrders),
+    [allOrders, projectId]
   )
 
   const membersQuery = useMemoFirebase(() => {
@@ -220,12 +234,13 @@ export function ManufacturingView() {
     setIsCreating(true)
     try {
       const { cost } = computeMaterialCost(inputs)
-      const project = orgProjects.find((p) => p.id === orderProjectId)
+      const effectiveProjectId = projectId || orderProjectId
+      const effectiveProjectName = projectName || orgProjects.find((p) => p.id === orderProjectId)?.name
       const batch = writeBatch(firestore)
       const orderRef = doc(collection(firestore, WORK_ORDERS))
       batch.set(orderRef, {
         organizationId: orgId,
-        orderNumber: nextWorkOrderNumber(orders),
+        orderNumber: nextWorkOrderNumber(allOrders),
         title: orderTitle.trim(),
         items: [],
         inputs,
@@ -233,8 +248,8 @@ export function ManufacturingView() {
         sourceWarehouseName: orgWarehouses.find((w) => w.id === sourceWarehouseId)?.name || "",
         materialCost: cost,
         output: { name: outName.trim(), quantity: Number(outQty), unit: outUnit.trim() },
-        projectId: orderProjectId || null,
-        projectName: project?.name || null,
+        projectId: effectiveProjectId || null,
+        projectName: effectiveProjectName || null,
         deliveredTo: null,
         deliveredAt: null,
         source: { kind: "manual" },
@@ -386,17 +401,32 @@ export function ManufacturingView() {
     <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
       <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="text-2xl font-black text-primary flex items-center gap-2">
-            <Factory size={22} className="shrink-0" aria-hidden="true" />
-            {t("mfg_page_title")}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("mfg_page_desc")}</p>
+          {embedded ? (
+            <p className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Factory size={17} className="shrink-0 text-cta" aria-hidden="true" />
+              {t("mfg_project_tab_title")}
+            </p>
+          ) : (
+            <>
+              <h1 className="text-2xl font-black text-primary flex items-center gap-2">
+                <Factory size={22} className="shrink-0" aria-hidden="true" />
+                {t("mfg_page_title")}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">{t("mfg_page_desc")}</p>
+            </>
+          )}
         </div>
         <Button className="gap-2 shrink-0" onClick={() => setShowCreate(true)} disabled={departments.length === 0}>
           <Plus size={16} />
           {t("mfg_new_order_btn")}
         </Button>
       </header>
+
+      {embedded && departments.length === 0 && (
+        <p className="text-xs text-muted-foreground border border-dashed rounded-xl p-4 text-center">
+          {t("mfg_no_departments")}
+        </p>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -412,6 +442,7 @@ export function ManufacturingView() {
       </div>
 
       {/* Department chain */}
+      {!embedded && (
       <div className="rounded-2xl border bg-white p-5 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-black text-foreground flex items-center gap-2">
@@ -462,6 +493,7 @@ export function ManufacturingView() {
           </div>
         )}
       </div>
+      )}
 
       {/* Orders */}
       <div className="flex items-center gap-2">
@@ -553,7 +585,7 @@ export function ManufacturingView() {
                 <Input id="mfg-due" type="date" dir="ltr" value={orderDue} onChange={(e) => setOrderDue(e.target.value)} />
               </div>
             </div>
-            {orgProjects.length > 0 && (
+            {!embedded && orgProjects.length > 0 && (
               <div className="space-y-1.5">
                 <Label>{t("mfg_project_label")}</Label>
                 <Select value={orderProjectId || "__none__"} onValueChange={(v) => setOrderProjectId(v === "__none__" ? "" : v)}>
