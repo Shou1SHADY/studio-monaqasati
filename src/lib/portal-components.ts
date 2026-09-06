@@ -52,6 +52,8 @@ import {
   Target,
   Scissors,
   Factory,
+  HandCoins,
+  Banknote,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -82,6 +84,7 @@ export type PortalComponentId =
   | "hr"
   | "crm"
   | "manufacturing"
+  | "sales"
   | "users"
 
 export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive"
@@ -251,12 +254,35 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     homeHref: "/contractor/manufacturing",
     icon: Factory,
     accentToken: "warning",
-    displayOrder: 8,
+    displayOrder: 9,
     sections: [
       {
         labelKey: "component_manufacturing",
         // Ungated: stage assignees are plain members and must reach their tasks.
         items: [{ titleKey: "component_manufacturing", href: "/contractor/manufacturing", icon: Factory }],
+      },
+    ],
+  },
+  {
+    // Sales (المبيعات) — a component of its own, NOT a Finance page: every
+    // quotation the org writes (before manufacturing as an estimate, after it
+    // as the price of a finished item) and the customer payments recorded
+    // against them. Quotations stay in `crmQuotations`, so a CRM contact's
+    // page and this module read the same records.
+    id: "sales",
+    labelKey: "component_sales",
+    descKey: "component_sales_desc",
+    homeHref: "/contractor/sales",
+    icon: HandCoins,
+    accentToken: "cta",
+    displayOrder: 8,
+    sections: [
+      {
+        labelKey: "component_sales",
+        items: [
+          { titleKey: "sales_nav_quotations", href: "/contractor/sales", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_awaiting_payment", href: "/contractor/sales?tab=awaiting", icon: Banknote, requiredPermission: "sales.manage" },
+        ],
       },
     ],
   },

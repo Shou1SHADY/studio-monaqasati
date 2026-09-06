@@ -24,6 +24,10 @@ export const PERMISSION_IDS = [
   // without being able to declare a win.
   "crm.close",
   "manufacturing.manage",
+  // The Sales module: quotations before/after manufacturing and recording a
+  // customer's payment. Deliberately separate from `invoices.manage`
+  // (Finance) — Sales is its own component, not a Finance page.
+  "sales.manage",
   "team.manage",
 ] as const
 

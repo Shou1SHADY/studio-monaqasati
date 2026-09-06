@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,16 +11,19 @@ import { useFirestore } from "@/firebase"
 import { collection, doc, addDoc, updateDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
-import { FileText, Boxes, Plus, Trash2 } from "lucide-react"
+import { FileText, Boxes, Plus, Trash2, Factory } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import {
   CRM_QUOTATIONS,
   QUOTATION_STATUSES,
+  QUOTATION_PHASES,
   generateQuotationNumber,
   quotationItemsTotal,
+  quotationPhase,
   type CrmQuotation,
   type QuotationItem,
+  type QuotationPhase,
   type QuotationStatus,
 } from "@/lib/crm"
 import { createWorkOrderFromQuotation } from "@/lib/manufacturing"
@@ -42,6 +45,16 @@ function parseRows(rows: ItemRow[]): QuotationItem[] {
     }))
 }
 
+/** Seeds for a NEW quotation (ignored when editing): its phase, a prefilled
+ * line list, and the finished work order being sold — how Sales quotes a
+ * manufactured item. */
+export interface QuotationDefaults {
+  phase?: QuotationPhase
+  items?: QuotationItem[]
+  workOrderId?: string | null
+  workOrderNumber?: number | null
+}
+
 export function CrmQuotationDialog({
   open,
   onOpenChange,
@@ -49,6 +62,7 @@ export function CrmQuotationDialog({
   contactId,
   contactName,
   quotation,
+  defaults,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -56,15 +70,21 @@ export function CrmQuotationDialog({
   contactId: string
   contactName?: string | null
   quotation?: CrmQuotation
+  defaults?: QuotationDefaults
 }) {
   const t = useTranslations("Portal.Shared")
 
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  // Read through a ref so a parent re-rendering with a fresh `defaults`
+  // object never resets a form the user is typing into.
+  const defaultsRef = useRef(defaults)
+  defaultsRef.current = defaults
   const [isSaving, setIsSaving] = useState(false)
   const [amount, setAmount] = useState("")
   const [status, setStatus] = useState<QuotationStatus>("draft")
+  const [phase, setPhase] = useState<QuotationPhase>("pre_manufacturing")
   const [date, setDate] = useState("")
   const [notes, setNotes] = useState("")
   const [itemRows, setItemRows] = useState<ItemRow[]>([])
@@ -73,12 +93,14 @@ export function CrmQuotationDialog({
 
   useEffect(() => {
     if (!open) return
+    const seeds = quotation ? null : defaultsRef.current
     setAmount(quotation?.amount != null ? String(quotation.amount) : "")
     setStatus(quotation?.status ?? "draft")
+    setPhase(quotation ? quotationPhase(quotation) : seeds?.phase ?? "pre_manufacturing")
     setDate(quotation?.date ?? new Date().toISOString().split("T")[0])
     setNotes(quotation?.notes ?? "")
     setItemRows(
-      (quotation?.items || []).map((i) => ({
+      (quotation?.items || seeds?.items || []).map((i) => ({
         name: i.name,
         quantity: String(i.quantity),
         unit: i.unit,
@@ -146,6 +168,7 @@ export function CrmQuotationDialog({
         amount: parsed,
         items: hasItems ? parsedItems : null,
         status,
+        phase,
         date: date || null,
         notes: notes.trim() || null,
         organizationId: orgId,
@@ -153,6 +176,7 @@ export function CrmQuotationDialog({
       }
       let quotationId = quotation?.id
       let quotationNumber = quotation?.quotationNumber
+      const seeds = defaultsRef.current
       if (quotation) {
         await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), data)
       } else {
@@ -160,6 +184,8 @@ export function CrmQuotationDialog({
         const ref = await addDoc(collection(firestore, CRM_QUOTATIONS), {
           ...data,
           quotationNumber,
+          workOrderId: seeds?.workOrderId ?? null,
+          workOrderNumber: seeds?.workOrderNumber ?? null,
           createdAt: serverTimestamp(),
         })
         quotationId = ref.id
@@ -168,9 +194,11 @@ export function CrmQuotationDialog({
       // Acceptance is the manufacturing trigger: the first flip to "accepted"
       // spawns a work order routed through the org's department chain —
       // unless one already exists for this quotation, or every requested good
-      // is already sitting in a warehouse (see the lib).
+      // is already sitting in a warehouse (see the lib). A post-manufacturing
+      // quotation prices goods that already exist, so it never manufactures.
       const becameAccepted = status === "accepted" && quotation?.status !== "accepted"
-      if (becameAccepted && quotationId && user && !(quotation as { workOrderId?: string } | undefined)?.workOrderId) {
+      const linkedWorkOrder = quotation?.workOrderId || seeds?.workOrderId
+      if (becameAccepted && quotationId && user && phase !== "post_manufacturing" && !linkedWorkOrder) {
         try {
           const workOrderId = await createWorkOrderFromQuotation(firestore, {
             organizationId: orgId,
@@ -212,6 +240,35 @@ export function CrmQuotationDialog({
       },
       content: (
         <>
+            <div className="space-y-1.5">
+              <Label>{t("crm_quote_phase")}</Label>
+              <div role="group" aria-label={t("crm_quote_phase")} className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1">
+                {QUOTATION_PHASES.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    aria-pressed={phase === p}
+                    disabled={isSaving}
+                    onClick={() => setPhase(p)}
+                    className={cn(
+                      "h-9 rounded-md text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                      phase === p ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-white"
+                    )}
+                  >
+                    {t(`crm_quote_phase_${p}`)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {t(phase === "post_manufacturing" ? "crm_quote_phase_hint_post" : "crm_quote_phase_hint_pre")}
+              </p>
+              {(quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber) != null && (
+                <p className="text-[11px] font-semibold text-cta flex items-center gap-1">
+                  <Factory size={11} aria-hidden="true" />
+                  {t("crm_quote_work_order_ref", { number: quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber ?? "" })}
+                </p>
+              )}
+            </div>
             <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label className="flex items-center gap-1.5">
