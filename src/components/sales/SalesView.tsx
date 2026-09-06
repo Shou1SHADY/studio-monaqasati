@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { HandCoins, Plus, Pencil, Search, Loader2, FileText, Factory, Banknote, CheckCircle2, Lock } from "lucide-react"
+import { HandCoins, Plus, Pencil, Search, Loader2, FileText, Factory, Banknote, CheckCircle2, Lock, Tags } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -38,16 +38,21 @@ import {
 import { WORK_ORDERS, effectiveOutput, type WorkOrder } from "@/lib/manufacturing"
 import {
   SALES_TABS,
+  installmentStates,
   isAwaitingPayment,
-  markQuotationPaid,
+  isFullyPaid,
+  nextUnpaidInstallment,
+  paidSoFar,
   paymentRecipients,
   quotationMatchesSearch,
   quotationMatchesTab,
   quotationPrefillFromWorkOrder,
+  recordInstallmentPayment,
   salesTotals,
   type SalesTab,
 } from "@/lib/sales"
 import { CrmQuotationDialog, type QuotationDefaults } from "@/components/crm/CrmQuotationDialog"
+import { crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
 
 const TAB_PARAM_VALUES = new Set<string>(SALES_TABS)
 
@@ -55,11 +60,12 @@ type Draft = { contactId: string; contactName: string | null; defaults: Quotatio
 
 /**
  * Sales (المبيعات) — every quotation the org has written, before manufacturing
- * (estimates) and after it (a finished item's price), plus the customer
- * payments recorded against them. Its own module, not a Finance page; the
- * records are the CRM's quotations, so the contact page and this list agree.
+ * (estimates) and after it (a finished item's price), the payment schedule
+ * inside each, and the customer payments recorded against them. Its own
+ * module, not a Finance page; the records are the CRM's quotations, so the
+ * contact page and this list agree. Same component in both portals.
  */
-export function SalesView() {
+export function SalesView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
@@ -68,7 +74,10 @@ export function SalesView() {
   const { toast } = useToast()
   const { can, groups } = usePermissions()
   const canManage = can("sales.manage")
-  const canMarkPaid = canManage || can("invoices.manage")
+  // Money is recorded by Finance or by whoever may approve the sale.
+  const canRecordPayment = can("invoices.manage") || can("sales.approve")
+  const crmBase = crmBasePath(portal)
+  const portalBase = `/${portal}`
 
   const { orgId, contacts, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
 
@@ -91,7 +100,7 @@ export function SalesView() {
   const [tab, setTab] = useState<SalesTab>("all")
   const [search, setSearch] = useState("")
   useEffect(() => {
-    // The sidebar deep-links `/contractor/sales?tab=awaiting`.
+    // The sidebar deep-links `…/sales?tab=awaiting`.
     try {
       const wanted = new URLSearchParams(window.location.search).get("tab")
       if (wanted && TAB_PARAM_VALUES.has(wanted)) setTab(wanted as SalesTab)
@@ -149,37 +158,51 @@ export function SalesView() {
     setShowNew(false)
   }
 
-  // ── Record a customer payment ──
+  // ── Record a customer payment against one installment ──
   const [payQuote, setPayQuote] = useState<CrmQuotation | null>(null)
+  const [payInstallmentId, setPayInstallmentId] = useState("")
   const [payAmount, setPayAmount] = useState("")
   const [payNote, setPayNote] = useState("")
   const [isPaying, setIsPaying] = useState(false)
 
+  const payStates = payQuote ? installmentStates(payQuote) : []
   const openPay = (q: CrmQuotation) => {
+    const next = nextUnpaidInstallment(q)
     setPayQuote(q)
-    setPayAmount(q.amount != null ? String(q.amount) : "")
+    setPayInstallmentId(next?.id || "")
+    setPayAmount(next ? String(next.amount) : "")
     setPayNote("")
   }
+  const pickInstallment = (id: string) => {
+    setPayInstallmentId(id)
+    const state = payStates.find((s) => s.id === id)
+    if (state) setPayAmount(String(state.amount))
+  }
+  const installmentLabel = (label: string) => label || t("crm_quote_installment_full")
+
   const confirmPaid = async () => {
-    if (!firestore || !user || !payQuote || isPaying) return
+    if (!firestore || !user || !payQuote || !payInstallmentId || isPaying) return
     const amount = parseFloat(payAmount)
     if (!Number.isFinite(amount) || amount <= 0) {
       toast({ title: t("crm_quote_amount_error"), variant: "destructive" })
       return
     }
+    const state = payStates.find((s) => s.id === payInstallmentId)
     setIsPaying(true)
     try {
       const recipients = paymentRecipients({ ownerId: orgId, actorId: user.uid, members: teamMembers, groups })
-      await markQuotationPaid(firestore, {
+      await recordInstallmentPayment(firestore, {
         quotation: payQuote,
+        installmentId: payInstallmentId,
         amount,
         note: payNote.trim() || null,
         actor: { id: user.uid, name: actorName },
         recipients,
         notification: {
           title: t("sales_notif_paid_title"),
-          message: t("sales_notif_paid_msg", {
+          message: t("sales_notif_paid_installment_msg", {
             contact: payQuote.contactName || "—",
+            label: installmentLabel(state?.label || ""),
             number: payQuote.quotationNumber,
             amount: formatSar(amount, locale),
           }),
@@ -218,10 +241,18 @@ export function SalesView() {
             </p>
           )}
         </div>
-        <Button className="gap-2 shrink-0" onClick={openNew} disabled={!canManage || isLoading}>
-          <Plus size={16} />
-          {t("sales_new_quote_btn")}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href={`${portalBase}/sales/price-list`}>
+            <Button variant="outline" className="gap-2">
+              <Tags size={15} />
+              {t("sales_price_list_link")}
+            </Button>
+          </Link>
+          <Button className="gap-2" onClick={openNew} disabled={!canManage || isLoading}>
+            <Plus size={16} />
+            {t("sales_new_quote_btn")}
+          </Button>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -280,6 +311,9 @@ export function SalesView() {
         <ul className="rounded-2xl border bg-white divide-y overflow-hidden">
           {visible.map((q) => {
             const phase = quotationPhase(q)
+            const paid = paidSoFar(q)
+            const fully = isFullyPaid(q)
+            const states = installmentStates(q)
             return (
               <li key={q.id} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3.5">
                 <div className="min-w-0 flex-1">
@@ -287,7 +321,7 @@ export function SalesView() {
                     <span className="font-mono text-xs text-muted-foreground">{q.quotationNumber}</span>
                     <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS[phase])}>{t(`crm_quote_phase_${phase}`)}</Badge>
                     <Badge className={cn("text-[10px]", QUOTATION_STATUS_BADGE_CLASS[q.status])}>{t(`crm_quote_status_${q.status}`)}</Badge>
-                    {q.paidAt && (
+                    {fully && (
                       <Badge className="text-[10px] bg-success/10 text-success border-success/20 gap-1">
                         <CheckCircle2 size={10} aria-hidden="true" />
                         {t("crm_quote_paid_badge")}
@@ -297,7 +331,7 @@ export function SalesView() {
                   <p className="text-sm font-bold text-foreground mt-1 flex items-center gap-2 flex-wrap">
                     {q.contactId ? (
                       <Link
-                        href={`/contractor/crm/leads/${q.contactId}`}
+                        href={`${crmBase}/leads/${q.contactId}`}
                         className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                         dir="auto"
                       >
@@ -308,7 +342,7 @@ export function SalesView() {
                     )}
                     {q.workOrderNumber != null && (
                       <Link
-                        href="/contractor/manufacturing"
+                        href={`${portalBase}/manufacturing`}
                         className="text-xs font-semibold text-cta flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                       >
                         <Factory size={11} aria-hidden="true" />
@@ -316,26 +350,40 @@ export function SalesView() {
                       </Link>
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {q.date && formatCrmDate(q.date, locale)}
-                    {q.paidAt && (
-                      <>
-                        {q.date && " · "}
-                        {t("sales_paid_on", { date: formatCrmDate(q.paidAt, locale) })}
-                        {q.paidByUserName && ` ${t("sales_paid_by", { name: q.paidByUserName })}`}
-                        {q.paidAmount != null && q.paidAmount !== q.amount && (
-                          <span dir="ltr" className="ms-1">({formatSar(q.paidAmount, locale)})</span>
-                        )}
-                      </>
+                  <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {q.date && <span>{formatCrmDate(q.date, locale)}</span>}
+                    {q.status === "accepted" && (
+                      <span className={cn("font-semibold", fully ? "text-success" : paid > 0 ? "text-warning" : "")} dir="auto">
+                        {q.date && "· "}
+                        {fully
+                          ? t("sales_paid_full")
+                          : t("sales_progress_line", { paid: formatSar(paid, locale), total: formatSar(q.amount, locale) })}
+                      </span>
                     )}
                   </p>
+                  {q.status === "accepted" && states.length > 1 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                      {states.map((s) => (
+                        <span
+                          key={s.id}
+                          className={cn(
+                            "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                            s.payment ? "bg-success/10 text-success border-success/20" : "bg-white text-muted-foreground border-slate-200"
+                          )}
+                          dir="auto"
+                        >
+                          {installmentLabel(s.label)} {s.percent}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                   <span className="text-sm font-black tabular-nums" dir="ltr">{formatSar(q.amount, locale)}</span>
-                  {canMarkPaid && isAwaitingPayment(q) && (
+                  {canRecordPayment && isAwaitingPayment(q) && (
                     <Button size="sm" className="h-8 gap-1.5" onClick={() => openPay(q)}>
                       <Banknote size={13} />
-                      {t("sales_mark_paid_btn")}
+                      {t("sales_record_payment_btn")}
                     </Button>
                   )}
                   {canManage && (
@@ -452,19 +500,48 @@ export function SalesView() {
         />
       )}
 
-      {/* Record a customer payment — finance is notified in the same write. */}
+      {/* Record a customer payment against an installment — finance is notified in the same write. */}
       <Dialog open={!!payQuote} onOpenChange={(open) => { if (!open && !isPaying) setPayQuote(null) }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Banknote size={18} className="text-success" aria-hidden="true" />
-              {t("sales_mark_paid_title")}
+              {t("sales_record_payment_title")}
             </DialogTitle>
             <DialogDescription>
-              {payQuote && t("sales_mark_paid_desc", { number: payQuote.quotationNumber, contact: payQuote.contactName || "—" })}
+              {payQuote && t("sales_record_payment_desc", { number: payQuote.quotationNumber, contact: payQuote.contactName || "—" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>{t("sales_pick_installment")}</Label>
+              <div role="radiogroup" aria-label={t("sales_pick_installment")} className="space-y-1">
+                {payStates.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={payInstallmentId === s.id}
+                    disabled={!!s.payment || isPaying}
+                    onClick={() => pickInstallment(s.id)}
+                    className={cn(
+                      "w-full text-start flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                      payInstallmentId === s.id ? "border-primary bg-primary/5" : "border-slate-200 hover:border-slate-300",
+                      s.payment && "bg-success/5 border-success/30"
+                    )}
+                  >
+                    <span className="font-semibold" dir="auto">
+                      {installmentLabel(s.label)} · {s.percent}%
+                    </span>
+                    <span className="tabular-nums text-muted-foreground" dir="ltr">
+                      {s.payment
+                        ? t("sales_installment_paid_line", { label: "", amount: formatSar(s.payment.paidAmount, locale), date: formatCrmDate(s.payment.paidAt, locale) }).trim()
+                        : formatSar(s.amount, locale)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="sales-paid-amount">{t("sales_paid_amount")}</Label>
               <Input
@@ -486,7 +563,7 @@ export function SalesView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayQuote(null)} disabled={isPaying}>{t("crm_cancel")}</Button>
-            <Button onClick={confirmPaid} disabled={isPaying} className="gap-2 bg-success hover:bg-success/90 text-white">
+            <Button onClick={confirmPaid} disabled={isPaying || !payInstallmentId} className="gap-2 bg-success hover:bg-success/90 text-white">
               {isPaying ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
               {t("sales_confirm_paid")}
             </Button>

@@ -54,6 +54,8 @@ import {
   Factory,
   HandCoins,
   Banknote,
+  Tags,
+  ClipboardCheck,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -184,6 +186,9 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_warehouses", href: "/contractor/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
           { titleKey: "contractor_warehouse_requests", href: "/contractor/warehouses/requests", icon: ClipboardList, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_waste", href: "/contractor/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
+          // Ungated: whoever hands a finished order over needs to see whether
+          // it was received; signing for it is gated inside the page.
+          { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
         ],
       },
     ],
@@ -282,6 +287,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "sales_nav_quotations", href: "/contractor/sales", icon: FileText, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_awaiting_payment", href: "/contractor/sales?tab=awaiting", icon: Banknote, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_price_list", href: "/contractor/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],
       },
     ],
@@ -377,6 +383,10 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "supplier_rfqs", href: "/supplier/rfqs", icon: Search, requiredPermission: "offers.view" },
           { titleKey: "supplier_offers", href: "/supplier/offers", icon: History, requiredPermission: "offers.view" },
+          // The supplier's own quotations and price list — the same Sales
+          // module as the contractor's, living inside the RFQ-facing Sales tile.
+          { titleKey: "sales_nav_quotations", href: "/supplier/sales", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_price_list", href: "/supplier/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],
       },
     ],
@@ -395,6 +405,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_waste", href: "/supplier/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
+          { titleKey: "inventory_delivery_notes", href: "/supplier/warehouses/delivery-notes", icon: ClipboardCheck },
         ],
       },
     ],

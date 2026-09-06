@@ -24,15 +24,39 @@ export const PERMISSION_IDS = [
   // without being able to declare a win.
   "crm.close",
   "manufacturing.manage",
-  // The Sales module: quotations before/after manufacturing and recording a
-  // customer's payment. Deliberately separate from `invoices.manage`
-  // (Finance) — Sales is its own component, not a Finance page.
+  // The Sales module, deliberately separate from `invoices.manage` (Finance):
+  // `sales.manage` writes quotations and the price list; `sales.approve`
+  // marks a quotation accepted — the step that posts the deposit to Finance
+  // and opens the work order — and, with `invoices.manage`, records the
+  // customer's payments.
   "sales.manage",
+  "sales.approve",
+  // Confirming receipt of a delivery note (stock arriving from Manufacturing)
+  // without the power to edit stock — the warehouse keeper's signature.
+  "warehouses.receive",
   "team.manage",
 ] as const
 
 export type PermissionId = (typeof PERMISSION_IDS)[number]
 export type PermissionValue = PermissionId | typeof ALL_PERMISSION
+
+/** The catalog grouped by portal component, for the group editor — a
+ * permission belongs to exactly one section (guarded by a test). */
+export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId[] }> = [
+  { key: "projects", permissions: ["projects.view", "projects.edit", "projects.publish", "projects.delete"] },
+  { key: "procurement", permissions: ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "suppliers.manage", "deliveries.confirm"] },
+  { key: "inventory", permissions: ["warehouses.manage", "warehouses.receive"] },
+  { key: "finance", permissions: ["invoices.manage"] },
+  { key: "hr", permissions: ["employees.manage"] },
+  { key: "crm", permissions: ["crm.manage", "crm.close"] },
+  { key: "sales", permissions: ["sales.manage", "sales.approve"] },
+  { key: "manufacturing", permissions: ["manufacturing.manage"] },
+  { key: "governance", permissions: ["team.manage"] },
+]
+
+export function permissionSectionLabelKey(key: string): string {
+  return `perm_section_${key}`
+}
 
 // Translation key (Portal.Shared namespace) for each permission's label/description.
 export function permissionLabelKey(id: PermissionId): string {
@@ -96,6 +120,7 @@ export const SEEDED_GROUPS: Array<{
       "suppliers.manage",
       "deliveries.confirm",
       "warehouses.manage",
+      "warehouses.receive",
     ],
     isSystem: false,
   },

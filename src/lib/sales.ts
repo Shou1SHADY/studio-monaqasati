@@ -1,24 +1,119 @@
 // Sales (المبيعات) domain — a component of its own, deliberately separate
 // from Finance. It reads the CRM's quotations (`crmQuotations`) as the sales
 // pipeline: an estimate before manufacturing, a price for a finished item
-// after it, and the customer payment recorded against either. Invoices and
-// finance postings are out of scope here by decision.
+// after it, the payment schedule written inside the quotation, and the
+// customer payments recorded against it. There are no invoices and no ledger
+// here by decision — Finance is told through notifications until it exists.
 
-import { collection, doc, writeBatch, serverTimestamp, type Firestore } from "firebase/firestore"
-import { CRM_QUOTATIONS, type CrmQuotation, type QuotationItem, quotationPhase } from "./crm"
+import {
+  collection,
+  doc,
+  getDocs,
+  query,
+  where,
+  writeBatch,
+  serverTimestamp,
+  type Firestore,
+} from "firebase/firestore"
+import {
+  CRM_QUOTATIONS,
+  INSTALLMENT_FULL_ID,
+  installmentAmount,
+  quotationInstallments,
+  quotationPhase,
+  type CrmQuotation,
+  type QuotationInstallment,
+  type QuotationItem,
+  type QuotationPayment,
+} from "./crm"
 import { ALL_PERMISSION, type TeamGroup } from "./permissions"
 import { effectiveOutput, type WorkOrder } from "./manufacturing"
+
+// ---------------------------------------------------------------------------
+// Price list — the org's known items with fixed prices, picked into quotations.
+// ---------------------------------------------------------------------------
+
+export const SALES_PRICE_ITEMS = "salesPriceItems"
+
+export interface SalesPriceItem {
+  id: string
+  organizationId: string
+  name: string
+  unit: string
+  unitPrice: number
+  notes?: string | null
+  createdAt?: unknown
+  updatedAt?: unknown
+}
+
+export function priceItemToQuotationLine(item: Pick<SalesPriceItem, "name" | "unit" | "unitPrice">, quantity = 1): QuotationItem {
+  return { name: item.name, quantity, unit: item.unit, unitPrice: item.unitPrice }
+}
+
+/** Exact, case-insensitive name match against the price list. */
+export function findPriceItem<T extends { name: string }>(list: T[], name: string): T | undefined {
+  const key = name.trim().toLowerCase()
+  if (!key) return undefined
+  return list.find((p) => p.name.trim().toLowerCase() === key)
+}
+
+// ---------------------------------------------------------------------------
+// Tabs, search, totals
+// ---------------------------------------------------------------------------
 
 export type SalesTab = "all" | "pre" | "post" | "awaiting" | "paid"
 export const SALES_TABS: SalesTab[] = ["all", "pre", "post", "awaiting", "paid"]
 
-export function isQuotationPaid(q: Pick<CrmQuotation, "paidAt">): boolean {
-  return !!q.paidAt
+export interface InstallmentState extends QuotationInstallment {
+  amount: number
+  payment: QuotationPayment | null
 }
 
-/** An accepted quotation the customer has not paid yet. */
-export function isAwaitingPayment(q: Pick<CrmQuotation, "status" | "paidAt">): boolean {
-  return q.status === "accepted" && !q.paidAt
+/**
+ * Each installment with its computed amount and whatever was paid against it.
+ * A quotation marked paid before schedules existed reads as its single
+ * installment paid, so old records keep their meaning.
+ */
+export function installmentStates(q: Pick<CrmQuotation, "amount" | "installments" | "payments" | "paidAt" | "paidAmount" | "paidByUserId" | "paidByUserName" | "paymentNote">): InstallmentState[] {
+  const payments = q.payments || {}
+  return quotationInstallments(q).map((inst) => {
+    let payment = payments[inst.id] ?? null
+    if (!payment && inst.id === INSTALLMENT_FULL_ID && q.paidAt) {
+      payment = {
+        paidAt: q.paidAt,
+        paidAmount: q.paidAmount ?? (Number(q.amount) || 0),
+        paidByUserId: q.paidByUserId ?? null,
+        paidByUserName: q.paidByUserName ?? null,
+        note: q.paymentNote ?? null,
+      }
+    }
+    return { ...inst, amount: installmentAmount(q, inst), payment }
+  })
+}
+
+export function paidSoFar(q: CrmQuotation): number {
+  const total = installmentStates(q).reduce((sum, s) => sum + (s.payment ? (s.payment.paidAmount ?? s.amount) : 0), 0)
+  return Math.round(total * 100) / 100
+}
+
+export function isFullyPaid(q: CrmQuotation): boolean {
+  if (q.paidAt) return true
+  const states = installmentStates(q)
+  return states.length > 0 && states.every((s) => !!s.payment)
+}
+
+/** Back-compat alias — "paid" in the tabs means paid in full. */
+export function isQuotationPaid(q: CrmQuotation): boolean {
+  return isFullyPaid(q)
+}
+
+/** An accepted quotation the customer has not finished paying. */
+export function isAwaitingPayment(q: CrmQuotation): boolean {
+  return q.status === "accepted" && !isFullyPaid(q)
+}
+
+export function nextUnpaidInstallment(q: CrmQuotation): InstallmentState | null {
+  return installmentStates(q).find((s) => !s.payment) ?? null
 }
 
 export function quotationMatchesTab(q: CrmQuotation, tab: SalesTab): boolean {
@@ -32,7 +127,7 @@ export function quotationMatchesTab(q: CrmQuotation, tab: SalesTab): boolean {
     case "awaiting":
       return isAwaitingPayment(q)
     case "paid":
-      return isQuotationPaid(q)
+      return isFullyPaid(q)
   }
 }
 
@@ -57,8 +152,11 @@ export function salesTotals(quotations: CrmQuotation[]): SalesTotals {
     const amount = Number(q.amount) || 0
     if (q.status === "sent" || q.status === "accepted") totals.quoted += amount
     if (q.status === "accepted") totals.accepted += amount
-    if (isAwaitingPayment(q)) totals.awaitingPayment += amount
-    if (isQuotationPaid(q)) totals.paid += q.paidAmount != null ? Number(q.paidAmount) || 0 : amount
+    const paid = q.status === "accepted" ? paidSoFar(q) : 0
+    if (q.status === "accepted") {
+      totals.paid += paid
+      totals.awaitingPayment += Math.max(0, amount - paid)
+    }
     for (const tab of SALES_TABS) if (quotationMatchesTab(q, tab)) totals.counts[tab] += 1
   }
   const round = (n: number) => Math.round(n * 100) / 100
@@ -80,10 +178,14 @@ export function quotationMatchesSearch(q: CrmQuotation, term: string): boolean {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Who in Finance hears about approvals and payments
+// ---------------------------------------------------------------------------
+
 /**
- * Who hears that a customer paid: the org owner and every member whose
- * default group grants `invoices.manage` (the finance people — "Walid wants
- * to know"). The person recording the payment is never told twice.
+ * The org owner and every member whose default group grants
+ * `invoices.manage` (the finance people — "Walid wants to know"). The person
+ * acting is never told twice.
  */
 export function paymentRecipients(input: {
   ownerId: string
@@ -105,6 +207,25 @@ export function paymentRecipients(input: {
   return [...out]
 }
 
+/** Same rule, resolved from Firestore — for callers (the shared quotation
+ * dialog) that don't already hold the team and its groups. */
+export async function loadFinanceRecipients(firestore: Firestore, orgId: string, actorId: string): Promise<string[]> {
+  const [users, groups] = await Promise.all([
+    getDocs(query(collection(firestore, "users"), where("organizationId", "==", orgId))),
+    getDocs(query(collection(firestore, "teamGroups"), where("organizationId", "==", orgId))),
+  ])
+  return paymentRecipients({
+    ownerId: orgId,
+    actorId,
+    members: users.docs.map((d) => ({ id: d.id, defaultGroupId: (d.data().defaultGroupId as string | null) ?? null })),
+    groups: groups.docs.map((d) => ({ id: d.id, permissions: (d.data().permissions as TeamGroup["permissions"]) || [] })),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
 /** Seed a post-manufacturing quotation from a finished work order: its output
  * becomes the single line (price left for Sales to fill), and the customer is
  * the one the order was made for, when it came from a quotation. */
@@ -125,46 +246,110 @@ export function quotationPrefillFromWorkOrder(order: WorkOrder): {
   }
 }
 
-export interface MarkPaidInput {
-  quotation: Pick<CrmQuotation, "id" | "quotationNumber" | "contactName" | "organizationId">
+type NotificationCopy = { title: string; message: string }
+
+function queueNotifications(
+  firestore: Firestore,
+  batch: ReturnType<typeof writeBatch>,
+  recipients: string[],
+  payload: Record<string, unknown> & { type: string; organizationId: string; createdAt: string } & NotificationCopy
+) {
+  for (const uid of recipients) {
+    batch.set(doc(collection(firestore, "users", uid, "notifications")), { ...payload, userId: uid, read: false })
+  }
+}
+
+/**
+ * The "reflection" to Finance when a customer approves: no ledger exists yet,
+ * so the deposit and schedule reach the finance people as a notification —
+ * the placeholder the meeting agreed on until Finance is built.
+ */
+export async function notifyQuotationApproved(
+  firestore: Firestore,
+  input: {
+    quotation: Pick<CrmQuotation, "id" | "quotationNumber" | "contactName" | "organizationId" | "amount">
+    recipients: string[]
+    notification: NotificationCopy
+  }
+): Promise<void> {
+  if (input.recipients.length === 0) return
+  const batch = writeBatch(firestore)
+  queueNotifications(firestore, batch, input.recipients, {
+    type: "quotation_approved",
+    organizationId: input.quotation.organizationId,
+    title: input.notification.title,
+    message: input.notification.message,
+    quotationId: input.quotation.id,
+    quotationNumber: input.quotation.quotationNumber,
+    contactName: input.quotation.contactName ?? null,
+    amount: input.quotation.amount,
+    createdAt: new Date().toISOString(),
+  })
+  await batch.commit()
+}
+
+export interface RecordPaymentInput {
+  quotation: CrmQuotation
+  installmentId: string
   amount: number
   note: string | null
   actor: { id: string; name: string }
   recipients: string[]
   /** Localised by the caller — the notification page renders it verbatim. */
-  notification: { title: string; message: string }
+  notification: NotificationCopy
+}
+
+/** Pure half of `recordInstallmentPayment`: the fields the quotation gets. */
+export function applyInstallmentPayment(
+  quotation: CrmQuotation,
+  installmentId: string,
+  payment: QuotationPayment
+): { payments: Record<string, QuotationPayment>; paidAmount: number; paidAt: string | null; allPaid: boolean } {
+  const states = installmentStates(quotation)
+  const payments: Record<string, QuotationPayment> = { ...(quotation.payments || {}) }
+  // Carry a pre-schedule "paid" mark into the map so it is not lost.
+  for (const s of states) if (s.payment && !payments[s.id]) payments[s.id] = s.payment
+  payments[installmentId] = payment
+  const known = states.some((s) => s.id === installmentId)
+  const allPaid = known && states.every((s) => !!payments[s.id])
+  const paidAmount = Math.round(Object.values(payments).reduce((sum, p) => sum + (Number(p.paidAmount) || 0), 0) * 100) / 100
+  return { payments, paidAmount, paidAt: allPaid ? payment.paidAt : quotation.paidAt ?? null, allPaid }
 }
 
 /**
- * Record a customer payment and tell finance, in one batch: the quotation is
- * stamped and every recipient gets an in-app notification. No invoice, no
- * ledger entry — those live elsewhere by decision.
+ * Record a customer payment against one installment and tell Finance, in one
+ * batch. The quotation counts as paid only when every installment is.
  */
-export async function markQuotationPaid(firestore: Firestore, input: MarkPaidInput): Promise<void> {
+export async function recordInstallmentPayment(firestore: Firestore, input: RecordPaymentInput): Promise<void> {
   const paidAt = new Date().toISOString()
-  const batch = writeBatch(firestore)
-  batch.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
+  const payment: QuotationPayment = {
     paidAt,
     paidAmount: input.amount,
     paidByUserId: input.actor.id,
     paidByUserName: input.actor.name,
-    paymentNote: input.note,
+    note: input.note,
+  }
+  const next = applyInstallmentPayment(input.quotation, input.installmentId, payment)
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, CRM_QUOTATIONS, input.quotation.id), {
+    payments: next.payments,
+    paidAmount: next.paidAmount,
+    paidAt: next.paidAt,
+    ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name, paymentNote: input.note } : {}),
     updatedAt: serverTimestamp(),
   })
-  for (const uid of input.recipients) {
-    batch.set(doc(collection(firestore, "users", uid, "notifications")), {
-      userId: uid,
-      organizationId: input.quotation.organizationId,
-      type: "quotation_paid",
-      title: input.notification.title,
-      message: input.notification.message,
-      quotationId: input.quotation.id,
-      quotationNumber: input.quotation.quotationNumber,
-      contactName: input.quotation.contactName ?? null,
-      amount: input.amount,
-      createdAt: paidAt,
-      read: false,
-    })
-  }
+  queueNotifications(firestore, batch, input.recipients, {
+    type: "quotation_paid",
+    organizationId: input.quotation.organizationId,
+    title: input.notification.title,
+    message: input.notification.message,
+    quotationId: input.quotation.id,
+    quotationNumber: input.quotation.quotationNumber,
+    contactName: input.quotation.contactName ?? null,
+    installmentId: input.installmentId,
+    amount: input.amount,
+    fullyPaid: next.allPaid,
+    createdAt: paidAt,
+  })
   await batch.commit()
 }

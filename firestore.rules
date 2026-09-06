@@ -907,21 +907,45 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
-    // Recording a customer's payment (Sales) flips `paidAt`. That needs
-    // sales.manage or invoices.manage — mirrors the gate in the Sales view.
-    // `.get()` with a default so a quotation written before the field
-    // existed evaluates cleanly instead of erroring.
-    function marksQuotationPaid() {
-      return request.resource.data.get('paidAt', null) != resource.data.get('paidAt', null);
+    // Recording a customer's payment (Sales) changes `paidAt` / `payments` /
+    // `paidAmount`. That needs sales.approve or invoices.manage — mirrors the
+    // gate in the Sales view. `.get()` with a default so a quotation written
+    // before the fields existed evaluates cleanly instead of erroring.
+    function recordsQuotationPayment() {
+      return request.resource.data.get('paidAt', null) != resource.data.get('paidAt', null)
+        || request.resource.data.get('payments', {}) != resource.data.get('payments', {})
+        || request.resource.data.get('paidAmount', null) != resource.data.get('paidAmount', null);
+    }
+    // Marking a quotation accepted is the customer's approval — it posts the
+    // deposit to Finance and opens the work order — so it needs sales.approve
+    // (or crm.close: the same authority when a deal is awarded from the CRM).
+    function acceptsQuotation() {
+      return request.resource.data.get('status', 'draft') == 'accepted'
+        && resource.data.get('status', 'draft') != 'accepted';
+    }
+    function canApproveQuotation() {
+      return hasOrgPermission('sales.approve') || hasOrgPermission('crm.close');
     }
 
     match /crmQuotations/{quotationId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
+      allow create: if isSignedIn() && (isAdmin() || (isOrgMember(request.resource.data.organizationId)
+        && (request.resource.data.get('status', 'draft') != 'accepted' || canApproveQuotation())));
       allow update: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
-        && (!marksQuotationPaid() || hasOrgPermission('sales.manage') || hasOrgPermission('invoices.manage'))));
+        && (!acceptsQuotation() || canApproveQuotation())
+        && (!recordsQuotationPayment() || hasOrgPermission('sales.approve') || hasOrgPermission('invoices.manage'))));
       allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+    }
+
+    // Sales price list — the org's known items with fixed prices, picked into
+    // quotations. Reading is for every member; the list itself is Sales'.
+    match /salesPriceItems/{itemId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('sales.manage');
+      allow update, delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('sales.manage'));
     }
 
     // CRM company profile — classification grades and annual capacity. The doc
@@ -957,9 +981,23 @@ service cloud.firestore {
       allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && (hasOrgPermission('manufacturing.manage')
             || request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt', 'updatedAt'])));
+                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt',
+                           'deliveryNoteId', 'deliveryNoteNumber', 'receivedAt', 'receivedByUserId', 'receivedByUserName', 'updatedAt'])));
       allow delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && hasOrgPermission('manufacturing.manage'));
+    }
+
+    // Delivery notes (إشعار تسليم) — a finished work order handed to a
+    // warehouse. Any member may write one (stage assignees finish orders);
+    // signing for receipt, or refusing it, needs warehouses.receive or
+    // warehouses.manage. No client delete: it is the audit trail. Inventory →
+    // project movements keep using warehouses/{id}/requests.
+    match /deliveryNotes/{noteId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+      allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (hasOrgPermission('warehouses.receive') || hasOrgPermission('warehouses.manage')));
+      allow delete: if isAdmin();
     }
 
     // CRM activities — calls, meetings, site visits, tasks and emails.

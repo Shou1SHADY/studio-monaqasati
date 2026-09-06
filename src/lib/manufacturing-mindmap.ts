@@ -49,6 +49,8 @@ export interface MindMapLabels {
   destinationPending: string
   destinationOpen: string
   delivered: string
+  /** Handed over on a delivery note the receiving warehouse has not signed yet. */
+  inTransit: string
 }
 
 const NO_SOURCE = "__none__"
@@ -73,19 +75,24 @@ function buildOrderChain(order: WorkOrder, labels: MindMapLabels): MindMapNode |
   if (order.status === "cancelled") return null
 
   const out = effectiveOutput(order)
+  // Orders delivered before delivery notes existed landed directly, so only a
+  // note without a receipt reads as "in transit".
+  const inTransit = !!order.deliveredTo && !!order.deliveryNoteId && !order.receivedAt
   const destination: MindMapNode = order.deliveredTo
     ? {
         id: `${order.id}:destination`,
         kind: "destination",
         label: order.deliveredTo.warehouseName,
-        sublabel: `${labels.delivered} · ${
-          order.deliveredTo.kind === "project"
-            ? labels.projectTag
-            : order.deliveredTo.kind === "outbound"
-              ? labels.outboundTag
-              : labels.centralTag
-        }`,
-        tone: "done",
+        sublabel: inTransit
+          ? labels.inTransit
+          : `${labels.delivered} · ${
+              order.deliveredTo.kind === "project"
+                ? labels.projectTag
+                : order.deliveredTo.kind === "outbound"
+                  ? labels.outboundTag
+                  : labels.centralTag
+            }`,
+        tone: inTransit ? "pending" : "done",
         orderId: order.id,
         children: [],
       }

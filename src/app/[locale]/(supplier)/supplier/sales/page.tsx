@@ -3,10 +3,10 @@
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { SalesView } from "@/components/sales/SalesView"
 
-export default function ContractorSalesPage() {
+export default function SupplierSalesPage() {
   return (
     <PortalLayout>
-      <SalesView portal="contractor" />
+      <SalesView portal="supplier" />
     </PortalLayout>
   )
 }

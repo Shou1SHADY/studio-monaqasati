@@ -57,7 +57,8 @@ import { cn } from "@/lib/utils"
 import { logTeamActivity, type TeamActivityType } from "@/lib/team-activity"
 import { History } from "lucide-react"
 import {
-  PERMISSION_IDS,
+  PERMISSION_SECTIONS,
+  permissionSectionLabelKey,
   permissionLabelKey,
   SEEDED_GROUPS,
   seededGroupDocId,
@@ -1014,19 +1015,27 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
             </div>
             <div className="space-y-2">
               <Label>{t("team_group_permissions_label")}</Label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-y-auto rounded-lg border p-3">
-                {PERMISSION_IDS.map((perm) => (
-                  <label
-                    key={perm}
-                    className="flex items-center gap-2 text-sm cursor-pointer rounded-md p-1.5 hover:bg-slate-50"
-                  >
-                    <Checkbox
-                      checked={groupPerms.has(perm)}
-                      onCheckedChange={() => togglePerm(perm)}
-                      disabled={editingSystemGroup}
-                    />
-                    <span>{t(permissionLabelKey(perm))}</span>
-                  </label>
+              {/* Grouped by portal component, so a role is built one module at a time. */}
+              <div className="space-y-3 max-h-72 overflow-y-auto rounded-lg border p-3">
+                {PERMISSION_SECTIONS.map((section) => (
+                  <div key={section.key}>
+                    <p className="text-[11px] font-bold text-muted-foreground mb-1">{t(permissionSectionLabelKey(section.key))}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {section.permissions.map((perm) => (
+                        <label
+                          key={perm}
+                          className="flex items-center gap-2 text-sm cursor-pointer rounded-md p-1.5 hover:bg-slate-50"
+                        >
+                          <Checkbox
+                            checked={groupPerms.has(perm)}
+                            onCheckedChange={() => togglePerm(perm)}
+                            disabled={editingSystemGroup}
+                          />
+                          <span>{t(permissionLabelKey(perm))}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
