@@ -144,9 +144,14 @@ describe("splitByStock", () => {
       ],
       inventory
     )
-    expect(inStock.map((i) => i.name)).toEqual(["باب خشب"])
-    expect(inStock[0].inStock).toBe(true)
-    expect(toManufacture.map((i) => i.name)).toEqual(["نافذة ألمنيوم", "درابزين"])
+    // 12 doors requested, 15 on the shelves → fully covered.
+    // 5 windows requested, 2 on the shelves → 2 from stock, 3 manufactured.
+    // 3 railings requested, none in stock → all manufactured.
+    expect(inStock.map((i) => [i.name, i.quantity])).toEqual([["باب خشب", 12], ["نافذة ألمنيوم", 2]])
+    expect(inStock.every((i) => i.inStock)).toBe(true)
+    expect(toManufacture.map((i) => [i.name, i.quantity])).toEqual([["نافذة ألمنيوم", 3], ["درابزين", 3]])
+    expect(toManufacture[0]).toMatchObject({ requestedQuantity: 5, coveredByStock: 2 })
+    expect(toManufacture[1].requestedQuantity).toBeUndefined()
   })
 
   it("matches names case-insensitively and trimmed", () => {

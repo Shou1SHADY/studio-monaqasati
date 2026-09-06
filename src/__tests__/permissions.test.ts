@@ -17,6 +17,7 @@ import {
   can,
   ALL_PERMISSION,
   PERMISSION_IDS,
+  PERMISSION_SECTIONS,
   SEEDED_GROUPS,
   IMPLICIT_MEMBER_PERMISSIONS,
   permissionLabelKey,
@@ -228,8 +229,15 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 18 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(18)
+  it("contains exactly 20 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(20)
+  })
+
+  it("groups every permission into exactly one component section", () => {
+    const seen = new Map<string, number>()
+    PERMISSION_SECTIONS.forEach((s) => s.permissions.forEach((p) => seen.set(p, (seen.get(p) || 0) + 1)))
+    PERMISSION_IDS.forEach((p) => expect(seen.get(p)).toBe(1))
+    expect([...seen.keys()].every((p) => (PERMISSION_IDS as readonly string[]).includes(p))).toBe(true)
   })
 
   it("contains the three new permissions added in the latest batch", () => {
@@ -452,6 +460,8 @@ describe("permissionLabelKey", () => {
       "crm.close": "perm_crm_close",
       "manufacturing.manage": "perm_manufacturing_manage",
       "sales.manage": "perm_sales_manage",
+      "sales.approve": "perm_sales_approve",
+      "warehouses.receive": "perm_warehouses_receive",
       "team.manage": "perm_team_manage",
     }
     PERMISSION_IDS.forEach((p) => {

@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, serverTimestamp } from "firebase/firestore"
-import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, List, Waypoints } from "lucide-react"
+import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, List, Waypoints, ClipboardCheck } from "lucide-react"
+import { Link, usePathname } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,11 +32,12 @@ import {
   overdrawnInputs,
   effectiveOutput,
   ensureOutboundWarehouse,
-  deliverWorkOrder,
   type MfgDepartment,
   type WorkOrder,
+  type WorkOrderDelivery,
   type WorkOrderInputItem,
 } from "@/lib/manufacturing"
+import { DELIVERY_NOTES, handOverWorkOrder, confirmDeliveryNote, type DeliveryNote } from "@/lib/delivery-notes"
 import { ManufacturingMindMap } from "./ManufacturingMindMap"
 
 type Member = { id: string; name?: string; email?: string }
@@ -59,6 +61,10 @@ export function ManufacturingView({
   const { toast } = useToast()
   const { can } = usePermissions()
   const canManage = can("manufacturing.manage")
+  // Signing for a delivery note is the warehouse keeper's job, not manufacturing's.
+  const canReceive = can("warehouses.receive") || can("warehouses.manage")
+  const pathname = usePathname()
+  const portalBase = pathname.includes("/supplier") ? "/supplier" : "/contractor"
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -285,29 +291,49 @@ export function ManufacturingView({
     }
   }
 
-  // ── Deliver finished output ──
+  // ── Hand over finished output ──
+  // The output travels on a delivery note: the receiving warehouse signs for
+  // it before the stock (and its value) lands. The virtual distribution
+  // warehouse has no keeper, so a handover there is received on the spot.
   const [deliverDest, setDeliverDest] = useState("")
+  const [deliverReceiverId, setDeliverReceiverId] = useState("")
   const [isDelivering, setIsDelivering] = useState(false)
 
   const handleDeliver = async (order: WorkOrder) => {
-    if (!firestore || !deliverDest || isDelivering) return
+    if (!firestore || !user || !deliverDest || isDelivering) return
     setIsDelivering(true)
     try {
-      let destination
+      let destination: WorkOrderDelivery & { projectId?: string | null }
       if (deliverDest === "__outbound__") {
         const outbound = await ensureOutboundWarehouse(firestore, orgId)
-        destination = { warehouseId: outbound.id, warehouseName: outbound.name, kind: "outbound" as const }
+        destination = { warehouseId: outbound.id, warehouseName: outbound.name, kind: "outbound" }
       } else {
         const wh = orgWarehouses.find((w) => w.id === deliverDest)!
         destination = {
           warehouseId: wh.id,
           warehouseName: wh.name,
-          kind: wh.isOutbound ? ("outbound" as const) : wh.projectId ? ("project" as const) : ("central" as const),
+          kind: wh.isOutbound ? "outbound" : wh.projectId ? "project" : "central",
+          projectId: wh.projectId ?? null,
         }
       }
-      await deliverWorkOrder(firestore, order, destination)
-      toast({ title: t("mfg_delivered_toast", { warehouse: destination.warehouseName }) })
+      const receiver = members.find((m) => m.id === deliverReceiverId)
+      const { autoReceived } = await handOverWorkOrder(firestore, {
+        order,
+        destination,
+        actor: { id: user.uid, name: actorName },
+        expectedReceiver: receiver ? { id: receiver.id, name: receiver.name || receiver.email || "" } : null,
+        notification: {
+          title: t("mfg_notif_handover_title"),
+          message: t("mfg_notif_handover_msg", { order: `#${order.orderNumber} ${order.title}`, warehouse: destination.warehouseName }),
+        },
+      })
+      toast({
+        title: autoReceived
+          ? t("mfg_delivered_toast", { warehouse: destination.warehouseName })
+          : t("mfg_handed_over_toast", { warehouse: destination.warehouseName }),
+      })
       setDeliverDest("")
+      setDeliverReceiverId("")
     } catch (err) {
       console.error(err)
       toast({ title: t("mfg_save_error"), variant: "destructive" })
@@ -320,6 +346,38 @@ export function ManufacturingView({
   const [detailId, setDetailId] = useState<string | null>(null)
   const detail = orders.find((o) => o.id === detailId) || null
   const [isAdvancing, setIsAdvancing] = useState(false)
+
+  // The delivery note behind the open order's handover — for signing inline.
+  const noteRef = useMemoFirebase(() => {
+    if (!firestore || !detail?.deliveryNoteId) return null
+    return doc(firestore, DELIVERY_NOTES, detail.deliveryNoteId)
+  }, [firestore, detail?.deliveryNoteId])
+  const { data: noteData } = useDoc(noteRef)
+  const deliveryNote =
+    noteData && detail?.deliveryNoteId ? ({ ...(noteData as object), id: detail.deliveryNoteId } as DeliveryNote) : null
+  const [isConfirming, setIsConfirming] = useState(false)
+
+  const handleConfirmReceipt = async (note: DeliveryNote) => {
+    if (!firestore || !user || isConfirming) return
+    setIsConfirming(true)
+    try {
+      await confirmDeliveryNote(firestore, {
+        note,
+        actor: { id: user.uid, name: actorName },
+        receivedNote: null,
+        notification: {
+          title: t("dn_notif_received_title"),
+          message: t("dn_notif_received_msg", { name: actorName, note: note.noteNumber, warehouse: note.toWarehouseName }),
+        },
+      })
+      toast({ title: t("dn_received_toast", { note: note.noteNumber }) })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("mfg_save_error"), variant: "destructive" })
+    } finally {
+      setIsConfirming(false)
+    }
+  }
 
   const assignStage = async (order: WorkOrder, stageIndex: number, memberId: string) => {
     if (!firestore) return
@@ -775,18 +833,58 @@ export function ManufacturingView({
                         <SelectItem value="__outbound__" className="text-xs">{t("mfg_outbound_option")}</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Select value={deliverReceiverId || "__none__"} onValueChange={(v) => setDeliverReceiverId(v === "__none__" ? "" : v)}>
+                      <SelectTrigger className="h-9 w-56 text-xs" aria-label={t("mfg_deliver_receiver")}>
+                        <SelectValue placeholder={t("mfg_deliver_receiver")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__" className="text-xs">{t("mfg_deliver_receiver_none")}</SelectItem>
+                        {members.map((m) => (
+                          <SelectItem key={m.id} value={m.id} className="text-xs">{m.name || m.email}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button size="sm" className="gap-1.5 h-9" onClick={() => handleDeliver(detail)} disabled={!deliverDest || isDelivering}>
                       {isDelivering ? <Loader2 size={13} className="animate-spin" /> : <Truck size={13} />}
                       {t("mfg_deliver_btn")}
                     </Button>
                   </div>
+                  <p className="text-[11px] text-muted-foreground">{t("mfg_deliver_receipt_hint")}</p>
                 </div>
               )}
               {detail.deliveredTo && (
-                <p className="text-xs font-semibold text-success flex items-center gap-1.5">
-                  <CheckCircle2 size={13} />
-                  {t("mfg_delivered_line", { warehouse: detail.deliveredTo.warehouseName })}
-                </p>
+                detail.deliveryNoteId && !detail.receivedAt ? (
+                  <div className="rounded-xl border border-warning/30 bg-warning/5 p-3.5 space-y-2">
+                    <p className="text-xs font-semibold text-warning flex items-center gap-1.5">
+                      <Truck size={13} aria-hidden="true" />
+                      {t("mfg_in_transit_line", { warehouse: detail.deliveredTo.warehouseName, note: detail.deliveryNoteNumber || "" })}
+                    </p>
+                    {deliveryNote?.expectedReceiverName && (
+                      <p className="text-[11px] text-muted-foreground">{t("mfg_expected_receiver_line", { name: deliveryNote.expectedReceiverName })}</p>
+                    )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {canReceive && deliveryNote && deliveryNote.status === "in_transit" && (
+                        <Button size="sm" className="h-8 gap-1.5" onClick={() => handleConfirmReceipt(deliveryNote)} disabled={isConfirming}>
+                          {isConfirming ? <Loader2 size={13} className="animate-spin" /> : <ClipboardCheck size={13} />}
+                          {t("mfg_confirm_receipt_btn")}
+                        </Button>
+                      )}
+                      <Link
+                        href={`${portalBase}/warehouses/delivery-notes`}
+                        className="text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      >
+                        {t("mfg_open_delivery_notes")}
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs font-semibold text-success flex items-center gap-1.5">
+                    <CheckCircle2 size={13} />
+                    {detail.receivedByUserName
+                      ? t("mfg_received_line", { warehouse: detail.deliveredTo.warehouseName, name: detail.receivedByUserName })
+                      : t("mfg_delivered_line", { warehouse: detail.deliveredTo.warehouseName })}
+                  </p>
+                )
               )}
 
               <div className="space-y-0">

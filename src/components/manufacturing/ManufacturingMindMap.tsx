@@ -71,6 +71,7 @@ export function ManufacturingMindMap({
       destinationPending: t("mfg_map_dest_pending"),
       destinationOpen: t("mfg_map_dest_open"),
       delivered: t("mfg_map_delivered"),
+      inTransit: t("mfg_map_in_transit"),
     }),
     [t]
   )

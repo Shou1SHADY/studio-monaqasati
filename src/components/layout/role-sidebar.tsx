@@ -242,6 +242,9 @@ export function RoleSidebar() {
   let sections: NavSection[] = []
   let portalTitleKey = ""
   let roleColor = ""
+  // "Supplier" / "Contractor" next to the module name — the account type,
+  // labelled top-left as the client asked.
+  let portalRoleKey = ""
   let dashboardHref = "/"
 
   if (pathname.startsWith("/supplier")) {
@@ -249,12 +252,14 @@ export function RoleSidebar() {
     sections = [...visibleSections(activeComponent.sections, can), SUPPLIER_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-success"
+    portalRoleKey = "supplier_portal_role"
     dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/contractor")) {
     const activeComponent = resolveVisibleComponent(resolveActiveContractorComponent(pathname), CONTRACTOR_COMPONENTS, can)
     sections = [...visibleSections(activeComponent.sections, can), CONTRACTOR_COMMUNICATION_SECTION]
     portalTitleKey = activeComponent.labelKey
     roleColor = "text-accent"
+    portalRoleKey = "contractor_portal_role"
     dashboardHref = activeComponent.homeHref
   } else if (pathname.startsWith("/admin")) {
     sections = adminSections
@@ -280,9 +285,16 @@ export function RoleSidebar() {
               priority 
             />
           </Link>
-          <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
-            {t(portalTitleKey)}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {portalRoleKey && (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-white/15 text-white w-fit">
+                {t(portalRoleKey)}
+              </span>
+            )}
+            <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full bg-white/10 w-fit", roleColor)}>
+              {t(portalTitleKey)}
+            </span>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent className="py-4">

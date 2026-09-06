@@ -910,6 +910,62 @@ export const QUOTATION_PHASE_BADGE_CLASS: Record<QuotationPhase, string> = {
   post_manufacturing: "bg-success/10 text-success border-success/20",
 }
 
+/** One line of the payment schedule defined INSIDE the quotation (decision:
+ * Finance reads the deposit and installments straight off the quotation, no
+ * manual hand-off). `percent` is the share of the quotation amount. */
+export interface QuotationInstallment {
+  id: string
+  label: string
+  percent: number
+}
+
+/** A customer payment recorded against one installment, keyed by its id in
+ * `CrmQuotation.payments`. Kept apart from the schedule so editing the
+ * schedule and recording money are different permissions. */
+export interface QuotationPayment {
+  paidAt: string
+  paidAmount: number
+  paidByUserId: string | null
+  paidByUserName: string | null
+  note: string | null
+}
+
+export const INSTALLMENT_DEPOSIT_ID = "deposit"
+export const INSTALLMENT_BALANCE_ID = "balance"
+/** The synthetic single installment of a quotation with no schedule. */
+export const INSTALLMENT_FULL_ID = "full"
+
+/** Default schedule for a new quotation — the 30% deposit the client's
+ * finance asked for, and the rest on delivery. Labels are filled by the UI. */
+export function defaultInstallments(labels: { deposit: string; balance: string }): QuotationInstallment[] {
+  return [
+    { id: INSTALLMENT_DEPOSIT_ID, label: labels.deposit, percent: 30 },
+    { id: INSTALLMENT_BALANCE_ID, label: labels.balance, percent: 70 },
+  ]
+}
+
+/** A quotation without a schedule is one payment of the whole amount. */
+export function quotationInstallments(q: Pick<CrmQuotation, "installments">): QuotationInstallment[] {
+  if (q.installments && q.installments.length > 0) return q.installments
+  return [{ id: INSTALLMENT_FULL_ID, label: "", percent: 100 }]
+}
+
+export function installmentAmount(q: Pick<CrmQuotation, "amount">, inst: Pick<QuotationInstallment, "percent">): number {
+  return Math.round(((Number(q.amount) || 0) * inst.percent) / 100 * 100) / 100
+}
+
+/** Percents must cover the amount exactly; every line needs a positive share
+ * and a name. Returns the problem, or null when the schedule is sound. */
+export function validateInstallments(list: QuotationInstallment[]): "empty_label" | "bad_percent" | "not_100" | null {
+  if (list.length === 0) return null
+  for (const inst of list) {
+    if (!inst.label.trim()) return "empty_label"
+    if (!Number.isFinite(inst.percent) || inst.percent <= 0 || inst.percent > 100) return "bad_percent"
+  }
+  const total = list.reduce((sum, i) => sum + i.percent, 0)
+  return Math.abs(total - 100) < 0.01 ? null : "not_100"
+}
+
 /** A line on the quotation template — picked from inventory or free-typed.
  * On acceptance these become the auto work order's requested items, so the
  * stock check can route only the missing goods to manufacturing. */
@@ -956,7 +1012,12 @@ export interface CrmQuotation {
    * presence stops acceptance from creating another. */
   workOrderId?: string | null
   workOrderNumber?: number | null
-  /** Customer payment, recorded from Sales. ISO date; null until paid. */
+  /** Payment schedule (deposit, installments). Absent = one full payment. */
+  installments?: QuotationInstallment[] | null
+  /** Payments recorded against installments, by installment id. */
+  payments?: Record<string, QuotationPayment> | null
+  /** Set when EVERY installment is paid. ISO date; null until then. Total paid
+   * so far lives in `paidAmount` even before that. */
   paidAt?: string | null
   paidAmount?: number | null
   paidByUserId?: string | null

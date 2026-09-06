@@ -11,7 +11,6 @@ import {
   updateDoc,
   query,
   where,
-  writeBatch,
   serverTimestamp,
   type Firestore,
 } from "firebase/firestore"
@@ -46,6 +45,10 @@ export interface WorkOrderItem {
   unit: string
   /** True when the acceptance-time stock check found it already available. */
   inStock?: boolean
+  /** When stock covered only part of a request: what was asked for, and how
+   * much the warehouses already held. `quantity` is then the split's share. */
+  requestedQuantity?: number
+  coveredByStock?: number
 }
 
 /** A raw material drawn from a warehouse into the order — deducted from
@@ -88,6 +91,14 @@ export interface WorkOrder {
   projectName?: string | null
   deliveredTo?: WorkOrderDelivery | null
   deliveredAt?: string | null
+  /** The delivery note the handover wrote (see delivery-notes.ts). The
+   * receipt fields fill when the receiving warehouse signs; orders delivered
+   * before notes existed have `deliveredTo` and none of these. */
+  deliveryNoteId?: string | null
+  deliveryNoteNumber?: string | null
+  receivedAt?: string | null
+  receivedByUserId?: string | null
+  receivedByUserName?: string | null
   source: {
     kind: "quotation" | "manual"
     quotationId?: string | null
@@ -197,7 +208,11 @@ export async function ensureOutboundWarehouse(
   return { id: ref.id, name: "مستودع التوزيع (افتراضي)" }
 }
 
-/** Name-matched stock check: which requested items the org's inventory already covers. */
+/**
+ * Name-matched stock check: which requested items the org's inventory already
+ * covers. Only the SHORTFALL goes to manufacturing — a request for 200 with
+ * 120 on the shelf manufactures 80 and draws 120 from stock.
+ */
 export function splitByStock(
   items: WorkOrderItem[],
   inventory: Array<{ name: string; quantity: number }>
@@ -211,50 +226,23 @@ export function splitByStock(
   const inStock: WorkOrderItem[] = []
   for (const item of items) {
     const available = stockByName.get(item.name.trim().toLowerCase()) || 0
-    if (available >= item.quantity && item.quantity > 0) inStock.push({ ...item, inStock: true })
-    else toManufacture.push(item)
+    if (item.quantity <= 0) {
+      toManufacture.push(item)
+    } else if (available >= item.quantity) {
+      inStock.push({ ...item, inStock: true })
+    } else if (available > 0) {
+      inStock.push({ ...item, quantity: available, inStock: true, requestedQuantity: item.quantity, coveredByStock: available })
+      toManufacture.push({ ...item, quantity: item.quantity - available, requestedQuantity: item.quantity, coveredByStock: available })
+    } else {
+      toManufacture.push(item)
+    }
   }
   return { toManufacture, inStock }
 }
 
-/**
- * Land a finished order's output in the chosen warehouse as a NEW inventory
- * item carrying the order's material cost as its unitCost — the value that
- * entered the order as raw materials leaves it as finished-goods value, so
- * total inventory value never drifts (it becomes cost only at sale, in
- * Finance). One batch: the item lands and the order is stamped together.
- */
-export async function deliverWorkOrder(
-  firestore: Firestore,
-  order: WorkOrder,
-  destination: WorkOrderDelivery
-): Promise<void> {
-  const out = effectiveOutput(order)
-  const unitCost =
-    order.materialCost != null && out.quantity > 0
-      ? Math.round((order.materialCost / out.quantity) * 100) / 100
-      : null
-  const batch = writeBatch(firestore)
-  const itemRef = doc(collection(firestore, "warehouses", destination.warehouseId, "inventoryItems"))
-  batch.set(itemRef, {
-    organizationId: order.organizationId,
-    name: out.name,
-    quantity: out.quantity,
-    unit: out.unit,
-    unitCost,
-    isManufactured: true,
-    sourceWorkOrderId: order.id,
-    sourceWorkOrderNumber: order.orderNumber,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-  batch.update(doc(firestore, WORK_ORDERS, order.id), {
-    deliveredTo: destination,
-    deliveredAt: new Date().toISOString(),
-    updatedAt: serverTimestamp(),
-  })
-  await batch.commit()
-}
+// Handing a finished order to a warehouse lives in delivery-notes.ts: the
+// output travels on a delivery note and lands — with the order's material
+// cost as its unitCost — only when the receiving warehouse signs for it.
 
 /**
  * Auto-create a work order when a quotation is accepted. Skips quietly when

@@ -126,14 +126,22 @@ scripts/                # Ops scripts (demo seed, data repair, migrations)
 for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `wasteRecords`) · `rfqs` (+ `inquiries`) · `offers` · `deliveries` · `guarantees` ·
 `warehouses` (+ `inventoryItems`, `transfers`, `wasteRecords`) · `crmContacts` ·
-`crmOpportunities` · `crmQuotations` · `crmActivities` · `crmOrgProfile` (doc id =
-orgId) · `invoices` · `rfqShareLinks` · `guestOfferLinks` (server-only)
+`crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
+payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
+`manufacturingDepartments` · `workOrders` · `deliveryNotes` (manufacturing → warehouse
+handovers, signed by the receiver) · `invoices` · `rfqShareLinks` · `guestOfferLinks`
+(server-only)
 
 Permission notes: org **owner** passes every check; members get their group's
 permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM deal
-needs `crm.close`. Sales reads `crmQuotations` (no collection of its own); recording a
-customer payment (`paidAt`) needs `sales.manage` or `invoices.manage`, and a
-`post_manufacturing` quotation never spawns a work order on acceptance. A deal handover may create a project + seat its PM without
+needs `crm.close`. Sales reads `crmQuotations`: marking one accepted needs `sales.approve`
+(or `crm.close`) — that notifies Finance of the deposit and opens the work order; recording
+a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.manage`; a
+`post_manufacturing` quotation never spawns a work order. A finished work order hands
+over on a `deliveryNotes` doc and its stock lands only when someone with
+`warehouses.receive` (or `warehouses.manage`) confirms; the virtual distribution
+warehouse is received on the spot. Permission ids are grouped per component in
+`PERMISSION_SECTIONS` for the team page. A deal handover may create a project + seat its PM without
 `projects.edit`. BOQ lines lock while drawn into a tender (`isEditable:false`) —
 only draw bookkeeping may change on a locked line.
 

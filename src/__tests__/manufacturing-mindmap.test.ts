@@ -23,6 +23,7 @@ const labels: MindMapLabels = {
   destinationPending: "بانتظار الوجهة",
   destinationOpen: "بعد الاكتمال",
   delivered: "تم التسليم",
+  inTransit: "بانتظار تأكيد الاستلام",
 }
 
 const warehouses: MindMapWarehouse[] = [
@@ -132,6 +133,23 @@ describe("buildManufacturingMindMap", () => {
     const tree = buildManufacturingMindMap([delivered], warehouses, labels)
     const nodes = chain(tree.children[0].children[0])
     expect(nodes[nodes.length - 1]).toMatchObject({ label: "مستودع التوزيع", sublabel: "تم التسليم · توزيع", tone: "done" })
+  })
+
+  it("shows a handover the receiving warehouse has not signed for as in transit", () => {
+    const handedOver = order({
+      id: "g",
+      orderNumber: 8,
+      status: "done",
+      sourceWarehouseId: "central",
+      stages: [stage("التصميم", "done", "أحمد")],
+      deliveredTo: { warehouseId: "site", warehouseName: "مستودع الموقع", kind: "project" },
+      deliveryNoteId: "dn-1",
+    })
+    const inTransit = chain(buildManufacturingMindMap([handedOver], warehouses, labels).children[0].children[0]).pop()
+    expect(inTransit).toMatchObject({ label: "مستودع الموقع", sublabel: "بانتظار تأكيد الاستلام", tone: "pending" })
+
+    const signed = chain(buildManufacturingMindMap([{ ...handedOver, receivedAt: "2026-09-06" }], warehouses, labels).children[0].children[0]).pop()
+    expect(signed).toMatchObject({ sublabel: "تم التسليم · مشروع", tone: "done" })
   })
 
   it("stops a cancelled order at its own node", () => {
