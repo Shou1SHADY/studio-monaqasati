@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, serverTimestamp } from "firebase/firestore"
-import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes } from "lucide-react"
+import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, List, Waypoints } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,6 +36,7 @@ import {
   type WorkOrder,
   type WorkOrderInputItem,
 } from "@/lib/manufacturing"
+import { ManufacturingMindMap } from "./ManufacturingMindMap"
 
 type Member = { id: string; name?: string; email?: string }
 
@@ -103,7 +104,7 @@ export function ManufacturingView({
     return query(collection(firestore, "warehouses"), where("organizationId", "==", orgId))
   }, [firestore, orgId])
   const { data: warehousesData } = useCollection(warehousesQuery)
-  const orgWarehouses = (warehousesData || []) as Array<{ id: string; name: string; projectId?: string | null; isOutbound?: boolean }>
+  const orgWarehouses = (warehousesData || []) as Array<{ id: string; name: string; projectId?: string | null; isCentral?: boolean; isOutbound?: boolean }>
 
   const projectsQuery = useMemoFirebase(() => {
     if (!firestore || !orgId) return null
@@ -122,6 +123,9 @@ export function ManufacturingView({
   const sourceItems = (sourceItemsData || []) as Array<{ id: string; name: string; quantity: number; unit: string; unitCost?: number | null }>
 
   const [statusFilter, setStatusFilter] = useState<"open" | "done" | "all">("open")
+  // "list" is the compact queue; "map" draws the same orders as a mind map
+  // (warehouse → order → stages → output → destination).
+  const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const visibleOrders = orders.filter((o) => statusFilter === "all" || o.status === statusFilter)
   const openCount = orders.filter((o) => o.status === "open").length
   const doneCount = orders.filter((o) => o.status === "done").length
@@ -496,26 +500,52 @@ export function ManufacturingView({
       )}
 
       {/* Orders */}
-      <div className="flex items-center gap-2">
-        {(["open", "done", "all"] as const).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setStatusFilter(s)}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              statusFilter === s ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
-            )}
-          >
-            {t(`mfg_filter_${s}`)}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          {(["open", "done", "all"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                statusFilter === s ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+              )}
+            >
+              {t(`mfg_filter_${s}`)}
+            </button>
+          ))}
+        </div>
+        <div role="group" aria-label={t("mfg_view_toggle")} className="flex items-center gap-0.5 rounded-lg border bg-white p-0.5">
+          {(
+            [
+              { id: "list", icon: <List size={14} aria-hidden="true" />, label: t("mfg_view_list") },
+              { id: "map", icon: <Waypoints size={14} aria-hidden="true" />, label: t("mfg_view_map") },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              aria-pressed={viewMode === m.id}
+              onClick={() => setViewMode(m.id)}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                viewMode === m.id ? "bg-primary text-white" : "text-slate-600 hover:bg-muted"
+              )}
+            >
+              {m.icon}
+              {m.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {ordersLoading ? (
         <div className="flex items-center justify-center p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} />
         </div>
+      ) : viewMode === "map" ? (
+        <ManufacturingMindMap orders={visibleOrders} warehouses={orgWarehouses} onSelectOrder={setDetailId} />
       ) : visibleOrders.length === 0 ? (
         <div className="p-10 text-center text-muted-foreground border border-dashed rounded-xl">
           <PackageCheck size={36} className="mx-auto mb-2 opacity-20" />
