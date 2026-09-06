@@ -907,11 +907,21 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
+    // Recording a customer's payment (Sales) flips `paidAt`. That needs
+    // sales.manage or invoices.manage — mirrors the gate in the Sales view.
+    // `.get()` with a default so a quotation written before the field
+    // existed evaluates cleanly instead of erroring.
+    function marksQuotationPaid() {
+      return request.resource.data.get('paidAt', null) != resource.data.get('paidAt', null);
+    }
+
     match /crmQuotations/{quotationId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
-      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow update: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (!marksQuotationPaid() || hasOrgPermission('sales.manage') || hasOrgPermission('invoices.manage'))));
+      allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
     }
 
     // CRM company profile — classification grades and annual capacity. The doc

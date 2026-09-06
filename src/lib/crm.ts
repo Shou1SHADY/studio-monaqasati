@@ -894,6 +894,22 @@ export function needsHigherApproval(amount: number, limit: number): boolean {
 export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected"
 export const QUOTATION_STATUSES: QuotationStatus[] = ["draft", "sent", "accepted", "rejected"]
 
+/** Before manufacturing: an estimate whose acceptance sends the missing goods
+ * to Manufacturing. After manufacturing: the price of a finished item, so
+ * acceptance never spawns a work order. Quotations written before phases
+ * existed carry none and read as "before". */
+export type QuotationPhase = "pre_manufacturing" | "post_manufacturing"
+export const QUOTATION_PHASES: QuotationPhase[] = ["pre_manufacturing", "post_manufacturing"]
+
+export function quotationPhase(q: { phase?: QuotationPhase | null }): QuotationPhase {
+  return q.phase === "post_manufacturing" ? "post_manufacturing" : "pre_manufacturing"
+}
+
+export const QUOTATION_PHASE_BADGE_CLASS: Record<QuotationPhase, string> = {
+  pre_manufacturing: "bg-warning/10 text-warning border-warning/20",
+  post_manufacturing: "bg-success/10 text-success border-success/20",
+}
+
 /** A line on the quotation template — picked from inventory or free-typed.
  * On acceptance these become the auto work order's requested items, so the
  * stock check can route only the missing goods to manufacturing. */
@@ -933,6 +949,19 @@ export interface CrmQuotation {
   validityDays?: number | null
   paymentTerms?: string | null
   notes?: string | null
+  /** See `QuotationPhase`. Absent on older records — use `quotationPhase()`. */
+  phase?: QuotationPhase | null
+  /** The linked work order: the one acceptance spawned (before manufacturing)
+   * or the finished one being sold (after manufacturing). Either way its
+   * presence stops acceptance from creating another. */
+  workOrderId?: string | null
+  workOrderNumber?: number | null
+  /** Customer payment, recorded from Sales. ISO date; null until paid. */
+  paidAt?: string | null
+  paidAmount?: number | null
+  paidByUserId?: string | null
+  paidByUserName?: string | null
+  paymentNote?: string | null
   organizationId: string
   createdAt?: unknown
   updatedAt?: unknown

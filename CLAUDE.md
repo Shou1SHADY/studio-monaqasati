@@ -69,7 +69,9 @@ src/
       (contractor)/     # Contractor portal — dashboard tile grid at /contractor,
                         #   modules: projects (BOQ, tenders), rfqs, crm/{leads,
                         #   opportunities,rfqs}, inventory/warehouses, invoices/
-                        #   guarantees (finance), employees (HR), profile/team
+                        #   guarantees (finance), sales (quotations before/after
+                        #   manufacturing + customer payments — NOT part of finance),
+                        #   manufacturing (work orders), employees (HR), profile/team
       (supplier)/       # Supplier portal (mirrors contractor structure incl. crm/)
       offer/[token]/    # Guest supplier offer page (no account needed)
       rfq/[token]/      # Guest RFQ share page
@@ -129,7 +131,9 @@ orgId) · `invoices` · `rfqShareLinks` · `guestOfferLinks` (server-only)
 
 Permission notes: org **owner** passes every check; members get their group's
 permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM deal
-needs `crm.close`. A deal handover may create a project + seat its PM without
+needs `crm.close`. Sales reads `crmQuotations` (no collection of its own); recording a
+customer payment (`paidAt`) needs `sales.manage` or `invoices.manage`, and a
+`post_manufacturing` quotation never spawns a work order on acceptance. A deal handover may create a project + seat its PM without
 `projects.edit`. BOQ lines lock while drawn into a tender (`isEditable:false`) —
 only draw bookkeeping may change on a locked line.
 

@@ -51,6 +51,8 @@ import {
   OPPORTUNITY_STAGE_BADGE_CLASS,
   OPPORTUNITY_STATE_BADGE_CLASS,
   QUOTATION_STATUS_BADGE_CLASS,
+  QUOTATION_PHASE_BADGE_CLASS,
+  quotationPhase,
   STATUS_BADGE_CLASS,
   TIER_BADGE_CLASS,
   TRACK_BADGE_CLASS,
@@ -425,6 +427,16 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
                       <Badge className={cn("text-[10px]", QUOTATION_STATUS_BADGE_CLASS[q.status])}>
                         {t(`crm_quote_status_${q.status}`)}
                       </Badge>
+                      {quotationPhase(q) === "post_manufacturing" && (
+                        <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS.post_manufacturing)}>
+                          {t("crm_quote_phase_post_manufacturing")}
+                        </Badge>
+                      )}
+                      {q.paidAt && (
+                        <Badge className="text-[10px] bg-success/10 text-success border-success/20">
+                          {t("crm_quote_paid_badge")}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm font-bold text-foreground mt-0.5" dir="ltr">
                       {formatSar(q.amount, locale)}
