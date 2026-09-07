@@ -2039,6 +2039,8 @@
       "sales_payments_empty_received": "لم تُسجَّل مدفوعات بعد",
       "sales_no_payment_permission": "تسجيل الدفعات يحتاج صلاحية اعتماد المبيعات أو المالية",
       "sales_share_of": "{percent}% من {total}",
+      "sales_installment_partial": "سُدد {paid} من {total} · المتبقي {remaining}",
+      "sales_amount_exceeds": "المبلغ يتجاوز المتبقي على هذه الدفعة ({remaining})",
       "crm_quote_step_customer": "العميل",
       "crm_quote_step_details": "عرض السعر",
       "sales_pick_contact_required": "اختر العميل أولاً",
