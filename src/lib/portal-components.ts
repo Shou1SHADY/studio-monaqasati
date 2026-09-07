@@ -285,8 +285,9 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_sales",
         items: [
-          { titleKey: "sales_nav_quotations", href: "/contractor/sales", icon: FileText, requiredPermission: "sales.manage" },
-          { titleKey: "sales_nav_awaiting_payment", href: "/contractor/sales?tab=awaiting", icon: Banknote, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_dashboard", href: "/contractor/sales", icon: LayoutDashboard, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_quotations", href: "/contractor/sales/quotations", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_payments", href: "/contractor/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/contractor/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],
       },
@@ -385,7 +386,9 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "supplier_offers", href: "/supplier/offers", icon: History, requiredPermission: "offers.view" },
           // The supplier's own quotations and price list — the same Sales
           // module as the contractor's, living inside the RFQ-facing Sales tile.
-          { titleKey: "sales_nav_quotations", href: "/supplier/sales", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_dashboard", href: "/supplier/sales", icon: LayoutDashboard, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_quotations", href: "/supplier/sales/quotations", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_payments", href: "/supplier/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/supplier/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],
       },

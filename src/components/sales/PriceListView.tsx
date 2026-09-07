@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, serverTimestamp } from "firebase/firestore"
-import { Tags, Plus, Pencil, Trash2, Search, Loader2, ArrowRight, Lock } from "lucide-react"
-import { Link } from "@/i18n/routing"
+import { Tags, Plus, Pencil, Trash2, Search, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,10 +30,10 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
-import { cn } from "@/lib/utils"
 import { formatSar } from "@/lib/crm"
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
 import type { CrmPortal } from "@/components/crm/CrmShell"
+import { SalesShell } from "./SalesShell"
 
 /** The org's known items with fixed prices — what Sales quotes without
  * looking anything up. Picked straight into a quotation's lines. */
@@ -115,33 +114,24 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
   }
 
   return (
-    <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
-      <header className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="min-w-0">
-          <Link
-            href={`/${portal}/sales`}
-            className="text-xs font-semibold text-muted-foreground hover:text-primary flex items-center gap-1 mb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm w-fit"
-          >
-            <ArrowRight size={12} className={cn(!isRtl && "rotate-180")} aria-hidden="true" />
-            {t("pl_back_to_sales")}
-          </Link>
-          <h1 className="text-2xl font-black text-primary flex items-center gap-2">
-            <Tags size={22} className="shrink-0" aria-hidden="true" />
-            {t("pl_page_title")}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("pl_page_desc")}</p>
-          {!isOrgLoading && !canManage && (
-            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1.5">
-              <Lock size={12} aria-hidden="true" />
-              {t("pl_no_permission")}
-            </p>
-          )}
-        </div>
+    <SalesShell
+      portal={portal}
+      title={t("pl_page_title")}
+      description={t("pl_page_desc")}
+      icon={Tags}
+      action={
         <Button className="gap-2 shrink-0" onClick={() => openEditor("new")} disabled={!canManage || isOrgLoading}>
           <Plus size={16} />
           {t("pl_add_btn")}
         </Button>
-      </header>
+      }
+    >
+      {!isOrgLoading && !canManage && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Lock size={12} aria-hidden="true" />
+          {t("pl_no_permission")}
+        </p>
+      )}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-muted-foreground font-semibold">{t("pl_count", { count: items.length })}</p>
@@ -235,6 +225,6 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </SalesShell>
   )
 }

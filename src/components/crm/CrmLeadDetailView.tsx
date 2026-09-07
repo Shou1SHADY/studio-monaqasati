@@ -10,6 +10,7 @@ import {
   CalendarDays,
   ClipboardList,
   Coins,
+  ExternalLink,
   Contact,
   FileText,
   Hash,
@@ -443,18 +444,28 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
                       {q.date && <span className="ms-1.5 text-xs text-muted-foreground font-normal">· {formatCrmDate(q.date, locale)}</span>}
                     </p>
                   </div>
-                  {canManageCrm && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditQuote(q)} aria-label={`${t("crm_quote_edit_title")} — ${q.quotationNumber}`}>
-                        <Pencil size={13} />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteQuote(q)} aria-label={`${t("crm_quote_delete_confirm_title")} — ${q.quotationNumber}`}>
-                        <Trash2 size={13} />
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Link
+                      href={`/${portal}/sales/quotations/${q.id}`}
+                      aria-label={`${t("sales_open_in_sales")} — ${q.quotationNumber}`}
+                      title={t("sales_open_in_sales")}
+                      className="h-7 w-7 grid place-items-center rounded-md text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <ExternalLink size={13} />
+                    </Link>
+                    {canManageCrm && (
+                      <>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
+                          onClick={() => setEditQuote(q)} aria-label={`${t("crm_quote_edit_title")} — ${q.quotationNumber}`}>
+                          <Pencil size={13} />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteQuote(q)} aria-label={`${t("crm_quote_delete_confirm_title")} — ${q.quotationNumber}`}>
+                          <Trash2 size={13} />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -1012,6 +1012,10 @@ export interface CrmQuotation {
    * presence stops acceptance from creating another. */
   workOrderId?: string | null
   workOrderNumber?: number | null
+  /** When the status last moved into each state — the detail page's timeline. */
+  sentAt?: string | null
+  acceptedAt?: string | null
+  rejectedAt?: string | null
   /** Payment schedule (deposit, installments). Absent = one full payment. */
   installments?: QuotationInstallment[] | null
   /** Payments recorded against installments, by installment id. */

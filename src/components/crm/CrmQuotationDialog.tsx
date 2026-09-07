@@ -30,13 +30,13 @@ import {
   type QuotationPhase,
   type QuotationStatus,
 } from "@/lib/crm"
-import { createWorkOrderFromQuotation } from "@/lib/manufacturing"
+import type { WorkOrder } from "@/lib/manufacturing"
 import {
   SALES_PRICE_ITEMS,
   findPriceItem,
-  installmentStates,
-  loadFinanceRecipients,
-  notifyQuotationApproved,
+  quotationPrefillFromWorkOrder,
+  runQuotationAcceptance,
+  statusStamp,
   type SalesPriceItem,
 } from "@/lib/sales"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -85,14 +85,25 @@ export function CrmQuotationDialog({
   contactName,
   quotation,
   defaults,
+  contacts,
+  finishedOrders,
+  onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   orgId: string
-  contactId: string
+  /** The contact the quotation is for. Leave empty and pass `contacts` to let
+   * the user choose one (Sales mode) — the dialog then opens with a customer step. */
+  contactId?: string
   contactName?: string | null
   quotation?: CrmQuotation
   defaults?: QuotationDefaults
+  /** Sales mode: the org's contacts to pick a customer from. */
+  contacts?: Array<{ id: string; name: string }>
+  /** Sales mode: finished work orders a post-manufacturing quotation can price. */
+  finishedOrders?: WorkOrder[]
+  /** Called with the saved quotation's id — Sales opens its detail page. */
+  onSaved?: (quotationId: string) => void
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -122,9 +133,21 @@ export function CrmQuotationDialog({
   const [priceItems, setPriceItems] = useState<SalesPriceItem[]>([])
   const [stockPick, setStockPick] = useState("")
   const [pricePick, setPricePick] = useState("")
+  // Sales mode: the customer is chosen inside the dialog, and a finished work
+  // order may seed the lines. CRM mode: the contact page already knows both.
+  const salesMode = !!contacts && !contactId && !quotation
+  const [selectedContactId, setSelectedContactId] = useState("")
+  const [linkedOrderId, setLinkedOrderId] = useState("")
+  const linkedOrder = finishedOrders?.find((o) => o.id === linkedOrderId) ?? null
+  const effectiveContactId = salesMode ? selectedContactId : contactId || quotation?.contactId || ""
+  const effectiveContactName = salesMode
+    ? contacts?.find((c) => c.id === selectedContactId)?.name ?? null
+    : contactName ?? quotation?.contactName ?? null
 
   useEffect(() => {
     if (!open) return
+    setSelectedContactId(contactId || "")
+    setLinkedOrderId("")
     const seeds = quotation ? null : defaultsRef.current
     setAmount(quotation?.amount != null ? String(quotation.amount) : "")
     setStatus(quotation?.status ?? "draft")
@@ -147,7 +170,18 @@ export function CrmQuotationDialog({
     setInstallments(schedule.map((i) => ({ id: i.id, label: i.label, percent: String(i.percent) })))
     setStockPick("")
     setPricePick("")
-  }, [open, quotation, t])
+  }, [open, quotation, contactId, t])
+
+  /** A finished order's output becomes the single (unpriced) line, and its
+   * customer is preselected when the order came from a quotation. */
+  const pickFinishedOrder = (id: string) => {
+    setLinkedOrderId(id)
+    const order = finishedOrders?.find((o) => o.id === id)
+    if (!order) return
+    const prefill = quotationPrefillFromWorkOrder(order)
+    setItemRows(prefill.items.map((i) => ({ name: i.name, quantity: String(i.quantity), unit: i.unit, unitPrice: "" })))
+    if (prefill.contactId && contacts?.some((c) => c.id === prefill.contactId)) setSelectedContactId(prefill.contactId)
+  }
 
   // The template's inventory link: everything the org's warehouses hold,
   // aggregated by name so one option shows total availability everywhere.
@@ -258,9 +292,11 @@ export function CrmQuotationDialog({
 
     setIsSaving(true)
     try {
+      const nowIso = new Date().toISOString()
       const data = {
-        contactId,
-        contactName: contactName ?? null,
+        contactId: effectiveContactId,
+        contactName: effectiveContactName,
+        ...statusStamp(quotation?.status, status, nowIso),
         amount: parsed,
         items: hasItems ? parsedItems : null,
         installments: parsedInstallments.length > 0 ? parsedInstallments : null,
@@ -281,8 +317,8 @@ export function CrmQuotationDialog({
         const ref = await addDoc(collection(firestore, CRM_QUOTATIONS), {
           ...data,
           quotationNumber,
-          workOrderId: seeds?.workOrderId ?? null,
-          workOrderNumber: seeds?.workOrderNumber ?? null,
+          workOrderId: linkedOrder?.id ?? seeds?.workOrderId ?? null,
+          workOrderNumber: linkedOrder?.orderNumber ?? seeds?.workOrderNumber ?? null,
           createdAt: serverTimestamp(),
         })
         quotationId = ref.id
@@ -293,58 +329,46 @@ export function CrmQuotationDialog({
       // unless one already exists for this quotation, or every requested good
       // is already sitting in a warehouse (see the lib). A post-manufacturing
       // quotation prices goods that already exist, so it never manufactures.
+      // Everything the customer's approval sets in motion (Finance told of
+      // the deposit, the work order for goods not in stock) lives in the lib,
+      // shared with the Sales detail page.
       const becameAccepted = status === "accepted" && quotation?.status !== "accepted"
-      const linkedWorkOrder = quotation?.workOrderId || seeds?.workOrderId
-
-      // The reflection to Finance: no ledger exists yet, so the deposit and
-      // schedule reach the finance people as a notification (placeholder
-      // agreed until Finance is built). Best-effort — never fails the save.
       if (becameAccepted && quotationId && user) {
         try {
-          const recipients = await loadFinanceRecipients(firestore, orgId, user.uid)
-          const first = installmentStates({ amount: parsed, installments: parsedInstallments.length > 0 ? parsedInstallments : null, payments: null })[0]
-          await notifyQuotationApproved(firestore, {
-            quotation: { id: quotationId, quotationNumber: quotationNumber || "", contactName: contactName ?? null, organizationId: orgId, amount: parsed },
-            recipients,
+          const result = await runQuotationAcceptance(firestore, {
+            orgId,
+            user: { id: user.uid, name: user.email || "" },
+            quotation: {
+              id: quotationId,
+              quotationNumber: quotationNumber || "",
+              contactId: effectiveContactId,
+              contactName: effectiveContactName,
+              opportunityId: quotation?.opportunityId ?? null,
+              amount: parsed,
+              items: hasItems ? parsedItems : null,
+              installments: parsedInstallments.length > 0 ? parsedInstallments : null,
+              phase,
+              workOrderId: quotation?.workOrderId ?? linkedOrder?.id ?? seeds?.workOrderId ?? null,
+            },
             notification: {
               title: t("sales_notif_approved_title"),
-              message: t("sales_notif_approved_msg", {
-                contact: contactName || "—",
-                number: quotationNumber || "",
-                amount: formatSar(parsed, locale),
-                deposit: first
-                  ? t("sales_notif_approved_deposit", {
-                      label: first.label || t("crm_quote_installment_full"),
-                      percent: first.percent,
-                      amount: formatSar(first.amount, locale),
-                    })
-                  : "",
-              }),
+              message: (deposit) =>
+                t("sales_notif_approved_msg", {
+                  contact: effectiveContactName || "—",
+                  number: quotationNumber || "",
+                  amount: formatSar(parsed, locale),
+                  deposit: deposit
+                    ? t("sales_notif_approved_deposit", {
+                        label: deposit.label || t("crm_quote_installment_full"),
+                        percent: deposit.percent,
+                        amount: formatSar(deposit.amount, locale),
+                      })
+                    : "",
+                }),
             },
           })
-          if (recipients.length > 0) toast({ title: t("crm_quote_finance_notified") })
-        } catch (err) {
-          console.error("Finance approval notification failed:", err)
-        }
-      }
-
-      if (becameAccepted && quotationId && user && phase !== "post_manufacturing" && !linkedWorkOrder) {
-        try {
-          const workOrderId = await createWorkOrderFromQuotation(firestore, {
-            organizationId: orgId,
-            quotationId,
-            quotationNumber: quotationNumber || "",
-            amount: parsed,
-            contactId,
-            contactName: contactName ?? null,
-            opportunityId: quotation?.opportunityId ?? null,
-            items: hasItems
-              ? parsedItems.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit }))
-              : undefined,
-            userId: user.uid,
-            userName: user.email || "",
-          })
-          if (workOrderId) toast({ title: t("crm_quote_work_order_created") })
+          if (result.notified > 0) toast({ title: t("crm_quote_finance_notified") })
+          if (result.workOrderId) toast({ title: t("crm_quote_work_order_created") })
         } catch (err) {
           console.error("Work order auto-create failed:", err)
           toast({ title: t("crm_quote_work_order_failed"), variant: "destructive" })
@@ -353,6 +377,7 @@ export function CrmQuotationDialog({
 
       toast({ title: t("crm_quote_saved") })
       onOpenChange(false)
+      if (quotationId) onSaved?.(quotationId)
     } catch (err) {
       console.error(err)
       toast({ title: t("crm_save_error"), variant: "destructive" })
@@ -361,44 +386,85 @@ export function CrmQuotationDialog({
     }
   }
 
-  const steps: CrmFormStep[] = [
-    {
-      id: "quotation",
-      title: t("crm_quote_add_title"),
-      validate: () => {
-        return null
-      },
-      content: (
-        <>
-            <div className="space-y-1.5">
-              <Label>{t("crm_quote_phase")}</Label>
-              <div role="group" aria-label={t("crm_quote_phase")} className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1">
-                {QUOTATION_PHASES.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    aria-pressed={phase === p}
-                    disabled={isSaving}
-                    onClick={() => setPhase(p)}
-                    className={cn(
-                      "h-9 rounded-md text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
-                      phase === p ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-white"
-                    )}
-                  >
-                    {t(`crm_quote_phase_${p}`)}
-                  </button>
+  const phaseControl = (
+        <div className="space-y-1.5">
+          <Label>{t("crm_quote_phase")}</Label>
+          <div role="group" aria-label={t("crm_quote_phase")} className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1">
+            {QUOTATION_PHASES.map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={phase === p}
+                disabled={isSaving}
+                onClick={() => setPhase(p)}
+                className={cn(
+                  "h-9 rounded-md text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                  phase === p ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-white"
+                )}
+              >
+                {t(`crm_quote_phase_${p}`)}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {t(phase === "post_manufacturing" ? "crm_quote_phase_hint_post" : "crm_quote_phase_hint_pre")}
+          </p>
+          {(quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber) != null && (
+            <p className="text-[11px] font-semibold text-cta flex items-center gap-1">
+              <Factory size={11} aria-hidden="true" />
+              {t("crm_quote_work_order_ref", { number: quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber ?? "" })}
+            </p>
+          )}
+        </div>
+  )
+
+  const customerStep: CrmFormStep = {
+    id: "customer",
+    title: t("crm_quote_step_customer"),
+    validate: () => (selectedContactId ? null : t("sales_pick_contact_required")),
+    content: (
+      <>
+        <div className="space-y-1.5">
+          <Label htmlFor="quote-customer">{t("sales_pick_contact")} <RequiredMark /></Label>
+          {contacts && contacts.length > 0 ? (
+            <Select value={selectedContactId || undefined} onValueChange={setSelectedContactId} disabled={isSaving}>
+              <SelectTrigger id="quote-customer"><SelectValue placeholder={t("sales_pick_contact_placeholder")} /></SelectTrigger>
+              <SelectContent>
+                {[...contacts].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                 ))}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                {t(phase === "post_manufacturing" ? "crm_quote_phase_hint_post" : "crm_quote_phase_hint_pre")}
-              </p>
-              {(quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber) != null && (
-                <p className="text-[11px] font-semibold text-cta flex items-center gap-1">
-                  <Factory size={11} aria-hidden="true" />
-                  {t("crm_quote_work_order_ref", { number: quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber ?? "" })}
-                </p>
-              )}
-            </div>
+              </SelectContent>
+            </Select>
+          ) : (
+            <p className="text-xs text-muted-foreground border border-dashed rounded-lg p-3">{t("sales_no_contacts")}</p>
+          )}
+        </div>
+        {phaseControl}
+        {phase === "post_manufacturing" && finishedOrders && (
+          <div className="space-y-1.5">
+            <Label htmlFor="quote-order">{t("sales_pick_work_order")}</Label>
+            <Select value={linkedOrderId || "__none__"} onValueChange={(v) => pickFinishedOrder(v === "__none__" ? "" : v)} disabled={isSaving}>
+              <SelectTrigger id="quote-order"><SelectValue placeholder={t("sales_pick_work_order_placeholder")} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">{t("sales_pick_work_order_none")}</SelectItem>
+                {finishedOrders.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>#{o.orderNumber} {o.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </>
+    ),
+  }
+
+  const detailsStep: CrmFormStep = {
+    id: "quotation",
+    title: salesMode ? t("crm_quote_step_details") : t("crm_quote_add_title"),
+    validate: () => null,
+    content: (
+        <>
+            {!salesMode && phaseControl}
             <div className="rounded-xl border bg-muted/20 p-3.5 space-y-2.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Label className="flex items-center gap-1.5">
@@ -609,9 +675,10 @@ export function CrmQuotationDialog({
               <Textarea id="quote-notes" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={isSaving} />
             </div>
         </>
-      ),
-    },
-  ]
+    ),
+  }
+
+  const steps: CrmFormStep[] = salesMode ? [customerStep, detailsStep] : [detailsStep]
 
   return (
     <CrmFormDialog

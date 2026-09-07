@@ -25,9 +25,10 @@ import {
   type QuotationInstallment,
   type QuotationItem,
   type QuotationPayment,
+  type QuotationStatus,
 } from "./crm"
 import { ALL_PERMISSION, type TeamGroup } from "./permissions"
-import { effectiveOutput, type WorkOrder } from "./manufacturing"
+import { createWorkOrderFromQuotation, effectiveOutput, type WorkOrder } from "./manufacturing"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -352,4 +353,169 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
     createdAt: paidAt,
   })
   await batch.commit()
+}
+
+// ---------------------------------------------------------------------------
+// Status workflow, timeline, and the data the Sales pages read
+// ---------------------------------------------------------------------------
+
+
+/** Where a quotation may go next. Accepted is final; a rejected one can be re-sent. */
+export const QUOTATION_STATUS_ACTIONS: Record<QuotationStatus, QuotationStatus[]> = {
+  draft: ["sent", "accepted", "rejected"],
+  sent: ["accepted", "rejected"],
+  accepted: [],
+  rejected: ["sent"],
+}
+
+/** The timestamp a status change writes, so the timeline can tell the story. */
+export function statusStamp(from: QuotationStatus | undefined, to: QuotationStatus, now: string): Partial<Record<"sentAt" | "acceptedAt" | "rejectedAt", string>> {
+  if (from === to) return {}
+  if (to === "sent") return { sentAt: now }
+  if (to === "accepted") return { acceptedAt: now }
+  if (to === "rejected") return { rejectedAt: now }
+  return {}
+}
+
+export interface InstallmentDue {
+  quotation: CrmQuotation
+  installment: InstallmentState
+}
+
+/** Every installment of every accepted quotation, split into what customers
+ * still owe (oldest quotation first) and what has come in (latest first). */
+export function collectInstallments(quotations: CrmQuotation[]): { due: InstallmentDue[]; received: InstallmentDue[] } {
+  const due: InstallmentDue[] = []
+  const received: InstallmentDue[] = []
+  for (const quotation of quotations) {
+    if (quotation.status !== "accepted") continue
+    for (const installment of installmentStates(quotation)) {
+      ;(installment.payment ? received : due).push({ quotation, installment })
+    }
+  }
+  due.sort((a, b) => (a.quotation.date || "").localeCompare(b.quotation.date || ""))
+  received.sort((a, b) => (b.installment.payment?.paidAt || "").localeCompare(a.installment.payment?.paidAt || ""))
+  return { due, received }
+}
+
+export interface SalesDashboardData {
+  totals: SalesTotals
+  statusCounts: Record<QuotationStatus, number>
+  recent: CrmQuotation[]
+  due: InstallmentDue[]
+  dueCount: number
+}
+
+export function salesDashboard(quotations: CrmQuotation[], limit = 5): SalesDashboardData {
+  const statusCounts: Record<QuotationStatus, number> = { draft: 0, sent: 0, accepted: 0, rejected: 0 }
+  for (const q of quotations) statusCounts[q.status] += 1
+  const { due } = collectInstallments(quotations)
+  return {
+    totals: salesTotals(quotations),
+    statusCounts,
+    recent: [...quotations].sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, limit),
+    due: [...due].sort((a, b) => b.installment.amount - a.installment.amount).slice(0, limit),
+    dueCount: due.length,
+  }
+}
+
+export interface TimelineEntry {
+  at: string
+  kind: "created" | "sent" | "accepted" | "rejected" | "payment" | "work_order"
+  /** Installment label for payments. */
+  label?: string
+  amount?: number
+  number?: number
+}
+
+function isoOf(value: unknown): string | null {
+  if (!value) return null
+  if (typeof value === "string") return value
+  if (typeof value === "object" && value && "toDate" in value && typeof (value as { toDate: unknown }).toDate === "function") {
+    return (value as { toDate: () => Date }).toDate().toISOString()
+  }
+  return null
+}
+
+/** The quotation's story in order: created, sent, accepted/rejected, work
+ * order opened, each payment. Only what was actually recorded appears. */
+export function quotationTimeline(q: CrmQuotation): TimelineEntry[] {
+  const entries: TimelineEntry[] = []
+  const created = isoOf(q.createdAt) || q.date
+  if (created) entries.push({ at: created, kind: "created" })
+  if (q.sentAt) entries.push({ at: q.sentAt, kind: "sent" })
+  if (q.acceptedAt) entries.push({ at: q.acceptedAt, kind: "accepted" })
+  if (q.rejectedAt) entries.push({ at: q.rejectedAt, kind: "rejected" })
+  if (q.workOrderNumber != null && q.workOrderId && quotationPhase(q) === "pre_manufacturing") {
+    entries.push({ at: q.acceptedAt || q.sentAt || created || "", kind: "work_order", number: q.workOrderNumber })
+  }
+  for (const s of installmentStates(q)) {
+    if (s.payment) entries.push({ at: s.payment.paidAt, kind: "payment", label: s.label, amount: s.payment.paidAmount })
+  }
+  return entries.sort((a, b) => a.at.localeCompare(b.at))
+}
+
+export interface AcceptanceInput {
+  orgId: string
+  user: { id: string; name: string }
+  quotation: {
+    id: string
+    quotationNumber: string
+    contactId: string
+    contactName: string | null
+    opportunityId?: string | null
+    amount: number
+    items: QuotationItem[] | null
+    installments: QuotationInstallment[] | null
+    phase: "pre_manufacturing" | "post_manufacturing"
+    /** A linked order (spawned earlier, or the finished one being sold) means no new one. */
+    workOrderId: string | null
+  }
+  /** Localised by the caller. `message` receives the first installment so it can name the deposit. */
+  notification: { title: string; message: (deposit: InstallmentState | null) => string }
+}
+
+/**
+ * Everything that happens when the customer approves, shared by the dialog
+ * and the detail page: Finance hears about the deposit (best-effort — a
+ * failed notification never blocks the sale) and, for a pre-manufacturing
+ * quotation without a linked order, the goods not in stock become a work
+ * order. Errors from the work order propagate so the caller can say so.
+ */
+export async function runQuotationAcceptance(
+  firestore: Firestore,
+  input: AcceptanceInput
+): Promise<{ notified: number; notifyFailed: boolean; workOrderId: string | null }> {
+  let notified = 0
+  let notifyFailed = false
+  try {
+    const recipients = await loadFinanceRecipients(firestore, input.orgId, input.user.id)
+    const first = installmentStates({ amount: input.quotation.amount, installments: input.quotation.installments, payments: null })[0] ?? null
+    await notifyQuotationApproved(firestore, {
+      quotation: { id: input.quotation.id, quotationNumber: input.quotation.quotationNumber, contactName: input.quotation.contactName, organizationId: input.orgId, amount: input.quotation.amount },
+      recipients,
+      notification: { title: input.notification.title, message: input.notification.message(first) },
+    })
+    notified = recipients.length
+  } catch (err) {
+    console.error("Finance approval notification failed:", err)
+    notifyFailed = true
+  }
+
+  let workOrderId: string | null = null
+  if (input.quotation.phase !== "post_manufacturing" && !input.quotation.workOrderId) {
+    workOrderId = await createWorkOrderFromQuotation(firestore, {
+      organizationId: input.orgId,
+      quotationId: input.quotation.id,
+      quotationNumber: input.quotation.quotationNumber,
+      amount: input.quotation.amount,
+      contactId: input.quotation.contactId,
+      contactName: input.quotation.contactName,
+      opportunityId: input.quotation.opportunityId ?? null,
+      items: input.quotation.items ? input.quotation.items.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })) : undefined,
+      userId: input.user.id,
+      userName: input.user.name,
+    })
+  }
+  return { notified, notifyFailed, workOrderId }
 }

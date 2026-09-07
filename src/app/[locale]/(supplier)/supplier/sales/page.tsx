@@ -1,12 +1,12 @@
 "use client"
 
 import { PortalLayout } from "@/components/layout/portal-layout"
-import { SalesView } from "@/components/sales/SalesView"
+import { SalesDashboardView } from "@/components/sales/SalesDashboardView"
 
 export default function SupplierSalesPage() {
   return (
     <PortalLayout>
-      <SalesView portal="supplier" />
+      <SalesDashboardView portal="supplier" />
     </PortalLayout>
   )
 }
