@@ -141,9 +141,12 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
                             {d.quotation.quotationNumber}
                           </Link>
                         </p>
-                        <p className="text-xs text-muted-foreground" dir="auto">{label(d.installment.label)} · {d.installment.percent}%</p>
+                        <p className="text-xs text-muted-foreground" dir="auto">
+                          {label(d.installment.label)} · {d.installment.percent}%
+                          {d.installment.paid > 0 && <span className="text-warning ms-1.5">· {t("sales_installment_partial", { paid: formatSar(d.installment.paid, locale), total: formatSar(d.installment.amount, locale), remaining: formatSar(d.installment.remaining, locale) })}</span>}
+                        </p>
                       </div>
-                      <span className="text-sm font-black tabular-nums text-warning" dir="ltr">{formatSar(d.installment.amount, locale)}</span>
+                      <span className="text-sm font-black tabular-nums text-warning" dir="ltr">{formatSar(d.installment.remaining, locale)}</span>
                       {canRecordPayment && (
                         <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setPay({ quotation: d.quotation, installmentId: d.installment.id })}>
                           <Banknote size={13} />

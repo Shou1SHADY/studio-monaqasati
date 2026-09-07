@@ -32,8 +32,8 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
 
   const { due, received } = useMemo(() => collectInstallments(quotations), [quotations])
-  const dueTotal = due.reduce((s, d) => s + d.installment.amount, 0)
-  const receivedTotal = received.reduce((s, d) => s + (d.installment.payment?.paidAmount ?? d.installment.amount), 0)
+  const dueTotal = due.reduce((s, d) => s + d.installment.remaining, 0)
+  const receivedTotal = received.reduce((s, d) => s + (d.entry?.paidAmount ?? 0), 0)
 
   const [tab, setTab] = useState<Tab>("due")
   const [search, setSearch] = useState("")
@@ -99,7 +99,7 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
       ) : (
         <ul className="rounded-2xl border bg-white divide-y overflow-hidden">
           {rows.map((d: InstallmentDue) => (
-            <li key={`${d.quotation.id}:${d.installment.id}`} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3.5">
+            <li key={`${d.quotation.id}:${d.installment.id}:${d.entry?.paidAt ?? "due"}`} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Link href={`${base}/quotations/${d.quotation.id}`} className="font-mono text-xs text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
@@ -109,20 +109,26 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5" dir="auto">
                   {label(d.installment.label)} · {t("sales_share_of", { percent: d.installment.percent, total: formatSar(d.quotation.amount, locale) })}
-                  {d.installment.payment && (
+                  {d.entry ? (
                     <span className="text-success ms-1.5">
-                      · {t("sales_paid_on", { date: formatCrmDate(d.installment.payment.paidAt, locale) })}
-                      {d.installment.payment.paidByUserName && ` ${t("sales_paid_by", { name: d.installment.payment.paidByUserName })}`}
-                      {d.installment.payment.note && ` — ${d.installment.payment.note}`}
+                      · {t("sales_paid_on", { date: formatCrmDate(d.entry.paidAt, locale) })}
+                      {d.entry.paidByUserName && ` ${t("sales_paid_by", { name: d.entry.paidByUserName })}`}
+                      {d.entry.note && ` — ${d.entry.note}`}
                     </span>
+                  ) : (
+                    d.installment.paid > 0 && (
+                      <span className="text-warning ms-1.5">
+                        · {t("sales_installment_partial", { paid: formatSar(d.installment.paid, locale), total: formatSar(d.installment.amount, locale), remaining: formatSar(d.installment.remaining, locale) })}
+                      </span>
+                    )
                   )}
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
-                <span className={cn("text-sm font-black tabular-nums", d.installment.payment ? "text-success" : "text-warning")} dir="ltr">
-                  {formatSar(d.installment.payment?.paidAmount ?? d.installment.amount, locale)}
+                <span className={cn("text-sm font-black tabular-nums", d.entry ? "text-success" : "text-warning")} dir="ltr">
+                  {formatSar(d.entry ? d.entry.paidAmount : d.installment.remaining, locale)}
                 </span>
-                {!d.installment.payment && canRecordPayment && (
+                {!d.entry && canRecordPayment && (
                   <Button size="sm" className="h-8 gap-1.5" onClick={() => setPay({ quotation: d.quotation, installmentId: d.installment.id })}>
                     <Banknote size={13} />
                     {t("sales_record_payment_btn")}

@@ -922,12 +922,20 @@ export interface QuotationInstallment {
 /** A customer payment recorded against one installment, keyed by its id in
  * `CrmQuotation.payments`. Kept apart from the schedule so editing the
  * schedule and recording money are different permissions. */
-export interface QuotationPayment {
+export interface QuotationPaymentEntry {
   paidAt: string
   paidAmount: number
   paidByUserId: string | null
   paidByUserName: string | null
   note: string | null
+}
+
+/** The running total paid against one installment. `paidAmount` accumulates
+ * across `entries` (each partial payment); the other fields describe the
+ * latest one. Records written before partial payments existed have no
+ * `entries` and read as a single payment. */
+export interface QuotationPayment extends QuotationPaymentEntry {
+  entries?: QuotationPaymentEntry[]
 }
 
 export const INSTALLMENT_DEPOSIT_ID = "deposit"

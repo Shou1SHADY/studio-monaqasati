@@ -2038,6 +2038,8 @@
       "sales_payments_empty_received": "No payments recorded yet",
       "sales_no_payment_permission": "Recording payments needs the sales-approval or finance permission",
       "sales_share_of": "{percent}% of {total}",
+      "sales_installment_partial": "Paid {paid} of {total} · remaining {remaining}",
+      "sales_amount_exceeds": "The amount exceeds what remains on this installment ({remaining})",
       "crm_quote_step_customer": "Customer",
       "crm_quote_step_details": "Quotation",
       "sales_pick_contact_required": "Choose a customer first",

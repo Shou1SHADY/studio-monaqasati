@@ -60,10 +60,10 @@ export function RecordPaymentDialog({
 
   useEffect(() => {
     if (!quotation) return
-    const preset = installmentId ? states.find((s) => s.id === installmentId && !s.payment) : null
+    const preset = installmentId ? states.find((s) => s.id === installmentId && !s.settled) : null
     const next = preset ?? nextUnpaidInstallment(quotation)
     setPicked(next?.id || "")
-    setAmount(next ? String(next.amount) : "")
+    setAmount(next ? String(next.remaining) : "")
     setNote("")
     // `states` derives from `quotation`; re-running on it would loop.
   }, [quotation?.id, installmentId])
@@ -72,7 +72,7 @@ export function RecordPaymentDialog({
   const pick = (id: string) => {
     setPicked(id)
     const s = states.find((x) => x.id === id)
-    if (s) setAmount(String(s.amount))
+    if (s) setAmount(String(s.remaining))
   }
 
   const confirm = async () => {
@@ -83,6 +83,12 @@ export function RecordPaymentDialog({
       return
     }
     const state = states.find((s) => s.id === picked)
+    // A payment may cover part of an installment (the rest stays due) but never
+    // more than what remains on it — the excess belongs to the next installment.
+    if (state && parsed > state.remaining + 0.005) {
+      toast({ title: t("sales_amount_exceeds", { remaining: formatSar(state.remaining, locale) }), variant: "destructive" })
+      return
+    }
     setIsSaving(true)
     try {
       const recipients = paymentRecipients({ ownerId: orgId, actorId: user.uid, members: teamMembers, groups })
@@ -135,19 +141,21 @@ export function RecordPaymentDialog({
                   type="button"
                   role="radio"
                   aria-checked={picked === s.id}
-                  disabled={!!s.payment || isSaving}
+                  disabled={s.settled || isSaving}
                   onClick={() => pick(s.id)}
                   className={cn(
                     "w-full text-start flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
                     picked === s.id ? "border-primary bg-primary/5" : "border-slate-200 hover:border-slate-300",
-                    s.payment && "bg-success/5 border-success/30"
+                    s.settled && "bg-success/5 border-success/30"
                   )}
                 >
                   <span className="font-semibold" dir="auto">{label(s.label)} · {s.percent}%</span>
                   <span className="tabular-nums text-muted-foreground" dir="ltr">
-                    {s.payment
-                      ? t("sales_installment_paid_line", { label: "", amount: formatSar(s.payment.paidAmount, locale), date: formatCrmDate(s.payment.paidAt, locale) }).trim()
-                      : formatSar(s.amount, locale)}
+                    {s.settled && s.payment
+                      ? t("sales_installment_paid_line", { label: "", amount: formatSar(s.paid, locale), date: formatCrmDate(s.payment.paidAt, locale) }).trim()
+                      : s.paid > 0
+                        ? t("sales_installment_partial", { paid: formatSar(s.paid, locale), total: formatSar(s.amount, locale), remaining: formatSar(s.remaining, locale) })
+                        : formatSar(s.amount, locale)}
                   </span>
                 </button>
               ))}

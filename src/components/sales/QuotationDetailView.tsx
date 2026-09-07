@@ -322,14 +322,18 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
                       <td className="px-3 py-2.5 text-end tabular-nums" dir="ltr">{s.percent}%</td>
                       <td className="px-3 py-2.5 text-end tabular-nums font-bold" dir="ltr">{formatSar(s.amount, locale)}</td>
                       <td className="px-5 py-2.5">
-                        {s.payment ? (
+                        {s.settled && s.payment ? (
                           <span className="text-xs text-success font-semibold" dir="auto">
-                            {t("sales_installment_paid")} · {formatSar(s.payment.paidAmount, locale)} · {formatCrmDate(s.payment.paidAt, locale)}
+                            {t("sales_installment_paid")} · {formatSar(s.paid, locale)} · {formatCrmDate(s.payment.paidAt, locale)}
                             {s.payment.paidByUserName && ` ${t("sales_paid_by", { name: s.payment.paidByUserName })}`}
                           </span>
                         ) : q.status === "accepted" ? (
                           <span className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-warning font-semibold">{t("sales_installment_due")}</span>
+                            <span className="text-xs text-warning font-semibold" dir="auto">
+                              {s.paid > 0
+                                ? t("sales_installment_partial", { paid: formatSar(s.paid, locale), total: formatSar(s.amount, locale), remaining: formatSar(s.remaining, locale) })
+                                : t("sales_installment_due")}
+                            </span>
                             {canRecordPayment && (
                               <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setPayInstallment(s.id)}>
                                 <Banknote size={12} />

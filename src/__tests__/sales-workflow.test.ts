@@ -100,3 +100,40 @@ describe("quotationTimeline", () => {
     expect(quotationTimeline(q).map((e) => e.kind)).toEqual(["created"])
   })
 })
+
+describe("partial payments", () => {
+  const { applyInstallmentPayment, installmentStates, isFullyPaid, nextUnpaidInstallment, paidSoFar } = jest.requireActual<typeof import("@/lib/sales")>("@/lib/sales")
+  const entry = (paidAmount: number, paidAt: string) => ({ paidAt, paidAmount, paidByUserId: "u", paidByUserName: "وليد", note: null })
+  const scheduled = quote({ id: "p", status: "accepted", amount: 1000, installments: schedule })
+
+  it("keeps an installment due until its amount is fully covered", () => {
+    const first = applyInstallmentPayment(scheduled, "deposit", entry(100, "2026-09-01"))
+    expect(first).toMatchObject({ paidAmount: 100, paidAt: null, allPaid: false, installmentSettled: false })
+    const partly = { ...scheduled, payments: first.payments, paidAmount: first.paidAmount }
+    const deposit = installmentStates(partly)[0]
+    expect(deposit).toMatchObject({ paid: 100, remaining: 200, settled: false })
+    expect(deposit.entries).toHaveLength(1)
+    expect(nextUnpaidInstallment(partly)?.id).toBe("deposit")
+    expect(paidSoFar(partly)).toBe(100)
+
+    const second = applyInstallmentPayment(partly, "deposit", entry(200, "2026-09-02"))
+    expect(second).toMatchObject({ paidAmount: 300, allPaid: false, installmentSettled: true })
+    const settled = { ...partly, payments: second.payments, paidAmount: second.paidAmount }
+    expect(installmentStates(settled)[0]).toMatchObject({ paid: 300, remaining: 0, settled: true })
+    expect(installmentStates(settled)[0].entries.map((e) => e.paidAmount)).toEqual([100, 200])
+    expect(nextUnpaidInstallment(settled)?.id).toBe("balance")
+
+    const last = applyInstallmentPayment(settled, "balance", entry(700, "2026-09-03"))
+    expect(last).toMatchObject({ paidAmount: 1000, paidAt: "2026-09-03", allPaid: true })
+    expect(isFullyPaid({ ...settled, payments: last.payments, paidAt: last.paidAt })).toBe(true)
+  })
+
+  it("lists each partial payment as its own received row and the remainder as due", () => {
+    const first = applyInstallmentPayment(scheduled, "deposit", entry(100, "2026-09-01"))
+    const partly = { ...scheduled, payments: first.payments }
+    const { due, received } = collectInstallments([partly])
+    expect(due.map((d) => [d.installment.id, d.installment.remaining])).toEqual([["deposit", 200], ["balance", 700]])
+    expect(received.map((r) => [r.installment.id, r.entry?.paidAmount])).toEqual([["deposit", 100]])
+    expect(quotationTimeline(partly).filter((e) => e.kind === "payment")).toHaveLength(1)
+  })
+})
