@@ -118,9 +118,15 @@ export function periodOf(date: string): string {
  * Stable id for a business-sourced entry. Keeping it deterministic is what
  * makes posting idempotent: the same source document always writes the same
  * Firestore document, so a replayed hook cannot double-post.
+ *
+ * The organization is part of the id because not every source id is globally
+ * unique. Firestore auto-ids are, but the synthetic ones are not — every org
+ * has an "OPEN-2026" opening balance, a "2026-03" VAT settlement, a "2026-03"
+ * payroll run. Without the org prefix those collide across companies, and one
+ * company's books overwrite another's.
  */
-export function entryDocId(sourceType: SourceType, sourceId: string): string {
-  return `${sourceType}__${sourceId}`
+export function entryDocId(organizationId: string, sourceType: SourceType, sourceId: string): string {
+  return `${organizationId}__${sourceType}__${sourceId}`
 }
 
 export class UnbalancedEntryError extends Error {
@@ -232,7 +238,7 @@ export function addEntryToBatch(
   batch: WriteBatch,
   entry: Omit<JournalEntry, "id">
 ): string {
-  const id = entryDocId(entry.sourceType, entry.sourceId)
+  const id = entryDocId(entry.organizationId, entry.sourceType, entry.sourceId)
   batch.set(doc(firestore, JOURNAL_ENTRIES, id), {
     ...entry,
     createdAt: serverTimestamp(),
