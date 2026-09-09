@@ -230,7 +230,7 @@ describe("can() — unknown groupId", () => {
 
 describe("PERMISSION_IDS", () => {
   it("contains exactly 20 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(20)
+    expect(PERMISSION_IDS).toHaveLength(23)
   })
 
   it("groups every permission into exactly one component section", () => {
@@ -462,6 +462,9 @@ describe("permissionLabelKey", () => {
       "sales.manage": "perm_sales_manage",
       "sales.approve": "perm_sales_approve",
       "warehouses.receive": "perm_warehouses_receive",
+      "accounting.view": "perm_accounting_view",
+      "accounting.post": "perm_accounting_post",
+      "accounting.close": "perm_accounting_close",
       "team.manage": "perm_team_manage",
     }
     PERMISSION_IDS.forEach((p) => {

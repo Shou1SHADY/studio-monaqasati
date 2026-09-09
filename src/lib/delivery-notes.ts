@@ -7,6 +7,8 @@
 
 import { collection, doc, writeBatch, serverTimestamp, type Firestore } from "firebase/firestore"
 import { WORK_ORDERS, effectiveOutput, type WorkOrder, type WorkOrderDelivery } from "./manufacturing"
+import { onWorkOrderDelivered } from "./accounting/hooks"
+import { round2 } from "./accounting/journal"
 
 export const DELIVERY_NOTES = "deliveryNotes"
 
@@ -199,6 +201,25 @@ export async function confirmDeliveryNote(
     })
   }
   await batch.commit()
+
+  // Signing for the goods is when the produced value stops being work in
+  // progress: into a project warehouse it becomes project cost, anywhere else
+  // it becomes finished-goods stock.
+  const value = round2((input.note.item.unitCost ?? 0) * input.note.item.quantity)
+  onWorkOrderDelivered(
+    firestore,
+    { organizationId: input.note.organizationId, userId: input.actor.id, userName: input.actor.name },
+    {
+      workOrderId: input.note.source.workOrderId,
+      orderNumber: input.note.source.workOrderNumber,
+      deliveryNoteId: input.note.id,
+      date: receivedAt.slice(0, 10),
+      value,
+      warehouseName: input.note.toWarehouseName,
+      projectId: input.note.toProjectId ?? null,
+      toProject: input.note.toKind === "project",
+    }
+  )
 }
 
 /** The receiving side refuses: the note is closed with the reason and the

@@ -34,6 +34,14 @@ export const PERMISSION_IDS = [
   // Confirming receipt of a delivery note (stock arriving from Manufacturing)
   // without the power to edit stock — the warehouse keeper's signature.
   "warehouses.receive",
+  // Accounting. Three levels because the people who read the books, the people
+  // who write to them, and the person who declares a period final are rarely the
+  // same: `accounting.view` reads statements and ledgers; `accounting.post`
+  // writes manual vouchers and reverses entries; `accounting.close` locks a
+  // period (and reopens one), which is what makes a signed statement stay true.
+  "accounting.view",
+  "accounting.post",
+  "accounting.close",
   "team.manage",
 ] as const
 
@@ -47,6 +55,7 @@ export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId
   { key: "procurement", permissions: ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "suppliers.manage", "deliveries.confirm"] },
   { key: "inventory", permissions: ["warehouses.manage", "warehouses.receive"] },
   { key: "finance", permissions: ["invoices.manage"] },
+  { key: "accounting", permissions: ["accounting.view", "accounting.post", "accounting.close"] },
   { key: "hr", permissions: ["employees.manage"] },
   { key: "crm", permissions: ["crm.manage", "crm.close"] },
   { key: "sales", permissions: ["sales.manage", "sales.approve"] },
@@ -106,6 +115,10 @@ export const SEEDED_GROUPS: Array<{
       "offers.accept",
       "invoices.manage",
       "employees.manage",
+      // Finance reads and writes the books, but closing a period stays with the
+      // owner or whoever they name — it is the step that makes a statement final.
+      "accounting.view",
+      "accounting.post",
     ],
     isSystem: false,
   },
