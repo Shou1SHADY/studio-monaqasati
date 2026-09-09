@@ -65,6 +65,9 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
   const [name, setName] = useState("")
   const [unit, setUnit] = useState("")
   const [price, setPrice] = useState("")
+  const [cost, setCost] = useState("")
+  const [needsMeasure, setNeedsMeasure] = useState(false)
+  const [needsApproval, setNeedsApproval] = useState(false)
   const [notes, setNotes] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SalesPriceItem | null>(null)
@@ -74,6 +77,9 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
     setName(item?.name || "")
     setUnit(item?.unit || "")
     setPrice(item ? String(item.unitPrice) : "")
+    setCost(item?.cost != null ? String(item.cost) : "")
+    setNeedsMeasure(item?.requiresMeasurement === true)
+    setNeedsApproval(item?.requiresApproval === true)
     setNotes(item?.notes || "")
     setEditor(target)
   }
@@ -87,7 +93,15 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
     }
     setIsSaving(true)
     try {
-      const data = { name: name.trim(), unit: unit.trim(), unitPrice: parsedPrice, notes: notes.trim() || null, organizationId: orgId, updatedAt: serverTimestamp() }
+      const parsedCost = parseFloat(cost)
+      const data = {
+        name: name.trim(), unit: unit.trim(), unitPrice: parsedPrice,
+        // Cost is optional and never guessed: an empty field stays null so
+        // margins on sales orders say "unknown" instead of lying with a zero.
+        cost: Number.isFinite(parsedCost) && parsedCost >= 0 ? parsedCost : null,
+        requiresMeasurement: needsMeasure, requiresApproval: needsApproval,
+        notes: notes.trim() || null, organizationId: orgId, updatedAt: serverTimestamp(),
+      }
       if (editor === "new") await addDoc(collection(firestore, SALES_PRICE_ITEMS), { ...data, createdAt: serverTimestamp() })
       else if (editor !== "closed") await updateDoc(doc(firestore, SALES_PRICE_ITEMS, editor.id), data)
       toast({ title: t("pl_saved") })
@@ -197,6 +211,20 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
                 <Label htmlFor="pl-price">{t("pl_price")} *</Label>
                 <Input id="pl-price" type="number" min="0" step="any" inputMode="decimal" dir="ltr" value={price} onChange={(e) => setPrice(e.target.value)} disabled={isSaving} />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pl-cost">{t("pl_cost")}</Label>
+              <Input id="pl-cost" type="number" min="0" step="any" inputMode="decimal" dir="ltr" value={cost} onChange={(e) => setCost(e.target.value)} disabled={isSaving} />
+            </div>
+            <div className="flex items-center gap-4 flex-wrap">
+              <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                <input type="checkbox" checked={needsMeasure} onChange={(e) => setNeedsMeasure(e.target.checked)} disabled={isSaving} className="h-4 w-4 accent-primary" />
+                {t("pl_requires_measurement")}
+              </label>
+              <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+                <input type="checkbox" checked={needsApproval} onChange={(e) => setNeedsApproval(e.target.checked)} disabled={isSaving} className="h-4 w-4 accent-primary" />
+                {t("pl_requires_approval")}
+              </label>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pl-notes">{t("pl_notes")}</Label>

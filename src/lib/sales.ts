@@ -30,7 +30,8 @@ import {
 } from "./crm"
 import { ALL_PERMISSION, type TeamGroup } from "./permissions"
 import { createWorkOrderFromQuotation, effectiveOutput, type WorkOrder } from "./manufacturing"
-import { onQuotationAccepted, onQuotationPaymentRecorded } from "./accounting/hooks"
+import { onQuotationPaymentRecorded } from "./accounting/hooks"
+import { createSalesOrderFromQuotation } from "./sales-order-writes"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -44,6 +45,13 @@ export interface SalesPriceItem {
   name: string
   unit: string
   unitPrice: number
+  /** What one unit costs us. Optional: needed for margins on sales orders,
+   * not for quoting — an unknown cost stays null and margins say so. */
+  cost?: number | null
+  /** Made-to-measure: production cannot start before a site measurement. */
+  requiresMeasurement?: boolean | null
+  /** Needs the client's shop-drawing approval before cutting. */
+  requiresApproval?: boolean | null
   notes?: string | null
   createdAt?: unknown
   updatedAt?: unknown
@@ -396,9 +404,10 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
   })
   await batch.commit()
 
-  // Money taken on a quotation whose goods do not exist yet is an advance from
-  // the client, not the settlement of a receivable — the ledger must not show a
-  // debt being cleared that was never recognised.
+  // Every quotation payment is an ADVANCE now: revenue is recognised by the
+  // sales invoice built on delivered goods, so money that arrives earlier is a
+  // liability the invoices unwind pro-rata. Crediting a receivable here would
+  // clear a debt the ledger never recognised.
   onQuotationPaymentRecorded(
     firestore,
     {
@@ -413,7 +422,7 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
       amount: input.amount,
       contactId: input.quotation.contactId,
       contactName: input.quotation.contactName,
-      isAdvance: input.quotation.phase !== "post_manufacturing",
+      isAdvance: true,
     }
   )
 }
@@ -552,7 +561,7 @@ export interface AcceptanceInput {
 export async function runQuotationAcceptance(
   firestore: Firestore,
   input: AcceptanceInput
-): Promise<{ notified: number; notifyFailed: boolean; workOrderId: string | null }> {
+): Promise<{ notified: number; notifyFailed: boolean; workOrderId: string | null; salesOrderId: string | null }> {
   let notified = 0
   let notifyFailed = false
   try {
@@ -585,21 +594,32 @@ export async function runQuotationAcceptance(
     })
   }
 
-  // A post-manufacturing quotation is a completed sale, so acceptance is the
-  // revenue event. A pre-manufacturing one is an order the factory has yet to
-  // build; the hook knows the difference and posts nothing for it.
-  onQuotationAccepted(
-    firestore,
-    { organizationId: input.orgId, userId: input.user.id, userName: input.user.name },
-    {
-      quotationId: input.quotation.id,
-      quotationNumber: input.quotation.quotationNumber,
-      amount: input.quotation.amount,
-      contactId: input.quotation.contactId,
-      contactName: input.quotation.contactName,
-      phase: input.quotation.phase === "post_manufacturing" ? "post_manufacturing" : "pre_manufacturing",
-    }
-  )
+  // Acceptance's second half: the quotation becomes a SALES ORDER — the
+  // backbone that deliveries and invoices hang off. Revenue is deliberately
+  // NOT posted here any more: it posts when an invoice bills delivered goods,
+  // so a signed quotation that never ships never inflates the income statement.
+  let salesOrderId: string | null = null
+  try {
+    const priceSnap = await getDocs(
+      query(collection(firestore, SALES_PRICE_ITEMS), where("organizationId", "==", input.orgId))
+    )
+    salesOrderId = await createSalesOrderFromQuotation(firestore, {
+      organizationId: input.orgId,
+      quotation: {
+        id: input.quotation.id,
+        quotationNumber: input.quotation.quotationNumber,
+        contactId: input.quotation.contactId,
+        contactName: input.quotation.contactName ?? null,
+        items: input.quotation.items ?? null,
+        installments: input.quotation.installments ?? null,
+        amount: input.quotation.amount,
+      },
+      priceItems: priceSnap.docs.map((d) => d.data() as { name: string; cost?: number | null }),
+      actor: { id: input.user.id, name: input.user.name },
+    })
+  } catch (err) {
+    console.error("Sales order creation failed:", err)
+  }
 
-  return { notified, notifyFailed, workOrderId }
+  return { notified, notifyFailed, workOrderId, salesOrderId }
 }

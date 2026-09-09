@@ -57,6 +57,7 @@ import {
   Tags,
   ClipboardCheck,
   Calculator,
+  Truck,
   Lock,
   TrendingUp,
   Scale,
@@ -297,6 +298,8 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "sales_nav_dashboard", href: "/contractor/sales", icon: LayoutDashboard, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_quotations", href: "/contractor/sales/quotations", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_orders", href: "/contractor/sales/orders", icon: ClipboardList, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_fulfillment", href: "/contractor/sales/fulfillment", icon: Truck, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_payments", href: "/contractor/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/contractor/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],
@@ -446,6 +449,8 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           // module as the contractor's, living inside the RFQ-facing Sales tile.
           { titleKey: "sales_nav_dashboard", href: "/supplier/sales", icon: LayoutDashboard, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_quotations", href: "/supplier/sales/quotations", icon: FileText, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_orders", href: "/supplier/sales/orders", icon: ClipboardList, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_fulfillment", href: "/supplier/sales/fulfillment", icon: Truck, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_payments", href: "/supplier/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/supplier/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
         ],

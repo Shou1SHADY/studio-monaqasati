@@ -19,7 +19,6 @@ import {
   query,
   where,
   limit,
-  orderBy,
   writeBatch,
   type Firestore,
   type WriteBatch,
@@ -37,18 +36,26 @@ import {
 } from "./journal"
 import type { PostingContext, PostingResult } from "./posting-rules"
 
-/** Highest entry number in the org, +1. One query, ordered server-side. */
+/**
+ * Highest entry number in the org, +1.
+ *
+ * Deliberately a plain equality query with the max computed here: adding
+ * `orderBy(entryNumber)` would demand a composite index, and a missing index
+ * makes the query THROW — which, inside postToLedgerSafe, silently drops the
+ * ledger entry. That exact failure happened once; a full read of an org's
+ * entries is the cheaper price. (The accounting screens already subscribe to
+ * the same set, so this is no new load in practice.)
+ */
 async function nextNumber(firestore: Firestore, organizationId: string): Promise<number> {
   const snap = await getDocs(
-    query(
-      collection(firestore, JOURNAL_ENTRIES),
-      where("organizationId", "==", organizationId),
-      orderBy("entryNumber", "desc"),
-      limit(1)
-    )
+    query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", organizationId))
   )
-  if (snap.empty) return 1
-  return (Number(snap.docs[0].data().entryNumber) || 0) + 1
+  let max = 0
+  snap.forEach((d) => {
+    const n = Number(d.data().entryNumber) || 0
+    if (n > max) max = n
+  })
+  return max + 1
 }
 
 async function loadPeriods(firestore: Firestore, organizationId: string): Promise<AccountingPeriod[]> {

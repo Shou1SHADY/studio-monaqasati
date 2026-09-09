@@ -940,6 +940,78 @@ service cloud.firestore {
 
     // Sales price list — the org's known items with fixed prices, picked into
     // quotations. Reading is for every member; the list itself is Sales'.
+    // ── Sales orders (أوامر البيع) — the backbone between quotation and cash ──
+    //
+    // Quantities are DERIVED, never stored: delivered comes from delivery
+    // notes, invoiced from invoices. So the rules guard documents, and the
+    // documents guard the numbers.
+    match /salesOrders/{orderId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
+      // Orders are records other documents point at — only an admin removes one.
+      allow delete: if isAdmin();
+    }
+
+    // Customer delivery notes. Sales schedules them; confirming one is the
+    // moment stock actually leaves, so the warehouse keeper's permissions
+    // count there too.
+    match /salesDeliveryNotes/{noteId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('sales.manage');
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('warehouses.manage')
+            || hasOrgPermission('warehouses.receive'));
+      // Only a note that never delivered may be removed — a delivered note is
+      // the proof behind quantities and invoices.
+      allow delete: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('sales.manage')
+        && resource.data.status == 'requested';
+    }
+
+    // Returns — Sales owns the request and the decision; issuing the credit
+    // note is a Finance act.
+    match /salesReturns/{returnId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('sales.manage');
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('sales.approve') || hasOrgPermission('invoices.manage')
+            || hasOrgPermission('sales.manage'));
+      allow delete: if isAdmin();
+    }
+
+    // Manufacturing requests — Sales asks, the plant answers. Creating one
+    // needs sales rights; answering (accept into a work order, or reject with
+    // a reason) is the plant's call.
+    match /manufacturingRequests/{requestId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('sales.manage');
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('sales.manage'));
+      allow delete: if isAdmin();
+    }
+
+    // Sales invoices — revenue's paper trail. Marking one paid is a Finance
+    // act; deleting one is not offered to clients at all.
+    match /salesInvoices/{invoiceId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('invoices.manage'));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('invoices.manage') || hasOrgPermission('sales.approve'));
+      allow delete: if isAdmin();
+    }
+
     match /salesPriceItems/{itemId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)

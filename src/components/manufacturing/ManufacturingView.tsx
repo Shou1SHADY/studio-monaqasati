@@ -39,6 +39,8 @@ import {
 } from "@/lib/manufacturing"
 import { DELIVERY_NOTES, handOverWorkOrder, confirmDeliveryNote, type DeliveryNote } from "@/lib/delivery-notes"
 import { ManufacturingMindMap } from "./ManufacturingMindMap"
+import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
+import { acceptManufacturingRequest, rejectManufacturingRequest } from "@/lib/sales-order-writes"
 
 type Member = { id: string; name?: string; email?: string }
 
@@ -127,6 +129,49 @@ export function ManufacturingView({
   }, [firestore, sourceWarehouseId])
   const { data: sourceItemsData } = useCollection(sourceItemsQuery)
   const sourceItems = (sourceItemsData || []) as Array<{ id: string; name: string; quantity: number; unit: string; unitCost?: number | null }>
+
+  // Requests from Sales (طلب تصنيع) — the plant answers each with a work
+  // order or a reason, and an unanswered one visibly ages.
+  const mfgRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: mfgRequestsData } = useCollection(mfgRequestsQuery)
+  const salesRequests = useMemo(
+    () =>
+      (((mfgRequestsData || []) as ManufacturingRequest[]).sort((a, b) =>
+        (a.requestedAt || "") < (b.requestedAt || "") ? 1 : -1
+      )),
+    [mfgRequestsData]
+  )
+  const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState("")
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null)
+
+  const answerRequest = async (request: ManufacturingRequest, accept: boolean) => {
+    if (!firestore || !user || requestBusyId) return
+    if (!accept && !rejectReason.trim()) return
+    setRequestBusyId(request.id)
+    try {
+      if (accept) {
+        await acceptManufacturingRequest(firestore, { request, actor: { id: user.uid, name: actorName } })
+        toast({ title: t("mfg_req_accepted_toast") })
+      } else {
+        await rejectManufacturingRequest(firestore, { request, reason: rejectReason.trim(), actor: { id: user.uid, name: actorName } })
+        toast({ title: t("mfg_req_rejected_toast") })
+        setRejectingId(null)
+        setRejectReason("")
+      }
+    } catch (err) {
+      console.error(err)
+      toast({
+        title: (err as Error).message === "no_departments" ? t("mfg_no_departments_error") : t("mfg_save_error"),
+        variant: "destructive",
+      })
+    } finally {
+      setRequestBusyId(null)
+    }
+  }
 
   const [statusFilter, setStatusFilter] = useState<"open" | "done" | "all">("open")
   // "list" is the compact queue; "map" draws the same orders as a mind map
@@ -555,6 +600,71 @@ export function ManufacturingView({
           </div>
         )}
       </div>
+      )}
+
+      {/* Requests from Sales — answered with a work order or a reason */}
+      {!embedded && salesRequests.length > 0 && (
+        <div className="rounded-2xl border bg-white p-5 space-y-3">
+          <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+            <ClipboardCheck size={15} className="text-accent" />
+            {t("mfg_req_title")}
+            <span className="text-[11px] font-bold text-muted-foreground">
+              {t("mfg_req_pending", { count: salesRequests.filter((r) => r.status === "new").length })}
+            </span>
+          </h2>
+          <div className="divide-y">
+            {salesRequests.map((request) => (
+              <div key={request.id} className="py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm">{request.requestNumber}</span>
+                    {request.status === "new" && <Badge className="bg-warning/10 text-warning border-none">{t("mfg_req_new")}</Badge>}
+                    {request.status === "accepted" && (
+                      <Badge className="bg-success/10 text-success border-none">
+                        {t("mfg_req_accepted", { number: request.workOrderNumber ?? 0 })}
+                      </Badge>
+                    )}
+                    {request.status === "rejected" && <Badge className="bg-destructive/10 text-destructive border-none">{t("mfg_req_rejected")}</Badge>}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {request.itemName} × {request.quantity} {request.unit}
+                    {request.contactName && <span className="mx-1.5">— {request.contactName}</span>}
+                  </p>
+                  {request.status === "rejected" && request.rejectionReason && (
+                    <p className="text-[11px] text-destructive mt-0.5">{request.rejectionReason}</p>
+                  )}
+                </div>
+                {request.status === "new" && canManage && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    {rejectingId === request.id ? (
+                      <>
+                        <Input
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder={t("mfg_req_reason_placeholder")}
+                          className="h-8 w-56 text-xs"
+                        />
+                        <Button size="sm" variant="outline" className="h-8" disabled={!rejectReason.trim() || requestBusyId === request.id} onClick={() => answerRequest(request, false)}>
+                          {t("mfg_req_reject_btn")}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button size="sm" className="h-8 gap-1.5" disabled={requestBusyId === request.id} onClick={() => answerRequest(request, true)}>
+                          {requestBusyId === request.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                          {t("mfg_req_accept_btn")}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8 text-muted-foreground" onClick={() => { setRejectingId(request.id); setRejectReason("") }}>
+                          {t("mfg_req_reject_btn")}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Orders */}
