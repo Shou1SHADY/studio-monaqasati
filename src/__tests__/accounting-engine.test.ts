@@ -232,9 +232,18 @@ describe("buildEntry", () => {
 
 describe("entryDocId", () => {
   it("is deterministic, which is what makes posting idempotent", () => {
-    expect(entryDocId("ipc_claim", "claim1")).toBe("ipc_claim__claim1")
-    expect(entryDocId("ipc_claim", "claim1")).toBe(entryDocId("ipc_claim", "claim1"))
-    expect(entryDocId("ipc_collection", "claim1")).not.toBe(entryDocId("ipc_claim", "claim1"))
+    expect(entryDocId("org1", "ipc_claim", "claim1")).toBe("org1__ipc_claim__claim1")
+    expect(entryDocId("org1", "ipc_claim", "claim1")).toBe(entryDocId("org1", "ipc_claim", "claim1"))
+    expect(entryDocId("org1", "ipc_collection", "claim1")).not.toBe(entryDocId("org1", "ipc_claim", "claim1"))
+  })
+
+  it("keeps two orgs apart on a source id that is not globally unique", () => {
+    // Every org opens its books as "OPEN-2026" and settles VAT for "2026-03".
+    // Without the org in the id these would be the same document, and one
+    // company's opening balance would silently replace another's.
+    expect(entryDocId("orgA", "opening", "OPEN-2026")).not.toBe(entryDocId("orgB", "opening", "OPEN-2026"))
+    expect(entryDocId("orgA", "vat_settlement", "2026-03")).not.toBe(entryDocId("orgB", "vat_settlement", "2026-03"))
+    expect(entryDocId("orgA", "payroll", "2026-03")).not.toBe(entryDocId("orgB", "payroll", "2026-03"))
   })
 })
 
