@@ -56,6 +56,15 @@ import {
   Banknote,
   Tags,
   ClipboardCheck,
+  Calculator,
+  Lock,
+  TrendingUp,
+  Scale,
+  PieChart,
+  ListTree,
+  BookOpen,
+  CalendarClock,
+  Percent,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -87,6 +96,7 @@ export type PortalComponentId =
   | "crm"
   | "manufacturing"
   | "sales"
+  | "accounting"
   | "users"
 
 export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive"
@@ -294,6 +304,54 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     ],
   },
   {
+    // Accounting sits beside Finance rather than inside it: Finance is about
+    // invoices and guarantees moving, Accounting is the record of what those
+    // movements did to the company's position. Its nav is grouped the way an
+    // accountant works — statements to read, books to keep, taxes to file.
+    id: "accounting",
+    labelKey: "component_accounting",
+    descKey: "component_accounting_desc",
+    homeHref: "/contractor/accounting",
+    icon: Calculator,
+    accentToken: "primary",
+    displayOrder: 10,
+    sections: [
+      {
+        labelKey: "acc_nav_group_overview",
+        items: [
+          { titleKey: "acc_nav_dashboard", href: "/contractor/accounting", icon: LayoutDashboard, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_locked", href: "/contractor/accounting/locked", icon: Lock, requiredPermission: "accounting.view" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_statements",
+        items: [
+          { titleKey: "acc_nav_income", href: "/contractor/accounting/income-statement", icon: TrendingUp, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_balance", href: "/contractor/accounting/balance-sheet", icon: Scale, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_cashflow", href: "/contractor/accounting/cash-flow", icon: Banknote, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_equity", href: "/contractor/accounting/equity", icon: PieChart, requiredPermission: "accounting.view" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_books",
+        items: [
+          { titleKey: "acc_nav_coa", href: "/contractor/accounting/chart-of-accounts", icon: ListTree, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_trial_balance", href: "/contractor/accounting/trial-balance", icon: Scale, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_journal", href: "/contractor/accounting/journal", icon: BookOpen, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_ledger", href: "/contractor/accounting/ledger", icon: FileText, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_checks", href: "/contractor/accounting/checks", icon: ShieldCheck, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_periods", href: "/contractor/accounting/periods", icon: CalendarClock, requiredPermission: "accounting.close" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_tax",
+        items: [
+          { titleKey: "acc_nav_vat", href: "/contractor/accounting/vat", icon: Percent, requiredPermission: "accounting.view" },
+        ],
+      },
+    ],
+  },
+  {
     // Renamed to "Settings & Governance" (الإعدادات والحوكمة): the company
     // record (CR + tax + legal documents) is governance data, so the profile
     // page moved in here from the Projects catch-all where it was orphaned.
@@ -390,6 +448,50 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "sales_nav_quotations", href: "/supplier/sales/quotations", icon: FileText, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_payments", href: "/supplier/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/supplier/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "accounting",
+    labelKey: "component_accounting",
+    descKey: "component_accounting_desc",
+    homeHref: "/supplier/accounting",
+    icon: Calculator,
+    accentToken: "primary",
+    displayOrder: 10,
+    sections: [
+      {
+        labelKey: "acc_nav_group_overview",
+        items: [
+          { titleKey: "acc_nav_dashboard", href: "/supplier/accounting", icon: LayoutDashboard, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_locked", href: "/supplier/accounting/locked", icon: Lock, requiredPermission: "accounting.view" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_statements",
+        items: [
+          { titleKey: "acc_nav_income", href: "/supplier/accounting/income-statement", icon: TrendingUp, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_balance", href: "/supplier/accounting/balance-sheet", icon: Scale, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_cashflow", href: "/supplier/accounting/cash-flow", icon: Banknote, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_equity", href: "/supplier/accounting/equity", icon: PieChart, requiredPermission: "accounting.view" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_books",
+        items: [
+          { titleKey: "acc_nav_coa", href: "/supplier/accounting/chart-of-accounts", icon: ListTree, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_trial_balance", href: "/supplier/accounting/trial-balance", icon: Scale, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_journal", href: "/supplier/accounting/journal", icon: BookOpen, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_ledger", href: "/supplier/accounting/ledger", icon: FileText, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_checks", href: "/supplier/accounting/checks", icon: ShieldCheck, requiredPermission: "accounting.view" },
+          { titleKey: "acc_nav_periods", href: "/supplier/accounting/periods", icon: CalendarClock, requiredPermission: "accounting.close" },
+        ],
+      },
+      {
+        labelKey: "acc_nav_group_tax",
+        items: [
+          { titleKey: "acc_nav_vat", href: "/supplier/accounting/vat", icon: Percent, requiredPermission: "accounting.view" },
         ],
       },
     ],

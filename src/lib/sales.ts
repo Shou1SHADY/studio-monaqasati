@@ -30,6 +30,7 @@ import {
 } from "./crm"
 import { ALL_PERMISSION, type TeamGroup } from "./permissions"
 import { createWorkOrderFromQuotation, effectiveOutput, type WorkOrder } from "./manufacturing"
+import { onQuotationAccepted, onQuotationPaymentRecorded } from "./accounting/hooks"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -394,6 +395,27 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
     createdAt: paidAt,
   })
   await batch.commit()
+
+  // Money taken on a quotation whose goods do not exist yet is an advance from
+  // the client, not the settlement of a receivable — the ledger must not show a
+  // debt being cleared that was never recognised.
+  onQuotationPaymentRecorded(
+    firestore,
+    {
+      organizationId: input.quotation.organizationId,
+      userId: input.actor.id,
+      userName: input.actor.name,
+    },
+    {
+      quotationId: input.quotation.id,
+      quotationNumber: input.quotation.quotationNumber,
+      installmentId: input.installmentId,
+      amount: input.amount,
+      contactId: input.quotation.contactId,
+      contactName: input.quotation.contactName,
+      isAdvance: input.quotation.phase !== "post_manufacturing",
+    }
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -562,5 +584,22 @@ export async function runQuotationAcceptance(
       userName: input.user.name,
     })
   }
+
+  // A post-manufacturing quotation is a completed sale, so acceptance is the
+  // revenue event. A pre-manufacturing one is an order the factory has yet to
+  // build; the hook knows the difference and posts nothing for it.
+  onQuotationAccepted(
+    firestore,
+    { organizationId: input.orgId, userId: input.user.id, userName: input.user.name },
+    {
+      quotationId: input.quotation.id,
+      quotationNumber: input.quotation.quotationNumber,
+      amount: input.quotation.amount,
+      contactId: input.quotation.contactId,
+      contactName: input.quotation.contactName,
+      phase: input.quotation.phase === "post_manufacturing" ? "post_manufacturing" : "pre_manufacturing",
+    }
+  )
+
   return { notified, notifyFailed, workOrderId }
 }

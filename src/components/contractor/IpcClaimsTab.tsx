@@ -27,6 +27,7 @@ import { collection, addDoc, doc, updateDoc, serverTimestamp, getDocs, writeBatc
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/utils/invoice-utils"
 import { logFinanceAudit } from "@/lib/finance-audit"
+import { onIpcClaimCollected, onIpcClaimSubmitted } from "@/lib/accounting/hooks"
 import { cn } from "@/lib/utils"
 import {
   buildClaimLines,
@@ -106,6 +107,13 @@ export function IpcClaimsTab({ projectId, canManage, canEditTerms }: IpcClaimsTa
   }, [firestore, projectId])
   const { data: project } = useDoc(projectRef)
   const terms: IpcTerms = { ...DEFAULT_IPC_TERMS, ...((project as { ipcTerms?: Partial<IpcTerms> } | null)?.ipcTerms || {}) }
+  const typedProject = project as { name?: string; organizationId?: string } | null
+  const ledgerActor = {
+    organizationId:
+      (profile as { organizationId?: string } | null)?.organizationId || typedProject?.organizationId || user?.uid || "",
+    userId: user?.uid || "",
+    userName: actorName,
+  }
 
   const claimsQuery = useMemoFirebase(() => {
     if (!firestore || !projectId) return null
@@ -265,6 +273,19 @@ export function IpcClaimsTab({ projectId, canManage, canEditTerms }: IpcClaimsTa
         targetId: claimRef.id,
         amount: wizardTotals.net,
       })
+      // Certifying the work is the revenue event — the ledger records it here,
+      // not when the money finally arrives.
+      onIpcClaimSubmitted(firestore, ledgerActor, {
+        claimId: claimRef.id,
+        claimNumber,
+        projectId,
+        projectName: typedProject?.name ?? null,
+        gross: wizardTotals.gross,
+        retention: wizardTotals.retention,
+        advanceRecovery: wizardTotals.advanceRecovery,
+        vat: wizardTotals.vat,
+        net: wizardTotals.net,
+      })
       toast({ title: t("ipc_generated_success", { number: claimNumber }) })
       setShowWizard(false)
     } catch (err) {
@@ -290,6 +311,13 @@ export function IpcClaimsTab({ projectId, canManage, canEditTerms }: IpcClaimsTa
         actorName,
         targetType: "ipcClaim",
         targetId: claim.id,
+        amount: claim.amount,
+      })
+      onIpcClaimCollected(firestore, ledgerActor, {
+        claimId: claim.id,
+        claimNumber: claim.claimNumber ?? 0,
+        projectId,
+        projectName: typedProject?.name ?? null,
         amount: claim.amount,
       })
       toast({ title: t("ipc_marked_collected") })

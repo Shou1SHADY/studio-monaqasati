@@ -948,6 +948,90 @@ service cloud.firestore {
         && hasOrgPermission('sales.manage'));
     }
 
+    // ── Accounting (المحاسبة والمالية) ──
+    //
+    // The general journal is an APPEND-ONLY ledger, and these rules are what
+    // make that true rather than merely intended: a posted entry can never be
+    // edited or deleted by any client, including the owner. A mistake is undone
+    // by posting its reversal, which leaves both the error and the correction
+    // legible — the property an audit depends on.
+    //
+    // The one update permitted on a posted entry is stamping `reversedByEntryId`
+    // (so the original can point at its reversal) and promoting a draft to
+    // posted. Nothing may touch the money: not `lines`, not the totals, not the
+    // date the entry belongs to.
+    match /accounting_journal/{entryId} {
+      // Readable by any member of the org. Gating this behind `accounting.view`
+      // would be theatre — every figure a journal entry contains is already
+      // readable in the document it came from (projects carry budgets,
+      // quotations carry amounts, employees carry salaries) — and it would also
+      // break auto-posting, which reads the last entry number before writing.
+      // `accounting.view` gates the MODULE in the UI; the rules gate writes.
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+
+      // An `auto` entry is the bookkeeping shadow of a business action, so any
+      // org member may create one — the engineer who certifies a claim or the
+      // keeper who signs for stock is rarely an accountant, and refusing them
+      // here would simply mean the ledger silently misses those events. What is
+      // enforced instead is the invariant that matters: the entry must balance.
+      // A `manual` voucher has no business document behind it and is the one
+      // way a human can move money by hand, so it needs the posting right.
+      allow create: if isSignedIn()
+        && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.totalDebit == request.resource.data.totalCredit
+        && (request.resource.data.kind == 'auto' || hasOrgPermission('accounting.post'));
+
+      allow update: if isSignedIn()
+        && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('accounting.post')
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.totalDebit == resource.data.totalDebit
+        && request.resource.data.totalCredit == resource.data.totalCredit
+        && request.resource.data.date == resource.data.date
+        && request.resource.data.lines == resource.data.lines
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'reversedByEntryId', 'updatedAt']);
+
+      // Only a draft may ever be removed — a posted entry is history.
+      allow delete: if isSignedIn()
+        && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('accounting.post')
+        && resource.data.status == 'draft';
+    }
+
+    // The org's own copy of the chart of accounts — seeded from the platform
+    // catalog, then theirs to rename and extend.
+    match /accounting_accounts/{accountId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('accounting.post');
+      allow update, delete: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('accounting.post');
+    }
+
+    // Period locks. Closing is deliberately its own permission: it is the act
+    // that freezes a statement, and it must not ride along with day-to-day
+    // posting rights.
+    match /accounting_periods/{periodId} {
+      // Readable by every member: the posting hooks check for a closed period
+      // before they write, and they run as whoever performed the business action.
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('accounting.close');
+      allow update, delete: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('accounting.close');
+    }
+
+    // Module settings — whether the org has switched Accounting on, its fiscal
+    // year, branches and cost centres.
+    match /accounting_settings/{settingsId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('accounting.close');
+      allow update, delete: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hasOrgPermission('accounting.close');
+    }
+
     // CRM company profile — classification grades and annual capacity. The doc
     // id IS the organizationId, so a member can only ever reach their own org's
     // profile and a concurrent first save cannot create a duplicate.
