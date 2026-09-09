@@ -129,7 +129,11 @@ for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
 payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
 `manufacturingDepartments` · `workOrders` · `deliveryNotes` (manufacturing → warehouse
-handovers, signed by the receiver) · `invoices` · `rfqShareLinks` · `guestOfferLinks`
+handovers, signed by the receiver) · `accounting_journal` (the general journal —
+append-only, entry id is `{orgId}__{sourceType}__{sourceId}`) ·
+`accounting_accounts` · `accounting_periods` (month locks) ·
+`accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`) ·
+`invoices` · `rfqShareLinks` · `guestOfferLinks`
 (server-only)
 
 Permission notes: org **owner** passes every check; members get their group's
@@ -140,8 +144,13 @@ a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.mana
 `post_manufacturing` quotation never spawns a work order. A finished work order hands
 over on a `deliveryNotes` doc and its stock lands only when someone with
 `warehouses.receive` (or `warehouses.manage`) confirms; the virtual distribution
-warehouse is received on the spot. Permission ids are grouped per component in
-`PERMISSION_SECTIONS` for the team page. A deal handover may create a project + seat its PM without
+warehouse is received on the spot. Accounting splits three ways:
+`accounting.view` reads the books, `accounting.post` writes manual vouchers and
+reverses entries, `accounting.close` locks a period. Auto entries are written by
+whoever performed the business action — the engineer certifying a مستخلص is not
+an accountant, so the rules require only org membership and a balanced entry for
+those; `manual` vouchers need `accounting.post`. Permission ids are grouped per
+component in `PERMISSION_SECTIONS` for the team page. A deal handover may create a project + seat its PM without
 `projects.edit`. BOQ lines lock while drawn into a tender (`isEditable:false`) —
 only draw bookkeeping may change on a locked line.
 
@@ -154,6 +163,49 @@ only draw bookkeeping may change on a locked line.
 - **UAT:** `mdmaktech-uat` App Hosting backend, `uat` branch — noindex ribbon,
   relaxed profile-completion, config derived from `FIREBASE_WEBAPP_CONFIG`.
   Environment detection lives in `src/lib/app-env.ts`.
+  **Auto-rollout is ON**: pushing to `uat` builds and deploys on its own. Do not
+  trigger builds by hand — a manual one just duplicates the automatic one.
+
+### When UAT looks stale, read the build list before concluding anything
+
+A failed App Hosting build is silent: the rollout fails, the site keeps serving
+the last good build, and nothing announces it. That looks identical to
+"auto-rollout is disabled", and it has been misdiagnosed that way once already —
+four consecutive auto builds failed between Sep 2–6 2026 because two secrets
+named in `apphosting.yaml` (`TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`) did not
+exist in the UAT project and `TWILIO_ACCOUNT_SID` had an empty IAM policy. Every
+build died at the `preparer` step before compiling a line, and UAT sat ten days
+behind `uat` while appearing to have deployments switched off.
+
+So when UAT is behind, list the builds and look at their STATE — don't infer the
+backend's configuration from the newest *successful* rollout, and don't page
+just one or two (`pageSize=100`, sort by `createTime`):
+
+```
+GET https://firebaseapphosting.googleapis.com/v1/projects/mdmaktech-uat/locations/us-east4/backends/studio-monaqasati/builds?pageSize=100
+GET .../rollouts?pageSize=100
+```
+
+with `Authorization: Bearer $(gcloud auth print-access-token)` and the
+`x-goog-user-project: mdmaktech-uat` header. A FAILED build's `buildLogsUri`
+points at Cloud Build; the useful detail is in the failing step's log, readable
+via `logging.googleapis.com/v2/entries:list` filtered on
+`resource.type="build" AND resource.labels.build_id="<id>"`.
+
+**Every secret listed in `apphosting.yaml` must exist in the UAT project AND
+grant access to both service accounts**, or the build fails before compiling:
+
+```bash
+gcloud secrets add-iam-policy-binding <NAME> --project=mdmaktech-uat \
+  --member="serviceAccount:firebase-app-hosting-compute@mdmaktech-uat.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
+# plus roles/secretmanager.viewer for the same account, and
+# roles/secretmanager.secretVersionManager for
+# service-265884033669@gcp-sa-firebaseapphosting.iam.gserviceaccount.com
+```
+
+Adding a secret to `apphosting.yaml` without doing this breaks every subsequent
+UAT deploy, including other people's.
 
 
 ## Design System
@@ -237,11 +289,17 @@ still match git before touching them.
 
 ## Deploying firestore.rules (CLI doesn't work here)
 
-`firebase deploy` fails in this environment. Rules are deployed via the
-`firebaserules.googleapis.com` REST API using `google-auth-library` with the
-same service-account creds firebase-admin uses (`FIREBASE_PROJECT_ID` /
-`FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` from `.env.local`, loaded via
-`dotenv`): POST a ruleset with the file content, then PATCH
-`releases/cloud.firestore` to point at it, then GET the release back to verify.
-Run the script from the project root so `node_modules` resolve. The same API
-(GET release → GET ruleset source) is how to diff live rules against git.
+`firebase deploy` fails in this environment. Use the script — from the project
+root, so `node_modules` resolve:
+
+```bash
+node scripts/deploy-rules.js prod   # service-account creds from .env.local
+node scripts/deploy-rules.js uat    # gcloud auth print-access-token
+```
+
+It POSTs a ruleset to `firebaserules.googleapis.com`, PATCHes
+`releases/cloud.firestore` to point at it, then reads the live ruleset back and
+prints whether it matches the file byte-for-byte. **Always `git fetch` and diff
+`firestore.rules` against `origin/main` first** — deploying a stale local copy
+silently wipes another session's rules. The same API (GET release → GET ruleset
+source) is how to diff live rules against git.
