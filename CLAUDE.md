@@ -129,7 +129,13 @@ for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
 payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
 `manufacturingDepartments` · `workOrders` · `deliveryNotes` (manufacturing → warehouse
-handovers, signed by the receiver) · `accounting_journal` (the general journal —
+handovers, signed by the receiver) · `salesOrders` (أوامر البيع — the backbone between
+quotation and cash; delivered/invoiced are DERIVED from notes and invoices, never
+stored) · `salesDeliveryNotes` (customer deliveries; stock leaves at confirm) ·
+`salesInvoices` (built on delivered notes; deposits recovered pro-rata) ·
+`salesReturns` (Sales decides, Finance issues the credit note) ·
+`manufacturingRequests` (طلب تصنيع — Sales asks, the plant accepts into a work
+order or rejects with a reason) · `accounting_journal` (the general journal —
 append-only, entry id is `{orgId}__{sourceType}__{sourceId}`) ·
 `accounting_accounts` · `accounting_periods` (month locks) ·
 `accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`) ·

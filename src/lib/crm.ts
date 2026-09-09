@@ -86,6 +86,9 @@ export interface CrmContact {
   paymentDays?: number | null
   /** Currently-overdue receivable, in SAR. */
   overdueAmount?: number | null
+  /** SAR of credit the org exposes to this party. 0 or absent = cash only.
+   * Sales READS this; setting it is a Finance decision made here in CRM. */
+  creditLimit?: number | null
   organizationId: string
   createdAt?: unknown
   updatedAt?: unknown
@@ -1019,6 +1022,9 @@ export interface CrmQuotation {
    * or the finished one being sold (after manufacturing). Either way its
    * presence stops acceptance from creating another. */
   workOrderId?: string | null
+  /** Stamped when acceptance created the sales order — the backbone document
+   * that deliveries and invoices hang off. One quotation, one order, ever. */
+  salesOrderId?: string | null
   workOrderNumber?: number | null
   /** When the status last moved into each state — the detail page's timeline. */
   sentAt?: string | null

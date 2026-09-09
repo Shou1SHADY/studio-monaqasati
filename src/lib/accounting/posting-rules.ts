@@ -138,49 +138,15 @@ export function postIpcCollection(e: IpcCollectionEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Sales quotation accepted
+// 3. Sales — where revenue is recognised
+//
+// Deliberately NO rule for "quotation accepted": acceptance creates the sales
+// order, and revenue posts only when a sales invoice bills DELIVERED goods
+// (rule 8). Money received before that is an advance (rule 4). An earlier
+// design recognised post-manufacturing acceptances as revenue; it was removed
+// when sales orders arrived, or the invoice would have counted the same sale
+// twice.
 // ---------------------------------------------------------------------------
-
-export interface SalesQuotationEvent {
-  quotationId: string
-  quotationNumber: string
-  date: string
-  /** Total including nothing — VAT is derived below. */
-  amount: number
-  vatPercent: number
-  contactId: string
-  contactName?: string | null
-  /** A post-manufacturing sale delivers immediately; a pre-manufacturing one is
-   * an order that still has to be produced. */
-  phase: "pre_manufacturing" | "post_manufacturing"
-}
-
-/**
- * Acceptance is the sale.
- *
- * The customer now owes the amount plus VAT, and the business has earned the
- * revenue. A pre-manufacturing acceptance is an order rather than a delivery, so
- * it posts nothing until the goods exist — recognising revenue on an order the
- * factory has not built yet would overstate both revenue and receivables.
- */
-export function postSalesQuotationAccepted(e: SalesQuotationEvent): PostingResult | null {
-  if (e.phase === "pre_manufacturing") return null
-  const vat = round2((e.amount * (Number(e.vatPercent) || 0)) / 100)
-  const dim = { party: e.contactId, partyName: e.contactName ?? null }
-  return {
-    sourceType: "sales_quotation",
-    sourceId: e.quotationId,
-    date: e.date,
-    description: `عرض سعر مقبول ${e.quotationNumber}${e.contactName ? ` — ${e.contactName}` : ""}`,
-    costCenter: COST_CENTERS.admin,
-    lines: [
-      { ...dim, account: ACC.clientsReceivable, debit: round2(e.amount + vat), note: "مستحق من العميل" },
-      { ...dim, account: ACC.sundryIncome, credit: e.amount, note: "إيراد مبيعات" },
-      { ...dim, account: ACC.vatOutput, credit: vat, note: "ضريبة القيمة المضافة — مخرجات" },
-    ],
-    empty: round2(e.amount) === 0,
-  }
-}
 
 // ---------------------------------------------------------------------------
 // 4. Sales payment received
@@ -344,35 +310,144 @@ export function postMaterialIssue(e: MaterialIssueEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
-// 8. Sales invoice issued (the `invoices` collection)
+// 8. Sales invoice issued
 // ---------------------------------------------------------------------------
 
 export interface SalesInvoiceEvent {
   invoiceId: string
   invoiceNumber: string
   date: string
-  /** Sum of line items, before VAT. */
-  subtotal: number
+  /** Value of the deliveries billed, before deposit recovery and VAT. */
+  net: number
+  /** Share of a previously received advance this invoice consumes. Recovering
+   * it here is what unwinds the liability as the goods go out — the customer's
+   * early money becomes revenue only once something was actually delivered. */
+  advanceRecovery: number
   vat: number
+  contactId?: string | null
   clientName?: string | null
   projectId?: string | null
   projectName?: string | null
 }
 
+/**
+ * Revenue is recognised HERE — at the invoice built on delivered goods — not
+ * when a quotation is accepted and not when cash arrives. The receivable is
+ * only the part the advance did not already cover.
+ */
 export function postSalesInvoice(e: SalesInvoiceEvent): PostingResult {
-  const dim = { project: e.projectId ?? null, projectName: e.projectName ?? null, partyName: e.clientName ?? null }
+  const dim = {
+    project: e.projectId ?? null,
+    projectName: e.projectName ?? null,
+    party: e.contactId ?? null,
+    partyName: e.clientName ?? null,
+  }
+  const billable = round2(e.net - e.advanceRecovery)
   return {
-    sourceType: "purchase_invoice",
+    sourceType: "sales_invoice",
     sourceId: e.invoiceId,
     date: e.date,
-    description: `فاتورة ${e.invoiceNumber}${e.clientName ? ` — ${e.clientName}` : ""}`,
+    description: `فاتورة مبيعات ${e.invoiceNumber}${e.clientName ? ` — ${e.clientName}` : ""}`,
     costCenter: COST_CENTERS.admin,
     lines: [
-      { ...dim, account: ACC.clientsReceivable, debit: round2(e.subtotal + e.vat), note: "مستحق من العميل" },
-      { ...dim, account: ACC.sundryIncome, credit: e.subtotal, note: "إيراد" },
+      { ...dim, account: ACC.clientsReceivable, debit: round2(billable + e.vat), note: "مستحق من العميل" },
+      { ...dim, account: ACC.advancesFromClients, debit: e.advanceRecovery, note: "استرداد دفعة مقدمة" },
+      { ...dim, account: ACC.sundryIncome, credit: e.net, note: "إيراد مبيعات" },
       { ...dim, account: ACC.vatOutput, credit: e.vat, note: "ضريبة القيمة المضافة — مخرجات" },
     ],
-    empty: round2(e.subtotal) === 0,
+    empty: round2(e.net) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8a. Sales credit note — a return unwinds an invoice
+// ---------------------------------------------------------------------------
+
+export interface SalesCreditNoteEvent {
+  returnId: string
+  returnNumber: string
+  date: string
+  /** Value of the returned goods at the order's prices, before VAT. */
+  net: number
+  vat: number
+  /** Cost of what came back to the shelf; null when it was never known. */
+  cost: number | null
+  contactId?: string | null
+  contactName?: string | null
+}
+
+/**
+ * The mirror of a sale: revenue and its VAT come back out, the customer owes
+ * less, and — when the goods physically returned and their cost is known —
+ * they go back on the shelf at that cost. History stays: the invoice stands,
+ * the credit note offsets it, both remain readable.
+ */
+export function postSalesCreditNote(e: SalesCreditNoteEvent): PostingResult {
+  const dim = { party: e.contactId ?? null, partyName: e.contactName ?? null }
+  const lines: Line[] = [
+    { ...dim, account: ACC.sundryIncome, debit: e.net, note: "عكس إيراد — مرتجع" },
+    { ...dim, account: ACC.vatOutput, debit: e.vat, note: "عكس ضريبة المخرجات" },
+    { ...dim, account: ACC.clientsReceivable, credit: round2(e.net + e.vat), note: "إشعار دائن" },
+  ]
+  if (e.cost != null && e.cost > 0) {
+    lines.push(
+      { ...dim, account: ACC.inventoryMaterials, debit: e.cost, note: "عودة البضاعة للمخزون" },
+      { ...dim, account: ACC.costMaterials, credit: e.cost, note: "عكس تكلفة البضاعة المسلَّمة" }
+    )
+  }
+  return {
+    sourceType: "sales_credit_note",
+    sourceId: e.returnId,
+    date: e.date,
+    description: `إشعار دائن ${e.returnNumber}${e.contactName ? ` — ${e.contactName}` : ""}`,
+    costCenter: COST_CENTERS.admin,
+    lines,
+    empty: round2(e.net) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8b. Sales delivery — goods leave stock for a customer
+// ---------------------------------------------------------------------------
+
+export interface SalesDeliveryEvent {
+  deliveryNoteId: string
+  noteNumber: string
+  orderNumber: number
+  date: string
+  /** Cost of what left the shelf (quantities × snapshotted unit costs). */
+  cost: number
+  contactId?: string | null
+  contactName?: string | null
+  /** Internal deliveries go to one of our own projects instead of a client. */
+  projectId?: string | null
+  projectName?: string | null
+}
+
+/**
+ * The cost side of a sale, posted when the goods actually leave. Revenue waits
+ * for the invoice; the stock movement cannot — the shelf is already empty.
+ * An internal delivery is a project drawing on our stock, so its cost lands on
+ * the project like any other material issue.
+ */
+export function postSalesDelivery(e: SalesDeliveryEvent): PostingResult {
+  const dim = {
+    project: e.projectId ?? null,
+    projectName: e.projectName ?? null,
+    party: e.contactId ?? null,
+    partyName: e.contactName ?? null,
+  }
+  return {
+    sourceType: "sales_delivery",
+    sourceId: e.deliveryNoteId,
+    date: e.date,
+    description: `تسليم مبيعات ${e.noteNumber} — أمر بيع رقم ${e.orderNumber}`,
+    costCenter: COST_CENTERS.execution,
+    lines: [
+      { ...dim, account: ACC.costMaterials, debit: e.cost, note: "تكلفة بضاعة مسلَّمة" },
+      { ...dim, account: ACC.inventoryMaterials, credit: e.cost, note: "خروج من المخزون" },
+    ],
+    empty: round2(e.cost) === 0,
   }
 }
 

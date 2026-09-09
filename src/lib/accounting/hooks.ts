@@ -20,8 +20,10 @@ import {
   postIpcClaim,
   postIpcCollection,
   postMaterialIssue,
+  postSalesCreditNote,
+  postSalesDelivery,
+  postSalesInvoice,
   postSalesPayment,
-  postSalesQuotationAccepted,
   postWorkOrderDelivery,
   postWorkOrderIssue,
   type PostingContext,
@@ -96,34 +98,11 @@ export function onIpcClaimCollected(
 
 // ---------------------------------------------------------------------------
 // Sales
+//
+// No acceptance hook on purpose: accepting a quotation creates a sales order
+// (a promise, not income), and revenue posts when a sales invoice bills
+// delivered goods — see onSalesInvoiceIssued below.
 // ---------------------------------------------------------------------------
-
-export function onQuotationAccepted(
-  firestore: Firestore,
-  actor: HookActor,
-  quotation: {
-    quotationId: string
-    quotationNumber: string
-    date?: string
-    amount: number
-    vatPercent?: number
-    contactId: string
-    contactName?: string | null
-    phase: "pre_manufacturing" | "post_manufacturing"
-  }
-): void {
-  void ifEnabled(firestore, actor.organizationId, () =>
-    postToLedgerSafe(
-      firestore,
-      ctxOf(actor),
-      postSalesQuotationAccepted({
-        ...quotation,
-        date: quotation.date || today(),
-        vatPercent: quotation.vatPercent ?? 15,
-      })
-    )
-  )
-}
 
 export function onQuotationPaymentRecorded(
   firestore: Firestore,
@@ -143,6 +122,100 @@ export function onQuotationPaymentRecorded(
 ): void {
   void ifEnabled(firestore, actor.organizationId, () =>
     postToLedgerSafe(firestore, ctxOf(actor), postSalesPayment({ ...payment, date: payment.date || today() }))
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Sales orders — deliveries and invoices
+// ---------------------------------------------------------------------------
+
+export function onSalesDelivered(
+  firestore: Firestore,
+  actor: HookActor,
+  delivery: {
+    deliveryNoteId: string
+    noteNumber: string
+    orderNumber: number
+    date?: string
+    cost: number
+    contactId?: string | null
+    contactName?: string | null
+    projectId?: string | null
+    projectName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postSalesDelivery({ ...delivery, date: delivery.date || today() }))
+  )
+}
+
+export function onSalesInvoiceIssued(
+  firestore: Firestore,
+  actor: HookActor,
+  invoice: {
+    invoiceId: string
+    invoiceNumber: string
+    date?: string
+    net: number
+    advanceRecovery: number
+    vat: number
+    contactId?: string | null
+    clientName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postSalesInvoice({ ...invoice, date: invoice.date || today() }))
+  )
+}
+
+export function onSalesCreditNoteIssued(
+  firestore: Firestore,
+  actor: HookActor,
+  creditNote: {
+    returnId: string
+    returnNumber: string
+    date?: string
+    net: number
+    vat: number
+    cost: number | null
+    contactId?: string | null
+    contactName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postSalesCreditNote({ ...creditNote, date: creditNote.date || today() }))
+  )
+}
+
+/** Cash against the invoice's receivable — the invoice recognised the revenue,
+ * so payment settles a debt rather than earning anything new. */
+export function onSalesInvoicePaid(
+  firestore: Firestore,
+  actor: HookActor,
+  payment: {
+    invoiceId: string
+    invoiceNumber: string
+    date?: string
+    amount: number
+    contactId?: string | null
+    contactName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(
+      firestore,
+      ctxOf(actor),
+      postSalesPayment({
+        quotationId: payment.invoiceId,
+        quotationNumber: payment.invoiceNumber,
+        installmentId: "invoice",
+        date: payment.date || today(),
+        amount: payment.amount,
+        contactId: payment.contactId || "",
+        contactName: payment.contactName ?? null,
+        isAdvance: false,
+      })
+    )
   )
 }
 

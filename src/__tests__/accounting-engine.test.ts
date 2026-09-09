@@ -54,7 +54,9 @@ import {
   postMaterialIssue,
   postPayroll,
   postSalesPayment,
-  postSalesQuotationAccepted,
+  postSalesCreditNote,
+  postSalesDelivery,
+  postSalesInvoice,
   postVatSettlement,
   postWorkOrderDelivery,
   postWorkOrderIssue,
@@ -368,29 +370,67 @@ describe("posting rules", () => {
     expect(e.lines.some((l) => l.account.startsWith("4"))).toBe(false)
   })
 
-  it("recognises a post-manufacturing sale but not a pre-manufacturing order", () => {
-    const sold = postSalesQuotationAccepted({
-      quotationId: "q1",
-      quotationNumber: "Q-A1",
-      date: "2026-03-10",
-      amount: 20000,
-      vatPercent: 15,
-      contactId: "ct1",
-      phase: "post_manufacturing",
-    })
-    const e = entryFor(sold)
-    expect(e.totalDebit).toBe(23000)
-    expect(
-      postSalesQuotationAccepted({
-        quotationId: "q2",
-        quotationNumber: "Q-A2",
-        date: "2026-03-10",
-        amount: 20000,
-        vatPercent: 15,
+  it("recognises revenue at the sales invoice, net of the advance it recovers", () => {
+    const e = entryFor(
+      postSalesInvoice({
+        invoiceId: "si1",
+        invoiceNumber: "SI-A1",
+        date: "2026-03-20",
+        net: 20000,
+        advanceRecovery: 8000,
+        vat: 1800,
         contactId: "ct1",
-        phase: "pre_manufacturing",
+        clientName: "شركة النخبة",
       })
-    ).toBeNull()
+    )
+    const byAccount = Object.fromEntries(e.lines.map((l) => [l.account, l]))
+    expect(byAccount[ACC.sundryIncome].credit).toBe(20000)
+    expect(byAccount[ACC.advancesFromClients].debit).toBe(8000)
+    // The receivable is only what the advance did not already cover: 12,000 + VAT.
+    expect(byAccount[ACC.clientsReceivable].debit).toBe(13800)
+    expect(e.totalDebit).toBe(e.totalCredit)
+  })
+
+  it("reverses revenue, VAT and cost on a credit note, restocking the goods", () => {
+    const e = entryFor(
+      postSalesCreditNote({
+        returnId: "r1",
+        returnNumber: "SR-A1",
+        date: "2026-04-02",
+        net: 3540,
+        vat: 531,
+        cost: 2400,
+        contactId: "ct1",
+      })
+    )
+    const byAccount = Object.fromEntries(e.lines.map((l) => [l.account, l]))
+    expect(byAccount[ACC.sundryIncome].debit).toBe(3540)
+    expect(byAccount[ACC.vatOutput].debit).toBe(531)
+    expect(byAccount[ACC.clientsReceivable].credit).toBe(4071)
+    expect(byAccount[ACC.inventoryMaterials].debit).toBe(2400)
+    expect(byAccount[ACC.costMaterials].credit).toBe(2400)
+    expect(e.totalDebit).toBe(e.totalCredit)
+
+    // Unknown cost: the money reverses, the shelf is not guessed at.
+    const noCost = entryFor(
+      postSalesCreditNote({ returnId: "r2", returnNumber: "SR-A2", date: "2026-04-02", net: 1000, vat: 150, cost: null })
+    )
+    expect(noCost.lines).toHaveLength(3)
+  })
+
+  it("moves only cost when goods leave for a customer — revenue waits for the invoice", () => {
+    const e = entryFor(
+      postSalesDelivery({
+        deliveryNoteId: "sd1",
+        noteNumber: "SD-A1",
+        orderNumber: 3,
+        date: "2026-03-18",
+        cost: 9600,
+        contactId: "ct1",
+      })
+    )
+    expect(e.lines.map((l) => l.account)).toEqual([ACC.costMaterials, ACC.inventoryMaterials])
+    expect(e.lines.some((l) => l.account.startsWith("4"))).toBe(false)
   })
 
   it("treats a payment taken before delivery as a client advance, not a settlement", () => {

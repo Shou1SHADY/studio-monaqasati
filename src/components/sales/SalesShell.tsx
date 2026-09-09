@@ -2,7 +2,7 @@
 
 import type { ElementType, ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { LayoutDashboard, FileText, Banknote, Tags, HandCoins } from "lucide-react"
+import { LayoutDashboard, FileText, Banknote, Tags, HandCoins, ClipboardList, Truck } from "lucide-react"
 import { Link, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
@@ -14,6 +14,8 @@ export function salesBasePath(portal: CrmPortal): string {
 const SALES_TABS: Array<{ segment: string; labelKey: string; icon: ElementType }> = [
   { segment: "", labelKey: "sales_nav_dashboard", icon: LayoutDashboard },
   { segment: "quotations", labelKey: "sales_nav_quotations", icon: FileText },
+  { segment: "orders", labelKey: "sales_nav_orders", icon: ClipboardList },
+  { segment: "fulfillment", labelKey: "sales_nav_fulfillment", icon: Truck },
   { segment: "payments", labelKey: "sales_nav_payments", icon: Banknote },
   { segment: "price-list", labelKey: "sales_nav_price_list", icon: Tags },
 ]
