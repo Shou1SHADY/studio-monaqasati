@@ -51,6 +51,8 @@ export type SourceType =
   | "waste"
   | "work_order_issue"
   | "work_order_delivery"
+  | "mfg_material_receipt"
+  | "mfg_scrap"
   | "payroll"
   | "payroll_payment"
   | "expense"

@@ -36,6 +36,14 @@ export interface DeliveryNote {
   receivedAt?: string | null
   receivedNote?: string | null
   rejectedReason?: string | null
+  // --- v2 (product-born orders): partial shipments and transit breakage ---
+  /** Broken or missing on arrival — recorded on the note, never on the shop. */
+  brokenQuantity?: number
+  /** Shipment paperwork: numbered pieces, crates, who drove it. */
+  pieces?: number | null
+  crates?: number | null
+  driverName?: string | null
+  vehiclePlate?: string | null
   createdAt?: unknown
   updatedAt?: unknown
 }

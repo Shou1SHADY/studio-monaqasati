@@ -204,19 +204,44 @@ export function returnValue(ret: Pick<SalesReturn, "lines" | "orderId">, order: 
 // it is a Sales job, and the screen makes the silence visible.
 // ---------------------------------------------------------------------------
 
-export type MfgRequestStatus = "new" | "accepted" | "rejected"
+export type MfgRequestStatus = "new" | "accepted" | "partial" | "estimated" | "rejected"
+
+export type MfgRequestSourceKind = "sales" | "project" | "procurement"
+
+export interface MfgRequestLine {
+  productId: string | null
+  itemName: string
+  unit: string
+  quantity: number
+  /** Filled by the workshop's answer — how much of the line it makes. */
+  makeQuantity?: number | null
+}
 
 export interface ManufacturingRequest {
   id: string
   organizationId: string
   requestNumber: string
-  orderId: string
-  orderNumber: number
+  /** The sales order that asked — absent on project/procurement requests. */
+  orderId?: string | null
+  orderNumber?: number | null
   contactName?: string | null
   itemName: string
   unit: string
   quantity: number
   status: MfgRequestStatus
+  /** Where the demand came from. Older sales-born docs carry no kind. */
+  sourceKind?: MfgRequestSourceKind
+  projectId?: string | null
+  projectName?: string | null
+  neededBy?: string | null
+  /** Multi-line v2 requests; single-item ones keep itemName/unit/quantity. */
+  lines?: MfgRequestLine[]
+  note?: string | null
+  /** The workshop's routing of the answer. */
+  answerRoute?: "make" | "estimate" | "buy" | null
+  answerNote?: string | null
+  estimateId?: string | null
+  workOrderIds?: string[]
   /** Set on acceptance — the work order the plant opened for it. */
   workOrderId?: string | null
   workOrderNumber?: number | null

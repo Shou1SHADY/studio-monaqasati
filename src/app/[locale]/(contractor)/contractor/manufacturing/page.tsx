@@ -1,12 +1,7 @@
 "use client"
 
-import { PortalLayout } from "@/components/layout/portal-layout"
-import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
+import { MfgPage } from "@/components/manufacturing/MfgPage"
 
 export default function ContractorManufacturingPage() {
-  return (
-    <PortalLayout>
-      <ManufacturingView />
-    </PortalLayout>
-  )
+  return <MfgPage portal="contractor" tab="workshop" />
 }

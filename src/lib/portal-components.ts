@@ -59,6 +59,9 @@ import {
   Calculator,
   Truck,
   Lock,
+  CalendarCheck2,
+  Inbox,
+  Layers,
   TrendingUp,
   Scale,
   PieChart,
@@ -274,8 +277,16 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     sections: [
       {
         labelKey: "component_manufacturing",
-        // Ungated: stage assignees are plain members and must reach their tasks.
-        items: [{ titleKey: "component_manufacturing", href: "/contractor/manufacturing", icon: Factory }],
+        // Workshop and Today stay ungated: stage assignees are plain members
+        // and must reach their tasks. The rest follows the permission split.
+        items: [
+          { titleKey: "mfg2_nav_workshop", href: "/contractor/manufacturing", icon: Factory },
+          { titleKey: "mfg2_nav_today", href: "/contractor/manufacturing/today", icon: CalendarCheck2 },
+          { titleKey: "mfg2_nav_requests", href: "/contractor/manufacturing/requests", icon: Inbox },
+          { titleKey: "mfg2_nav_estimates", href: "/contractor/manufacturing/estimates", icon: Calculator },
+          { titleKey: "mfg2_nav_products", href: "/contractor/manufacturing/products", icon: Layers },
+          { titleKey: "mfg2_nav_settings", href: "/contractor/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+        ],
       },
     ],
   },
@@ -591,7 +602,14 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     sections: [
       {
         labelKey: "component_manufacturing",
-        items: [{ titleKey: "component_manufacturing", href: "/supplier/manufacturing", icon: Factory }],
+        items: [
+          { titleKey: "mfg2_nav_workshop", href: "/supplier/manufacturing", icon: Factory },
+          { titleKey: "mfg2_nav_today", href: "/supplier/manufacturing/today", icon: CalendarCheck2 },
+          { titleKey: "mfg2_nav_requests", href: "/supplier/manufacturing/requests", icon: Inbox },
+          { titleKey: "mfg2_nav_estimates", href: "/supplier/manufacturing/estimates", icon: Calculator },
+          { titleKey: "mfg2_nav_products", href: "/supplier/manufacturing/products", icon: Layers },
+          { titleKey: "mfg2_nav_settings", href: "/supplier/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+        ],
       },
     ],
   },

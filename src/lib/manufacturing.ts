@@ -23,6 +23,16 @@ export interface MfgDepartment {
   organizationId: string
   name: string
   order: number
+  /** Capacity: workers × hoursPerDay = hours/day — the number a foreman gets.
+   * Absent on older docs; the engine defaults to 1 × 8. */
+  workers?: number | null
+  hoursPerDay?: number | null
+  /** Hourly labour rate (from HR) — labour cost is hours × this. */
+  hourlyRate?: number | null
+  /** Site-installation departments only receive what a note actually landed. */
+  onSite?: boolean
+  /** Per-department checklist template — signed, timed, non-blocking. */
+  checklist?: Array<{ key: string; label: string }>
 }
 
 export type StageStatus = "pending" | "in_progress" | "done"

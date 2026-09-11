@@ -26,6 +26,8 @@ import {
   postSalesPayment,
   postWorkOrderDelivery,
   postWorkOrderIssue,
+  postMfgMaterialReceipt,
+  postMfgScrap,
   type PostingContext,
 } from "./posting-rules"
 
@@ -271,6 +273,43 @@ export function onWorkOrderDelivered(
 ): void {
   void ifEnabled(firestore, actor.organizationId, () =>
     postToLedgerSafe(firestore, ctxOf(actor), postWorkOrderDelivery({ ...delivery, date: delivery.date || today() }))
+  )
+}
+
+export function onMfgMaterialsReceived(
+  firestore: Firestore,
+  actor: HookActor,
+  receipt: {
+    workOrderId: string
+    orderNumber: number
+    requestNumber: string
+    date?: string
+    value: number
+    projectId?: string | null
+    projectName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postMfgMaterialReceipt({ ...receipt, date: receipt.date || today() }))
+  )
+}
+
+export function onMfgScrapApproved(
+  firestore: Firestore,
+  actor: HookActor,
+  scrap: {
+    workOrderId: string
+    orderNumber: number
+    scrapId: string
+    date?: string
+    value: number
+    reason: string
+    projectId?: string | null
+    projectName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postMfgScrap({ ...scrap, date: scrap.date || today() }))
   )
 }
 
