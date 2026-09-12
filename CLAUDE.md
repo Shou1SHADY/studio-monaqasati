@@ -234,6 +234,19 @@ Adding a secret to `apphosting.yaml` without doing this breaks every subsequent
 UAT deploy, including other people's.
 
 
+### The mobile app's web build calls this API cross-origin
+
+The Expo companion app (`~/mdak/mdmak-mob`) shares this Firebase project and
+calls a few routes here that must run server-side: `/api/invitations/lookup`
+and `/api/invitations/accept` (registration is invitation-only),
+`/api/rfq-published/notify-favorites` and `/api/rag/ask`. Native builds are
+not subject to CORS; the PWA export (`mdmak-mobile-uat.web.app`) is, so
+`src/middleware.ts` answers preflights and stamps CORS headers on `/api/*`
+responses for the origins allow-listed in `src/lib/cors.ts` (plus
+`CORS_EXTRA_ORIGINS`, comma-separated, for a new hosting site without a code
+change). Unlisted origins get nothing, as before. Credentials are never
+allowed — the app sends a Bearer ID token.
+
 ## Design System
 
 **Colors (Tailwind tokens — use these, never arbitrary hex):**
