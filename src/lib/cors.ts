@@ -16,10 +16,14 @@
 
 import { IS_UAT } from "@/lib/app-env"
 
-/** The hosted PWA. Add a production hosting site here when one exists. */
+/** The hosted PWAs: the UAT site and the production site (Firebase Hosting
+ * sites `mdmak-mobile-uat` and `mdmak-mobile`, each reachable on both of
+ * Hosting's default domains). */
 export const MOBILE_PWA_ORIGINS = [
   "https://mdmak-mobile-uat.web.app",
   "https://mdmak-mobile-uat.firebaseapp.com",
+  "https://mdmak-mobile.web.app",
+  "https://mdmak-mobile.firebaseapp.com",
 ]
 
 /** `expo start --web`, and a local `dist/` served for QA — only for UAT and
