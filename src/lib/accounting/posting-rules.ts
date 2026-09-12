@@ -310,6 +310,79 @@ export function postMaterialIssue(e: MaterialIssueEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
+// 7b. Manufacturing v2 — a station's material withdrawal confirmed received
+// ---------------------------------------------------------------------------
+
+export interface MfgMaterialReceiptEvent {
+  workOrderId: string
+  orderNumber: number
+  requestNumber: string
+  date: string
+  /** Snapshotted cost of the received lines — null-cost lines contribute 0. */
+  value: number
+  projectId?: string | null
+  projectName?: string | null
+}
+
+/**
+ * Same movement as postWorkOrderIssue, but keyed by the withdrawal — a v2
+ * order draws materials per station, several times, and each receipt must be
+ * its own idempotent entry (the order id alone would collide on the second).
+ */
+export function postMfgMaterialReceipt(e: MfgMaterialReceiptEvent): PostingResult {
+  const dim = { project: e.projectId ?? null, projectName: e.projectName ?? null }
+  return {
+    sourceType: "mfg_material_receipt",
+    sourceId: `${e.workOrderId}__${e.requestNumber}`,
+    date: e.date,
+    description: `استلام مواد ${e.requestNumber} — أمر التشغيل رقم ${e.orderNumber}`,
+    costCenter: COST_CENTERS.procurement,
+    lines: [
+      { ...dim, account: ACC.inventoryWip, debit: e.value, note: "مواد داخل التصنيع" },
+      { ...dim, account: ACC.inventoryMaterials, credit: e.value, note: `سحب ${e.requestNumber}` },
+    ],
+    empty: round2(e.value) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 7c. Manufacturing v2 — approved scrap leaves work in progress
+// ---------------------------------------------------------------------------
+
+export interface MfgScrapEvent {
+  workOrderId: string
+  orderNumber: number
+  scrapId: string
+  date: string
+  /** Computed from what the unit had consumed up to its station. */
+  value: number
+  reason: string
+  projectId?: string | null
+  projectName?: string | null
+}
+
+/**
+ * Scrap is a cost of the job that produced it — it lands in production cost
+ * (project-dimensioned when the order serves one), not in a side account that
+ * would let a job look cheaper than it was. The reason travels on the entry.
+ */
+export function postMfgScrap(e: MfgScrapEvent): PostingResult {
+  const dim = { project: e.projectId ?? null, projectName: e.projectName ?? null }
+  return {
+    sourceType: "mfg_scrap",
+    sourceId: e.scrapId,
+    date: e.date,
+    description: `هالك معتمد — أمر التشغيل رقم ${e.orderNumber}: ${e.reason}`,
+    costCenter: COST_CENTERS.execution,
+    lines: [
+      { ...dim, account: ACC.costMaterials, debit: e.value, note: `هالك تصنيع — ${e.reason}` },
+      { ...dim, account: ACC.inventoryWip, credit: e.value, note: "خروج هالك من تحت التشغيل" },
+    ],
+    empty: round2(e.value) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 8. Sales invoice issued
 // ---------------------------------------------------------------------------
 

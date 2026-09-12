@@ -128,8 +128,20 @@ for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `warehouses` (+ `inventoryItems`, `transfers`, `wasteRecords`) · `crmContacts` ·
 `crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
 payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
-`manufacturingDepartments` · `workOrders` · `deliveryNotes` (manufacturing → warehouse
-handovers, signed by the receiver) · `salesOrders` (أوامر البيع — the backbone between
+`manufacturingDepartments` (+ capacity: workers × hoursPerDay, hourlyRate, onSite flag,
+checklist template) · `workOrders` (legacy stage-flow orders AND v2 product-born orders —
+a v2 order carries `productId`, `quantity`, per-department `progress` {done, rejected,
+rework, hours}, gate facts (measurement, drawingApprovalStatus, slabApproval with block),
+`materials` (per-station withdrawals: requested → released → received), `scrapRecords`,
+`checklists`; delivered/ready/WIP are DERIVED by `src/lib/manufacturing-engine.ts`,
+never stored) · `mfgProducts` (بطاقة المنتج — route + BOM + standard time + planned
+waste + blocking flags; the basis of every date, cost and material request) ·
+`mfgCostEstimates` (تقدير التكلفة — the workshop issues cost and lead time, sales set
+the price, the award creates work orders) · `manufacturingSettings` (doc id = orgId —
+feature switches time/estimates/checklists + Finance policies: overhead rate, margin
+floor, scrap approval limit, answer window) · `deliveryNotes` (manufacturing → warehouse
+handovers, signed by the receiver; v2 adds partial quantities, transit breakage,
+driver/crates) · `salesOrders` (أوامر البيع — the backbone between
 quotation and cash; delivered/invoiced are DERIVED from notes and invoices, never
 stored) · `salesDeliveryNotes` (customer deliveries; stock leaves at confirm) ·
 `salesInvoices` (built on delivered notes; deposits recovered pro-rata) ·
@@ -150,7 +162,15 @@ a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.mana
 `post_manufacturing` quotation never spawns a work order. A finished work order hands
 over on a `deliveryNotes` doc and its stock lands only when someone with
 `warehouses.receive` (or `warehouses.manage`) confirms; the virtual distribution
-warehouse is received on the spot. Accounting splits three ways:
+warehouse is received on the spot. Manufacturing splits four ways: `manufacturing.manage` is the workshop manager
+(answers requests, creates/releases orders, approves scrap up to the org's limit,
+edits departments and product cards); `manufacturing.work` is a department hand
+(reports output and hands over, requests/receives materials, ticks checklists);
+`manufacturing.qc` decides rework-or-scrap, records the client's slab sign-off and
+breakage decisions; `manufacturing.cost` sees cost and margin, approves ANY scrap,
+and may risk-release a blocked order with a documented reason. Plain org members
+keep the legacy stage/handover field set on workOrders (stage assignees need it).
+Accounting splits three ways:
 `accounting.view` reads the books, `accounting.post` writes manual vouchers and
 reverses entries, `accounting.close` locks a period. Auto entries are written by
 whoever performed the business action — the engineer certifying a مستخلص is not

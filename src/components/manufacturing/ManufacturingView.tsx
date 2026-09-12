@@ -41,18 +41,23 @@ import { DELIVERY_NOTES, handOverWorkOrder, confirmDeliveryNote, type DeliveryNo
 import { ManufacturingMindMap } from "./ManufacturingMindMap"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { acceptManufacturingRequest, rejectManufacturingRequest } from "@/lib/sales-order-writes"
+import { isV2Order } from "@/lib/manufacturing-writes"
+import { MfgOrderV2DialogStandalone } from "./MfgWorkshopExtras"
 
 type Member = { id: string; name?: string; email?: string }
 
 export function ManufacturingView({
   projectId,
   projectName,
+  hideTitle,
 }: {
   /** When set, the view is embedded in that project's page: orders are scoped
    * to the project, new orders are pre-linked to it, and the org-level chrome
    * (page header, department manager) is hidden. */
   projectId?: string
   projectName?: string
+  /** The MfgShell renders the page header — skip the view's own. */
+  hideTitle?: boolean
 } = {}) {
   const embedded = !!projectId
   const t = useTranslations("Portal.Shared")
@@ -389,7 +394,10 @@ export function ManufacturingView({
 
   // ── Order detail: assignment + hand-off ──
   const [detailId, setDetailId] = useState<string | null>(null)
-  const detail = orders.find((o) => o.id === detailId) || null
+  const detailCandidate = orders.find((o) => o.id === detailId) || null
+  // Product-born (v2) orders open the quantity-flow board, not the stage list.
+  const detailV2 = detailCandidate && isV2Order(detailCandidate as { productId?: string | null }) ? detailCandidate : null
+  const detail = detailV2 ? null : detailCandidate
   const [isAdvancing, setIsAdvancing] = useState(false)
 
   // The delivery note behind the open order's handover — for signing inline.
@@ -513,7 +521,7 @@ export function ManufacturingView({
               <Factory size={17} className="shrink-0 text-cta" aria-hidden="true" />
               {t("mfg_project_tab_title")}
             </p>
-          ) : (
+          ) : hideTitle ? null : (
             <>
               <h1 className="text-2xl font-black text-primary flex items-center gap-2">
                 <Factory size={22} className="shrink-0" aria-hidden="true" />
@@ -863,6 +871,8 @@ export function ManufacturingView({
       </Dialog>
 
       {/* Order detail — the stage chain */}
+      {detailV2 && <MfgOrderV2DialogStandalone orderId={detailV2.id} onClose={() => setDetailId(null)} />}
+
       <Dialog open={!!detail} onOpenChange={(open) => { if (!open) setDetailId(null) }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[90vh] overflow-y-auto">
           {detail && (
