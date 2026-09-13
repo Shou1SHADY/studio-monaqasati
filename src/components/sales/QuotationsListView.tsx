@@ -2,14 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
 import { Plus, Search, Loader2, FileText, Factory, CheckCircle2, Lock, ChevronLeft, ChevronRight } from "lucide-react"
-import { Link, useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
@@ -24,9 +22,7 @@ import {
   type QuotationPhase,
   type QuotationStatus,
 } from "@/lib/crm"
-import { WORK_ORDERS, type WorkOrder } from "@/lib/manufacturing"
 import { isFullyPaid, paidSoFar, quotationMatchesSearch } from "@/lib/sales"
-import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, salesBasePath } from "./SalesShell"
 
@@ -38,23 +34,11 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
-  const firestore = useFirestore()
-  const router = useRouter()
   const { can } = usePermissions()
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
-  const { orgId, contacts, quotations, isLoading } = useCrmData({ quotations: true })
-
-  const ordersQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: ordersData } = useCollection(ordersQuery)
-  const finishedOrders = useMemo(
-    () => ((ordersData || []) as WorkOrder[]).filter((o) => o.status === "done").sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0)),
-    [ordersData]
-  )
+  const { quotations, isLoading } = useCrmData({ quotations: true })
 
   const [status, setStatus] = useState<StatusFilter>("all")
   const [phase, setPhase] = useState<PhaseFilter>("all")
@@ -82,7 +66,6 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
     (q) => (status === "all" || q.status === status) && (phase === "all" || quotationPhase(q) === phase) && quotationMatchesSearch(q, search)
   )
 
-  const [showNew, setShowNew] = useState(false)
   const Chevron = isRtl ? ChevronLeft : ChevronRight
 
   return (
@@ -91,10 +74,21 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
       title={t("sales_page_title")}
       description={t("sales_quotations_desc")}
       action={
-        <Button className="gap-2" onClick={() => setShowNew(true)} disabled={!canManage || isLoading}>
-          <Plus size={16} />
-          {t("sales_new_quote_btn")}
-        </Button>
+        // A new quotation is a document: it opens the builder page (form +
+        // live A4 preview) rather than a dialog.
+        !canManage || isLoading ? (
+          <Button className="gap-2" disabled>
+            <Plus size={16} />
+            {t("sales_new_quote_btn")}
+          </Button>
+        ) : (
+          <Button asChild className="gap-2">
+            <Link href={`${base}/quotations/new`}>
+              <Plus size={16} />
+              {t("sales_new_quote_btn")}
+            </Link>
+          </Button>
+        )
       }
     >
       {!isLoading && !canManage && (
@@ -199,17 +193,6 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
             )
           })}
         </ul>
-      )}
-
-      {showNew && (
-        <CrmQuotationDialog
-          open
-          onOpenChange={(open) => { if (!open) setShowNew(false) }}
-          orgId={orgId}
-          contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
-          finishedOrders={finishedOrders}
-          onSaved={(id) => router.push(`${base}/quotations/${id}`)}
-        />
       )}
     </SalesShell>
   )
