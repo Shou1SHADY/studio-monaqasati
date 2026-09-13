@@ -3369,7 +3369,11 @@
       "perm_manufacturing_qc": "مسؤول الجودة",
       "perm_manufacturing_qc_desc": "قرار الفحص (إعادة عمل أو هالك) واعتماد العميل للبلاطة وقرارات الكسر",
       "perm_manufacturing_cost": "مراقب التكاليف",
-      "perm_manufacturing_cost_desc": "يرى التكلفة والهامش ويعتمد أي هالك ويطلق أمراً محجوباً بمخاطرة موثّقة"
+      "perm_manufacturing_cost_desc": "يرى التكلفة والهامش ويعتمد أي هالك ويطلق أمراً محجوباً بمخاطرة موثّقة",
+      "mfg_pick_warehouse_required": "اختر مستودع السحب أولاً — التصنيع يستهلك من المخزون فقط",
+      "mfg_pick_material_required": "اختر مادة واحدة على الأقل من المستودع",
+      "mfg_input_qty_required": "أدخل كمية صحيحة للمادة «{item}» — أرقام فقط، والوحدة تُؤخذ من المخزون",
+      "mfg_input_qty_aria": "كمية {item}"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",

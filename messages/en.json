@@ -3369,7 +3369,11 @@
       "perm_manufacturing_qc": "Quality officer",
       "perm_manufacturing_qc_desc": "QC decisions (rework or scrap), slab sign-off, breakage decisions",
       "perm_manufacturing_cost": "Cost controller",
-      "perm_manufacturing_cost_desc": "Sees cost and margin, approves any scrap, may risk-release a blocked order"
+      "perm_manufacturing_cost_desc": "Sees cost and margin, approves any scrap, may risk-release a blocked order",
+      "mfg_pick_warehouse_required": "Pick the warehouse to draw from first — manufacturing consumes stock only",
+      "mfg_pick_material_required": "Pick at least one material from the warehouse",
+      "mfg_input_qty_required": "Enter a valid quantity for \"{item}\" — numbers only; the unit comes from the stock item",
+      "mfg_input_qty_aria": "Quantity of {item}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
