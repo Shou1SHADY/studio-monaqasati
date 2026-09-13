@@ -46,7 +46,7 @@ import type { PostingContext, PostingResult } from "./posting-rules"
  * entries is the cheaper price. (The accounting screens already subscribe to
  * the same set, so this is no new load in practice.)
  */
-async function nextNumber(firestore: Firestore, organizationId: string): Promise<number> {
+export async function nextNumber(firestore: Firestore, organizationId: string): Promise<number> {
   const snap = await getDocs(
     query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", organizationId))
   )
@@ -58,7 +58,7 @@ async function nextNumber(firestore: Firestore, organizationId: string): Promise
   return max + 1
 }
 
-async function loadPeriods(firestore: Firestore, organizationId: string): Promise<AccountingPeriod[]> {
+export async function loadPeriods(firestore: Firestore, organizationId: string): Promise<AccountingPeriod[]> {
   const snap = await getDocs(
     query(collection(firestore, ACCOUNTING_PERIODS), where("organizationId", "==", organizationId))
   )

@@ -4,13 +4,14 @@
 // statements are computed in src/lib/accounting, so nothing here does
 // arithmetic beyond formatting.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
   AlertTriangle,
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  FilePlus2,
   FileText,
   ListTree,
   Lock,
@@ -21,285 +22,66 @@ import {
   TrendingUp,
   Loader2,
   Banknote,
+  Search,
+  Undo2,
+  Send,
+  Trash2,
 } from "lucide-react"
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
-import { AccountingShell, AccountingSection, Money } from "./AccountingShell"
+import { AccountingShell, AccountingSection, Money, accountingBasePath, useMoneyFormat } from "./AccountingShell"
+import { AccountingToolbar, ScaleCaption, periodLabel, periodRangeText } from "./AccountingToolbar"
+import { StatementTreeTable } from "./StatementTreeTable"
+import { AccountBreakdownSheet } from "./AccountBreakdownSheet"
 import { useAccounting, type AccountingData } from "@/hooks/useAccounting"
-import { CHART_OF_ACCOUNTS, accountName, ACC } from "@/lib/accounting/accounts"
-import {
-  accountLedger,
-  integrityChecks,
-  nodeNatural,
-  trialBalance,
-} from "@/lib/accounting/balances"
-import {
-  balanceSheet,
-  cashFlowStatement,
-  equityStatement,
-  incomeStatement,
-  lockedCash,
-  type StatementRow,
-} from "@/lib/accounting/statements"
-import { ACCOUNTING_PERIODS, periodOf, type JournalEntry } from "@/lib/accounting/journal"
+import { CHART_OF_ACCOUNTS, accountName, naturalSign, ACC } from "@/lib/accounting/accounts"
+import { accountLedger, integrityChecks, nodeNatural, trialBalance } from "@/lib/accounting/balances"
+import { balanceSheet, cashFlowStatement, equityStatement } from "@/lib/accounting/statements"
+import { balanceSheetTree, cashFlowTree, incomeStatementTree, type TreeNode } from "@/lib/accounting/statement-tree"
+import { ACCOUNTING_PERIODS, ClosedPeriodError, periodOf, type JournalEntry } from "@/lib/accounting/journal"
+import { deleteDraftEntry, postDraftEntry, reverseJournalEntry } from "@/lib/accounting/manual-entry"
+import { isoToday } from "@/lib/accounting/periods"
+
+import { EmptyBooks, Kpi, LoadingBooks, SOURCE_LABEL_KEY } from "./AccountingParts"
+
+export { AccountingDashboard } from "./FinanceDashboard"
+export { LockedCashView } from "./LockedCashView"
+export { NewJournalEntryView } from "./JournalEntryForm"
+export { AccountStatementsView } from "./AccountStatementsView"
+export { SettlementsView } from "./SettlementsView"
+export { AuditTrailView } from "./AuditTrailView"
+export { AccountingSettingsView } from "./AccountingSettingsView"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared chrome
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PeriodBar({ data }: { data: AccountingData }) {
-  const t = useTranslations("Portal.Shared")
-  const locale = useLocale()
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Select value={data.period.key} onValueChange={data.setPeriodKey}>
-        <SelectTrigger className="h-9 w-56 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {data.periodOptions.map((p) => (
-            <SelectItem key={p.key} value={p.key} className="text-xs">
-              {locale === "ar" ? p.labelAr : p.labelEn}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {data.projects.length > 0 && (
-        <Select
-          value={data.filter.project || "__all__"}
-          onValueChange={(v) => data.setFilter({ ...data.filter, project: v === "__all__" ? null : v })}
-        >
-          <SelectTrigger className="h-9 w-56 text-xs">
-            <SelectValue placeholder={t("acc_filter_project")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__" className="text-xs">
-              {t("acc_filter_all_projects")}
-            </SelectItem>
-            {data.projects.map((p) => (
-              <SelectItem key={p.id} value={p.id} className="text-xs">
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-    </div>
-  )
-}
-
-function EmptyBooks() {
-  const t = useTranslations("Portal.Shared")
-  return (
-    <div className="p-12 text-center text-muted-foreground border border-dashed rounded-xl">
-      <BookOpen size={36} className="mx-auto mb-3 opacity-20" />
-      <p className="text-sm font-semibold text-foreground">{t("acc_empty_title")}</p>
-      <p className="text-xs mt-1 max-w-md mx-auto">{t("acc_empty_desc")}</p>
-    </div>
-  )
-}
-
-function Kpi({
-  label,
-  value,
-  hint,
-  tone = "default",
-}: {
-  label: string
-  value: string
-  hint?: string
-  tone?: "default" | "good" | "warn" | "bad"
-}) {
-  return (
-    <div className="p-4 rounded-xl border bg-white">
-      <p className="text-xs text-muted-foreground font-semibold">{label}</p>
-      <p
-        className={cn(
-          "text-xl font-black mt-1 tabular-nums",
-          tone === "good" && "text-success",
-          tone === "warn" && "text-warning",
-          tone === "bad" && "text-destructive"
-        )}
-        dir="ltr"
-      >
-        {value}
-      </p>
-      {hint && <p className="text-[11px] text-muted-foreground mt-1">{hint}</p>}
-    </div>
-  )
-}
-
-const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 })
-
-/** Renders a statement row spec — headers, lines, subtotals and totals each
- * carry their own weight so the hierarchy reads without needing indentation. */
-function StatementTable({ rows, locale }: { rows: StatementRow[]; locale: string }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <tbody>
-          {rows.map((row, i) => {
-            const label = locale === "ar" ? row.labelAr : row.labelEn
-            if (row.type === "header") {
-              return (
-                <tr key={i} className="bg-muted/40">
-                  <td colSpan={2} className="px-5 py-2 text-xs font-black text-muted-foreground">
-                    {label}
-                  </td>
-                </tr>
-              )
-            }
-            const isTotal = row.type === "total"
-            const isSubtotal = row.type === "subtotal"
-            return (
-              <tr
-                key={i}
-                className={cn(
-                  "border-t",
-                  isTotal && "bg-primary/5 font-black",
-                  isSubtotal && "font-bold bg-muted/20"
-                )}
-              >
-                <td className={cn("px-5 py-2.5", !isTotal && !isSubtotal && "ps-8 text-muted-foreground")}>{label}</td>
-                <td className="px-5 py-2.5 text-end">
-                  <Money value={row.value} />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Dashboard
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function AccountingDashboard({ portal }: { portal: CrmPortal }) {
-  const t = useTranslations("Portal.Shared")
-  const locale = useLocale()
-  const data = useAccounting()
-  const { windows, entries } = data
-
-  const is = useMemo(() => incomeStatement(windows.movement), [windows.movement])
-  const bs = useMemo(() => balanceSheet(windows.closing), [windows.closing])
-  const cf = useMemo(() => cashFlowStatement(windows), [windows])
-  const checks = useMemo(() => integrityChecks(entries, windows), [entries, windows])
-  const failing = checks.filter((c) => !c.ok)
-
-  return (
-    <AccountingShell
-      portal={portal}
-      title={t("acc_page_title")}
-      description={t("acc_page_desc")}
-      action={<PeriodBar data={data} />}
-    >
-      {data.isLoading ? (
-        <div className="flex items-center justify-center p-16">
-          <Loader2 className="animate-spin text-muted-foreground" size={28} />
-        </div>
-      ) : entries.length === 0 ? (
-        <EmptyBooks />
-      ) : (
-        <>
-          {failing.length > 0 && (
-            <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/5">
-              <AlertTriangle size={18} className="text-destructive shrink-0 mt-0.5" />
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-destructive">{t("acc_checks_failing_title")}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {failing.map((c) => (locale === "ar" ? c.labelAr : c.labelEn)).join(" · ")}
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <Kpi label={t("acc_kpi_revenue")} value={fmt(is.totals.revenue || 0)} hint={t("acc_kpi_revenue_hint")} />
-            <Kpi
-              label={t("acc_kpi_net_profit")}
-              value={fmt(is.totals.netProfit || 0)}
-              hint={t("acc_kpi_net_profit_hint")}
-              tone={(is.totals.netProfit || 0) >= 0 ? "good" : "bad"}
-            />
-            <Kpi label={t("acc_kpi_cash")} value={fmt(cf.closingCash)} hint={t("acc_kpi_cash_hint")} />
-            <Kpi
-              label={t("acc_kpi_receivables")}
-              value={fmt(nodeNatural(windows.closing, ACC.clientsReceivable))}
-              hint={t("acc_kpi_receivables_hint")}
-              tone="warn"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <AccountingSection title={t("acc_nav_income")} icon={TrendingUp}>
-              <StatementTable rows={is.rows.filter((r) => r.type !== "line")} locale={locale} />
-            </AccountingSection>
-            <AccountingSection title={t("acc_position_summary")} icon={Scale}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <tbody>
-                    {[
-                      [t("acc_bs_total_assets"), bs.totalAssets],
-                      [bs.currentLiabilities.labelAr, bs.currentLiabilities.total],
-                      [bs.equity.labelAr, bs.equity.total],
-                    ].map(([label, value], i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-5 py-2.5">{label as string}</td>
-                        <td className="px-5 py-2.5 text-end">
-                          <Money value={value as number} />
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className={cn("border-t font-black", bs.difference === 0 ? "bg-success/5" : "bg-destructive/5")}>
-                      <td className="px-5 py-2.5">{t("acc_bs_balanced")}</td>
-                      <td className="px-5 py-2.5 text-end">
-                        {bs.difference === 0 ? (
-                          <span className="text-success flex items-center gap-1.5 justify-end">
-                            <CheckCircle2 size={14} />
-                            {t("acc_yes")}
-                          </span>
-                        ) : (
-                          <Money value={bs.difference} />
-                        )}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </AccountingSection>
-          </div>
-        </>
-      )}
-    </AccountingShell>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Statements
-// ─────────────────────────────────────────────────────────────────────────────
-
+/** A screen that reads the period: shell, shared toolbar, loading and empty states. */
 function StatementPage({
   portal,
   titleKey,
   descKey,
   icon,
+  action,
   render,
 }: {
   portal: CrmPortal
   titleKey: string
   descKey: string
   icon: typeof TrendingUp
-  render: (data: AccountingData, locale: string) => React.ReactNode
+  action?: ReactNode
+  render: (data: AccountingData, locale: string) => ReactNode
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -310,34 +92,93 @@ function StatementPage({
       title={t(titleKey)}
       description={t(descKey)}
       icon={icon}
-      action={<PeriodBar data={data} />}
+      action={action}
+      toolbar={<AccountingToolbar data={data} />}
     >
-      {data.isLoading ? (
-        <div className="flex items-center justify-center p-16">
-          <Loader2 className="animate-spin text-muted-foreground" size={28} />
-        </div>
-      ) : data.entries.length === 0 ? (
-        <EmptyBooks />
-      ) : (
-        render(data, locale)
-      )}
+      {data.isLoading ? <LoadingBooks /> : data.entries.length === 0 ? <EmptyBooks /> : render(data, locale)}
     </AccountingShell>
   )
 }
 
+function periodTitle(data: AccountingData, locale: string): string {
+  return `${periodLabel(data.period, locale)} · ${periodRangeText(data.period)}`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statements — expandable, every figure drills into its accounts
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TreeStatement({
+  portal,
+  data,
+  locale,
+  icon,
+  nodes,
+}: {
+  portal: CrmPortal
+  data: AccountingData
+  locale: string
+  icon: typeof TrendingUp
+  nodes: TreeNode[]
+}) {
+  const [selected, setSelected] = useState<TreeNode | null>(null)
+  return (
+    <>
+      <AccountingSection title={periodTitle(data, locale)} icon={icon}>
+        <StatementTreeTable nodes={nodes} onSelect={setSelected} headerExtra={<ScaleCaption scale={data.scale} />} />
+      </AccountingSection>
+      <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
+    </>
+  )
+}
+
 export function IncomeStatementView({ portal }: { portal: CrmPortal }) {
+  const t = useTranslations("Portal.Shared")
   return (
     <StatementPage
       portal={portal}
       titleKey="acc_nav_income"
       descKey="acc_income_desc"
       icon={TrendingUp}
-      render={(data, locale) => (
-        <AccountingSection title={data.period.labelAr} icon={TrendingUp}>
-          <StatementTable rows={incomeStatement(data.windows.movement).rows} locale={locale} />
-        </AccountingSection>
-      )}
+      render={(data, locale) => {
+        const { nodes, statement } = incomeStatementTree(data.windows.movement)
+        const revenue = statement.totals.revenue || 0
+        const margin = (v: number) => (revenue > 0 ? `${Math.round((v / revenue) * 1000) / 10}%` : "—")
+        return (
+          <div className="space-y-4">
+            <IncomeKpis data={data} revenue={revenue} gross={statement.totals.grossProfit || 0} operating={statement.totals.operating || 0} net={statement.totals.netProfit || 0} margin={margin} t={t} />
+            <TreeStatement portal={portal} data={data} locale={locale} icon={TrendingUp} nodes={nodes} />
+          </div>
+        )
+      }}
     />
+  )
+}
+
+function IncomeKpis({
+  revenue,
+  gross,
+  operating,
+  net,
+  margin,
+  t,
+}: {
+  data: AccountingData
+  revenue: number
+  gross: number
+  operating: number
+  net: number
+  margin: (v: number) => string
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { compact } = useMoneyFormat()
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <Kpi label={t("acc_kpi_revenue")} value={compact(revenue)} />
+      <Kpi label={t("acc_kpi_gross_profit")} value={compact(gross)} hint={t("acc_kpi_margin", { value: margin(gross) })} tone={gross >= 0 ? "good" : "bad"} />
+      <Kpi label={t("acc_kpi_operating_profit")} value={compact(operating)} hint={t("acc_kpi_margin", { value: margin(operating) })} tone={operating >= 0 ? "good" : "bad"} />
+      <Kpi label={t("acc_kpi_net_profit")} value={compact(net)} hint={t("acc_kpi_margin", { value: margin(net) })} tone={net >= 0 ? "good" : "bad"} />
+    </div>
   )
 }
 
@@ -350,8 +191,7 @@ export function BalanceSheetView({ portal }: { portal: CrmPortal }) {
       descKey="acc_balance_desc"
       icon={Scale}
       render={(data, locale) => {
-        const bs = balanceSheet(data.windows.closing)
-        const sections = [bs.currentAssets, bs.nonCurrentAssets, bs.currentLiabilities, bs.nonCurrentLiabilities, bs.equity]
+        const { nodes, statement: bs } = balanceSheetTree(data.windows.closing)
         return (
           <div className="space-y-4">
             {bs.difference !== 0 && (
@@ -360,49 +200,28 @@ export function BalanceSheetView({ portal }: { portal: CrmPortal }) {
                 <div>
                   <p className="text-sm font-bold text-destructive">{t("acc_bs_unbalanced")}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {t("acc_bs_difference")}: {bs.difference.toLocaleString("en-US")}
+                    {t("acc_bs_difference")}: <Money value={bs.difference} />
                   </p>
                 </div>
               </div>
             )}
-            {sections.map((sec) => (
-              <AccountingSection key={sec.labelAr} title={locale === "ar" ? sec.labelAr : sec.labelEn} icon={Scale}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <tbody>
-                      {sec.rows.map((row) => (
-                        <tr key={row.code} className="border-t">
-                          <td className="px-5 py-2.5 text-muted-foreground">
-                            {locale === "ar" ? row.labelAr : row.labelEn}
-                          </td>
-                          <td className="px-5 py-2.5 text-end">
-                            <Money value={row.value} />
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className="border-t bg-muted/20 font-black">
-                        <td className="px-5 py-2.5">{t("acc_total")}</td>
-                        <td className="px-5 py-2.5 text-end">
-                          <Money value={sec.total} />
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </AccountingSection>
-            ))}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Kpi label={t("acc_bs_total_assets")} value={fmt(bs.totalAssets)} />
-              <Kpi
-                label={t("acc_bs_total_liab_equity")}
-                value={fmt(bs.totalLiabilitiesAndEquity)}
-                tone={bs.difference === 0 ? "good" : "bad"}
-              />
-            </div>
+            <BalanceKpis totalAssets={bs.totalAssets} totalLe={bs.totalLiabilitiesAndEquity} balanced={bs.difference === 0} t={t} />
+            <TreeStatement portal={portal} data={data} locale={locale} icon={Scale} nodes={nodes} />
           </div>
         )
       }}
     />
+  )
+}
+
+function BalanceKpis({ totalAssets, totalLe, balanced, t }: { totalAssets: number; totalLe: number; balanced: boolean; t: ReturnType<typeof useTranslations> }) {
+  const { compact } = useMoneyFormat()
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <Kpi label={t("acc_bs_total_assets")} value={compact(totalAssets)} />
+      <Kpi label={t("acc_bs_total_liab_equity")} value={compact(totalLe)} />
+      <Kpi label={t("acc_bs_balanced")} value={balanced ? t("acc_yes") : t("acc_no")} tone={balanced ? "good" : "bad"} />
+    </div>
   )
 }
 
@@ -415,27 +234,32 @@ export function CashFlowView({ portal }: { portal: CrmPortal }) {
       descKey="acc_cashflow_desc"
       icon={Banknote}
       render={(data, locale) => {
-        const cf = cashFlowStatement(data.windows)
+        const { nodes, statement: cf } = cashFlowTree(data.windows)
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <Kpi label={t("acc_cf_operating")} value={fmt(cf.operating)} tone={cf.operating >= 0 ? "good" : "bad"} />
-              <Kpi label={t("acc_cf_investing")} value={fmt(cf.investing)} />
-              <Kpi label={t("acc_cf_financing")} value={fmt(cf.financing)} />
-              <Kpi
-                label={t("acc_cf_net_change")}
-                value={fmt(cf.netChange)}
-                tone={cf.netChange >= 0 ? "good" : "bad"}
-                hint={cf.difference === 0 ? t("acc_cf_reconciled") : t("acc_cf_not_reconciled")}
-              />
-            </div>
-            <AccountingSection title={data.period.labelAr} icon={Banknote}>
-              <StatementTable rows={cf.rows} locale={locale} />
-            </AccountingSection>
+            <CashFlowKpis cf={cf} t={t} />
+            <TreeStatement portal={portal} data={data} locale={locale} icon={Banknote} nodes={nodes} />
           </div>
         )
       }}
     />
+  )
+}
+
+function CashFlowKpis({ cf, t }: { cf: ReturnType<typeof cashFlowStatement>; t: ReturnType<typeof useTranslations> }) {
+  const { compact } = useMoneyFormat()
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <Kpi label={t("acc_cf_operating")} value={compact(cf.operating)} tone={cf.operating >= 0 ? "good" : "bad"} />
+      <Kpi label={t("acc_cf_investing")} value={compact(cf.investing)} />
+      <Kpi label={t("acc_cf_financing")} value={compact(cf.financing)} />
+      <Kpi
+        label={t("acc_cf_net_change")}
+        value={compact(cf.netChange)}
+        tone={cf.netChange >= 0 ? "good" : "bad"}
+        hint={cf.difference === 0 ? t("acc_cf_reconciled") : t("acc_cf_not_reconciled")}
+      />
+    </div>
   )
 }
 
@@ -450,7 +274,7 @@ export function EquityView({ portal }: { portal: CrmPortal }) {
       render={(data, locale) => {
         const eq = equityStatement(data.windows)
         return (
-          <AccountingSection title={data.period.labelAr} icon={PieChart}>
+          <AccountingSection title={periodTitle(data, locale)} icon={PieChart} action={<ScaleCaption scale={data.scale} />}>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
@@ -494,15 +318,29 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const data = useAccounting()
+  const [query, setQuery] = useState("")
+  const q = query.trim().toLowerCase()
+  const rows = CHART_OF_ACCOUNTS.filter(
+    (a) => !q || a.code.startsWith(q) || a.nameAr.includes(query.trim()) || a.nameEn.toLowerCase().includes(q)
+  )
   return (
     <AccountingShell
       portal={portal}
       title={t("acc_nav_coa")}
       description={t("acc_coa_desc")}
       icon={ListTree}
-      action={<PeriodBar data={data} />}
+      toolbar={<AccountingToolbar data={data} showProject={false} />}
     >
-      <AccountingSection title={t("acc_coa_title")} icon={ListTree}>
+      <AccountingSection
+        title={t("acc_coa_title")}
+        icon={ListTree}
+        action={
+          <div className="relative w-56">
+            <Search size={13} className="absolute top-1/2 -translate-y-1/2 start-2.5 text-muted-foreground pointer-events-none" aria-hidden="true" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("acc_coa_search")} aria-label={t("acc_coa_search")} className="h-8 ps-8 text-xs" />
+          </div>
+        }
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
@@ -514,10 +352,16 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
               </tr>
             </thead>
             <tbody>
-              {CHART_OF_ACCOUNTS.map((a) => (
+              {rows.map((a) => (
                 <tr key={a.code} className={cn("border-t", a.level <= 2 && "bg-muted/20 font-bold")}>
                   <td className="px-5 py-2 tabular-nums text-muted-foreground" dir="ltr">
-                    {a.code}
+                    {a.postable ? (
+                      <Link href={`${accountingBasePath(portal)}/ledger?account=${a.code}`} className="hover:text-primary hover:underline">
+                        {a.code}
+                      </Link>
+                    ) : (
+                      a.code
+                    )}
                   </td>
                   <td className="px-5 py-2" style={{ paddingInlineStart: `${a.level * 14}px` }}>
                     {locale === "ar" ? a.nameAr : a.nameEn}
@@ -555,12 +399,15 @@ export function TrialBalanceView({ portal }: { portal: CrmPortal }) {
         const tb = trialBalance(data.windows)
         return (
           <AccountingSection
-            title={data.period.labelAr}
+            title={periodTitle(data, locale)}
             icon={Scale}
             action={
-              <Badge className={cn("border-none", tb.difference === 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive")}>
-                {tb.difference === 0 ? t("acc_tb_balanced") : `${t("acc_bs_difference")}: ${tb.difference}`}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <ScaleCaption scale={data.scale} />
+                <Badge className={cn("border-none", tb.difference === 0 ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive")}>
+                  {tb.difference === 0 ? t("acc_tb_balanced") : `${t("acc_bs_difference")}: ${tb.difference}`}
+                </Badge>
+              </div>
             }
           >
             <div className="overflow-x-auto">
@@ -578,9 +425,9 @@ export function TrialBalanceView({ portal }: { portal: CrmPortal }) {
                   {tb.rows.map((row) => (
                     <tr key={row.code} className="border-t">
                       <td className="px-4 py-2">
-                        <span className="text-muted-foreground tabular-nums me-2" dir="ltr">
+                        <Link href={`${accountingBasePath(portal)}/ledger?account=${row.code}`} className="text-muted-foreground tabular-nums me-2 hover:text-primary hover:underline" dir="ltr">
                           {row.code}
-                        </span>
+                        </Link>
                         {accountName(row.code, locale)}
                       </td>
                       <td className="px-4 py-2 text-end"><Money value={row.movementDebit} /></td>
@@ -606,32 +453,50 @@ export function TrialBalanceView({ portal }: { portal: CrmPortal }) {
   )
 }
 
-const SOURCE_LABEL_KEY: Record<string, string> = {
-  ipc_claim: "acc_src_ipc_claim",
-  ipc_collection: "acc_src_ipc_collection",
-  sales_quotation: "acc_src_sales_quotation",
-  sales_payment: "acc_src_sales_payment",
-  work_order_issue: "acc_src_work_order_issue",
-  work_order_delivery: "acc_src_work_order_delivery",
-  material_issue: "acc_src_material_issue",
-  payroll: "acc_src_payroll",
-  manual_voucher: "acc_src_manual_voucher",
-  opening: "acc_src_opening",
-}
+type KindFilter = "all" | "auto" | "manual"
+type StatusFilter = "all" | "posted" | "draft"
 
 export function JournalView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const data = useAccounting()
+  const { can } = usePermissions()
+  const canPost = can("accounting.post")
   const [openId, setOpenId] = useState<string | null>(null)
+  const [kind, setKind] = useState<KindFilter>("all")
+  const [status, setStatus] = useState<StatusFilter>("all")
+  const [search, setSearch] = useState("")
 
+  useEffect(() => {
+    // Arriving from "entry saved" or the audit trail: open that entry.
+    try {
+      const id = new URLSearchParams(window.location.search).get("entry")
+      if (id) setOpenId(id)
+    } catch {
+      /* not in a browser */
+    }
+  }, [])
+
+  const byId = useMemo(() => new Map(data.entries.map((e) => [e.id, e])), [data.entries])
+  const q = search.trim().toLowerCase()
   const inPeriod = useMemo(
     () =>
       data.entries
         .filter((e) => e.date >= data.period.from && e.date <= data.period.to)
+        .filter((e) => kind === "all" || (kind === "manual" ? e.kind === "manual" : e.kind !== "manual"))
+        .filter((e) => status === "all" || e.status === status)
+        .filter(
+          (e) =>
+            !q ||
+            e.description.toLowerCase().includes(q) ||
+            String(e.entryNumber) === q ||
+            (e.reference || "").toLowerCase().includes(q) ||
+            e.lines.some((l) => l.account.startsWith(q) || (l.partyName || "").toLowerCase().includes(q))
+        )
         .sort((a, b) => (a.date === b.date ? b.entryNumber - a.entryNumber : a.date < b.date ? 1 : -1)),
-    [data.entries, data.period]
+    [data.entries, data.period, kind, status, q]
   )
+  const totals = inPeriod.filter((e) => e.status === "posted").reduce((s, e) => s + e.totalDebit, 0)
 
   return (
     <AccountingShell
@@ -639,22 +504,69 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
       title={t("acc_nav_journal")}
       description={t("acc_journal_desc")}
       icon={BookOpen}
-      action={<PeriodBar data={data} />}
+      action={
+        canPost && (
+          <Button asChild className="gap-2">
+            <Link href={`${accountingBasePath(portal)}/journal/new`}>
+              <FilePlus2 size={16} aria-hidden="true" />
+              {t("acc_nav_new_entry")}
+            </Link>
+          </Button>
+        )
+      }
+      toolbar={<AccountingToolbar data={data} />}
     >
-      {data.isLoading ? (
-        <div className="flex items-center justify-center p-16">
-          <Loader2 className="animate-spin text-muted-foreground" size={28} />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-48 sm:max-w-72">
+          <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" aria-hidden="true" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("acc_journal_search")} aria-label={t("acc_journal_search")} className="h-9 ps-9 text-xs" />
         </div>
+        <Select value={kind} onValueChange={(v) => setKind(v as KindFilter)}>
+          <SelectTrigger className="h-9 w-40 text-xs" aria-label={t("acc_journal_kind")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all" className="text-xs">{t("acc_journal_kind_all")}</SelectItem>
+            <SelectItem value="auto" className="text-xs">{t("acc_journal_kind_auto")}</SelectItem>
+            <SelectItem value="manual" className="text-xs">{t("acc_journal_kind_manual")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
+          <SelectTrigger className="h-9 w-36 text-xs" aria-label={t("acc_status")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all" className="text-xs">{t("acc_journal_status_all")}</SelectItem>
+            <SelectItem value="posted" className="text-xs">{t("acc_status_posted")}</SelectItem>
+            <SelectItem value="draft" className="text-xs">{t("acc_status_draft")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {data.isLoading ? (
+        <LoadingBooks />
       ) : inPeriod.length === 0 ? (
         <EmptyBooks />
       ) : (
-        <AccountingSection title={t("acc_journal_entries", { count: inPeriod.length })} icon={BookOpen}>
+        <AccountingSection
+          title={t("acc_journal_entries", { count: inPeriod.length })}
+          icon={BookOpen}
+          action={
+            <span className="text-xs text-muted-foreground flex items-center gap-2">
+              {t("acc_journal_posted_total")} <Money value={totals} className="font-bold text-foreground" /> <ScaleCaption scale={data.scale} />
+            </span>
+          }
+        >
           <div className="divide-y">
             {inPeriod.map((entry) => (
               <JournalRow
                 key={entry.id}
                 entry={entry}
+                data={data}
                 locale={locale}
+                canPost={canPost}
+                reversal={entry.reversedByEntryId ? byId.get(entry.reversedByEntryId) : undefined}
+                reverses={entry.reversesEntryId ? byId.get(entry.reversesEntryId) : undefined}
                 open={openId === entry.id}
                 onToggle={() => setOpenId(openId === entry.id ? null : entry.id)}
               />
@@ -668,17 +580,88 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
 
 function JournalRow({
   entry,
+  data,
   locale,
+  canPost,
+  reversal,
+  reverses,
   open,
   onToggle,
 }: {
   entry: JournalEntry
+  data: AccountingData
   locale: string
+  canPost: boolean
+  reversal?: JournalEntry
+  reverses?: JournalEntry
   open: boolean
   onToggle: () => void
 }) {
   const t = useTranslations("Portal.Shared")
+  const firestore = useFirestore()
+  const { toast } = useToast()
   const srcKey = SOURCE_LABEL_KEY[entry.sourceType]
+  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | null>(null)
+  const [reverseOpen, setReverseOpen] = useState(false)
+  const [reverseDate, setReverseDate] = useState(isoToday())
+  const [reverseReason, setReverseReason] = useState("")
+
+  const fail = (err: unknown) => {
+    console.error(err)
+    toast({
+      title: err instanceof ClosedPeriodError ? t("acc_entry_closed_period", { period: err.period }) : t("acc_save_error"),
+      variant: "destructive",
+    })
+  }
+
+  const post = async () => {
+    if (!firestore || busy) return
+    setBusy("post")
+    try {
+      await postDraftEntry(firestore, entry)
+      toast({ title: t("acc_entry_posted", { number: entry.entryNumber }) })
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const remove = async () => {
+    if (!firestore || busy) return
+    setBusy("delete")
+    try {
+      await deleteDraftEntry(firestore, entry)
+      toast({ title: t("acc_entry_draft_deleted") })
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const reverse = async () => {
+    if (!firestore || busy) return
+    setBusy("reverse")
+    try {
+      const res = await reverseJournalEntry(firestore, {
+        original: entry,
+        date: reverseDate,
+        reason: reverseReason,
+        userId: data.userId,
+        userName: data.userName,
+      })
+      setReverseOpen(false)
+      toast({ title: t("acc_entry_reversed", { number: entry.entryNumber, reversal: res.entryNumber }) })
+    } catch (err) {
+      fail(err)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const canReverse = canPost && entry.status === "posted" && !entry.reversedByEntryId && !entry.reversesEntryId
+
   return (
     <div>
       <button
@@ -692,24 +675,29 @@ function JournalRow({
             <span className="text-xs font-black text-muted-foreground tabular-nums" dir="ltr">
               #{entry.entryNumber}
             </span>
-            <span className="font-semibold text-sm truncate">{entry.description}</span>
+            <span className={cn("font-semibold text-sm truncate", entry.reversedByEntryId && "line-through decoration-muted-foreground/60")}>{entry.description}</span>
             {srcKey && (
               <Badge variant="outline" className="text-[10px]">
                 {t(srcKey)}
               </Badge>
             )}
+            {entry.kind === "manual" && <Badge className="bg-cta/10 text-cta border-none text-[10px]">{t("acc_journal_kind_manual")}</Badge>}
             {entry.status === "draft" && (
               <Badge className="bg-warning/10 text-warning border-none text-[10px]">{t("acc_status_draft")}</Badge>
             )}
+            {entry.reversedByEntryId && <Badge className="bg-muted text-muted-foreground border-none text-[10px]">{t("acc_entry_badge_reversed")}</Badge>}
+            {entry.reversesEntryId && <Badge className="bg-destructive/10 text-destructive border-none text-[10px]">{t("acc_entry_badge_reversal")}</Badge>}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5" dir="ltr">
-            {entry.date}
+          <p className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
+            <span dir="ltr">{entry.date}</span>
+            {entry.reference && <span>· {t("acc_entry_reference")}: {entry.reference}</span>}
+            {entry.createdByUserName && <span>· {entry.createdByUserName}</span>}
           </p>
         </div>
         <Money value={entry.totalDebit} className="text-sm font-bold shrink-0" />
       </button>
       {open && (
-        <div className="px-5 pb-4 bg-muted/20">
+        <div className="px-5 pb-4 bg-muted/20 space-y-3">
           <table className="w-full text-xs">
             <thead className="text-muted-foreground font-bold">
               <tr>
@@ -726,16 +714,80 @@ function JournalRow({
                       {line.account}
                     </span>
                     {accountName(line.account, locale)}
+                    {line.partyName && <span className="text-cta"> · {line.partyName}</span>}
+                    {line.projectName && <span className="text-muted-foreground"> · {line.projectName}</span>}
                     {line.note && <span className="text-muted-foreground"> — {line.note}</span>}
                   </td>
                   <td className="py-1.5 text-end">{line.debit ? <Money value={line.debit} /> : "—"}</td>
                   <td className="py-1.5 text-end">{line.credit ? <Money value={line.credit} /> : "—"}</td>
                 </tr>
               ))}
+              <tr className="border-t font-bold">
+                <td className="py-1.5">{t("acc_total")}</td>
+                <td className="py-1.5 text-end"><Money value={entry.totalDebit} /></td>
+                <td className="py-1.5 text-end"><Money value={entry.totalCredit} /></td>
+              </tr>
             </tbody>
           </table>
+          {(reversal || reverses) && (
+            <p className="text-[11px] text-muted-foreground">
+              {reversal && t("acc_entry_reversed_by", { number: reversal.entryNumber, date: reversal.date })}
+              {reverses && t("acc_entry_reverses", { number: reverses.entryNumber })}
+            </p>
+          )}
+          {canPost && (entry.status === "draft" || canReverse) && (
+            <div className="flex flex-wrap items-center gap-2">
+              {entry.status === "draft" && (
+                <>
+                  <Button size="sm" className="h-8 gap-1.5" onClick={post} disabled={!!busy}>
+                    {busy === "post" ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                    {t("acc_entry_post_draft")}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-destructive hover:text-destructive" onClick={remove} disabled={!!busy}>
+                    {busy === "delete" ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                    {t("acc_entry_delete_draft")}
+                  </Button>
+                </>
+              )}
+              {canReverse && (
+                <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setReverseOpen(true)} disabled={!!busy}>
+                  <Undo2 size={13} />
+                  {t("acc_entry_reverse")}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      <Dialog open={reverseOpen} onOpenChange={(o) => { if (!busy) setReverseOpen(o) }}>
+        <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("acc_entry_reverse_title", { number: entry.entryNumber })}</DialogTitle>
+            <DialogDescription>{t("acc_entry_reverse_desc")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor={`rev-date-${entry.id}`}>{t("acc_date")}</Label>
+              <Input id={`rev-date-${entry.id}`} type="date" dir="ltr" value={reverseDate} onChange={(e) => setReverseDate(e.target.value)} />
+              {data.periods.some((p) => p.period === periodOf(reverseDate) && p.status === "closed") && (
+                <p className="text-[11px] text-destructive">{t("acc_entry_closed_period", { period: periodOf(reverseDate) })}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`rev-reason-${entry.id}`}>{t("acc_entry_reverse_reason")}</Label>
+              <Input id={`rev-reason-${entry.id}`} value={reverseReason} onChange={(e) => setReverseReason(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReverseOpen(false)} disabled={!!busy}>{t("acc_cancel")}</Button>
+            <Button onClick={reverse} disabled={!!busy || !reverseDate} className="gap-1.5">
+              {busy === "reverse" ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+              {t("acc_entry_reverse")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -746,10 +798,21 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
   const data = useAccounting()
   const [account, setAccount] = useState<string>(ACC.bankMain)
 
+  useEffect(() => {
+    // Deep links from the statements, the chart of accounts and the trial balance.
+    try {
+      const code = new URLSearchParams(window.location.search).get("account")
+      if (code && CHART_OF_ACCOUNTS.some((a) => a.code === code && a.postable)) setAccount(code)
+    } catch {
+      /* not in a browser */
+    }
+  }, [])
+
   const ledger = useMemo(
     () => accountLedger(data.entries, account, data.period.from, data.period.to, data.filter),
     [data.entries, account, data.period, data.filter]
   )
+  const nat = (v: number) => naturalSign(account, v)
 
   return (
     <AccountingShell
@@ -757,11 +820,11 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
       title={t("acc_nav_ledger")}
       description={t("acc_ledger_desc")}
       icon={FileText}
-      action={<PeriodBar data={data} />}
+      toolbar={<AccountingToolbar data={data} />}
     >
       <div className="flex items-center gap-2">
         <Select value={account} onValueChange={setAccount}>
-          <SelectTrigger className="h-9 w-80 text-xs">
+          <SelectTrigger className="h-9 w-80 text-xs" aria-label={t("acc_account_name")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -774,7 +837,7 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
         </Select>
       </div>
 
-      <AccountingSection title={accountName(account, locale)} icon={FileText}>
+      <AccountingSection title={`${account} — ${accountName(account, locale)}`} icon={FileText} action={<ScaleCaption scale={data.scale} />}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
@@ -792,7 +855,7 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
                   {t("acc_opening_balance")}
                 </td>
                 <td className="px-4 py-2 text-end">
-                  <Money value={ledger.openingBalance} />
+                  <Money value={nat(ledger.openingBalance)} />
                 </td>
               </tr>
               {ledger.rows.map((row, i) => (
@@ -800,11 +863,14 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
                   <td className="px-4 py-2 tabular-nums text-muted-foreground" dir="ltr">
                     {row.date}
                   </td>
-                  <td className="px-4 py-2">{row.description}</td>
+                  <td className="px-4 py-2">
+                    <span className="text-muted-foreground tabular-nums me-1.5" dir="ltr">#{row.entryNumber}</span>
+                    {row.description}
+                  </td>
                   <td className="px-4 py-2 text-end">{row.debit ? <Money value={row.debit} /> : "—"}</td>
                   <td className="px-4 py-2 text-end">{row.credit ? <Money value={row.credit} /> : "—"}</td>
                   <td className="px-4 py-2 text-end">
-                    <Money value={row.balance} />
+                    <Money value={nat(row.balance)} />
                   </td>
                 </tr>
               ))}
@@ -813,7 +879,7 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
                   {t("acc_closing_balance")}
                 </td>
                 <td className="px-4 py-2.5 text-end">
-                  <Money value={ledger.closingBalance} />
+                  <Money value={nat(ledger.closingBalance)} />
                 </td>
               </tr>
             </tbody>
@@ -836,6 +902,7 @@ export function ChecksView({ portal }: { portal: CrmPortal }) {
         const checks = integrityChecks(data.entries, data.windows)
         const bs = balanceSheet(data.windows.closing)
         const cf = cashFlowStatement(data.windows)
+        const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 0 })
         const all = [
           ...checks,
           {
@@ -1032,83 +1099,31 @@ export function VatView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_vat"
       descKey="acc_vat_desc"
       icon={Percent}
-      render={(data) => {
-        const output = nodeNatural(data.windows.movement, ACC.vatOutput)
-        const input = nodeNatural(data.windows.movement, ACC.vatInput)
-        const net = Math.round((output - input) * 100) / 100
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <Kpi label={t("acc_vat_output")} value={fmt(output)} hint={t("acc_vat_output_hint")} />
-              <Kpi label={t("acc_vat_input")} value={fmt(input)} hint={t("acc_vat_input_hint")} />
-              <Kpi
-                label={net >= 0 ? t("acc_vat_payable") : t("acc_vat_reclaim")}
-                value={fmt(Math.abs(net))}
-                tone={net >= 0 ? "warn" : "good"}
-                hint={t("acc_vat_net_hint")}
-              />
-            </div>
-            <AccountingSection title={t("acc_vat_title")} icon={Percent}>
-              <div className="p-5 text-sm text-muted-foreground">{t("acc_vat_explainer")}</div>
-            </AccountingSection>
-          </div>
-        )
-      }}
+      render={(data) => <VatBody data={data} t={t} />}
     />
   )
 }
 
-export function LockedCashView({ portal }: { portal: CrmPortal }) {
-  const t = useTranslations("Portal.Shared")
+function VatBody({ data, t }: { data: AccountingData; t: ReturnType<typeof useTranslations> }) {
+  const { compact } = useMoneyFormat()
+  const output = nodeNatural(data.windows.movement, ACC.vatOutput)
+  const input = nodeNatural(data.windows.movement, ACC.vatInput)
+  const net = Math.round((output - input) * 100) / 100
   return (
-    <StatementPage
-      portal={portal}
-      titleKey="acc_nav_locked"
-      descKey="acc_locked_desc"
-      icon={Lock}
-      render={(data, locale) => {
-        const locked = lockedCash(data.windows.closing)
-        const max = Math.max(...locked.rows.map((r) => r.value), 1)
-        return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-              <Kpi label={t("acc_locked_available")} value={fmt(locked.availableCash)} hint={t("acc_locked_available_hint")} tone="good" />
-              <Kpi label={t("acc_locked_total")} value={fmt(locked.total)} hint={t("acc_locked_total_hint")} tone="warn" />
-              <Kpi label={t("acc_locked_ratio")} value={`${Math.round(locked.ratio * 100)}%`} hint={t("acc_locked_ratio_hint")} />
-            </div>
-            <AccountingSection title={t("acc_locked_title")} icon={Lock}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
-                    <tr>
-                      <th className="px-5 py-2.5 text-start">{t("acc_locked_item")}</th>
-                      <th className="px-5 py-2.5 text-end w-32">{t("acc_amount")}</th>
-                      <th className="px-5 py-2.5 text-start w-40">{t("acc_locked_share")}</th>
-                      <th className="px-5 py-2.5 text-start">{t("acc_locked_reason")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {locked.rows.map((row) => (
-                      <tr key={row.code} className="border-t">
-                        <td className="px-5 py-3 font-semibold">{locale === "ar" ? row.labelAr : row.labelEn}</td>
-                        <td className="px-5 py-3 text-end">
-                          <Money value={row.value} />
-                        </td>
-                        <td className="px-5 py-3">
-                          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full bg-warning rounded-full" style={{ width: `${(row.value / max) * 100}%` }} />
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-xs text-muted-foreground">{row.reasonAr}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </AccountingSection>
-          </div>
-        )
-      }}
-    />
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Kpi label={t("acc_vat_output")} value={compact(output)} hint={t("acc_vat_output_hint")} />
+        <Kpi label={t("acc_vat_input")} value={compact(input)} hint={t("acc_vat_input_hint")} />
+        <Kpi
+          label={net >= 0 ? t("acc_vat_payable") : t("acc_vat_reclaim")}
+          value={compact(Math.abs(net))}
+          tone={net >= 0 ? "warn" : "good"}
+          hint={t("acc_vat_net_hint")}
+        />
+      </div>
+      <AccountingSection title={t("acc_vat_title")} icon={Percent}>
+        <div className="p-5 text-sm text-muted-foreground">{t("acc_vat_explainer")}</div>
+      </AccountingSection>
+    </div>
   )
 }
