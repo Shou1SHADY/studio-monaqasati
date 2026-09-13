@@ -3373,7 +3373,24 @@
       "mfg_pick_warehouse_required": "Pick the warehouse to draw from first — manufacturing consumes stock only",
       "mfg_pick_material_required": "Pick at least one material from the warehouse",
       "mfg_input_qty_required": "Enter a valid quantity for \"{item}\" — numbers only; the unit comes from the stock item",
-      "mfg_input_qty_aria": "Quantity of {item}"
+      "mfg_input_qty_aria": "Quantity of {item}",
+      "inv_val_title": "Total inventory value",
+      "inv_val_desc": "Construction materials, work in progress and finished goods — after manufacturing adjustments",
+      "inv_val_sar": "SAR",
+      "inv_val_materials": "Construction materials",
+      "inv_val_wip": "Work in progress",
+      "inv_val_finished": "Finished goods",
+      "inv_val_items": "{count, plural, =0 {No items} one {{n} item} other {{n} items}}",
+      "inv_val_orders": "{count, plural, =0 {No running work orders} one {{n} work order} other {{n} work orders}}",
+      "inv_val_unpriced_count": "{count} unpriced",
+      "inv_val_share": "{percent}%",
+      "inv_val_released": "Includes SAR {value} released to manufacturing, awaiting the department's receipt",
+      "inv_val_unpriced_hint": "Lines with no cost on file aren't valued, so the real value is higher than shown.",
+      "inv_val_partial_hint": "Some records couldn't be loaded, so figures may be incomplete.",
+      "inv_val_empty_title": "No inventory valued yet",
+      "inv_val_empty_desc": "Record unit costs on inventory items to see their value here, together with work in progress and finished goods.",
+      "inv_val_no_cost_yet": "No costs on file yet",
+      "inv_val_bar_label": "Inventory value split: construction materials {materials}%, work in progress {wip}%, finished goods {finished}%"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -5086,7 +5103,9 @@
       "proj_waste_over_stock_title": "Requested more than the warehouse holds",
       "proj_tabs_label": "Project sections",
       "proj_boq_warehouse_menu": "Warehouse",
-      "newrfq_step_notes_files": "Notes & Files"
+      "newrfq_step_notes_files": "Notes & Files",
+      "inv_val_split_materials": "Materials",
+      "inv_val_split_finished": "Finished goods"
     },
     "Admin": {
       "Dashboard": {

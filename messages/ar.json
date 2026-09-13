@@ -3373,7 +3373,24 @@
       "mfg_pick_warehouse_required": "اختر مستودع السحب أولاً — التصنيع يستهلك من المخزون فقط",
       "mfg_pick_material_required": "اختر مادة واحدة على الأقل من المستودع",
       "mfg_input_qty_required": "أدخل كمية صحيحة للمادة «{item}» — أرقام فقط، والوحدة تُؤخذ من المخزون",
-      "mfg_input_qty_aria": "كمية {item}"
+      "mfg_input_qty_aria": "كمية {item}",
+      "inv_val_title": "إجمالي قيمة المخزون",
+      "inv_val_desc": "مواد إنشائية وبضاعة تحت التصنيع وبضاعة تامة الصنع — بعد تسويات التصنيع",
+      "inv_val_sar": "ر.س",
+      "inv_val_materials": "مواد إنشائية",
+      "inv_val_wip": "بضاعة تحت التصنيع",
+      "inv_val_finished": "بضاعة تامة الصنع",
+      "inv_val_items": "{count, plural, =0 {لا أصناف} one {صنف واحد} two {صنفان} few {{n} أصناف} many {{n} صنفًا} other {{n} صنف}}",
+      "inv_val_orders": "{count, plural, =0 {لا أوامر تشغيل جارية} one {أمر تشغيل واحد} two {أمرا تشغيل} few {{n} أوامر تشغيل} many {{n} أمر تشغيل} other {{n} أمر تشغيل}}",
+      "inv_val_unpriced_count": "{count} بلا تكلفة",
+      "inv_val_share": "{percent}٪",
+      "inv_val_released": "تشمل {value} ر.س صُرفت للتصنيع بانتظار توقيع القسم على الاستلام",
+      "inv_val_unpriced_hint": "البنود التي ليس لها تكلفة مسجّلة غير محسوبة، فالقيمة الفعلية أعلى من المعروض.",
+      "inv_val_partial_hint": "تعذّر تحميل بعض السجلات، وقد تكون الأرقام ناقصة.",
+      "inv_val_empty_title": "لا يوجد مخزون مُقيَّم بعد",
+      "inv_val_empty_desc": "سجّل تكلفة الوحدة لأصناف المخزون لتظهر قيمتها هنا مع البضاعة تحت التصنيع والبضاعة تامة الصنع.",
+      "inv_val_no_cost_yet": "لا توجد تكلفة مسجّلة بعد",
+      "inv_val_bar_label": "توزيع قيمة المخزون: مواد إنشائية {materials}٪، بضاعة تحت التصنيع {wip}٪، بضاعة تامة الصنع {finished}٪"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -5086,7 +5103,9 @@
       "proj_waste_over_stock_title": "كمية مطلوبة أكبر من المتاح في المستودع",
       "proj_tabs_label": "أقسام المشروع",
       "proj_boq_warehouse_menu": "المستودع",
-      "newrfq_step_notes_files": "ملاحظات ومرفقات"
+      "newrfq_step_notes_files": "ملاحظات ومرفقات",
+      "inv_val_split_materials": "مواد",
+      "inv_val_split_finished": "تامة الصنع"
     },
     "Admin": {
       "Dashboard": {

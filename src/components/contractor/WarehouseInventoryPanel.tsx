@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils"
 import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
 import { DEFAULT_ITEM_TYPE, composeItemTypeOptions, resolveItemTypeId, type CustomItemType, type ItemTypeOption } from "@/lib/inventory-types"
 import { useInventoryItemTypes } from "@/hooks/useInventoryItemTypes"
+import { valueStock } from "@/lib/inventory-valuation"
 
 type InventoryItem = {
   id: string
@@ -59,6 +60,9 @@ type InventoryItem = {
    * type's doc id. Absent on rows created before types existed; those resolve to the
    * default (materials) section. */
   typeId?: string | null
+  /** Landed by a signed delivery note — finished goods, not bought-in material. */
+  isManufactured?: boolean | null
+  sourceWorkOrderId?: string | null
 }
 
 type WarehouseDoc = {
@@ -1127,6 +1131,8 @@ export function WarehouseInventoryPanel({
   const itemValue = (it: InventoryItem) => (it.unitCost != null ? it.unitCost * it.quantity : 0)
   const totalStockValue = list.reduce((sum, it) => sum + itemValue(it), 0)
   const pricedCount = list.filter((it) => it.unitCost != null).length
+  // Only a warehouse holding manufactured stock splits its value; the rest is all materials.
+  const stockSplit = valueStock(list.map((it) => ({ ...it, warehouseId })))
 
   const q = search.trim().toLowerCase()
   const visibleItems = list
@@ -1290,6 +1296,20 @@ export function WarehouseInventoryPanel({
                   {pricedCount < list.length && (
                     <span className="block text-[10px] font-normal text-muted-foreground">
                       {t("inv_stock_value_partial", { priced: pricedCount, total: list.length })}
+                    </span>
+                  )}
+                  {stockSplit.finishedGoods.itemCount > 0 && (
+                    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-[10px] font-normal text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent shrink-0" aria-hidden="true" />
+                        {t("inv_val_split_materials")}
+                        <span dir="ltr" className="tabular-nums font-semibold text-foreground">{nf(stockSplit.materials.value)}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" aria-hidden="true" />
+                        {t("inv_val_split_finished")}
+                        <span dir="ltr" className="tabular-nums font-semibold text-foreground">{nf(stockSplit.finishedGoods.value)}</span>
+                      </span>
                     </span>
                   )}
                 </p>

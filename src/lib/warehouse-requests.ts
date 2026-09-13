@@ -6,7 +6,14 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore"
-import { validateTransfer, itemMergeKey, type TransferItemState, type TransferValidationError } from "./warehouse-transfer"
+import {
+  validateTransfer,
+  itemMergeKey,
+  carriedValueFields,
+  type CarriedValueFields,
+  type TransferItemState,
+  type TransferValidationError,
+} from "./warehouse-transfer"
 
 // Nothing leaves a warehouse silently: a request is raised, someone with
 // warehouses.manage on the source side releases it (stock leaves the source
@@ -17,7 +24,10 @@ import { validateTransfer, itemMergeKey, type TransferItemState, type TransferVa
 
 export type WarehouseRequestStatus = "pending" | "released" | "received" | "cancelled"
 
-export interface WarehouseRequestDoc {
+/** The request also snapshots the source row's `CarriedValueFields` (unit
+ * cost, finished-goods marker) at creation, so the destination row it lands
+ * is valued like the one it left. Requests raised before that carry none. */
+export interface WarehouseRequestDoc extends CarriedValueFields {
   requestNumber: string
   organizationId: string
   itemId: string
@@ -91,7 +101,7 @@ export async function createWarehouseRequest(params: CreateRequestParams): Promi
     const itemRef = doc(firestore, "warehouses", fromWarehouseId, "inventoryItems", itemId)
     const itemSnap = await tx.get(itemRef)
     if (!itemSnap.exists()) throw new Error("insufficient_stock")
-    const item = itemSnap.data() as TransferItemState & { name: string; unit: string; typeId?: string | null }
+    const item = itemSnap.data() as TransferItemState & CarriedValueFields & { name: string; unit: string; typeId?: string | null }
     const revalidated = validateTransfer({ sourceItem: item, quantity, fromWarehouseId, toWarehouseId })
     if (revalidated) throw new Error(revalidated)
 
@@ -102,6 +112,7 @@ export async function createWarehouseRequest(params: CreateRequestParams): Promi
       itemName: item.name,
       unit: item.unit,
       typeId: item.typeId ?? null,
+      ...carriedValueFields(item),
       quantity,
       fromWarehouseId,
       toWarehouseId,
@@ -202,6 +213,7 @@ export async function confirmWarehouseRequestReceipt(params: {
         minStockLevel: null,
         trackingMode: null,
         typeId: request.typeId ?? null,
+        ...carriedValueFields(request),
         organizationId: request.organizationId,
         warehouseId: request.toWarehouseId,
         createdAt: serverTimestamp(),

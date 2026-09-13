@@ -37,6 +37,28 @@ export function validateTransfer(params: {
   return null
 }
 
+/** What a stock row's VALUE rides on — its unit cost and, for manufactured
+ * goods, the marker saying it is finished goods (see inventory-valuation.ts).
+ * A row moved to another warehouse carries these along; without them the
+ * moved stock would land unpriced and read as bought-in material. Absent
+ * fields stay absent, so rows that never had them are written as before. */
+export interface CarriedValueFields {
+  unitCost?: number | null
+  isManufactured?: boolean | null
+  sourceWorkOrderId?: string | null
+  sourceWorkOrderNumber?: number | null
+}
+
+export function carriedValueFields(source: CarriedValueFields | null | undefined): CarriedValueFields {
+  const out: CarriedValueFields = {}
+  if (!source) return out
+  if (source.unitCost != null) out.unitCost = source.unitCost
+  if (source.isManufactured === true) out.isManufactured = true
+  if (source.sourceWorkOrderId) out.sourceWorkOrderId = source.sourceWorkOrderId
+  if (source.sourceWorkOrderNumber != null) out.sourceWorkOrderNumber = source.sourceWorkOrderNumber
+  return out
+}
+
 /** Merge key: the same material in two warehouses is matched by name + unit,
  * so repeated transfers top up one row instead of piling up duplicates. */
 export function itemMergeKey(item: { name: string; unit: string }): string {
@@ -76,7 +98,7 @@ export async function runTransfer(params: RunTransferParams): Promise<void> {
 
   await runTransaction(firestore, async (tx) => {
     const sourceSnap = await tx.get(sourceRef)
-    const source = sourceSnap.exists() ? (sourceSnap.data() as TransferItemState & { name: string; sku?: string | null; unit: string; minStockLevel?: number | null; typeId?: string | null }) : null
+    const source = sourceSnap.exists() ? (sourceSnap.data() as TransferItemState & CarriedValueFields & { name: string; sku?: string | null; unit: string; minStockLevel?: number | null; typeId?: string | null }) : null
     const error = validateTransfer({ sourceItem: source, quantity, fromWarehouseId, toWarehouseId })
     if (error) throw new Error(error)
 
@@ -95,6 +117,7 @@ export async function runTransfer(params: RunTransferParams): Promise<void> {
         minStockLevel: source!.minStockLevel ?? null,
         trackingMode: null,
         typeId: source!.typeId ?? null,
+        ...carriedValueFields(source),
         organizationId,
         warehouseId: toWarehouseId,
         createdAt: serverTimestamp(),

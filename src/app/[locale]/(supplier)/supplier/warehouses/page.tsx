@@ -29,6 +29,8 @@ import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useInventoryValuation } from "@/hooks/useInventoryValuation"
+import { InventoryValuationCard } from "@/components/inventory/InventoryValuationCard"
 import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -158,6 +160,7 @@ export default function SupplierWarehousesPage() {
   }, [firestore, myOrgId])
   const { data: warehouses, isLoading } = useCollection(warehousesQuery)
   const list = (warehouses || []) as WarehouseDoc[]
+  const { valuation, partial: valuationPartial, isLoading: valuationLoading } = useInventoryValuation(myOrgId, list, isLoading)
 
   const handleDelete = async () => {
     if (!firestore || !deleteWarehouse) return
@@ -190,6 +193,11 @@ export default function SupplierWarehousesPage() {
             {t("wh_add_btn")}
           </Button>
         </div>
+
+        {/* Total inventory value — materials, work in progress and finished goods */}
+        {list.length > 0 && (
+          <InventoryValuationCard valuation={valuation} isLoading={valuationLoading} partial={valuationPartial} />
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">

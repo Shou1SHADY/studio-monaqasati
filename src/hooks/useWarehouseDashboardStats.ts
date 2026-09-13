@@ -4,13 +4,16 @@ import { useEffect, useState } from "react"
 import { collection, getDocs } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
 import { useCentralWarehouse } from "@/hooks/useCentralWarehouse"
+import { useInventoryValuation } from "@/hooks/useInventoryValuation"
 
 /** Powers the Warehouses component's dashboard tiles: total warehouses
  * (free, already fetched by useCentralWarehouse), a one-time fan-out count
  * of recently-completed withdrawal requests across every central warehouse
  * (a company can have more than one — one per city — so this can't just read
- * a single central's subcollection), and a one-time fan-out low-stock count
- * across every warehouse's inventoryItems subcollection. Both fan-outs are
+ * a single central's subcollection), a low-stock count, and the org's
+ * inventory valuation (materials / work in progress / finished goods).
+ * Low stock and valuation share ONE one-time fan-out across every warehouse's
+ * inventoryItems subcollection (useInventoryValuation). The fan-outs are
  * one-time reads, not live collectionGroup queries, since no such Firestore
  * rule exists for one and this stays cheap at realistic warehouse counts. */
 export function useWarehouseDashboardStats(orgId: string | undefined) {
@@ -47,40 +50,23 @@ export function useWarehouseDashboardStats(orgId: string | undefined) {
     return () => { cancelled = true }
   }, [firestore, warehousesLoading, centralIds])
 
-  const [lowStockCount, setLowStockCount] = useState(0)
-  const [lowStockLoading, setLowStockLoading] = useState(true)
-  const warehouseIds = allWarehouses.map((w) => w.id).join(",")
-
-  useEffect(() => {
-    if (!firestore || warehousesLoading || allWarehouses.length === 0) {
-      setLowStockLoading(false)
-      return
-    }
-    let cancelled = false
-    setLowStockLoading(true)
-    Promise.all(
-      allWarehouses.map((w) => getDocs(collection(firestore, "warehouses", w.id, "inventoryItems")))
-    )
-      .then((snapshots) => {
-        if (cancelled) return
-        let count = 0
-        for (const snap of snapshots) {
-          snap.forEach((docSnap) => {
-            const data = docSnap.data() as { quantity?: number; minStockLevel?: number | null }
-            if (typeof data.minStockLevel === "number" && (data.quantity ?? 0) <= data.minStockLevel) count += 1
-          })
-        }
-        setLowStockCount(count)
-      })
-      .catch((err) => console.warn("low-stock scan failed:", err?.code))
-      .finally(() => { if (!cancelled) setLowStockLoading(false) })
-    return () => { cancelled = true }
-  }, [firestore, warehousesLoading, warehouseIds])
+  const {
+    stock,
+    valuation,
+    partial: valuationPartial,
+    isLoading: stockLoading,
+  } = useInventoryValuation(orgId, allWarehouses, warehousesLoading)
+  const lowStockCount = stock.filter(
+    (row) => typeof row.minStockLevel === "number" && (row.quantity ?? 0) <= row.minStockLevel
+  ).length
 
   return {
     totalWarehouses: allWarehouses.length,
     recentTransferCount: recentRequestCount,
     lowStockCount,
-    isLoading: warehousesLoading || requestsLoading || lowStockLoading,
+    valuation,
+    valuationPartial,
+    valuationLoading: stockLoading,
+    isLoading: warehousesLoading || requestsLoading || stockLoading,
   }
 }
