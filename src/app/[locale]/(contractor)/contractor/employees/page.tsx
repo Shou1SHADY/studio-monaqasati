@@ -30,6 +30,7 @@ import { collection, query, where, doc, addDoc, updateDoc, deleteDoc, serverTime
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { Briefcase, Plus, Pencil, Trash2, Loader2, Users2, Wallet } from "lucide-react"
+import { FleetRegistry } from "@/components/hr/FleetRegistry"
 import { validateEmployee, formatSalary, parseSalary, totalPayroll } from "@/utils/employee-utils"
 
 type Employee = {
@@ -162,6 +163,7 @@ export default function ContractorEmployeesPage() {
   }, [firestore, user, isUserLoading])
   const { data: profile } = useDoc(userDocRef)
   const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
+  const actorName = (profile as { name?: string } | null)?.name || user?.email || ""
 
   const employeesQuery = useMemoFirebase(() => {
     if (!firestore || !myOrgId) return null
@@ -290,6 +292,9 @@ export default function ContractorEmployeesPage() {
             </table>
           </div>
         )}
+
+        {/* The fleet — the delivery note picks its driver from this list (ORD-14) */}
+        <FleetRegistry orgId={myOrgId} actor={{ id: user?.uid || "", name: actorName }} />
       </div>
 
       {/* Add dialog */}

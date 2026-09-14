@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useTranslations, useLocale } from 'next-intl'
+import { notificationCopy, notificationHref } from '@/lib/mfg-events'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import { Link, useRouter } from "@/i18n/routing"
 export default function SupplierNotificationsPage() {
   const t = useTranslations("Portal.Supplier")
   const tLayout = useTranslations("Portal.Layout")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const router = useRouter()
   const firestore = useFirestore()
@@ -225,6 +227,8 @@ export default function SupplierNotificationsPage() {
     } else if (notif.type === "offer" && isUnread(notif)) {
       await markAsRead(notif.id)
     }
+    const href = notificationHref(notif.link, "supplier")
+    if (href) router.push(href)
   }
 
   const isUnread = (offer: any) => {
@@ -253,6 +257,10 @@ export default function SupplierNotificationsPage() {
   }
 
   const getMessage = (offer: any) => {
+    if (offer.i18n) {
+      const copy = notificationCopy(offer, tShared)
+      return { title: copy.title, desc: copy.message }
+    }
     const type = offer.type;
     const status = offer.status;
     const sampleStatus = offer.sampleStatus;

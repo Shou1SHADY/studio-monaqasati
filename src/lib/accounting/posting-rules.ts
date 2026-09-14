@@ -383,6 +383,43 @@ export function postMfgScrap(e: MfgScrapEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
+// 7d. Manufacturing v2 — remnants received back into stock
+// ---------------------------------------------------------------------------
+
+export interface MfgRemnantReceiptEvent {
+  workOrderId: string
+  orderNumber: number
+  remnantId: string
+  date: string
+  /** Finance's remnant policy applied to the material's cost (INV-06). */
+  value: number
+  itemName: string
+  projectId?: string | null
+  projectName?: string | null
+}
+
+/**
+ * An offcut Inventory receives is material again: it leaves work in progress
+ * at the remnant value and returns to raw materials, so the order carries only
+ * what it really consumed. Keyed by the remnant — an order returns several.
+ */
+export function postMfgRemnantReceipt(e: MfgRemnantReceiptEvent): PostingResult {
+  const dim = { project: e.projectId ?? null, projectName: e.projectName ?? null }
+  return {
+    sourceType: "mfg_remnant_receipt",
+    sourceId: `${e.workOrderId}__${e.remnantId}`,
+    date: e.date,
+    description: `استلام بواقي ${e.itemName} — أمر التشغيل رقم ${e.orderNumber}`,
+    costCenter: COST_CENTERS.procurement,
+    lines: [
+      { ...dim, account: ACC.inventoryMaterials, debit: e.value, note: `بواقي ${e.itemName}` },
+      { ...dim, account: ACC.inventoryWip, credit: e.value, note: "رد بواقي من تحت التشغيل" },
+    ],
+    empty: round2(e.value) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 8. Sales invoice issued
 // ---------------------------------------------------------------------------
 

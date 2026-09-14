@@ -47,6 +47,10 @@ export interface CarriedValueFields {
   isManufactured?: boolean | null
   sourceWorkOrderId?: string | null
   sourceWorkOrderNumber?: number | null
+  /** A stone block / lot — another block is another colour, never merged. */
+  lot?: string | null
+  /** A usable remnant returned by manufacturing. */
+  remnant?: boolean | null
 }
 
 export function carriedValueFields(source: CarriedValueFields | null | undefined): CarriedValueFields {
@@ -56,13 +60,16 @@ export function carriedValueFields(source: CarriedValueFields | null | undefined
   if (source.isManufactured === true) out.isManufactured = true
   if (source.sourceWorkOrderId) out.sourceWorkOrderId = source.sourceWorkOrderId
   if (source.sourceWorkOrderNumber != null) out.sourceWorkOrderNumber = source.sourceWorkOrderNumber
+  if (source.lot) out.lot = source.lot
+  if (source.remnant === true) out.remnant = true
   return out
 }
 
 /** Merge key: the same material in two warehouses is matched by name + unit,
- * so repeated transfers top up one row instead of piling up duplicates. */
-export function itemMergeKey(item: { name: string; unit: string }): string {
-  return `${item.name.trim()}|${item.unit.trim().toLowerCase()}`
+ * so repeated transfers top up one row instead of piling up duplicates. A
+ * block (lot) or a remnant is its own row — merging them would mix colours. */
+export function itemMergeKey(item: { name: string; unit: string; lot?: string | null; remnant?: boolean | null }): string {
+  return `${item.name.trim()}|${item.unit.trim().toLowerCase()}${item.lot ? `|lot:${item.lot.trim()}` : ""}${item.remnant ? "|remnant" : ""}`
 }
 
 export interface RunTransferParams {
@@ -168,9 +175,9 @@ export async function receiveDelivery(params: ReceiveDeliveryParams): Promise<vo
   const existingSnap = await getDocs(itemsColRef)
   const byMergeKey = new Map<string, string>()
   existingSnap.docs.forEach((d) => {
-    const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
+    const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null; lot?: string | null; remnant?: boolean | null }
     if (data.name && data.unit && data.trackingMode !== "unit") {
-      byMergeKey.set(itemMergeKey({ name: data.name, unit: data.unit }), d.id)
+      byMergeKey.set(itemMergeKey({ name: data.name, unit: data.unit, lot: data.lot, remnant: data.remnant }), d.id)
     }
   })
 

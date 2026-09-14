@@ -25,6 +25,7 @@ import {
 import { isFullyPaid, paidSoFar, quotationMatchesSearch } from "@/lib/sales"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, salesBasePath } from "./SalesShell"
+import { SalesMfgCostingPanel } from "./SalesMfgCostingPanel"
 
 type StatusFilter = QuotationStatus | "all"
 type PhaseFilter = QuotationPhase | "all"
@@ -38,7 +39,7 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
-  const { quotations, isLoading } = useCrmData({ quotations: true })
+  const { quotations, contacts, isLoading } = useCrmData({ quotations: true })
 
   const [status, setStatus] = useState<StatusFilter>("all")
   const [phase, setPhase] = useState<PhaseFilter>("all")
@@ -97,6 +98,10 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
           {t("sales_no_permission")}
         </p>
       )}
+
+      {/* Cost statements from Manufacturing for non-standard lines (REQ-02) —
+          renders nothing for an org that has no workshop. */}
+      <SalesMfgCostingPanel portal={portal} contacts={contacts} canManage={canManage} />
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">

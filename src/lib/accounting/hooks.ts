@@ -28,6 +28,7 @@ import {
   postWorkOrderIssue,
   postMfgMaterialReceipt,
   postMfgScrap,
+  postMfgRemnantReceipt,
   type PostingContext,
 } from "./posting-rules"
 
@@ -310,6 +311,25 @@ export function onMfgScrapApproved(
 ): void {
   void ifEnabled(firestore, actor.organizationId, () =>
     postToLedgerSafe(firestore, ctxOf(actor), postMfgScrap({ ...scrap, date: scrap.date || today() }))
+  )
+}
+
+export function onMfgRemnantReceived(
+  firestore: Firestore,
+  actor: HookActor,
+  remnant: {
+    workOrderId: string
+    orderNumber: number
+    remnantId: string
+    date?: string
+    value: number
+    itemName: string
+    projectId?: string | null
+    projectName?: string | null
+  }
+): void {
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postMfgRemnantReceipt({ ...remnant, date: remnant.date || today() }))
   )
 }
 

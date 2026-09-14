@@ -44,6 +44,7 @@ import {
   Barcode,
   Ban,
   X,
+  Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -55,6 +56,10 @@ type InventoryItem = {
   unit: string
   minStockLevel?: number
   trackingMode?: "unit" | null
+  /** Block / lot — stone arrives one block per row. */
+  lot?: string | null
+  /** A usable remnant received back from manufacturing. */
+  remnant?: boolean | null
 }
 
 type WarehouseDoc = {
@@ -92,9 +97,11 @@ function ItemDialog({
 }) {
   const firestore = useFirestore()
   const { toast } = useToast()
+  const tShared = useTranslations("Portal.Shared")
   const [isSaving, setIsSaving] = useState(false)
   const [name, setName] = useState(item?.name ?? "")
   const [sku, setSku] = useState(item?.sku ?? "")
+  const [lot, setLot] = useState(item?.lot ?? "")
   const [quantity, setQuantity] = useState(item?.quantity?.toString() ?? "0")
   const [unit, setUnit] = useState(item?.unit ?? "")
   const [minStockLevel, setMinStockLevel] = useState(item?.minStockLevel?.toString() ?? "")
@@ -103,6 +110,7 @@ function ItemDialog({
   const reset = () => {
     setName(item?.name ?? "")
     setSku(item?.sku ?? "")
+    setLot(item?.lot ?? "")
     setQuantity(item?.quantity?.toString() ?? "0")
     setUnit(item?.unit ?? "")
     setMinStockLevel(item?.minStockLevel?.toString() ?? "")
@@ -120,6 +128,7 @@ function ItemDialog({
       const data = {
         name: name.trim(),
         sku: sku.trim() || null,
+        lot: lot.trim() || null,
         quantity: isUnitTracked ? (item?.quantity ?? 0) : Math.max(0, parseFloat(quantity) || 0),
         unit: unit.trim(),
         minStockLevel: minStockLevel ? Math.max(0, parseFloat(minStockLevel) || 0) : null,
@@ -161,6 +170,11 @@ function ItemDialog({
             <div className="space-y-1.5">
               <Label htmlFor="item-sku">{t("inv_item_sku")}</Label>
               <Input id="item-sku" value={sku} onChange={(e) => setSku(e.target.value)} placeholder={t("inv_item_sku_placeholder")} dir="ltr" />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="item-lot">{tShared("mfx_inv_lot")}</Label>
+              <Input id="item-lot" value={lot} onChange={(e) => setLot(e.target.value)} placeholder={tShared("mfx_inv_lot_placeholder")} dir="ltr" />
+              <p className="text-[11px] text-muted-foreground">{tShared("mfx_inv_lot_hint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-unit">{t("inv_item_unit")} *</Label>
@@ -382,6 +396,7 @@ function UnitsDialog({
 
 export default function SupplierWarehouseDetailPage() {
   const t = useTranslations("Portal.Supplier")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const params = useParams()
@@ -502,6 +517,17 @@ export default function SupplierWarehouseDetailPage() {
                       <tr key={item.id} className={cn(idx % 2 === 0 ? "bg-white" : "bg-muted/10", isLow ? "border-l-2 border-warning" : "")}>
                         <td className="py-3 px-4 font-semibold text-primary">
                           {item.name}
+                          {item.lot && (
+                            <Badge variant="outline" className="ms-2 text-slate-600 border-slate-300 text-[10px] py-0 gap-1 font-mono" dir="ltr" title={tShared("mfx_inv_lot")}>
+                              <Layers size={9} aria-hidden="true" />
+                              {item.lot}
+                            </Badge>
+                          )}
+                          {item.remnant && (
+                            <Badge variant="outline" className="ms-2 text-success border-success/30 text-[10px] py-0">
+                              {tShared("mfx_inv_remnant_chip")}
+                            </Badge>
+                          )}
                           {isUnitTracked && (
                             <Badge variant="outline" className="ms-2 text-primary border-primary/20 text-[10px] py-0 gap-1">
                               <Barcode size={9} />

@@ -1,270 +1,295 @@
 /**
- * The Manufacturing screen model: every screen reads one derived view of each
- * work order, so the Today queue, the orders table, the board and the drawer
- * can never disagree about where an order is, whether it makes its date, or
- * what it has sent to Finance.
+ * The screen model: every screen reads one computed world, so Today per role,
+ * the Workshop, the board and the order panel can never disagree about an
+ * order's state, its next step and whose it is, whether it is late and why,
+ * or the one WIP number.
  */
 
-import { DEFAULT_MFG_SETTINGS, emptyProgress, scheduleOrders, type MfgProduct } from "@/lib/manufacturing-engine"
-import type { DeliveryNote } from "@/lib/delivery-notes"
-import { toNoteSlice, toOrderSlice, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { DEFAULT_MFG_SETTINGS, emptyProgress, type Actor, type MfgProduct } from "@/lib/manufacturing-engine"
 import {
-  buildOrderView,
-  buildOrderViews,
-  cardsAtDepartment,
-  compareOrders,
-  computeKpis,
+  buildDecisions,
+  buildWorld,
+  byUnit,
   documentTrail,
+  filterCounts,
   financeEvents,
-  inSegment,
+  groupDecisions,
+  inFilter,
+  lostHoursToday,
   matchesSearch,
+  myStations,
   orderLog,
-  orderMoney,
-  productionLines,
-  segmentCounts,
+  personasOf,
+  stationQueue,
+  waitingOthers,
+  waitingTeam,
+  wipReconciliation,
+  wipTotal,
+  type MfgWorldInput,
+  type TeamMember,
 } from "@/lib/manufacturing-view"
+import type { WorkOrderV2, MfgStop } from "@/lib/manufacturing-writes"
+import type { MfgDepartment } from "@/lib/manufacturing"
+import type { DeliveryNote } from "@/lib/delivery-notes"
+import type { SalesOrder } from "@/lib/sales-orders"
 
-const TODAY = "2026-09-14"
-const DEPTS = [
-  { id: "cut", name: "Cut", workers: 2, hoursPerDay: 8, hourlyRate: 70 },
-  { id: "edge", name: "Edge", workers: 2, hoursPerDay: 8, hourlyRate: 60 },
-  { id: "pack", name: "Pack", workers: 1, hoursPerDay: 8, hourlyRate: 45 },
+const TODAY = "2026-09-13"
+const NOW = new Date("2026-09-13T09:00:00Z").getTime()
+const S = DEFAULT_MFG_SETTINGS
+
+const DEPTS: MfgDepartment[] = [
+  { id: "s7", organizationId: "org", name: "Cutting", order: 1, workers: 2, hoursPerDay: 8, hourlyRate: 70, leadUserId: "sami", leadUserName: "Abu Sami", gate: null } as MfgDepartment,
+  { id: "s8", organizationId: "org", name: "Profiling", order: 2, workers: 3, hoursPerDay: 8, hourlyRate: 60, leadUserId: "ammar", leadUserName: "Abu Ammar", gate: null } as MfgDepartment,
+  { id: "s5", organizationId: "org", name: "QC & packing", order: 3, workers: 2, hoursPerDay: 8, hourlyRate: 45, qcStation: true, gate: null } as MfgDepartment,
 ]
 
-const PRODUCT: MfgProduct = {
-  id: "p1",
+const SKIRTING: MfgProduct = {
+  id: "pr15",
   organizationId: "org",
-  name: "Kitchen counter",
-  unit: "m2",
+  name: "Marble skirting",
+  unit: "m",
   family: "stone",
-  requiresMeasurement: true,
+  requiresMeasurement: false,
   requiresDrawingApproval: false,
   requiresSlabApproval: false,
-  wastePercent: 20,
-  salePrice: 1000,
-  estimateValue: 700,
-  referenceBuyPrice: 900,
+  wastePercent: 15,
+  referenceBuyPrice: 70,
   route: [
-    { departmentId: "cut", departmentName: "Cut", hoursPerUnit: 0.5 },
-    { departmentId: "edge", departmentName: "Edge", hoursPerUnit: 0.4 },
-    { departmentId: "pack", departmentName: "Pack", hoursPerUnit: 0.1 },
+    { departmentId: "s7", departmentName: "Cutting", hoursPerUnit: 0.06 },
+    { departmentId: "s8", departmentName: "Profiling", hoursPerUnit: 0.07 },
+    { departmentId: "s5", departmentName: "QC", hoursPerUnit: 0.02 },
   ],
-  bom: [{ itemName: "Slab", unit: "m2", qtyPerUnit: 1, departmentId: "cut", withWaste: true, unitCost: 300 }],
+  bom: [{ itemName: "Beige Sahel slab", unit: "m²", qtyPerUnit: 0.12, departmentId: "s7", withWaste: true, unitCost: 245 }],
 }
 
-function order(id: string, n: number, patch: Partial<WorkOrderV2> = {}): WorkOrderV2 {
-  return {
-    id,
+const FLOOR: MfgProduct = { ...SKIRTING, id: "pr12", name: "Marble flooring", unit: "m²", bom: [{ itemName: "Beige Sahel slab", unit: "m²", qtyPerUnit: 1, departmentId: "s7", withWaste: true, unitCost: 245 }] }
+
+const wo = (over: Partial<WorkOrderV2>): WorkOrderV2 =>
+  ({
+    id: "o1",
     organizationId: "org",
-    orderNumber: n,
-    title: `Order ${n}`,
+    orderNumber: 55,
+    docNumber: "WO-2026/055",
+    title: "Skirting",
     items: [],
     source: { kind: "manual" },
     status: "open",
     currentStageIndex: 0,
     stages: [],
-    createdByUserId: "u1",
-    createdByUserName: "Manager",
-    productId: "p1",
-    quantity: 10,
+    createdByUserId: "badr",
+    createdByUserName: "Eng. Badr",
+    productId: "pr15",
+    quantity: 100,
     neededBy: "2026-09-30",
-    createdAtIso: "2026-09-01T08:00:00.000Z",
+    createdAtIso: "2026-09-10T08:00:00Z",
     releasedAt: null,
-    measurement: null,
-    drawingApprovalStatus: "na",
-    slabApproval: null,
-    rush: null,
-    progress: emptyProgress(PRODUCT.route),
+    progress: emptyProgress(SKIRTING.route),
     materials: [],
     scrapRecords: [],
-    ...patch,
-  }
+    closures: [],
+    ...over,
+  }) as WorkOrderV2
+
+const received = (qty: number) => ({
+  id: `m${qty}`,
+  requestNumber: "WR-2026/181",
+  itemName: "Beige Sahel slab",
+  unit: "m²",
+  quantity: qty,
+  departmentId: "s7",
+  lot: "BLK-2210",
+  state: "received" as const,
+  unitCost: 245,
+  warehouseId: "w1",
+  requestedByUserId: "sami",
+  requestedByName: "Abu Sami",
+  requestedAt: "2026-09-11T08:00:00Z",
+  receivedByName: "Abu Sami",
+  receivedAt: "2026-09-11T12:00:00Z",
+})
+
+const prog = (rows: Array<[number, number]>) => SKIRTING.route.map((r, i) => ({ departmentId: r.departmentId, done: rows[i]?.[0] || 0, rejected: rows[i]?.[1] || 0, rework: 0, hours: 0, back: 0 }))
+
+const ORDERS: WorkOrderV2[] = [
+  // Client order waiting for Finance.
+  wo({ id: "pay", orderNumber: 56, docNumber: "WO-2026/056", sourceKind: "client", salesOrderId: "so131", salesOrderNumber: 131, source: { kind: "quotation", contactName: "Al-Ufuq" }, quantity: 400 }),
+  // Stock order ready to release.
+  wo({ id: "stock", orderNumber: 55 }),
+  // Project order at profiling with 2 rejected; cutting done.
+  wo({ id: "prj", orderNumber: 54, docNumber: "WO-2026/054", sourceKind: "project", projectId: "p1", projectName: "Al-Narjes", productId: "pr12", quantity: 20, neededBy: "2026-09-10", releasedAt: "2026-09-05T08:00:00Z", materials: [received(23)], progress: prog([[20, 0], [10, 2]]) }),
+  // Flooring at QC & packing.
+  wo({ id: "qc", orderNumber: 53, docNumber: "WO-2026/053", productId: "pr12", quantity: 10, releasedAt: "2026-09-05T08:00:00Z", materials: [received(11.5)], progress: prog([[10, 0], [10, 0]]) }),
+  // Big scrap pending above the manager's limit.
+  wo({
+    id: "scrap",
+    orderNumber: 52,
+    docNumber: "WO-2026/052",
+    productId: "pr12",
+    quantity: 10,
+    releasedAt: "2026-09-05T08:00:00Z",
+    materials: [received(11.5)],
+    progress: prog([[10, 0], [4, 0]]),
+    scrapRecords: [{ id: "sc1", quantity: 6, value: 4257, reason: "vein", departmentId: "s8", index: 1, raisedByUserId: "lama", raisedByName: "Eng. Lama", raisedAt: "2026-09-11T08:00:00Z", status: "pending", decision: null }],
+  }),
+]
+
+const NOTES = new Map<string, DeliveryNote[]>()
+const SALES = new Map<string, SalesOrder>([["so131", { id: "so131", payment: { kind: "deposit", depositPercent: 40, depositPaid: false } } as SalesOrder]])
+
+function world(over: Partial<MfgWorldInput> = {}) {
+  return buildWorld({
+    today: TODAY,
+    nowMs: NOW,
+    settings: S,
+    departments: DEPTS,
+    products: new Map([["pr15", SKIRTING], ["pr12", FLOOR]]),
+    orders: ORDERS,
+    notesByOrder: NOTES,
+    salesOrders: SALES,
+    stops: [],
+    notices: [],
+    stock: { onHand: new Map([["beige sahel slab", 500]]), lots: [] },
+    ...over,
+  })
 }
 
-const note = (id: string, orderId: string, patch: Partial<DeliveryNote>): DeliveryNote => ({
-  id,
-  organizationId: "org",
-  noteNumber: `DN-${id}`,
-  source: { kind: "manufacturing", workOrderId: orderId, workOrderNumber: 0, title: "" },
-  item: { name: "Kitchen counter", quantity: 4, unit: "m2", unitCost: 500 },
-  toWarehouseId: "w1",
-  toWarehouseName: "Site store",
-  toKind: "project",
-  status: "in_transit",
-  sentByUserId: "u1",
-  sentByUserName: "Manager",
-  sentAt: "2026-09-10T09:00:00.000Z",
-  ...patch,
-})
+const badr: Actor = { uid: "badr", manage: true, work: false, qc: false, cost: false, view: false }
+const sami: Actor = { uid: "sami", manage: false, work: true, qc: false, cost: false, view: false }
+const ammar: Actor = { uid: "ammar", manage: false, work: true, qc: false, cost: false, view: false }
+const lama: Actor = { uid: "lama", manage: false, work: false, qc: true, cost: false, view: false }
+const noura: Actor = { uid: "noura", manage: false, work: false, qc: false, cost: true, view: false }
+const aziz: Actor = { uid: "aziz", manage: false, work: false, qc: false, cost: false, view: true }
+const TEAM: TeamMember[] = [
+  { id: "badr", name: "Eng. Badr", manage: true, work: false, qc: false, cost: false, view: false },
+  { id: "sami", name: "Abu Sami", manage: false, work: true, qc: false, cost: false, view: false },
+  { id: "ammar", name: "Abu Ammar", manage: false, work: true, qc: false, cost: false, view: false },
+  { id: "lama", name: "Eng. Lama", manage: false, work: false, qc: true, cost: false, view: false },
+  { id: "noura", name: "Noura", manage: false, work: false, qc: false, cost: true, view: false },
+]
 
-const progress = (rows: Array<[number, number, number]>) =>
-  PRODUCT.route.map((r, i) => ({ departmentId: r.departmentId, done: rows[i][0], rejected: rows[i][1], rework: 0, hours: rows[i][2] }))
+const decisionsFor = (actor: Actor, persona: Parameters<typeof buildDecisions>[0]["persona"]) =>
+  buildDecisions({ world: world(), requests: [], estimates: [], departments: DEPTS, settings: S, actor, persona, today: TODAY, nowMs: NOW })
 
-// Blocked: needs a site measurement before release.
-const blocked = order("o1", 101, { projectId: "pr1", projectName: "Tower" })
-// Running: 10 released, 6 cut, 2 edged + 1 rejected at edge.
-const running = order("o2", 102, {
-  releasedAt: "2026-09-05T08:00:00.000Z",
-  releasedByName: "Manager",
-  measurement: { at: "2026-09-04T08:00:00.000Z", by: "Surveyor" },
-  progress: progress([[6, 0, 4], [2, 1, 2], [0, 0, 0]]),
-  source: { kind: "quotation", quotationNumber: "Q-ABC", contactName: "Client A" },
-  materials: [
-    {
-      id: "m1",
-      requestNumber: "MW-1",
-      itemName: "Slab",
-      unit: "m2",
-      quantity: 12,
-      departmentId: "cut",
-      lot: null,
-      state: "received",
-      unitCost: 300,
-      warehouseId: "w0",
-      requestedByUserId: "u2",
-      requestedByName: "Lead",
-      requestedAt: "2026-09-05T09:00:00.000Z",
-      releasedByName: "Keeper",
-      releasedAt: "2026-09-05T10:00:00.000Z",
-      receivedByName: "Lead",
-      receivedAt: "2026-09-05T11:00:00.000Z",
-    },
-  ],
-})
-// Late: needed yesterday, finished and packed, part on the road.
-const late = order("o3", 103, {
-  neededBy: "2026-09-13",
-  releasedAt: "2026-09-01T08:00:00.000Z",
-  measurement: { at: "2026-08-31T08:00:00.000Z", by: "Surveyor" },
-  progress: progress([[10, 0, 5], [10, 0, 4], [10, 0, 1]]),
-  projectId: "pr1",
-  projectName: "Tower",
-  rush: { reason: "Owner handover", by: "Manager", at: "2026-09-12T08:00:00.000Z" },
-})
-const lateNotes = [note("n1", "o3", { status: "in_transit", item: { name: "x", quantity: 4, unit: "m2", unitCost: 500 } })]
-// Done: everything received.
-const done = order("o4", 104, {
-  status: "done",
-  releasedAt: "2026-08-01T08:00:00.000Z",
-  measurement: { at: "2026-07-31T08:00:00.000Z", by: "Surveyor" },
-  progress: progress([[10, 0, 5], [10, 0, 4], [10, 0, 1]]),
-})
-const doneNotes = [note("n2", "o4", { status: "received", receivedAt: "2026-08-20T08:00:00.000Z", receivedByUserName: "Engineer", toKind: "central", item: { name: "x", quantity: 10, unit: "m2", unitCost: 500 }, brokenQuantity: 1 })]
-
-const ORDERS = [blocked, running, late, done]
-const notesByOrder = new Map([
-  ["o3", lateNotes],
-  ["o4", doneNotes],
-])
-const inputs = ORDERS.map((o) => ({ order: toOrderSlice(o), product: PRODUCT, notes: (notesByOrder.get(o.id) || []).map(toNoteSlice) }))
-const schedule = scheduleOrders(inputs, DEPTS)
-const VIEWS = buildOrderViews(
-  { v2Orders: ORDERS, productById: new Map([["p1", PRODUCT]]), notesByOrder, schedule, settings: DEFAULT_MFG_SETTINGS },
-  TODAY
-)
-const byId = (id: string) => VIEWS.find((v) => v.id === id)!
-
-describe("order state", () => {
-  it("says where each order is, in priority order", () => {
-    expect(byId("o1")).toMatchObject({ state: "blocked", released: false, live: true, sourceKind: "project", sourceName: "Tower" })
-    expect(byId("o1").releaseBlocks.map((b) => b.key)).toEqual(["measurement"])
-    expect(byId("o2")).toMatchObject({ state: "at_department", current: 0, stateDepartmentId: "cut", sourceKind: "quotation", sourceName: "Client A", rejected: 1 })
-    expect(byId("o2").active).toEqual([0, 1, 2])
-    expect(byId("o3")).toMatchObject({ state: "in_transit", ready: 6, shipped: 4, rush: true })
-    expect(byId("o4")).toMatchObject({ state: "done", done: true, live: false, delivered: 9 })
+describe("the world", () => {
+  it("computes every order once, with state, source and the honest date", () => {
+    const w = world()
+    const pay = w.viewById.get("pay")!
+    expect(pay.stage).toBe("pay")
+    expect(pay.source).toBe("client")
+    expect(pay.candidates[0].owner).toEqual({ kind: "external", module: "finance" })
+    const prj = w.viewById.get("prj")!
+    expect(prj.ref).toBe("WO-2026/054")
+    expect(prj.overdue).toBe(true)
+    expect(prj.late).toBe(true)
+    expect(prj.lateReason).toMatchObject({ key: "at_station" })
+    expect(w.viewById.get("stock")!.stage).toBe("wait")
   })
 
-  it("names a quotation-born order by its quote when the client is unnamed", () => {
-    const [v] = buildOrderViews(
-      {
-        v2Orders: [order("q1", 201, { source: { kind: "quotation", quotationNumber: "Q-777" } })],
-        productById: new Map([["p1", PRODUCT]]),
-        notesByOrder: new Map(),
-        schedule: new Map(),
-        settings: DEFAULT_MFG_SETTINGS,
-      },
-      TODAY
-    )
-    expect(v).toMatchObject({ sourceKind: "quotation", sourceName: "Q-777", quotationNumber: "Q-777" })
+  it("a shortage removes the date (D16)", () => {
+    const w = world({ stock: { onHand: new Map(), lots: [] } })
+    const stock = w.viewById.get("stock")!
+    expect(stock.possibleDate).not.toBeNull()
+    const w2 = world({ stock: { onHand: new Map(), lots: [] }, orders: ORDERS.map((o) => (o.id === "stock" ? { ...o, releasedAt: "2026-09-12T08:00:00Z" } : o)) })
+    const released = w2.viewById.get("stock")!
+    expect(released.shortages.length).toBe(1)
+    expect(released.possibleDate).toBeNull()
   })
 
-  it("knows when an order is late and by how much", () => {
-    expect(byId("o3")).toMatchObject({ overdue: true, late: true, lateDays: 1 })
-    expect(byId("o2").overdue).toBe(false)
-    expect(byId("o4").late).toBe(false)
-  })
-
-  it("gives released live orders a possible date from capacity", () => {
-    expect(byId("o2").possibleDate).toMatch(/^2026-09-1\d$/)
-    expect(byId("o4").possibleDate).toBeNull()
+  it("today's stops are summed per station", () => {
+    const stops = [
+      { departmentId: "s8", date: TODAY, hours: 4 },
+      { departmentId: "s8", date: TODAY, hours: 2 },
+      { departmentId: "s8", date: "2026-09-12", hours: 8 },
+    ] as MfgStop[]
+    expect(lostHoursToday(stops, TODAY).get("s8")).toBe(6)
   })
 })
 
-describe("lists", () => {
-  it("segments, counts and searches", () => {
-    expect(segmentCounts(VIEWS)).toEqual({ live: 2, release: 1, late: 1, done: 1, all: 4 })
-    expect(VIEWS.filter((v) => inSegment(v, "release")).map((v) => v.id)).toEqual(["o1"])
-    expect(matchesSearch(byId("o2"), "#102")).toBe(true)
-    expect(matchesSearch(byId("o2"), "q-abc")).toBe(true)
-    expect(matchesSearch(byId("o2"), "tower")).toBe(false)
+describe("five roles", () => {
+  it("resolves personas and stations", () => {
+    expect(personasOf(badr, DEPTS)).toEqual(["manager"])
+    expect(personasOf({ ...badr, work: true, qc: true, cost: true, view: true }, DEPTS)).toEqual(["manager", "lead", "qc", "cost", "management"])
+    expect(myStations(sami, DEPTS, "lead")).toEqual(["s7"])
+    expect(myStations(lama, DEPTS, "qc")).toEqual(["s5"])
   })
 
-  it("orders rush first, then the earliest need, then the newest", () => {
-    // o3 is rushed; o1, o2 and o4 all need 2026-09-30, so the newest number wins.
-    expect([...VIEWS].sort(compareOrders).map((v) => v.id)).toEqual(["o3", "o4", "o2", "o1"])
+  it("each Today holds only that role's decisions (TD-04)", () => {
+    const manager = decisionsFor(badr, "manager").map((d) => (d.kind === "order" ? `${d.view.id}:${d.candidate.key}` : d.kind))
+    expect(manager).toEqual(expect.arrayContaining(["stock:release", "scrap:remake_scrap"]))
+    expect(manager).not.toContain("scrap:scrap_review")
+    expect(manager).not.toContain("prj:output")
+
+    const lead = decisionsFor(ammar, "lead").map((d) => (d.kind === "order" ? `${d.view.id}:${d.candidate.key}` : d.kind))
+    expect(lead).toEqual(["prj:output"])
+
+    const qc = decisionsFor(lama, "qc").map((d) => (d.kind === "order" ? `${d.view.id}:${d.candidate.key}` : d.kind))
+    expect(qc).toEqual(expect.arrayContaining(["prj:qc_decision", "qc:qc_release"]))
+
+    const cost = decisionsFor(noura, "cost").map((d) => (d.kind === "order" ? `${d.view.id}:${d.candidate.key}` : d.kind))
+    expect(cost).toContain("scrap:scrap_review")
+
+    expect(decisionsFor(aziz, "management")).toEqual([])
+  })
+
+  it("groups the manager's decisions into one card per order", () => {
+    const groups = groupDecisions(decisionsFor(badr, "manager"))
+    const ids = groups.filter((g) => g.kind === "order").map((g) => (g.kind === "order" ? g.view.id : ""))
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it("the station queue is the lead's stations in rush, late, date order", () => {
+    // WO 052's six scrapped metres left profiling — nothing of it is in hand.
+    const rows = stationQueue(world(), ["s8"], ammar, DEPTS, S, "lead")
+    expect(rows.map((r) => r.view.id)).toEqual(["prj"])
+    expect(rows[0].action?.key).toBe("output")
   })
 })
 
-describe("headline figures and the board", () => {
-  it("computes the three KPIs", () => {
-    const k = computeKpis(VIEWS, inputs, DEPTS, true)
-    expect(k).toMatchObject({ liveCount: 2, lateCount: 1, readyUnits: 6, readyOrders: 1 })
-    expect(k.wipUnits).toBe(byId("o2").wip + byId("o3").wip)
+describe("awaiting", () => {
+  it("other modules — read-only, scoped by role (TD-08)", () => {
+    const w = world()
+    expect(waitingOthers(w, "manager", [], [], S, TODAY).map((g) => g.module)).toEqual(["finance"])
+    expect(waitingOthers(w, "qc", [], [], S, TODAY)).toEqual([])
+    expect(waitingOthers(w, "cost", [], [], S, TODAY)).toEqual([])
+    expect(waitingOthers(w, "lead", ["s8"], [], S, TODAY)).toEqual([])
   })
 
-  it("puts each in-hand quantity on its department's column", () => {
-    expect(cardsAtDepartment(VIEWS, "cut").map((c) => [c.view.id, c.inHand, c.materialState])).toEqual([["o2", 4, "complete"]])
-    expect(cardsAtDepartment(VIEWS, "edge").map((c) => [c.view.id, c.inHand])).toEqual([["o2", 3]])
-    expect(cardsAtDepartment(VIEWS, "pack").map((c) => [c.view.id, c.inHand])).toEqual([["o2", 2]])
-  })
-
-  it("derives production lines from product routes", () => {
-    expect(productionLines([PRODUCT])).toEqual([{ family: "stone", departmentIds: ["cut", "edge", "pack"] }])
+  it("our team — grouped by the person who holds it (TD-07)", () => {
+    const groups = waitingTeam(world(), TEAM, badr, DEPTS, S)
+    const holders = groups.map((g) => g.holder.name)
+    expect(holders).toEqual(expect.arrayContaining(["Abu Ammar", "Eng. Lama", "Noura"]))
+    expect(holders).not.toContain("Eng. Badr")
   })
 })
 
-describe("money, trail, finance and log", () => {
-  it("prices an order from its real movements against its value", () => {
-    const m = orderMoney(byId("o2"), DEPTS, DEFAULT_MFG_SETTINGS)
-    expect(m.materials).toBe(3_600)
-    expect(m.labour).toBe(4 * 70 + 2 * 60)
-    expect(m.overhead).toBe(6 * DEFAULT_MFG_SETTINGS.overheadRatePerHour)
-    expect(m.valueKind).toBe("sale")
-    expect(m.value).toBe(10_000)
-    expect(m.difference).toBe(10_000 - m.total)
+describe("the Workshop and the numbers", () => {
+  it("filters with counts and a search over refs, sources and products (WS-02/03)", () => {
+    const views = world().views
+    const counts = filterCounts(views)
+    expect(counts.all).toBe(5)
+    expect(counts.pay).toBe(1)
+    expect(counts.wait).toBe(1)
+    expect(counts.prod).toBe(3)
+    expect(views.filter((v) => inFilter(v, "prod")).map((v) => v.id).sort()).toEqual(["prj", "qc", "scrap"])
+    const prj = views.find((v) => v.id === "prj")!
+    expect(matchesSearch(prj, "2026/054")).toBe(true)
+    expect(matchesSearch(prj, "narjes")).toBe(true)
+    expect(matchesSearch(views.find((v) => v.id === "pay")!, "SO-131")).toBe(true)
   })
 
-  it("traces the order's documents", () => {
-    expect(documentTrail(byId("o2")).map((t) => [t.kind, t.ref])).toEqual([
-      ["quotation", "Q-ABC"],
-      ["work_order", "#102"],
-      ["withdrawal", "MW-1"],
-    ])
-    expect(documentTrail(byId("o4")).map((t) => t.kind)).toEqual(["work_order", "delivery_note", "finance_stock"])
+  it("never sums m² with m (UI-06)", () => {
+    expect(byUnit([["m²", 2], ["m", 3], ["m²", 1.5], ["m", 0]])).toEqual([{ unit: "m²", qty: 3.5 }, { unit: "m", qty: 3 }])
   })
 
-  it("lists what went to Finance and what is still waiting", () => {
-    const late = financeEvents(byId("o3"), DEPTS, DEFAULT_MFG_SETTINGS)
-    expect(late.find((e) => e.kind === "note_in_transit")).toMatchObject({ posted: false, ref: "DN-n1", quantity: 4 })
-    const done = financeEvents(byId("o4"), DEPTS, DEFAULT_MFG_SETTINGS)
-    expect(done.find((e) => e.kind === "delivery_stock")).toMatchObject({ posted: true, quantity: 9, value: 4_500 })
-    expect(done.find((e) => e.kind === "breakage")).toMatchObject({ posted: false, quantity: 1 })
+  it("one WIP: the reconciliation total is the same number as the KPI (FN-06)", () => {
+    const views = world().views
+    expect(wipReconciliation(views).total).toBe(wipTotal(views))
   })
 
-  it("tells the order's history newest first", () => {
-    const log = orderLog(byId("o2")).map((l) => l.kind)
-    expect(log[0]).toBe("materials_received")
-    expect(log).toEqual(["materials_received", "materials_released", "materials_requested", "released", "measured", "created"])
-    expect(orderLog(buildOrderView(late, PRODUCT, lateNotes, null, TODAY, false))[0]).toMatchObject({ kind: "rushed", tone: "bad" })
+  it("the panel's finance events, trail and log come from the same facts", () => {
+    const prj = world().viewById.get("prj")!
+    expect(financeEvents(prj, S).find((e) => e.kind === "materials")).toMatchObject({ state: "posted" })
+    expect(documentTrail(prj, []).map((x) => x.kind)).toEqual(expect.arrayContaining(["work_order", "withdrawal"]))
+    expect(orderLog(prj).map((x) => x.kind)).toEqual(expect.arrayContaining(["released", "materials_received", "created_project"]))
   })
 })

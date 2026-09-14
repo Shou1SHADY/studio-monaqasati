@@ -1,643 +1,490 @@
 /**
- * The manufacturing v2 engine's proof: a work order is a quantity on a route,
- * every unit is somewhere and the sum closes; blocking facts gate the saw;
- * planned waste is part of the need; the achievable date falls out of capacity
- * and queues; cost is built from real movements; and make-or-buy is a computed
- * verdict, not an opinion.
+ * The marble line's engine (PRD 1.2): a work order is a quantity on the
+ * product's route; every unit is in exactly one place after every event; the
+ * approvals gate the saw; nothing closes before QC releases; state and the
+ * next step are computed; a shortage has no date; and rework to an earlier
+ * station is never counted twice.
  */
 
 import {
   DEFAULT_MFG_SETTINGS,
-  activeIndexes,
-  addDaysISO,
-  atSiteQty,
+  allocateStock,
   bottleneck,
-  brokenQty,
-  brokenUndecided,
-  buildDecisions,
-  buildEstimateLines,
-  currentIndex,
+  candidates,
+  canDo,
+  computeOrder,
+  conservationGap,
   daysFrom,
-  deliveredQty,
-  deptCapacity,
+  addDaysISO,
   emptyProgress,
-  estimateCost,
-  exitIndex,
-  finishedQty,
-  fitQty,
+  estimateExpired,
+  estimateIncomplete,
+  formatDocNumber,
   hourVariance,
-  hoursTotal,
-  inAt,
-  isDoneV2,
-  labourCostOf,
-  marginPercent,
-  materialCostOf,
   materialNeed,
-  materialShortages,
   materialState,
-  minPriceFor,
+  minQuantity,
+  needRemain,
   normalizeMfgSettings,
   orderCost,
-  outQty,
-  overheadCostOf,
-  pendingAt,
-  possibleForDays,
-  readyQty,
+  ownsCandidate,
   releaseBlocks,
-  remainAt,
+  roundNeed,
   scheduleOrders,
-  scrapApprovedQty,
-  scrapPendingQty,
-  shippedQty,
+  shortages,
   standardCost,
   stationBlocks,
-  stationLoadHours,
-  stationQueueDays,
+  stationGate,
   unitSunkCost,
   verdict,
-  wasteFactor,
-  wipQty,
+  whyLate,
+  type Actor,
+  type CandidateContext,
   type DeptCapacityFields,
   type MfgNoteSlice,
   type MfgOrderSlice,
   type MfgProduct,
-  type ScheduleInput,
+  type StockIndex,
   type WorkOrderMaterial,
 } from "@/lib/manufacturing-engine"
 
-// ---------------------------------------------------------------------------
-// Fixtures
-// ---------------------------------------------------------------------------
+const S = DEFAULT_MFG_SETTINGS
+const NOW = new Date("2026-09-13T09:00:00Z").getTime()
+const TODAY = "2026-09-13"
 
-const dept = (id: string, workers = 2, hoursPerDay = 8, hourlyRate = 60): DeptCapacityFields => ({
-  id,
-  workers,
-  hoursPerDay,
-  hourlyRate,
-})
+const DEPTS: DeptCapacityFields[] = [
+  { id: "s1", name: "Design & nesting", workers: 2, hoursPerDay: 8, hourlyRate: 85, gate: "drawing" },
+  { id: "s6", name: "Slab selection & sign-off", workers: 1, hoursPerDay: 8, hourlyRate: 65, gate: "slab" },
+  { id: "s7", name: "Bridge-saw cutting", workers: 2, hoursPerDay: 8, hourlyRate: 70, gate: null, leadUserId: "sami" },
+  { id: "s8", name: "Profiling & edges", workers: 3, hoursPerDay: 8, hourlyRate: 60, gate: null, leadUserId: "ammar" },
+  { id: "s10", name: "Polishing & sealing", workers: 2, hoursPerDay: 8, hourlyRate: 58, gate: null },
+  { id: "s5", name: "QC & packing", workers: 2, hoursPerDay: 8, hourlyRate: 45, gate: null, qcStation: true },
+]
 
-const DEPTS: DeptCapacityFields[] = [dept("d1"), dept("d2"), dept("d3"), dept("d4"), dept("d5", 4)]
-
-const SETTINGS = DEFAULT_MFG_SETTINGS
-
-const PRODUCT: MfgProduct = {
-  id: "p1",
-  organizationId: "org1",
-  name: "كاونتر رخام",
-  unit: "م²",
+const COUNTER: MfgProduct = {
+  id: "pr11",
+  organizationId: "org",
+  name: "Kitchen counter — Crema Marfil",
+  unit: "m²",
   family: "stone",
   requiresMeasurement: true,
   requiresDrawingApproval: true,
   requiresSlabApproval: true,
-  wastePercent: 25,
-  salePrice: 1150,
-  estimateValue: 735,
-  referenceBuyPrice: 850,
+  wastePercent: 32,
+  referenceBuyPrice: 780,
   route: [
-    { departmentId: "d1", departmentName: "التصميم", hoursPerUnit: 0.1 },
-    { departmentId: "d2", departmentName: "القص", hoursPerUnit: 0.3 },
-    { departmentId: "d3", departmentName: "التلميع", hoursPerUnit: 0.2 },
-    { departmentId: "d4", departmentName: "الفحص والتغليف", hoursPerUnit: 0.1 },
-    { departmentId: "d5", departmentName: "التركيب", hoursPerUnit: 0.5, onSite: true },
+    { departmentId: "s1", departmentName: "Design", hoursPerUnit: 0.09 },
+    { departmentId: "s6", departmentName: "Slab", hoursPerUnit: 0.07 },
+    { departmentId: "s7", departmentName: "Cutting", hoursPerUnit: 0.36 },
+    { departmentId: "s8", departmentName: "Profiling", hoursPerUnit: 0.42 },
+    { departmentId: "s10", departmentName: "Polishing", hoursPerUnit: 0.3 },
+    { departmentId: "s5", departmentName: "QC", hoursPerUnit: 0.09 },
   ],
   bom: [
-    { itemName: "رخام كريمة", unit: "م²", qtyPerUnit: 1, departmentId: "d2", withWaste: true, unitCost: 320, lotted: true },
-    { itemName: "غراء إيبوكسي", unit: "عبوة", qtyPerUnit: 0.1, departmentId: "d3", withWaste: false, unitCost: 95 },
-    { itemName: "صندوق خشبي", unit: "صندوق", qtyPerUnit: 0.05, departmentId: "d4", withWaste: false, unitCost: 85 },
+    { itemName: "Crema Marfil slab", unit: "m²", qtyPerUnit: 1, departmentId: "s7", withWaste: true, unitCost: 320, lotted: true },
+    { itemName: "Diamond blades", unit: "pc", qtyPerUnit: 0.016, departmentId: "s7", withWaste: false, unitCost: 340, custody: true },
+    { itemName: "Stone epoxy", unit: "pail", qtyPerUnit: 0.07, departmentId: "s8", withWaste: false, unitCost: 95, custody: true },
+    { itemName: "Timber crate", unit: "crate", qtyPerUnit: 0.06, departmentId: "s5", withWaste: false, unitCost: 85, custody: true },
   ],
 }
 
-function order(over: Partial<MfgOrderSlice> = {}): MfgOrderSlice {
+const SKIRTING: MfgProduct = {
+  ...COUNTER,
+  id: "pr15",
+  name: "Marble skirting 10 cm",
+  unit: "m",
+  requiresMeasurement: false,
+  requiresDrawingApproval: false,
+  requiresSlabApproval: false,
+  wastePercent: 15,
+  referenceBuyPrice: 70,
+  route: [
+    { departmentId: "s7", departmentName: "Cutting", hoursPerUnit: 0.06 },
+    { departmentId: "s8", departmentName: "Profiling", hoursPerUnit: 0.07 },
+    { departmentId: "s10", departmentName: "Polishing", hoursPerUnit: 0.05 },
+    { departmentId: "s5", departmentName: "QC", hoursPerUnit: 0.02 },
+  ],
+  bom: [{ itemName: "Beige Sahel slab", unit: "m²", qtyPerUnit: 0.12, departmentId: "s7", withWaste: true, unitCost: 245 }],
+}
+
+function order(over: Partial<MfgOrderSlice> = {}, product: MfgProduct = COUNTER): MfgOrderSlice {
   return {
     id: "o1",
-    productId: "p1",
-    quantity: 10,
-    neededBy: "2026-09-20",
+    number: 42,
+    productId: product.id,
+    quantity: 20,
+    neededBy: "2026-09-30",
     createdAt2: "2026-09-01T08:00:00Z",
-    releasedAt: "2026-09-02T08:00:00Z",
-    measurement: { at: "2026-09-01", by: "أبو سامي" },
-    drawingApprovalStatus: "approved",
-    slabApproval: { at: "2026-09-02", by: "العميل", lot: "BLK-1" },
+    releasedAt: null,
+    source: "project",
+    downPayment: { required: false, confirmed: true, percent: null },
+    survey: null,
+    drawing: null,
+    slabApproval: null,
     rush: null,
-    progress: emptyProgress(PRODUCT.route),
+    progress: emptyProgress(product.route),
     materials: [],
     scrap: [],
+    rejects: [],
+    qcReleases: [],
+    closures: [],
+    frozenCost: null,
+    remade: 0,
     shortfall: 0,
     brokenResolved: 0,
+    remnants: [],
+    purchaseRequests: [],
+    overrides: {},
+    changeRequest: null,
+    cancellation: null,
+    varianceReviews: {},
     status: "open",
-    sourceQuotationId: null,
-    sourceQuotationWon: null,
     ...over,
   }
 }
 
-const mat = (over: Partial<WorkOrderMaterial>): WorkOrderMaterial => ({
-  id: "m1",
-  requestNumber: "MW-1",
-  itemName: "رخام كريمة",
-  unit: "م²",
-  quantity: 12.5,
-  departmentId: "d2",
-  lot: "BLK-1",
-  state: "received",
-  unitCost: 320,
-  warehouseId: "w1",
-  requestedByUserId: "u1",
-  requestedByName: "أبو عمار",
-  requestedAt: "2026-09-02T09:00:00Z",
-  ...over,
-})
-
-const note = (quantity: number, status: MfgNoteSlice["status"], broken = 0): MfgNoteSlice => ({
+const received = (itemName: string, departmentId: string, quantity: number, unitCost = 320): WorkOrderMaterial => ({
+  id: `${itemName}_${departmentId}_${quantity}`,
+  requestNumber: "WR-2026/001",
+  itemName,
+  unit: "m²",
   quantity,
-  brokenQuantity: broken,
-  status,
+  departmentId,
+  lot: "BLK-4471",
+  state: "received",
+  unitCost,
+  warehouseId: "w1",
+  requestedByUserId: "sami",
+  requestedByName: "Abu Sami",
+  requestedAt: "2026-09-05T08:00:00Z",
 })
 
-// ---------------------------------------------------------------------------
-// Settings & basics
-// ---------------------------------------------------------------------------
-
-describe("settings", () => {
-  it("normalizes a partial doc over the defaults", () => {
-    const s = normalizeMfgSettings({ features: { time: false } as never, scrapApprovalLimit: 5000 })
-    expect(s.features.time).toBe(false)
-    expect(s.features.estimates).toBe(true)
-    expect(s.scrapApprovalLimit).toBe(5000)
-    expect(s.overheadRatePerHour).toBe(32)
-    expect(normalizeMfgSettings(null)).toEqual(DEFAULT_MFG_SETTINGS)
+const prog = (rows: Array<[number, number, number?, number?, number?]>) =>
+  COUNTER.route.map((r, i) => {
+    const [done, rejected, hours, rework, back] = rows[i] || [0, 0]
+    return { departmentId: r.departmentId, done, rejected, hours: hours || 0, rework: rework || 0, back: back || 0 }
   })
 
-  it("waste factor converts percent to multiplier", () => {
-    expect(wasteFactor({ wastePercent: 25 })).toBe(1.25)
-    expect(wasteFactor({ wastePercent: 0 })).toBe(1)
-    expect(wasteFactor({ wastePercent: -5 })).toBe(1)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Quantity calculus
-// ---------------------------------------------------------------------------
-
-describe("quantity flow", () => {
-  it("an unreleased order feeds nothing into the first step", () => {
-    const o = order({ releasedAt: null })
-    expect(inAt(o, PRODUCT.route, 0, [])).toBe(0)
-    expect(wipQty(o, PRODUCT.route)).toBe(0)
-  })
-
-  it("release feeds the full quantity into step 0 and it flows by handover", () => {
-    const o = order()
-    expect(inAt(o, PRODUCT.route, 0, [])).toBe(10)
-    expect(pendingAt(o, PRODUCT.route, 0, [])).toBe(10)
-    o.progress[0].done = 10
-    expect(pendingAt(o, PRODUCT.route, 0, [])).toBe(0)
-    expect(pendingAt(o, PRODUCT.route, 1, [])).toBe(10)
-    expect(currentIndex(o, PRODUCT.route, [])).toBe(1)
-  })
-
-  it("rejected quantity is held at the station, not passed on", () => {
-    const o = order()
-    o.progress[0].done = 10
-    o.progress[1].done = 6
-    o.progress[1].rejected = 2
-    expect(pendingAt(o, PRODUCT.route, 1, [])).toBe(2)
-    expect(pendingAt(o, PRODUCT.route, 2, [])).toBe(6)
-  })
-
-  it("rework adds to what a station must process", () => {
-    const o = order()
-    o.progress[0].done = 10
-    o.progress[1].done = 10
-    o.progress[1].rework = 2
-    expect(inAt(o, PRODUCT.route, 1, [])).toBe(12)
-    expect(pendingAt(o, PRODUCT.route, 1, [])).toBe(2)
-  })
-
-  it("the exit is the last non-site step; site receives only what landed", () => {
-    expect(exitIndex(PRODUCT.route)).toBe(3)
-    const o = order()
-    o.progress.forEach((p, i) => {
-      if (i < 4) p.done = 10
-    })
-    expect(finishedQty(o, PRODUCT.route)).toBe(10)
-    // Nothing shipped yet: the site step has nothing in hand.
-    expect(pendingAt(o, PRODUCT.route, 4, [])).toBe(0)
-    const notes = [note(6, "received")]
-    expect(pendingAt(o, PRODUCT.route, 4, notes)).toBe(6)
-    expect(readyQty(o, PRODUCT.route, notes)).toBe(4)
-  })
-
-  it("ready = finished minus everything that left on a note", () => {
-    const o = order()
-    o.progress.forEach((p, i) => {
-      if (i < 4) p.done = 10
-    })
-    const notes = [note(4, "received"), note(3, "in_transit"), note(2, "rejected")]
-    expect(outQty(notes)).toBe(7)
-    expect(readyQty(o, PRODUCT.route, notes)).toBe(3)
-    expect(shippedQty(notes)).toBe(3)
-    expect(deliveredQty(notes)).toBe(4)
-  })
-
-  it("transit breakage is neither delivered nor forgotten", () => {
-    const o = order()
-    const notes = [note(6, "received", 2)]
-    expect(deliveredQty(notes)).toBe(4)
-    expect(brokenQty(notes)).toBe(2)
-    expect(brokenUndecided(o, notes)).toBe(2)
-    expect(brokenUndecided({ brokenResolved: 2 }, notes)).toBe(0)
-  })
-
-  it("the sum closes: released + rework = wip + ready + out + rejected + scrap + shortfall", () => {
-    const o = order({ shortfall: 1 })
-    o.progress[0].done = 10
-    o.progress[1].done = 8
-    o.progress[1].rejected = 1
-    o.progress[1].rework = 2 // came back for rework
-    o.progress[2].done = 7
-    o.progress[3].done = 6
-    o.scrap = [
-      { id: "s1", quantity: 1, value: 400, reason: "كسر", departmentId: "d2", raisedByUserId: "u", raisedByName: "لمى", raisedAt: "", status: "approved" },
-    ]
-    const notes = [note(3, "received", 1), note(2, "in_transit")]
-    const released = o.quantity // 10
-    const rework = 2
-    const wip = wipQty(o, PRODUCT.route)
-    const ready = readyQty(o, PRODUCT.route, notes)
-    const out = outQty(notes) // shipped + received incl. broken
-    expect(wip + ready + out + 1 /* rejected */ + 1 /* scrap */ + 1 /* shortfall */).toBe(released + rework)
-  })
-
-  it("isDoneV2 needs everything landed and every decision made", () => {
-    const o = order({ quantity: 10 })
-    o.progress.forEach((p, i) => {
-      if (i < 4) p.done = 10
-    })
-    const partWay = [note(10, "in_transit")]
-    expect(isDoneV2(o, PRODUCT.route, partWay)).toBe(false)
-    const landed = [note(10, "received")]
-    // Site step still to install
-    expect(atSiteQty(o, PRODUCT.route, landed)).toBe(10)
-    expect(isDoneV2(o, PRODUCT.route, landed)).toBe(false)
-    o.progress[4].done = 10
-    expect(isDoneV2(o, PRODUCT.route, landed)).toBe(true)
-    // A broken unit with no decision keeps it open
-    const withBreak = [note(10, "received", 1)]
-    expect(isDoneV2(o, PRODUCT.route, withBreak)).toBe(false)
-  })
-
-  it("scrap reduces what remains at every later station", () => {
-    const o = order()
-    o.scrap = [
-      { id: "s1", quantity: 2, value: 800, reason: "عرق", departmentId: "d2", raisedByUserId: "u", raisedByName: "لمى", raisedAt: "", status: "approved" },
-      { id: "s2", quantity: 3, value: 1200, reason: "كسر", departmentId: "d2", raisedByUserId: "u", raisedByName: "لمى", raisedAt: "", status: "pending" },
-    ]
-    expect(scrapApprovedQty(o)).toBe(2)
-    expect(scrapPendingQty(o)).toBe(3)
-    // Pending scrap does NOT reduce the deliverable — only approved does.
-    expect(remainAt(o, 2)).toBe(8)
-  })
-
-  it("activeIndexes lists every station holding quantity", () => {
-    const o = order()
-    o.progress[0].done = 10
-    o.progress[1].done = 4
-    expect(activeIndexes(o, PRODUCT.route, [])).toEqual([1, 2])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Blocking facts
-// ---------------------------------------------------------------------------
-
-describe("gates", () => {
-  it("release blocks: unwon quote and missing measurement", () => {
-    const o = order({ releasedAt: null, measurement: null, sourceQuotationId: "q1", sourceQuotationWon: false })
-    const blocks = releaseBlocks(o, PRODUCT)
-    expect(blocks.map((b) => b.key).sort()).toEqual(["measurement", "quote"])
-    expect(releaseBlocks(order({ releasedAt: null }), PRODUCT)).toEqual([])
-    const noMeasure = order({ releasedAt: null, measurement: null })
-    expect(releaseBlocks(noMeasure, { requiresMeasurement: false })).toEqual([])
-  })
-
-  it("drawing and slab approval block from the second step, not design", () => {
-    const o = order({ drawingApprovalStatus: "pending", slabApproval: null })
-    expect(stationBlocks(o, PRODUCT, PRODUCT.route, 0).filter((b) => b.severity === "hard")).toEqual([])
-    const atSaw = stationBlocks(o, PRODUCT, PRODUCT.route, 1)
-    expect(atSaw.map((b) => b.key)).toEqual(expect.arrayContaining(["drawing", "slab"]))
-    const approved = order()
-    expect(stationBlocks(approved, PRODUCT, PRODUCT.route, 1).filter((b) => b.severity === "hard")).toEqual([])
-  })
-
-  it("missing materials are a soft block", () => {
-    const o = order()
-    const blocks = stationBlocks(o, PRODUCT, PRODUCT.route, 1)
-    expect(blocks).toEqual([{ key: "materials", severity: "soft" }])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Materials
-// ---------------------------------------------------------------------------
-
-describe("materials", () => {
-  it("the need includes planned waste and shrinks with approved scrap", () => {
-    const o = order()
-    const need = materialNeed(o, PRODUCT, "d2")
-    expect(need).toHaveLength(1)
-    expect(need[0].net).toBe(10)
-    expect(need[0].qty).toBe(12.5)
-    o.scrap = [
-      { id: "s", quantity: 2, value: 0, reason: "x", departmentId: "d2", raisedByUserId: "u", raisedByName: "n", raisedAt: "", status: "approved" },
-    ]
-    expect(materialNeed(o, PRODUCT, "d2")[0].qty).toBe(10)
-  })
-
-  it("material state walks missing → requested → released → complete", () => {
-    const o = order()
-    expect(materialState(o, PRODUCT, PRODUCT.route, 1)).toBe("missing")
-    o.materials = [mat({ state: "requested" })]
-    expect(materialState(o, PRODUCT, PRODUCT.route, 1)).toBe("requested")
-    o.materials = [mat({ state: "released" })]
-    expect(materialState(o, PRODUCT, PRODUCT.route, 1)).toBe("released")
-    o.materials = [mat({ state: "received", quantity: 6 })]
-    expect(materialState(o, PRODUCT, PRODUCT.route, 1)).toBe("partial")
-    o.materials = [mat({ state: "received", quantity: 12.5 })]
-    expect(materialState(o, PRODUCT, PRODUCT.route, 1)).toBe("complete")
-    expect(materialState(o, PRODUCT, PRODUCT.route, 0)).toBe("none")
-  })
-
-  it("shortages measure need beyond store availability", () => {
-    const o = order()
-    const availability = new Map([["رخام كريمة", 5]])
-    const short = materialShortages(o, PRODUCT, "d2", availability)
-    expect(short).toHaveLength(1)
-    expect(short[0].short).toBe(7.5)
-    const plenty = new Map([["رخام كريمة", 50]])
-    expect(materialShortages(o, PRODUCT, "d2", plenty)).toEqual([])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Capacity & scheduling
-// ---------------------------------------------------------------------------
-
-const SIMPLE: MfgProduct = {
-  ...PRODUCT,
-  id: "p2",
-  requiresMeasurement: false,
-  requiresDrawingApproval: false,
-  requiresSlabApproval: false,
-  route: [{ departmentId: "d2", departmentName: "القص", hoursPerUnit: 0.4 }],
-  bom: [{ itemName: "خام", unit: "م", qtyPerUnit: 1, departmentId: "d2", withWaste: false, unitCost: 100 }],
-  referenceBuyPrice: null,
-}
-
-const simpleOrder = (id: string, qty: number, over: Partial<MfgOrderSlice> = {}): MfgOrderSlice =>
-  order({
-    id,
-    productId: "p2",
-    quantity: qty,
-    progress: emptyProgress(SIMPLE.route),
-    measurement: null,
-    drawingApprovalStatus: "na",
-    slabApproval: null,
+/** Released, surveyed, drawing A, slab signed, slab received — at cutting. */
+function atCutting(over: Partial<MfgOrderSlice> = {}): MfgOrderSlice {
+  return order({
+    releasedAt: "2026-09-05T08:00:00Z",
+    survey: { at: "2026-09-04", by: "Eng. Badr", sketchUrl: "x", sketchName: "sketch.pdf" },
+    drawing: { revision: 1, approverOrg: "technical_office", submittedAt: "2026-09-05T09:00:00Z", submittedBy: "Badr", code: "A", recordedAt: "2026-09-06T09:00:00Z" },
+    slabApproval: { at: "2026-09-07T09:00:00Z", by: "Eng. Lama", lot: "BLK-4471", quantity: 26.4 },
+    materials: [received("Crema Marfil slab", "s7", 26.4)],
     ...over,
   })
+}
 
-describe("capacity & schedule", () => {
-  it("capacity defaults to 1×8 when the department has no numbers", () => {
-    expect(deptCapacity({ workers: null, hoursPerDay: null })).toBe(8)
-    expect(deptCapacity({ workers: 2, hoursPerDay: 8 })).toBe(16)
+const ctx = (alloc: CandidateContext["alloc"] = null): CandidateContext => ({ settings: S, alloc, today: TODAY, nowMs: NOW })
+const manager: Actor = { uid: "badr", manage: true, work: false, qc: false, cost: false, view: false }
+const sami: Actor = { uid: "sami", manage: false, work: true, qc: false, cost: false, view: false }
+const lama: Actor = { uid: "lama", manage: false, work: false, qc: true, cost: false, view: false }
+const noura: Actor = { uid: "noura", manage: false, work: false, qc: false, cost: true, view: false }
+
+describe("settings and helpers", () => {
+  it("normalizes Finance's policies over the defaults", () => {
+    const s = normalizeMfgSettings({ scrapApprovalLimit: 5000, features: { time: false, estimates: true, checklists: true } })
+    expect(s.scrapApprovalLimit).toBe(5000)
+    expect(s.noteEscalationHours).toBe(48)
+    expect(s.estimateValidityDays).toBe(15)
+    expect(s.features.time).toBe(false)
   })
 
-  it("orders queue on a department in need order; a rush jumps the queue", () => {
-    const A: ScheduleInput = { order: simpleOrder("A", 40, { neededBy: "2026-09-10" }), product: SIMPLE, notes: [] }
-    const B: ScheduleInput = { order: simpleOrder("B", 80, { neededBy: "2026-09-15" }), product: SIMPLE, notes: [] }
-    const sched = scheduleOrders([A, B], DEPTS)
-    expect(sched.get("A")?.finishDays).toBe(1) // 40×0.4 = 16h / 16h·day
-    expect(sched.get("B")?.finishDays).toBe(3) // waits 1d, then 32h = 2d
-    expect(sched.get("B")?.waitDepartmentId).toBe("d2")
-    const rushed: ScheduleInput = { ...B, order: { ...B.order, rush: { reason: "x", by: "y", at: "" } } }
-    const sched2 = scheduleOrders([A, rushed], DEPTS)
-    expect(sched2.get("B")?.finishDays).toBe(2)
-    expect(sched2.get("A")?.finishDays).toBe(3)
+  it("rounds a need up: fractions to a decimal, counted units whole", () => {
+    expect(roundNeed("m²", 26.41)).toBe(26.5)
+    expect(roundNeed("pc", 0.32)).toBe(1)
+    expect(roundNeed("م²", 3.0)).toBe(3)
   })
 
-  it("an unwon quote has no date at all; a blocked one carries its condition", () => {
-    const unwon = simpleOrder("Q", 10, { releasedAt: null, sourceQuotationId: "q1", sourceQuotationWon: false })
-    const unreleased = simpleOrder("R", 10, { releasedAt: null })
-    const sched = scheduleOrders(
-      [
-        { order: unwon, product: SIMPLE, notes: [] },
-        { order: unreleased, product: SIMPLE, notes: [] },
-      ],
-      DEPTS
+  it("reads an order-level step from the station name until one is set", () => {
+    expect(stationGate({ name: "التصميم والتقطيع النظري" })).toBe("drawing")
+    expect(stationGate({ name: "فرز البلاطات واعتماد العميل" })).toBe("slab")
+    expect(stationGate({ name: "Design", gate: null })).toBeNull()
+  })
+
+  it("numbers documents per type and year", () => {
+    expect(formatDocNumber("WO", 2026, 57)).toBe("WO-2026/057")
+    expect(daysFrom("2026-09-13", "2026-09-20")).toBe(7)
+    expect(addDaysISO("2026-09-13", 3)).toBe("2026-09-16")
+  })
+})
+
+describe("the gates before production", () => {
+  it("a client order waits for Finance: planned, never released (ORD-12)", () => {
+    const c = computeOrder(order({ source: "client", downPayment: { required: true, confirmed: false, percent: 40 } }), COUNTER, DEPTS, [])
+    expect(c.stage).toBe("pay")
+    expect(releaseBlocks(c).map((b) => b.key)).toEqual(["down_payment", "survey"])
+    const cs = candidates(c, ctx())
+    expect(cs[0]).toMatchObject({ key: "down_payment", owner: { kind: "external", module: "finance" } })
+    expect(cs.some((x) => x.key === "release" || x.key === "survey")).toBe(false)
+  })
+
+  it("made to measure: the survey comes before release (ORD-10)", () => {
+    const c = computeOrder(order(), COUNTER, DEPTS, [])
+    expect(c.stage).toBe("wait")
+    expect(candidates(c, ctx()).map((x) => x.key)).toEqual(["survey"])
+    const surveyed = computeOrder(order({ survey: { at: "2026-09-04", by: "Badr", sketchUrl: "u" } }), COUNTER, DEPTS, [])
+    expect(candidates(surveyed, ctx()).map((x) => x.key)).toEqual(["release"])
+    expect(releaseBlocks(surveyed)).toEqual([])
+  })
+
+  it("released: design holds the quantity until the drawing is approved in the approver's module", () => {
+    const released = order({ releasedAt: "2026-09-05T08:00:00Z", survey: { at: "2026-09-04", by: "Badr" } })
+    const draft = computeOrder(released, COUNTER, DEPTS, [])
+    expect(draft.pend[0]).toBe(20)
+    expect(candidates(draft, ctx())[0]).toMatchObject({ key: "submit_drawing", departmentId: "s1" })
+
+    const atApproval = computeOrder({ ...released, drawing: { revision: 1, approverOrg: "consultant", submittedAt: "2026-09-06T08:00:00Z", submittedBy: "Badr", code: null } }, COUNTER, DEPTS, [])
+    const wait = candidates(atApproval, ctx())[0]
+    expect(wait).toMatchObject({ key: "drawing_wait", owner: { kind: "external", module: "projects" } })
+    expect(ownsCandidate(wait, manager, DEPTS, S)).toBe(false)
+
+    const approved = computeOrder({ ...released, drawing: { revision: 1, approverOrg: "consultant", submittedAt: "2026-09-06T08:00:00Z", submittedBy: "Badr", code: "B", resultNotes: "3 mm radius" } }, COUNTER, DEPTS, [])
+    expect(approved.pend[0]).toBe(0)
+    expect(approved.pend[1]).toBe(20)
+    expect(candidates(approved, ctx())[0]).toMatchObject({ key: "slab", owner: { kind: "manager_or_qc" } })
+  })
+
+  it("a C sends the drawing back to design with its notes", () => {
+    const c = computeOrder(
+      order({ releasedAt: "2026-09-05T08:00:00Z", survey: { at: "x", by: "b" }, drawing: { revision: 1, approverOrg: "technical_office", submittedAt: null, submittedBy: "Badr", code: null, previousC: "Move the cut-outs" } }),
+      COUNTER,
+      DEPTS,
+      []
     )
-    expect(sched.has("Q")).toBe(false)
-    expect(sched.get("R")?.condition).toBe("release")
+    expect(c.drawingState).toBe("draft")
+    expect(candidates(c, ctx())[0]).toMatchObject({ key: "submit_drawing", previousC: "Move the cut-outs" })
   })
 
-  it("station load and the bottleneck", () => {
-    const A: ScheduleInput = { order: simpleOrder("A", 40), product: SIMPLE, notes: [] }
-    expect(stationLoadHours([A], "d2")).toBe(16)
-    expect(stationQueueDays([A], DEPTS[1])).toBe(1)
-    expect(bottleneck([A], DEPTS)?.departmentId).toBe("d2")
-  })
-
-  it("a new quantity joins the back of the queue; fitQty is its inverse", () => {
-    const A: ScheduleInput = { order: simpleOrder("A", 40), product: SIMPLE, notes: [] }
-    const B: ScheduleInput = { order: simpleOrder("B", 80), product: SIMPLE, notes: [] }
-    expect(possibleForDays(SIMPLE, 16, [A, B], DEPTS)).toBe(4) // 3d queue + 0.4
-    expect(possibleForDays(SIMPLE, 40, [], DEPTS)).toBe(1)
-    expect(fitQty(SIMPLE, 1, [], DEPTS)).toBe(40)
-    expect(fitQty(SIMPLE, 0, [], DEPTS)).toBe(0)
+  it("the approvals gate the saw when the route has no order-level steps", () => {
+    const depts = DEPTS.map((d) => ({ ...d, gate: null }))
+    const c = computeOrder(order({ releasedAt: "2026-09-05T08:00:00Z", survey: { at: "x", by: "b" } }), COUNTER, depts, [])
+    expect(c.firstQ).toBe(0)
+    expect(stationBlocks(c, 0).map((b) => b.key)).toEqual(["drawing", "slab"])
   })
 })
 
-// ---------------------------------------------------------------------------
-// Costing
-// ---------------------------------------------------------------------------
-
-describe("costing", () => {
-  it("standard cost = materials (with waste) + labour + overhead", () => {
-    const std = standardCost(PRODUCT, DEPTS, SETTINGS, 1)
-    expect(std.materials).toBe(413.75) // 320×1.25 + 9.5 + 4.25
-    expect(std.hours).toBe(1.2)
-    expect(std.labour).toBe(72) // 1.2 × 60
-    expect(std.overhead).toBe(38.4) // 1.2 × 32
-    expect(std.total).toBe(524.15)
-    expect(std.allPriced).toBe(true)
+describe("materials and coverage", () => {
+  it("the slab is requested per order with waste; custody consumables are not", () => {
+    const c = computeOrder(atCutting({ materials: [] }), COUNTER, DEPTS, [])
+    const i = c.firstQ
+    expect(c.route[i].departmentId).toBe("s7")
+    expect(materialNeed(c, i)).toEqual([expect.objectContaining({ itemName: "Crema Marfil slab", net: 20, qty: 26.4 })])
+    expect(materialState(c, i)).toBe("missing")
+    expect(canDo(c, i)).toBe(0)
+    const cs = candidates(c, ctx())
+    expect(cs.find((x) => x.key === "request_materials")).toMatchObject({ departmentId: "s7" })
+    expect(cs.some((x) => x.key === "output")).toBe(false)
+    expect(stationBlocks(c, i)).toEqual([expect.objectContaining({ key: "materials", severity: "soft", covers: 0 })])
   })
 
-  it("an unknown BOM cost makes the total honest about understating", () => {
-    const p = { ...PRODUCT, bom: [...PRODUCT.bom, { itemName: "مجهول", unit: "م", qtyPerUnit: 1, departmentId: "d2", withWaste: false, unitCost: null }] }
-    expect(standardCost(p, DEPTS, SETTINGS, 1).allPriced).toBe(false)
+  it("output is allowed up to what the received slab covers; an override lifts it (MAT-03)", () => {
+    const half = computeOrder(atCutting({ materials: [received("Crema Marfil slab", "s7", 13.2)] }), COUNTER, DEPTS, [])
+    expect(canDo(half, 2)).toBe(10)
+    const overridden = computeOrder(atCutting({ materials: [], overrides: { s7: { reason: "Offcuts from WO 040", by: "Badr", at: "x" } } }), COUNTER, DEPTS, [])
+    expect(stationBlocks(overridden, 2)).toEqual([])
+    expect(candidates(overridden, ctx()).find((x) => x.key === "output")).toBeTruthy()
   })
 
-  it("time off drops labour and overhead to zero, not to a guess", () => {
-    const off = { ...SETTINGS, features: { ...SETTINGS.features, time: false } }
-    const std = standardCost(PRODUCT, DEPTS, off, 2)
-    expect(std.labour).toBe(0)
-    expect(std.overhead).toBe(0)
-    expect(std.total).toBe(std.materials)
+  it("the station lead owns cutting; the manager does not act for an owned station", () => {
+    const c = computeOrder(atCutting(), COUNTER, DEPTS, [])
+    const out = candidates(c, ctx()).find((x) => x.key === "output")!
+    expect(ownsCandidate(out, sami, DEPTS, S)).toBe(true)
+    expect(ownsCandidate(out, manager, DEPTS, S)).toBe(false)
+    expect(ownsCandidate(out, lama, DEPTS, S)).toBe(false)
   })
 
-  it("order cost is built from received materials and reported hours only", () => {
-    const o = order()
-    o.materials = [mat({ state: "received", quantity: 12.5, unitCost: 320 }), mat({ id: "m2", state: "released", quantity: 5, unitCost: 95 })]
-    expect(materialCostOf(o).cost).toBe(4000)
-    o.progress[1].hours = 3
-    o.progress[2].hours = 2
-    expect(hoursTotal(o)).toBe(5)
-    expect(labourCostOf(o, PRODUCT.route, DEPTS, SETTINGS)).toBe(300)
-    expect(overheadCostOf(o, SETTINGS)).toBe(160)
-    expect(orderCost(o, PRODUCT.route, DEPTS, SETTINGS)).toBe(4460)
+  it("reservations are allocated in queue order and never double-spent (MAT-04)", () => {
+    const stock: StockIndex = { onHand: new Map([["crema marfil slab", 30]]), lots: [{ itemName: "Crema Marfil slab", lot: "BLK-4471", quantity: 30 }] }
+    const first = computeOrder(atCutting({ id: "a", materials: [], rush: { reason: "promised", by: "Badr", at: "x" } }), COUNTER, DEPTS, [])
+    const second = computeOrder(atCutting({ id: "b", materials: [] }), COUNTER, DEPTS, [])
+    expect(needRemain(first, "Crema Marfil slab")).toBe(26.4)
+    const alloc = allocateStock([second, first], stock)
+    expect(alloc.reserved.get("a")?.get("crema marfil slab")).toBe(26.4)
+    expect(alloc.reserved.get("b")?.get("crema marfil slab")).toBe(3.6)
+    expect(shortages(first, alloc)).toEqual([])
+    expect(shortages(second, alloc)).toEqual([expect.objectContaining({ itemName: "Crema Marfil slab", short: 22.8, requested: null })])
+    expect(candidates(second, ctx(alloc)).find((x) => x.key === "shortage")).toMatchObject({ quantity: 22.8, owner: { kind: "manager" } })
   })
 
-  it("a received line with unknown cost flags the total instead of writing zero as truth", () => {
-    const o = order({ materials: [mat({ unitCost: null })] })
-    const { cost, allPriced } = materialCostOf(o)
-    expect(cost).toBe(0)
-    expect(allPriced).toBe(false)
-  })
-
-  it("unit sunk cost accumulates route by route — the scrap valuation", () => {
-    expect(unitSunkCost(PRODUCT, DEPTS, SETTINGS, 0)).toBe(9) // 0.1×(60+32)
-    expect(unitSunkCost(PRODUCT, DEPTS, SETTINGS, 1)).toBe(437) // +400 slab +0.3×92
-  })
-
-  it("hour variance flags >15% over standard AND at least two hours", () => {
-    const o = order()
-    o.progress[1].done = 10
-    o.progress[1].hours = 5.2 // std = 3
-    const v = hourVariance(o, PRODUCT.route, SETTINGS)
-    expect(v?.departmentId).toBe("d2")
-    expect(v?.gap).toBe(2.2)
-    expect(v?.percent).toBe(73)
-    o.progress[1].hours = 3.4 // over 13% only
-    expect(hourVariance(o, PRODUCT.route, SETTINGS)).toBeNull()
-    o.progress[1].hours = 4.4 // 47% over but check the 2h floor with smaller done
-    o.progress[1].done = 2
-    o.progress[1].hours = 1.5 // std 0.6, gap 0.9 < 2h
-    expect(hourVariance(o, PRODUCT.route, SETTINGS)).toBeNull()
-  })
-
-  it("finance floor and margin", () => {
-    expect(minPriceFor(820, SETTINGS)).toBe(1000) // 18% margin
-    expect(marginPercent(1000, 820)).toBe(18)
-    expect(marginPercent(0, 820)).toBeNull()
+  it("a shortage has no date until it arrives (ORD-16, D16)", () => {
+    const stock: StockIndex = { onHand: new Map(), lots: [] }
+    const c = computeOrder(atCutting({ materials: [] }), COUNTER, DEPTS, [])
+    const alloc = allocateStock([c], stock)
+    const sched = scheduleOrders([c], DEPTS, new Map(), alloc).get("o1")!
+    expect(sched.finishDays).toBeNull()
+    expect(sched.condition).toBe("materials")
+    expect(whyLate(c, alloc, sched, NOW)).toMatchObject({ key: "shortage", quantity: 26.4 })
+    const requested = computeOrder(atCutting({ materials: [], purchaseRequests: [{ id: "p", itemName: "Crema Marfil slab", unit: "m²", quantity: 26.4, needBy: null, note: null, by: "Badr", at: "x", state: "sent" }] }), COUNTER, DEPTS, [])
+    const cs = candidates(requested, ctx(allocateStock([requested], stock)))
+    expect(cs.some((x) => x.key === "shortage")).toBe(false)
+    expect(cs.find((x) => x.key === "purchase_wait")).toMatchObject({ owner: { kind: "external", module: "procurement" } })
   })
 })
 
-// ---------------------------------------------------------------------------
-// Make or buy
-// ---------------------------------------------------------------------------
+describe("every unit in one place", () => {
+  it("output, rejects and rework to an earlier station are never double-counted", () => {
+    // 20 m²: cut 20, profiled 14 with 4 rejected (2 still in hand).
+    const base = atCutting({ progress: prog([[0, 0], [0, 0], [20, 0, 7], [14, 4, 6]]) })
+    const c = computeOrder(base, COUNTER, DEPTS, [])
+    expect(c.pend[3]).toBe(2)
+    expect(c.pend[4]).toBe(14)
+    expect(c.rejected).toBe(4)
+    expect(conservationGap(c)).toBe(0)
 
-describe("verdict", () => {
-  it("buying wins when the reference price beats our unit cost", () => {
-    // unit cost = 100 + 0.4×60 + 0.4×32 = 136.8
-    const p = { ...SIMPLE, referenceBuyPrice: 120 }
-    const v = verdict(p, 10, 30, [], DEPTS, SETTINGS)
+    // QC sends 3 back to cutting: they leave profiling (back) and re-enter cutting (rework).
+    const reworked = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [20, 0, 7, 3], [14, 1, 6, 0, 3]]) }), COUNTER, DEPTS, [])
+    expect(reworked.pend[2]).toBe(3)
+    expect(reworked.pend[3]).toBe(2)
+    expect(reworked.wip).toBe(19)
+    expect(conservationGap(reworked)).toBe(0)
+
+    // Cutting redoes them and hands over: profiling holds 5, not 8.
+    const redone = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [23, 0, 8, 3], [14, 1, 6, 0, 3]]) }), COUNTER, DEPTS, [])
+    expect(redone.pend[2]).toBe(0)
+    expect(redone.pend[3]).toBe(5)
+    expect(conservationGap(redone)).toBe(0)
+  })
+
+  it("scrap leaves the station; the re-make re-enters the first unit step", () => {
+    const withScrap = atCutting({
+      progress: prog([[0, 0], [0, 0], [20, 0], [14, 0]]),
+      scrap: [{ id: "sc", quantity: 6, value: 3000, reason: "vein crack", departmentId: "s8", index: 3, raisedByUserId: "lama", raisedByName: "Lama", raisedAt: "2026-09-12T08:00:00Z", status: "pending", decision: null }],
+    })
+    const c = computeOrder(withScrap, COUNTER, DEPTS, [])
+    expect(c.pend[3]).toBe(0)
+    expect(c.scrapUndecided).toBe(6)
+    expect(conservationGap(c)).toBe(0)
+    const cs = candidates(c, ctx())
+    expect(cs.find((x) => x.key === "scrap_review")).toMatchObject({ owner: { kind: "scrap", value: 3000 } })
+    expect(cs.find((x) => x.key === "remake_scrap")).toMatchObject({ quantity: 6, approvalRunning: true })
+
+    const remade = computeOrder(
+      { ...withScrap, remade: 6, scrap: withScrap.scrap.map((s) => ({ ...s, decision: "remake" as const })), progress: prog([[0, 0], [0, 0], [20, 0, 0, 6], [14, 0]]) },
+      COUNTER,
+      DEPTS,
+      []
+    )
+    expect(remade.pend[2]).toBe(6)
+    expect(conservationGap(remade)).toBe(0)
+  })
+
+  it("scrap review: the manager up to Finance's limit, the cost controller above", () => {
+    const small = { key: "scrap_review" as const, owner: { kind: "scrap" as const, value: 1200 }, severity: "r" as const }
+    const big = { ...small, owner: { kind: "scrap" as const, value: 4257 } }
+    expect(ownsCandidate(small, manager, DEPTS, S)).toBe(true)
+    expect(ownsCandidate(big, manager, DEPTS, S)).toBe(false)
+    expect(ownsCandidate(big, noura, DEPTS, S)).toBe(true)
+    expect(ownsCandidate(big, lama, DEPTS, S)).toBe(false)
+  })
+
+  it("only Quality releases out of QC & packing; nothing is ready before a close decision", () => {
+    const packed = atCutting({ progress: prog([[0, 0], [0, 0], [20, 0], [20, 0], [20, 0], [0, 0]]) })
+    const atQc = computeOrder(packed, COUNTER, DEPTS, [])
+    const rel = candidates(atQc, ctx()).find((x) => x.key === "qc_release")!
+    expect(rel).toMatchObject({ owner: { kind: "qc" }, quantity: 20 })
+    expect(ownsCandidate(rel, lama, DEPTS, S)).toBe(true)
+    expect(ownsCandidate(rel, manager, DEPTS, S)).toBe(false)
+
+    const released = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [20, 0], [20, 0], [20, 0], [20, 0]]) }), COUNTER, DEPTS, [])
+    expect(released.stage).toBe("close")
+    expect(released.ready).toBe(0)
+    expect(candidates(released, ctx())[0]).toMatchObject({ key: "close", quantity: 20 })
+
+    const closed = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [20, 0], [20, 0], [20, 0], [20, 0]]), closures: [{ quantity: 12, by: "Badr", at: "x" }] }), COUNTER, DEPTS, [])
+    expect(closed.ready).toBe(12)
+    expect(closed.toClose).toBe(8)
+    expect(conservationGap(closed)).toBe(0)
+  })
+
+  it("the note is ours until received; breakage opens a decision; closed = all received", () => {
+    const finished = atCutting({ progress: prog([[0, 0], [0, 0], [20, 0], [20, 0], [20, 0], [20, 0]]), closures: [{ quantity: 20, by: "Badr", at: "x" }] })
+    const out: MfgNoteSlice[] = [{ id: "n1", number: "DN-2026/061", quantity: 20, brokenQuantity: 0, status: "in_transit", sentAt: "2026-09-10T08:00:00Z", toKind: "project" }]
+    const transit = computeOrder(finished, COUNTER, DEPTS, out)
+    expect(transit.stage).toBe("transit")
+    const wait = candidates(transit, ctx()).find((x) => x.key === "receipt_wait")!
+    expect(wait).toMatchObject({ owner: { kind: "external", module: "projects" }, escalated: true })
+
+    const broken = computeOrder(finished, COUNTER, DEPTS, [{ ...out[0], status: "received", brokenQuantity: 2 }])
+    expect(broken.delivered).toBe(18)
+    expect(broken.brokenOpen).toBe(2)
+    expect(broken.done_).toBe(false)
+    expect(conservationGap(broken)).toBe(0)
+    expect(candidates(broken, ctx())[0]).toMatchObject({ key: "remake_breakage", quantity: 2 })
+
+    const short = computeOrder({ ...finished, shortfall: 2, brokenResolved: 2 }, COUNTER, DEPTS, [{ ...out[0], status: "received", brokenQuantity: 2 }])
+    expect(short.target).toBe(18)
+    expect(short.done_).toBe(true)
+    expect(short.stage).toBe("done")
+    expect(candidates(short, ctx())).toEqual([])
+  })
+
+  it("an order from before production close: what finished counts as closed", () => {
+    const legacy = computeOrder(atCutting({ closures: null, progress: prog([[0, 0], [0, 0], [20, 0], [20, 0], [20, 0], [20, 0]]) }), COUNTER, DEPTS, [])
+    expect(legacy.toClose).toBe(0)
+    expect(legacy.ready).toBe(20)
+    expect(legacy.stage).toBe("ready")
+  })
+
+  it("the minimum after a change is what already entered production (ORD-11)", () => {
+    const c = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [12, 1], [8, 0]]) }), COUNTER, DEPTS, [])
+    expect(minQuantity(c)).toBe(13)
+  })
+})
+
+describe("capacity and the honest date", () => {
+  it("today's stops move every possible date through the station (FL-14)", () => {
+    const c = computeOrder(order({ releasedAt: "x", survey: { at: "x", by: "b" }, quantity: 500 }, SKIRTING), SKIRTING, DEPTS, [])
+    const calm = scheduleOrders([c], DEPTS).get("o1")!
+    const stopped = scheduleOrders([c], DEPTS, new Map([["s7", 12]])).get("o1")!
+    expect(stopped.finishDays!).toBeGreaterThan(calm.finishDays!)
+    expect(bottleneck([c], DEPTS, new Map([["s7", 12]]))?.departmentId).toBe("s7")
+  })
+
+  it("a step without standard time is left out of the queue and blocks a cost statement", () => {
+    const partial: MfgProduct = { ...SKIRTING, route: SKIRTING.route.map((r, i) => (i === 1 ? { ...r, hoursPerUnit: null } : r)) }
+    const std = standardCost(partial, DEPTS, S, 10)
+    expect(std.unestimated).toEqual(["s8"])
+    const inc = estimateIncomplete({ lines: [{ productId: "pr15", productName: "x", quantity: 10, unit: "m", materialCost: 0, labourCost: 0, overheadCost: 0, hours: 0, totalCost: 0 }] }, new Map([["pr15", partial]]), S)
+    expect(inc).toEqual([{ productId: "pr15", departmentIds: ["s8"] }])
+  })
+
+  it("a cost statement expires after its validity unless Sales closed it", () => {
+    expect(estimateExpired({ state: "sent", sentAt: "2026-08-20T08:00:00Z", validityDays: 15 }, TODAY, S)).toBe(true)
+    expect(estimateExpired({ state: "won", sentAt: "2026-08-20T08:00:00Z", validityDays: 15 }, TODAY, S)).toBe(false)
+    expect(estimateExpired({ state: "sent", sentAt: "2026-09-10T08:00:00Z", validityDays: 15 }, TODAY, S)).toBe(false)
+  })
+})
+
+describe("cost — one WIP, earned standard", () => {
+  it("cost lands at receipt; custody is charged at output; WIP = good cost − delivered share", () => {
+    const c = computeOrder(atCutting({ progress: prog([[0, 0], [0, 0], [20, 0, 8], [10, 0, 5]]) }), COUNTER, DEPTS, [])
+    const cost = orderCost(c, DEPTS, S)
+    expect(cost.materials).toBe(8448)
+    expect(cost.custody).toBeCloseTo(0.016 * 20 * 340 + 0.07 * 10 * 95, 1)
+    expect(cost.labour).toBe(8 * 70 + 5 * 60)
+    expect(cost.overhead).toBe(13 * 32)
+    expect(cost.wip).toBe(cost.total)
+    expect(cost.earnedStandard).toBeGreaterThan(0)
+    expect(cost.variancePercent).not.toBeNull()
+  })
+
+  it("scrap is valued at what the unit had sunk up to its station", () => {
+    expect(unitSunkCost(COUNTER, DEPTS, S, 2)).toBeGreaterThan(unitSunkCost(COUNTER, DEPTS, S, 1))
+  })
+
+  it("a variance is flagged once and stays quiet after review (FL-05)", () => {
+    const over = atCutting({ progress: prog([[0, 0], [0, 0], [20, 0, 12]]) })
+    expect(hourVariance(computeOrder(over, COUNTER, DEPTS, []), S)).toMatchObject({ departmentId: "s7" })
+    const reviewed = { ...over, varianceReviews: { s7: { cause: "standard_wrong" as const, note: null, by: "Noura", at: "x" } } }
+    expect(hourVariance(computeOrder(reviewed, COUNTER, DEPTS, []), S)).toBeNull()
+  })
+
+  it("make or buy is computed, not an opinion", () => {
+    const v = verdict({ ...SKIRTING, referenceBuyPrice: 5 }, 100, 30, [], DEPTS, S)
     expect(v.kind).toBe("buy_price")
-    expect(v.makeQty).toBe(0)
-  })
-
-  it("we make when capacity meets the date", () => {
-    const v = verdict(SIMPLE, 10, 30, [], DEPTS, SETTINGS)
-    expect(v.kind).toBe("make")
-    expect(v.makeQty).toBe(10)
-    expect(v.possibleDays).toBe(1)
-  })
-
-  it("a tight date splits the answer: make what fits, buy the rest", () => {
-    const queue: ScheduleInput = { order: simpleOrder("A", 80), product: SIMPLE, notes: [] }
-    const v = verdict(SIMPLE, 100, 3, [queue], DEPTS, SETTINGS)
-    expect(v.kind).toBe("partial")
-    expect(v.makeQty).toBeGreaterThan(0)
-    expect(v.makeQty).toBeLessThan(100)
-  })
-
-  it("no capacity at all → buy", () => {
-    const queue: ScheduleInput = { order: simpleOrder("A", 800), product: SIMPLE, notes: [] }
-    const v = verdict(SIMPLE, 50, 1, [queue], DEPTS, SETTINGS)
-    expect(v.kind).toBe("buy_capacity")
-  })
-
-  it("with time off the verdict falls back to price alone", () => {
-    const off = { ...SETTINGS, features: { ...SETTINGS.features, time: false } }
-    const v = verdict(SIMPLE, 10, 1, [], DEPTS, off)
-    expect(v.kind).toBe("make")
-    expect(v.possibleDays).toBeNull()
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Estimates
-// ---------------------------------------------------------------------------
-
-describe("estimates", () => {
-  it("lines snapshot the standard cost split", () => {
-    const lines = buildEstimateLines([{ product: PRODUCT, quantity: 2 }], DEPTS, SETTINGS)
-    expect(lines[0].totalCost).toBe(1048.3)
-    expect(lines[0].materialCost).toBe(827.5)
-    expect(estimateCost({ lines })).toBe(1048.3)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Decisions & dates
-// ---------------------------------------------------------------------------
-
-describe("decisions", () => {
-  it("surfaces the day's work sorted by weight", () => {
-    const o = order()
-    o.progress[0].done = 10
-    o.progress[1].done = 8
-    o.progress[1].rejected = 2
-    o.scrap = [
-      { id: "s1", quantity: 1, value: 4200, reason: "كسر", departmentId: "d2", raisedByUserId: "u", raisedByName: "لمى", raisedAt: "", status: "pending" },
-    ]
-    const notes = [{ ...note(2, "in_transit"), id: "n1" }]
-    const decisions = buildDecisions({
-      orders: [{ order: o, product: PRODUCT, notes }],
-      requests: [{ id: "r1", state: "new", ageHours: 30 }],
-      estimates: [{ id: "e1", state: "draft", sentAt: null, quotedAt: null }],
-      schedule: new Map(),
-      departments: DEPTS,
-      settings: SETTINGS,
-      today: "2026-09-12",
-    })
-    const kinds = decisions.map((d) => d.kind)
-    expect(kinds).toContain("answer_request")
-    expect(kinds).toContain("send_estimate")
-    expect(kinds).toContain("qc_decision")
-    expect(kinds).toContain("approve_scrap")
-    expect(kinds).toContain("confirm_note")
-    expect(kinds[0]).toBe("answer_request") // 30h overdue outweighs the rest
-    const weights = decisions.map((d) => d.weight)
-    expect([...weights].sort((a, b) => b - a)).toEqual(weights)
-  })
-
-  it("an order past its needed-by date raises the miss flag", () => {
-    const o = order({ neededBy: "2026-09-10" })
-    o.progress[0].done = 5
-    const decisions = buildDecisions({
-      orders: [{ order: o, product: PRODUCT, notes: [] }],
-      requests: [],
-      estimates: [],
-      schedule: new Map(),
-      departments: DEPTS,
-      settings: SETTINGS,
-      today: "2026-09-12",
-    })
-    expect(decisions.map((d) => d.kind)).toContain("will_miss_date")
-  })
-
-  it("date helpers", () => {
-    expect(daysFrom("2026-09-12", "2026-09-15")).toBe(3)
-    expect(daysFrom("2026-09-12", "2026-09-10")).toBe(-2)
-    expect(addDaysISO("2026-09-12", 5)).toBe("2026-09-17")
+    expect(verdict(SKIRTING, 100, 30, [], DEPTS, S).kind).toBe("make")
   })
 })

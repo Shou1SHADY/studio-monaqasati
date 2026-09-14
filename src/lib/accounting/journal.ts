@@ -53,6 +53,7 @@ export type SourceType =
   | "work_order_delivery"
   | "mfg_material_receipt"
   | "mfg_scrap"
+  | "mfg_remnant_receipt"
   | "payroll"
   | "payroll_payment"
   | "expense"

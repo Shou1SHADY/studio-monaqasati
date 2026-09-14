@@ -49,6 +49,9 @@ export interface SalesOrderPayment {
   depositPercent?: number | null
   depositPaid?: boolean
   depositPaidAt?: string | null
+  /** Sales reports the client's transfer; Finance confirms it (T4). */
+  depositReportedAt?: string | null
+  depositReportedBy?: string | null
 }
 
 export interface SalesOrder {
@@ -204,7 +207,7 @@ export function returnValue(ret: Pick<SalesReturn, "lines" | "orderId">, order: 
 // it is a Sales job, and the screen makes the silence visible.
 // ---------------------------------------------------------------------------
 
-export type MfgRequestStatus = "new" | "accepted" | "partial" | "estimated" | "rejected"
+export type MfgRequestStatus = "new" | "accepted" | "partial" | "estimated" | "rejected" | "moved"
 
 export type MfgRequestSourceKind = "sales" | "project" | "procurement"
 
@@ -215,6 +218,8 @@ export interface MfgRequestLine {
   quantity: number
   /** Filled by the workshop's answer — how much of the line it makes. */
   makeQuantity?: number | null
+  /** The declined remainder that returns to the requester. */
+  returnedQuantity?: number | null
 }
 
 export interface ManufacturingRequest {
@@ -231,6 +236,17 @@ export interface ManufacturingRequest {
   status: MfgRequestStatus
   /** Where the demand came from. Older sales-born docs carry no kind. */
   sourceKind?: MfgRequestSourceKind
+  /** A manufacturing request (make) or a costing request (cost). */
+  kind?: "make" | "cost"
+  /** Procurement's routing: the PR, the PM's material request, the cost item. */
+  purchaseRequestRef?: string | null
+  pmRequestRef?: string | null
+  costItemName?: string | null
+  /** Sales' costing request: the client RFQ it prices. */
+  rfqRef?: string | null
+  estimateNumber?: string | null
+  workOrderDocNumbers?: string[]
+  movedToPurchase?: boolean
   projectId?: string | null
   projectName?: string | null
   neededBy?: string | null
@@ -238,7 +254,7 @@ export interface ManufacturingRequest {
   lines?: MfgRequestLine[]
   note?: string | null
   /** The workshop's routing of the answer. */
-  answerRoute?: "make" | "estimate" | "buy" | null
+  answerRoute?: "make" | "estimate" | "buy" | "decline" | null
   answerNote?: string | null
   estimateId?: string | null
   workOrderIds?: string[]
@@ -526,10 +542,15 @@ export interface LineCoverage {
 export function allocateCoverage(
   orders: Array<{ order: SalesOrder; lines: OrderLineProgress[] }>,
   stockByName: Array<{ name: string; available: number }>,
-  workOrders: Array<{ id: string; outputName: string; remainingQty: number }>
+  /** A work order made for one sales order covers only that order. */
+  workOrders: Array<{ id: string; outputName: string; remainingQty: number; salesOrderId?: string | null }>,
+  /** Stock the workshop already holds for released orders (item key → qty) —
+   * promised once, never twice. */
+  heldByWorkshop?: Map<string, number>
 ): Map<string, LineCoverage> {
   const pool = new Map<string, number>()
   for (const s of stockByName) pool.set(key(s.name), (pool.get(key(s.name)) || 0) + Math.max(0, s.available))
+  if (heldByWorkshop) for (const [k, held] of heldByWorkshop) if (pool.has(k)) pool.set(k, round2(Math.max(0, (pool.get(k) || 0) - held)))
   const woLeft = workOrders.map((w) => ({ ...w, left: Math.max(0, w.remainingQty) }))
 
   const result = new Map<string, LineCoverage>()
@@ -556,6 +577,7 @@ export function allocateCoverage(
         for (const wo of woLeft) {
           if (need <= 0) break
           if (key(wo.outputName) !== k || wo.left <= 0) continue
+          if (wo.salesOrderId && wo.salesOrderId !== order.id) continue
           const take = Math.min(need, wo.left)
           wo.left = round2(wo.left - take)
           need = round2(need - take)
@@ -595,10 +617,13 @@ export function orderGate(
   order: SalesOrder,
   lines: OrderLineProgress[],
   flags: ItemGateFlags[],
-  freeStockByName: Array<{ name: string; available: number }>
+  freeStockByName: Array<{ name: string; available: number }>,
+  /** Lines a product-born work order makes: their survey and drawing are
+   * recorded on that order, so the sales order's own flags don't apply. */
+  madeOnWorkOrders?: Set<string>
 ): OrderGate {
   if (order.status !== "running") return null
-  const flag = (name: string) => flags.find((f) => key(f.name) === key(name))
+  const flag = (name: string) => (madeOnWorkOrders?.has(key(name)) ? undefined : flags.find((f) => key(f.name) === key(name)))
   const freeOf = (name: string) =>
     freeStockByName.filter((s) => key(s.name) === key(name)).reduce((sum, s) => sum + Math.max(0, s.available), 0)
 

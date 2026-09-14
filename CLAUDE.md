@@ -116,6 +116,7 @@ scripts/                # Ops scripts (demo seed, data repair, migrations)
 | `src/lib/org-identity.ts` / `org-identity-admin.ts` / `identity-fields.ts` | Multi-company identity resolution — a secondary company's identity lives on `organizations/{id}`, never merge with naive spread (use `stripIdentityFields`) |
 | `src/hooks/useResolvedProfile.ts` | The active company's resolved profile (waits for the identity overlay — never returns a half-merged profile) |
 | `src/hooks/useWorkQueue.ts` | Cross-module "needs your action" queue + org stats feeding the contractor dashboard |
+| `src/lib/mfg-events.ts` | Manufacturing's boundary events (NT-01): `emitMfgEvent` resolves recipients by role/station/project and writes notifications carrying i18n keys (each reader renders its own language) plus text rendered by the sender for push and the mobile app — use it for any act that crosses into or out of Manufacturing |
 | `src/lib/crm.ts` / `crm-writes.ts` | CRM domain types, tracks/gates/value ladder, deal→project handover writes |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
@@ -130,18 +131,30 @@ for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `warehouses` (+ `inventoryItems`, `transfers`, `wasteRecords`) · `crmContacts` ·
 `crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
 payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
-`manufacturingDepartments` (+ capacity: workers × hoursPerDay, hourlyRate, onSite flag,
-checklist template) · `workOrders` (legacy stage-flow orders AND v2 product-born orders —
-a v2 order carries `productId`, `quantity`, per-department `progress` {done, rejected,
-rework, hours}, gate facts (measurement, drawingApprovalStatus, slabApproval with block),
-`materials` (per-station withdrawals: requested → released → received), `scrapRecords`,
-`checklists`; delivered/ready/WIP are DERIVED by `src/lib/manufacturing-engine.ts`,
-never stored) · `mfgProducts` (بطاقة المنتج — route + BOM + standard time + planned
-waste + blocking flags; the basis of every date, cost and material request) ·
-`mfgCostEstimates` (تقدير التكلفة — the workshop issues cost and lead time, sales set
-the price, the award creates work orders) · `manufacturingSettings` (doc id = orgId —
-feature switches time/estimates/checklists + Finance policies: overhead rate, margin
-floor, scrap approval limit, answer window) · `deliveryNotes` (manufacturing → warehouse
+`manufacturingDepartments` (the station registry: capacity workers × hoursPerDay,
+hourlyRate, `leadUserId` — the station's recorder, `qcStation` — QC & packing, only
+Quality records it, `gate` — an order-level step drawing|slab, checklist template) ·
+`workOrders` (legacy stage-flow orders AND product-born orders — PRD 1.2 "marble line":
+a product-born order carries `productId`, `quantity`, `docNumber` WO-yyyy/nnn,
+`sourceKind` client|project|stock (+ `salesOrderId` or project refs), per-station
+`progress` {done, rejected, rework, hours, back}, `survey` (a document with sketch),
+`drawing` (we submit; Projects or Sales record A/B/C), `slabApproval` (block + signed
+form), `materials` (per-station withdrawals: requested → issued by Inventory → received),
+`rejects` (typed NCRs), `scrapRecords` (pending → approved/returned, re-make decision),
+`qcReleases`, `closures` + `frozenCost` (production close is a decision), `remnants`,
+`purchaseRequests`, `overrides`, `changeRequest` (from the order's owner),
+`cancellation`, `varianceReviews`, `log`; stage, WIP, ready, next step and lateness are
+DERIVED by `src/lib/manufacturing-engine.ts` — never stored) · `mfgProducts` (بطاقة
+المنتج — the product's own route with standard time that starts EMPTY, BOM with waste
+and station-custody flags, blocking flags; no prices) · `mfgCostEstimates` (cost
+statements: cost, lead time, validity — no price; the cost controller sends, Sales
+records quoted/won/lost) · `manufacturingSettings` (doc id = orgId — `features` are the
+workshop manager's; the policies overhead rate, scrap limit, answer window, note
+escalation, validity, remnant % are Finance's, edited in Accounting settings) ·
+`mfgStops` (hours lost today per station — they move dates) · `mfgBlockNotices` (a
+defective stone block; Inventory quarantines, Procurement claims) · `mfgCounters`
+(`{orgId}__{type}__{year}` yearly document sequences) · `fleetVehicles` (HR's drivers and
+vehicles a delivery note picks from) · `deliveryNotes` (manufacturing → warehouse
 handovers, signed by the receiver; v2 adds partial quantities, transit breakage,
 driver/crates) · `salesOrders` (أوامر البيع — the backbone between
 quotation and cash; delivered/invoiced are DERIVED from notes and invoices, never
@@ -164,16 +177,32 @@ needs `crm.close`. Sales reads `crmQuotations`: marking one accepted needs `sale
 (or `crm.close`) — that notifies Finance of the deposit and opens the work order; recording
 a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.manage`; a
 `post_manufacturing` quotation never spawns a work order. A finished work order hands
-over on a `deliveryNotes` doc and its stock lands only when someone with
-`warehouses.receive` (or `warehouses.manage`) confirms; the virtual distribution
-warehouse is received on the spot. Manufacturing splits four ways: `manufacturing.manage` is the workshop manager
-(answers requests, creates/releases orders, approves scrap up to the org's limit,
-edits departments and product cards); `manufacturing.work` is a department hand
-(reports output and hands over, requests/receives materials, ticks checklists);
-`manufacturing.qc` decides rework-or-scrap, records the client's slab sign-off and
-breakage decisions; `manufacturing.cost` sees cost and margin, approves ANY scrap,
-and may risk-release a blocked order with a documented reason. Plain org members
-keep the legacy stage/handover field set on workOrders (stage assignees need it).
+over on a `deliveryNotes` doc and its stock lands only when the destination confirms
+(`warehouses.receive`/`warehouses.manage`, or `projects.edit` for project custody); a
+legacy handover to the virtual distribution warehouse is received on the spot.
+Manufacturing has five roles and nothing else (PRD 1.2, D9 — it requests and reads,
+never acts for another module): `manufacturing.manage` is the workshop manager (answers
+requests, releases, rushes, closes production, issues notes, applies incoming changes,
+creates stock orders, approves scrap up to Finance's limit, edits stations/products);
+`manufacturing.work` is a station lead (records the station's output, requests and
+receives its materials, reports stops — a station with a `leadUserId` belongs to that
+lead only); `manufacturing.qc` is Quality (reject decisions, the quality release at QC &
+packing — nothing closes before it — slab sign-off, block notices); `manufacturing.cost`
+approves any scrap, sends cost statements, reviews variance and the WIP reconciliation;
+`manufacturing.view` is management (read-only in SAR). A client order waits for the
+down payment (read from the sales order; no release before it). Other modules act in
+their own screens and the rules scope their work-order fields: Inventory issues
+withdrawals, receives remnants and warehouse notes (Warehouses → Manufacturing desk,
+Delivery notes); Projects records drawing results, receives notes into custody and
+requests changes (project page); Sales records the client's drawing result, requests
+changes and records cost-statement quote status; Procurement routes project needs to
+make and marks purchase requests arrived; Finance owns the manufacturing policies.
+The down payment: Sales reports it (`payment.depositReportedAt`), Finance confirms it
+from Sales → Payments — `invoices.manage` may move a sales order only from
+`awaiting_deposit` to `running` with the payment flag (Sales approvers still may too).
+Stock the workshop holds for released orders (`workshopHolds` in manufacturing-view)
+is shown on the Inventory desk and subtracted from what Sales coverage offers; a sales
+order reads its product-born work orders' survey and drawing instead of its own flags.
 Accounting splits three ways:
 `accounting.view` reads the books, `accounting.post` writes manual vouchers and
 reverses entries, `accounting.close` locks a period. Auto entries are written by

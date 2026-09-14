@@ -15,6 +15,11 @@ export interface StockRow {
   quantity: number
   unit: string
   unitCost: number | null
+  /** Block / lot — a batch of stone is one colour and vein. */
+  lot?: string | null
+  /** A usable remnant returned by manufacturing. */
+  remnant?: boolean
+  isManufactured?: boolean
 }
 
 export interface OrgStock {
@@ -28,7 +33,9 @@ export const stockKey = (name: string) => name.trim().toLowerCase()
 
 export function useOrgStock(
   warehouses: Array<{ id: string; isOutbound?: boolean }>,
-  enabled: boolean
+  enabled: boolean,
+  /** Bump to read again (e.g. after a withdrawal is issued). */
+  refreshKey: string | number = 0
 ): OrgStock {
   const firestore = useFirestore()
   const [state, setState] = useState<OrgStock>({ loading: enabled, byName: new Map(), byWarehouse: new Map() })
@@ -45,8 +52,17 @@ export function useOrgStock(
       ids.split(",").map(async (id) => {
         const snap = await getDocs(collection(firestore, "warehouses", id, "inventoryItems"))
         const rows: StockRow[] = snap.docs.map((d) => {
-          const v = d.data() as { name?: string; quantity?: number; unit?: string; unitCost?: number | null }
-          return { id: d.id, name: v.name || "", quantity: Number(v.quantity) || 0, unit: v.unit || "", unitCost: v.unitCost ?? null }
+          const v = d.data() as { name?: string; quantity?: number; unit?: string; unitCost?: number | null; lot?: string | null; remnant?: boolean; isManufactured?: boolean }
+          return {
+            id: d.id,
+            name: v.name || "",
+            quantity: Number(v.quantity) || 0,
+            unit: v.unit || "",
+            unitCost: v.unitCost ?? null,
+            lot: v.lot ?? null,
+            remnant: !!v.remnant,
+            isManufactured: !!v.isManufactured,
+          }
         })
         return [id, rows] as const
       })
@@ -71,7 +87,7 @@ export function useOrgStock(
     return () => {
       cancelled = true
     }
-  }, [firestore, ids, enabled])
+  }, [firestore, ids, enabled, refreshKey])
 
   return state
 }

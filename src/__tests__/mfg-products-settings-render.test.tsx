@@ -1,218 +1,199 @@
-import { render, screen, fireEvent, within } from "@testing-library/react"
+/**
+ * Render smoke test for Manufacturing → Products and Settings (PRD 1.2): the
+ * product card list (route with unestimated steps marked, no price), the
+ * product panel and form, the station registry refusing a delete that would
+ * orphan a route, the switches, read-only policies, boundaries and the
+ * permissions matrix — in both locales from the real message files.
+ */
+
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import fs from "fs"
 import path from "path"
-import type { MfgDepartment } from "@/lib/manufacturing"
 import { DEFAULT_MFG_SETTINGS, type MfgProduct } from "@/lib/manufacturing-engine"
-import { MfgProductsView } from "@/components/manufacturing/MfgProductsView"
-import { MfgSettingsView } from "@/components/manufacturing/MfgSettingsView"
-import { departmentDeleteGuard } from "@/components/manufacturing/MfgSetDepartments"
+import type { MfgDepartment } from "@/lib/manufacturing"
 import type { MfgData } from "@/hooks/useMfgData"
+import { MfgProductsView } from "@/components/manufacturing/MfgProductsView"
+import { MfgProductForm } from "@/components/manufacturing/MfgPrdForm"
+import { MfgSettingsView } from "@/components/manufacturing/MfgSettingsView"
+import { stationUsage } from "@/components/manufacturing/MfgPrdBits"
 
-// next-intl ships ESM only — resolve the real message files so the copy under
-// test is the copy that ships, and flag any key that doesn't exist.
 let mockLocale: "ar" | "en" = "en"
-const mockMessageCache: Record<string, Record<string, unknown>> = {}
+const mockCache: Record<string, Record<string, unknown>> = {}
 const mockMessages = (locale: string): Record<string, unknown> =>
-  (mockMessageCache[locale] ||= JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "messages", `${locale}.json`), "utf8")))
+  (mockCache[locale] ||= JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "messages", `${locale}.json`), "utf8")))
 
-jest.mock("lucide-react", () => {
-  const React = jest.requireActual<typeof import("react")>("react")
-  return new Proxy(
-    {},
-    {
-      get: (_target, name) =>
-        name === "__esModule" ? false : (props: Record<string, unknown>) => React.createElement("svg", { "data-icon": String(name), "aria-hidden": props["aria-hidden"] }),
-    }
-  )
-})
+/** Enough ICU for these screens: plain arguments and the `other`/`=n` plural branch. */
+function mockFormat(message: string, vars: Record<string, unknown>): string {
+  return message.replace(/\{(\w+), plural,((?:[^{}]|\{[^{}]*\})*)\}/g, (_m, name: string, body: string) => {
+    const n = Number(vars[name])
+    const exact = new RegExp(`=${n}\\s*\\{([^}]*)\\}`).exec(body)
+    const other = /other\s*\{([^}]*)\}/.exec(body)
+    return (exact?.[1] ?? other?.[1] ?? "").replace(/#/g, String(n))
+  }).replace(/\{(\w+)\}/g, (_m, name: string) => (name in vars ? String(vars[name]) : `MISSING_VAR:${name}`))
+}
 
 jest.mock("next-intl", () => ({
   useLocale: () => mockLocale,
-  useTranslations: (namespace: string) => (key: string, vars?: Record<string, string | number>) => {
-    const table = namespace
-      .split(".")
-      .reduce<Record<string, unknown> | undefined>((node, part) => node?.[part] as Record<string, unknown> | undefined, mockMessages(mockLocale))
-    let text = typeof table?.[key] === "string" ? (table[key] as string) : `MISSING:${namespace}.${key}`
-    for (const [name, value] of Object.entries(vars || {})) text = text.split(`{${name}}`).join(String(value))
-    return text
+  useTranslations: (namespace: string) => {
+    const table = () => namespace.split(".").reduce<Record<string, unknown> | undefined>((node, part) => node?.[part] as Record<string, unknown> | undefined, mockMessages(mockLocale))
+    const t = (key: string, vars?: Record<string, unknown>) => {
+      const raw = table()?.[key]
+      return typeof raw === "string" ? mockFormat(raw, vars || {}) : `MISSING:${namespace}.${key}`
+    }
+    t.has = (key: string) => typeof table()?.[key] === "string"
+    return t
   },
 }))
 
-jest.mock("@/i18n/routing", () => ({ Link: () => null, usePathname: () => "/", useRouter: () => ({ push: jest.fn(), replace: jest.fn() }) }))
-jest.mock("@/firebase", () => ({ useFirestore: () => ({}) }))
+jest.mock("lucide-react", () => {
+  const React = jest.requireActual<typeof import("react")>("react")
+  return new Proxy({}, { get: (_t, name) => (name === "__esModule" ? false : () => React.createElement("svg", { "data-icon": String(name) })) })
+})
 
+jest.mock("@/i18n/routing", () => ({ Link: () => null, usePathname: () => "/contractor/manufacturing/products", useRouter: () => ({ push: jest.fn(), replace: jest.fn() }) }))
+jest.mock("@/firebase", () => ({ useFirestore: () => ({}) }))
 const mockToast = jest.fn()
 jest.mock("@/hooks/use-toast", () => ({ useToast: () => ({ toast: mockToast }) }))
+jest.mock("@/lib/manufacturing-writes", () => ({
+  createMfgProduct: jest.fn(),
+  updateMfgProduct: jest.fn(),
+  updateStation: jest.fn(),
+  saveMfgFeatures: jest.fn(),
+}))
 
-const departments: MfgDepartment[] = [
-  { id: "d-cut", organizationId: "org", name: "Cutting", order: 1, workers: 2, hoursPerDay: 8, hourlyRate: 40 },
-  { id: "d-polish", organizationId: "org", name: "Polishing", order: 2, workers: 1, hoursPerDay: 8, hourlyRate: 35 },
-  { id: "d-pack", organizationId: "org", name: "Packing", order: 3, workers: 1, hoursPerDay: 8, hourlyRate: null, checklist: [{ key: "c1", label: "Crates labelled" }] },
-]
+const departments = [
+  { id: "cut", organizationId: "org", name: "Bridge-saw cutting", order: 1, workers: 2, hoursPerDay: 8, hourlyRate: 70, leadUserId: "u6", leadUserName: "Abu Sami" },
+  { id: "drill", organizationId: "org", name: "Cut-outs & drilling", order: 2, workers: 1, hoursPerDay: 8, hourlyRate: 65 },
+  { id: "pack", organizationId: "org", name: "QC & packing", order: 3, workers: 2, hoursPerDay: 8, hourlyRate: 45, qcStation: true },
+] as MfgDepartment[]
 
-const products: MfgProduct[] = [
-  {
-    id: "p-stairs",
-    organizationId: "org",
-    name: "Marble stairs",
-    unit: "m²",
-    family: "stone",
-    requiresMeasurement: true,
-    requiresDrawingApproval: true,
-    requiresSlabApproval: false,
-    wastePercent: 20,
-    salePrice: null,
-    estimateValue: null,
-    referenceBuyPrice: 900,
-    route: [
-      { departmentId: "d-cut", departmentName: "Cutting", hoursPerUnit: 0.5 },
-      { departmentId: "d-polish", departmentName: "Polishing", hoursPerUnit: 0.25 },
-    ],
-    bom: [{ itemName: "Carrara slab", unit: "m²", qtyPerUnit: 1, departmentId: "d-cut", withWaste: true, unitCost: 300, lotted: true }],
-  },
-]
+const vanity: MfgProduct = {
+  id: "p1",
+  organizationId: "org",
+  name: "Quartz vanity top",
+  unit: "m²",
+  family: "stone",
+  requiresMeasurement: true,
+  requiresDrawingApproval: true,
+  requiresSlabApproval: false,
+  wastePercent: 22,
+  salePrice: 4200,
+  referenceBuyPrice: 980,
+  route: [
+    { departmentId: "cut", departmentName: "Bridge-saw cutting", hoursPerUnit: 0.3 },
+    { departmentId: "drill", departmentName: "Cut-outs & drilling", hoursPerUnit: null },
+  ],
+  bom: [
+    { itemName: "Quartz slab", unit: "m²", qtyPerUnit: 1, departmentId: "cut", withWaste: true, unitCost: 300 },
+    { itemName: "Saw blade", unit: "pc", qtyPerUnit: 0.02, departmentId: "cut", withWaste: false, unitCost: 250, custody: true },
+  ],
+}
 
 const data = {
   orgId: "org",
-  actor: { id: "u1", name: "Manager" },
-  ready: true,
-  canManage: true,
-  canWork: true,
-  canQc: true,
-  canCost: false,
-  seesMoney: true,
+  actor: { id: "u1", name: "Badr" },
   departments,
-  products,
-  productById: new Map(products.map((p) => [p.id, p])),
+  products: [vanity],
+  productById: new Map([[vanity.id, vanity]]),
   orders: [],
-  v2Orders: [],
-  notes: [],
-  notesByOrder: new Map(),
   requests: [],
   estimates: [],
   settings: DEFAULT_MFG_SETTINGS,
-  schedule: new Map(),
-  scheduleInputs: [],
-  warehouses: [],
-  projects: [],
+  stock: { onHand: new Map([["quartz slab", 40]]), lots: [] },
+  stockRows: new Map(),
+  team: [{ id: "u6", name: "Abu Sami", manage: false, work: true, qc: false, cost: false, view: false }],
 } as unknown as MfgData
 
 const mockUi = {
   portal: "contractor",
   base: "/contractor/manufacturing",
   data,
-  perms: { canManage: true, canWork: true, canQc: true, canCost: false, seesMoney: true, canReceive: false, canRequest: true, canCreate: true },
+  perms: { canManage: true, canWork: false, canQc: false, canCost: false, canView: false, seesMoney: true },
   today: "2026-09-14",
+  nowMs: Date.now(),
+  world: { views: [], viewById: new Map(), calcs: [], alloc: null, lost: new Map(), schedule: new Map() },
   views: [],
   viewById: new Map(),
-  kpis: { liveCount: 0, wipUnits: 0, lateCount: 0, readyUnits: 0, readyOrders: 0, bottleneck: null },
-  decisions: [],
+  persona: "manager",
+  personas: ["manager"],
+  seesMoney: true,
+  openGlobal: jest.fn(),
   openOrder: jest.fn(),
-  openAction: jest.fn(),
-  openNewOrder: jest.fn(),
 }
 
-jest.mock("@/components/manufacturing/MfgUiContext", () => ({
-  useMfgUi: () => mockUi,
-  decisionAllowed: () => true,
-}))
+jest.mock("@/components/manufacturing/MfgUiContext", () => ({ useMfgUi: () => mockUi }))
 
 beforeEach(() => {
   mockLocale = "en"
   mockToast.mockClear()
+  mockUi.openGlobal.mockClear()
 })
 
-describe("MfgProductsView", () => {
-  it("renders product cards with route, flags and make-vs-buy", () => {
-    const { container } = render(<MfgProductsView data={data} />)
-    expect(container.textContent).not.toContain("MISSING:")
-    const card = screen.getByRole("button", { name: /Marble stairs/ })
-    expect(within(card).getByText("Cutting")).toBeInTheDocument()
-    expect(within(card).getByText("Polishing")).toBeInTheDocument()
-    expect(within(card).getByText("made to measure")).toBeInTheDocument()
-    // 300 × 1.2 waste + 0.75 h × 32 overhead + 0.5×40 + 0.25×35 labour = 412.75 → make wins against 900.
-    expect(within(card).getByText("make wins")).toBeInTheDocument()
+describe("Products", () => {
+  it("lists cards with the route, unestimated steps marked, and no sale price", () => {
+    const { container } = render(<MfgProductsView />)
+    expect(container.textContent).not.toContain("MISSING")
+    const card = screen.getByRole("button", { name: /Quartz vanity top/ })
+    expect(within(card).getByText("Bridge-saw cutting")).toBeInTheDocument()
+    expect(within(card).getByText("(1 not estimated)")).toBeInTheDocument()
+    expect(card.textContent).not.toContain("4,200")
   })
 
-  it("opens the product drawer with route, BOM and cost", () => {
-    render(<MfgProductsView data={data} />)
-    fireEvent.click(screen.getByRole("button", { name: /Marble stairs/ }))
-    const drawer = screen.getByRole("dialog")
-    expect(drawer.textContent).not.toContain("MISSING:")
-    expect(within(drawer).getByText("Bill of materials per unit")).toBeInTheDocument()
-    expect(within(drawer).getByText("Carrara slab")).toBeInTheDocument()
-    expect(within(drawer).getByText("Cost of one unit")).toBeInTheDocument()
-    expect(within(drawer).getByText("No work order has been made from this card yet")).toBeInTheDocument()
+  it("opens the product panel with route, BOM flags and the edit action", () => {
+    render(<MfgProductsView />)
+    fireEvent.click(screen.getByRole("button", { name: /Quartz vanity top/ }))
+    const panel = screen.getByRole("dialog")
+    expect(panel.textContent).not.toContain("MISSING")
+    expect(within(panel).getByText("not estimated — excluded from scheduling")).toBeInTheDocument()
+    expect(within(panel).getByText("station custody — not requested per order")).toBeInTheDocument()
+    fireEvent.click(within(panel).getByRole("button", { name: /Edit product & route/ }))
+    expect(mockUi.openGlobal).toHaveBeenCalledWith({ kind: "product", productId: "p1" })
   })
 
-  it("walks the new-product form: validation, route, then the BOM step", () => {
-    render(<MfgProductsView data={data} />)
-    fireEvent.click(screen.getByRole("button", { name: /New product/ }))
+  it("validates the product form's first step", () => {
+    render(<MfgProductForm onClose={jest.fn()} />)
     const form = screen.getByRole("dialog")
-    expect(form.textContent).not.toContain("MISSING:")
+    expect(form.textContent).not.toContain("MISSING")
     fireEvent.click(within(form).getByRole("button", { name: /Next/ }))
-    expect(within(form).getByText("Enter the product name")).toBeInTheDocument()
-
-    fireEvent.change(within(form).getByLabelText(/Product name/), { target: { value: "Vanity top" } })
-    fireEvent.click(within(form).getByRole("button", { name: /Next/ }))
-    expect(within(form).getByText("Pick at least one department")).toBeInTheDocument()
-
-    fireEvent.click(within(form).getByRole("checkbox", { name: "Cutting" }))
-    fireEvent.click(within(form).getByRole("button", { name: /Next/ }))
-    expect(within(form).getByText("Bill of materials per unit")).toBeInTheDocument()
-    fireEvent.click(within(form).getByRole("button", { name: /Add item/ }))
-    expect(within(form).getByLabelText("Qty per unit")).toBeInTheDocument()
-    expect(form.textContent).not.toContain("MISSING:")
+    expect(within(form).getAllByText("Enter the product name").length).toBeGreaterThan(0)
   })
 
   it("renders in Arabic without missing keys", () => {
     mockLocale = "ar"
-    const { container } = render(<MfgProductsView data={data} />)
-    expect(container.textContent).not.toContain("MISSING:")
+    const { container } = render(<MfgProductsView />)
+    expect(container.textContent).not.toContain("MISSING")
   })
 })
 
-describe("MfgSettingsView", () => {
-  it("renders the departments table, lines, permissions and finance", () => {
-    const { container } = render(<MfgSettingsView data={data} />)
-    expect(container.textContent).not.toContain("MISSING:")
-    const table = screen.getAllByRole("table")[0]
-    expect(within(table).getByText("Cutting")).toBeInTheDocument()
-    expect(within(table).getByText("Packing")).toBeInTheDocument()
-    expect(screen.getByText("Production lines")).toBeInTheDocument()
-    expect(screen.getByText("Setting the sale price is nobody's permission here")).toBeInTheDocument()
-    expect(screen.getByText("What goes to Finance")).toBeInTheDocument()
+describe("Settings", () => {
+  it("renders the registry, switches, policies, boundaries and the permissions matrix", () => {
+    const { container } = render(<MfgSettingsView />)
+    expect(container.textContent).not.toContain("MISSING")
+    expect(screen.getByText("Station registry and capacity")).toBeInTheDocument()
+    expect(screen.getByText("Time & capacity")).toBeInTheDocument()
+    expect(screen.getByText("Edited in Finance → Accounting settings, not here.")).toBeInTheDocument()
+    expect(screen.getByText("Module boundaries")).toBeInTheDocument()
+    const lastRow = screen.getByText("Set a price, confirm a payment, issue or receive for another module").closest("tr")!
+    expect(within(lastRow).queryByText("Yes")).not.toBeInTheDocument()
   })
 
-  it("refuses to delete a department that sits on a product route", () => {
-    const { deleteDoc } = jest.requireMock<{ deleteDoc: jest.Mock }>("firebase/firestore")
-    render(<MfgSettingsView data={data} />)
-    fireEvent.click(screen.getByRole("button", { name: "Delete Cutting" }))
-    expect(screen.getByText("Cutting cannot be deleted")).toBeInTheDocument()
-    expect(screen.getByText(/take it off those routes first/)).toBeInTheDocument()
+  it("refuses to delete a station that sits on a product route, naming why", () => {
+    render(<MfgSettingsView />)
+    fireEvent.click(screen.getByRole("button", { name: "Delete Bridge-saw cutting" }))
+    expect(screen.getAllByText("Bridge-saw cutting cannot be deleted").length).toBeGreaterThan(0)
+    expect(screen.getByText(/take it off/)).toBeInTheDocument()
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ variant: "destructive" }))
-    expect(deleteDoc).not.toHaveBeenCalled()
-    // No confirmation dialog opens for a refused delete.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
-  it("lets a free department through to the confirmation", () => {
-    render(<MfgSettingsView data={data} />)
-    fireEvent.click(screen.getByRole("button", { name: "Delete Packing" }))
-    expect(screen.getByRole("dialog")).toBeInTheDocument()
-    expect(screen.getByText("No order holds work in it and no product route runs through it")).toBeInTheDocument()
+  it("counts where a station is used", () => {
+    expect(stationUsage("cut", [], [vanity])).toEqual({ ordersInHand: 0, routes: 1 })
+    expect(stationUsage("pack", [], [vanity])).toEqual({ ordersInHand: 0, routes: 0 })
   })
 
   it("renders in Arabic without missing keys", () => {
     mockLocale = "ar"
-    const { container } = render(<MfgSettingsView data={data} />)
-    expect(container.textContent).not.toContain("MISSING:")
-  })
-})
-
-describe("departmentDeleteGuard", () => {
-  it("counts product routes and leaves free departments alone", () => {
-    expect(departmentDeleteGuard("d-cut", { views: [], orders: [], products })).toEqual({ orders: 0, products: 1 })
-    expect(departmentDeleteGuard("d-pack", { views: [], orders: [], products })).toBeNull()
+    const { container } = render(<MfgSettingsView />)
+    expect(container.textContent).not.toContain("MISSING")
   })
 })

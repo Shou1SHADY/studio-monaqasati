@@ -1,45 +1,53 @@
-// Manufacturing requests & cost estimates — the pure half of the Requests
-// screen. A request is screened the moment it arrives (make-or-buy per line,
-// with a one-line reason), ages visibly against the answer window, and is
-// answered by a route whose inputs are validated here so the form can only
-// confirm what the writes will accept.
+// Requests & cost statements — the pure half of the Requests screen (PRD 1.2,
+// REQ-01…REQ-09).
+//
+// Two doors only: Sales (a manufacturing request for a sales order, or a
+// costing request for a non-standard line) and Procurement (a project need it
+// decided to make). Nothing is requested from inside Manufacturing. A request
+// is read before it is answered: every line is screened (make, partial or buy,
+// with its reason), it ages against the answer window, and the answer returns
+// to its owner. A cost statement carries cost, lead time and validity only —
+// the price, the quote and the client's decision are Sales' (D10).
+//
+// No Firestore, no React, no strings: the screens format.
 
-import type { ManufacturingRequest, MfgRequestLine, MfgRequestSourceKind } from "./sales-orders"
+import type { ManufacturingRequest, MfgRequestLine, SalesOrder } from "./sales-orders"
 import {
-  addDaysISO,
   daysFrom,
-  marginPercent,
-  minPriceFor,
+  estimateExpired,
+  itemKey,
+  mainMaterial,
   possibleForDays,
   round2,
+  roundNeed,
   standardCost,
   verdict,
   wasteFactor,
   type DeptCapacityFields,
-  type EstimateState,
+  type LostHours,
   type MfgCostEstimate,
   type MfgProduct,
   type MfgSettings,
-  type ScheduleInput,
+  type OrderCalc,
   type StdCost,
   type Verdict,
 } from "./manufacturing-engine"
 
-/** When a request names no date, it is screened against two weeks. */
+/** A request that names no date is screened against two weeks. */
 export const DEFAULT_NEED_DAYS = 14
 
 // ---------------------------------------------------------------------------
-// Segments
+// Segments — awaiting answer · cost statements · answered · all
 // ---------------------------------------------------------------------------
 
 export type RequestSegment = "new" | "estimates" | "answered" | "all"
+export const REQUEST_SEGMENTS: RequestSegment[] = ["new", "estimates", "answered", "all"]
 
 export function parseRequestSegment(raw: string | null | undefined): RequestSegment | null {
-  if (raw === "new" || raw === "answered" || raw === "all" || raw === "estimates") return raw
-  return null
+  return REQUEST_SEGMENTS.includes(raw as RequestSegment) ? (raw as RequestSegment) : null
 }
 
-/** The estimates segment exists only while the feature is on. */
+/** The cost-statements segment exists only while cost estimating is switched on. */
 export function effectiveSegment(segment: RequestSegment, estimatesOn: boolean): RequestSegment {
   return segment === "estimates" && !estimatesOn ? "new" : segment
 }
@@ -50,239 +58,303 @@ export function inRequestSegment(r: Pick<ManufacturingRequest, "status">, segmen
   return segment === "all"
 }
 
+/** A statement waiting on the cost controller: a draft, or one past its validity. */
+export function estimateNeedsWork(e: Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays">, today: string, settings: MfgSettings): boolean {
+  return e.state === "draft" || estimateExpired(e, today, settings)
+}
+
 export function requestSegmentCounts(
   requests: Array<Pick<ManufacturingRequest, "status">>,
-  estimates: Array<Pick<MfgCostEstimate, "state">>,
-  estimatesOn: boolean
+  estimates: Array<Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays">>,
+  estimatesOn: boolean,
+  today: string,
+  settings: MfgSettings
 ): Record<RequestSegment, number> {
   const open = requests.filter((r) => r.status === "new").length
   return {
     new: open,
-    estimates: estimatesOn ? estimates.filter((e) => e.state !== "lost").length : 0,
+    estimates: estimatesOn ? estimates.filter((e) => estimateNeedsWork(e, today, settings)).length : 0,
     answered: requests.length - open,
+    // "All" shows the statements too, so it counts them.
     all: requests.length + (estimatesOn ? estimates.length : 0),
   }
 }
 
-const ESTIMATE_ORDER: Record<EstimateState, number> = { draft: 0, sent: 1, quoted: 2, won: 3, lost: 4 }
+// ---------------------------------------------------------------------------
+// The request — where it came from
+// ---------------------------------------------------------------------------
 
-/** Work first (draft → sent → quoted), the record last (won, lost). */
-export function sortEstimates<T extends Pick<MfgCostEstimate, "state">>(list: T[]): T[] {
-  return [...list].sort((a, b) => ESTIMATE_ORDER[a.state] - ESTIMATE_ORDER[b.state])
+export type RequestSource = "sales" | "procurement"
+export type RequestKind = "make" | "cost"
+
+/** Two doors. Older project-born requests reached us through Procurement's door. */
+export function requestSource(r: Pick<ManufacturingRequest, "sourceKind" | "orderId">): RequestSource {
+  if (r.sourceKind === "sales") return "sales"
+  if (!r.sourceKind && r.orderId) return "sales"
+  return "procurement"
 }
 
-// ---------------------------------------------------------------------------
-// The request itself
-// ---------------------------------------------------------------------------
+export function requestKind(r: Pick<ManufacturingRequest, "kind">): RequestKind {
+  return r.kind === "cost" ? "cost" : "make"
+}
 
-/** Multi-line v2 requests carry `lines`; older sales-born ones one item. */
+/** Multi-line requests carry `lines`; older single-item ones one item. */
 export function requestLines(r: Pick<ManufacturingRequest, "lines" | "itemName" | "unit" | "quantity">): MfgRequestLine[] {
   if (r.lines?.length) return r.lines
   return [{ productId: null, itemName: r.itemName, unit: r.unit, quantity: r.quantity }]
 }
 
-/** A sales-born request with no product lines — answered by the legacy
- * accept (a stage-flow work order) or reject. */
-export function isLegacyRequest(r: Pick<ManufacturingRequest, "lines">): boolean {
-  return !r.lines?.length
+/** The sales order's down payment as the request reads it: confirmed by
+ * Finance, reported and pending, or no down-payment terms at all. `null` when
+ * it does not apply (Procurement, costing) or the sales order is not readable. */
+export type DownPaymentView = "confirmed" | "pending" | "none"
+
+export function requestDownPayment(
+  r: Pick<ManufacturingRequest, "sourceKind" | "orderId" | "kind">,
+  salesOrder: Pick<SalesOrder, "payment"> | null | undefined
+): DownPaymentView | null {
+  if (requestSource(r) !== "sales" || requestKind(r) === "cost" || !salesOrder) return null
+  if (salesOrder.payment?.kind !== "deposit") return "none"
+  return salesOrder.payment.depositPaid ? "confirmed" : "pending"
 }
 
-export function productForLine(
-  line: Pick<MfgRequestLine, "productId" | "itemName">,
-  products: MfgProduct[],
-  productById: Map<string, MfgProduct>
-): MfgProduct | null {
-  if (line.productId) return productById.get(line.productId) || null
-  const name = (line.itemName || "").trim()
-  return (name && products.find((p) => p.name.trim() === name)) || null
+export type RequestRefKind = "sales_order" | "rfq" | "purchase_request" | "pm_request" | "cost_item"
+
+export interface RequestRef {
+  kind: RequestRefKind
+  ref: string
 }
 
-export function requestSourceKind(r: Pick<ManufacturingRequest, "sourceKind" | "orderId">): MfgRequestSourceKind {
-  return r.sourceKind || (r.orderId ? "sales" : "project")
+export interface RequestSourceInfo {
+  source: RequestSource
+  kind: RequestKind
+  /** The client (Sales) or the project (Procurement). */
+  name: string
+  refs: RequestRef[]
+  downPayment: DownPaymentView | null
 }
 
-/** Project or client — whoever the work is for. */
-export function requestSourceName(r: Pick<ManufacturingRequest, "projectName" | "contactName">): string {
-  return r.projectName || r.contactName || ""
+export function requestSourceInfo(
+  r: Pick<ManufacturingRequest, "sourceKind" | "orderId" | "orderNumber" | "kind" | "contactName" | "projectName" | "rfqRef" | "purchaseRequestRef" | "pmRequestRef" | "costItemName">,
+  salesOrder?: Pick<SalesOrder, "payment" | "contactName"> | null
+): RequestSourceInfo {
+  const source = requestSource(r)
+  const kind = requestKind(r)
+  const refs: RequestRef[] = []
+  if (source === "sales") {
+    if (r.orderNumber != null) refs.push({ kind: "sales_order", ref: `SO-${r.orderNumber}` })
+    if (r.rfqRef) refs.push({ kind: "rfq", ref: r.rfqRef })
+  } else {
+    if (r.purchaseRequestRef) refs.push({ kind: "purchase_request", ref: r.purchaseRequestRef })
+    if (r.pmRequestRef) refs.push({ kind: "pm_request", ref: r.pmRequestRef })
+    if (r.costItemName) refs.push({ kind: "cost_item", ref: r.costItemName })
+  }
+  return {
+    source,
+    kind,
+    name: source === "sales" ? r.contactName || salesOrder?.contactName || "" : r.projectName || "",
+    refs,
+    downPayment: requestDownPayment(r, salesOrder),
+  }
 }
+
+// ---------------------------------------------------------------------------
+// The answer window (REQ-07) and the state
+// ---------------------------------------------------------------------------
 
 export interface AnswerWindow {
   ageHours: number
   overdue: boolean
   /** Whole hours left in the window (0 once overdue). */
   leftHours: number
-  /** Whole hours past the window (0 while inside it). */
-  overdueHours: number
 }
 
 export function answerWindow(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number): AnswerWindow {
   const at = r.requestedAt ? new Date(r.requestedAt).getTime() : NaN
   const ageHours = Number.isFinite(at) ? Math.max(0, (nowMs - at) / 3600000) : 0
   const overdue = r.status === "new" && ageHours >= windowHours
-  return {
-    ageHours,
-    overdue,
-    leftHours: overdue ? 0 : Math.max(0, Math.ceil(windowHours - ageHours)),
-    overdueHours: overdue ? Math.floor(ageHours - windowHours) : 0,
+  return { ageHours, overdue, leftHours: overdue ? 0 : Math.max(0, Math.ceil(windowHours - ageHours)) }
+}
+
+export type RequestState = "awaiting" | "overdue" | "accepted" | "partial" | "costed" | "declined" | "moved"
+
+export function requestState(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number): RequestState {
+  switch (r.status) {
+    case "new":
+      return answerWindow(r, windowHours, nowMs).overdue ? "overdue" : "awaiting"
+    case "accepted":
+      return "accepted"
+    case "partial":
+      return "partial"
+    case "estimated":
+      return "costed"
+    case "moved":
+      return "moved"
+    default:
+      return "declined"
   }
+}
+
+/** Waiting requests first, the oldest leading (the overdue ones); answered ones newest first. */
+export function sortRequests<T extends Pick<ManufacturingRequest, "status" | "requestedAt" | "decidedAt">>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const an = a.status === "new"
+    const bn = b.status === "new"
+    if (an !== bn) return an ? -1 : 1
+    if (an) return (a.requestedAt || "").localeCompare(b.requestedAt || "")
+    return (b.decidedAt || b.requestedAt || "").localeCompare(a.decidedAt || a.requestedAt || "")
+  })
+}
+
+export function workOrderIdsOf(r: Pick<ManufacturingRequest, "workOrderIds" | "workOrderId">): string[] {
+  if (r.workOrderIds?.length) return r.workOrderIds
+  return r.workOrderId ? [r.workOrderId] : []
+}
+
+// ---------------------------------------------------------------------------
+// Screening — every line, before answering (REQ-03)
+// ---------------------------------------------------------------------------
+
+/** A line's product card: by id, else by name (older requests carry only a name). */
+export function matchProduct(
+  line: Pick<MfgRequestLine, "productId" | "itemName">,
+  products: MfgProduct[],
+  productById: Map<string, MfgProduct>
+): MfgProduct | null {
+  if (line.productId) {
+    const hit = productById.get(line.productId)
+    if (hit) return hit
+  }
+  const key = itemKey(line.itemName || "")
+  if (!key) return null
+  const named = products.filter((p) => itemKey(p.name) === key)
+  return named.find((p) => !p.archived) || null
 }
 
 export function neededInDays(r: Pick<ManufacturingRequest, "neededBy">, today: string): number {
   return r.neededBy ? Math.max(0, daysFrom(today, r.neededBy)) : DEFAULT_NEED_DAYS
 }
 
-export function needDateOf(r: Pick<ManufacturingRequest, "neededBy">, today: string): string {
-  return r.neededBy ? r.neededBy.slice(0, 10) : addDaysISO(today, DEFAULT_NEED_DAYS)
+export interface SlabNeed {
+  itemName: string
+  unit: string
+  /** For the asked quantity, planned waste included. */
+  need: number
+  /** Free in stock after reservations; null when the stock is not readable. */
+  available: number | null
 }
 
-// ---------------------------------------------------------------------------
-// Screening — make or buy, line by line, with the reason in one line
-// ---------------------------------------------------------------------------
+/** The main slab a line needs (net + planned waste) against what is free. */
+export function slabNeed(product: MfgProduct, quantity: number, free: Map<string, number> | null): SlabNeed | null {
+  const m = mainMaterial(product)
+  if (!m) return null
+  return {
+    itemName: m.itemName,
+    unit: m.unit,
+    need: roundNeed(m.unit, m.qtyPerUnit * quantity * wasteFactor(product)),
+    available: free ? round2(Math.max(0, free.get(itemKey(m.itemName)) ?? 0)) : null,
+  }
+}
 
 export interface ScreenContext {
   products: MfgProduct[]
   productById: Map<string, MfgProduct>
-  inputs: ScheduleInput[]
+  calcs: OrderCalc[]
   departments: DeptCapacityFields[]
   settings: MfgSettings
+  lost: LostHours
+  /** Free stock by item key after every reservation — null when unknown. */
+  free: Map<string, number> | null
   today: string
-}
-
-export type VerdictReason =
-  | { key: "make_ready"; date: string; spareDays: number }
-  | { key: "make_untimed"; hasBuyPrice: boolean }
-  | { key: "partial"; qty: number; needDate: string }
-  | { key: "buy_labour_gap"; materialUnit: number }
-  | { key: "buy_materials_dearer"; materialUnit: number }
-  | { key: "buy_capacity"; possibleDate: string | null; needDate: string }
-
-export function verdictReason(v: Verdict, today: string, needDays: number): VerdictReason {
-  const needDate = addDaysISO(today, needDays)
-  switch (v.kind) {
-    case "make":
-      return v.possibleDays == null
-        ? { key: "make_untimed", hasBuyPrice: v.buyPrice != null && v.buyPrice > 0 }
-        : { key: "make_ready", date: addDaysISO(today, v.possibleDays), spareDays: Math.max(0, needDays - v.possibleDays) }
-    case "partial":
-      return { key: "partial", qty: v.makeQty, needDate }
-    case "buy_price":
-      return (v.buyPrice || 0) > v.unitMaterialCost
-        ? { key: "buy_labour_gap", materialUnit: v.unitMaterialCost }
-        : { key: "buy_materials_dearer", materialUnit: v.unitMaterialCost }
-    case "buy_capacity":
-      return { key: "buy_capacity", possibleDate: v.possibleDays == null ? null : addDaysISO(today, v.possibleDays), needDate }
-  }
-}
-
-export interface MainMaterial {
-  itemName: string
-  unit: string
-  /** For the asked quantity, planned waste included when it applies. */
-  qty: number
-  wastePercent: number
-}
-
-/** The material that decides the answer — the one bought with waste (the
- * slab), else the first on the bill. */
-export function mainMaterial(product: MfgProduct, quantity: number): MainMaterial | null {
-  const bom = product.bom || []
-  const b = bom.find((x) => x.withWaste) || bom[0]
-  if (!b) return null
-  return {
-    itemName: b.itemName,
-    unit: b.unit,
-    qty: round2(b.qtyPerUnit * quantity * (b.withWaste ? wasteFactor(product) : 1)),
-    wastePercent: b.withWaste ? Math.max(0, Number(product.wastePercent) || 0) : 0,
-  }
 }
 
 export interface ScreenedLine {
   index: number
   line: MfgRequestLine
   product: MfgProduct | null
-  /** Standard cost of the full asked quantity — null without a product card. */
+  /** Standard cost of the asked quantity — null without a product card. */
   std: StdCost | null
   verdict: Verdict | null
-  reason: VerdictReason | null
-  /** ISO date the asked quantity could be finished (time feature on). */
-  possibleDate: string | null
-  material: MainMaterial | null
+  /** Working days until the asked quantity could be ready (time on). */
+  possibleDays: number | null
+  slab: SlabNeed | null
 }
 
-export function screenRequest(
-  r: Pick<ManufacturingRequest, "lines" | "itemName" | "unit" | "quantity" | "neededBy">,
-  ctx: ScreenContext
-): ScreenedLine[] {
+export function screenLine(line: MfgRequestLine, index: number, product: MfgProduct | null, needDays: number, ctx: ScreenContext): ScreenedLine {
+  if (!product || !(line.quantity > 0)) return { index, line, product, std: null, verdict: null, possibleDays: null, slab: null }
+  const v = verdict(product, line.quantity, needDays, ctx.calcs, ctx.departments, ctx.settings, ctx.lost)
+  return {
+    index,
+    line,
+    product,
+    std: standardCost(product, ctx.departments, ctx.settings, line.quantity),
+    verdict: v,
+    possibleDays: v.possibleDays,
+    slab: slabNeed(product, line.quantity, ctx.free),
+  }
+}
+
+export function screenRequest(r: Pick<ManufacturingRequest, "lines" | "itemName" | "unit" | "quantity" | "neededBy">, ctx: ScreenContext): ScreenedLine[] {
   const needDays = neededInDays(r, ctx.today)
-  return requestLines(r).map((line, index) => {
-    const product = productForLine(line, ctx.products, ctx.productById)
-    if (!product || !(line.quantity > 0)) {
-      return { index, line, product, std: null, verdict: null, reason: null, possibleDate: null, material: null }
-    }
-    const v = verdict(product, line.quantity, needDays, ctx.inputs, ctx.departments, ctx.settings)
-    return {
-      index,
-      line,
-      product,
-      std: standardCost(product, ctx.departments, ctx.settings, line.quantity),
-      verdict: v,
-      reason: verdictReason(v, ctx.today, needDays),
-      possibleDate: v.possibleDays == null ? null : addDaysISO(ctx.today, v.possibleDays),
-      material: mainMaterial(product, line.quantity),
-    }
-  })
+  return requestLines(r).map((line, index) => screenLine(line, index, matchProduct(line, ctx.products, ctx.productById), needDays, ctx))
 }
 
 export interface ScreenSummary {
-  /** Standard cost of making every line in full (lines with a card). */
+  /** Standard cost of making every screened line in full. */
   fullCost: number
-  /** Latest possible date across the lines — when ALL of it could be ready. */
-  earliestAll: string | null
-  /** The verdict shared by every screened line, else null (mixed). */
-  common: Verdict["kind"] | null
+  /** False when a BOM line has no unit cost — the total understates. */
+  allPriced: boolean
+  /** When ALL of it could be ready (the slowest line), in working days. */
+  earliestDays: number | null
+  /** Lines with no product card. */
   unscreened: number
 }
 
 export function summarizeScreen(lines: ScreenedLine[]): ScreenSummary {
-  const screened = lines.filter((l) => l.verdict)
-  const dates = screened.map((l) => l.possibleDate).filter((d): d is string => !!d)
-  const kinds = [...new Set(screened.map((l) => l.verdict!.kind))]
+  const screened = lines.filter((l) => l.std)
+  const days = screened.map((l) => l.possibleDays).filter((d): d is number => d != null)
   return {
     fullCost: round2(screened.reduce((a, l) => a + (l.std?.total || 0), 0)),
-    earliestAll: dates.length ? dates.sort()[dates.length - 1] : null,
-    common: kinds.length === 1 ? kinds[0] : null,
+    allPriced: screened.every((l) => l.std?.allPriced !== false),
+    earliestDays: days.length ? Math.max(...days) : null,
     unscreened: lines.length - screened.length,
   }
 }
 
+/** The verdict's reason in one line (a key and its figures). */
+export type VerdictReason =
+  | { key: "make_ready"; days: number; spareDays: number }
+  | { key: "make_untimed" }
+  | { key: "partial"; qty: number; needDays: number }
+  | { key: "buy_labour_gap"; materialUnit: number }
+  | { key: "buy_materials_dearer"; materialUnit: number }
+  | { key: "buy_capacity"; possibleDays: number | null; needDays: number }
+
+export function verdictReason(v: Verdict, needDays: number): VerdictReason {
+  switch (v.kind) {
+    case "make":
+      return v.possibleDays == null ? { key: "make_untimed" } : { key: "make_ready", days: v.possibleDays, spareDays: Math.max(0, needDays - v.possibleDays) }
+    case "partial":
+      return { key: "partial", qty: v.makeQty, needDays }
+    case "buy_price":
+      return (v.buyPrice || 0) > v.unitMaterialCost ? { key: "buy_labour_gap", materialUnit: v.unitMaterialCost } : { key: "buy_materials_dearer", materialUnit: v.unitMaterialCost }
+    case "buy_capacity":
+      return { key: "buy_capacity", possibleDays: v.possibleDays, needDays }
+  }
+}
+
 // ---------------------------------------------------------------------------
-// The answer
+// The answer — make (full or partial), cost it, or decline with a reason
 // ---------------------------------------------------------------------------
 
-export type AnswerRoute = "make" | "estimate" | "buy"
-
-/** Everything the screening says buy → propose procurement; otherwise make. */
-export function defaultAnswerRoute(lines: ScreenedLine[]): AnswerRoute {
-  const screened = lines.filter((l) => l.verdict)
-  if (screened.length && screened.length === lines.length && screened.every((l) => l.verdict!.makeQty === 0)) return "buy"
-  return "make"
+/** The screening's suggestion: make → all of it, partial → what capacity fits,
+ * buy → none. A line with no product card starts at none. */
+export function defaultMakeQty(l: Pick<ScreenedLine, "verdict" | "line">): number {
+  if (!l.verdict) return 0
+  if (l.verdict.kind === "make") return l.line.quantity
+  if (l.verdict.kind === "partial") return Math.min(l.verdict.makeQty, l.line.quantity)
+  return 0
 }
-
-/** The screening's suggestion; a legacy line with no card is taken whole. */
-export function defaultMakeQty(l: ScreenedLine, legacy: boolean): number {
-  if (l.verdict) return l.verdict.makeQty
-  return legacy ? l.line.quantity : 0
-}
-
-export interface MakeDraftLine {
-  asked: number
-  /** Raw input — empty means none of this line. */
-  input: string
-  /** A product card exists (or the legacy stage-flow order can take it). */
-  makeable: boolean
-}
-
-export type MakeLineError = "invalid" | "over" | "no_product"
 
 export function parseQty(input: string): number {
   if (!input.trim()) return 0
@@ -290,141 +362,107 @@ export function parseQty(input: string): number {
   return Number.isFinite(n) ? n : NaN
 }
 
-export function validateMakeAnswer(lines: MakeDraftLine[]): {
-  lineErrors: Array<MakeLineError | null>
-  formError: "nothing_made" | "line_errors" | null
-} {
+export type MakeLineError = "invalid" | "over" | "no_product"
+
+export interface MakeDraftLine {
+  asked: number
+  qty: number
+  hasProduct: boolean
+}
+
+export function validateMakeLines(lines: MakeDraftLine[]): { lineErrors: Array<MakeLineError | null>; formError: "nothing" | "lines" | null } {
   const lineErrors = lines.map((l): MakeLineError | null => {
-    const q = parseQty(l.input)
-    if (Number.isNaN(q) || q < 0) return "invalid"
-    if (q > l.asked) return "over"
-    if (q > 0 && !l.makeable) return "no_product"
+    if (Number.isNaN(l.qty) || l.qty < 0) return "invalid"
+    if (l.qty > l.asked) return "over"
+    if (l.qty > 0 && !l.hasProduct) return "no_product"
     return null
   })
-  if (lineErrors.some(Boolean)) return { lineErrors, formError: "line_errors" }
-  if (!lines.some((l) => parseQty(l.input) > 0)) return { lineErrors, formError: "nothing_made" }
+  if (lineErrors.some(Boolean)) return { lineErrors, formError: "lines" }
+  if (!lines.some((l) => l.qty > 0)) return { lineErrors, formError: "nothing" }
   return { lineErrors, formError: null }
 }
 
-/** Units the workshop does not take — they go back as a purchase need. */
-export function makeRemainder(lines: MakeDraftLine[]): number {
-  return round2(
-    lines.reduce((a, l) => {
-      const q = parseQty(l.input)
-      return a + Math.max(0, l.asked - (Number.isFinite(q) ? Math.min(Math.max(q, 0), l.asked) : 0))
-    }, 0)
-  )
-}
-
-export function makeOrderCount(lines: MakeDraftLine[]): number {
-  return lines.filter((l) => parseQty(l.input) > 0).length
+/** What is not taken, per line — it returns to the owner to decide buying. */
+export function makeRemainders(lines: Array<Pick<MakeDraftLine, "asked" | "qty">>): number[] {
+  return lines.map((l) => round2(Math.max(0, l.asked - (Number.isFinite(l.qty) ? Math.min(Math.max(l.qty, 0), l.asked) : 0))))
 }
 
 // ---------------------------------------------------------------------------
-// New request
+// Cost statements — cost, lead time and validity; no price (REQ-02, REQ-06)
 // ---------------------------------------------------------------------------
 
-export interface NewRequestDraft {
-  sourceKind: "project" | "procurement"
-  projectId: string
-  neededBy: string
-  rows: Array<{ productId: string; quantity: string }>
+export type EstimateStatus = "draft" | "sent" | "expired"
+
+export function estimateStatus(e: Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays">, today: string, settings: MfgSettings): EstimateStatus {
+  if (estimateExpired(e, today, settings)) return "expired"
+  return e.state === "draft" ? "draft" : "sent"
 }
 
-export interface NewRequestErrors {
-  project: boolean
-  neededBy: "required" | "past" | null
-  rows: Array<{ product: boolean; quantity: boolean }>
-  /** No row is complete. */
-  noLines: boolean
+/** What Sales did with it — read, never written here (REQ-08). */
+export type SalesQuoteState = "none" | "no_quote" | "quoted" | "won" | "lost"
+
+export function salesQuoteState(e: Pick<MfgCostEstimate, "state" | "quoteNumber">): SalesQuoteState {
+  if (e.state === "quoted" || e.state === "won" || e.state === "lost") return e.state
+  if (e.state === "sent") return e.quoteNumber ? "quoted" : "no_quote"
+  return "none"
 }
 
-export function validateNewRequest(d: NewRequestDraft, today: string): { ok: boolean; errors: NewRequestErrors } {
-  const rows = d.rows.map((r) => {
-    const touched = !!r.productId || !!r.quantity.trim()
-    const q = parseQty(r.quantity)
-    return { product: touched && !r.productId, quantity: touched && !(q > 0) }
-  })
-  const complete = d.rows.filter((r, i) => r.productId && !rows[i].quantity)
-  const errors: NewRequestErrors = {
-    project: d.sourceKind === "project" && !d.projectId,
-    neededBy: !d.neededBy ? "required" : d.neededBy < today ? "past" : null,
-    rows,
-    noLines: complete.length === 0,
-  }
-  const ok = !errors.project && !errors.neededBy && !errors.noLines && !rows.some((r) => r.product || r.quantity)
-  return { ok, errors }
+/** Days since it was sent; null for a draft. */
+export function estimateSentDays(e: Pick<MfgCostEstimate, "sentAt">, today: string): number | null {
+  return e.sentAt ? Math.max(0, daysFrom(e.sentAt, today)) : null
 }
 
-// ---------------------------------------------------------------------------
-// Cost estimates
-// ---------------------------------------------------------------------------
-
-export function estimateEarliestDays(
-  e: Pick<MfgCostEstimate, "lines">,
-  productById: Map<string, MfgProduct>,
-  inputs: ScheduleInput[],
-  departments: DeptCapacityFields[]
-): number | null {
+/** The earliest the whole statement could be ready: the slowest line joining
+ * the back of every queue. Null when no line can be scheduled. */
+export function earliestDaysFor(lines: Array<{ product: MfgProduct | null | undefined; quantity: number }>, calcs: OrderCalc[], departments: DeptCapacityFields[], lost: LostHours): number | null {
   let worst: number | null = null
-  for (const l of e.lines) {
-    const p = productById.get(l.productId)
-    if (!p || !(l.quantity > 0)) continue
-    const d = possibleForDays(p, l.quantity, inputs, departments)
+  for (const l of lines) {
+    if (!l.product || !(l.quantity > 0)) continue
+    const d = possibleForDays(l.product, l.quantity, calcs, departments, lost)
     worst = worst == null ? d : Math.max(worst, d)
   }
   return worst
 }
 
-export interface QuoteCheck {
-  floor: number
-  margin: number | null
-  below: boolean
-  /** How far under the floor, 0 when at or above it. */
-  gap: number
+export function estimateEarliestDays(e: Pick<MfgCostEstimate, "lines">, productById: Map<string, MfgProduct>, calcs: OrderCalc[], departments: DeptCapacityFields[], lost: LostHours): number | null {
+  return earliestDaysFor(
+    e.lines.map((l) => ({ product: productById.get(l.productId), quantity: l.quantity })),
+    calcs,
+    departments,
+    lost
+  )
 }
 
-export function quoteCheck(price: number, cost: number, settings: MfgSettings): QuoteCheck {
-  const floor = minPriceFor(cost, settings)
-  const p = Number(price) || 0
-  return {
-    floor,
-    margin: p > 0 ? marginPercent(p, cost) : null,
-    below: p > 0 && p < floor,
-    gap: p > 0 ? Math.max(0, Math.round(floor - p)) : 0,
+/** Live standard cost of a statement at today's product cards — what sending
+ * or recalculating writes. Lines whose card is gone keep their stored cost. */
+export function estimateCostToday(e: Pick<MfgCostEstimate, "lines">, productById: Map<string, MfgProduct>, departments: DeptCapacityFields[], settings: MfgSettings): { total: number; materials: number; missing: string[] } {
+  let total = 0
+  let materials = 0
+  const missing: string[] = []
+  for (const l of e.lines) {
+    const p = productById.get(l.productId)
+    if (!p) {
+      missing.push(l.productName)
+      total += l.totalCost
+      materials += l.materialCost
+      continue
+    }
+    const std = standardCost(p, departments, settings, l.quantity)
+    total += std.total
+    materials += std.materials
   }
+  return { total: round2(total), materials: round2(materials), missing }
 }
 
-export function validateValidityDays(input: string): boolean {
-  const n = Number(input)
-  return Number.isInteger(n) && n >= 1 && n <= 365
-}
+const STATUS_RANK: Record<EstimateStatus, number> = { draft: 0, expired: 0, sent: 1 }
+const SALES_RANK: Record<SalesQuoteState, number> = { none: 0, no_quote: 0, quoted: 0, won: 1, lost: 1 }
 
-export interface QuoteDraft {
-  quoteNumber: string
-  price: string
-  issuedBy: string
-  financeApprover: string
-}
-
-export function validateQuote(
-  d: QuoteDraft,
-  cost: number,
-  settings: MfgSettings
-): { quoteNumber: boolean; price: boolean; issuedBy: boolean; financeApprover: boolean; ok: boolean } {
-  const price = parseQty(d.price)
-  const check = quoteCheck(Number.isFinite(price) ? price : 0, cost, settings)
-  const errors = {
-    quoteNumber: !d.quoteNumber.trim(),
-    price: !(price > 0),
-    issuedBy: !d.issuedBy.trim(),
-    financeApprover: check.below && !d.financeApprover.trim(),
-  }
-  return { ...errors, ok: !Object.values(errors).some(Boolean) }
-}
-
-export function validateAward(d: { date: string; confirmedBy: string }, today: string): { date: "required" | "future" | null; confirmedBy: boolean; ok: boolean } {
-  const date = !d.date ? "required" : d.date > today ? "future" : null
-  const confirmedBy = !d.confirmedBy.trim()
-  return { date, confirmedBy, ok: !date && !confirmedBy }
+/** Work first (drafts and expired), then those at Sales, then the closed record. */
+export function sortEstimates<T extends Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays" | "quoteNumber">>(list: T[], today: string, settings: MfgSettings): T[] {
+  return [...list].sort(
+    (a, b) =>
+      STATUS_RANK[estimateStatus(a, today, settings)] - STATUS_RANK[estimateStatus(b, today, settings)] ||
+      SALES_RANK[salesQuoteState(a)] - SALES_RANK[salesQuoteState(b)] ||
+      (b.sentAt || "").localeCompare(a.sentAt || "")
+  )
 }

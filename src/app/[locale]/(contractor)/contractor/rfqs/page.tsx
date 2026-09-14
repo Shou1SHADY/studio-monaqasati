@@ -34,6 +34,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { FileText, Eye, Calendar, Search, Package, Loader2, Send, MapPin, X, File, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
+import { MfgPurchaseRequestsPanel } from "@/components/contractor/MfgPurchaseRequestsPanel"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
@@ -451,6 +452,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
             </Link>
           )}
         </div>
+
+        {/* Manufacturing's material shortfalls and supplier claims — Procurement acts on them here (MAT-05) */}
+        <MfgPurchaseRequestsPanel
+          canStartRfq={can("rfq.manage") || can("rfq.create")}
+          canMarkArrived={can("rfq.manage") || can("warehouses.manage")}
+          canClaim={can("rfq.manage") || can("rfq.create")}
+        />
 
         {/* Status Filter Tabs */}
         <div className="flex items-center gap-2 flex-wrap">
