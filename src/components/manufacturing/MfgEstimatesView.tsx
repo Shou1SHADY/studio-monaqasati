@@ -233,13 +233,13 @@ function EstimateActionDialog({
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-md w-[calc(100vw-2rem)] overflow-x-hidden max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">
+          <DialogTitle className="text-base pe-8">
             {action.kind === "send" ? t("mfg2_est_send") : action.kind === "quote" ? t("mfg2_est_log_quote") : t("mfg2_est_won_title")}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm min-w-0">
           {data.seesMoney && (
             <p className="text-xs text-muted-foreground">
               {t("mfg2_est_make_cost")}: <b className="tabular-nums">{fmtMoney(cost)} ﷼</b> · {t("mfg2_est_floor", { percent: data.settings.minMarginPercent })}:{" "}
@@ -262,7 +262,7 @@ function EstimateActionDialog({
           )}
           {action.kind === "quote" && (
             <>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs font-bold">{t("mfg2_est_quote_number")}</Label>
                   <Input value={quoteNumber} onChange={(ev) => setQuoteNumber(ev.target.value)} placeholder="Q-XXXXXX" />
@@ -353,12 +353,12 @@ function NewEstimateDialog({ data, onClose }: { data: MfgData; onClose: () => vo
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] overflow-x-hidden max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">{t("mfg2_new_estimate")}</DialogTitle>
+          <DialogTitle className="text-base pe-8">{t("mfg2_new_estimate")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-3 text-sm min-w-0">
+          <div className="grid sm:grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-xs font-bold">{t("mfg2_field_client")}</Label>
               <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />

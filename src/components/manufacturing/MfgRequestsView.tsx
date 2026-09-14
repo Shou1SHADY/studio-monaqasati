@@ -316,12 +316,12 @@ function AnswerDialog({ data, request: r, onClose }: { data: MfgData; request: M
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto overflow-x-hidden" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">{t("mfg2_req_answer_title", { number: r.requestNumber })}</DialogTitle>
+          <DialogTitle className="text-base pe-8">{t("mfg2_req_answer_title", { number: r.requestNumber })}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-3 text-sm min-w-0">
+          <div className="grid sm:grid-cols-3 gap-2">
             {(
               [
                 { key: "make", icon: Factory, label: t("mfg2_route_make"), hint: t("mfg2_route_make_hint") },
@@ -442,12 +442,12 @@ function NewRequestDialog({ data, onClose }: { data: MfgData; onClose: () => voi
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] overflow-x-hidden max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">{t("mfg2_new_request")}</DialogTitle>
+          <DialogTitle className="text-base pe-8">{t("mfg2_new_request")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-3 text-sm min-w-0">
+          <div className="grid sm:grid-cols-2 gap-2">
             <div className="space-y-1">
               <Label className="text-xs font-bold">{t("mfg2_field_project")}</Label>
               <Select value={projectId} onValueChange={setProjectId}>

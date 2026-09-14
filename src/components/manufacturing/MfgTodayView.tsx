@@ -17,6 +17,7 @@ import type { CrmPortal } from "@/components/crm/CrmShell"
 import {
   buildDecisions,
   bottleneck,
+  daysFrom,
   isDoneV2,
   readyQty,
   stationLoadHours,
@@ -70,9 +71,10 @@ export function MfgTodayView({ data, portal }: { data: MfgData; portal: CrmPorta
   const live = orderInputs.filter(({ order, product, notes }) => order.releasedAt != null && !isDoneV2(order, product.route, notes))
   const wipUnits = live.reduce((a, x) => a + wipQty(x.order, x.product.route), 0)
   const missing = live.filter(({ order }) => {
+    if (!order.neededBy) return false
+    if (order.neededBy < todayIso) return true
     const sched = data.schedule.get(order.id)
-    const overdue = order.neededBy != null && order.neededBy < todayIso
-    return overdue || (sched != null && order.neededBy != null && new Date(order.neededBy).getTime() < Date.now() + sched.finishDays * 86400000 - 86400000)
+    return sched != null && daysFrom(todayIso, order.neededBy) < sched.finishDays
   })
   const readyUnits = orderInputs.reduce((a, x) => a + readyQty(x.order, x.product.route, x.notes), 0)
   const bn = data.settings.features.time ? bottleneck(orderInputs, data.departments) : null
