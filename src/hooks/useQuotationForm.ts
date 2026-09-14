@@ -29,6 +29,7 @@ import {
   statusStamp,
   type SalesPriceItem,
 } from "@/lib/sales"
+import { discountCapPercent, quotationPriceIssues } from "@/lib/sales-transfers"
 
 export type QuotationItemRow = { name: string; quantity: string; unit: string; unitPrice: string }
 export type QuotationStockOption = { name: string; unit: string; available: number }
@@ -42,6 +43,8 @@ export interface QuotationDefaults {
   items?: QuotationItem[]
   workOrderId?: string | null
   workOrderNumber?: number | null
+  /** Sales mode: preselect this customer (a CRM quote request's client). */
+  contactId?: string | null
 }
 
 const emptyRow = (): QuotationItemRow => ({ name: "", quantity: "", unit: "", unitPrice: "" })
@@ -110,7 +113,7 @@ export function useQuotationForm({
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
-  const { can } = usePermissions()
+  const { can, isOrgOwner } = usePermissions()
   // Marking a quotation accepted is the customer's approval — it posts the
   // deposit to Finance and opens the work order — so it is its own permission
   // (crm.close carries the same authority when a deal is awarded from CRM).
@@ -144,9 +147,9 @@ export function useQuotationForm({
 
   useEffect(() => {
     if (!open) return
-    setSelectedContactId(contactId || "")
-    setLinkedOrderId("")
     const seeds = quotation ? null : defaultsRef.current
+    setSelectedContactId(contactId || seeds?.contactId || "")
+    setLinkedOrderId("")
     setAmount(quotation?.amount != null ? String(quotation.amount) : "")
     setStatus(quotation?.status ?? "draft")
     setPhase(quotation ? quotationPhase(quotation) : seeds?.phase ?? "pre_manufacturing")
@@ -300,6 +303,28 @@ export function useQuotationForm({
     if (status === "accepted" && acceptLocked) {
       toast({ title: t("crm_quote_accept_locked"), variant: "destructive" })
       return null
+    }
+    // Price policy (drafts pass — the block guards what leaves the house):
+    // below standard cost is blocked for everyone, and a discount off the list
+    // price beyond the role's cap (approver 8%, others 3%, owner uncapped)
+    // needs someone with a higher cap. The below-cost message deliberately
+    // never states the cost — not every seller may see it.
+    if (status !== "draft" && hasItems) {
+      const cap = discountCapPercent({ isOwner: isOrgOwner, canApprove })
+      const issues = quotationPriceIssues(parsedItems, priceItems, cap)
+      const belowCost = issues.find((i) => i.kind === "below_cost")
+      if (belowCost) {
+        toast({ title: t("sales_below_cost_blocked", { name: belowCost.name }), variant: "destructive" })
+        return null
+      }
+      const overCap = issues.find((i) => i.kind === "over_cap")
+      if (overCap) {
+        toast({
+          title: t("sales_discount_cap_blocked", { name: overCap.name, discount: overCap.discountPercent ?? 0, cap: cap ?? 0 }),
+          variant: "destructive",
+        })
+        return null
+      }
     }
 
     setIsSaving(true)

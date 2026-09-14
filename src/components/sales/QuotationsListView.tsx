@@ -24,7 +24,9 @@ import {
 } from "@/lib/crm"
 import { isFullyPaid, paidSoFar, quotationMatchesSearch } from "@/lib/sales"
 import type { CrmPortal } from "@/components/crm/CrmShell"
+import { useUser } from "@/firebase"
 import { SalesShell, salesBasePath } from "./SalesShell"
+import { QuoteRequestsInbox } from "./QuoteRequestsInbox"
 import { SalesMfgCostingPanel } from "./SalesMfgCostingPanel"
 
 type StatusFilter = QuotationStatus | "all"
@@ -39,7 +41,9 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
-  const { quotations, contacts, isLoading } = useCrmData({ quotations: true })
+  const { user } = useUser()
+  const { orgId, quotations, contacts, teamMembers, isLoading } = useCrmData({ quotations: true })
+  const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
 
   const [status, setStatus] = useState<StatusFilter>("all")
   const [phase, setPhase] = useState<PhaseFilter>("all")
@@ -98,6 +102,8 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
           {t("sales_no_permission")}
         </p>
       )}
+
+      {orgId && <QuoteRequestsInbox portal={portal} orgId={orgId} actorName={actorName} />}
 
       {/* Cost statements from Manufacturing for non-standard lines (REQ-02) —
           renders nothing for an org that has no workshop. */}

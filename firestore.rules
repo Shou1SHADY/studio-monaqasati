@@ -968,11 +968,44 @@ service cloud.firestore {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
+      // Finance's one legitimate touch: confirming the advance (directly or by
+      // answering a transfer notice) releases a deposit-gated order — the
+      // scoped helper above lets exactly that write through and nothing else.
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve')
             || confirmsSalesOrderDeposit());
       // Orders are records other documents point at — only an admin removes one.
+      allow delete: if isAdmin();
+    }
+
+    // Transfer notices (إشعار الحوالة) — the seller reports, Finance verifies.
+    // The seller never invoices, collects, or edits a payment state: a notice
+    // is the only thing Sales may create, and only Finance's permissions may
+    // move it past "reported" (confirmed / not found).
+    match /salesTransferNotices/{noticeId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'))
+        && request.resource.data.get('status', '') == 'reported';
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post')
+            || hasOrgPermission('sales.approve'));
+      allow delete: if isAdmin();
+    }
+
+    // Quote requests (طلب تقديم العرض) — one door: CRM asks, Sales answers.
+    // Sales never creates a request for itself; pricing or declining one
+    // (with a factual reason) is the Sales side's only write.
+    match /salesQuoteRequests/{requestId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hasOrgPermission('crm.manage') || hasOrgPermission('crm.close'))
+        && request.resource.data.get('status', '') == 'new';
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
       allow delete: if isAdmin();
     }
 
