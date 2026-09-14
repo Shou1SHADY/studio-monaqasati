@@ -71,7 +71,7 @@ export function ReportTransferDialog({
   useEffect(() => {
     if (!target) return
     setAmount(installment ? String(installment.remaining) : "")
-    setTransferDate(new Date().toISOString().slice(0, 10))
+    setTransferDate(new Date().toLocaleDateString("en-CA"))
     setBankRef("")
     setNote("")
     // `installment` derives from `target`; re-running on it would loop.
@@ -83,7 +83,7 @@ export function ReportTransferDialog({
 
   const submit = async () => {
     if (!firestore || !user || !target || !installment || isSaving) return
-    const today = new Date().toISOString().slice(0, 10)
+    const today = new Date().toLocaleDateString("en-CA")
     const error = validateTransferReport({ amount: parsed, transferDate, today })
     if (error) {
       toast({ title: t(error === "bad_amount" ? "sales_tn_error_amount" : "sales_tn_error_future"), variant: "destructive" })
@@ -152,7 +152,7 @@ export function ReportTransferDialog({
           <div className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="tn-date">{t("sales_tn_date")}</Label>
-              <Input id="tn-date" type="date" dir="ltr" value={transferDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setTransferDate(e.target.value)} disabled={isSaving} />
+              <Input id="tn-date" type="date" dir="ltr" value={transferDate} max={new Date().toLocaleDateString("en-CA")} onChange={(e) => setTransferDate(e.target.value)} disabled={isSaving} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tn-bank">{t("sales_tn_bank_ref")}</Label>

@@ -35,6 +35,9 @@ export const SALES_TRANSFER_NOTICES = "salesTransferNotices"
 export const SALES_QUOTE_REQUESTS = "salesQuoteRequests"
 
 const nowIso = () => new Date().toISOString()
+/** The user's calendar day, not UTC's — a transfer made "today" at 1 AM
+ * Riyadh time must not be refused as a future date. */
+const todayLocalIso = () => new Date().toLocaleDateString("en-CA")
 const CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 function randomSuffix(): string {
   let s = ""
@@ -324,7 +327,7 @@ export async function reportTransfer(
   const error = validateTransferReport({
     amount: input.amountStated,
     transferDate: input.transferDate,
-    today: nowIso().slice(0, 10),
+    today: todayLocalIso(),
   })
   if (error) throw new Error(error)
 
