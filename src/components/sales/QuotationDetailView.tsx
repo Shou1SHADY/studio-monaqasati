@@ -47,8 +47,12 @@ import {
 } from "@/lib/sales"
 import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
 import { CrmEmptyState, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
+import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
+import { sheetDataFromQuotation } from "@/lib/quotation-document"
 import { SalesShell, SalesSection, salesBasePath } from "./SalesShell"
 import { RecordPaymentDialog } from "./RecordPaymentDialog"
+import { QuotationPdfSheet } from "./QuotationPdfSheet"
+import { QuotationPrintButton } from "./QuotationPrintButton"
 
 /** One quotation, fully: lines, payment schedule, the customer, the linked
  * work order, its story so far — and every action it allows right now. */
@@ -68,7 +72,10 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const base = salesBasePath(portal)
   const crmBase = crmBasePath(portal)
 
-  const { orgId, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
+  const { orgId, contacts, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
+  // The PDF prints under the quotation's own letterhead snapshot; older
+  // quotations (made before documents existed) use the company's current one.
+  const { branding: fallbackBranding } = useQuotationBrandingDefaults()
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
   // The org-scoped list is the source: a quotation from another company is
   // simply "not found", the same way the CRM contact page treats it.
@@ -101,6 +108,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
               installments: q.installments ?? null,
               phase: quotationPhase(q),
               workOrderId: q.workOrderId ?? null,
+              vatPercent: q.vatPercent ?? null,
             },
             notification: {
               title: t("sales_notif_approved_title"),
@@ -165,6 +173,9 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const actions = QUOTATION_STATUS_ACTIONS[q.status]
   const itemsTotal = (q.items || []).reduce((s, i) => s + i.quantity * i.unitPrice, 0)
   const label = (l: string) => l || t("crm_quote_installment_full")
+  const contact = contacts.find((c) => c.id === q.contactId) ?? null
+  const sheetData = sheetDataFromQuotation(q, { fallbackBranding, contact })
+  const documentTitle = [t("sales_qb_sheet_title"), q.quotationNumber, q.contactName].filter(Boolean).join(" - ")
 
   const actionButton = (to: QuotationStatus) => {
     if (to === "accepted") {
@@ -249,6 +260,11 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
               {t("sales_edit_btn")}
             </Button>
           )}
+          <QuotationPrintButton
+            size="sm"
+            sheet={<QuotationPdfSheet data={sheetData} />}
+            documentTitle={documentTitle}
+          />
           {actions.map(actionButton)}
           {canRecordPayment && isAwaitingPayment(q) && (
             <Button size="sm" className="gap-1.5" onClick={() => setPayInstallment("")}>

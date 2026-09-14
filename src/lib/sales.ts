@@ -546,6 +546,9 @@ export interface AcceptanceInput {
     phase: "pre_manufacturing" | "post_manufacturing"
     /** A linked order (spawned earlier, or the finished one being sold) means no new one. */
     workOrderId: string | null
+    /** The VAT rate the quotation document was issued with. Absent = the
+     * sales order's standard rate, as before documents existed. */
+    vatPercent?: number | null
   }
   /** Localised by the caller. `message` receives the first installment so it can name the deposit. */
   notification: { title: string; message: (deposit: InstallmentState | null) => string }
@@ -615,6 +618,7 @@ export async function runQuotationAcceptance(
         amount: input.quotation.amount,
       },
       priceItems: priceSnap.docs.map((d) => d.data() as { name: string; cost?: number | null }),
+      vatPercent: input.quotation.vatPercent ?? undefined,
       actor: { id: input.user.id, name: input.user.name },
     })
   } catch (err) {

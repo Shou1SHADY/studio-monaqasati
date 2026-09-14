@@ -177,9 +177,9 @@ export function MfgOrderV2Dialog(props: MfgOrderV2DialogProps) {
   return (
     <>
       <Dialog open onOpenChange={(v) => !v && onClose()}>
-        <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
+        <DialogContent className="max-w-3xl w-[calc(100vw-2rem)] max-h-[92vh] overflow-y-auto overflow-x-hidden" dir={locale === "ar" ? "rtl" : "ltr"}>
           <DialogHeader>
-            <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
+            <DialogTitle className="flex flex-wrap items-center gap-2 text-base pe-8">
               <span>#{order.orderNumber}</span>
               <span className="truncate">{product.name}</span>
               <Badge variant="outline" className="font-bold tabular-nums">
@@ -201,12 +201,12 @@ export function MfgOrderV2Dialog(props: MfgOrderV2DialogProps) {
               )}
             </DialogTitle>
             <p className="text-xs text-muted-foreground">
-              {order.projectName || order.source?.contactName || t("mfg2_source_stock")}
+              {order.projectName || order.source?.contactName || order.source?.quotationNumber || t("mfg2_source_stock")}
               {order.riskReason ? ` · ${t("mfg2_risk_released")}: ${order.riskReason}` : ""}
             </p>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {/* Gate banners */}
             {order.releasedAt == null &&
               relBlocks.map((b) =>
@@ -330,10 +330,10 @@ export function MfgOrderV2Dialog(props: MfgOrderV2DialogProps) {
               <section className="rounded-xl border overflow-hidden">
                 <header className="px-4 py-2.5 border-b bg-muted/30 text-xs font-black">{t("mfg2_scrap_title")}</header>
                 {slice.scrap.map((s) => (
-                  <div key={s.id} className="flex items-center gap-2 px-4 py-2.5 border-b last:border-b-0 text-xs">
+                  <div key={s.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b last:border-b-0 text-xs">
                     <span className="font-bold tabular-nums">{fmtQty(s.quantity)} {product.unit}</span>
                     <span className="text-muted-foreground truncate">{s.reason} · {s.raisedByName}</span>
-                    <span className="ms-auto flex items-center gap-2">
+                    <span className="ms-auto flex flex-wrap items-center justify-end gap-2">
                       {props.seesMoney && <b className="tabular-nums">{fmtMoney(s.value)} ﷼</b>}
                       {s.status === "approved" ? (
                         <Badge className="bg-success/10 text-success border-none">{t("mfg2_scrap_approved")}</Badge>
@@ -376,12 +376,12 @@ export function MfgOrderV2Dialog(props: MfgOrderV2DialogProps) {
               </header>
               {notes.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{t("mfg2_no_notes")}</p>}
               {notes.map((n) => (
-                <div key={n.id} className="flex items-center gap-2 px-4 py-2.5 border-b last:border-b-0 text-xs">
+                <div key={n.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-b last:border-b-0 text-xs">
                   <Truck size={13} className="text-muted-foreground shrink-0" />
                   <span className="font-bold">{n.noteNumber}</span>
                   <span className="tabular-nums">{fmtQty(n.item.quantity)} {n.item.unit}</span>
                   <span className="text-muted-foreground truncate">→ {n.toWarehouseName}{n.driverName ? ` · ${n.driverName}` : ""}</span>
-                  <span className="ms-auto flex items-center gap-2">
+                  <span className="ms-auto flex flex-wrap items-center justify-end gap-2">
                     {(n.brokenQuantity || 0) > 0 && (
                       <Badge className="bg-destructive/10 text-destructive border-none tabular-nums">
                         {t("mfg2_note_broken", { count: fmtQty(n.brokenQuantity || 0) })}
@@ -600,10 +600,10 @@ function MaterialsSection(
         }
         return (
           <div key={deptId} className="border-b last:border-b-0">
-            <div className="flex items-center gap-2 px-4 py-2 bg-muted/10 text-xs">
+            <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-muted/10 text-xs">
               <b>{route[i]?.departmentName || deptId}</b>
               {state !== "none" && <Badge className={cn("border-none", stateBadge[state].cls)}>{stateBadge[state].label}</Badge>}
-              <span className="ms-auto flex gap-1.5">
+              <span className="ms-auto flex flex-wrap justify-end gap-1.5">
                 {(state === "missing" || state === "partial") && props.canWork && order!.releasedAt != null && (
                   <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] gap-1" onClick={() => setForm({ kind: "materials", departmentId: deptId })}>
                     <Boxes size={10} /> {t("mfg2_request_materials")}
@@ -634,7 +634,7 @@ function MaterialsSection(
             {need.map((n) => {
               const got = materialReceived(slice, deptId, n.itemName)
               return (
-                <div key={n.itemName} className="flex items-center gap-2 px-4 py-2 text-xs border-t border-dashed">
+                <div key={n.itemName} className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs border-t border-dashed">
                   <span className="font-semibold">{n.itemName}</span>
                   {n.withWaste && (
                     <span className="text-[10px] text-muted-foreground">
@@ -642,7 +642,10 @@ function MaterialsSection(
                     </span>
                   )}
                   <span className="ms-auto tabular-nums text-muted-foreground">
-                    <b className={cn(got >= n.qty ? "text-success" : "text-foreground")}>{fmtQty(got)}</b> / {fmtQty(n.qty)} {n.unit}
+                    <span dir="ltr" className="inline-block">
+                      <b className={cn(got >= n.qty ? "text-success" : "text-foreground")}>{fmtQty(got)}</b> / {fmtQty(n.qty)}
+                    </span>{" "}
+                    {n.unit}
                   </span>
                 </div>
               )
@@ -987,11 +990,11 @@ function ActionFormDialog(
 
   return (
     <Dialog open onOpenChange={(v) => !v && onDismiss()}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto overflow-x-hidden" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">{title[form.kind]}</DialogTitle>
+          <DialogTitle className="text-base pe-8">{title[form.kind]}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
+        <div className="space-y-3 text-sm min-w-0">
           {form.kind === "output" && (
             <>
               <p className="text-xs text-muted-foreground">

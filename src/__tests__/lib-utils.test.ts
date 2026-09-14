@@ -51,3 +51,27 @@ describe('cn() — className merger', () => {
     expect(result).toContain('font-body')
   })
 })
+
+import { sanitizeDecimalInput } from '../lib/utils'
+
+describe('sanitizeDecimalInput() — quantity boxes', () => {
+  it('keeps plain decimals', () => {
+    expect(sanitizeDecimalInput('12.5')).toBe('12.5')
+  })
+
+  it('drops a unit typed into the quantity box', () => {
+    expect(sanitizeDecimalInput('m2')).toBe('2')
+    expect(sanitizeDecimalInput('80 م²')).toBe('80')
+    expect(sanitizeDecimalInput('kg')).toBe('')
+  })
+
+  it('converts Eastern Arabic and Persian digits and the Arabic decimal separator', () => {
+    expect(sanitizeDecimalInput('١٢٫٥')).toBe('12.5')
+    expect(sanitizeDecimalInput('۳۴')).toBe('34')
+  })
+
+  it('keeps only the first decimal point', () => {
+    expect(sanitizeDecimalInput('1.2.3')).toBe('1.23')
+    expect(sanitizeDecimalInput('1,5')).toBe('1.5')
+  })
+})

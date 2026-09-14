@@ -21,7 +21,7 @@ import {
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
-import { cn } from "@/lib/utils"
+import { cn, sanitizeDecimalInput } from "@/lib/utils"
 import {
   MFG_DEPARTMENTS,
   WORK_ORDERS,
@@ -266,8 +266,25 @@ export function ManufacturingView({
       return
     }
     // Manufacturing consumes only from inventory — every order draws real stock.
-    const inputs: WorkOrderInputItem[] = inputRows
-      .filter((r) => r.inventoryItemId && Number(r.quantity) > 0)
+    // Each way the section can be incomplete gets its own message: one generic
+    // "pick a warehouse and a material" toast used to fire even when both were
+    // picked and only the quantity was unreadable, which read as a broken form.
+    if (!sourceWarehouseId) {
+      toast({ title: t("mfg_pick_warehouse_required"), variant: "destructive" })
+      return
+    }
+    const pickedRows = inputRows.filter((r) => r.inventoryItemId)
+    if (pickedRows.length === 0) {
+      toast({ title: t("mfg_pick_material_required"), variant: "destructive" })
+      return
+    }
+    const missingQty = pickedRows.find((r) => !(Number(r.quantity) > 0))
+    if (missingQty) {
+      const name = sourceItems.find((i) => i.id === missingQty.inventoryItemId)?.name || ""
+      toast({ title: t("mfg_input_qty_required", { item: name }), variant: "destructive" })
+      return
+    }
+    const inputs: WorkOrderInputItem[] = pickedRows
       .map((r) => {
         const src = sourceItems.find((i) => i.id === r.inventoryItemId)!
         return {
@@ -278,10 +295,6 @@ export function ManufacturingView({
           unitCost: src?.unitCost ?? null,
         }
       })
-    if (!sourceWarehouseId || inputs.length === 0) {
-      toast({ title: t("mfg_inputs_required"), variant: "destructive" })
-      return
-    }
     const overdrawn = overdrawnInputs(inputs, sourceItems)
     if (overdrawn.length > 0) {
       toast({ title: t("mfg_inputs_over_stock", { item: overdrawn[0].name }), variant: "destructive" })
@@ -831,12 +844,22 @@ export function ManufacturingView({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal"
-                      value={row.quantity}
-                      onChange={(e) => setInputRows((p) => p.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))}
-                      className={cn("w-24 h-9", over && "border-destructive ring-1 ring-destructive")}
-                    />
+                    {/* The unit sits inside the box as a suffix: with no unit field on this
+                        row, people typed «م²» into the quantity and lost the whole line. */}
+                    <div className="relative w-32 shrink-0">
+                      <Input
+                        placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal"
+                        aria-label={src ? t("mfg_input_qty_aria", { item: src.name }) : t("mfg_item_qty")}
+                        value={row.quantity}
+                        onChange={(e) => setInputRows((p) => p.map((x, j) => (j === i ? { ...x, quantity: sanitizeDecimalInput(e.target.value) } : x)))}
+                        className={cn("h-9 pe-12", over && "border-destructive ring-1 ring-destructive")}
+                      />
+                      {src?.unit && (
+                        <span className="pointer-events-none absolute inset-y-0 end-3 flex items-center text-[11px] text-muted-foreground" aria-hidden="true">
+                          {src.unit}
+                        </span>
+                      )}
+                    </div>
                     <button type="button" onClick={() => setInputRows((p) => p.filter((_, j) => j !== i))} disabled={inputRows.length === 1} aria-label={t("mfg_remove_item")} className="h-8 w-8 shrink-0 grid place-items-center rounded-lg text-muted-foreground hover:text-destructive disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       <Trash2 size={14} />
                     </button>
@@ -855,7 +878,7 @@ export function ManufacturingView({
               <Label className="flex items-center gap-1.5"><PackageCheck size={14} className="text-success" />{t("mfg_output_title")} *</Label>
               <div className="flex items-center gap-2">
                 <Input placeholder={t("mfg_output_name")} value={outName} onChange={(e) => setOutName(e.target.value)} className="flex-1 h-9" />
-                <Input placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal" value={outQty} onChange={(e) => setOutQty(e.target.value)} className="w-24 h-9" />
+                <Input placeholder={t("mfg_item_qty")} dir="ltr" inputMode="decimal" value={outQty} onChange={(e) => setOutQty(sanitizeDecimalInput(e.target.value))} className="w-24 h-9" />
                 <Input placeholder={t("mfg_item_unit")} value={outUnit} onChange={(e) => setOutUnit(e.target.value)} className="w-24 h-9" />
               </div>
             </div>

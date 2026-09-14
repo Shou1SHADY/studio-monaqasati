@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCentralWarehouse, createCentralWarehouse, type OrgWarehouse } from "@/hooks/useCentralWarehouse"
 import { useWarehouseDashboardStats } from "@/hooks/useWarehouseDashboardStats"
+import { InventoryValuationCard } from "@/components/inventory/InventoryValuationCard"
 import { SAUDI_CITIES } from "@/lib/constants"
 import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft, AlertTriangle, ArrowLeftRight } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -267,7 +268,15 @@ export default function ContractorWarehousesPage() {
 
   const { centrals, projectWarehouses, isLoading } = useCentralWarehouse(myOrgId)
   const list = projectWarehouses as WarehouseDoc[]
-  const { totalWarehouses, lowStockCount, recentTransferCount, isLoading: statsLoading } = useWarehouseDashboardStats(myOrgId)
+  const {
+    totalWarehouses,
+    lowStockCount,
+    recentTransferCount,
+    valuation,
+    valuationPartial,
+    valuationLoading,
+    isLoading: statsLoading,
+  } = useWarehouseDashboardStats(myOrgId)
   // Group each project warehouse under its linked central — data from before
   // multi-central support (or created with no explicit link) falls back to
   // the FIRST central rather than disappearing once a second central exists.
@@ -355,6 +364,10 @@ export default function ContractorWarehousesPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Total inventory value — materials, work in progress and finished goods,
+            after manufacturing has moved value between them */}
+        <InventoryValuationCard valuation={valuation} isLoading={valuationLoading} partial={valuationPartial} />
 
         {/* One card per central warehouse, each with its own linked project warehouses beneath it */}
         {isLoading ? (

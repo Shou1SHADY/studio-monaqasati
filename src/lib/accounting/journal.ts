@@ -64,6 +64,9 @@ export type SourceType =
   | "zakat_provision"
   | "wip_revenue"
   | "manual_voucher"
+  /** A hand-posted clearing of a counterparty balance — a receipt, a payment,
+   * an advance offset or a write-off — from the Settlements screen. */
+  | "settlement"
 
 export interface JournalLine {
   /** A postable leaf code — a rollup here is rejected at build time. */
@@ -96,6 +99,10 @@ export interface JournalEntry {
   /** Id of the business document. Together with sourceType it makes the entry id. */
   sourceId: string
   description: string
+  /** Free-text document reference a human voucher carries (receipt no., bank
+   * transfer id). Auto entries leave it empty — their source document is the
+   * reference. */
+  reference?: string | null
   lines: JournalLine[]
   totalDebit: number
   totalCredit: number

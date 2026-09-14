@@ -69,7 +69,9 @@ src/
       (contractor)/     # Contractor portal — dashboard tile grid at /contractor,
                         #   modules: projects (BOQ, tenders), rfqs, crm/{leads,
                         #   opportunities,rfqs}, inventory/warehouses, invoices/
-                        #   guarantees (finance), sales (quotations before/after
+                        #   guarantees + accounting (ONE "Finance & Accounting"
+                        #   component, id `payments`; pages keep separate
+                        #   permissions), sales (quotations before/after
                         #   manufacturing + customer payments — NOT part of finance),
                         #   manufacturing (work orders), employees (HR), profile/team
       (supplier)/       # Supplier portal (mirrors contractor structure incl. crm/)
@@ -150,7 +152,9 @@ stored) · `salesDeliveryNotes` (customer deliveries; stock leaves at confirm) �
 order or rejects with a reason) · `accounting_journal` (the general journal —
 append-only, entry id is `{orgId}__{sourceType}__{sourceId}`) ·
 `accounting_accounts` · `accounting_periods` (month locks) ·
-`accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`) ·
+`accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`;
+`fiscalYearStartMonth` 1–12 defines Q1/H1/FY on every screen, `displayScale`
+units|thousands|millions is the default presentation) ·
 `invoices` · `rfqShareLinks` · `guestOfferLinks`
 (server-only)
 

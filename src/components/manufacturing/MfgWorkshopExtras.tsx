@@ -120,12 +120,12 @@ export function MfgNewOrderFromProductButton() {
       </Button>
       {open && (
         <Dialog open onOpenChange={(v) => !v && setOpen(false)}>
-          <DialogContent className="max-w-lg" dir={locale === "ar" ? "rtl" : "ltr"}>
+          <DialogContent className="max-w-lg w-[calc(100vw-2rem)] overflow-x-hidden max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
             <DialogHeader>
-              <DialogTitle className="text-base">{t("mfg2_new_order_from_product")}</DialogTitle>
+              <DialogTitle className="text-base pe-8">{t("mfg2_new_order_from_product")}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-3 gap-2">
+            <div className="space-y-3 text-sm min-w-0">
+              <div className="grid sm:grid-cols-3 gap-2">
                 <div className="col-span-2 space-y-1">
                   <Label className="text-xs font-bold">{t("mfg2_field_product")}</Label>
                   <Select value={productId} onValueChange={setProductId}>
@@ -145,7 +145,7 @@ export function MfgNewOrderFromProductButton() {
                   <Input type="number" min="0" step="any" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid sm:grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-xs font-bold">{t("mfg2_field_source")}</Label>
                   <Select value={sourceKind} onValueChange={(v) => setSourceKind(v as typeof sourceKind)}>
@@ -176,7 +176,7 @@ export function MfgNewOrderFromProductButton() {
                 </div>
               )}
               {sourceKind === "quotation" && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid sm:grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <Label className="text-xs font-bold">{t("mfg2_field_client")}</Label>
                     <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />

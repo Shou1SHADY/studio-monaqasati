@@ -118,13 +118,13 @@ export function MfgProductsView({ data }: { data: MfgData }) {
 
       {detail && (
         <Dialog open onOpenChange={(v) => !v && setDetailId(null)}>
-          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
+          <DialogContent className="max-w-xl w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto overflow-x-hidden" dir={locale === "ar" ? "rtl" : "ltr"}>
             <DialogHeader>
-              <DialogTitle className="text-base flex items-center gap-2">
+              <DialogTitle className="text-base flex items-center gap-2 pe-8">
                 <Layers size={16} className="text-cta" /> {detail.name}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-3 text-sm">
+            <div className="space-y-3 text-sm min-w-0">
               <section className="rounded-xl border overflow-hidden">
                 <header className="px-4 py-2 border-b bg-muted/30 text-xs font-black">{t("mfg2_route_title")}</header>
                 {detail.route.map((r, i) => (
@@ -299,12 +299,12 @@ function ProductFormDialog({ data, onClose }: { data: MfgData; onClose: () => vo
 
   return (
     <Dialog open onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto" dir={locale === "ar" ? "rtl" : "ltr"}>
+      <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] max-h-[92vh] overflow-y-auto overflow-x-hidden" dir={locale === "ar" ? "rtl" : "ltr"}>
         <DialogHeader>
-          <DialogTitle className="text-base">{t("mfg2_new_product")}</DialogTitle>
+          <DialogTitle className="text-base pe-8">{t("mfg2_new_product")}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-3 gap-2">
+        <div className="space-y-3 text-sm min-w-0">
+          <div className="grid sm:grid-cols-3 gap-2">
             <div className="col-span-2 space-y-1">
               <Label className="text-xs font-bold">{t("mfg2_field_product_name")}</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -314,7 +314,7 @@ function ProductFormDialog({ data, onClose }: { data: MfgData; onClose: () => vo
               <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <div className="space-y-1">
               <Label className="text-xs font-bold">{t("mfg2_field_family")}</Label>
               <Select value={family} onValueChange={(v) => setFamily(v as MfgFamily)}>
@@ -397,32 +397,34 @@ function ProductFormDialog({ data, onClose }: { data: MfgData; onClose: () => vo
             </header>
             {bom.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">{t("mfg2_bom_hint")}</p>}
             {bom.map((b, i) => (
-              <div key={i} className="grid grid-cols-12 gap-1.5 items-center px-3 py-2 border-b last:border-b-0 text-xs">
-                <Input className="h-7 col-span-3 text-xs" placeholder={t("mfg2_bom_item")} value={b.itemName} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, itemName: e.target.value } : x)))} />
-                <Input className="h-7 col-span-1 text-xs" placeholder={t("mfg2_field_unit")} value={b.unit} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} />
-                <Input className="h-7 col-span-1 text-xs" type="number" min="0" step="any" placeholder={t("mfg2_bom_qty")} value={b.qty} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
-                <div className="col-span-3">
+              <div key={i} className="px-3 py-2.5 border-b last:border-b-0 text-xs space-y-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Input className="h-8 text-xs flex-1 min-w-[150px]" placeholder={t("mfg2_bom_item")} value={b.itemName} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, itemName: e.target.value } : x)))} />
+                  <Input className="h-8 w-20 text-xs" placeholder={t("mfg2_field_unit")} value={b.unit} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, unit: e.target.value } : x)))} />
+                  <Input className="h-8 w-24 text-xs" type="number" min="0" step="any" placeholder={t("mfg2_bom_qty")} value={b.qty} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, qty: e.target.value } : x)))} />
+                  <button type="button" className="h-8 w-8 grid place-items-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setBom((rs) => rs.filter((_, j) => j !== i))} aria-label={t("crm_cancel")}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <Select value={b.departmentId} onValueChange={(v) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, departmentId: v } : x)))}>
-                    <SelectTrigger className="h-7 text-xs"><SelectValue placeholder={t("mfg2_bom_dept")} /></SelectTrigger>
+                    <SelectTrigger className="h-8 text-xs w-44"><SelectValue placeholder={t("mfg2_bom_dept")} /></SelectTrigger>
                     <SelectContent>
                       {route.filter((r) => r.on).map((r) => (
                         <SelectItem key={r.dept.id} value={r.dept.id}>{r.dept.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <Input className="h-8 w-28 text-xs" type="number" min="0" placeholder={t("mfg2_bom_cost")} value={b.cost} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))} />
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold whitespace-nowrap">
+                    <Checkbox checked={b.withWaste} onCheckedChange={(v) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, withWaste: !!v } : x)))} />
+                    {t("mfg2_bom_waste")}
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-semibold whitespace-nowrap">
+                    <Checkbox checked={b.lotted} onCheckedChange={(v) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, lotted: !!v } : x)))} />
+                    {t("mfg2_bom_lot")}
+                  </label>
                 </div>
-                <Input className="h-7 col-span-1 text-xs" type="number" min="0" placeholder={t("mfg2_bom_cost")} value={b.cost} onChange={(e) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, cost: e.target.value } : x)))} />
-                <label className={cn("col-span-1 flex items-center gap-1 cursor-pointer text-[10px] font-semibold")}>
-                  <Checkbox checked={b.withWaste} onCheckedChange={(v) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, withWaste: !!v } : x)))} />
-                  {t("mfg2_bom_waste")}
-                </label>
-                <label className="col-span-1 flex items-center gap-1 cursor-pointer text-[10px] font-semibold">
-                  <Checkbox checked={b.lotted} onCheckedChange={(v) => setBom((rs) => rs.map((x, j) => (j === i ? { ...x, lotted: !!v } : x)))} />
-                  {t("mfg2_bom_lot")}
-                </label>
-                <button type="button" className="col-span-1 text-muted-foreground hover:text-destructive grid place-items-center" onClick={() => setBom((rs) => rs.filter((_, j) => j !== i))} aria-label={t("crm_cancel")}>
-                  <Trash2 size={12} />
-                </button>
               </div>
             ))}
           </section>

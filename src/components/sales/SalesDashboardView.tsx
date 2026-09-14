@@ -2,12 +2,11 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
 import { Plus, Loader2, FileText, Banknote, HandCoins, CheckCircle2, Hourglass, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react"
-import { Link, useRouter } from "@/i18n/routing"
+import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
@@ -20,9 +19,7 @@ import {
   type CrmQuotation,
   type QuotationStatus,
 } from "@/lib/crm"
-import { WORK_ORDERS, type WorkOrder } from "@/lib/manufacturing"
 import { salesDashboard } from "@/lib/sales"
-import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
 import { CrmStat, CrmStatRow, type CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection, salesBasePath } from "./SalesShell"
 import { RecordPaymentDialog } from "./RecordPaymentDialog"
@@ -40,29 +37,16 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
-  const firestore = useFirestore()
-  const router = useRouter()
   const { user } = useUser()
   const { can } = usePermissions()
   const canManage = can("sales.manage")
   const canRecordPayment = can("invoices.manage") || can("sales.approve")
   const base = salesBasePath(portal)
 
-  const { orgId, contacts, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
+  const { orgId, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
 
-  const ordersQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: ordersData } = useCollection(ordersQuery)
-  const finishedOrders = useMemo(
-    () => ((ordersData || []) as WorkOrder[]).filter((o) => o.status === "done").sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0)),
-    [ordersData]
-  )
-
   const data = useMemo(() => salesDashboard(quotations), [quotations])
-  const [showNew, setShowNew] = useState(false)
   const [pay, setPay] = useState<{ quotation: CrmQuotation; installmentId: string } | null>(null)
   const Chevron = isRtl ? ChevronLeft : ChevronRight
   const label = (l: string) => l || t("crm_quote_installment_full")
@@ -73,10 +57,20 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
       title={t("sales_page_title")}
       description={t("sales_dashboard_desc")}
       action={
-        <Button className="gap-2" onClick={() => setShowNew(true)} disabled={!canManage || isLoading}>
-          <Plus size={16} />
-          {t("sales_new_quote_btn")}
-        </Button>
+        // A new quotation opens the builder page (form + live A4 preview).
+        !canManage || isLoading ? (
+          <Button className="gap-2" disabled>
+            <Plus size={16} />
+            {t("sales_new_quote_btn")}
+          </Button>
+        ) : (
+          <Button asChild className="gap-2">
+            <Link href={`${base}/quotations/new`}>
+              <Plus size={16} />
+              {t("sales_new_quote_btn")}
+            </Link>
+          </Button>
+        )
       }
     >
       {isLoading ? (
@@ -200,16 +194,6 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
         </>
       )}
 
-      {showNew && (
-        <CrmQuotationDialog
-          open
-          onOpenChange={(open) => { if (!open) setShowNew(false) }}
-          orgId={orgId}
-          contacts={contacts.map((c) => ({ id: c.id, name: c.name }))}
-          finishedOrders={finishedOrders}
-          onSaved={(id) => router.push(`${base}/quotations/${id}`)}
-        />
-      )}
       <RecordPaymentDialog
         quotation={pay?.quotation ?? null}
         installmentId={pay?.installmentId ?? null}
