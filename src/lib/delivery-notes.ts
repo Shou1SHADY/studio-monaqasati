@@ -19,7 +19,7 @@ export interface DeliveryNote {
   id: string
   organizationId: string
   noteNumber: string
-  source: { kind: "manufacturing"; workOrderId: string; workOrderNumber: number; title: string }
+  source: { kind: "manufacturing"; workOrderId: string; workOrderNumber: number; workOrderDocNumber?: string | null; title: string }
   item: { name: string; quantity: number; unit: string; unitCost: number | null }
   toWarehouseId: string
   toWarehouseName: string
@@ -44,6 +44,9 @@ export interface DeliveryNote {
   crates?: number | null
   driverName?: string | null
   vehiclePlate?: string | null
+  /** The fleet entry (HR) the driver was picked from. */
+  vehicleId?: string | null
+  vehicleLabel?: string | null
   createdAt?: unknown
   updatedAt?: unknown
 }

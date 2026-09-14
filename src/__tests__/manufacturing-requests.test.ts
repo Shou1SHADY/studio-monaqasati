@@ -1,293 +1,201 @@
 /**
- * Requests & estimates — the pure half of the Requests screen: segments,
- * the answer window, make-or-buy screening with its one-line reason, and the
- * validation every answer/estimate form confirms against.
+ * Requests & cost statements — the pure half of the Requests screen: the two
+ * doors, segments, the answer window, screening per line, the make answer's
+ * validation and the cost statement's status (PRD 1.2 REQ-01…REQ-09).
  */
 
-import { DEFAULT_MFG_SETTINGS, type DeptCapacityFields, type MfgProduct, type ScheduleInput } from "@/lib/manufacturing-engine"
+import { DEFAULT_MFG_SETTINGS, type DeptCapacityFields, type MfgCostEstimate, type MfgProduct } from "@/lib/manufacturing-engine"
 import {
-  DEFAULT_NEED_DAYS,
   answerWindow,
-  defaultAnswerRoute,
   defaultMakeQty,
   effectiveSegment,
-  estimateEarliestDays,
+  estimateNeedsWork,
+  estimateStatus,
   inRequestSegment,
-  isLegacyRequest,
-  mainMaterial,
-  makeOrderCount,
-  makeRemainder,
+  makeRemainders,
+  matchProduct,
   neededInDays,
   parseRequestSegment,
-  productForLine,
-  quoteCheck,
-  requestLines,
+  requestDownPayment,
   requestSegmentCounts,
-  requestSourceKind,
+  requestSource,
+  requestSourceInfo,
+  requestState,
+  salesQuoteState,
   screenRequest,
-  sortEstimates,
+  slabNeed,
   summarizeScreen,
-  validateAward,
-  validateMakeAnswer,
-  validateNewRequest,
-  validateQuote,
-  validateValidityDays,
+  validateMakeLines,
   verdictReason,
   type ScreenContext,
 } from "@/lib/manufacturing-requests"
 import type { ManufacturingRequest } from "@/lib/sales-orders"
 
 const TODAY = "2026-09-14"
+const NOW = new Date("2026-09-14T12:00:00Z").getTime()
+const SETTINGS = DEFAULT_MFG_SETTINGS
 const DEPTS: DeptCapacityFields[] = [
-  { id: "d1", workers: 2, hoursPerDay: 8, hourlyRate: 60 },
-  { id: "d2", workers: 2, hoursPerDay: 8, hourlyRate: 60 },
+  { id: "cut", name: "Cutting", workers: 2, hoursPerDay: 8, hourlyRate: 70 },
+  { id: "pol", name: "Polishing", workers: 2, hoursPerDay: 8, hourlyRate: 58 },
 ]
 
-// unit cost = 100 + 0.4×60 + 0.4×32 = 136.8
-const SIMPLE: MfgProduct = {
+const COUNTER: MfgProduct = {
   id: "p1",
   organizationId: "org",
-  name: "باب",
-  unit: "قطعة",
-  family: "wood",
-  requiresMeasurement: false,
+  name: "Kitchen counter",
+  unit: "m²",
+  family: "stone",
+  requiresMeasurement: true,
   requiresDrawingApproval: false,
-  requiresSlabApproval: false,
-  wastePercent: 20,
-  salePrice: null,
-  estimateValue: null,
-  referenceBuyPrice: 200,
+  requiresSlabApproval: true,
+  wastePercent: 30,
+  referenceBuyPrice: 5000,
   route: [
-    { departmentId: "d1", departmentName: "القص", hoursPerUnit: 0.2 },
-    { departmentId: "d2", departmentName: "التجميع", hoursPerUnit: 0.2 },
+    { departmentId: "cut", departmentName: "Cutting", hoursPerUnit: 0.5 },
+    { departmentId: "pol", departmentName: "Polishing", hoursPerUnit: 0.3 },
   ],
   bom: [
-    { itemName: "مسمار", unit: "علبة", qtyPerUnit: 0.1, departmentId: "d2", withWaste: false, unitCost: 0 },
-    { itemName: "لوح خشب", unit: "لوح", qtyPerUnit: 1, departmentId: "d1", withWaste: true, unitCost: 100 / 1.2 },
+    { itemName: "Crema slab", unit: "m²", qtyPerUnit: 1, departmentId: "cut", withWaste: true, unitCost: 200 },
+    { itemName: "Blade", unit: "pc", qtyPerUnit: 0.01, departmentId: "cut", withWaste: false, unitCost: 300, custody: true },
   ],
 }
 
-const ctx = (over: Partial<ScreenContext> = {}): ScreenContext => ({
-  products: [SIMPLE],
-  productById: new Map([[SIMPLE.id, SIMPLE]]),
-  inputs: [],
-  departments: DEPTS,
-  settings: DEFAULT_MFG_SETTINGS,
-  today: TODAY,
-  ...over,
-})
-
-const req = (over: Partial<ManufacturingRequest> = {}): ManufacturingRequest => ({
+const request = (over: Partial<ManufacturingRequest> = {}): ManufacturingRequest => ({
   id: "r1",
   organizationId: "org",
-  requestNumber: "MR-1",
-  itemName: "باب",
-  unit: "قطعة",
+  requestNumber: "MR-2026/045",
+  itemName: "Kitchen counter",
+  unit: "m²",
   quantity: 10,
   status: "new",
-  sourceKind: "project",
-  projectName: "برج الريان",
-  neededBy: "2026-09-30",
-  lines: [{ productId: "p1", itemName: "باب", unit: "قطعة", quantity: 10 }],
-  createdByUserId: "u1",
-  createdByUserName: "م. خالد",
+  sourceKind: "sales",
+  kind: "make",
+  orderId: "so1",
+  orderNumber: 134,
+  contactName: "Namaa",
+  neededBy: "2026-10-02",
+  lines: [{ productId: "p1", itemName: "Kitchen counter", unit: "m²", quantity: 10 }],
+  createdByUserId: "u-sales",
+  createdByUserName: "Reem",
   requestedAt: "2026-09-14T08:00:00Z",
   ...over,
 })
 
+const ctx: ScreenContext = {
+  products: [COUNTER],
+  productById: new Map([[COUNTER.id, COUNTER]]),
+  calcs: [],
+  departments: DEPTS,
+  settings: SETTINGS,
+  lost: new Map(),
+  free: new Map([["crema slab", 8]]),
+  today: TODAY,
+}
+
 describe("segments", () => {
-  it("parses the URL segment and falls back while estimates are off", () => {
-    expect(parseRequestSegment("answered")).toBe("answered")
+  it("parses and falls back when cost estimating is off", () => {
+    expect(parseRequestSegment("estimates")).toBe("estimates")
     expect(parseRequestSegment("nope")).toBeNull()
     expect(effectiveSegment("estimates", false)).toBe("new")
-    expect(effectiveSegment("estimates", true)).toBe("estimates")
+    expect(inRequestSegment({ status: "new" }, "new")).toBe(true)
+    expect(inRequestSegment({ status: "accepted" }, "answered")).toBe(true)
+    expect(inRequestSegment({ status: "accepted" }, "estimates")).toBe(false)
   })
 
-  it("counts open, answered, live estimates and everything", () => {
-    const requests = [req(), req({ id: "r2", status: "accepted" }), req({ id: "r3", status: "rejected" })]
-    const estimates = [{ state: "draft" as const }, { state: "lost" as const }]
-    expect(requestSegmentCounts(requests, estimates, true)).toEqual({ new: 1, estimates: 1, answered: 2, all: 5 })
-    expect(requestSegmentCounts(requests, estimates, false)).toEqual({ new: 1, estimates: 0, answered: 2, all: 3 })
-    expect(inRequestSegment(requests[1], "new")).toBe(false)
-    expect(inRequestSegment(requests[1], "answered")).toBe(true)
-  })
-
-  it("sorts estimates work-first", () => {
-    const sorted = sortEstimates([{ state: "won" as const }, { state: "sent" as const }, { state: "draft" as const }, { state: "lost" as const }])
-    expect(sorted.map((e) => e.state)).toEqual(["draft", "sent", "won", "lost"])
+  it("counts drafts and expired statements as the cost controller's work", () => {
+    const estimates = [
+      { state: "draft", sentAt: null, validityDays: 15 },
+      { state: "sent", sentAt: "2026-08-01", validityDays: 15 },
+      { state: "sent", sentAt: "2026-09-10", validityDays: 15 },
+    ] as Array<Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays">>
+    expect(estimateNeedsWork(estimates[1], TODAY, SETTINGS)).toBe(true)
+    expect(requestSegmentCounts([{ status: "new" }, { status: "rejected" }], estimates, true, TODAY, SETTINGS)).toEqual({ new: 1, estimates: 2, answered: 1, all: 5 })
   })
 })
 
 describe("the request", () => {
-  it("reads legacy single-item requests as one line", () => {
-    const legacy = req({ lines: undefined, orderId: "so1", sourceKind: undefined })
-    expect(isLegacyRequest(legacy)).toBe(true)
-    expect(requestLines(legacy)).toEqual([{ productId: null, itemName: "باب", unit: "قطعة", quantity: 10 }])
-    expect(requestSourceKind(legacy)).toBe("sales")
-    // A legacy line finds its product card by name.
-    expect(productForLine(requestLines(legacy)[0], [SIMPLE], new Map())).toBe(SIMPLE)
+  it("has two doors — project requests reach us through Procurement", () => {
+    expect(requestSource({ sourceKind: "sales", orderId: null })).toBe("sales")
+    expect(requestSource({ sourceKind: "project", orderId: null })).toBe("procurement")
+    expect(requestSource({ sourceKind: undefined, orderId: "so1" })).toBe("sales")
   })
 
-  it("ages against the answer window", () => {
-    const now = new Date("2026-09-14T18:00:00Z").getTime()
-    expect(answerWindow(req(), 24, now)).toEqual({ ageHours: 10, overdue: false, leftHours: 14, overdueHours: 0 })
-    const late = answerWindow(req({ requestedAt: "2026-09-12T12:00:00Z" }), 24, now)
-    expect(late.overdue).toBe(true)
-    expect(late.overdueHours).toBe(30)
-    // An answered request never counts as overdue.
-    expect(answerWindow(req({ status: "accepted", requestedAt: "2026-09-01T00:00:00Z" }), 24, now).overdue).toBe(false)
+  it("reads the down payment from the sales order", () => {
+    const r = request()
+    expect(requestDownPayment(r, { payment: { kind: "deposit", depositPercent: 30, depositPaid: false } })).toBe("pending")
+    expect(requestDownPayment(r, { payment: { kind: "deposit", depositPercent: 30, depositPaid: true } })).toBe("confirmed")
+    expect(requestDownPayment(r, { payment: { kind: "cash" } as never })).toBe("none")
+    expect(requestDownPayment(request({ kind: "cost" }), { payment: { kind: "deposit", depositPaid: false } })).toBeNull()
   })
 
-  it("screens against two weeks when no date is named", () => {
-    expect(neededInDays(req({ neededBy: null }), TODAY)).toBe(DEFAULT_NEED_DAYS)
-    expect(neededInDays(req({ neededBy: "2026-09-10" }), TODAY)).toBe(0)
+  it("names its references per door", () => {
+    expect(requestSourceInfo(request()).refs).toEqual([{ kind: "sales_order", ref: "SO-134" }])
+    const proc = requestSourceInfo(request({ sourceKind: "procurement", orderId: null, orderNumber: null, projectName: "Clinics", purchaseRequestRef: "PR-79", pmRequestRef: "MRQ-63", costItemName: "Flooring" }))
+    expect(proc.name).toBe("Clinics")
+    expect(proc.refs.map((x) => x.kind)).toEqual(["purchase_request", "pm_request", "cost_item"])
+  })
+
+  it("is overdue after the answer window", () => {
+    expect(answerWindow(request(), 24, NOW)).toMatchObject({ overdue: false, leftHours: 20 })
+    expect(requestState(request({ requestedAt: "2026-09-13T08:00:00Z" }), 24, NOW)).toBe("overdue")
+    expect(requestState(request({ status: "estimated" }), 24, NOW)).toBe("costed")
+    expect(requestState(request({ status: "rejected" }), 24, NOW)).toBe("declined")
   })
 })
 
 describe("screening", () => {
-  it("gives each line a verdict, a reason and a possible date", () => {
-    const [line] = screenRequest(req(), ctx())
-    expect(line.verdict?.kind).toBe("make")
-    expect(line.reason).toEqual({ key: "make_ready", date: "2026-09-15", spareDays: 15 })
-    expect(line.possibleDate).toBe("2026-09-15")
-    expect(line.std?.total).toBeCloseTo(1368)
-    expect(line.material).toEqual({ itemName: "لوح خشب", unit: "لوح", qty: 12, wastePercent: 20 })
+  it("matches a line by id, else by name", () => {
+    expect(matchProduct({ productId: null, itemName: " kitchen COUNTER " }, [COUNTER], new Map())).toBe(COUNTER)
+    expect(matchProduct({ productId: "zz", itemName: "Other" }, [COUNTER], ctx.productById)).toBeNull()
   })
 
-  it("explains why buying wins", () => {
-    const cheap = { ...SIMPLE, referenceBuyPrice: 120 }
-    const [line] = screenRequest(req(), ctx({ products: [cheap], productById: new Map([["p1", cheap]]) }))
-    expect(line.verdict?.kind).toBe("buy_price")
-    expect(line.reason).toEqual({ key: "buy_labour_gap", materialUnit: 100 })
-    const dearer = { ...SIMPLE, referenceBuyPrice: 90 }
-    const [l2] = screenRequest(req(), ctx({ products: [dearer], productById: new Map([["p1", dearer]]) }))
-    expect(l2.reason?.key).toBe("buy_materials_dearer")
+  it("screens each line with its verdict and the slab against stock", () => {
+    const lines = screenRequest(request(), ctx)
+    expect(neededInDays(request(), TODAY)).toBe(18)
+    expect(lines[0].verdict?.kind).toBe("make")
+    expect(defaultMakeQty(lines[0])).toBe(10)
+    // 10 m² × 1.3 waste = 13 needed, 8 free.
+    expect(lines[0].slab).toEqual({ itemName: "Crema slab", unit: "m²", need: 13, available: 8 })
+    expect(slabNeed(COUNTER, 1, null)?.available).toBeNull()
+    const sum = summarizeScreen(lines)
+    expect(sum.unscreened).toBe(0)
+    expect(sum.fullCost).toBeGreaterThan(0)
   })
 
-  it("names the date the capacity runs out at", () => {
-    const queue: ScheduleInput = {
-      order: {
-        id: "A",
-        productId: "p1",
-        quantity: 800,
-        neededBy: null,
-        createdAt2: "",
-        releasedAt: "2026-09-01",
-        measurement: null,
-        drawingApprovalStatus: "na",
-        slabApproval: null,
-        rush: null,
-        progress: [
-          { departmentId: "d1", done: 0, rejected: 0, rework: 0, hours: 0 },
-          { departmentId: "d2", done: 0, rejected: 0, rework: 0, hours: 0 },
-        ],
-        materials: [],
-        scrap: [],
-        status: "open",
-      },
-      product: SIMPLE,
-      notes: [],
-    }
-    const lines = screenRequest(req({ neededBy: "2026-09-15" }), ctx({ inputs: [queue] }))
-    expect(lines[0].verdict?.kind).toBe("buy_capacity")
-    expect(lines[0].reason).toMatchObject({ key: "buy_capacity", needDate: "2026-09-15" })
-    expect(defaultAnswerRoute(lines)).toBe("buy")
-  })
-
-  it("time off: no date, and the reason says so", () => {
-    const off = { ...DEFAULT_MFG_SETTINGS, features: { ...DEFAULT_MFG_SETTINGS.features, time: false } }
-    const [line] = screenRequest(req(), ctx({ settings: off }))
-    expect(line.possibleDate).toBeNull()
-    expect(line.reason).toEqual({ key: "make_untimed", hasBuyPrice: true })
-    expect(verdictReason({ ...line.verdict!, buyPrice: null }, TODAY, 14)).toEqual({ key: "make_untimed", hasBuyPrice: false })
+  it("gives buy-on-price its reason and no make quantity", () => {
+    const cheap = { ...COUNTER, referenceBuyPrice: 10 }
+    const lines = screenRequest(request(), { ...ctx, products: [cheap], productById: new Map([[cheap.id, cheap]]) })
+    expect(lines[0].verdict?.kind).toBe("buy_price")
+    expect(defaultMakeQty(lines[0])).toBe(0)
+    expect(verdictReason(lines[0].verdict!, 18).key).toBe("buy_materials_dearer")
   })
 
   it("leaves a line with no product card unscreened", () => {
-    const lines = screenRequest(req({ lines: [{ productId: null, itemName: "مجهول", unit: "م", quantity: 3 }] }), ctx())
+    const lines = screenRequest(request({ lines: [{ productId: null, itemName: "Unknown", unit: "m", quantity: 4 }] }), ctx)
     expect(lines[0].verdict).toBeNull()
     expect(summarizeScreen(lines).unscreened).toBe(1)
-    expect(defaultAnswerRoute(lines)).toBe("make")
-    expect(defaultMakeQty(lines[0], false)).toBe(0)
-    expect(defaultMakeQty(lines[0], true)).toBe(3)
-  })
-
-  it("summarises the full cost and when all of it could be ready", () => {
-    const two = req({
-      lines: [
-        { productId: "p1", itemName: "باب", unit: "قطعة", quantity: 10 },
-        { productId: "p1", itemName: "باب", unit: "قطعة", quantity: 100 },
-      ],
-    })
-    const s = summarizeScreen(screenRequest(two, ctx()))
-    expect(s.fullCost).toBeCloseTo(136.8 * 110)
-    expect(s.earliestAll! >= "2026-09-15").toBe(true)
-  })
-
-  it("picks the main material by planned waste", () => {
-    expect(mainMaterial({ ...SIMPLE, bom: [] }, 1)).toBeNull()
   })
 })
 
-describe("the answer", () => {
-  it("validates what the workshop takes on", () => {
-    const lines = [
-      { asked: 10, input: "10", makeable: true },
-      { asked: 5, input: "", makeable: true },
-    ]
-    expect(validateMakeAnswer(lines).formError).toBeNull()
-    expect(makeOrderCount(lines)).toBe(1)
-    expect(makeRemainder(lines)).toBe(5)
-    expect(validateMakeAnswer([{ asked: 10, input: "11", makeable: true }]).lineErrors).toEqual(["over"])
-    expect(validateMakeAnswer([{ asked: 10, input: "-1", makeable: true }]).lineErrors).toEqual(["invalid"])
-    expect(validateMakeAnswer([{ asked: 10, input: "2", makeable: false }]).lineErrors).toEqual(["no_product"])
-    expect(validateMakeAnswer([{ asked: 10, input: "0", makeable: true }]).formError).toBe("nothing_made")
+describe("the make answer", () => {
+  it("needs one quantity, within the ask, on a product card", () => {
+    expect(validateMakeLines([{ asked: 10, qty: 0, hasProduct: true }]).formError).toBe("nothing")
+    expect(validateMakeLines([{ asked: 10, qty: 11, hasProduct: true }]).lineErrors).toEqual(["over"])
+    expect(validateMakeLines([{ asked: 10, qty: 2, hasProduct: false }]).lineErrors).toEqual(["no_product"])
+    expect(validateMakeLines([{ asked: 10, qty: 6, hasProduct: true }]).formError).toBeNull()
+    expect(makeRemainders([{ asked: 10, qty: 6 }, { asked: 4, qty: 4 }])).toEqual([4, 0])
   })
 })
 
-describe("new request", () => {
-  const base = { sourceKind: "project" as const, projectId: "pr1", neededBy: "2026-09-30", rows: [{ productId: "p1", quantity: "4" }] }
-  it("accepts a complete request", () => {
-    expect(validateNewRequest(base, TODAY).ok).toBe(true)
-  })
-  it("names each missing piece", () => {
-    const { ok, errors } = validateNewRequest({ ...base, projectId: "", neededBy: "2026-09-01", rows: [{ productId: "p1", quantity: "" }, { productId: "", quantity: "" }] }, TODAY)
-    expect(ok).toBe(false)
-    expect(errors.project).toBe(true)
-    expect(errors.neededBy).toBe("past")
-    expect(errors.rows).toEqual([{ product: false, quantity: true }, { product: false, quantity: false }])
-    expect(errors.noLines).toBe(true)
-    expect(validateNewRequest({ ...base, sourceKind: "procurement", projectId: "" }, TODAY).ok).toBe(true)
-  })
-})
-
-describe("estimates", () => {
-  it("checks a quote against the finance floor", () => {
-    // floor = 1000 / (1 - 0.18) = 1220
-    expect(quoteCheck(1300, 1000, DEFAULT_MFG_SETTINGS)).toEqual({ floor: 1220, margin: 23, below: false, gap: 0 })
-    expect(quoteCheck(1100, 1000, DEFAULT_MFG_SETTINGS)).toMatchObject({ below: true, gap: 120, margin: 9 })
-    expect(quoteCheck(0, 1000, DEFAULT_MFG_SETTINGS)).toMatchObject({ below: false, margin: null })
-  })
-
-  it("needs a named finance approval below the floor", () => {
-    const d = { quoteNumber: "Q-1", price: "1100", issuedBy: "ريم", financeApprover: "" }
-    expect(validateQuote(d, 1000, DEFAULT_MFG_SETTINGS)).toMatchObject({ financeApprover: true, ok: false })
-    expect(validateQuote({ ...d, financeApprover: "المدير المالي" }, 1000, DEFAULT_MFG_SETTINGS).ok).toBe(true)
-    expect(validateQuote({ ...d, quoteNumber: " ", price: "x" }, 1000, DEFAULT_MFG_SETTINGS)).toMatchObject({ quoteNumber: true, price: true })
-  })
-
-  it("validates validity days and the award", () => {
-    expect(validateValidityDays("15")).toBe(true)
-    expect(validateValidityDays("0")).toBe(false)
-    expect(validateValidityDays("2.5")).toBe(false)
-    expect(validateAward({ date: "2026-09-20", confirmedBy: "x" }, TODAY)).toMatchObject({ date: "future", ok: false })
-    expect(validateAward({ date: TODAY, confirmedBy: " " }, TODAY)).toMatchObject({ confirmedBy: true, ok: false })
-    expect(validateAward({ date: TODAY, confirmedBy: "العميل" }, TODAY).ok).toBe(true)
-  })
-
-  it("the earliest delivery is the slowest line", () => {
-    const e = { lines: [{ productId: "p1", quantity: 10 }, { productId: "p1", quantity: 200 }, { productId: "gone", quantity: 1 }] }
-    const days = estimateEarliestDays(e as never, new Map([["p1", SIMPLE]]), [], DEPTS)
-    // 200 × 0.2h ÷ 16h/day = 2.5 days at each of the two departments.
-    expect(days).toBe(5)
+describe("cost statements", () => {
+  const base = { state: "sent", sentAt: "2026-09-10", validityDays: 15, quoteNumber: null } as Pick<MfgCostEstimate, "state" | "sentAt" | "validityDays" | "quoteNumber">
+  it("is draft, sent or expired — and reads Sales' quote state", () => {
+    expect(estimateStatus({ ...base, state: "draft", sentAt: null }, TODAY, SETTINGS)).toBe("draft")
+    expect(estimateStatus(base, TODAY, SETTINGS)).toBe("sent")
+    expect(estimateStatus({ ...base, sentAt: "2026-08-20" }, TODAY, SETTINGS)).toBe("expired")
+    expect(salesQuoteState(base)).toBe("no_quote")
+    expect(salesQuoteState({ ...base, state: "won" })).toBe("won")
+    // Won or lost is Sales' closed record — it never expires.
+    expect(estimateStatus({ ...base, state: "won", sentAt: "2026-08-01" }, TODAY, SETTINGS)).toBe("sent")
   })
 })

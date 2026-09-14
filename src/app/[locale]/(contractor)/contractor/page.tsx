@@ -28,6 +28,13 @@ const ITEM_TILE: Record<WorkQueueItemType, PortalComponentId> = {
   project_waiting_approval: "project-management",
   low_stock: "warehouses",
   team_invite_pending: "users",
+  sales_deposits_to_confirm: "sales",
+  mfg_materials_to_issue: "warehouses",
+  mfg_requests_unanswered: "manufacturing",
+  mfg_drawing_results_due: "project-management",
+  mfg_notes_to_receive: "warehouses",
+  mfg_custody_to_receive: "project-management",
+  mfg_purchase_requests: "procurement",
 }
 
 // Solid accent classes for the tile hover-bar and decision-card rail — the
@@ -52,6 +59,13 @@ const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
   project_waiting_approval: "action_project_waiting_approval",
   low_stock: "action_low_stock",
   team_invite_pending: "action_team_invite_pending",
+  sales_deposits_to_confirm: "action_sales_deposits_to_confirm",
+  mfg_materials_to_issue: "action_mfg_materials_to_issue",
+  mfg_requests_unanswered: "action_mfg_requests_unanswered",
+  mfg_drawing_results_due: "action_mfg_drawing_results_due",
+  mfg_notes_to_receive: "action_mfg_notes_to_receive",
+  mfg_custody_to_receive: "action_mfg_custody_to_receive",
+  mfg_purchase_requests: "action_mfg_purchase_requests",
 }
 
 type TFn = ReturnType<typeof useTranslations<"Portal.Contractor">>
@@ -123,6 +137,20 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
       return t("queue_item_low_stock", { itemName: (item.data.itemName as string) || "", warehouseName: (item.data.warehouseName as string) || "" })
     case "team_invite_pending":
       return t("queue_item_team_invite_pending", { email: (item.data.email as string) || "" })
+    case "sales_deposits_to_confirm":
+      return t("queue_item_sales_deposits_to_confirm", { count: item.data.count as number })
+    case "mfg_materials_to_issue":
+      return t("queue_item_mfg_materials_to_issue", { count: item.data.count as number })
+    case "mfg_requests_unanswered":
+      return t("queue_item_mfg_requests_unanswered", { count: item.data.count as number })
+    case "mfg_drawing_results_due":
+      return t("queue_item_mfg_drawing_results_due", { count: item.data.count as number, projectName: (item.data.projectName as string) || "" })
+    case "mfg_notes_to_receive":
+      return t("queue_item_mfg_notes_to_receive", { count: item.data.count as number })
+    case "mfg_custody_to_receive":
+      return t("queue_item_mfg_custody_to_receive", { count: item.data.count as number, projectName: (item.data.projectName as string) || "" })
+    case "mfg_purchase_requests":
+      return t("queue_item_mfg_purchase_requests", { count: item.data.count as number })
   }
 }
 
@@ -172,6 +200,13 @@ export default function ContractorDashboard() {
     project_waiting_approval: can("projects.edit") || can("projects.publish"),
     low_stock: can("warehouses.manage"),
     team_invite_pending: can("team.manage"),
+    sales_deposits_to_confirm: can("invoices.manage") || can("sales.approve"),
+    mfg_materials_to_issue: can("warehouses.manage"),
+    mfg_requests_unanswered: can("manufacturing.manage"),
+    mfg_drawing_results_due: can("projects.edit"),
+    mfg_notes_to_receive: can("warehouses.receive") || can("warehouses.manage"),
+    mfg_custody_to_receive: can("projects.edit"),
+    mfg_purchase_requests: can("rfq.manage") || can("rfq.create"),
   }
   const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid)
   const queueItems = allQueueItems.filter((item) => itemPermission[item.type])

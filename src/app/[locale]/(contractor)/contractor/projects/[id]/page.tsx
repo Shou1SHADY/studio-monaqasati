@@ -70,6 +70,7 @@ import {
   arrayRemove,
   arrayUnion,
   increment,
+  limit,
 } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -151,6 +152,7 @@ import {
 } from "@/lib/project-sections"
 import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory } from "lucide-react"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
+import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -725,11 +727,20 @@ export default function ProjectDetailPage() {
     ? typedProject.enabledSections
     : LEGACY_DEFAULT_SECTIONS) as SectionId[])
 
-  const dynamicTabs = SECTION_IDS
-    .filter((id) => enabledSectionIds.includes(id))
-    .filter((id) => SECTION_REGISTRY[id].tabRoute && id !== "collect")
-
   const myOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
+
+  // A project with workshop orders always shows the Manufacturing tab: its
+  // drawings are approved and its deliveries received into custody there.
+  const projectOrdersQuery = useMemoFirebase(() => {
+    if (!firestore || !myOrgId || !projectId) return null
+    return query(collection(firestore, "workOrders"), where("organizationId", "==", myOrgId), where("projectId", "==", projectId), limit(1))
+  }, [firestore, myOrgId, projectId])
+  const { data: projectOrders } = useCollection(projectOrdersQuery)
+  const hasWorkshopOrders = (projectOrders || []).length > 0
+
+  const dynamicTabs = SECTION_IDS
+    .filter((id) => enabledSectionIds.includes(id) || (id === "mfg" && hasWorkshopOrders))
+    .filter((id) => SECTION_REGISTRY[id].tabRoute && id !== "collect")
 
   const warehousesQuery = useMemoFirebase(() => {
     if (!firestore || !myOrgId) return null
@@ -3063,7 +3074,13 @@ export default function ProjectDetailPage() {
           )
         )}
         {activeTab === "mfg" && dynamicTabs.includes("mfg" as SectionId) && (
-          <ManufacturingView projectId={projectId} projectName={typedProject.name || ""} />
+          <div className="space-y-8">
+            {/* The workshop's product-born orders for this project, and the
+                steps that are the project's to take (drawing result, receipt
+                into custody, change requests). The legacy stage-flow list stays below. */}
+            <ProjectWorkshopPanel projectId={projectId} projectName={typedProject.name || ""} />
+            <ManufacturingView projectId={projectId} projectName={typedProject.name || ""} />
+          </div>
         )}
         {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && activeTab !== "store" && activeTab !== "mfg" && (
           <ComingSoonTab sectionId={activeTab as SectionId} tShared={tShared} />

@@ -33,6 +33,13 @@ export interface MfgDepartment {
   onSite?: boolean
   /** Per-department checklist template — signed, timed, non-blocking. */
   checklist?: Array<{ key: string; label: string }>
+  /** The station's lead — its recorder (FL-13). */
+  leadUserId?: string | null
+  leadUserName?: string | null
+  /** QC & packing: only Quality records its output. */
+  qcStation?: boolean | null
+  /** An order-level step closed once by its approval. */
+  gate?: "drawing" | "slab" | null
 }
 
 export type StageStatus = "pending" | "in_progress" | "done"

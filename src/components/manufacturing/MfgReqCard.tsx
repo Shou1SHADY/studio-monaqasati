@@ -1,236 +1,236 @@
 "use client"
 
-// One manufacturing request in the list. A new one shows its screening line
-// by line — make cost against the reference buy price, the possible date and
-// the verdict — so the answer is already half-read before it is opened. An
-// answered one shows the answer, who gave it, and the work it became.
+// One request and one cost statement in the Requests list. A request card
+// says who asked through which door, for what, by when, and whether it waits
+// on us; the manager reads it in its drawer before answering. A cost statement
+// card carries cost, lead time and validity only — and Sales' side of it,
+// read-only. Its two actions belong to the cost controller (REQ-06).
 
+import { useMemo, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { Calculator, Check, Eye, Lock } from "lucide-react"
+import { Calculator, Check, Eye, RotateCcw, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { addDaysISO, estimateCost, type MfgCostEstimate } from "@/lib/manufacturing-engine"
 import type { ManufacturingRequest } from "@/lib/sales-orders"
-import { requestLines, type ScreenedLine } from "@/lib/manufacturing-requests"
-import { useMfgUi } from "./MfgUiContext"
-import { MfgStatePill } from "./MfgOrderBits"
-import { MfgChip, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
 import {
-  MfgReqTable,
+  estimateCostToday,
+  estimateEarliestDays,
+  estimateSentDays,
+  estimateStatus,
+  requestLines,
+  salesQuoteState,
+} from "@/lib/manufacturing-requests"
+import { cn } from "@/lib/utils"
+import { useMfgUi } from "./MfgUiContext"
+import { MfgModuleChip } from "./MfgOrderBits"
+import {
+  DownPaymentChip,
+  EstimateStatusPill,
+  RequestRefs,
   RequestSourceChip,
   RequestStatePill,
-  Td,
-  Th,
-  VerdictCell,
+  answerText,
   requestTitle,
-  requestVia,
-  sourceMetaOf,
-  useArrivedLabel,
-  workOrderIdsOf,
+  salesQuoteText,
+  sourceIcon,
+  useAgo,
+  useSourceInfo,
 } from "./MfgReqBits"
+import { fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
 
-export function MfgReqCard({
-  request: r,
-  screen,
-  now,
-  onOpen,
-  onAnswer,
-  onShowEstimate,
-}: {
-  request: ManufacturingRequest
-  /** The screening — present for requests still awaiting an answer. */
-  screen: ScreenedLine[] | null
-  now: number
-  onOpen: () => void
-  onAnswer: () => void
-  onShowEstimate: () => void
-}) {
+const HEADER_BUTTON =
+  "flex w-full items-start gap-3 border-b border-border/60 px-4 py-3 text-start transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+
+export function MfgRequestCard({ request: r, onOpen }: { request: ManufacturingRequest; onOpen: () => void }) {
   const t = useTranslations("Portal.Shared")
   const { perms } = useMfgUi()
   const date = useMfgDate()
-  const arrived = useArrivedLabel()
-  const meta = sourceMetaOf(r)
-  const Icon = meta.icon
-  const via = requestVia(r, t)
+  const ago = useAgo()
+  const info = useSourceInfo(r)!
+  const Icon = sourceIcon(info)
   const isNew = r.status === "new"
+  const lines = requestLines(r)
 
   return (
-    <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-      <header className="flex flex-wrap items-start gap-x-3 gap-y-2 border-b border-border/60 px-4 py-3">
+    <article className="overflow-hidden rounded-2xl border bg-white shadow-sm" aria-label={requestTitle(r, info, t)}>
+      <button type="button" onClick={onOpen} className={HEADER_BUTTON}>
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
           <Icon size={15} aria-hidden="true" />
         </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-bold text-foreground" dir="auto">
-            {requestTitle(r, t)}
-          </h3>
-          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
-            <RequestSourceChip request={r} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-foreground" dir="auto">
+            {requestTitle(r, info, t)}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+            <RequestSourceChip info={info} />
+            <b className="text-slate-700">{t(`mfr_kind_${info.kind}`)}</b>
+            <RequestRefs info={info} />
             {r.note && (
               <span className="text-slate-700" dir="auto">
-                {r.note} ·
+                · {r.note}
               </span>
             )}
-            <span>
-              {t("mfg3_req_requested_by")} <b className="text-slate-700">{r.createdByUserName}</b>
-            </span>
-            {via && <span>· {via}</span>}
-            {r.requestedAt && <span>· {t("mfg3_req_arrived", { when: arrived(r.requestedAt, now) })}</span>}
-            <span>· {t("mfg3_req_needed", { date: date.short(r.neededBy) })}</span>
-          </p>
-        </div>
-        <div className="ms-auto flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={onOpen}>
-            <Eye size={13} aria-hidden="true" /> {t("mfg3_req_details")}
-          </Button>
-          <RequestStatePill request={r} now={now} />
-        </div>
-      </header>
+            {r.requestedAt && <span>· {t("mfr_arrived", { when: ago(r.requestedAt) })}</span>}
+            <span>· {t("mfr_needed", { date: date.short(r.neededBy) })}</span>
+            <DownPaymentChip state={info.downPayment} />
+          </span>
+        </span>
+        <span className="shrink-0">
+          <RequestStatePill request={r} />
+        </span>
+      </button>
 
-      {isNew && screen ? (
-        <>
-          <ScreenLinesTable lines={screen} />
-          <footer className="flex flex-wrap items-center gap-2 border-t border-border/60 bg-muted/20 px-4 py-2.5">
-            {perms.canManage ? (
-              <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={onAnswer}>
-                <Check size={13} aria-hidden="true" /> {t("mfg2_req_answer")}
-              </Button>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                <Lock size={12} aria-hidden="true" /> {t("mfg3_req_only_manager")}
-              </span>
-            )}
-            <span className="text-[11px] text-muted-foreground">{t("mfg3_req_stays_open")}</span>
-          </footer>
-        </>
-      ) : (
-        <AnsweredBody request={r} now={now} onShowEstimate={onShowEstimate} />
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+        <span className="min-w-0 flex-1 text-[11px] text-muted-foreground" dir="auto">
+          {lines.map((l, i) => (
+            <span key={i}>
+              {i > 0 && " · "}
+              {l.itemName} × <span dir="ltr" className="tabular-nums">{fmtQty(l.quantity)}</span> {l.unit}
+            </span>
+          ))}
+        </span>
+        {isNew && perms.canManage ? (
+          <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={onOpen}>
+            <Check size={13} aria-hidden="true" /> {t("mfr_read_answer")}
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" className="h-9 gap-1.5 text-xs" onClick={onOpen}>
+            <Eye size={13} aria-hidden="true" /> {t("mfr_details")}
+          </Button>
+        )}
+      </div>
+
+      {!isNew && (
+        <div className="border-t border-border/60 bg-muted/20 px-4 py-2 text-[11px] text-muted-foreground">
+          <b className="font-semibold text-foreground" dir="auto">
+            {answerText(r, t)}
+          </b>
+          {r.decidedByUserName && <> · {r.decidedByUserName}</>}
+          {r.decidedAt && <> · {ago(r.decidedAt)}</>}
+        </div>
       )}
     </article>
   )
 }
 
-/** The screening table: requested · make / buy per unit · possible date · verdict. */
-export function ScreenLinesTable({ lines }: { lines: ScreenedLine[] }) {
-  const t = useTranslations("Portal.Shared")
-  const { perms, data } = useMfgUi()
-  const date = useMfgDate()
-  const timeOn = data.settings.features.time
-  return (
-    <MfgReqTable
-      minWidth={timeOn ? "min-w-[600px]" : "min-w-[480px]"}
-      head={
-        <>
-          <Th>{t("mfg3_req_col_requested")}</Th>
-          {perms.seesMoney && <Th>{t("mfg3_req_col_make_buy")}</Th>}
-          {timeOn && <Th>{t("mfg2_possible_date")}</Th>}
-          <Th className="w-[34%]">{t("mfg3_req_col_verdict")}</Th>
-        </>
-      }
-    >
-      {lines.map((l) => {
-        const hoursPerUnit = l.std && l.line.quantity > 0 ? Math.round((l.std.hours / l.line.quantity) * 10) / 10 : null
-        return (
-          <tr key={l.index}>
-            <Td>
-              <span className="block font-semibold text-foreground" dir="auto">
-                {l.line.itemName}
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                {fmtQty(l.line.quantity)} {l.line.unit}
-                {timeOn && hoursPerUnit != null && <> · {t("mfg3_req_std_hours", { hours: fmtQty(hoursPerUnit) })}</>}
-              </span>
-            </Td>
-            {perms.seesMoney && (
-              <Td className="whitespace-nowrap tabular-nums">
-                {l.verdict ? (
-                  <>
-                    <b className="text-foreground">{fmtMoney(l.verdict.unitCost)}</b>
-                    <span className="text-muted-foreground"> / {l.verdict.buyPrice != null ? fmtMoney(l.verdict.buyPrice) : "—"}</span>
-                    <span className="block text-[10px] text-muted-foreground">{t("mfg3_req_make_buy_unit")}</span>
-                  </>
-                ) : (
-                  "—"
-                )}
-              </Td>
-            )}
-            {timeOn && <Td className="whitespace-nowrap">{l.possibleDate ? date.short(l.possibleDate) : "—"}</Td>}
-            <Td>
-              <VerdictCell line={l} />
-            </Td>
-          </tr>
-        )
-      })}
-    </MfgReqTable>
-  )
-}
-
-function AnsweredBody({ request: r, now, onShowEstimate }: { request: ManufacturingRequest; now: number; onShowEstimate: () => void }) {
+export function MfgEstimateCard({ estimate: e, onOpen }: { estimate: MfgCostEstimate; onOpen?: () => void }) {
   const t = useTranslations("Portal.Shared")
   const ui = useMfgUi()
-  const arrived = useArrivedLabel()
-  const orderIds = workOrderIdsOf(r)
-  const estimate = r.estimateId ? ui.data.estimates.find((e) => e.id === r.estimateId) : null
-  const answer = r.answerNote || r.rejectionReason
-  return (
-    <div className="space-y-2 px-4 py-3 text-xs">
-      <p className="text-muted-foreground" dir="auto">
-        {requestLines(r)
-          .map((l) => `${l.itemName} × ${fmtQty(l.quantity)} ${l.unit}`)
-          .join(" · ")}
-      </p>
-      {(answer || r.decidedByUserName) && (
-        <p className="text-slate-700">
-          {answer && (
-            <b className="font-semibold text-foreground" dir="auto">
-              {answer}
-            </b>
-          )}
-          {r.decidedByUserName && (
-            <span className="text-muted-foreground">
-              {answer ? " — " : ""}
-              {t("mfg3_req_answered_by", { name: r.decidedByUserName })}
-              {r.decidedAt && <> · {arrived(r.decidedAt, now)}</>}
+  const { data, perms, seesMoney, today, world } = ui
+  const date = useMfgDate()
+  const timeOn = data.settings.features.time
+  const status = estimateStatus(e, today, data.settings)
+  const quote = salesQuoteState(e)
+  const sentDays = estimateSentDays(e, today)
+
+  // A draft is shown at today's cards (what sending will write); a sent one as sent.
+  const live = status === "draft"
+  const costNow = useMemo(() => (live ? estimateCostToday(e, data.productById, data.departments, data.settings) : null), [live, e, data.productById, data.departments, data.settings])
+  const lineCost = (i: number) => (live ? estimateCostToday({ lines: [e.lines[i]] }, data.productById, data.departments, data.settings).total : e.lines[i].totalCost)
+  const total = costNow ? costNow.total : estimateCost(e)
+  const readyDate = useMemo(() => {
+    if (!timeOn) return null
+    if (!live && e.earliestDays != null && e.sentAt) return addDaysISO(e.sentAt, e.earliestDays)
+    const days = estimateEarliestDays(e, data.productById, world.calcs, data.departments, world.lost)
+    return days == null ? null : addDaysISO(today, days)
+  }, [timeOn, live, e, data.productById, data.departments, world.calcs, world.lost, today])
+
+  const header = (
+    <>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+        <Calculator size={15} aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold text-foreground" dir="auto">
+          <span dir="ltr">{e.estimateNumber}</span> — {e.contactName || t("mfr_est_no_client")}
+        </span>
+        <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
+          {e.note && (
+            <span className="text-slate-700" dir="auto">
+              {e.note} ·
             </span>
           )}
-        </p>
+          {e.requestedBy && (
+            <span>
+              {t("mfr_requested_by")} <b className="text-slate-700">{e.requestedBy}</b> ·
+            </span>
+          )}
+          <span>{t("mfr_needed", { date: date.short(e.neededBy) })}</span>
+        </span>
+      </span>
+      <span className="shrink-0">
+        <EstimateStatusPill status={status} />
+      </span>
+    </>
+  )
+
+  return (
+    <article className="overflow-hidden rounded-2xl border bg-white shadow-sm" aria-label={e.estimateNumber}>
+      {onOpen ? (
+        <button type="button" onClick={onOpen} className={HEADER_BUTTON}>
+          {header}
+        </button>
+      ) : (
+        <div className="flex items-start gap-3 border-b border-border/60 px-4 py-3">{header}</div>
       )}
-      {(orderIds.length > 0 || estimate) && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {orderIds.map((id) => {
-            const v = ui.viewById.get(id)
-            if (!v)
-              return r.workOrderNumber && id === r.workOrderId ? (
-                <MfgChip key={id} tone="muted">
-                  #{r.workOrderNumber}
-                </MfgChip>
-              ) : null
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => ui.openOrder(id)}
-                className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-[11px] font-semibold hover:bg-warning/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span dir="ltr" className="font-mono text-muted-foreground">
-                  #{v.number}
-                </span>
-                <span dir="auto">{v.product.name}</span>
-                <MfgStatePill view={v} departments={ui.data.departments} />
-              </button>
-            )
-          })}
-          {estimate && (
-            <button
-              type="button"
-              onClick={onShowEstimate}
-              className="inline-flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1 text-[11px] font-semibold hover:bg-warning/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Calculator size={12} className="text-warning" aria-hidden="true" />
-              <span dir="ltr">{estimate.estimateNumber}</span>
-              <span className="text-muted-foreground">{t(`mfg2_est_state_${estimate.state}`)}</span>
-            </button>
+
+      <dl className="divide-y divide-border/60 text-xs">
+        {e.lines.map((l, i) => (
+          <Row key={`${l.productId}_${i}`} label={<span dir="auto">{`${l.productName} × ${fmtQty(l.quantity)} ${l.unit}`}</span>}>
+            {seesMoney ? <Money value={lineCost(i)} /> : null}
+          </Row>
+        ))}
+        {seesMoney && (
+          <Row label={<b className="text-foreground">{t("mfr_make_cost")}</b>} strong>
+            <Money value={total} />
+          </Row>
+        )}
+        {timeOn && readyDate && <Row label={t("mfr_earliest_ready")}>{date.short(readyDate)}</Row>}
+        <Row label={t("mfr_validity")}>
+          {t("mfr_validity_days", { days: e.validityDays || data.settings.estimateValidityDays })}
+          {sentDays != null && <> · {t("mfr_sent_ago", { days: sentDays })}</>}
+        </Row>
+        <Row
+          label={
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              {t("mfr_in_sales")} <MfgModuleChip module="sales" />
+            </span>
+          }
+        >
+          <span className="font-semibold text-slate-700">{salesQuoteText(quote, e.quoteNumber, e.salesOrderNumber, t)}</span>
+        </Row>
+      </dl>
+
+      {perms.canCost && (status === "draft" || status === "expired") && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 bg-muted/20 px-4 py-2.5">
+          {status === "expired" ? (
+            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={() => ui.openGlobal({ kind: "recalcEstimate", estimateId: e.id })}>
+              <RotateCcw size={13} aria-hidden="true" /> {t("mfr_recalc_cta")}
+            </Button>
+          ) : (
+            <Button size="sm" className="h-9 gap-1.5 text-xs" onClick={() => ui.openGlobal({ kind: "sendEstimate", estimateId: e.id })}>
+              <Send size={13} className="rtl-flip" aria-hidden="true" /> {t("mfr_send_cta")}
+            </Button>
           )}
         </div>
       )}
+    </article>
+  )
+}
+
+function Row({ label, children, strong }: { label: ReactNode; children: ReactNode; strong?: boolean }) {
+  return (
+    <div className={cn("flex items-center justify-between gap-3 px-4 py-2", strong && "bg-muted/20")}>
+      <dt className="min-w-0 text-muted-foreground">{label}</dt>
+      <dd className={cn("shrink-0 text-end", strong ? "font-bold text-foreground" : "text-foreground")}>{children}</dd>
     </div>
+  )
+}
+
+function Money({ value }: { value: number }) {
+  return (
+    <span dir="ltr" className="tabular-nums">
+      {fmtMoney(value)} ﷼
+    </span>
   )
 }

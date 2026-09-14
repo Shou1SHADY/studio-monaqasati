@@ -1,25 +1,27 @@
 "use client"
 
-// The Manufacturing frame: one header with the module's search and its two
-// entry actions, three headline figures that jump to the orders behind them,
-// and the tab rail — each tab a real URL, each with the count that says
-// whether it needs attention.
+// The Manufacturing frame: the module title with what this tab is for, the
+// role the viewer's Today is shown as (only when they hold more than one of
+// the five roles), the tab's one create action, and the tab rail — each tab a
+// real URL with the count that says whether it needs attention.
+//
+// No KPIs here: headline figures belong to each role's Today, and the Workshop
+// has none (WS-01). No "request manufacturing" button either: requests arrive
+// from Sales and Procurement, never from inside the module (REQ-01).
 
 import { useEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CalendarCheck2, ClipboardList, Factory, FilePlus2, Inbox, Layers, Plus, Search, SlidersHorizontal, Truck } from "lucide-react"
+import { CalendarCheck2, ClipboardList, Factory, Inbox, Layers, Plus, Search, SlidersHorizontal, UserCog } from "lucide-react"
 import { Link, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { compareOrders, matchesSearch } from "@/lib/manufacturing-view"
+import type { Persona } from "@/lib/manufacturing-engine"
+import { compareWorkshop, matchesSearch, myStations } from "@/lib/manufacturing-view"
 import { useMfgUi } from "./MfgUiContext"
-import { MfgKpiCard, fmtQty } from "./ui/MfgUi"
+import { sourceNameOf } from "./MfgOrderBits"
 
-export type MfgTabId = "today" | "requests" | "orders" | "floor" | "products" | "settings"
-
-export function mfgBasePath(portal: "contractor" | "supplier"): string {
-  return `/${portal}/manufacturing`
-}
+export type MfgTabId = "today" | "workshop" | "requests" | "products" | "settings"
 
 interface TabDef {
   id: MfgTabId
@@ -29,13 +31,15 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: "today", segment: "", labelKey: "mfg3_tab_today", icon: CalendarCheck2 },
-  { id: "requests", segment: "requests", labelKey: "mfg3_tab_requests", icon: Inbox },
-  { id: "orders", segment: "orders", labelKey: "mfg3_tab_orders", icon: ClipboardList },
-  { id: "floor", segment: "floor", labelKey: "mfg3_tab_floor", icon: Factory },
-  { id: "products", segment: "products", labelKey: "mfg3_tab_products", icon: Layers },
-  { id: "settings", segment: "settings", labelKey: "mfg3_tab_settings", icon: SlidersHorizontal },
+  { id: "today", segment: "", labelKey: "mfw_tab_today", icon: CalendarCheck2 },
+  { id: "workshop", segment: "workshop", labelKey: "mfw_tab_workshop", icon: ClipboardList },
+  { id: "requests", segment: "requests", labelKey: "mfw_tab_requests", icon: Inbox },
+  { id: "products", segment: "products", labelKey: "mfw_tab_products", icon: Layers },
+  { id: "settings", segment: "settings", labelKey: "mfw_tab_settings", icon: SlidersHorizontal },
 ]
+
+/** The Workshop's own search field — Ctrl/⌘K focuses it on that tab. */
+export const WORKSHOP_SEARCH_ID = "mfw-search"
 
 export function MfgShell({ tab, children }: { tab: MfgTabId; children: ReactNode }) {
   const t = useTranslations("Portal.Shared")
@@ -43,92 +47,57 @@ export function MfgShell({ tab, children }: { tab: MfgTabId; children: ReactNode
   const isRtl = locale === "ar"
   const router = useRouter()
   const ui = useMfgUi()
-  const { data, perms, kpis, base } = ui
+  const { data, perms, base } = ui
 
-  const visible = TABS.filter((tb) => {
-    if (tb.id === "settings") return perms.canManage
-    if (tb.id === "requests") return perms.canManage || perms.canCost || perms.canRequest
-    if (tb.id === "products") return perms.canManage || perms.canCost || perms.canWork
-    return true
-  })
+  const full = perms.canManage || perms.canCost || perms.canView
+  const visible = TABS.filter((tb) => tb.id === "today" || tb.id === "workshop" || full)
 
   const counts: Partial<Record<MfgTabId, number>> = {
     today: ui.decisions.length,
-    requests:
-      data.requests.filter((r) => r.status === "new").length +
-      (data.settings.features.estimates ? data.estimates.filter((e) => e.state === "draft").length : 0),
-    orders: ui.views.filter((v) => v.live).length,
-    floor: data.notes.filter((n) => n.status === "in_transit" && ui.viewById.has(n.source?.workOrderId)).length,
-    products: data.products.length,
+    workshop: ui.views.filter((v) => v.live).length,
+    requests: data.requests.filter((r) => r.status === "new").length,
+    products: data.products.filter((p) => !p.archived).length,
   }
 
-  const bnName = kpis.bottleneck ? data.departments.find((d) => d.id === kpis.bottleneck!.departmentId)?.name || "" : ""
+  const subtitle = tab === "today" ? t(`mfw_sub_today_${ui.persona || "none"}`) : t(`mfw_sub_${tab}`)
+
+  const switchPersona = (p: Persona) => {
+    ui.setPersona(p)
+    // Switching the role returns to Today (TD-03).
+    if (tab !== "today") router.push(base)
+  }
 
   return (
-    <div className="space-y-5" dir={isRtl ? "rtl" : "ltr"}>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+    <div className="min-w-0 space-y-5" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-warning/10 text-warning">
             <Factory size={22} aria-hidden="true" />
           </span>
           <div className="min-w-0">
-            <h1 className="text-2xl font-black text-primary">{t("mfg3_module_title")}</h1>
-            <p className="text-sm text-muted-foreground">{t(`mfg3_tab_desc_${tab}`)}</p>
+            <h1 className="text-2xl font-black text-primary">{t("mfw_module_title")}</h1>
+            <p className="text-sm text-muted-foreground">{subtitle}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:ms-auto">
-          <MfgGlobalSearch />
-          {perms.canRequest && (
-            <Button variant="outline" className="gap-2" onClick={() => router.push(`${base}/requests?new=1`)}>
-              <FilePlus2 size={16} aria-hidden="true" />
-              {t("mfg3_action_request")}
+          {ui.personas.length > 1 && ui.persona && <PersonaSwitch value={ui.persona} onChange={switchPersona} />}
+          {tab !== "workshop" && <MfgJumpSearch />}
+          {tab === "workshop" && perms.canManage && (
+            <Button className="h-10 gap-2" onClick={() => ui.openGlobal({ kind: "stockOrder" })} disabled={!data.products.length}>
+              <Plus size={16} aria-hidden="true" />
+              {t("mfw_action_stock_order")}
             </Button>
           )}
-          {perms.canCreate && (
-            <Button className="gap-2" onClick={ui.openNewOrder} disabled={!data.products.length}>
+          {tab === "products" && perms.canManage && (
+            <Button className="h-10 gap-2" onClick={() => ui.openGlobal({ kind: "product" })}>
               <Plus size={16} aria-hidden="true" />
-              {t("mfg3_action_new_order")}
+              {t("mfw_action_new_product")}
             </Button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <MfgKpiCard
-          icon={Factory}
-          label={t("mfg3_kpi_in_production")}
-          value={kpis.liveCount}
-          unit={t("mfg3_kpi_orders_unit")}
-          sub={t("mfg3_kpi_in_production_sub", { units: fmtQty(kpis.wipUnits) })}
-          onClick={() => router.push(`${base}/orders?seg=live`)}
-        />
-        <MfgKpiCard
-          icon={AlertTriangle}
-          label={data.settings.features.time ? t("mfg3_kpi_will_miss") : t("mfg3_kpi_past_due")}
-          value={kpis.lateCount}
-          unit={t("mfg3_kpi_orders_unit")}
-          subTone={kpis.lateCount ? "bad" : "ok"}
-          sub={
-            kpis.lateCount
-              ? kpis.bottleneck
-                ? t("mfg3_kpi_bottleneck", { dept: bnName, days: kpis.bottleneck.days })
-                : t("mfg3_kpi_late_sub")
-              : t("mfg3_kpi_on_time")
-          }
-          onClick={() => router.push(`${base}/orders?seg=late`)}
-        />
-        <MfgKpiCard
-          icon={Truck}
-          label={t("mfg3_kpi_ready")}
-          value={fmtQty(kpis.readyUnits)}
-          unit={t("mfg3_kpi_units_unit")}
-          subTone={kpis.readyUnits ? "warn" : "muted"}
-          sub={kpis.readyOrders ? t("mfg3_kpi_ready_sub", { orders: kpis.readyOrders }) : t("mfg3_kpi_ready_none")}
-          onClick={() => router.push(`${base}/floor`)}
-        />
-      </div>
-
-      <nav aria-label={t("mfg3_module_title")} className="border-b border-border">
+      <nav aria-label={t("mfw_module_title")} className="border-b border-border">
         <ul className="-mb-px flex items-center gap-1 overflow-x-auto">
           {visible.map((tb) => {
             const href = tb.segment ? `${base}/${tb.segment}` : base
@@ -141,7 +110,7 @@ export function MfgShell({ tab, children }: { tab: MfgTabId; children: ReactNode
                   href={href}
                   aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-2 whitespace-nowrap rounded-t-md border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors",
+                    "flex min-h-[44px] items-center gap-2 whitespace-nowrap rounded-t-md border-b-2 px-3.5 py-2.5 text-sm font-semibold transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                     isActive ? "border-warning text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
                   )}
@@ -160,106 +129,142 @@ export function MfgShell({ tab, children }: { tab: MfgTabId; children: ReactNode
         </ul>
       </nav>
 
+      <ShortcutK tab={tab} />
       {children}
     </div>
   )
 }
 
-/** Search every order and product from any tab; Ctrl/⌘+K focuses it. */
-function MfgGlobalSearch() {
+/** "Today as …" — only the five manufacturing roles the viewer holds. */
+function PersonaSwitch({ value, onChange }: { value: Persona; onChange: (p: Persona) => void }) {
+  const t = useTranslations("Portal.Shared")
+  const ui = useMfgUi()
+  const leadStations = useMemo(() => {
+    const ids = myStations(ui.data.engineActor, ui.data.departments, "lead")
+    return ui.data.departments.filter((d) => ids.includes(d.id)).map((d) => d.name)
+  }, [ui.data.engineActor, ui.data.departments])
+  const label = (p: Persona) => (p === "lead" && leadStations.length ? t("mfg4_role_lead_of", { stations: leadStations.join(t("mfw_list_sep")) }) : t(`mfg4_persona_${p}`))
+  return (
+    <div className="flex items-center gap-2">
+      <span className="flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+        <UserCog size={14} aria-hidden="true" /> {t("mfg4_view_as")}
+      </span>
+      <Select value={value} onValueChange={(v) => onChange(v as Persona)}>
+        <SelectTrigger className="h-10 w-auto min-w-[160px] max-w-[260px] gap-2 text-xs font-semibold" aria-label={t("mfg4_view_as")}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {ui.personas.map((p) => (
+            <SelectItem key={p} value={p} className="text-xs">
+              {label(p)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/** Ctrl/⌘K: on the Workshop it focuses the Workshop search; elsewhere the
+ * header search, whose Enter opens the Workshop filtered by the query. */
+function ShortcutK({ tab }: { tab: MfgTabId }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return
+      e.preventDefault()
+      const id = tab === "workshop" ? WORKSHOP_SEARCH_ID : "mfw-jump-search"
+      const el = document.getElementById(id) as HTMLInputElement | null
+      el?.focus()
+      el?.select()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [tab])
+  return null
+}
+
+/** Search every order from any tab: the best hits open the order in place,
+ * Enter shows every match in the Workshop. */
+function MfgJumpSearch() {
   const t = useTranslations("Portal.Shared")
   const router = useRouter()
   const ui = useMfgUi()
   const [q, setQ] = useState("")
   const [open, setOpen] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault()
-        inputRef.current?.focus()
-        setOpen(true)
-      }
-    }
     const onClick = (e: MouseEvent) => {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
     }
-    window.addEventListener("keydown", onKey)
     document.addEventListener("mousedown", onClick)
-    return () => {
-      window.removeEventListener("keydown", onKey)
-      document.removeEventListener("mousedown", onClick)
-    }
+    return () => document.removeEventListener("mousedown", onClick)
   }, [])
 
-  const orders = useMemo(
-    () => (q.trim() ? ui.views.filter((v) => !v.cancelled && matchesSearch(v, q)).sort(compareOrders).slice(0, 6) : []),
-    [q, ui.views]
-  )
-  const products = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    return s ? ui.data.products.filter((p) => p.name.toLowerCase().includes(s)).slice(0, 3) : []
-  }, [q, ui.data.products])
+  const { views, nextStepOf } = ui
+  const hits = useMemo(() => {
+    if (!q.trim()) return []
+    const matched = views.filter((v) => matchesSearch(v, q))
+    const withStep = new Set(matched.filter((v) => nextStepOf(v)).map((v) => v.id))
+    return matched.sort(compareWorkshop((v) => withStep.has(v.id))).slice(0, 5)
+  }, [q, views, nextStepOf])
 
   const go = () => {
-    if (!q.trim()) return
+    const query = q.trim()
+    if (!query) return
     setOpen(false)
-    router.push(`${ui.base}/orders?q=${encodeURIComponent(q.trim())}&seg=all`)
+    router.push(`${ui.base}/workshop?q=${encodeURIComponent(query)}`)
   }
 
   return (
-    <div ref={boxRef} className="relative w-full sm:w-72">
+    <div ref={boxRef} className="relative w-full sm:w-64">
       <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
       <input
-        ref={inputRef}
+        id="mfw-jump-search"
         type="search"
         value={q}
-        onChange={(e) => { setQ(e.target.value); setOpen(true) }}
+        onChange={(e) => {
+          setQ(e.target.value)
+          setOpen(true)
+        }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
           if (e.key === "Enter") go()
           if (e.key === "Escape") setOpen(false)
         }}
-        placeholder={t("mfg3_search_placeholder")}
-        aria-label={t("mfg3_search_placeholder")}
-        className="h-10 w-full rounded-xl border border-input bg-white ps-8 pe-12 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        placeholder={t("mfw_jump_placeholder")}
+        aria-label={t("mfw_jump_placeholder")}
+        className="h-10 w-full rounded-xl border border-input bg-white pe-12 ps-8 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <kbd className="pointer-events-none absolute end-2 top-1/2 hidden -translate-y-1/2 rounded border bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground sm:block" dir="ltr">
         Ctrl K
       </kbd>
       {open && q.trim() && (
         <div className="absolute inset-x-0 top-11 z-40 overflow-hidden rounded-xl border bg-white shadow-lg">
-          {orders.length === 0 && products.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{t("mfg3_search_empty")}</p>}
-          {orders.length > 0 && <p className="px-3 pb-1 pt-2 text-[10px] font-bold text-muted-foreground">{t("mfg3_tab_orders")}</p>}
-          {orders.map((v) => (
+          {hits.length === 0 && <p className="px-3 py-4 text-center text-xs text-muted-foreground">{t("mfw_jump_empty")}</p>}
+          {hits.map((v) => (
             <button
               key={v.id}
               type="button"
-              onClick={() => { setOpen(false); ui.openOrder(v.id) }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs hover:bg-warning/5 focus-visible:bg-warning/5 focus-visible:outline-none"
+              onClick={() => {
+                setOpen(false)
+                ui.openOrder(v.id)
+              }}
+              className="flex min-h-[40px] w-full items-center gap-2 px-3 py-2 text-start text-xs hover:bg-warning/5 focus-visible:bg-warning/5 focus-visible:outline-none"
             >
-              <span className="font-mono text-[11px] text-muted-foreground" dir="ltr">#{v.number}</span>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground" dir="ltr">
+                {v.ref}
+              </span>
               <span className="min-w-0 flex-1 truncate font-semibold">{v.product.name}</span>
-              <span className="truncate text-[11px] text-muted-foreground">{v.sourceName}</span>
+              <span className="max-w-[35%] truncate text-[11px] text-muted-foreground">{sourceNameOf(v, t)}</span>
             </button>
           ))}
-          {products.length > 0 && <p className="px-3 pb-1 pt-2 text-[10px] font-bold text-muted-foreground">{t("mfg3_tab_products")}</p>}
-          {products.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => { setOpen(false); router.push(`${ui.base}/products?open=${p.id}`) }}
-              className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs hover:bg-warning/5 focus-visible:bg-warning/5 focus-visible:outline-none"
-            >
-              <Layers size={13} className="text-muted-foreground" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate font-semibold">{p.name}</span>
-              <span className="text-[11px] text-muted-foreground">{p.unit}</span>
-            </button>
-          ))}
-          <button type="button" onClick={go} className="w-full border-t bg-muted/30 px-3 py-2 text-start text-[11px] font-semibold text-cta hover:bg-muted/60">
-            {t("mfg3_search_all", { q: q.trim() })}
+          <button
+            type="button"
+            onClick={go}
+            className="w-full border-t bg-muted/30 px-3 py-2 text-start text-[11px] font-semibold text-cta hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            {t("mfw_jump_all", { q: q.trim() })}
           </button>
         </div>
       )}

@@ -11,6 +11,7 @@ import {
   getDocs,
   increment,
   query,
+  runTransaction,
   serverTimestamp,
   where,
   writeBatch,
@@ -51,8 +52,18 @@ import {
   type HookActor,
 } from "./accounting/hooks"
 import { MFG_DEPARTMENTS, WORK_ORDERS, buildStagesFromDepartments, nextWorkOrderNumber, type MfgDepartment } from "./manufacturing"
+import { drawDocNumber } from "./manufacturing-writes"
+import { MFG_COST_ESTIMATES, itemKey, type MfgCostEstimate } from "./manufacturing-engine"
 
 const nowIso = () => new Date().toISOString()
+
+/** The row a sale draws from: a plain row (not a block-tracked slab, not a
+ * manufacturing remnant) that holds enough, else any plain row, else the first. */
+function pickStockRow<R extends { id: string; name: string; quantity?: number; lot?: string | null; remnant?: boolean | null }>(rows: R[], name: string, quantity: number): R | undefined {
+  const same = rows.filter((r) => r.name.trim().toLowerCase() === name.trim().toLowerCase())
+  const plain = same.filter((r) => !r.remnant && !r.lot)
+  return plain.find((r) => r.quantity == null || r.quantity >= quantity) || plain[0] || same.find((r) => !r.remnant) || same[0]
+}
 
 export interface Actor {
   id: string
@@ -144,6 +155,17 @@ export async function createSalesOrderFromQuotation(
   return orderRef.id
 }
 
+/** Sales reports the client says the deposit was sent — Finance still confirms it. */
+export async function reportDepositReceived(firestore: Firestore, order: SalesOrder, actor: { id: string; name: string }): Promise<void> {
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, SALES_ORDERS, order.id), {
+    "payment.depositReportedAt": nowIso(),
+    "payment.depositReportedBy": actor.name,
+    updatedAt: serverTimestamp(),
+  })
+  await batch.commit()
+}
+
 /** The deposit arrived: the gate opens and the order starts running. */
 export async function markDepositPaid(firestore: Firestore, order: SalesOrder): Promise<void> {
   const batch = writeBatch(firestore)
@@ -216,7 +238,7 @@ export async function confirmDelivery(
     note: SalesDeliveryNote
     order: SalesOrder
     allNotes: SalesDeliveryNote[]
-    stockRows: Array<{ id: string; name: string }>
+    stockRows: Array<{ id: string; name: string; quantity?: number; lot?: string | null; remnant?: boolean | null }>
     varianceNote?: string | null
     actor: Actor
   }
@@ -235,7 +257,7 @@ export async function confirmDelivery(
 
   if (note.warehouseId) {
     for (const line of note.lines) {
-      const row = input.stockRows.find((r) => r.name.trim().toLowerCase() === line.name.trim().toLowerCase())
+      const row = pickStockRow(input.stockRows, line.name, line.quantity)
       if (row) {
         batch.update(doc(firestore, "warehouses", note.warehouseId, "inventoryItems", row.id), {
           quantity: increment(-line.quantity),
@@ -495,7 +517,7 @@ export async function issueCreditNote(
     salesReturn: SalesReturn
     order: SalesOrder
     /** The delivering warehouse's rows, to restock by name. Empty = no restock. */
-    stockRows: Array<{ id: string; name: string }>
+    stockRows: Array<{ id: string; name: string; quantity?: number; lot?: string | null; remnant?: boolean | null }>
     warehouseId?: string | null
     actor: Actor
   }
@@ -509,7 +531,7 @@ export async function issueCreditNote(
   })
   if (input.warehouseId) {
     for (const line of input.salesReturn.lines) {
-      const row = input.stockRows.find((r) => r.name.trim().toLowerCase() === line.name.trim().toLowerCase())
+      const row = pickStockRow(input.stockRows, line.name, 0)
       if (row) {
         batch.update(doc(firestore, "warehouses", input.warehouseId, "inventoryItems", row.id), {
           quantity: increment(line.quantity),
@@ -543,6 +565,13 @@ export async function issueCreditNote(
 // Manufacturing requests — Sales asks, the plant answers
 // ---------------------------------------------------------------------------
 
+/**
+ * A manufacturing request for a sales order's uncovered line
+ * (sales.mfg_request.created). It carries the PRD 1.2 contract — source,
+ * kind, lines with the product card, and the promise date as the need-by —
+ * and keeps the single-item fields older screens read. The number is drawn
+ * from the workshop's yearly MR sequence in the same transaction (ORD-07).
+ */
 export async function createManufacturingRequest(
   firestore: Firestore,
   input: {
@@ -550,34 +579,66 @@ export async function createManufacturingRequest(
     itemName: string
     unit: string
     quantity: number
+    /** The manufacturing product card matched to the line, when one exists. */
+    productId?: string | null
     actor: Actor
   }
 ): Promise<string> {
   const ref = doc(collection(firestore, MANUFACTURING_REQUESTS))
-  const batch = writeBatch(firestore)
-  batch.set(ref, {
-    organizationId: input.order.organizationId,
-    requestNumber: generateMfgRequestNumber(),
-    orderId: input.order.id,
-    orderNumber: input.order.orderNumber,
-    contactName: input.order.contactName ?? null,
-    itemName: input.itemName,
-    unit: input.unit,
-    quantity: input.quantity,
-    status: "new",
-    workOrderId: null,
-    workOrderNumber: null,
-    rejectionReason: null,
-    decidedAt: null,
-    decidedByUserId: null,
-    decidedByUserName: null,
-    createdByUserId: input.actor.id,
-    createdByUserName: input.actor.name,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    requestedAt: nowIso(),
+  const organizationId = input.order.organizationId
+  // A line priced on the workshop's cost statement carries it into the order,
+  // so the manager answers against the costed route and the variance has a
+  // baseline (REQ-08). Best effort: no statement is not an error.
+  let estimateId: string | null = null
+  try {
+    const won = await getDocs(
+      query(collection(firestore, MFG_COST_ESTIMATES), where("organizationId", "==", organizationId), where("salesOrderNumber", "==", input.order.orderNumber))
+    )
+    const match = won.docs
+      .map((d) => ({ ...(d.data() as MfgCostEstimate), id: d.id }))
+      .find((e) => e.state === "won" && e.lines.some((l) => (input.productId && l.productId === input.productId) || itemKey(l.productName) === itemKey(input.itemName)))
+    estimateId = match?.id ?? null
+  } catch (err) {
+    console.warn("cost statement lookup skipped:", (err as { code?: string })?.code || err)
+  }
+  await runTransaction(firestore, async (tx) => {
+    let requestNumber: string
+    try {
+      requestNumber = (await drawDocNumber(firestore, tx, organizationId, "MR")).docNumber
+    } catch (err) {
+      // A counter the member cannot read must not stop the request.
+      console.warn("MR sequence unavailable:", (err as { code?: string })?.code || err)
+      requestNumber = generateMfgRequestNumber()
+    }
+    tx.set(ref, {
+      organizationId,
+      requestNumber,
+      kind: "make",
+      sourceKind: "sales",
+      orderId: input.order.id,
+      orderNumber: input.order.orderNumber,
+      contactName: input.order.contactName ?? null,
+      itemName: input.itemName,
+      unit: input.unit,
+      quantity: input.quantity,
+      lines: [{ productId: input.productId ?? null, itemName: input.itemName, unit: input.unit, quantity: input.quantity }],
+      estimateId,
+      neededBy: input.order.promiseDate ?? null,
+      note: null,
+      status: "new",
+      workOrderId: null,
+      workOrderNumber: null,
+      rejectionReason: null,
+      decidedAt: null,
+      decidedByUserId: null,
+      decidedByUserName: null,
+      createdByUserId: input.actor.id,
+      createdByUserName: input.actor.name,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      requestedAt: nowIso(),
+    })
   })
-  await batch.commit()
   return ref.id
 }
 

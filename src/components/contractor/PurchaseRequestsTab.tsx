@@ -6,6 +6,11 @@
 // by design: no automatic conversion into an RFQ or warehouse consumption —
 // approval just unblocks the requester to proceed (outside the system, or via
 // the existing "Pull from Warehouse" / BOQ-publish flows already on this page).
+//
+// Procurement may route a request to the workshop instead of buying it (D4):
+// a manufacturing request is sent, linked to the purchase request, and the
+// workshop's answer — accepted, partly, declined, or moved to purchase after
+// the answer window — is read back here.
 
 import { useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
@@ -25,7 +30,13 @@ import {
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, addDoc, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { PlusCircle, ClipboardList, Loader2, CheckCircle2, XCircle, Plus, Trash2 } from "lucide-react"
+import { usePermissions } from "@/hooks/usePermissions"
+import { useMfgFacts } from "@/hooks/useMfgFacts"
+import { purchaseRequestRef } from "@/lib/mfg-outside"
+import { useNowMs } from "@/components/inventory/MfgOutsideBits"
+import { PlusCircle, ClipboardList, Loader2, CheckCircle2, XCircle, Plus, Trash2, Factory } from "lucide-react"
+import { PrRouteToMfgDialog, type RoutablePurchaseRequest } from "./PrRouteToMfgDialog"
+import { PrMfgRequestStatus } from "./PrMfgRequestStatus"
 
 type RequestItem = { name: string; quantity: string; unit: string }
 
@@ -38,6 +49,8 @@ type PurchaseRequest = {
   requestedByUserId: string
   requestedByUserName: string
   decidedByUserName?: string
+  /** The manufacturing request Procurement routed this need to, if any. */
+  mfgRequestId?: string | null
   createdAt?: unknown
 }
 
@@ -62,11 +75,28 @@ interface PurchaseRequestsTabProps {
 
 export function PurchaseRequestsTab({ projectId, canDecide }: PurchaseRequestsTabProps) {
   const t = useTranslations("Portal.Contractor")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
+  // Routing a need to make is Procurement's decision (mirrors the
+  // manufacturingRequests create rule, which checks org-level permissions).
+  const { can } = usePermissions()
+  const canRoute = can("rfq.manage") || can("warehouses.manage")
+  const mfg = useMfgFacts({ projectId, requests: true })
+  const nowMs = useNowMs()
+  const [routeTarget, setRouteTarget] = useState<RoutablePurchaseRequest | null>(null)
+  const projectRef = useMemoFirebase(() => (firestore && projectId ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
+  const { data: projectDoc } = useDoc(projectRef)
+  const projectName = ((projectDoc as { name?: string } | null)?.name || "").trim()
+  // Requests are newest first, so this is the latest routing of the purchase
+  // request — found by the stored link or by the reference it carries.
+  const linkedRequest = (req: PurchaseRequest) => {
+    const ref = purchaseRequestRef(req.id)
+    return mfg.requests.find((r) => (!!req.mfgRequestId && r.id === req.mfgRequestId) || r.purchaseRequestRef === ref) || null
+  }
 
   const userDocRef = useMemoFirebase(() => {
     if (!firestore || !user) return null
@@ -232,10 +262,38 @@ export function PurchaseRequestsTab({ projectId, canDecide }: PurchaseRequestsTa
                 ))}
               </div>
               {req.notes && <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2">{req.notes}</p>}
+              {(() => {
+                const linked = linkedRequest(req)
+                const mayRoute = canRoute && mfg.products.some((p) => !p.archived) && req.status !== "rejected" && (!linked || linked.status === "rejected" || linked.status === "moved")
+                return (
+                  <>
+                    {linked && <PrMfgRequestStatus request={linked} settings={mfg.settings} nowMs={nowMs} canBuy={canRoute} actor={mfg.actor} />}
+                    {mayRoute && (
+                      <div className="flex justify-end">
+                        <Button size="sm" variant="outline" className="h-8 gap-1.5 border-cta/30 text-cta hover:bg-cta hover:text-white" onClick={() => setRouteTarget({ id: req.id, title: req.title, items: req.items, notes: req.notes ?? null })}>
+                          <Factory size={13} aria-hidden="true" />
+                          {tShared("mfx_route_open_btn")}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           ))}
         </div>
       )}
+
+      <PrRouteToMfgDialog
+        request={routeTarget}
+        projectId={projectId}
+        projectName={projectName}
+        orgId={mfg.orgId}
+        actor={mfg.actor}
+        products={mfg.products}
+        settings={mfg.settings}
+        onClose={() => setRouteTarget(null)}
+      />
 
       <Dialog open={showCreate} onOpenChange={(open) => { if (!isSaving) { setShowCreate(open); if (!open) resetForm() } }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-lg">

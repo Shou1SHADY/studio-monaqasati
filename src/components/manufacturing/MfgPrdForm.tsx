@@ -1,481 +1,568 @@
 "use client"
 
-// New product card, in two steps: what it is and the route it travels, then
-// what each department consumes — with the standard cost worked out live and
-// the consequences stated before the card is created.
+// The product card (PC-01…PC-09), in two steps. First what it is — name, unit
+// (stone in m² or linear metres), planned waste, the blocking flags — and its
+// own route: stations from the registry, or a new station created right here
+// and added in place (PC-02), each with a standard time that starts empty
+// (PC-03). With live orders on the card the route order is locked and only
+// the times change. Then the bill of materials: what each station consumes,
+// flagged "waste" (the slab, bought net + waste) or "custody" (consumables
+// backflushed from station custody, never requested per order — PC-09), with
+// the standard cost worked out live for the money roles. No price here (D10).
 
 import { useMemo, useState, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { ArrowDown, ArrowUp, Layers, Plus, Trash2 } from "lucide-react"
+import { addDoc, collection, serverTimestamp } from "firebase/firestore"
+import { ArrowDown, ArrowUp, Layers, Lock, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { MFG_DEPARTMENTS } from "@/lib/manufacturing"
+import { deptCapacity, effectiveRoute, itemKey, standardCost, stationGate, type MfgBomLine, type MfgProduct, type MfgRouteStep } from "@/lib/manufacturing-engine"
+import { createMfgProduct, updateMfgProduct } from "@/lib/manufacturing-writes"
 import { cn } from "@/lib/utils"
-import { deptCapacity, standardCost, type MfgBomLine, type MfgFamily, type MfgRouteStep } from "@/lib/manufacturing-engine"
-import { createMfgProduct } from "@/lib/manufacturing-writes"
 import { useMfgUi } from "./MfgUiContext"
-import { MFG_FAMILIES } from "./MfgPrdBits"
-import { MfgEffects, MfgField, MfgFormModal, MfgNote, MfgReview, departmentIcon, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgRecordedAs } from "./MfgOrderBits"
+import { reqErrorText } from "./MfgReqBits"
+import { STONE_UNITS, liveOrdersOn, stepName } from "./MfgPrdBits"
+import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtQty } from "./ui/MfgUi"
 
-interface RouteDraft {
-  on: boolean
+interface RouteRow {
+  key: string
+  departmentId: string
+  departmentName: string
+  /** "" = not estimated. */
   hours: string
 }
 
-interface BomDraft {
-  uid: number
+interface BomRow {
+  key: string
   itemName: string
   unit: string
   qty: string
   departmentId: string
-  withWaste: boolean
+  waste: boolean
+  custody: boolean
+  unitCost: string
   lotted: boolean
-  cost: string
 }
 
-const num = (s: string): number | null => {
-  if (s.trim() === "") return null
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
-}
+let seq = 0
+const rowKey = () => `row_${Date.now().toString(36)}_${(seq += 1)}`
+const numOrNull = (s: string): number | null => (s.trim() === "" ? null : Number(s))
+const badNumber = (s: string) => s.trim() !== "" && !(Number(s) >= 0)
 
-export function MfgPrdForm({ onClose, onCreated }: { onClose: () => void; onCreated: (productId: string) => void }) {
+export function MfgProductForm({ productId, onClose }: { productId?: string; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
-  const { data } = useMfgUi()
+  const ui = useMfgUi()
+  const { data, perms, seesMoney } = ui
   const firestore = useFirestore()
   const { toast } = useToast()
+  const existing: MfgProduct | null = productId ? data.productById.get(productId) || null : null
   const timeOn = data.settings.features.time
+  const locked = !!existing && liveOrdersOn(existing.id, ui.views) > 0
 
   const [step, setStep] = useState(0)
-  const [busy, setBusy] = useState(false)
+  const [name, setName] = useState(existing?.name || "")
+  const [unit, setUnit] = useState(existing?.unit || STONE_UNITS[0])
+  const [waste, setWaste] = useState(String(existing?.wastePercent ?? 15))
+  const [measure, setMeasure] = useState(existing ? existing.requiresMeasurement : true)
+  const [drawing, setDrawing] = useState(existing ? existing.requiresDrawingApproval : true)
+  const [slab, setSlab] = useState(existing ? existing.requiresSlabApproval : true)
+  const [route, setRoute] = useState<RouteRow[]>(() =>
+    existing ? effectiveRoute(existing).map((r) => ({ key: rowKey(), departmentId: r.departmentId, departmentName: r.departmentName, hours: r.hoursPerUnit == null ? "" : String(r.hoursPerUnit) })) : []
+  )
+  const [bom, setBom] = useState<BomRow[]>(() =>
+    (existing?.bom || []).map((b) => ({
+      key: rowKey(),
+      itemName: b.itemName,
+      unit: b.unit,
+      qty: String(b.qtyPerUnit),
+      departmentId: b.departmentId,
+      waste: !!b.withWaste && !b.custody,
+      custody: !!b.custody,
+      unitCost: b.unitCost == null ? "" : String(b.unitCost),
+      lotted: !!b.lotted,
+    }))
+  )
+  const [newStation, setNewStation] = useState<{ name: string; workers: string; hours: string } | null>(null)
+  const [creatingStation, setCreatingStation] = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  const [name, setName] = useState("")
-  const [unit, setUnit] = useState(() => t("mfg3_prd_unit_default"))
-  const [family, setFamily] = useState<MfgFamily>("stone")
-  const [fit, setFit] = useState(false)
-  const [appr, setAppr] = useState(false)
-  const [slab, setSlab] = useState(false)
-  const [waste, setWaste] = useState("0")
-  const [salePrice, setSalePrice] = useState("")
-  const [buyRef, setBuyRef] = useState("")
-  const [estimate, setEstimate] = useState("")
+  const units = useMemo(() => (existing && !STONE_UNITS.includes(existing.unit as (typeof STONE_UNITS)[number]) ? [...STONE_UNITS, existing.unit] : [...STONE_UNITS]), [existing])
+  const suggestions = useMemo(() => {
+    const byKey = new Map<string, { name: string; unit: string; unitCost: number | null }>()
+    for (const rows of data.stockRows.values()) for (const r of rows) if (r.name && !r.isManufactured && !byKey.has(itemKey(r.name))) byKey.set(itemKey(r.name), { name: r.name, unit: r.unit, unitCost: r.unitCost })
+    return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name))
+  }, [data.stockRows])
 
-  // The route keeps its own order (a product may visit departments in a
-  // different order from the chain); departments added meanwhile join the end.
-  const [order, setOrder] = useState<string[]>(() => data.departments.map((d) => d.id))
-  const [routeDraft, setRouteDraft] = useState<Record<string, RouteDraft>>({})
-  const [bom, setBom] = useState<BomDraft[]>([])
-  const [nextUid, setNextUid] = useState(1)
-
-  const rows = useMemo(() => {
-    const byId = new Map(data.departments.map((d) => [d.id, d]))
-    const ids = [...order.filter((id) => byId.has(id)), ...data.departments.filter((d) => !order.includes(d.id)).map((d) => d.id)]
-    return ids.map((id) => ({ dept: byId.get(id)!, draft: routeDraft[id] || { on: false, hours: "0.5" } }))
-  }, [data.departments, order, routeDraft])
-
-  const routeSteps: MfgRouteStep[] = useMemo(
-    () =>
-      rows
-        .filter((r) => r.draft.on)
-        .map((r) => ({
-          departmentId: r.dept.id,
-          departmentName: r.dept.name,
-          hoursPerUnit: timeOn ? Math.max(0, num(r.draft.hours) ?? 0) : 0,
-          ...(r.dept.onSite ? { onSite: true } : {}),
-        })),
-    [rows, timeOn]
-  )
-
-  const bomLines: MfgBomLine[] = useMemo(
-    () =>
-      bom
-        .filter((b) => b.itemName.trim())
-        .map((b) => ({
-          itemName: b.itemName.trim(),
-          unit: b.unit.trim(),
-          qtyPerUnit: Math.max(0, num(b.qty) ?? 0),
-          departmentId: b.departmentId,
-          withWaste: b.withWaste,
-          unitCost: num(b.cost),
-          lotted: b.lotted,
-        })),
-    [bom]
-  )
-
-  const wastePercent = Math.min(90, Math.max(0, num(waste) ?? 0))
-  const std = standardCost({ route: routeSteps, bom: bomLines, wastePercent }, data.departments, data.settings, 1)
-  const buy = num(buyRef)
-
-  // Item names already used on other cards — the same stone spelled the same
-  // way keeps material requests matching the store's items.
-  const knownItems = useMemo(() => {
-    const names = new Set<string>()
-    for (const p of data.products) for (const b of p.bom || []) if (b.itemName) names.add(b.itemName)
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "ar"))
-  }, [data.products])
-
-  const setDraft = (id: string, patch: Partial<RouteDraft>) =>
-    setRouteDraft((m) => ({ ...m, [id]: { ...(m[id] || { on: false, hours: "0.5" }), ...patch } }))
-
-  const move = (index: number, dir: -1 | 1) => {
-    const ids = rows.map((r) => r.dept.id)
-    const j = index + dir
-    if (j < 0 || j >= ids.length) return
-    ;[ids[index], ids[j]] = [ids[j], ids[index]]
-    setOrder(ids)
+  if (!perms.canManage) {
+    return (
+      <MfgFormModal open onClose={onClose} icon={Layers} title={t("mfr_prd_form_title")} onConfirm={onClose} confirmLabel={t("mfg3_close")}>
+        <MfgNote tone="warn" icon={Lock}>
+          {t("mfr_prd_only_manager")}
+        </MfgNote>
+      </MfgFormModal>
+    )
   }
 
-  const patchBom = (uid: number, patch: Partial<BomDraft>) => setBom((list) => list.map((b) => (b.uid === uid ? { ...b, ...patch } : b)))
+  const deptOf = (id: string) => data.departments.find((d) => d.id === id)
+  const nameOf = (r: Pick<RouteRow, "departmentId" | "departmentName">) => stepName(data.departments, r)
+  const available = data.departments.filter((d) => !route.some((r) => r.departmentId === d.id))
 
-  const addBomLine = () => {
-    setBom((list) => [
-      ...list,
-      { uid: nextUid, itemName: "", unit: unit.trim(), qty: "1", departmentId: routeSteps[0]?.departmentId || "", withWaste: false, lotted: false, cost: "" },
-    ])
-    setNextUid((n) => n + 1)
-  }
+  // --- the draft card, as the engine will read it ---
+  const routeSteps: MfgRouteStep[] = route.map((r) => ({ departmentId: r.departmentId, departmentName: nameOf(r), hoursPerUnit: numOrNull(r.hours) }))
+  const bomLines: MfgBomLine[] = bom.map((b) => ({
+    itemName: b.itemName.trim(),
+    unit: b.unit.trim(),
+    qtyPerUnit: Number(b.qty) || 0,
+    departmentId: b.departmentId,
+    withWaste: b.waste && !b.custody,
+    unitCost: numOrNull(b.unitCost),
+    lotted: b.lotted || (b.waste && !b.custody),
+    custody: b.custody,
+  }))
+  const wastePct = Number(waste) || 0
+  const std = standardCost({ wastePercent: wastePct, route: routeSteps, bom: bomLines }, data.departments, data.settings, 1)
 
-  const validateStep1 = (): string | null => {
-    if (!name.trim()) return t("mfg3_prd_err_name")
-    if (!unit.trim()) return t("mfg3_prd_err_unit")
-    if (!routeSteps.length) return t("mfg2_err_route_required")
-    for (const v of [salePrice, buyRef, estimate, waste]) {
-      const n = num(v)
-      if (v.trim() !== "" && (n == null || n < 0)) return t("mfg3_prd_err_number")
-    }
+  const step0Error = (): string | null => {
+    if (!name.trim()) return t("mfr_prd_err_name")
+    if (!(Number(waste) >= 0 && Number(waste) <= 100)) return t("mfr_prd_err_waste")
+    if (!route.length) return t("mfr_prd_err_route")
+    if (route.some((r) => badNumber(r.hours))) return t("mfr_prd_err_hours")
     return null
   }
-
-  const validateStep2 = (): string | null => {
-    const inRoute = new Set(routeSteps.map((r) => r.departmentId))
-    for (const b of bom) {
-      if (!b.itemName.trim()) continue
-      const q = num(b.qty)
-      if (q == null || q <= 0) return t("mfg3_prd_err_bom_qty", { item: b.itemName.trim() })
-      if (!inRoute.has(b.departmentId)) return t("mfg3_prd_err_bom_dept", { item: b.itemName.trim() })
-      const c = num(b.cost)
-      if (b.cost.trim() !== "" && (c == null || c < 0)) return t("mfg3_prd_err_number")
-    }
+  const step1Error = (): string | null => {
+    if (bom.some((b) => !b.itemName.trim() || !b.unit.trim())) return t("mfr_prd_err_bom_item")
+    if (bom.some((b) => !(Number(b.qty) > 0))) return t("mfr_prd_err_bom_qty")
+    if (bom.some((b) => !route.some((r) => r.departmentId === b.departmentId))) return t("mfr_prd_err_bom_station")
+    if (bom.some((b) => badNumber(b.unitCost))) return t("mfr_prd_err_bom_cost")
     return null
   }
 
   const next = () => {
-    const problem = validateStep1()
-    setError(problem)
-    if (!problem) setStep(1)
+    setAttempted(true)
+    const e = step0Error()
+    setError(e)
+    if (e) return
+    setAttempted(false)
+    setStep(1)
+  }
+
+  const move = (i: number, dir: -1 | 1) =>
+    setRoute((rows) => {
+      const out = [...rows]
+      const j = i + dir
+      if (j < 0 || j >= out.length) return rows
+      ;[out[i], out[j]] = [out[j], out[i]]
+      return out
+    })
+
+  const addFromRegistry = (id: string) => {
+    const d = deptOf(id)
+    if (!d) return
+    setRoute((rows) => [...rows, { key: rowKey(), departmentId: d.id, departmentName: d.name, hours: "" }])
+  }
+
+  const createStation = async () => {
+    if (!firestore || !newStation || creatingStation) return
+    const workers = Number(newStation.workers)
+    const hours = Number(newStation.hours)
+    if (!newStation.name.trim()) return setError(t("mfr_set_err_name"))
+    if (!(workers >= 1) || !(hours >= 1 && hours <= 24)) return setError(t("mfr_set_err_capacity"))
+    setError(null)
+    setCreatingStation(true)
+    try {
+      const order = data.departments.reduce((m, d) => Math.max(m, Number(d.order) || 0), 0) + 1
+      const ref = await addDoc(collection(firestore, MFG_DEPARTMENTS), {
+        organizationId: data.orgId,
+        name: newStation.name.trim(),
+        order,
+        workers: Math.round(workers),
+        hoursPerDay: hours,
+        hourlyRate: null,
+        // gate and qcStation are left unset: the station name is read until the manager sets them.
+        leadUserId: null,
+        leadUserName: null,
+        checklist: [],
+        createdByUserId: data.actor.id,
+        createdByUserName: data.actor.name,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+      setRoute((rows) => [...rows, { key: rowKey(), departmentId: ref.id, departmentName: newStation.name.trim(), hours: "" }])
+      toast({ title: t("mfr_set_toast_station_added", { name: newStation.name.trim() }) })
+      setNewStation(null)
+    } catch (err) {
+      console.error(err)
+      setError(reqErrorText(t, err))
+    } finally {
+      setCreatingStation(false)
+    }
+  }
+
+  const setBomRow = (key: string, patch: Partial<BomRow>) => setBom((rows) => rows.map((b) => (b.key === key ? { ...b, ...patch } : b)))
+  const onItemName = (row: BomRow, value: string) => {
+    const hit = suggestions.find((s) => itemKey(s.name) === itemKey(value))
+    setBomRow(row.key, {
+      itemName: value,
+      ...(hit && !row.unit.trim() ? { unit: hit.unit } : {}),
+      ...(hit && seesMoney && !row.unitCost.trim() && hit.unitCost != null ? { unitCost: String(hit.unitCost) } : {}),
+    })
   }
 
   const submit = async () => {
     if (!firestore || busy) return
-    const problem = validateStep1() || validateStep2()
-    setError(problem)
-    if (problem) return
+    setAttempted(true)
+    const e = step0Error() || step1Error()
+    setError(e)
+    if (e) return
     setBusy(true)
     try {
-      const id = await createMfgProduct(firestore, {
-        organizationId: data.orgId,
-        product: {
-          name: name.trim(),
-          unit: unit.trim(),
-          family,
-          requiresMeasurement: fit,
-          requiresDrawingApproval: appr,
-          requiresSlabApproval: slab,
-          wastePercent,
-          salePrice: num(salePrice),
-          estimateValue: num(estimate),
-          referenceBuyPrice: buy,
-          route: routeSteps,
-          bom: bomLines,
-        },
-        actor: data.actor,
-      })
-      toast({ title: t("mfg2_product_created") })
-      onCreated(id)
+      const input = {
+        name: name.trim(),
+        unit,
+        family: existing?.family ?? "stone",
+        requiresMeasurement: measure,
+        requiresDrawingApproval: drawing,
+        requiresSlabApproval: slab,
+        wastePercent: wastePct,
+        referenceBuyPrice: existing?.referenceBuyPrice ?? null,
+        route: locked && existing ? existing.route.map((s) => (s.onSite ? s : { ...s, departmentName: nameOf(s), hoursPerUnit: numOrNull(route.find((r) => r.departmentId === s.departmentId)?.hours ?? "") })) : routeSteps,
+        bom: bomLines,
+        archived: !!existing?.archived,
+      }
+      if (existing) {
+        await updateMfgProduct(firestore, { product: existing, next: input, routeLocked: locked, actor: data.actor })
+        toast({ title: t("mfr_prd_toast_saved", { name: input.name }) })
+      } else {
+        await createMfgProduct(firestore, { organizationId: data.orgId, product: input, actor: data.actor })
+        toast({ title: t("mfr_prd_toast_added", { name: input.name, count: input.route.length }) })
+      }
+      onClose()
     } catch (err) {
       console.error(err)
-      setError(t("mfg_save_error"))
+      const msg = reqErrorText(t, err)
+      setError(msg)
+      toast({ title: msg, variant: "destructive" })
     } finally {
       setBusy(false)
     }
   }
 
-  const flagOptions = [
-    { key: "fit", label: t("mfg2_flag_measurement_full"), short: t("mfg2_flag_measurement"), value: fit, set: setFit },
-    { key: "appr", label: t("mfg2_flag_drawing_full"), short: t("mfg2_flag_drawing"), value: appr, set: setAppr },
-    { key: "slab", label: t("mfg2_flag_slab_full"), short: t("mfg2_flag_slab"), value: slab, set: setSlab },
+  const flags: Array<{ id: string; on: boolean; set: (v: boolean) => void; label: string }> = [
+    { id: "measure", on: measure, set: setMeasure, label: t("mfr_prd_flag_measure_blocks") },
+    { id: "drawing", on: drawing, set: setDrawing, label: t("mfr_prd_flag_drawing_blocks") },
+    { id: "slab", on: slab, set: setSlab, label: t("mfr_prd_flag_slab_blocks") },
   ]
-  const flagsOn = flagOptions.filter((f) => f.value)
 
   return (
     <MfgFormModal
       open
       onClose={onClose}
       icon={Layers}
-      title={t("mfg2_new_product")}
-      subtitle={t("mfg3_prd_form_subtitle")}
-      steps={[t("mfg3_prd_step_definition"), t("mfg3_prd_step_bom")]}
+      title={existing ? t("mfr_prd_form_title_edit", { name: existing.name }) : t("mfr_prd_form_title")}
+      subtitle={t("mfr_prd_form_sub")}
+      steps={[t("mfr_prd_step_product"), t("mfr_prd_step_bom")]}
       step={step}
       error={error}
       busy={busy}
-      size="lg"
       onBack={() => {
         setError(null)
         setStep(0)
       }}
       onNext={next}
       onConfirm={submit}
-      confirmLabel={t("mfg2_create_product_btn")}
+      confirmLabel={existing ? t("mfr_prd_save") : t("mfr_prd_create")}
+      size="lg"
     >
       {step === 0 ? (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="sm:col-span-2">
-              <MfgField label={t("mfg2_field_product_name")} required htmlFor="mfg-prd-name">
-                <Input id="mfg-prd-name" dir="auto" value={name} onChange={(e) => setName(e.target.value)} />
-              </MfgField>
-            </div>
-            <MfgField label={t("mfg2_field_unit")} required htmlFor="mfg-prd-unit">
-              <Input id="mfg-prd-unit" dir="auto" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <MfgField label={t("mfr_prd_name")} required htmlFor="mfr-prd-name" error={attempted && !name.trim() ? t("mfr_prd_err_name") : undefined}>
+              <Input id="mfr-prd-name" dir="auto" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={attempted && !name.trim()} />
             </MfgField>
-            <MfgField label={t("mfg2_field_family")} htmlFor="mfg-prd-family">
-              <Select value={family} onValueChange={(v) => setFamily(v as MfgFamily)}>
-                <SelectTrigger id="mfg-prd-family">
+            <MfgField label={t("mfr_prd_unit_label")} hint={t("mfr_prd_unit_hint")}>
+              <Select value={unit} onValueChange={setUnit} disabled={locked}>
+                <SelectTrigger className="h-10 text-xs" aria-label={t("mfr_prd_unit_label")}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MFG_FAMILIES.map((f) => (
-                    <SelectItem key={f} value={f}>
-                      {t(`mfg2_family_${f}`)}
+                  {units.map((u) => (
+                    <SelectItem key={u} value={u} className="text-xs">
+                      {u === "m²" ? t("mfr_prd_unit_m2") : u === "m" ? t("mfr_prd_unit_m") : u}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </MfgField>
-            <MfgField label={t("mfg2_field_waste")} hint={t("mfg3_prd_waste_hint")} htmlFor="mfg-prd-waste">
-              <Input id="mfg-prd-waste" type="number" inputMode="decimal" min="0" max="90" value={waste} onChange={(e) => setWaste(e.target.value)} />
-            </MfgField>
           </div>
 
-          <fieldset className="space-y-1.5">
-            <legend className="mb-1.5 text-xs font-bold text-slate-700">{t("mfg3_prd_flags_title")}</legend>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {flagOptions.map((f) => (
-                <label
-                  key={f.key}
-                  className={cn(
-                    "flex cursor-pointer items-start gap-2 rounded-xl border-2 bg-white px-3 py-2.5 text-[11px] font-semibold leading-relaxed transition-colors",
-                    f.value ? "border-warning bg-warning/5 text-foreground" : "border-border text-muted-foreground hover:border-slate-300"
-                  )}
-                >
-                  <Checkbox checked={f.value} onCheckedChange={(v) => f.set(!!v)} className="mt-0.5" />
-                  <span>{f.label}</span>
-                </label>
-              ))}
+          <div className="grid gap-3 sm:grid-cols-[160px_1fr]">
+            <MfgField label={t("mfr_prd_waste_label")} hint={t("mfr_prd_waste_hint")} htmlFor="mfr-prd-waste">
+              <Input id="mfr-prd-waste" type="number" inputMode="decimal" min={0} max={100} step="any" dir="ltr" className="h-10 tabular-nums" value={waste} onChange={(e) => setWaste(e.target.value)} />
+            </MfgField>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-700">{t("mfr_prd_flags_label")}</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {flags.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    aria-pressed={f.on}
+                    disabled={locked}
+                    onClick={() => f.set(!f.on)}
+                    className={cn(
+                      "min-h-10 rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+                      f.on ? "border-warning bg-warning/10 text-warning" : "border-border bg-white text-muted-foreground hover:border-slate-300"
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </fieldset>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <MfgField label={t("mfg2_field_sale_price")} hint={t("mfg3_prd_sale_price_hint")} htmlFor="mfg-prd-price">
-              <Input id="mfg-prd-price" type="number" inputMode="decimal" min="0" value={salePrice} placeholder={t("mfg2_empty_means_unknown")} onChange={(e) => setSalePrice(e.target.value)} />
-            </MfgField>
-            <MfgField label={t("mfg2_field_buy_ref")} hint={t("mfg3_prd_buy_ref_hint")} htmlFor="mfg-prd-buy">
-              <Input id="mfg-prd-buy" type="number" inputMode="decimal" min="0" value={buyRef} placeholder={t("mfg2_empty_means_unknown")} onChange={(e) => setBuyRef(e.target.value)} />
-            </MfgField>
-            <MfgField label={t("mfg3_prd_estimate_value")} hint={t("mfg3_prd_estimate_value_hint")} htmlFor="mfg-prd-estimate">
-              <Input id="mfg-prd-estimate" type="number" inputMode="decimal" min="0" value={estimate} placeholder={t("mfg2_empty_means_unknown")} onChange={(e) => setEstimate(e.target.value)} />
-            </MfgField>
           </div>
 
-          <section className="overflow-hidden rounded-xl border bg-white">
-            <header className="border-b border-border/60 px-3.5 py-2.5">
-              <p className="text-xs font-bold text-slate-700">{timeOn ? t("mfg2_route_time_title") : t("mfg3_prd_route_title")}</p>
-              <p className="text-[11px] text-muted-foreground">{t("mfg3_prd_route_hint")}</p>
-            </header>
-            {rows.length === 0 && (
-              <div className="p-3">
-                <MfgNote tone="warn">{t("mfg3_prd_no_departments")}</MfgNote>
+          <section className="space-y-2">
+            <p className="text-xs font-bold text-slate-700">
+              {t("mfr_prd_route_title")}
+              {timeOn && <span className="ms-1 font-semibold text-muted-foreground">· {t("mfr_prd_time_starts_empty")}</span>}
+            </p>
+            {locked && (
+              <MfgNote tone="warn" icon={Lock}>
+                {t("mfr_prd_route_locked")}
+              </MfgNote>
+            )}
+            <div className="overflow-hidden rounded-xl border bg-white">
+              {route.length === 0 && <p className="px-3.5 py-4 text-center text-xs text-muted-foreground">{t("mfr_prd_route_empty")}</p>}
+              {route.map((r, i) => {
+                const d = deptOf(r.departmentId)
+                const label = nameOf(r)
+                return (
+                  <div key={r.key} className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2.5 last:border-b-0">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-[11px] font-bold tabular-nums text-slate-700">{i + 1}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-bold text-foreground" dir="auto">
+                        {label}
+                      </span>
+                      <span className="block text-[10px] text-muted-foreground">
+                        {stationGate(d || { name: r.departmentName }) ? `${t("mfr_prd_order_level_step")} · ` : ""}
+                        {timeOn ? t("mfr_set_capacity_value", { hours: fmtQty(deptCapacity(d || { workers: 1, hoursPerDay: 8 })) }) : t("mfr_set_workers_value", { count: Number(d?.workers) || 1 })}
+                      </span>
+                    </span>
+                    {timeOn && (
+                      <span className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          step="any"
+                          dir="ltr"
+                          value={r.hours}
+                          placeholder={t("mfr_prd_not_estimated")}
+                          aria-label={t("mfr_prd_hours_for", { station: label })}
+                          aria-invalid={attempted && badNumber(r.hours)}
+                          onChange={(e) => setRoute((rows) => rows.map((x) => (x.key === r.key ? { ...x, hours: e.target.value } : x)))}
+                          className="h-9 w-28 text-xs tabular-nums"
+                        />
+                        <span className="text-[10px] text-muted-foreground">{t("mfr_prd_h_per_unit")}</span>
+                      </span>
+                    )}
+                    <span className="flex items-center">
+                      <IconButton label={t("mfr_prd_move_up", { station: label })} disabled={locked || i === 0} onClick={() => move(i, -1)}>
+                        <ArrowUp size={14} aria-hidden="true" />
+                      </IconButton>
+                      <IconButton label={t("mfr_prd_move_down", { station: label })} disabled={locked || i === route.length - 1} onClick={() => move(i, 1)}>
+                        <ArrowDown size={14} aria-hidden="true" />
+                      </IconButton>
+                      <IconButton label={t("mfr_prd_remove_station", { station: label })} disabled={locked} tone="bad" onClick={() => setRoute((rows) => rows.filter((x) => x.key !== r.key))}>
+                        <Trash2 size={14} aria-hidden="true" />
+                      </IconButton>
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+
+            {!locked && (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Select key={route.length} onValueChange={addFromRegistry} disabled={!available.length}>
+                  <SelectTrigger className="h-10 flex-1 text-xs" aria-label={t("mfr_prd_add_from_registry")}>
+                    <SelectValue placeholder={t("mfr_prd_add_from_registry")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {available.map((d) => (
+                      <SelectItem key={d.id} value={d.id} className="text-xs">
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" className="h-10 gap-1.5 text-xs" onClick={() => setNewStation(newStation ? null : { name: "", workers: "2", hours: "8" })} aria-expanded={!!newStation}>
+                  <Plus size={14} aria-hidden="true" /> {t("mfr_prd_new_station_here")}
+                </Button>
               </div>
             )}
-            {rows.map((r, i) => {
-              const Icon = departmentIcon(r.dept.name, r.dept.onSite)
-              const position = r.draft.on ? routeSteps.findIndex((s) => s.departmentId === r.dept.id) + 1 : 0
-              return (
-                <div key={r.dept.id} className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/60 px-3.5 py-2 text-xs last:border-b-0", r.draft.on && "bg-warning/5")}>
-                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
-                    <Checkbox checked={r.draft.on} onCheckedChange={(v) => setDraft(r.dept.id, { on: !!v })} aria-label={r.dept.name} />
-                    <span
-                      className={cn(
-                        "grid h-6 w-6 shrink-0 place-items-center rounded-md text-[10px] font-bold tabular-nums",
-                        r.draft.on ? "bg-warning text-white" : "bg-muted text-muted-foreground"
-                      )}
-                    >
-                      {r.draft.on ? position : <Icon size={12} aria-hidden="true" />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-foreground">{r.dept.name}</span>
-                      {timeOn && <span className="block text-[10px] text-muted-foreground">{t("mfg2_set_capacity_value", { hours: fmtQty(deptCapacity(r.dept)) })}</span>}
-                    </span>
-                  </label>
-                  {r.draft.on && timeOn && (
-                    <span className="flex items-center gap-1.5">
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        min="0"
-                        step="any"
-                        aria-label={t("mfg3_prd_hours_for", { dept: r.dept.name })}
-                        className="h-8 w-20 text-xs"
-                        value={r.draft.hours}
-                        onChange={(e) => setDraft(r.dept.id, { hours: e.target.value })}
-                      />
-                      <span className="text-[11px] text-muted-foreground">{t("mfg2_hours_per_unit")}</span>
-                    </span>
-                  )}
-                  <span className="flex items-center">
-                    <button
-                      type="button"
-                      onClick={() => move(i, -1)}
-                      disabled={i === 0}
-                      aria-label={t("mfg3_set_move_up", { name: r.dept.name })}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
-                    >
-                      <ArrowUp size={14} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => move(i, 1)}
-                      disabled={i === rows.length - 1}
-                      aria-label={t("mfg3_set_move_down", { name: r.dept.name })}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30"
-                    >
-                      <ArrowDown size={14} aria-hidden="true" />
-                    </button>
+
+            {!locked && newStation && (
+              <div className="space-y-2 rounded-xl border border-dashed border-warning/40 bg-warning/5 p-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_100px_100px]">
+                  <MfgField label={t("mfr_set_station_name")} htmlFor="mfr-new-station-name">
+                    <Input id="mfr-new-station-name" dir="auto" value={newStation.name} placeholder={t("mfr_set_station_name_ph")} onChange={(e) => setNewStation({ ...newStation, name: e.target.value })} className="h-10" />
+                  </MfgField>
+                  <MfgField label={t("mfr_set_workers")} htmlFor="mfr-new-station-workers">
+                    <Input id="mfr-new-station-workers" type="number" inputMode="numeric" min={1} dir="ltr" value={newStation.workers} onChange={(e) => setNewStation({ ...newStation, workers: e.target.value })} className="h-10 tabular-nums" />
+                  </MfgField>
+                  <MfgField label={t("mfr_set_hours_day")} htmlFor="mfr-new-station-hours">
+                    <Input id="mfr-new-station-hours" type="number" inputMode="decimal" min={1} max={24} dir="ltr" value={newStation.hours} onChange={(e) => setNewStation({ ...newStation, hours: e.target.value })} className="h-10 tabular-nums" />
+                  </MfgField>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" size="sm" className="h-10 gap-1.5 text-xs" onClick={createStation} disabled={creatingStation}>
+                    <Plus size={14} aria-hidden="true" /> {t("mfr_prd_create_station_add")}
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    {t("mfr_set_capacity_note", { hours: fmtQty((Number(newStation.workers) || 0) * (Number(newStation.hours) || 0)) })}
                   </span>
                 </div>
-              )
-            })}
+              </div>
+            )}
           </section>
         </>
       ) : (
         <>
-          <section className="overflow-hidden rounded-xl border bg-white">
-            <header className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3.5 py-2.5">
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-700">{t("mfg2_bom_title")}</p>
-                <p className="text-[11px] text-muted-foreground">{t("mfg2_bom_hint")}</p>
-              </div>
-              <Button size="sm" variant="outline" className="ms-auto h-8 gap-1 text-xs" onClick={addBomLine}>
-                <Plus size={13} aria-hidden="true" /> {t("mfg2_bom_add")}
-              </Button>
-            </header>
-            {bom.length === 0 && <p className="px-3.5 py-3 text-xs text-muted-foreground">{t("mfg2_bom_empty")}</p>}
-            <datalist id="mfg-prd-items">
-              {knownItems.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
+          <datalist id="mfr-bom-items">
+            {suggestions.map((s) => (
+              <option key={s.name} value={s.name} />
+            ))}
+          </datalist>
+          <div className="space-y-2">
+            {bom.length === 0 && <p className="rounded-xl border border-dashed bg-white px-3.5 py-4 text-center text-xs text-muted-foreground">{t("mfr_prd_bom_empty_form")}</p>}
             {bom.map((b, i) => (
-              <div key={b.uid} className="grid grid-cols-2 gap-2 border-b border-border/60 px-3.5 py-3 last:border-b-0 sm:grid-cols-12">
-                <MiniField label={t("mfg2_bom_item")} className="col-span-2 sm:col-span-4" htmlFor={`bom-item-${b.uid}`}>
-                  <Input id={`bom-item-${b.uid}`} list="mfg-prd-items" dir="auto" className="h-8 text-xs" value={b.itemName} onChange={(e) => patchBom(b.uid, { itemName: e.target.value })} />
-                </MiniField>
-                <MiniField label={t("mfg2_field_unit")} className="sm:col-span-2" htmlFor={`bom-unit-${b.uid}`}>
-                  <Input id={`bom-unit-${b.uid}`} dir="auto" className="h-8 text-xs" value={b.unit} onChange={(e) => patchBom(b.uid, { unit: e.target.value })} />
-                </MiniField>
-                <MiniField label={t("mfg3_prd_qty_per_unit")} className="sm:col-span-2" htmlFor={`bom-qty-${b.uid}`}>
-                  <Input id={`bom-qty-${b.uid}`} type="number" inputMode="decimal" min="0" step="any" className="h-8 text-xs" value={b.qty} onChange={(e) => patchBom(b.uid, { qty: e.target.value })} />
-                </MiniField>
-                <MiniField label={t("mfg2_bom_dept")} className="col-span-2 sm:col-span-4" htmlFor={`bom-dept-${b.uid}`}>
-                  <Select value={b.departmentId} onValueChange={(v) => patchBom(b.uid, { departmentId: v })}>
-                    <SelectTrigger id={`bom-dept-${b.uid}`} className={cn("h-8 text-xs", b.departmentId && !routeSteps.some((s) => s.departmentId === b.departmentId) && "border-destructive")}>
-                      <SelectValue placeholder={t("mfg2_bom_dept")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {routeSteps.map((s) => (
-                        <SelectItem key={s.departmentId} value={s.departmentId}>
-                          {s.departmentName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </MiniField>
-                <MiniField label={t("mfg3_prd_unit_cost")} className="sm:col-span-3" htmlFor={`bom-cost-${b.uid}`}>
-                  <Input id={`bom-cost-${b.uid}`} type="number" inputMode="decimal" min="0" className="h-8 text-xs" value={b.cost} placeholder={t("mfg2_empty_means_unknown")} onChange={(e) => patchBom(b.uid, { cost: e.target.value })} />
-                </MiniField>
-                <div className="col-span-2 flex flex-wrap items-end gap-x-4 gap-y-2 sm:col-span-9">
-                  <label className="flex min-h-8 cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-700">
-                    <Checkbox checked={b.withWaste} onCheckedChange={(v) => patchBom(b.uid, { withWaste: !!v })} />
-                    {t("mfg3_prd_with_waste")}
-                  </label>
-                  <label className="flex min-h-8 cursor-pointer items-center gap-1.5 text-[11px] font-semibold text-slate-700">
-                    <Checkbox checked={b.lotted} onCheckedChange={(v) => patchBom(b.uid, { lotted: !!v })} />
-                    {t("mfg3_prd_lotted")}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setBom((list) => list.filter((x) => x.uid !== b.uid))}
-                    aria-label={t("mfg3_prd_remove_line", { index: i + 1 })}
-                    className="ms-auto grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
+              <div key={b.key} className="space-y-2 rounded-xl border bg-white p-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_90px_110px]">
+                  <MfgField label={t("mfr_prd_bom_item")} htmlFor={`${b.key}-item`} error={attempted && !b.itemName.trim() ? t("mfr_prd_err_bom_item") : undefined}>
+                    <Input id={`${b.key}-item`} list="mfr-bom-items" dir="auto" value={b.itemName} onChange={(e) => onItemName(b, e.target.value)} className="h-10 text-xs" />
+                  </MfgField>
+                  <MfgField label={t("mfr_prd_bom_unit")} htmlFor={`${b.key}-unit`}>
+                    <Input id={`${b.key}-unit`} dir="auto" value={b.unit} onChange={(e) => setBomRow(b.key, { unit: e.target.value })} className="h-10 text-xs" />
+                  </MfgField>
+                  <MfgField label={t("mfr_prd_bom_qty")} htmlFor={`${b.key}-qty`} error={attempted && !(Number(b.qty) > 0) ? t("mfr_prd_err_bom_qty") : undefined}>
+                    <Input id={`${b.key}-qty`} type="number" inputMode="decimal" min={0} step="any" dir="ltr" value={b.qty} onChange={(e) => setBomRow(b.key, { qty: e.target.value })} className="h-10 text-xs tabular-nums" />
+                  </MfgField>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-[180px] flex-1 space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">{t("mfr_prd_bom_station")}</Label>
+                    <Select value={route.some((r) => r.departmentId === b.departmentId) ? b.departmentId : undefined} onValueChange={(v) => setBomRow(b.key, { departmentId: v })}>
+                      <SelectTrigger className={cn("h-10 text-xs", attempted && !route.some((r) => r.departmentId === b.departmentId) && "border-destructive")} aria-label={t("mfr_prd_bom_station_for", { item: b.itemName || String(i + 1) })}>
+                        <SelectValue placeholder={t("mfr_prd_bom_pick_station")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {route.map((r) => (
+                          <SelectItem key={r.key} value={r.departmentId} className="text-xs">
+                            {nameOf(r)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Toggle on={b.waste} onClick={() => setBomRow(b.key, { waste: !b.waste, custody: b.waste ? b.custody : false })} title={t("mfr_prd_bom_waste_hint")}>
+                    {t("mfr_prd_bom_waste")}
+                  </Toggle>
+                  <Toggle on={b.custody} onClick={() => setBomRow(b.key, { custody: !b.custody, waste: b.custody ? b.waste : false })} title={t("mfr_prd_bom_custody_hint")}>
+                    {t("mfr_prd_bom_custody")}
+                  </Toggle>
+                  {seesMoney && (
+                    <div className="w-32 space-y-1.5">
+                      <Label htmlFor={`${b.key}-cost`} className="text-xs font-bold text-slate-700">
+                        {t("mfr_prd_bom_cost")}
+                      </Label>
+                      <Input id={`${b.key}-cost`} type="number" inputMode="decimal" min={0} step="any" dir="ltr" value={b.unitCost} placeholder={t("mfr_prd_bom_cost_unknown")} onChange={(e) => setBomRow(b.key, { unitCost: e.target.value })} className="h-10 text-xs tabular-nums" />
+                    </div>
+                  )}
+                  <IconButton label={t("mfr_prd_bom_remove", { item: b.itemName || String(i + 1) })} tone="bad" onClick={() => setBom((rows) => rows.filter((x) => x.key !== b.key))}>
                     <Trash2 size={14} aria-hidden="true" />
-                  </button>
+                  </IconButton>
                 </div>
               </div>
             ))}
-          </section>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-full gap-1.5 text-xs"
+              onClick={() => setBom((rows) => [...rows, { key: rowKey(), itemName: "", unit: "", qty: "", departmentId: route[0]?.departmentId || "", waste: false, custody: false, unitCost: "", lotted: false }])}
+            >
+              <Plus size={14} aria-hidden="true" /> {t("mfr_prd_bom_add")}
+            </Button>
+          </div>
+          <MfgNote tone="info">{t("mfr_prd_bom_catalogue_note")}</MfgNote>
 
-          <MfgReview
-            rows={[
-              [t("mfg3_prd_stat_departments"), routeSteps.map((s) => s.departmentName).join(" · ")],
-              timeOn && [t("mfg3_prd_stat_std_time"), <span key="h" className="tabular-nums">{fmtQty(std.hours)} {t("mfg2_hours_per_unit")}</span>],
-              [t("mfg2_cost_materials"), <span key="m" className="tabular-nums">{fmtMoney(std.materials)} ﷼</span>],
-              timeOn && [t("mfg2_cost_labour"), <span key="l" className="tabular-nums">{fmtMoney(std.labour)} ﷼</span>],
-              timeOn && [t("mfg2_cost_overhead"), <span key="o" className="tabular-nums">{fmtMoney(std.overhead)} ﷼</span>],
-              [
-                t("mfg2_unit_cost"),
-                <span key="u" className="tabular-nums">
-                  {fmtMoney(std.total)} ﷼{!std.allPriced && <span className="ms-1.5 text-warning">({t("mfg2_cost_incomplete")})</span>}
-                </span>,
-              ],
-              buy != null &&
-                std.allPriced && [
-                  t("mfg2_vs_buying"),
-                  <span key="b" className={cn("tabular-nums", buy - std.total >= 0 ? "text-success" : "text-destructive")}>
-                    {fmtMoney(Math.abs(buy - std.total))} ﷼ · {buy - std.total >= 0 ? t("mfg2_make_wins") : t("mfg2_buy_wins")}
-                  </span>,
-                ],
-            ]}
-          />
-
-          <MfgEffects
-            items={[
-              { text: t("mfg3_prd_effect_card") },
-              timeOn && { text: t("mfg3_prd_effect_time", { hours: fmtQty(std.hours), count: routeSteps.length }) },
-              bomLines.length > 0
-                ? { text: t("mfg3_prd_effect_bom", { count: bomLines.length }) }
-                : { text: t("mfg2_bom_empty"), applies: false },
-              flagsOn.length > 0 && { text: t("mfg3_prd_effect_flags", { flags: flagsOn.map((f) => f.short).join(" · ") }) },
-              num(salePrice) == null && { text: t("mfg3_prd_effect_no_price"), applies: false },
-            ]}
-          />
+          {seesMoney && (
+            <MfgReview
+              rows={[
+                [t("mfr_prd_cost_materials"), <Money key="m" value={std.materials} />],
+                timeOn && [t("mfr_prd_cost_labour"), <Money key="l" value={std.labour} />],
+                timeOn && [t("mfr_prd_cost_overhead"), <Money key="o" value={std.overhead} />],
+                [<b key="tk">{t("mfr_prd_std_unit_cost")}</b>, <b key="tv"><Money value={std.total} /></b>],
+                existing?.referenceBuyPrice ? [t("mfr_prd_ref_buy"), <span key="rb"><Money value={existing.referenceBuyPrice} /> · {t("mfg4_from_module", { module: t("mfg4_module_procurement") })}</span>] : null,
+              ]}
+            />
+          )}
+          {seesMoney && !std.allPriced && <MfgNote tone="warn">{t("mfr_prd_cost_unknown_note")}</MfgNote>}
+          {timeOn && std.unestimated.length > 0 && <MfgNote tone="warn">{t("mfr_prd_unestimated_note", { count: std.unestimated.length })}</MfgNote>}
         </>
       )}
+      <MfgRecordedAs />
     </MfgFormModal>
   )
 }
 
-function MiniField({ label, htmlFor, className, children }: { label: string; htmlFor: string; className?: string; children: ReactNode }) {
+function Money({ value }: { value: number }) {
   return (
-    <div className={cn("space-y-1", className)}>
-      <label htmlFor={htmlFor} className="block text-[10px] font-bold text-muted-foreground">
-        {label}
-      </label>
+    <span dir="ltr" className="tabular-nums">
+      {fmtMoney(value)} ﷼
+    </span>
+  )
+}
+
+function Toggle({ on, onClick, title, children }: { on: boolean; onClick: () => void; title: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      title={title}
+      onClick={onClick}
+      className={cn(
+        "h-10 rounded-lg border px-3 text-[11px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        on ? "border-warning bg-warning/10 text-warning" : "border-border bg-white text-muted-foreground hover:border-slate-300"
+      )}
+    >
       {children}
-    </div>
+    </button>
+  )
+}
+
+function IconButton({ label, disabled, onClick, tone, children }: { label: string; disabled?: boolean; onClick: () => void; tone?: "bad"; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "grid h-10 w-10 place-items-center rounded-lg text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-30",
+        tone === "bad" ? "hover:bg-destructive/10 hover:text-destructive" : "hover:bg-muted hover:text-foreground"
+      )}
+    >
+      {children}
+    </button>
   )
 }

@@ -46,6 +46,7 @@ import {
   visibleSections,
   visibleComponents,
   hrefPathname,
+  itemIsVisible,
   type NavItem,
   type NavSection,
   type PortalComponentDef,
@@ -102,7 +103,7 @@ function childIsActive(children: NavItem[], pathname: string, search: URLSearchP
 }
 
 function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pathname: string; search: URLSearchParams; t: ReturnType<typeof useTranslations>; can: (p: PermissionId) => boolean }) {
-  if (item.requiredPermission && !can(item.requiredPermission)) return null
+  if (!itemIsVisible(item, can)) return null
   const hasChildren = !!item.children?.length
   const isChildActive = hasChildren && childIsActive(item.children!, pathname, search)
   // A parent whose child tab is selected hands the highlight to that child.
@@ -149,7 +150,7 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
             the physical versions put the indent and its rule on the wrong side. */}
         {expanded && (
           <div className="ms-4 border-s border-sidebar-border/50 ps-2">
-            {item.children!.filter((child) => !child.requiredPermission || can(child.requiredPermission)).map((child) => (
+            {item.children!.filter((child) => itemIsVisible(child, can)).map((child) => (
               <SidebarMenuItem key={child.titleKey}>
                 <SidebarMenuButton
                   asChild

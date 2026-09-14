@@ -37,7 +37,7 @@ import {
   validateRequest,
   type TransferValidationError,
 } from "@/lib/warehouse-requests"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown, Shapes, Wrench, GripVertical } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown, Shapes, Wrench, GripVertical, Layers } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
 import { DEFAULT_ITEM_TYPE, composeItemTypeOptions, resolveItemTypeId, type CustomItemType, type ItemTypeOption } from "@/lib/inventory-types"
@@ -63,6 +63,11 @@ type InventoryItem = {
   /** Landed by a signed delivery note — finished goods, not bought-in material. */
   isManufactured?: boolean | null
   sourceWorkOrderId?: string | null
+  /** Block / lot — stone arrives one block per row, so the same item may sit
+   * in several rows, each its own colour and vein. */
+  lot?: string | null
+  /** A usable remnant received back from manufacturing. */
+  remnant?: boolean | null
 }
 
 type WarehouseDoc = {
@@ -106,9 +111,11 @@ function ItemDialog({
 }) {
   const firestore = useFirestore()
   const { toast } = useToast()
+  const tShared = useTranslations("Portal.Shared")
   const [isSaving, setIsSaving] = useState(false)
   const [name, setName] = useState(item?.name ?? "")
   const [sku, setSku] = useState(item?.sku ?? "")
+  const [lot, setLot] = useState(item?.lot ?? "")
   const [quantity, setQuantity] = useState(item?.quantity?.toString() ?? "0")
   // An existing row keeps its canonical code if it has one; a legacy row with only
   // free text opens on "__custom__" so editing it never silently rewrites its unit.
@@ -126,6 +133,7 @@ function ItemDialog({
   const reset = () => {
     setName(item?.name ?? "")
     setSku(item?.sku ?? "")
+    setLot(item?.lot ?? "")
     setQuantity(item?.quantity?.toString() ?? "0")
     setUnitCode(initialUnitCode)
     setUnit(item?.unit ?? "")
@@ -163,6 +171,7 @@ function ItemDialog({
       const data = {
         name: name.trim(),
         sku: sku.trim() || null,
+        lot: lot.trim() || null,
         quantity: isUnitTracked ? (item?.quantity ?? 0) : Math.max(0, parseFloat(quantity) || 0),
         unit: resolvedUnit,
         unitCode: isCustomUnit ? null : unitCode,
@@ -231,6 +240,11 @@ function ItemDialog({
             <div className="space-y-1.5">
               <Label htmlFor="item-sku">{t("inv_item_sku")}</Label>
               <Input id="item-sku" value={sku} onChange={(e) => setSku(e.target.value)} placeholder={t("inv_item_sku_placeholder")} dir="ltr" />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="item-lot">{tShared("mfx_inv_lot")}</Label>
+              <Input id="item-lot" value={lot} onChange={(e) => setLot(e.target.value)} placeholder={tShared("mfx_inv_lot_placeholder")} dir="ltr" />
+              <p className="text-[11px] text-muted-foreground">{tShared("mfx_inv_lot_hint")}</p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="item-unit">{t("inv_item_unit")} *</Label>
@@ -1016,6 +1030,7 @@ export function WarehouseInventoryPanel({
   variant?: "full" | "embedded"
 }) {
   const t = useTranslations("Portal.Contractor")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
@@ -1137,7 +1152,7 @@ export function WarehouseInventoryPanel({
   const q = search.trim().toLowerCase()
   const visibleItems = list
     .filter((it) => !lowOnly || (it.minStockLevel != null && it.quantity <= it.minStockLevel))
-    .filter((it) => !q || it.name.toLowerCase().includes(q) || (it.sku || "").toLowerCase().includes(q))
+    .filter((it) => !q || it.name.toLowerCase().includes(q) || (it.sku || "").toLowerCase().includes(q) || (it.lot || "").toLowerCase().includes(q))
     .slice()
     .sort((a, b) => {
       if (sortKey === "quantity") return b.quantity - a.quantity
@@ -1429,6 +1444,17 @@ export function WarehouseInventoryPanel({
                                   <GripVertical size={12} className="inline-block align-middle me-1.5 text-muted-foreground/40 cursor-grab" aria-hidden="true" />
                                 )}
                                 {item.name}
+                                {item.lot && (
+                                  <Badge variant="outline" className="ms-2 text-slate-600 border-slate-300 text-[10px] py-0 gap-1 font-mono" dir="ltr" title={tShared("mfx_inv_lot")}>
+                                    <Layers size={9} aria-hidden="true" />
+                                    {item.lot}
+                                  </Badge>
+                                )}
+                                {item.remnant && (
+                                  <Badge variant="outline" className="ms-2 text-success border-success/30 text-[10px] py-0">
+                                    {tShared("mfx_inv_remnant_chip")}
+                                  </Badge>
+                                )}
                                 {isUnitTracked && (
                                   <Badge variant="outline" className="ms-2 text-primary border-primary/20 text-[10px] py-0 gap-1">
                                     <Barcode size={9} />

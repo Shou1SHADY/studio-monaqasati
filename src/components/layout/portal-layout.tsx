@@ -28,6 +28,7 @@ import { getAuth, signOut } from "firebase/auth"
 import { useSearchParams } from "next/navigation"
 import { useRouter, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
+import { notificationCopy, notificationHref } from "@/lib/mfg-events"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
@@ -503,7 +504,12 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    // 2. Navigate
+    // 2. Navigate — a notification that names its screen opens it
+    const href = notificationHref(notif.link, basePath)
+    if (href) {
+      router.push(href)
+      return
+    }
     if (notif.type === "invitation") {
       router.push(`/${basePath}/team`)
     } else if (notif.type === "new_chat_message" && notif.chatId) {
@@ -783,7 +789,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
-                              {isSupplier
+                              {notif.i18n ? notificationCopy(notif, tShared).title : isSupplier
                                 ? isNewRfq ? t("notification_new_rfq")
                                   : isSampleReceived ? t("notification_sample_received")
                                   : isSampleRequest ? t("notification_sample_requested")
@@ -804,7 +810,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                 : (notif.title || t("notification_new_offer"))}
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                               {isNewRfq 
+                               {notif.i18n
+                                 ? notificationCopy(notif, tShared).message
+                                 : isNewRfq
                                  ? t("notification_rfq_in_category", { category: notif.category })
                                  : isInvitation
                                    ? (notif.message || "")

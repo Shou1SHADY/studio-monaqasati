@@ -75,12 +75,18 @@ import {
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
+/** Manufacturing's desk tabs belong to the manager, the cost controller and management. */
+const MFG_DESK_ROLES: PermissionId[] = ["manufacturing.manage", "manufacturing.cost", "manufacturing.view"]
+
 export interface NavItem {
   titleKey: string
   href: string
   icon: ElementType
   children?: NavItem[]
   requiredPermission?: PermissionId
+  /** Shown when the viewer holds ANY of these (e.g. the three Manufacturing
+   * roles that see Requests, Products and Settings). */
+  requiredAnyPermission?: PermissionId[]
   /** Built but not released — the sidebar renders it dimmed and
    * non-interactive, and the route itself serves a "coming soon" placeholder.
    * Driven by a flag in `@/lib/feature-flags`, never hardcoded here, so one
@@ -204,6 +210,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           // Ungated: whoever hands a finished order over needs to see whether
           // it was received; signing for it is gated inside the page.
           { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
+          { titleKey: "inventory_mfg_desk", href: "/contractor/warehouses/manufacturing", icon: Factory },
         ],
       },
     ],
@@ -325,16 +332,15 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     sections: [
       {
         labelKey: "component_manufacturing",
-        // Today, Work orders and Shop floor stay ungated: stage assignees are
-        // plain members and must reach their tasks. Each screen hides what the
-        // viewer's role cannot act on; Settings needs manufacturing.manage.
+        // Today and the Workshop are every manufacturing role's (and legacy
+        // stage assignees still reach their orders there); Requests, Products
+        // and Settings are the manager's, the cost controller's and management's.
         items: [
-          { titleKey: "mfg3_nav_today", href: "/contractor/manufacturing", icon: CalendarCheck2 },
-          { titleKey: "mfg3_nav_orders", href: "/contractor/manufacturing/orders", icon: ClipboardList },
-          { titleKey: "mfg3_nav_floor", href: "/contractor/manufacturing/floor", icon: Factory },
-          { titleKey: "mfg3_nav_requests", href: "/contractor/manufacturing/requests", icon: Inbox },
-          { titleKey: "mfg3_nav_products", href: "/contractor/manufacturing/products", icon: Layers },
-          { titleKey: "mfg3_nav_settings", href: "/contractor/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+          { titleKey: "mfw_nav_today", href: "/contractor/manufacturing", icon: CalendarCheck2 },
+          { titleKey: "mfw_nav_workshop", href: "/contractor/manufacturing/workshop", icon: ClipboardList },
+          { titleKey: "mfw_nav_requests", href: "/contractor/manufacturing/requests", icon: Inbox, requiredAnyPermission: MFG_DESK_ROLES },
+          { titleKey: "mfw_nav_products", href: "/contractor/manufacturing/products", icon: Layers, requiredAnyPermission: MFG_DESK_ROLES },
+          { titleKey: "mfw_nav_settings", href: "/contractor/manufacturing/settings", icon: SlidersHorizontal, requiredAnyPermission: MFG_DESK_ROLES },
         ],
       },
     ],
@@ -484,6 +490,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "supplier_warehouses", href: "/supplier/warehouses", icon: Warehouse, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_waste", href: "/supplier/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_delivery_notes", href: "/supplier/warehouses/delivery-notes", icon: ClipboardCheck },
+          { titleKey: "inventory_mfg_desk", href: "/supplier/warehouses/manufacturing", icon: Factory },
         ],
       },
     ],
@@ -609,12 +616,11 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_manufacturing",
         items: [
-          { titleKey: "mfg3_nav_today", href: "/supplier/manufacturing", icon: CalendarCheck2 },
-          { titleKey: "mfg3_nav_orders", href: "/supplier/manufacturing/orders", icon: ClipboardList },
-          { titleKey: "mfg3_nav_floor", href: "/supplier/manufacturing/floor", icon: Factory },
-          { titleKey: "mfg3_nav_requests", href: "/supplier/manufacturing/requests", icon: Inbox },
-          { titleKey: "mfg3_nav_products", href: "/supplier/manufacturing/products", icon: Layers },
-          { titleKey: "mfg3_nav_settings", href: "/supplier/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+          { titleKey: "mfw_nav_today", href: "/supplier/manufacturing", icon: CalendarCheck2 },
+          { titleKey: "mfw_nav_workshop", href: "/supplier/manufacturing/workshop", icon: ClipboardList },
+          { titleKey: "mfw_nav_requests", href: "/supplier/manufacturing/requests", icon: Inbox, requiredAnyPermission: MFG_DESK_ROLES },
+          { titleKey: "mfw_nav_products", href: "/supplier/manufacturing/products", icon: Layers, requiredAnyPermission: MFG_DESK_ROLES },
+          { titleKey: "mfw_nav_settings", href: "/supplier/manufacturing/settings", icon: SlidersHorizontal, requiredAnyPermission: MFG_DESK_ROLES },
         ],
       },
     ],
@@ -716,8 +722,10 @@ export function resolveActiveSupplierComponent(pathname: string): PortalComponen
 
 export type PermissionCheck = (permission: PermissionId) => boolean
 
-function itemIsVisible(item: NavItem, can: PermissionCheck): boolean {
-  return !item.requiredPermission || can(item.requiredPermission)
+export function itemIsVisible(item: Pick<NavItem, "requiredPermission" | "requiredAnyPermission">, can: PermissionCheck): boolean {
+  if (item.requiredPermission && !can(item.requiredPermission)) return false
+  if (item.requiredAnyPermission?.length && !item.requiredAnyPermission.some((p) => can(p))) return false
+  return true
 }
 
 /** One section's items, filtered to what the caller may see — children

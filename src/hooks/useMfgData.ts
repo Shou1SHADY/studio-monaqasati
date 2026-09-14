@@ -1,39 +1,58 @@
 "use client"
 
-// One subscription set for every Manufacturing v2 page: the org's departments,
-// product cards, work orders, delivery notes, requests, estimates and settings
-// — plus the engine's derived schedule, so every tab shows the same dates.
+// One subscription set for every Manufacturing page: the station registry,
+// product cards, work orders, delivery notes, requests, cost statements and
+// settings — plus the facts other modules own that the workshop reads (the
+// sales orders' down payments, Inventory's stock and blocks, the HR fleet, the
+// team and its roles), so every tab computes from the same world.
 
 import { useMemo } from "react"
 import { collection, doc, query, where } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useOrgStock } from "@/hooks/useOrgStock"
 import { MFG_DEPARTMENTS, WORK_ORDERS, type MfgDepartment } from "@/lib/manufacturing"
 import { DELIVERY_NOTES, type DeliveryNote } from "@/lib/delivery-notes"
-import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
+import { MANUFACTURING_REQUESTS, SALES_ORDERS, type ManufacturingRequest, type SalesOrder } from "@/lib/sales-orders"
+import { ALL_PERMISSION, type TeamGroup } from "@/lib/permissions"
 import {
+  MFG_BLOCK_NOTICES,
   MFG_COST_ESTIMATES,
   MFG_PRODUCTS,
   MFG_SETTINGS,
+  MFG_STOPS,
   normalizeMfgSettings,
-  scheduleOrders,
+  type Actor as EngineActor,
   type MfgCostEstimate,
   type MfgProduct,
   type MfgSettings,
-  type ScheduleInput,
-  type ScheduleResult,
+  type StockIndex,
 } from "@/lib/manufacturing-engine"
-import { isV2Order, toNoteSlice, toOrderSlice, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { FLEET_VEHICLES, isV2Order, type FleetVehicle, type MfgBlockNotice, type MfgStop, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { stockIndexFrom, type TeamMember } from "@/lib/manufacturing-view"
+import type { StockRow } from "@/hooks/useOrgStock"
+
+export interface MfgWarehouse {
+  id: string
+  name: string
+  projectId?: string | null
+  isCentral?: boolean
+  isOutbound?: boolean
+  virtual?: boolean
+}
 
 export interface MfgData {
   orgId: string
   actor: { id: string; name: string }
+  /** The engine's view of who is looking (five roles). */
+  engineActor: EngineActor
   ready: boolean
   canManage: boolean
   canWork: boolean
   canQc: boolean
   canCost: boolean
-  /** Cost and margin visibility. */
+  canView: boolean
+  /** Cost visible: manager, cost controller, management. */
   seesMoney: boolean
   departments: MfgDepartment[]
   products: MfgProduct[]
@@ -45,16 +64,29 @@ export interface MfgData {
   requests: ManufacturingRequest[]
   estimates: MfgCostEstimate[]
   settings: MfgSettings
-  schedule: Map<string, ScheduleResult>
-  scheduleInputs: ScheduleInput[]
-  warehouses: Array<{ id: string; name: string; projectId?: string | null; isCentral?: boolean; isOutbound?: boolean; virtual?: boolean }>
+  salesOrders: Map<string, SalesOrder>
+  stops: MfgStop[]
+  notices: MfgBlockNotice[]
+  fleet: FleetVehicle[]
+  team: TeamMember[]
+  stock: StockIndex | null
+  stockRows: Map<string, StockRow[]>
+  stockLoading: boolean
+  warehouses: MfgWarehouse[]
   projects: Array<{ id: string; name: string }>
+}
+
+/** A live org-scoped collection. */
+function useOrgCollection(name: string, orgId: string) {
+  const firestore = useFirestore()
+  const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, name), where("organizationId", "==", orgId)) : null), [firestore, name, orgId])
+  return useCollection(q)
 }
 
 export function useMfgData(): MfgData {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
-  const { can } = usePermissions()
+  const { can, groups } = usePermissions()
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -64,123 +96,101 @@ export function useMfgData(): MfgData {
   const orgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
   const actorName = (profile as { name?: string } | null)?.name || user?.email || ""
 
-  const departmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, MFG_DEPARTMENTS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: departmentsData } = useCollection(departmentsQuery)
-  const departments = useMemo(
-    () => ((departmentsData || []) as MfgDepartment[]).sort((a, b) => a.order - b.order),
-    [departmentsData]
-  )
+  const { data: departmentsData } = useOrgCollection(MFG_DEPARTMENTS, orgId)
+  const departments = useMemo(() => ((departmentsData || []) as MfgDepartment[]).slice().sort((a, b) => a.order - b.order), [departmentsData])
 
-  const productsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: productsData } = useCollection(productsQuery)
-  const products = useMemo(
-    () => ((productsData || []) as MfgProduct[]).sort((a, b) => a.name.localeCompare(b.name, "ar")),
-    [productsData]
-  )
+  const { data: productsData } = useOrgCollection(MFG_PRODUCTS, orgId)
+  const products = useMemo(() => ((productsData || []) as MfgProduct[]).slice().sort((a, b) => a.name.localeCompare(b.name, "ar")), [productsData])
   const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
 
-  const ordersQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: ordersData, isLoading: ordersLoading } = useCollection(ordersQuery)
-  const orders = useMemo(
-    () => ((ordersData || []) as WorkOrderV2[]).sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0)),
-    [ordersData]
-  )
+  const { data: ordersData, isLoading: ordersLoading } = useOrgCollection(WORK_ORDERS, orgId)
+  const orders = useMemo(() => ((ordersData || []) as WorkOrderV2[]).slice().sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0)), [ordersData])
   const v2Orders = useMemo(() => orders.filter((o) => isV2Order(o) && productById.has(o.productId || "")), [orders, productById])
 
-  const notesQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, DELIVERY_NOTES), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: notesData } = useCollection(notesQuery)
+  const { data: notesData } = useOrgCollection(DELIVERY_NOTES, orgId)
   const notes = useMemo(() => (notesData || []) as DeliveryNote[], [notesData])
   const notesByOrder = useMemo(() => {
     const map = new Map<string, DeliveryNote[]>()
     for (const n of notes) {
       const key = n.source?.workOrderId
-      if (!key) continue
-      map.set(key, [...(map.get(key) || []), n])
+      if (key) map.set(key, [...(map.get(key) || []), n])
     }
     return map
   }, [notes])
 
-  const requestsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: requestsData } = useCollection(requestsQuery)
-  const requests = useMemo(
-    () =>
-      ((requestsData || []) as ManufacturingRequest[]).sort((a, b) =>
-        (a.requestedAt || "") < (b.requestedAt || "") ? 1 : -1
-      ),
-    [requestsData]
-  )
+  const { data: requestsData } = useOrgCollection(MANUFACTURING_REQUESTS, orgId)
+  const requests = useMemo(() => ((requestsData || []) as ManufacturingRequest[]).slice().sort((a, b) => ((a.requestedAt || "") < (b.requestedAt || "") ? 1 : -1)), [requestsData])
 
-  const estimatesQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, MFG_COST_ESTIMATES), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: estimatesData } = useCollection(estimatesQuery)
-  const estimates = useMemo(
-    () => ((estimatesData || []) as MfgCostEstimate[]).sort((a, b) => ((a.sentAt || "") < (b.sentAt || "") ? 1 : -1)),
-    [estimatesData]
-  )
+  const { data: estimatesData } = useOrgCollection(MFG_COST_ESTIMATES, orgId)
+  const estimates = useMemo(() => ((estimatesData || []) as MfgCostEstimate[]).slice().sort((a, b) => ((a.sentAt || "") < (b.sentAt || "") ? 1 : -1)), [estimatesData])
 
-  const settingsRef = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return doc(firestore, MFG_SETTINGS, orgId)
-  }, [firestore, orgId])
+  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
   const { data: settingsData } = useDoc(settingsRef)
   const settings = useMemo(() => normalizeMfgSettings(settingsData as Partial<MfgSettings> | null), [settingsData])
 
-  const warehousesQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, "warehouses"), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: warehousesData } = useCollection(warehousesQuery)
-  const warehouses = (warehousesData || []) as MfgData["warehouses"]
+  const { data: salesOrdersData } = useOrgCollection(SALES_ORDERS, orgId)
+  const salesOrders = useMemo(() => new Map(((salesOrdersData || []) as SalesOrder[]).map((s) => [s.id, s])), [salesOrdersData])
 
-  const projectsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId) return null
-    return query(collection(firestore, "projects"), where("organizationId", "==", orgId))
-  }, [firestore, orgId])
-  const { data: projectsData } = useCollection(projectsQuery)
-  const projects = (projectsData || []) as Array<{ id: string; name: string }>
+  const { data: stopsData } = useOrgCollection(MFG_STOPS, orgId)
+  const stops = useMemo(() => (stopsData || []) as MfgStop[], [stopsData])
 
-  const scheduleInputs = useMemo<ScheduleInput[]>(
-    () =>
-      v2Orders.map((o) => ({
-        order: toOrderSlice(o),
-        product: productById.get(o.productId || "") as MfgProduct,
-        notes: (notesByOrder.get(o.id) || []).map(toNoteSlice),
-      })),
-    [v2Orders, productById, notesByOrder]
+  const { data: noticesData } = useOrgCollection(MFG_BLOCK_NOTICES, orgId)
+  const notices = useMemo(() => ((noticesData || []) as MfgBlockNotice[]).slice().sort((a, b) => (a.at < b.at ? 1 : -1)), [noticesData])
+
+  const { data: fleetData } = useOrgCollection(FLEET_VEHICLES, orgId)
+  const fleet = useMemo(() => ((fleetData || []) as FleetVehicle[]).filter((v) => v.active !== false), [fleetData])
+
+  const { data: warehousesData } = useOrgCollection("warehouses", orgId)
+  const warehouses = useMemo(() => (warehousesData || []) as MfgWarehouse[], [warehousesData])
+
+  const { data: projectsData } = useOrgCollection("projects", orgId)
+  const projects = useMemo(() => (projectsData || []) as Array<{ id: string; name: string }>, [projectsData])
+
+  const { data: membersData } = useOrgCollection("users", orgId)
+  const team = useMemo<TeamMember[]>(() => {
+    const byId = new Map((groups || []).map((g: TeamGroup) => [g.id, g]))
+    const grant = (groupId: string | null | undefined, p: string) => {
+      const g = groupId ? byId.get(groupId) : undefined
+      return !!g && (g.permissions.includes(ALL_PERMISSION) || (g.permissions as string[]).includes(p))
+    }
+    const members = ((membersData || []) as Array<{ id: string; name?: string; email?: string; defaultGroupId?: string | null; organizationRole?: string }>).map((m) => {
+      const owner = m.organizationRole === "owner" || m.id === orgId
+      const has = (p: string) => owner || grant(m.defaultGroupId, p)
+      return { id: m.id, name: m.name || m.email || "", manage: has("manufacturing.manage"), work: has("manufacturing.work"), qc: has("manufacturing.qc"), cost: has("manufacturing.cost"), view: has("manufacturing.view") }
+    })
+    return members.filter((m) => m.manage || m.work || m.qc || m.cost || m.view)
+  }, [membersData, groups, orgId])
+
+  // Stock is read once and re-read whenever a withdrawal or a note changes state.
+  const stockVersion = useMemo(
+    () => v2Orders.reduce((a, o) => a + (o.materials || []).filter((m) => m.state !== "requested").length + (o.remnants || []).filter((r) => r.state === "received").length, 0) + notes.filter((n) => n.status === "received").length,
+    [v2Orders, notes]
   )
-  const schedule = useMemo(
-    () => (settings.features.time ? scheduleOrders(scheduleInputs, departments) : new Map<string, ScheduleResult>()),
-    [scheduleInputs, departments, settings.features.time]
-  )
+  const stockRead = useOrgStock(warehouses, !!orgId && (v2Orders.length > 0 || products.length > 0), stockVersion)
+  const stock = useMemo(() => {
+    if (stockRead.loading && stockRead.byWarehouse.size === 0) return null
+    const quarantined = new Set(notices.filter((n) => n.quarantinedAt && !n.closedAt).map((n) => n.lot))
+    return stockIndexFrom(Array.from(stockRead.byWarehouse.values()).flat(), quarantined)
+  }, [stockRead, notices])
 
   const canManage = can("manufacturing.manage")
   const canCost = can("manufacturing.cost")
+  const canQc = can("manufacturing.qc")
+  const canWork = can("manufacturing.work")
+  const canView = can("manufacturing.view")
+  const engineActor = useMemo<EngineActor>(() => ({ uid: user?.uid || "", manage: canManage, work: canWork, qc: canQc, cost: canCost, view: canView }), [user?.uid, canManage, canWork, canQc, canCost, canView])
+
   return {
     orgId,
     actor: { id: user?.uid || "", name: actorName },
+    engineActor,
     ready: !!orgId && !ordersLoading,
     canManage,
-    canWork: can("manufacturing.work") || canManage,
-    canQc: can("manufacturing.qc") || canManage || canCost,
+    canWork,
+    canQc,
     canCost,
-    seesMoney: canCost || canManage || can("accounting.view") || can("invoices.manage"),
+    canView,
+    seesMoney: canManage || canCost || canView,
     departments,
     products,
     productById,
@@ -191,8 +201,14 @@ export function useMfgData(): MfgData {
     requests,
     estimates,
     settings,
-    schedule,
-    scheduleInputs,
+    salesOrders,
+    stops,
+    notices,
+    fleet,
+    team,
+    stock,
+    stockRows: stockRead.byWarehouse,
+    stockLoading: stockRead.loading,
     warehouses,
     projects,
   }

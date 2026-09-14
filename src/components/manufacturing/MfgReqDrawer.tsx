@@ -1,100 +1,100 @@
 "use client"
 
-// The request drawer — nobody answers a request before reading it. The whole
-// screening is here (cost, per unit, buy price, hours, earliest date, the
-// material it needs against what the stores hold), then the answer if there
-// is one, where it came from, and the answer button last.
+// The request panel — nobody answers a request before reading it (REQ-03).
+// Top to bottom: the requester's note, the overdue banner once the window has
+// passed, when it is needed and what making all of it costs, every line with
+// its computed verdict and reason, the slab it needs against what is free,
+// then the answer and the work orders it became, where it came from and where
+// the answer returns — and the manager's one button last.
 
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { Calculator, Check, ClipboardList, Clock, Layers, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { ManufacturingRequest } from "@/lib/sales-orders"
-import { useOrgStock, stockKey } from "@/hooks/useOrgStock"
-import { cn } from "@/lib/utils"
-import { answerWindow, requestSourceName, screenRequest, summarizeScreen } from "@/lib/manufacturing-requests"
+import { addDaysISO } from "@/lib/manufacturing-engine"
+import { answerWindow, estimateStatus, screenRequest, summarizeScreen, workOrderIdsOf } from "@/lib/manufacturing-requests"
 import { useMfgUi } from "./MfgUiContext"
-import { MfgStatePill } from "./MfgOrderBits"
-import { MfgChip, MfgDrawer, MfgNote, MfgRow, MfgSection, MfgStat, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
+import { MfgModuleChip, MfgStatePill } from "./MfgOrderBits"
 import {
+  DownPaymentChip,
+  EstimateStatusPill,
+  RequestRefs,
   RequestSourceChip,
   RequestStatePill,
-  VerdictCell,
+  SlabNeedText,
+  VerdictPill,
   ageText,
+  answerText,
+  productUnitOf,
   requestTitle,
-  requestVia,
-  sourceMetaOf,
-  useArrivedLabel,
-  useNow,
+  sourceIcon,
+  useAgo,
   useScreenContext,
-  verdictLabel,
-  workOrderIdsOf,
+  useSourceInfo,
+  useVerdictReason,
 } from "./MfgReqBits"
+import { MfgDrawer, MfgNote, MfgRow, MfgSection, MfgStat, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
 
-export function MfgReqDrawer({
-  request,
-  onClose,
-  onAnswer,
-  onShowEstimate,
-}: {
-  request: ManufacturingRequest | null
-  onClose: () => void
-  onAnswer: (r: ManufacturingRequest) => void
-  onShowEstimate: () => void
-}) {
+export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
   const ui = useMfgUi()
-  const { data, perms } = ui
+  const { data, perms, seesMoney, nowMs, today } = ui
   const date = useMfgDate()
-  const arrived = useArrivedLabel()
-  const now = useNow()
+  const ago = useAgo()
   const ctx = useScreenContext()
+  const reason = useVerdictReason()
+  const request = requestId ? data.requests.find((r) => r.id === requestId) || null : null
+  const info = useSourceInfo(request)
   const lines = useMemo(() => (request ? screenRequest(request, ctx) : []), [request, ctx])
   const summary = useMemo(() => summarizeScreen(lines), [lines])
-  const needsStock = lines.some((l) => l.material)
-  const stock = useOrgStock(data.warehouses, !!request && needsStock)
-  const stockKnown = !stock.loading && stock.byWarehouse.size > 0
 
-  if (!request) return null
+  if (!request || !info) return null
 
   const r = request
-  const meta = sourceMetaOf(r)
-  const via = requestVia(r, t)
   const isNew = r.status === "new"
-  const w = answerWindow(r, data.settings.answerWindowHours, now)
   const timeOn = data.settings.features.time
+  const win = answerWindow(r, data.settings.answerWindowHours, nowMs)
+  const Icon = sourceIcon(info)
+  const moduleName = t(`mfg4_module_${info.source}`)
   const orderIds = workOrderIdsOf(r)
-  const estimate = r.estimateId ? data.estimates.find((e) => e.id === r.estimateId) : null
-  const answer = r.answerNote || r.rejectionReason
+  const estimate = r.estimateId ? data.estimates.find((e) => e.id === r.estimateId) || null : null
+  const inDays = (days: number | null) => (days == null ? "—" : date.short(addDaysISO(today, days)))
+
+  const answer = () => {
+    onClose()
+    ui.openGlobal({ kind: "answerRequest", requestId: r.id })
+  }
 
   return (
     <MfgDrawer
       open
       onClose={onClose}
-      icon={meta.icon}
-      title={<span dir="auto">{requestTitle(r, t)}</span>}
+      icon={Icon}
+      title={<span dir="auto">{requestTitle(r, info, t)}</span>}
       meta={
         <>
-          <RequestSourceChip request={r} />
+          <RequestSourceChip info={info} />
+          <b className="text-slate-700">{t(`mfr_kind_${info.kind}`)}</b>
+          <RequestRefs info={info} />
           <span>
-            {t("mfg3_req_requested_by")} <b className="text-slate-700">{r.createdByUserName}</b>
+            · {t("mfr_requested_by")} <b className="text-slate-700">{r.createdByUserName}</b>
           </span>
-          {via && <span>· {via}</span>}
-          <RequestStatePill request={r} now={now} />
+          <DownPaymentChip state={info.downPayment} />
+          <RequestStatePill request={r} />
         </>
       }
       footer={
         isNew ? (
           perms.canManage ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" className="gap-1.5" onClick={() => onAnswer(r)}>
-                <Check size={14} aria-hidden="true" /> {t("mfg3_req_answer_cta")}
+              <Button size="sm" className="h-10 gap-1.5" onClick={answer}>
+                <Check size={14} aria-hidden="true" /> {info.kind === "cost" ? t("mfr_cost_or_decline") : t("mfr_accept_or_decline")}
               </Button>
-              <span className="text-[11px] text-muted-foreground">{t("mfg3_req_answer_cta_hint")}</span>
+              <span className="text-[11px] text-muted-foreground">{t("mfr_answer_returns", { module: moduleName })}</span>
             </div>
           ) : (
             <MfgNote tone="info" icon={Lock}>
-              {t("mfg3_req_only_manager")}
+              {t("mfr_only_manager_answers")}
             </MfgNote>
           )
         ) : undefined
@@ -105,95 +105,59 @@ export function MfgReqDrawer({
           <span dir="auto">{r.note}</span>
         </MfgNote>
       )}
-      {isNew && w.overdue && (
-        <MfgNote tone="bad" icon={Clock} title={t("mfg3_req_overdue_title", { age: ageText(t, w.ageHours) })}>
-          {t("mfg3_req_overdue_body", { hours: data.settings.answerWindowHours })}
+      {isNew && win.overdue && (
+        <MfgNote tone="bad" icon={Clock} title={t("mfr_overdue_title", { age: ageText(t, win.ageHours) })}>
+          {t("mfr_overdue_body", { hours: data.settings.answerWindowHours })}
         </MfgNote>
       )}
 
       <div className="grid grid-cols-2 gap-2">
-        <MfgStat label={t("mfg2_field_needed_by")} value={date.short(r.neededBy)} sub={r.neededBy ? date.relative(r.neededBy) : undefined} />
-        <MfgStat
-          label={t("mfg3_req_stat_lines")}
-          value={<span className="tabular-nums">{lines.length}</span>}
-          sub={r.requestedAt ? t("mfg3_req_arrived", { when: arrived(r.requestedAt, now) }) : undefined}
-        />
-        {perms.seesMoney && (
+        <MfgStat label={t("mfr_needed_by")} value={date.short(r.neededBy)} sub={r.neededBy ? date.relative(r.neededBy) : undefined} />
+        {seesMoney ? (
           <MfgStat
-            label={t("mfg3_req_stat_full_cost")}
-            value={<span className="tabular-nums">{fmtMoney(summary.fullCost)} ﷼</span>}
-            sub={summary.unscreened ? t("mfg3_req_stat_unscreened", { count: summary.unscreened }) : undefined}
-          />
-        )}
-        {timeOn ? (
-          <MfgStat
-            label={t("mfg3_req_stat_earliest_all")}
-            value={summary.earliestAll ? date.short(summary.earliestAll) : "—"}
-            sub={summary.earliestAll ? date.relative(summary.earliestAll) : undefined}
+            label={t("mfr_full_make_cost")}
+            value={
+              <span dir="ltr" className="tabular-nums">
+                {fmtMoney(summary.fullCost)} ﷼
+              </span>
+            }
+            sub={summary.unscreened ? t("mfr_unscreened", { count: summary.unscreened }) : !summary.allPriced ? t("mfr_cost_incomplete") : undefined}
           />
         ) : (
-          <MfgStat
-            label={t("mfg3_req_stat_suggested")}
-            value={
-              lines.find((l) => l.verdict)?.verdict
-                ? summary.common
-                  ? verdictLabel(lines.find((l) => l.verdict)!.verdict!, t)
-                  : t("mfg3_req_verdict_mixed")
-                : "—"
-            }
-          />
+          <MfgStat label={t("mfr_earliest_ready")} value={timeOn ? inDays(summary.earliestDays) : "—"} />
         )}
       </div>
 
-      <MfgSection icon={ClipboardList} title={t("mfg3_req_sec_lines")} right={<span className="text-[11px] text-muted-foreground">{t("mfg3_req_sec_lines_hint")}</span>}>
+      <MfgSection icon={ClipboardList} title={t("mfr_sec_lines")}>
         {lines.map((l) => {
-          const available = l.material ? stock.byName.get(stockKey(l.material.itemName)) || 0 : 0
-          const short = l.material ? Math.max(0, Math.round((l.material.qty - available) * 10) / 10) : 0
+          const unit = productUnitOf(l)
           return (
             <div key={l.index} className="flex flex-col gap-2 border-b border-border/60 px-3.5 py-3 text-xs last:border-b-0 sm:flex-row sm:items-start">
-              <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="min-w-0 flex-1 space-y-0.5 text-muted-foreground">
                 <p className="font-bold text-foreground" dir="auto">
-                  {l.line.itemName} — {fmtQty(l.line.quantity)} {l.line.unit}
+                  {l.product?.name || l.line.itemName} — <span dir="ltr" className="tabular-nums">{fmtQty(l.line.quantity)}</span> {unit}
                 </p>
-                {l.std && perms.seesMoney && l.verdict && (
-                  <p className="text-muted-foreground">
-                    {t("mfg3_req_line_cost")} <b className="text-foreground tabular-nums">{fmtMoney(l.std.total)} ﷼</b> ·{" "}
-                    {t("mfg3_req_line_per_unit", { amount: fmtMoney(l.verdict.unitCost) })}
-                    {l.verdict.buyPrice != null && <> · {t("mfg3_req_line_buy", { amount: fmtMoney(l.verdict.buyPrice) })}</>}
+                {seesMoney && l.std && l.verdict && (
+                  <p>
+                    {t("mfr_line_cost")}{" "}
+                    <b dir="ltr" className="tabular-nums text-foreground">
+                      {fmtMoney(l.std.total)} ﷼
+                    </b>
+                    {" · "}
+                    {t("mfr_line_per_unit", { amount: fmtMoney(l.verdict.unitCost) })}
+                    {l.verdict.buyPrice != null && l.verdict.buyPrice > 0 && <> · {t("mfr_line_buy", { amount: fmtMoney(l.verdict.buyPrice) })}</>}
                   </p>
                 )}
-                {l.std && timeOn && (
-                  <p className="text-muted-foreground">
-                    {t("mfg3_req_line_hours", { hours: fmtQty(Math.round(l.std.hours)) })}
-                    {l.possibleDate && (
-                      <>
-                        {" "}
-                        · {t("mfg3_req_line_earliest")} <b className="text-foreground">{date.short(l.possibleDate)}</b>
-                      </>
-                    )}
+                {timeOn && l.verdict && (
+                  <p>
+                    {t("mfr_earliest_ready")} <b className="text-foreground">{inDays(l.possibleDays)}</b>
                   </p>
                 )}
-                {l.material && (
-                  <p className="text-muted-foreground">
-                    <span dir="auto">
-                      {t("mfg3_req_line_material", { item: l.material.itemName, qty: fmtQty(l.material.qty), unit: l.material.unit })}
-                    </span>
-                    {l.material.wastePercent > 0 && <> ({t("mfg3_req_line_incl_waste", { pct: fmtQty(l.material.wastePercent) })})</>}
-                    {stockKnown && (
-                      <>
-                        {" "}
-                        ·{" "}
-                        <b className={cn(short > 0 ? "text-destructive" : "text-success")}>
-                          {t("mfg3_req_line_available", { qty: fmtQty(available) })}
-                        </b>
-                        {short > 0 && <> — {t("mfg3_req_line_short", { qty: fmtQty(short) })}</>}
-                      </>
-                    )}
-                  </p>
-                )}
+                <SlabNeedText line={l} />
               </div>
-              <div className="sm:max-w-[45%]">
-                <VerdictCell line={l} align="end" />
+              <div className="sm:max-w-[45%] sm:text-end">
+                <VerdictPill verdict={l.verdict} />
+                <span className="mt-1 block text-[11px] leading-relaxed text-muted-foreground">{reason(l, r)}</span>
               </div>
             </div>
           )
@@ -201,48 +165,51 @@ export function MfgReqDrawer({
       </MfgSection>
 
       {!isNew && (
-        <MfgSection icon={Check} title={t("mfg2_req_answer_label")}>
+        <MfgSection icon={Check} title={t("mfr_sec_answer")}>
           <MfgRow>
-            {answer && (
-              <p className="font-bold text-foreground" dir="auto">
-                {answer}
-              </p>
-            )}
+            <p className="font-bold text-foreground" dir="auto">
+              {answerText(r, t)}
+            </p>
             <p className="text-[11px] text-muted-foreground">
-              {r.decidedByUserName ? t("mfg3_req_answered_by", { name: r.decidedByUserName }) : ""}
+              {r.decidedByUserName}
               {r.decidedAt && (
                 <>
-                  {" "}
-                  · {date.short(r.decidedAt)} · {arrived(r.decidedAt, now)}
+                  {r.decidedByUserName ? " · " : ""}
+                  {date.short(r.decidedAt)} · {ago(r.decidedAt)}
                 </>
               )}
             </p>
           </MfgRow>
-          {orderIds.map((id) => {
+          {orderIds.map((id, i) => {
             const v = ui.viewById.get(id)
-            if (!v)
-              return r.workOrderNumber && id === r.workOrderId ? (
+            if (!v) {
+              const ref = r.workOrderDocNumbers?.[i]
+              return ref ? (
                 <MfgRow key={id}>
-                  <b dir="ltr">#{r.workOrderNumber}</b>
+                  <b dir="ltr">{ref}</b>
                 </MfgRow>
               ) : null
+            }
             return (
               <MfgRow
                 key={id}
-                onClick={() => ui.openOrder(id)}
-                right={<MfgStatePill view={v} departments={data.departments} />}
+                onClick={() => {
+                  onClose()
+                  ui.openOrder(id)
+                }}
+                right={<MfgStatePill view={v} />}
               >
                 <b dir="ltr" className="font-mono">
-                  #{v.number}
+                  {v.ref}
                 </b>{" "}
                 <span className="text-muted-foreground" dir="auto">
-                  {v.product.name} × {fmtQty(v.quantity)} {v.unit}
+                  {v.product.name} × <span dir="ltr">{fmtQty(v.quantity)}</span> {v.unit}
                 </span>
               </MfgRow>
             )
           })}
           {estimate && (
-            <MfgRow onClick={onShowEstimate} right={<MfgChip tone="info">{t(`mfg2_est_state_${estimate.state}`)}</MfgChip>}>
+            <MfgRow right={<EstimateStatusPill status={estimateStatus(estimate, today, data.settings)} />}>
               <span className="inline-flex items-center gap-1.5 font-semibold">
                 <Calculator size={13} className="text-warning" aria-hidden="true" />
                 <span dir="ltr">{estimate.estimateNumber}</span>
@@ -252,16 +219,39 @@ export function MfgReqDrawer({
         </MfgSection>
       )}
 
-      <MfgSection icon={Layers} title={t("mfg3_req_sec_source")}>
-        <MfgRow right={<RequestSourceChip request={r} />}>
-          <p className="font-bold text-foreground" dir="auto">
-            {requestSourceName(r) || t(meta.labelKey)}
-          </p>
-          {via && <p className="text-[11px] text-muted-foreground">{via}</p>}
-        </MfgRow>
+      <MfgSection icon={Layers} title={t("mfr_sec_source")}>
+        {info.source === "procurement" ? (
+          <>
+            {r.pmRequestRef && (
+              <MfgRow right={<MfgModuleChip module="projects" />}>
+                <b dir="ltr">{r.pmRequestRef}</b>
+                <p className="text-[11px] text-muted-foreground" dir="auto">
+                  {r.costItemName ? t("mfr_src_pm_request_item", { item: r.costItemName }) : t("mfr_src_pm_request")}
+                </p>
+              </MfgRow>
+            )}
+            <MfgRow right={<MfgModuleChip module="procurement" />}>
+              <b dir="ltr">{r.purchaseRequestRef || "—"}</b>
+              <p className="text-[11px] text-muted-foreground">{t("mfr_src_procurement")}</p>
+            </MfgRow>
+          </>
+        ) : (
+          <MfgRow right={<MfgModuleChip module="sales" />}>
+            <b dir="ltr">{info.kind === "cost" ? r.rfqRef || "—" : r.orderNumber != null ? `SO-${r.orderNumber}` : "—"}</b>
+            <p className="text-[11px] text-muted-foreground">
+              {info.kind === "cost"
+                ? t("mfr_src_rfq")
+                : info.downPayment === "confirmed"
+                  ? t("mfr_src_so_confirmed")
+                  : info.downPayment === "pending"
+                    ? t("mfr_src_so_pending")
+                    : t("mfr_src_so")}
+            </p>
+          </MfgRow>
+        )}
         <MfgRow>
           <p className="font-bold text-foreground">{r.createdByUserName}</p>
-          <p className="text-[11px] text-muted-foreground">{t("mfg3_req_source_waiting")}</p>
+          <p className="text-[11px] text-muted-foreground">{t("mfr_src_answer_returns", { module: moduleName })}</p>
         </MfgRow>
       </MfgSection>
     </MfgDrawer>

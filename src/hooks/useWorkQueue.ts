@@ -20,6 +20,14 @@ export type WorkQueueItemType =
   | "project_waiting_approval"
   | "low_stock"
   | "team_invite_pending"
+  // Manufacturing's handoffs — acts other modules owe the workshop (PRD 1.2 boundary)
+  | "sales_deposits_to_confirm"
+  | "mfg_materials_to_issue"
+  | "mfg_requests_unanswered"
+  | "mfg_drawing_results_due"
+  | "mfg_notes_to_receive"
+  | "mfg_custody_to_receive"
+  | "mfg_purchase_requests"
 
 export interface WorkQueueItem {
   id: string
@@ -56,6 +64,27 @@ const TIER: Record<WorkQueueItemType, number> = {
   rfq_no_offers: 6,
   low_stock: 7,
   team_invite_pending: 8,
+  sales_deposits_to_confirm: 3,
+  mfg_materials_to_issue: 3,
+  mfg_requests_unanswered: 4,
+  mfg_drawing_results_due: 4,
+  mfg_notes_to_receive: 5,
+  mfg_custody_to_receive: 5,
+  mfg_purchase_requests: 5,
+}
+
+interface QueueWorkOrder {
+  id: string
+  status?: string
+  productId?: string | null
+  projectId?: string | null
+  projectName?: string | null
+  salesOrderId?: string | null
+  docNumber?: string | null
+  orderNumber?: number
+  materials?: Array<{ requestNumber: string; state: string; requestedAt?: string }>
+  purchaseRequests?: Array<{ state: string; at?: string }>
+  drawing?: { submittedAt: string | null; code: string | null; approverOrg: string } | null
 }
 
 // An RFQ younger than this is still fresh — no supplier has had a fair chance
@@ -134,6 +163,32 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     return query(collection(firestore, "invitations"), where("invitedBy", "==", userId))
   }, [firestore, userId])
   const { data: invitations } = useCollection(invitationsQuery)
+
+  // Manufacturing's handoffs. Each is a fact on the workshop's own documents
+  // that another module acts on — read here so the owner sees it on arrival.
+  const workOrdersQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, "workOrders"), where("organizationId", "==", organizationId), where("status", "==", "open"))
+  }, [firestore, organizationId])
+  const { data: workOrders } = useCollection(workOrdersQuery)
+
+  const notesQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, "deliveryNotes"), where("organizationId", "==", organizationId), where("status", "==", "in_transit"))
+  }, [firestore, organizationId])
+  const { data: notesInTransit } = useCollection(notesQuery)
+
+  const depositsQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, "salesOrders"), where("organizationId", "==", organizationId), where("status", "==", "awaiting_deposit"))
+  }, [firestore, organizationId])
+  const { data: awaitingDeposit } = useCollection(depositsQuery)
+
+  const mfgRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, "manufacturingRequests"), where("organizationId", "==", organizationId), where("status", "==", "new"))
+  }, [firestore, organizationId])
+  const { data: newMfgRequests } = useCollection(mfgRequestsQuery)
 
   // Low-stock items live in a per-warehouse subcollection — can't be expressed as a
   // single top-level query, so fetch once (not real-time) whenever the warehouse list changes.
@@ -310,6 +365,117 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       data: { email: inv.email || "", name: inv.name || "" },
     })
   })
+
+  // ── Manufacturing handoffs (one card per kind, or per project / sales order) ──
+  const liveOrders = ((workOrders || []) as QueueWorkOrder[]).filter((o) => !!o.productId)
+  const oldestAge = (isos: Array<string | undefined>) => {
+    const ms = isos.map((x) => toMs(x)).filter(Boolean)
+    return ms.length ? now - Math.min(...ms) : 0
+  }
+
+  const deposits = (awaitingDeposit || []) as Array<{ id: string; payment?: { kind?: string; depositPaid?: boolean; depositReportedAt?: string | null } }>
+  const unpaid = deposits.filter((o) => o.payment?.kind === "deposit" && !o.payment.depositPaid)
+  if (unpaid.length) {
+    items.push({
+      id: "sales_deposits_to_confirm",
+      type: "sales_deposits_to_confirm",
+      tier: TIER.sales_deposits_to_confirm,
+      sortMs: oldestAge(unpaid.map((o) => o.payment?.depositReportedAt || undefined)),
+      actionUrl: "/contractor/sales/payments",
+      data: { count: unpaid.length, reported: unpaid.filter((o) => o.payment?.depositReportedAt).length },
+    })
+  }
+
+  const withdrawals = new Map<string, string | undefined>()
+  for (const o of liveOrders) for (const m of o.materials || []) if (m.state === "requested") withdrawals.set(`${o.id}__${m.requestNumber}`, m.requestedAt)
+  if (withdrawals.size) {
+    items.push({
+      id: "mfg_materials_to_issue",
+      type: "mfg_materials_to_issue",
+      tier: TIER.mfg_materials_to_issue,
+      sortMs: oldestAge(Array.from(withdrawals.values())),
+      actionUrl: "/contractor/warehouses/manufacturing",
+      data: { count: withdrawals.size },
+    })
+  }
+
+  const requests = (newMfgRequests || []) as Array<{ requestedAt?: string }>
+  if (requests.length) {
+    items.push({
+      id: "mfg_requests_unanswered",
+      type: "mfg_requests_unanswered",
+      tier: TIER.mfg_requests_unanswered,
+      sortMs: oldestAge(requests.map((r) => r.requestedAt)),
+      actionUrl: "/contractor/manufacturing/requests",
+      data: { count: requests.length },
+    })
+  }
+
+  // A drawing waiting on its approver: the project's office or consultant.
+  // (A client's result is Sales' — shown on the sales order itself.)
+  const drawingsByProject = new Map<string, { name: string; count: number; since: string[] }>()
+  for (const o of liveOrders) {
+    const d = o.drawing
+    if (!o.projectId || !d?.submittedAt || d.code || d.approverOrg === "client" || d.approverOrg === "workshop") continue
+    const row = drawingsByProject.get(o.projectId) || { name: o.projectName || "", count: 0, since: [] }
+    row.count += 1
+    row.since.push(d.submittedAt)
+    drawingsByProject.set(o.projectId, row)
+  }
+  drawingsByProject.forEach((row, pid) => {
+    items.push({
+      id: `mfg_drawing_results_due_${pid}`,
+      type: "mfg_drawing_results_due",
+      tier: TIER.mfg_drawing_results_due,
+      sortMs: oldestAge(row.since),
+      actionUrl: `/contractor/projects/${pid}?tab=mfg`,
+      data: { count: row.count, projectName: row.name },
+    })
+  })
+
+  const notes = (notesInTransit || []) as Array<{ toKind?: string; toProjectId?: string | null; toWarehouseName?: string; sentAt?: string }>
+  const toStores = notes.filter((n) => n.toKind !== "project")
+  if (toStores.length) {
+    items.push({
+      id: "mfg_notes_to_receive",
+      type: "mfg_notes_to_receive",
+      tier: TIER.mfg_notes_to_receive,
+      sortMs: oldestAge(toStores.map((n) => n.sentAt)),
+      actionUrl: "/contractor/warehouses/delivery-notes",
+      data: { count: toStores.length },
+    })
+  }
+  const custody = new Map<string, { count: number; since: string[] }>()
+  for (const n of notes) {
+    if (n.toKind !== "project" || !n.toProjectId) continue
+    const row = custody.get(n.toProjectId) || { count: 0, since: [] }
+    row.count += 1
+    if (n.sentAt) row.since.push(n.sentAt)
+    custody.set(n.toProjectId, row)
+  }
+  custody.forEach((row, pid) => {
+    const project = (projects || []).find((p: { id: string }) => p.id === pid) as { name?: string } | undefined
+    items.push({
+      id: `mfg_custody_to_receive_${pid}`,
+      type: "mfg_custody_to_receive",
+      tier: TIER.mfg_custody_to_receive,
+      sortMs: oldestAge(row.since),
+      actionUrl: `/contractor/projects/${pid}?tab=mfg`,
+      data: { count: row.count, projectName: project?.name || "" },
+    })
+  })
+
+  const purchases = liveOrders.flatMap((o) => (o.purchaseRequests || []).filter((p) => p.state === "sent"))
+  if (purchases.length) {
+    items.push({
+      id: "mfg_purchase_requests",
+      type: "mfg_purchase_requests",
+      tier: TIER.mfg_purchase_requests,
+      sortMs: oldestAge(purchases.map((p) => p.at)),
+      actionUrl: "/contractor/rfqs",
+      data: { count: purchases.length },
+    })
+  }
 
   items.sort((a, b) => (a.tier !== b.tier ? a.tier - b.tier : b.sortMs - a.sortMs))
 
