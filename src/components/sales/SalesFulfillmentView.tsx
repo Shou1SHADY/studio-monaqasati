@@ -131,10 +131,10 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
     if (!order) return
     setBusyId(note.id)
     try {
-      let stockRows: Array<{ id: string; name: string }> = []
+      let stockRows: Array<{ id: string; name: string; quantity: number; lot: string | null; remnant: boolean }> = []
       if (note.warehouseId) {
         const snap = await getDocs(collection(firestore, "warehouses", note.warehouseId, "inventoryItems"))
-        stockRows = snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "" }))
+        stockRows = snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "", quantity: Number(d.data().quantity) || 0, lot: (d.data().lot as string) || null, remnant: !!d.data().remnant }))
       }
       await confirmDelivery(firestore, { note, order, allNotes: notes, stockRows, actor })
       toast({ title: t("sf_delivered_toast", { number: note.noteNumber }) })
@@ -246,10 +246,10 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
     setBusyId(salesReturn.id)
     try {
       const note = notes.find((n) => n.id === salesReturn.deliveryNoteId)
-      let stockRows: Array<{ id: string; name: string }> = []
+      let stockRows: Array<{ id: string; name: string; quantity: number; lot: string | null; remnant: boolean }> = []
       if (note?.warehouseId) {
         const snap = await getDocs(collection(firestore, "warehouses", note.warehouseId, "inventoryItems"))
-        stockRows = snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "" }))
+        stockRows = snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "", quantity: Number(d.data().quantity) || 0, lot: (d.data().lot as string) || null, remnant: !!d.data().remnant }))
       }
       await issueCreditNote(firestore, { salesReturn, order, stockRows, warehouseId: note?.warehouseId ?? null, actor })
       toast({ title: t("sr_credit_issued") })

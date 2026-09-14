@@ -72,6 +72,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const editId = searchParams.get("edit")
   const isEditing = !!editId
   const catalogParam = searchParams.get("catalog")
+  // ?items=[{"name","quantity","unit"}] — free items handed over by another
+  // screen (Manufacturing's purchase requests, from the RFQs list).
+  const itemsParam = searchParams.get("items")
+  const itemsApplied = useRef<string | null>(null)
+  const tShared = useTranslations("Portal.Shared")
   const [editRfqData, setEditRfqData] = useState<any>(null)
   const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
   const firestore = useFirestore()
@@ -230,6 +235,47 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       })
       .catch(console.error)
   }, [catalogParam, firestore])
+
+  // Pre-populate free items (?items=<JSON array of {name, quantity, unit}>).
+  // The category is still the buyer's pick; the name lands in the description
+  // and as the "other" sub-category text. Malformed input is ignored.
+  useEffect(() => {
+    if (!itemsParam || isEditing || itemsApplied.current === itemsParam) return
+    itemsApplied.current = itemsParam
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(itemsParam)
+    } catch {
+      return
+    }
+    if (!Array.isArray(parsed)) return
+    const items = parsed
+      .map((x) => {
+        const o = (x && typeof x === "object" ? x : {}) as { name?: unknown; quantity?: unknown; unit?: unknown }
+        const name = typeof o.name === "string" ? o.name.trim().slice(0, 200) : ""
+        const quantity = typeof o.quantity === "number" && Number.isFinite(o.quantity) && o.quantity > 0 ? o.quantity : null
+        const unit = typeof o.unit === "string" ? o.unit.trim().slice(0, 40) : ""
+        return { name, quantity, unit }
+      })
+      .filter((x) => x.name)
+      .slice(0, 50)
+    if (items.length === 0) return
+    const stamp = Date.now()
+    setProducts((prev) => {
+      const kept = prev.filter((p) => p.quantity.trim() || p.unit.trim() || p.description.trim() || p.category)
+      return [
+        ...kept,
+        ...items.map((it, idx) => ({
+          ...makeEmptyProductRow(`items-${stamp}-${idx}`),
+          quantity: it.quantity != null ? String(it.quantity) : "",
+          unit: it.unit,
+          description: it.name,
+          otherSubCategory: it.name,
+        })),
+      ]
+    })
+    toast({ title: tShared("mfy_rfq_items_prefilled", { count: items.length }) })
+  }, [itemsParam, isEditing])
 
   if (isLoadingEdit) {
     return (

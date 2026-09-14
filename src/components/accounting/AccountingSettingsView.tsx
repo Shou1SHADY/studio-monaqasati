@@ -26,6 +26,7 @@ import { toIsoTimestamp } from "@/lib/accounting/analytics"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingSection, AccountingShell } from "./AccountingShell"
 import { periodLabel, periodRangeText } from "./AccountingToolbar"
+import { MfgPoliciesCard } from "./MfgPoliciesCard"
 
 /**
  * Accounting system settings (إعدادات النظام المحاسبي): whether the module
@@ -182,6 +183,9 @@ export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
           </div>
         </AccountingSection>
       </div>
+
+      {/* Finance owns the manufacturing policies; the workshop reads them (FN-01). */}
+      <MfgPoliciesCard organizationId={data.organizationId} actor={{ id: data.userId, name: data.userName }} canEdit={canEdit} />
 
       {data.settingsDoc?.updatedByUserName && (
         <p className="text-[11px] text-muted-foreground">

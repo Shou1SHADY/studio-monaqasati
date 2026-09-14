@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, serverTimestamp } from "firebase/firestore"
-import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, List, Waypoints, ClipboardCheck } from "lucide-react"
-import { Link, usePathname } from "@/i18n/routing"
+import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, ClipboardCheck } from "lucide-react"
+import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,11 +38,11 @@ import {
   type WorkOrderInputItem,
 } from "@/lib/manufacturing"
 import { DELIVERY_NOTES, handOverWorkOrder, confirmDeliveryNote, type DeliveryNote } from "@/lib/delivery-notes"
-import { ManufacturingMindMap } from "./ManufacturingMindMap"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { acceptManufacturingRequest, rejectManufacturingRequest } from "@/lib/sales-order-writes"
 import { isV2Order } from "@/lib/manufacturing-writes"
-import { MfgOrderV2DialogStandalone } from "./MfgWorkshopExtras"
+import { isV2Note, type MfgDeliveryNote } from "@/lib/mfg-outside"
+import { MfgNoteReceiptDialog } from "@/components/inventory/MfgNoteReceiptDialog"
 
 type Member = { id: string; name?: string; email?: string }
 
@@ -79,6 +79,7 @@ export function ManufacturingView({
   // Signing for a delivery note is the warehouse keeper's job, not manufacturing's.
   const canReceive = can("warehouses.receive") || can("warehouses.manage")
   const pathname = usePathname()
+  const router = useRouter()
   const portalBase = pathname.includes("/supplier") ? "/supplier" : "/contractor"
 
   const userDocRef = useMemoFirebase(() => {
@@ -108,12 +109,15 @@ export function ManufacturingView({
     () => (((ordersData || []) as WorkOrder[]).sort((a, b) => (b.orderNumber || 0) - (a.orderNumber || 0))),
     [ordersData]
   )
+  // Product-born (v2) orders live in the Manufacturing workshop; inside a
+  // project they are shown by ProjectWorkshopPanel above this list, so the
+  // embedded list keeps only the stage-flow orders.
   const orders = useMemo(
     () =>
       (projectId ? allOrders.filter((o) => o.projectId === projectId) : allOrders).filter(
-        (o) => !legacyOnly || !isV2Order(o as { productId?: string | null })
+        (o) => !(legacyOnly || embedded) || !isV2Order(o as { productId?: string | null })
       ),
-    [allOrders, projectId, legacyOnly]
+    [allOrders, projectId, legacyOnly, embedded]
   )
 
   const membersQuery = useMemoFirebase(() => {
@@ -190,9 +194,6 @@ export function ManufacturingView({
   }
 
   const [statusFilter, setStatusFilter] = useState<"open" | "done" | "all">("open")
-  // "list" is the compact queue; "map" draws the same orders as a mind map
-  // (warehouse → order → stages → output → destination).
-  const [viewMode, setViewMode] = useState<"list" | "map">("list")
   const visibleOrders = orders.filter((o) => statusFilter === "all" || o.status === statusFilter)
   const openCount = orders.filter((o) => o.status === "open").length
   const doneCount = orders.filter((o) => o.status === "done").length
@@ -422,9 +423,13 @@ export function ManufacturingView({
   // ── Order detail: assignment + hand-off ──
   const [detailId, setDetailId] = useState<string | null>(null)
   const detailCandidate = orders.find((o) => o.id === detailId) || null
-  // Product-born (v2) orders open the quantity-flow board, not the stage list.
-  const detailV2 = detailCandidate && isV2Order(detailCandidate as { productId?: string | null }) ? detailCandidate : null
-  const detail = detailV2 ? null : detailCandidate
+  // The stage list is for stage-flow orders only; a product-born order opens
+  // in the Manufacturing workshop.
+  const detail = detailCandidate && !isV2Order(detailCandidate as { productId?: string | null }) ? detailCandidate : null
+  const openOrder = (o: WorkOrder) => {
+    if (isV2Order(o as { productId?: string | null })) router.push(`${portalBase}/manufacturing/workshop?order=${o.id}`)
+    else setDetailId(o.id)
+  }
   const [isAdvancing, setIsAdvancing] = useState(false)
 
   // The delivery note behind the open order's handover — for signing inline.
@@ -436,9 +441,15 @@ export function ManufacturingView({
   const deliveryNote =
     noteData && detail?.deliveryNoteId ? ({ ...(noteData as object), id: detail.deliveryNoteId } as DeliveryNote) : null
   const [isConfirming, setIsConfirming] = useState(false)
+  // A note written by the product-born flow is received with its breakage.
+  const [receiptNote, setReceiptNote] = useState<MfgDeliveryNote | null>(null)
 
   const handleConfirmReceipt = async (note: DeliveryNote) => {
     if (!firestore || !user || isConfirming) return
+    if (isV2Note(note)) {
+      setReceiptNote(note as MfgDeliveryNote)
+      return
+    }
     setIsConfirming(true)
     try {
       await confirmDeliveryNote(firestore, {
@@ -719,36 +730,12 @@ export function ManufacturingView({
             </button>
           ))}
         </div>
-        <div role="group" aria-label={t("mfg_view_toggle")} className="flex items-center gap-0.5 rounded-lg border bg-white p-0.5">
-          {(
-            [
-              { id: "list", icon: <List size={14} aria-hidden="true" />, label: t("mfg_view_list") },
-              { id: "map", icon: <Waypoints size={14} aria-hidden="true" />, label: t("mfg_view_map") },
-            ] as const
-          ).map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              aria-pressed={viewMode === m.id}
-              onClick={() => setViewMode(m.id)}
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                viewMode === m.id ? "bg-primary text-white" : "text-slate-600 hover:bg-muted"
-              )}
-            >
-              {m.icon}
-              {m.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {ordersLoading ? (
         <div className="flex items-center justify-center p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} />
         </div>
-      ) : viewMode === "map" ? (
-        <ManufacturingMindMap orders={visibleOrders} warehouses={orgWarehouses} onSelectOrder={setDetailId} />
       ) : visibleOrders.length === 0 ? (
         <div className="p-10 text-center text-muted-foreground border border-dashed rounded-xl">
           <PackageCheck size={36} className="mx-auto mb-2 opacity-20" />
@@ -763,7 +750,7 @@ export function ManufacturingView({
               <button
                 key={o.id}
                 type="button"
-                onClick={() => setDetailId(o.id)}
+                onClick={() => openOrder(o)}
                 className="w-full text-start flex items-center justify-between gap-3 p-4 rounded-xl border border-slate-200/70 bg-white hover:border-primary/40 hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="min-w-0 flex-1">
@@ -907,8 +894,9 @@ export function ManufacturingView({
         </DialogContent>
       </Dialog>
 
+      <MfgNoteReceiptDialog note={receiptNote} orgId={orgId} actor={{ id: user?.uid || "", name: actorName }} onClose={() => setReceiptNote(null)} />
+
       {/* Order detail — the stage chain */}
-      {detailV2 && <MfgOrderV2DialogStandalone orderId={detailV2.id} onClose={() => setDetailId(null)} />}
 
       <Dialog open={!!detail} onOpenChange={(open) => { if (!open) setDetailId(null) }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[90vh] overflow-y-auto">

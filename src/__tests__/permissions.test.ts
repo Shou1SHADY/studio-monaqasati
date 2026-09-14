@@ -229,8 +229,8 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 26 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(26)
+  it("contains exactly 27 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(27)
   })
 
   it("groups every permission into exactly one component section", () => {
@@ -462,6 +462,7 @@ describe("permissionLabelKey", () => {
       "manufacturing.work": "perm_manufacturing_work",
       "manufacturing.qc": "perm_manufacturing_qc",
       "manufacturing.cost": "perm_manufacturing_cost",
+      "manufacturing.view": "perm_manufacturing_view",
       "sales.manage": "perm_sales_manage",
       "sales.approve": "perm_sales_approve",
       "warehouses.receive": "perm_warehouses_receive",

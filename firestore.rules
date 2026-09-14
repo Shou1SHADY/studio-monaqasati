@@ -708,6 +708,13 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
           && (request.resource.data.status == 'approved' || request.resource.data.status == 'rejected');
 
+        // Procurement routes the need to Manufacturing (D4) — only the link to
+        // the manufacturing request is written, at any status.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (hasOrgPermission('rfq.manage') || hasOrgPermission('warehouses.manage'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mfgRequestId', 'mfgRoutedAt', 'mfgRoutedByName', 'updatedAt']);
+
         allow delete: if isAdmin();
       }
     }
@@ -945,17 +952,29 @@ service cloud.firestore {
     // Quantities are DERIVED, never stored: delivered comes from delivery
     // notes, invoiced from invoices. So the rules guard documents, and the
     // documents guard the numbers.
+    // Finance confirms the down payment a deposit order waits on: only the
+    // payment flag and the status move, and only from awaiting to running.
+    function confirmsSalesOrderDeposit() {
+      return hasOrgPermission('invoices.manage')
+        && resource.data.status == 'awaiting_deposit'
+        && request.resource.data.status == 'running'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payment', 'status', 'updatedAt'])
+        && request.resource.data.payment.kind == 'deposit'
+        && request.resource.data.payment.depositPaid == true
+        && request.resource.data.payment.get('depositPercent', null) == resource.data.payment.get('depositPercent', null)
+        && request.resource.data.payment.get('creditDays', null) == resource.data.payment.get('creditDays', null);
+    }
     match /salesOrders/{orderId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'));
-      // Finance holds `invoices.manage`: confirming the advance on a transfer
-      // notice is what releases a deposit-gated order, and that release writes
-      // the order's status — Finance's one legitimate touch on it.
+      // Finance's one legitimate touch: confirming the advance (directly or by
+      // answering a transfer notice) releases a deposit-gated order — the
+      // scoped helper above lets exactly that write through and nothing else.
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
         && (hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve')
-            || hasOrgPermission('invoices.manage'));
+            || confirmsSalesOrderDeposit());
       // Orders are records other documents point at — only an admin removes one.
       allow delete: if isAdmin();
     }
@@ -1021,20 +1040,26 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Manufacturing requests — Sales asks, the plant answers. Creating one
-    // needs sales rights; answering (accept into a work order, or reject with
-    // a reason) is the plant's call.
-    // Manufacturing requests — demand arrives from Sales, from a project's
-    // needs, or from Procurement ("make instead of buy"); answering one routes
-    // it and is the workshop manager's act.
+    // Manufacturing requests (PRD 1.2) — two doors: Sales (a manufacturing
+    // request for a sales order, or a costing request) and Procurement (a
+    // project need it decided to make). No request is created inside
+    // Manufacturing. The workshop manager answers; the requester (Sales,
+    // Procurement) may only move an unanswered request to purchase.
     match /manufacturingRequests/{requestId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && (hasOrgPermission('sales.manage') || hasOrgPermission('projects.edit')
-            || hasOrgPermission('manufacturing.manage') || hasOrgPermission('rfq.manage'));
+        && request.resource.data.status == 'new'
+        && request.resource.data.createdByUserId == request.auth.uid
+        && (hasOrgPermission('sales.manage') || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create')
+            || hasOrgPermission('warehouses.manage') || hasOrgPermission('manufacturing.manage'));
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
-        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('manufacturing.cost') || hasOrgPermission('sales.manage'));
+        && (hasOrgPermission('manufacturing.manage')
+            || ((hasOrgPermission('sales.manage') || hasOrgPermission('rfq.manage') || hasOrgPermission('warehouses.manage'))
+                && resource.data.status == 'new'
+                && request.resource.data.status == 'moved'
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'decidedAt', 'decidedByUserId', 'decidedByUserName', 'movedToPurchase', 'answerNote', 'updatedAt'])));
       allow delete: if isAdmin();
     }
 
@@ -1168,36 +1193,55 @@ service cloud.firestore {
         && hasOrgPermission('manufacturing.manage'));
     }
 
-    // Work orders. v2 (product-born) orders carry quantity-flow fields; who may
-    // touch what mirrors the manufacturing permission split: any member keeps
-    // the legacy stage/handover set plus the operational v2 set (output,
-    // materials, checklists — the department hands' work); QC adds scrap,
-    // slab sign-off and breakage decisions; releasing an order, rushing it and
-    // the drawing/measurement facts stay with manage/cost.
+    // Work orders (PRD 1.2). Five manufacturing roles, each limited to the
+    // fields its decisions write; the other modules touch only the facts they
+    // own (D9 — Manufacturing requests and reads, never acts for them):
+    //   manage  — everything (release, rush, close, notes, changes, purchase…)
+    //   work    — station leads: output, rejects, remnants, materials request &
+    //             receipt, checklists, the design station's drawing submission
+    //   qc      — output at QC & packing + quality release, rejects, QC
+    //             decisions (scrap records), slab sign-off
+    //   cost    — scrap review and variance reviews only
+    //   Inventory (warehouses.manage/receive) — issuing withdrawals, receiving
+    //             remnants and delivery notes
+    //   Sales / Projects — the drawing result and incoming change requests,
+    //             and (Projects) receipt into custody
+    //   Procurement — marking a purchase request arrived
+    // Legacy stage-flow orders (no productId) keep the member-wide stage and
+    // handover field set their assignees need.
+    function woChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
     match /workOrders/{orderId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('manufacturing.cost') || hasOrgPermission('crm.close'));
+        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('crm.close'));
       allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
         && (hasOrgPermission('manufacturing.manage')
-            || ((hasOrgPermission('manufacturing.cost'))
-                && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt',
-                               'deliveryNoteId', 'deliveryNoteNumber', 'receivedAt', 'receivedByUserId', 'receivedByUserName',
-                               'progress', 'materials', 'materialCost', 'checklists',
-                               'scrapRecords', 'slabApproval', 'shortfall', 'brokenResolved', 'breakageDecisions', 'measurement',
-                               'releasedAt', 'releasedByName', 'riskReason', 'rush',
-                               'drawingApprovalStatus', 'drawingApprovedAt', 'drawingApprovedBy', 'updatedAt']))
-            || ((hasOrgPermission('manufacturing.qc'))
-                && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt',
-                               'progress', 'materials', 'materialCost', 'checklists',
-                               'scrapRecords', 'slabApproval', 'shortfall', 'brokenResolved', 'breakageDecisions', 'updatedAt']))
-            || request.resource.data.diff(resource.data).affectedKeys()
-                 .hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt',
-                           'deliveryNoteId', 'deliveryNoteNumber', 'receivedAt', 'receivedByUserId', 'receivedByUserName',
-                           'progress', 'materials', 'materialCost', 'checklists', 'updatedAt'])));
+            || (hasOrgPermission('manufacturing.work')
+                && woChanged().hasOnly(['progress', 'rejects', 'remnants', 'materials', 'materialCost', 'checklists',
+                                        'drawing', 'log', 'stages', 'currentStageIndex', 'updatedAt']))
+            || (hasOrgPermission('manufacturing.qc')
+                && woChanged().hasOnly(['progress', 'rejects', 'qcReleases', 'remnants', 'scrapRecords', 'slabApproval',
+                                        'materials', 'materialCost', 'checklists', 'log', 'stages', 'currentStageIndex', 'updatedAt']))
+            || (hasOrgPermission('manufacturing.cost')
+                && woChanged().hasOnly(['scrapRecords', 'varianceReviews', 'log', 'status', 'completedAt', 'updatedAt'])
+                && request.resource.data.status in ['open', 'done'])
+            || ((hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))
+                && woChanged().hasOnly(['materials', 'remnants', 'receivedAt', 'receivedByUserId', 'receivedByUserName', 'status', 'completedAt', 'updatedAt'])
+                && request.resource.data.status in ['open', 'done'])
+            || ((hasOrgPermission('sales.manage') || hasOrgPermission('projects.edit')
+                 || (resource.data.get('projectId', null) is string && hasProjectPermission(resource.data.projectId, 'projects.edit')))
+                && woChanged().hasOnly(['drawing', 'changeRequest', 'log', 'receivedAt', 'receivedByUserId', 'receivedByUserName', 'status', 'completedAt', 'updatedAt'])
+                && request.resource.data.status in ['open', 'done'])
+            || ((hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('warehouses.manage'))
+                && woChanged().hasOnly(['purchaseRequests', 'updatedAt']))
+            || (resource.data.get('productId', null) == null
+                && woChanged().hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt',
+                                        'deliveryNoteId', 'deliveryNoteNumber', 'receivedAt', 'receivedByUserId', 'receivedByUserName',
+                                        'progress', 'materials', 'materialCost', 'checklists', 'updatedAt']))));
       allow delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && hasOrgPermission('manufacturing.manage'));
     }
@@ -1213,25 +1257,103 @@ service cloud.firestore {
         && hasOrgPermission('manufacturing.manage'));
     }
 
-    // Cost estimates — the workshop issues cost and lead time; sales set the
-    // price. Reading them is org-wide (the requester follows their card);
-    // writing them is the workshop manager or the cost controller.
+    // Cost statements — cost, lead time and validity; no price, no margin
+    // (D10). The manager's answer creates the draft; only the cost controller
+    // reviews, sends and recalculates it (REQ-06); Sales records what became
+    // of the quote built on it (quoted / won / lost), and nothing else.
     match /mfgCostEstimates/{estimateId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'draft'
         && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('manufacturing.cost'));
       allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
-        && (hasOrgPermission('manufacturing.manage') || hasOrgPermission('manufacturing.cost')));
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hasOrgPermission('manufacturing.cost')
+            || (hasOrgPermission('sales.manage')
+                && resource.data.state in ['sent', 'quoted']
+                && request.resource.data.state in ['quoted', 'won', 'lost']
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['state', 'quoteNumber', 'salesOrderNumber', 'salesStatusBy', 'salesStatusAt', 'updatedAt']))));
       allow delete: if isAdmin();
     }
 
-    // Manufacturing settings (doc id = orgId) — feature switches and Finance's
-    // policies (overhead rate, margin floor, scrap limit).
+    // Manufacturing settings (doc id = orgId). The feature switches are the
+    // workshop manager's; the policies (overhead rate, scrap limit, windows,
+    // validity, remnant valuation) are Finance's and edited only there (FN-01).
     match /manufacturingSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
-      allow create, update: if isSignedIn() && isOrgMember(orgId)
+      allow create: if isSignedIn() && isOrgMember(orgId)
         && request.resource.data.organizationId == orgId
-        && hasOrgPermission('manufacturing.manage');
+        && ((hasOrgPermission('manufacturing.manage')
+             && request.resource.data.keys().hasOnly(['organizationId', 'features', 'featuresUpdatedBy', 'updatedAt']))
+            || (hasOrgPermission('accounting.close')
+             && request.resource.data.keys().hasOnly(['organizationId', 'overheadRatePerHour', 'scrapApprovalLimit', 'answerWindowHours',
+                                                      'noteEscalationHours', 'estimateValidityDays', 'remnantValuePercent',
+                                                      'policiesUpdatedBy', 'policiesUpdatedAt', 'updatedAt'])));
+      allow update: if isSignedIn() && isOrgMember(orgId)
+        && request.resource.data.organizationId == orgId
+        && ((hasOrgPermission('manufacturing.manage')
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'features', 'featuresUpdatedBy', 'updatedAt']))
+            || (hasOrgPermission('accounting.close')
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['organizationId', 'overheadRatePerHour', 'scrapApprovalLimit',
+                                                      'answerWindowHours', 'noteEscalationHours', 'estimateValidityDays',
+                                                      'remnantValuePercent', 'policiesUpdatedBy', 'policiesUpdatedAt', 'updatedAt'])));
+      allow delete: if isAdmin();
+    }
+
+    // Stops and absences — hours lost today at a station (FL-14). Reported by
+    // a station lead or the workshop manager, in their own name; append-only.
+    match /mfgStops/{stopId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.byId == request.auth.uid
+        && request.resource.data.hours is number && request.resource.data.hours > 0
+        && (hasOrgPermission('manufacturing.work') || hasOrgPermission('manufacturing.manage'));
+      allow update, delete: if isAdmin();
+    }
+
+    // Block quality notices (FL-11) — raised by Quality or the manager; the
+    // quarantine is Inventory's act, the supplier claim Procurement's.
+    match /mfgBlockNotices/{noticeId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.byId == request.auth.uid
+        && (hasOrgPermission('manufacturing.qc') || hasOrgPermission('manufacturing.manage'));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && ((hasOrgPermission('warehouses.manage')
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quarantinedAt', 'quarantinedBy', 'updatedAt']))
+            || ((hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create'))
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimRaisedAt', 'claimRaisedBy', 'updatedAt']))
+            || ((hasOrgPermission('manufacturing.qc') || hasOrgPermission('manufacturing.manage'))
+             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['closedAt', 'closedBy', 'updatedAt'])));
+      allow delete: if isAdmin();
+    }
+
+    // Document sequences (ORD-07) — one doc per org, type and year
+    // (`{orgId}__{type}__{year}`). Read and bumped inside the transaction that
+    // writes the numbered document; it only ever moves forward.
+    match /mfgCounters/{counterId} {
+      allow get: if isSignedIn() && isOrgMember(counterId.split('__')[0]);
+      allow create: if isSignedIn() && isOrgMember(counterId.split('__')[0])
+        && request.resource.data.organizationId == counterId.split('__')[0]
+        && request.resource.data.last is int && request.resource.data.last >= 1;
+      allow update: if isSignedIn() && isOrgMember(counterId.split('__')[0])
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.last is int
+        && request.resource.data.last > resource.data.last
+        && request.resource.data.last <= resource.data.last + 50;
+      allow delete: if isAdmin();
+    }
+
+    // The fleet (HR) — drivers and vehicles a delivery note picks from (ORD-14).
+    match /fleetVehicles/{vehicleId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('employees.manage');
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && hasOrgPermission('employees.manage');
       allow delete: if isAdmin();
     }
 
@@ -1243,9 +1365,13 @@ service cloud.firestore {
     match /deliveryNotes/{noteId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId);
+      // Receipt is the destination's act: the warehouse, or — for a note into
+      // project custody — the project (DN-01/DN-02).
       allow update: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
         && (hasOrgPermission('warehouses.receive') || hasOrgPermission('warehouses.manage')
-            || hasOrgPermission('manufacturing.manage')));
+            || (resource.data.get('toKind', '') == 'project'
+                && (hasOrgPermission('projects.edit')
+                    || (resource.data.get('toProjectId', null) is string && hasProjectPermission(resource.data.toProjectId, 'projects.edit'))))));
       allow delete: if isAdmin();
     }
 

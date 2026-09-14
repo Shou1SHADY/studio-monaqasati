@@ -27,6 +27,7 @@ import type { CrmPortal } from "@/components/crm/CrmShell"
 import { useUser } from "@/firebase"
 import { SalesShell, salesBasePath } from "./SalesShell"
 import { QuoteRequestsInbox } from "./QuoteRequestsInbox"
+import { SalesMfgCostingPanel } from "./SalesMfgCostingPanel"
 
 type StatusFilter = QuotationStatus | "all"
 type PhaseFilter = QuotationPhase | "all"
@@ -41,7 +42,7 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
   const base = salesBasePath(portal)
 
   const { user } = useUser()
-  const { orgId, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
+  const { orgId, quotations, contacts, teamMembers, isLoading } = useCrmData({ quotations: true })
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
 
   const [status, setStatus] = useState<StatusFilter>("all")
@@ -103,6 +104,10 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
       )}
 
       {orgId && <QuoteRequestsInbox portal={portal} orgId={orgId} actorName={actorName} />}
+
+      {/* Cost statements from Manufacturing for non-standard lines (REQ-02) —
+          renders nothing for an org that has no workshop. */}
+      <SalesMfgCostingPanel portal={portal} contacts={contacts} canManage={canManage} />
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">

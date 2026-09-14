@@ -37,6 +37,9 @@ export type RequestEntry = {
   itemName: string
   unit: string
   quantity: number
+  /** Carried from the source row: a block or remnant stays its own row. */
+  lot?: string | null
+  remnant?: boolean | null
   releasedQuantity?: number | null
   fromWarehouseId: string
   toWarehouseId: string
@@ -219,10 +222,10 @@ function ConfirmReceiptDialog({
     setIsConfirming(true)
     try {
       const destItems = await getDocs(collection(firestore, "warehouses", request.toWarehouseId, "inventoryItems"))
-      const key = itemMergeKey({ name: request.itemName, unit: request.unit })
+      const key = itemMergeKey({ name: request.itemName, unit: request.unit, lot: request.lot, remnant: request.remnant })
       const match = destItems.docs.find((d) => {
-        const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null }
-        return data.name && data.unit && data.trackingMode !== "unit" && itemMergeKey({ name: data.name, unit: data.unit }) === key
+        const data = d.data() as { name?: string; unit?: string; trackingMode?: string | null; lot?: string | null; remnant?: boolean | null }
+        return data.name && data.unit && data.trackingMode !== "unit" && itemMergeKey({ name: data.name, unit: data.unit, lot: data.lot, remnant: data.remnant }) === key
       })
       await confirmWarehouseRequestReceipt({
         firestore,

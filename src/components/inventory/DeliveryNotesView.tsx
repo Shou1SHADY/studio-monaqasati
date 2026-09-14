@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
-import { ClipboardCheck, Truck, CheckCircle2, XCircle, Search, Loader2, Factory, Lock } from "lucide-react"
+import { collection, doc, query, where } from "firebase/firestore"
+import { ClipboardCheck, Truck, CheckCircle2, XCircle, Search, Loader2, Factory, Lock, AlertTriangle, FolderKanban } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,7 +18,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
@@ -33,6 +33,10 @@ import {
   type DeliveryNoteStatus,
 } from "@/lib/delivery-notes"
 import type { CrmPortal } from "@/components/crm/CrmShell"
+import { MFG_SETTINGS, normalizeMfgSettings, type MfgSettings } from "@/lib/manufacturing-engine"
+import { isV2Note, noteEscalated, noteHoursOut, noteOrderRef, type MfgDeliveryNote } from "@/lib/mfg-outside"
+import { MfgNoteReceiptDialog } from "./MfgNoteReceiptDialog"
+import { NoteShipmentFacts, ageText, useNowMs } from "./MfgOutsideBits"
 
 type Tab = DeliveryNoteStatus | "all"
 const TABS: Tab[] = ["in_transit", ...DELIVERY_NOTE_STATUSES.filter((s) => s !== "in_transit"), "all"]
@@ -58,8 +62,17 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
   const { toast } = useToast()
   const { can } = usePermissions()
   const canReceive = can("warehouses.receive") || can("warehouses.manage")
+  // A note into project custody is the project's to receive (T19); a
+  // warehouse manager may still sign for it.
+  const canManageWarehouses = can("warehouses.manage")
   const { orgId, teamMembers, isLoading: isOrgLoading } = useCrmData()
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
+  const nowMs = useNowMs()
+
+  // The escalation window is Finance's policy, read from the workshop settings.
+  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: settingsData } = useDoc(settingsRef)
+  const escalationHours = normalizeMfgSettings(settingsData as Partial<MfgSettings> | null).noteEscalationHours
 
   const notesQuery = useMemoFirebase(() => {
     if (!firestore || !orgId) return null
@@ -67,7 +80,7 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
   }, [firestore, orgId])
   const { data: notesData, isLoading } = useCollection(notesQuery)
   const notes = useMemo(
-    () => ((notesData || []) as DeliveryNote[]).slice().sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || "")),
+    () => ((notesData || []) as MfgDeliveryNote[]).slice().sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || "")),
     [notesData]
   )
 
@@ -86,12 +99,15 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
         n.noteNumber.toLowerCase().includes(needle) ||
         n.item.name.toLowerCase().includes(needle) ||
         `#${n.source.workOrderNumber}`.includes(needle) ||
+        (n.source.workOrderDocNumber || "").toLowerCase().includes(needle) ||
         n.source.title.toLowerCase().includes(needle) ||
         n.toWarehouseName.toLowerCase().includes(needle))
   )
 
   // ── Sign / refuse ──
   const [confirmTarget, setConfirmTarget] = useState<DeliveryNote | null>(null)
+  // Product-born orders' notes are received with their breakage (DN-03).
+  const [receiveTarget, setReceiveTarget] = useState<MfgDeliveryNote | null>(null)
   const [rejectTarget, setRejectTarget] = useState<DeliveryNote | null>(null)
   const [noteText, setNoteText] = useState("")
   const [reason, setReason] = useState("")
@@ -207,12 +223,42 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
         </div>
       ) : (
         <ul className="rounded-2xl border bg-white divide-y overflow-hidden">
-          {visible.map((n) => (
+          {visible.map((n) => {
+            const v2 = isV2Note(n)
+            const projectCustody = v2 && n.toKind === "project"
+            const escalated = v2 && noteEscalated(n, nowMs, escalationHours)
+            // The old signature stays for stage-flow notes; a v2 note into
+            // project custody is signed here only by a warehouse manager.
+            const mayReceive = canReceive && n.status === "in_transit" && (!projectCustody || canManageWarehouses)
+            return (
             <li key={n.id} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-mono text-xs text-muted-foreground">{n.noteNumber}</span>
                   <Badge className={cn("text-[10px]", STATUS_BADGE[n.status])}>{t(`dn_status_${n.status}`)}</Badge>
+                  {projectCustody && (
+                    <Badge variant="outline" className="gap-1 text-[10px] text-cta border-cta/30">
+                      <FolderKanban size={10} aria-hidden="true" />
+                      {t("mfx_dn_project_custody")}
+                    </Badge>
+                  )}
+                  {n.status === "in_transit" && v2 && (
+                    <span className={cn("text-[10px] font-bold", escalated ? "text-destructive" : "text-muted-foreground")}>
+                      {escalated ? (
+                        <span className="inline-flex items-center gap-1">
+                          <AlertTriangle size={11} aria-hidden="true" />
+                          {t("mfx_dn_escalated", { hours: escalationHours })}
+                        </span>
+                      ) : (
+                        t("mfx_dn_on_road", { age: ageText(t, noteHoursOut(n, nowMs)) })
+                      )}
+                    </span>
+                  )}
+                  {n.status === "received" && (n.brokenQuantity || 0) > 0 && (
+                    <Badge className="text-[10px] bg-destructive/10 text-destructive border-destructive/20" dir="auto">
+                      {t("mfx_dn_broken_badge", { qty: n.brokenQuantity || 0, unit: n.item.unit })}
+                    </Badge>
+                  )}
                 </div>
                 <p className="text-sm font-bold text-foreground mt-1 flex items-center gap-2 flex-wrap" dir="auto">
                   {n.item.name}
@@ -222,7 +268,9 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
                   <Link href={`/${portal}/manufacturing`} className="flex items-center gap-1 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm">
                     <Factory size={11} aria-hidden="true" />
-                    {t("dn_from_order", { number: n.source.workOrderNumber, title: n.source.title })}
+                    {v2 && n.source.workOrderDocNumber
+                      ? t("mfx_dn_from_order_ref", { ref: noteOrderRef(n), title: n.source.title })
+                      : t("dn_from_order", { number: n.source.workOrderNumber, title: n.source.title })}
                   </Link>
                   <span>· {t("dn_sent_by", { name: n.sentByUserName, date: formatCrmDate(n.sentAt, locale) })}</span>
                   {n.status === "in_transit" && n.expectedReceiverName && <span>· {t("dn_expected", { name: n.expectedReceiverName })}</span>}
@@ -234,23 +282,53 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
                   )}
                   {n.receivedNote && <span>· {n.receivedNote}</span>}
                 </p>
+                {v2 && <NoteShipmentFacts note={n} className="mt-1.5" />}
               </div>
-              {canReceive && n.status === "in_transit" && (
+              {projectCustody && n.status === "in_transit" && !mayReceive && (
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground shrink-0">
+                  <FolderKanban size={12} aria-hidden="true" />
+                  {t("mfx_dn_received_by_projects")}
+                </p>
+              )}
+              {mayReceive && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" className="h-8 gap-1.5" onClick={() => { setConfirmTarget(n); setNoteText("") }}>
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5"
+                    onClick={() => {
+                      if (v2) setReceiveTarget(n)
+                      else {
+                        setConfirmTarget(n)
+                        setNoteText("")
+                      }
+                    }}
+                  >
                     <CheckCircle2 size={13} />
-                    {t("dn_confirm_btn")}
+                    {v2 ? t("mfx_dn_receive_btn_short") : t("dn_confirm_btn")}
                   </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-white" onClick={() => { setRejectTarget(n); setReason("") }}>
-                    <XCircle size={13} />
-                    {t("dn_reject_btn")}
-                  </Button>
+                  {/* A product-born note is never refused whole: what arrived
+                      broken or missing is recorded at receipt (DN-03). */}
+                  {!v2 && (
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-white" onClick={() => { setRejectTarget(n); setReason("") }}>
+                      <XCircle size={13} />
+                      {t("dn_reject_btn")}
+                    </Button>
+                  )}
                 </div>
               )}
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
+
+      <MfgNoteReceiptDialog
+        note={receiveTarget}
+        orgId={orgId}
+        actor={{ id: user?.uid || "", name: actorName }}
+        link={receiveTarget ? `/${portal}/manufacturing/workshop?order=${receiveTarget.source.workOrderId}` : null}
+        onClose={() => setReceiveTarget(null)}
+      />
 
       <Dialog open={!!confirmTarget} onOpenChange={(open) => { if (!open && !isWorking) setConfirmTarget(null) }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-md">

@@ -24,6 +24,7 @@ import { CrmStat, CrmStatRow, type CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, salesBasePath } from "./SalesShell"
 import { RecordPaymentDialog } from "./RecordPaymentDialog"
 import { AnswerTransferDialog, NOTICE_STATE_CLASS, ReportTransferDialog, TransferNoticesList } from "./TransferNotices"
+import { SalesDepositsToConfirm } from "./SalesDepositsToConfirm"
 
 type Tab = "due" | "received" | "notices"
 
@@ -96,6 +97,8 @@ export function PaymentsView({ portal }: { portal: CrmPortal }) {
           {t("sales_no_payment_permission")}
         </p>
       )}
+
+      <SalesDepositsToConfirm orgId={orgId} actor={{ id: user?.uid || "", name: actorName }} canConfirm={canRecordPayment} ordersHref={`${base}/orders`} />
 
       <CrmStatRow>
         <CrmStat icon={Hourglass} label={t("sales_payments_due_total")} value={formatSarCompact(dueTotal, locale)} accent="warning" hint={t("sales_stat_due_count", { count: due.length })} />

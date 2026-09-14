@@ -1,200 +1,109 @@
 "use client"
 
-// Manufacturing requests & cost estimates — demand from Projects, Sales and
-// Procurement. Each request is screened on arrival (make-or-buy per line),
-// ages visibly against the answer window, and is answered by a route: work
-// orders, a cost estimate, or back to procurement — never silence. Cost
-// estimates live beside them: the workshop issues cost and lead time, sales
-// set the price, and the award becomes work orders here.
+// Requests & cost statements (REQ). Two doors only — Sales and Procurement;
+// Projects ask through Procurement and nothing is requested from inside
+// Manufacturing, so there is no "new request" anywhere here (REQ-01). A
+// request is read in its panel before it is answered (REQ-03); a cost
+// statement carries cost, lead time and validity, and only the cost controller
+// sends it (REQ-02, REQ-06). No price, no quote logging, no won/lost (D10).
 //
-// URL: `?seg=new|estimates|answered|all` picks the segment, `?new=1` opens
-// the new-request form (the shell's "Request manufacturing" button) and
-// `?open=<requestId>` opens a request's drawer (Today's decisions).
+// URL: `?seg=new|estimates|answered|all` picks the segment and
+// `?open=<requestId>` opens a request's panel (Today links here).
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { Calculator, FilePlus2, Inbox } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Inbox } from "lucide-react"
 import { usePathname, useRouter } from "@/i18n/routing"
-import type { MfgData } from "@/hooks/useMfgData"
 import {
   effectiveSegment,
   inRequestSegment,
   parseRequestSegment,
   requestSegmentCounts,
-  screenRequest,
   sortEstimates,
+  sortRequests,
   type RequestSegment,
 } from "@/lib/manufacturing-requests"
 import { useMfgUi } from "./MfgUiContext"
-import { MfgEmpty, MfgNote, MfgSegments, type MfgSegmentItem } from "./ui/MfgUi"
-import { MfgReqCard } from "./MfgReqCard"
+import { MfgEstimateCard, MfgRequestCard } from "./MfgReqCard"
 import { MfgReqDrawer } from "./MfgReqDrawer"
-import { MfgReqAnswerForm } from "./MfgReqAnswerForm"
-import { MfgReqNewForm } from "./MfgReqNewForm"
-import { MfgEstimatesView } from "./MfgEstimatesView"
-import { MfgEstNewForm } from "./MfgEstNewForm"
-import { useNow, useScreenContext } from "./MfgReqBits"
+import { MfgEmpty, MfgNote, MfgSegments, type MfgSegmentItem } from "./ui/MfgUi"
 
-export function MfgRequestsView({ initialSegment }: { data?: MfgData; initialSegment?: "estimates" }) {
+export function MfgRequestsView({ initialSegment }: { initialSegment?: RequestSegment }) {
   const t = useTranslations("Portal.Shared")
-  const ui = useMfgUi()
-  const { data, perms } = ui
+  const { data, today } = useMfgUi()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const params = searchParams?.toString() ?? ""
-  const now = useNow()
-  const ctx = useScreenContext()
   const estimatesOn = data.settings.features.estimates
-  const canEstimate = perms.canCost || perms.canManage
 
-  const [segmentState, setSegment] = useState<RequestSegment>(
-    () => parseRequestSegment(searchParams?.get("seg")) || initialSegment || "new"
-  )
-  const segment = effectiveSegment(segmentState, estimatesOn)
+  const [chosen, setChosen] = useState<RequestSegment>(() => parseRequestSegment(searchParams?.get("seg")) || initialSegment || "new")
+  const segment = effectiveSegment(chosen, estimatesOn)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [answeringId, setAnsweringId] = useState<string | null>(null)
-  const [showNewRequest, setShowNewRequest] = useState(false)
-  const [showNewEstimate, setShowNewEstimate] = useState(false)
 
-  // Deep links are consumed once, then dropped from the URL so the same
-  // button can open the same form again.
+  // Deep links are consumed once, then `open` leaves the URL so closing the
+  // panel is not undone and the same link can open it again.
   const handled = useRef<string | null>(null)
   useEffect(() => {
-    const key = `${params}|${perms.canRequest}`
-    if (handled.current === key) return
-    handled.current = key
+    if (handled.current === params) return
+    handled.current = params
     const sp = new URLSearchParams(params)
     const seg = parseRequestSegment(sp.get("seg"))
-    if (seg) setSegment(seg)
-    let consumed = false
-    if (sp.get("new") === "1" && perms.canRequest) {
-      setShowNewRequest(true)
-      sp.delete("new")
-      consumed = true
-    }
+    if (seg) setChosen(seg)
     const open = sp.get("open")
     if (open) {
       setOpenId(open)
       sp.delete("open")
-      consumed = true
-    }
-    if (consumed) {
       const rest = sp.toString()
       router.replace(rest ? `${pathname}?${rest}` : pathname)
     }
-  }, [params, perms.canRequest, pathname, router])
+  }, [params, pathname, router])
 
-  const counts = requestSegmentCounts(data.requests, data.estimates, estimatesOn)
-  const requests = useMemo(() => {
-    const list = data.requests.filter((r) => inRequestSegment(r, segment))
-    // Waiting requests oldest first (the overdue ones lead); answered newest first.
-    return [...list].sort((a, b) => {
-      if (a.status === "new" && b.status !== "new") return -1
-      if (b.status === "new" && a.status !== "new") return 1
-      if (a.status === "new") return (a.requestedAt || "") < (b.requestedAt || "") ? -1 : 1
-      return (a.decidedAt || a.requestedAt || "") < (b.decidedAt || b.requestedAt || "") ? 1 : -1
-    })
-  }, [data.requests, segment])
-  const screens = useMemo(
-    () => new Map(requests.filter((r) => r.status === "new").map((r) => [r.id, screenRequest(r, ctx)])),
-    [requests, ctx]
+  const counts = requestSegmentCounts(data.requests, data.estimates, estimatesOn, today, data.settings)
+  const requests = useMemo(() => sortRequests(data.requests.filter((r) => inRequestSegment(r, segment))), [data.requests, segment])
+  const estimates = useMemo(
+    () => (estimatesOn && (segment === "estimates" || segment === "all") ? sortEstimates(data.estimates, today, data.settings) : []),
+    [estimatesOn, segment, data.estimates, today, data.settings]
   )
-  const estimates = useMemo(() => sortEstimates(data.estimates), [data.estimates])
-
-  const openRequest = openId ? data.requests.find((r) => r.id === openId) || null : null
-  const answering = answeringId ? data.requests.find((r) => r.id === answeringId) || null : null
 
   const items: Array<MfgSegmentItem<RequestSegment>> = [
-    { id: "new", label: t("mfg2_req_seg_new"), count: counts.new },
-    ...(estimatesOn ? [{ id: "estimates" as const, label: t("mfg2_nav_estimates"), count: counts.estimates }] : []),
-    { id: "answered", label: t("mfg2_req_seg_answered"), count: counts.answered },
-    { id: "all", label: t("mfg2_req_seg_all"), count: counts.all },
+    { id: "new", label: t("mfr_seg_new"), count: counts.new },
+    ...(estimatesOn ? [{ id: "estimates" as const, label: t("mfr_seg_estimates"), count: counts.estimates }] : []),
+    { id: "answered", label: t("mfr_seg_answered"), count: counts.answered },
+    { id: "all", label: t("mfr_seg_all"), count: counts.all },
   ]
 
-  const showEstimates = () => {
-    setOpenId(null)
-    setSegment("estimates")
-  }
-
-  const requestCards = requests.map((r) => (
-    <MfgReqCard
-      key={r.id}
-      request={r}
-      screen={screens.get(r.id) || null}
-      now={now}
-      onOpen={() => setOpenId(r.id)}
-      onAnswer={() => setAnsweringId(r.id)}
-      onShowEstimate={showEstimates}
-    />
-  ))
+  const requestOf = (id: string | null) => (id ? data.requests.find((r) => r.id === id) : undefined)
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <MfgSegments label={t("mfg3_tab_requests")} value={segment} onChange={setSegment} items={items} />
-        <div className="ms-auto flex flex-wrap gap-2">
-          {segment === "estimates" && canEstimate && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowNewEstimate(true)} disabled={!data.products.length}>
-              <Calculator size={14} aria-hidden="true" /> {t("mfg2_new_estimate")}
-            </Button>
-          )}
-          {segment !== "estimates" && perms.canRequest && (
-            <Button size="sm" className="gap-1.5" onClick={() => setShowNewRequest(true)}>
-              <FilePlus2 size={14} aria-hidden="true" /> {t("mfg2_new_request")}
-            </Button>
-          )}
+      <MfgSegments label={t("mfr_segments_label")} value={segment} onChange={setChosen} items={items} />
+
+      {segment === "new" && <MfgNote tone="info">{t("mfr_two_doors_note", { hours: data.settings.answerWindowHours })}</MfgNote>}
+      {segment === "estimates" && <MfgNote tone="info">{t("mfr_estimates_note")}</MfgNote>}
+
+      {estimates.length > 0 && (
+        <div className="space-y-3">
+          {estimates.map((e) => (
+            <MfgEstimateCard key={e.id} estimate={e} onOpen={requestOf(e.requestId) ? () => setOpenId(e.requestId) : undefined} />
+          ))}
         </div>
-      </div>
-
-      {segment === "new" && <MfgNote tone="info">{t("mfg2_req_window_note", { hours: data.settings.answerWindowHours })}</MfgNote>}
-      {segment === "estimates" && <MfgNote tone="info">{t("mfg3_est_intro")}</MfgNote>}
-
-      {segment === "estimates" ? (
-        <MfgEstimatesView estimates={estimates} />
-      ) : (
-        <>
-          {segment === "all" && estimatesOn && estimates.length > 0 && requests.length > 0 && (
-            <h2 className="text-xs font-bold text-muted-foreground">{t("mfg3_req_heading_requests")}</h2>
-          )}
-          {requests.length ? (
-            <div className="space-y-3">{requestCards}</div>
-          ) : segment === "all" && estimatesOn && estimates.length > 0 ? null : (
-            <section className="rounded-2xl border bg-white shadow-sm">
-              <MfgEmpty icon={Inbox} title={t("mfg2_req_empty")} hint={segment === "new" ? t("mfg3_req_empty_new_hint") : undefined} />
-            </section>
-          )}
-          {segment === "all" && estimatesOn && estimates.length > 0 && (
-            <>
-              <h2 className="pt-2 text-xs font-bold text-muted-foreground">{t("mfg2_nav_estimates")}</h2>
-              <MfgEstimatesView estimates={estimates} />
-            </>
-          )}
-        </>
+      )}
+      {requests.length > 0 && (
+        <div className="space-y-3">
+          {requests.map((r) => (
+            <MfgRequestCard key={r.id} request={r} onOpen={() => setOpenId(r.id)} />
+          ))}
+        </div>
+      )}
+      {estimates.length === 0 && requests.length === 0 && (
+        <section className="rounded-2xl border bg-white shadow-sm">
+          <MfgEmpty icon={Inbox} title={t("mfr_empty")} hint={segment === "new" ? t("mfr_empty_new_hint") : undefined} />
+        </section>
       )}
 
-      <MfgReqDrawer
-        request={openRequest}
-        onClose={() => setOpenId(null)}
-        onAnswer={(r) => {
-          setOpenId(null)
-          setAnsweringId(r.id)
-        }}
-        onShowEstimate={showEstimates}
-      />
-      {answering && perms.canManage && (
-        <MfgReqAnswerForm
-          request={answering}
-          onClose={() => setAnsweringId(null)}
-          onAnswered={(route) => {
-            if (route === "estimate" && estimatesOn) setSegment("estimates")
-          }}
-        />
-      )}
-      {showNewRequest && perms.canRequest && <MfgReqNewForm onClose={() => setShowNewRequest(false)} />}
-      {showNewEstimate && canEstimate && <MfgEstNewForm onClose={() => setShowNewEstimate(false)} />}
+      <MfgReqDrawer requestId={openId} onClose={() => setOpenId(null)} />
     </div>
   )
 }

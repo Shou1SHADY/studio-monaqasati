@@ -4,8 +4,9 @@
 // documents: delivered from notes, coverage from stock and work orders,
 // framework usage from call-offs. The screen owns no numbers of its own.
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { useSearchParams } from "next/navigation"
 import { collection, doc, getDocs, query, where, type Firestore } from "firebase/firestore"
 import {
   Banknote,
@@ -39,8 +40,9 @@ import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection } from "./SalesShell"
 import { formatSar } from "@/lib/crm"
-import { effectiveOutput, type WorkOrder } from "@/lib/manufacturing"
+import { MFG_DEPARTMENTS, effectiveOutput } from "@/lib/manufacturing"
 import {
+  MANUFACTURING_REQUESTS,
   SALES_DELIVERY_NOTES,
   SALES_ORDERS,
   allocateCoverage,
@@ -52,6 +54,7 @@ import {
   orderLineProgress,
   orderMargin,
   orderNet,
+  type ManufacturingRequest,
   type SalesDeliveryNote,
   type SalesOrder,
 } from "@/lib/sales-orders"
@@ -60,6 +63,7 @@ import {
   createCallOff,
   createManufacturingRequest,
   markDepositPaid,
+  reportDepositReceived,
   recordOrderMeasurement,
   scheduleDelivery,
   schedulableLines,
@@ -68,7 +72,12 @@ import { orderGate, creditVerdict, type CreditSnapshot } from "@/lib/sales-order
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
 import { JOURNAL_ENTRIES, type JournalEntry } from "@/lib/accounting/journal"
 import { ACC } from "@/lib/accounting/accounts"
+import { MFG_PRODUCTS, itemKey, type DeptCapacityFields, type MfgProduct } from "@/lib/manufacturing-engine"
+import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { heldByItem, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
+import { emitDownPaymentConfirmed, emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { Ruler, FileCheck2 } from "lucide-react"
+import { SalesOrderWorkshopSection } from "./SalesOrderWorkshopSection"
 
 type Segment = "running" | "awaiting_deposit" | "framework" | "closed" | "all"
 
@@ -81,6 +90,8 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const canManage = can("sales.manage")
   const canApprove = can("sales.approve") || can("crm.close")
+  // The deposit is Finance's fact; Sales approvers may record it as before.
+  const canConfirmDeposit = canApprove || can("invoices.manage")
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -119,16 +130,83 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
     return query(collection(firestore, "workOrders"), where("organizationId", "==", orgId))
   }, [firestore, orgId])
   const { data: workOrdersData } = useCollection(workOrdersQuery)
+  const allWorkOrders = useMemo(() => (workOrdersData || []) as WorkOrderV2[], [workOrdersData])
   const openWorkOrders = useMemo(
     () =>
-      ((workOrdersData || []) as WorkOrder[])
+      ((workOrdersData || []) as WorkOrderV2[])
         .filter((w) => w.status === "open")
         .map((w) => {
           const out = effectiveOutput(w)
-          return { id: w.id, outputName: out.name, remainingQty: out.quantity }
+          // A product-born order's handed-over units already sit in stock.
+          const remainingQty = isV2Order(w) ? Math.max(0, (w.quantity ?? out.quantity) - (Number(w.shippedQuantity) || 0)) : out.quantity
+          return { id: w.id, outputName: w.productName || out.name, remainingQty, salesOrderId: w.salesOrderId ?? null }
         }),
     [workOrdersData]
   )
+
+  // The workshop's product cards: a line asked of Manufacturing carries the
+  // card it matches by name, and the order's work orders compute from them.
+  const mfgProductsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: mfgProductsData } = useCollection(mfgProductsQuery)
+  const mfgProducts = useMemo(() => (mfgProductsData || []) as MfgProduct[], [mfgProductsData])
+  const mfgProductById = useMemo(() => new Map(mfgProducts.map((p) => [p.id, p])), [mfgProducts])
+
+  // Requests already sent for a line: the gap stays until the work order
+  // exists, so the link must not send the same request twice.
+  const mfgRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, MANUFACTURING_REQUESTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: mfgRequestsData } = useCollection(mfgRequestsQuery)
+  const openRequestFor = useCallback(
+    (orderId: string, itemName: string) =>
+      ((mfgRequestsData || []) as ManufacturingRequest[]).find(
+        (r) => r.orderId === orderId && r.itemName.trim().toLowerCase() === itemName.trim().toLowerCase() && ["new", "accepted", "partial", "estimated"].includes(r.status)
+      ) || null,
+    [mfgRequestsData]
+  )
+  const mfgProductIdByName = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const p of mfgProducts) {
+      const k = (p.name || "").trim().toLowerCase()
+      if (k && (!map.has(k) || !p.archived)) map.set(k, p.id)
+    }
+    return map
+  }, [mfgProducts])
+
+  const requestManufacturing = async (order: SalesOrder, line: { name: string; unit: string }, quantity: number) => {
+    if (!firestore || !user) return
+    const actor = { id: user.uid, name: actorName }
+    let requestId: string
+    try {
+      requestId = await createManufacturingRequest(firestore, {
+        order,
+        itemName: line.name,
+        unit: line.unit,
+        quantity,
+        productId: mfgProductIdByName.get(line.name.trim().toLowerCase()) ?? null,
+        actor,
+      })
+      toast({ title: t("so_mfg_requested") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("so_save_error"), variant: "destructive" })
+      return
+    }
+    // The workshop manager hears of a new request (NT-01) — best effort.
+    await emitMfgEvent(firestore, {
+      kind: "request_new",
+      copy: t,
+      organizationId: orgId,
+      actor,
+      to: [{ permission: "manufacturing.manage" }],
+      params: { requestId, module: "@mfg4_module_sales", lines: `${quantity} ${line.unit} ${line.name} — SO-${order.orderNumber}`, needBy: order.promiseDate?.slice(0, 10) || "—" },
+      link: mfgLinks.request(requestId),
+    })
+  }
 
   const priceItemsQuery = useMemoFirebase(() => {
     if (!firestore || !orgId) return null
@@ -150,6 +228,26 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   // orders ahead of it in the queue.
   const [stockByName, setStockByName] = useState<Array<{ name: string; available: number }>>([])
 
+  // What the workshop already holds of that stock for its released orders —
+  // the same allocation Manufacturing plans on, so a slab is promised once.
+  const departmentsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, MFG_DEPARTMENTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: departmentsData } = useCollection(departmentsQuery)
+  const heldByWorkshop = useMemo(() => {
+    if (!stockByName.length || !allWorkOrders.length) return undefined
+    const onHand = new Map<string, number>()
+    for (const s of stockByName) onHand.set(itemKey(s.name), (onHand.get(itemKey(s.name)) || 0) + Math.max(0, s.available))
+    const holds = workshopHolds({
+      orders: allWorkOrders.filter(isV2Order),
+      products: mfgProductById,
+      departments: (departmentsData || []) as DeptCapacityFields[],
+      stock: { onHand, lots: [] },
+    })
+    return heldByItem(holds)
+  }, [stockByName, allWorkOrders, mfgProductById, departmentsData])
+
   const coverage = useMemo(() => {
     const prioritised = orders
       .filter((o) => o.status === "running" || o.status === "awaiting_deposit")
@@ -159,8 +257,8 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
         return (a.promiseDate || "9999") < (b.promiseDate || "9999") ? -1 : 1
       })
       .map((order) => ({ order, lines: orderLineProgress(order, notes) }))
-    return allocateCoverage(prioritised, stockByName, openWorkOrders)
-  }, [orders, notes, stockByName, openWorkOrders])
+    return allocateCoverage(prioritised, stockByName, openWorkOrders, heldByWorkshop)
+  }, [orders, notes, stockByName, openWorkOrders, heldByWorkshop])
 
   const [segment, setSegment] = useState<Segment>("running")
   const segments: Array<{ key: Segment; labelKey: string; count: number }> = [
@@ -181,6 +279,21 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
 
   const [detailId, setDetailId] = useState<string | null>(null)
   const detail = orders.find((o) => o.id === detailId) || null
+  // A link from another module (a notification, Finance's deposits) opens
+  // one order: `?open=<id>` is consumed once, then leaves the URL.
+  const searchParams = useSearchParams()
+  const openParam = searchParams?.get("open") || null
+  useEffect(() => {
+    if (!openParam || !orders.some((o) => o.id === openParam)) return
+    setDetailId(openParam)
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("open")
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`)
+    } catch {
+      /* not in a browser */
+    }
+  }, [openParam, orders])
 
   // ── Schedule delivery dialog ──
   const [deliverFor, setDeliverFor] = useState<SalesOrder | null>(null)
@@ -259,11 +372,35 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
     }
   }
 
+  // T4: Sales reports the transfer; Finance (or a Sales approver) confirms it.
+  const reportDeposit = async (order: SalesOrder) => {
+    if (!firestore || !user) return
+    const actor = { id: user.uid, name: actorName }
+    try {
+      await reportDepositReceived(firestore, order, actor)
+      toast({ title: t("so_deposit_report_sent") })
+    } catch (err) {
+      console.error(err)
+      toast({ title: t("so_save_error"), variant: "destructive" })
+      return
+    }
+    await emitMfgEvent(firestore, {
+      kind: "down_payment_reported",
+      copy: t,
+      organizationId: order.organizationId,
+      actor,
+      to: [{ permission: "invoices.manage" }],
+      params: { order: order.orderNumber, amount: depositTotal(order).toLocaleString("en-US", { maximumFractionDigits: 2 }) },
+      link: mfgLinks.salesPayments(),
+    })
+  }
+
   const confirmDeposit = async (order: SalesOrder) => {
     if (!firestore) return
     try {
       await markDepositPaid(firestore, order)
       toast({ title: t("so_deposit_marked") })
+      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, actor: { id: user?.uid || "", name: actorName } })
     } catch (err) {
       console.error(err)
       toast({ title: t("so_save_error"), variant: "destructive" })
@@ -431,7 +568,24 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
               </DialogHeader>
 
               {(() => {
-                const gate = orderGate(detail, orderLineProgress(detail, notes), gateFlags, stockByName)
+                // Lines made on product-born work orders read their survey and
+                // drawing from those orders; the rest keep the sales order's flags.
+                const ws = workshopGatesFor(detail.id, allWorkOrders, mfgProductById)
+                const first = ws.gates[0]
+                if (first) {
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-accent/30 bg-accent/5">
+                      <div className="flex items-center gap-2 text-sm font-bold text-accent">
+                        {first.gate === "measurement" ? <Ruler size={15} aria-hidden="true" /> : <FileCheck2 size={15} aria-hidden="true" />}
+                        {first.gate === "measurement" ? t("so_gate_measurement") : t("so_gate_approval")}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {first.gate === "measurement" ? t("so_gate_on_workshop_survey", { ref: first.ref }) : t("so_gate_on_workshop_drawing", { ref: first.ref })}
+                      </span>
+                    </div>
+                  )
+                }
+                const gate = orderGate(detail, orderLineProgress(detail, notes), gateFlags, stockByName, ws.lineKeys)
                 if (!gate) return null
                 return (
                   <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl border border-accent/30 bg-accent/5">
@@ -473,11 +627,20 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                     <Lock size={15} />
                     {t("so_deposit_gate", { amount: formatSar(depositTotal(detail), locale) })}
                   </div>
-                  {canApprove && (
+                  {canConfirmDeposit ? (
                     <Button size="sm" className="gap-1.5 h-8" onClick={() => confirmDeposit(detail)}>
                       <Banknote size={13} />
                       {t("so_deposit_confirm")}
                     </Button>
+                  ) : detail.payment.depositReportedAt ? (
+                    <span className="text-xs text-muted-foreground">{t("so_deposit_reported", { name: detail.payment.depositReportedBy || "" })}</span>
+                  ) : (
+                    canManage && (
+                      <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => reportDeposit(detail)}>
+                        <Banknote size={13} />
+                        {t("so_deposit_report")}
+                      </Button>
+                    )
                   )}
                 </div>
               )}
@@ -514,26 +677,16 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                                   <span className="text-accent flex items-center gap-1"><Factory size={11} />{t("so_cov_mfg", { qty: cov.fromManufacturing })}</span>
                                 )}
                                 {cov.gap > 0 && <span className="text-destructive font-bold">{t("so_cov_gap", { qty: cov.gap })}</span>}
-                                {cov.gap > 0 && canManage && (
+                                {cov.gap > 0 && openRequestFor(detail.id, line.name) && (
+                                  <span className="text-[11px] font-semibold text-muted-foreground">
+                                    {t("mfy_so_request_sent", { number: openRequestFor(detail.id, line.name)!.requestNumber })}
+                                  </span>
+                                )}
+                                {cov.gap > 0 && canManage && !openRequestFor(detail.id, line.name) && (
                                   <button
                                     type="button"
                                     className="text-[11px] font-bold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                                    onClick={async () => {
-                                      if (!firestore || !user) return
-                                      try {
-                                        await createManufacturingRequest(firestore, {
-                                          order: detail,
-                                          itemName: line.name,
-                                          unit: line.unit,
-                                          quantity: cov.gap,
-                                          actor: { id: user.uid, name: actorName },
-                                        })
-                                        toast({ title: t("so_mfg_requested") })
-                                      } catch (err) {
-                                        console.error(err)
-                                        toast({ title: t("so_save_error"), variant: "destructive" })
-                                      }
-                                    }}
+                                    onClick={() => requestManufacturing(detail, line, cov.gap)}
                                   >
                                     {t("so_request_mfg_btn")}
                                   </button>
@@ -549,6 +702,16 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                   </tbody>
                 </table>
               </div>
+
+              <SalesOrderWorkshopSection
+                order={detail}
+                workOrders={allWorkOrders}
+                products={mfgProducts}
+                orgId={orgId}
+                actor={{ id: user?.uid || "", name: actorName }}
+                canManage={canManage}
+                portal={portal}
+              />
 
               <DialogFooter>
                 {canManage && detail.status === "running" && schedulableLines(detail, notes).length > 0 && (

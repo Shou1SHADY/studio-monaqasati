@@ -1,13 +1,15 @@
 /**
- * The v2 write layer's pure seams: the Firestore doc ↔ engine mapping, and the
- * two new ledger rules (per-station material receipts keyed by withdrawal so
- * repeats can't collide, and approved scrap leaving WIP as production cost).
+ * The write layer's pure seams: the stored order ↔ engine mapping (including
+ * orders written before PRD 1.2, which must keep reading the same), the down
+ * payment read from the sales order, and the ledger rules the workshop's cost
+ * events ride on.
  */
 
-import { isV2Order, toNoteSlice, toOrderSlice, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { downPaymentOf, isV2Order, sourceOf, toNoteSlice, toOrderSlice, type WorkOrderV2 } from "@/lib/manufacturing-writes"
 import { postMfgMaterialReceipt, postMfgScrap } from "@/lib/accounting/posting-rules"
 import { ACC } from "@/lib/accounting/accounts"
 import type { DeliveryNote } from "@/lib/delivery-notes"
+import type { SalesOrder } from "@/lib/sales-orders"
 
 const baseOrder = (over: Partial<WorkOrderV2> = {}): WorkOrderV2 =>
   ({
@@ -16,7 +18,7 @@ const baseOrder = (over: Partial<WorkOrderV2> = {}): WorkOrderV2 =>
     orderNumber: 7,
     title: "كاونتر",
     items: [],
-    source: { kind: "quotation", quotationId: "q1" },
+    source: { kind: "manual" },
     status: "open",
     currentStageIndex: 0,
     stages: [],
@@ -29,10 +31,6 @@ const baseOrder = (over: Partial<WorkOrderV2> = {}): WorkOrderV2 =>
     neededBy: "2026-09-20",
     createdAtIso: "2026-09-01T00:00:00Z",
     releasedAt: "2026-09-02T00:00:00Z",
-    drawingApprovalStatus: "approved",
-    measurement: null,
-    slabApproval: null,
-    rush: null,
     progress: [{ departmentId: "d1", done: 3, rejected: 1, rework: 0, hours: 2 }],
     materials: [],
     scrapRecords: [],
@@ -41,6 +39,8 @@ const baseOrder = (over: Partial<WorkOrderV2> = {}): WorkOrderV2 =>
     ...over,
   }) as WorkOrderV2
 
+const deposit = (paid: boolean) => ({ payment: { kind: "deposit", depositPercent: 40, depositPaid: paid } }) as Pick<SalesOrder, "payment">
+
 describe("doc ↔ engine mapping", () => {
   it("isV2Order keys off the product card", () => {
     expect(isV2Order({ productId: "p1" })).toBe(true)
@@ -48,24 +48,54 @@ describe("doc ↔ engine mapping", () => {
     expect(isV2Order({})).toBe(false)
   })
 
-  it("toOrderSlice carries the quotation gate and defaults the optional fields", () => {
-    const slice = toOrderSlice(baseOrder({ sourceQuotationWon: false }))
-    expect(slice.sourceQuotationId).toBe("q1")
-    expect(slice.sourceQuotationWon).toBe(false)
-    expect(slice.progress).toHaveLength(1)
-    expect(slice.scrap).toEqual([])
-    expect(slice.shortfall).toBe(0)
+  it("names the source: a sales order, a project, or stock", () => {
+    expect(sourceOf(baseOrder({ salesOrderId: "so1" }))).toBe("client")
+    expect(sourceOf(baseOrder({ source: { kind: "quotation", quotationId: "q1" } }))).toBe("client")
+    expect(sourceOf(baseOrder({ projectId: "p9" }))).toBe("project")
+    expect(sourceOf(baseOrder())).toBe("stock")
+    expect(sourceOf(baseOrder({ projectId: "p9", sourceKind: "stock" }))).toBe("stock")
+  })
+
+  it("reads the down payment from the sales order — never confirms it", () => {
+    const client = baseOrder({ sourceKind: "client", salesOrderId: "so1" })
+    expect(downPaymentOf(client, deposit(false))).toEqual({ required: true, confirmed: false, percent: 40 })
+    expect(downPaymentOf(client, deposit(true))).toEqual({ required: true, confirmed: true, percent: 40 })
+    expect(downPaymentOf(client, { payment: { kind: "credit" } } as Pick<SalesOrder, "payment">).required).toBe(false)
+    expect(downPaymentOf(baseOrder({ projectId: "p9" }), deposit(false)).required).toBe(false)
+    // A pre-1.2 quote-born order whose quote was not won stays gated.
+    expect(downPaymentOf(baseOrder({ source: { kind: "quotation", quotationId: "q1" }, sourceQuotationWon: false }), null)).toEqual({ required: true, confirmed: false, percent: null })
+  })
+
+  it("maps orders written before PRD 1.2: measurement → survey, approved drawing → A, no closures → auto-closed", () => {
+    const slice = toOrderSlice(
+      baseOrder({ measurement: { at: "2026-09-01", by: "Sami" }, drawingApprovalStatus: "approved", drawingApprovedAt: "2026-09-02T00:00:00Z", drawingApprovedBy: "Eng. Khalid" })
+    )
+    expect(slice.survey).toEqual({ at: "2026-09-01", by: "Sami", note: null })
+    expect(slice.drawing).toMatchObject({ code: "A", recordedBy: "Eng. Khalid" })
+    expect(slice.closures).toBeNull()
+    expect(slice.rejects).toEqual([])
+    expect(slice.remnants).toEqual([])
+    const fresh = toOrderSlice(baseOrder({ closures: [], drawing: null }))
+    expect(fresh.closures).toEqual([])
+    expect(fresh.drawing).toBeNull()
+  })
+
+  it("defaults every optional array and map", () => {
     const bare = toOrderSlice(baseOrder({ progress: undefined, materials: undefined, scrapRecords: undefined }))
     expect(bare.progress).toEqual([])
     expect(bare.materials).toEqual([])
+    expect(bare.scrap).toEqual([])
+    expect(bare.overrides).toEqual({})
+    expect(bare.purchaseRequests).toEqual([])
+    expect(bare.changeRequest).toBeNull()
   })
 
-  it("toNoteSlice maps note statuses onto the engine's three", () => {
+  it("toNoteSlice maps note statuses onto the engine's three and keeps the note's identity", () => {
     const note = (status: DeliveryNote["status"], broken = 0) =>
-      toNoteSlice({ item: { name: "x", quantity: 5, unit: "م²", unitCost: null }, brokenQuantity: broken, status })
-    expect(note("in_transit")).toEqual({ quantity: 5, brokenQuantity: 0, status: "in_transit" })
-    expect(note("received", 2)).toEqual({ quantity: 5, brokenQuantity: 2, status: "received" })
-    expect(note("rejected")).toEqual({ quantity: 5, brokenQuantity: 0, status: "rejected" })
+      toNoteSlice({ id: "n1", noteNumber: "DN-2026/061", sentAt: "2026-09-10T08:00:00Z", toKind: "project", item: { name: "x", quantity: 5, unit: "م²", unitCost: null }, brokenQuantity: broken, status })
+    expect(note("in_transit")).toEqual({ id: "n1", number: "DN-2026/061", quantity: 5, brokenQuantity: 0, status: "in_transit", sentAt: "2026-09-10T08:00:00Z", toKind: "project" })
+    expect(note("received", 2)).toMatchObject({ brokenQuantity: 2, status: "received" })
+    expect(note("rejected")).toMatchObject({ status: "rejected" })
   })
 })
 

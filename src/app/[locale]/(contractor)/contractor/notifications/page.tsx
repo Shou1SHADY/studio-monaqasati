@@ -2,6 +2,7 @@
 
 import React, { useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
+import { notificationCopy, notificationHref } from '@/lib/mfg-events'
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ export default function ContractorNotificationsPage() {
   const t = useTranslations("Portal.Contractor")
   const tSupplier = useTranslations("Portal.Supplier")
   const tLayout = useTranslations("Portal.Layout")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
 
   // Fetch all offers for RFQs owned by this contractor
@@ -333,13 +335,19 @@ export default function ContractorNotificationsPage() {
               const CardContentWrapper = (
                 <Card
                   key={notif.id}
-                  onClick={() => isUnread && markNotifAsRead(notif.id)}
+                  onClick={() => {
+                    if (isUnread) markNotifAsRead(notif.id)
+                    const href = notificationHref(notif.link, "contractor")
+                    if (href) router.push(href)
+                  }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if ((e.key === "Enter" || e.key === " ") && isUnread) {
+                    if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault()
-                      markNotifAsRead(notif.id)
+                      if (isUnread) markNotifAsRead(notif.id)
+                      const href = notificationHref(notif.link, "contractor")
+                      if (href) router.push(href)
                     }
                   }}
                   className={`transition-shadow border-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
@@ -355,7 +363,9 @@ export default function ContractorNotificationsPage() {
                     <div className="flex-1">
                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                          <p className="font-bold text-slate-900">
-                           {isSampleSent
+                           {notif.i18n
+                             ? notificationCopy(notif, tShared).title
+                             : isSampleSent
                              ? tSupplier("sample_sent_notif_title")
                              : isNewChatMessage
                                ? tLayout("notification_new_message")
@@ -367,7 +377,9 @@ export default function ContractorNotificationsPage() {
                          </span>
                        </div>
                        <p className="text-sm text-slate-500 mt-1">
-                         {isSampleSent && notif.rfqId
+                         {notif.i18n
+                           ? notificationCopy(notif, tShared).message
+                           : isSampleSent && notif.rfqId
                            ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "RFQ" })
                            : isNewChatMessage
                              ? (notif.message || tLayout("notification_message_in"))

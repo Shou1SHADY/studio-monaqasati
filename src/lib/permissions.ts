@@ -23,19 +23,21 @@ export const PERMISSION_IDS = [
   // Projects. Split from `crm.manage` so a sales rep can work the pipeline
   // without being able to declare a win.
   "crm.close",
-  // Manufacturing splits four ways, because the foreman, the quality officer,
-  // and the cost controller are different people: `manufacturing.manage` is
-  // the workshop manager (answers requests, creates and releases orders,
-  // approves scrap up to the org's limit, edits departments and products);
-  // `manufacturing.work` is a department hand (reports output and hands over,
-  // requests and receives materials, ticks checklists); `manufacturing.qc`
-  // decides rework-or-scrap and records the client's slab sign-off;
-  // `manufacturing.cost` sees cost and margin, approves ANY scrap value, and
-  // may release a blocked order with a documented risk.
+  // Manufacturing has five roles and no others (PR-05): `manufacturing.manage`
+  // is the workshop manager (answers requests, releases and closes production,
+  // issues notes, approves scrap up to Finance's limit, edits stations and
+  // products); `manufacturing.work` is a station lead (records the station's
+  // output, requests and receives its materials, reports stops);
+  // `manufacturing.qc` is Quality (reject decisions, the quality release at QC
+  // & packing, slab sign-off, block notices); `manufacturing.cost` is the cost
+  // controller (approves any scrap, reviews and sends cost statements, variance
+  // and the WIP reconciliation); `manufacturing.view` is management — a
+  // company-wide read in SAR with no actions.
   "manufacturing.manage",
   "manufacturing.work",
   "manufacturing.qc",
   "manufacturing.cost",
+  "manufacturing.view",
   // The Sales module, deliberately separate from `invoices.manage` (Finance):
   // `sales.manage` writes quotations and the price list; `sales.approve`
   // marks a quotation accepted — the step that posts the deposit to Finance
@@ -71,7 +73,7 @@ export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId
   { key: "hr", permissions: ["employees.manage"] },
   { key: "crm", permissions: ["crm.manage", "crm.close"] },
   { key: "sales", permissions: ["sales.manage", "sales.approve"] },
-  { key: "manufacturing", permissions: ["manufacturing.manage", "manufacturing.work", "manufacturing.qc", "manufacturing.cost"] },
+  { key: "manufacturing", permissions: ["manufacturing.manage", "manufacturing.work", "manufacturing.qc", "manufacturing.cost", "manufacturing.view"] },
   { key: "governance", permissions: ["team.manage"] },
 ]
 

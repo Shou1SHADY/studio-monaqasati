@@ -78,6 +78,7 @@ export const SOURCE_LABEL_KEY: Record<string, string> = {
   work_order_delivery: "acc_src_work_order_delivery",
   mfg_material_receipt: "acc_src_mfg_material_receipt",
   mfg_scrap: "acc_src_mfg_scrap",
+  mfg_remnant_receipt: "acc_src_mfg_remnant_receipt",
   payroll: "acc_src_payroll",
   payroll_payment: "acc_src_payroll_payment",
   expense: "acc_src_expense",
