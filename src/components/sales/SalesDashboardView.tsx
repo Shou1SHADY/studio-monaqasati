@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Plus, Loader2, FileText, Banknote, HandCoins, CheckCircle2, Hourglass, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Loader2, FileText, Banknote, HandCoins, CheckCircle2, Hourglass, TrendingUp, ChevronLeft, ChevronRight, AlertTriangle, Inbox, Send, SearchX } from "lucide-react"
+import { collection, query, where } from "firebase/firestore"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useUser } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
@@ -19,7 +20,15 @@ import {
   type CrmQuotation,
   type QuotationStatus,
 } from "@/lib/crm"
-import { salesDashboard } from "@/lib/sales"
+import { installmentStates, salesDashboard } from "@/lib/sales"
+import { SALES_ORDERS, type SalesOrder } from "@/lib/sales-orders"
+import {
+  SALES_QUOTE_REQUESTS,
+  SALES_TRANSFER_NOTICES,
+  installmentNoticeState,
+  type QuoteRequest,
+  type TransferNotice,
+} from "@/lib/sales-transfers"
 import { CrmStat, CrmStatRow, type CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection, salesBasePath } from "./SalesShell"
 import { RecordPaymentDialog } from "./RecordPaymentDialog"
@@ -45,6 +54,74 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
 
   const { orgId, quotations, teamMembers, isLoading } = useCrmData({ quotations: true })
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
+  const firestore = useFirestore()
+
+  const requestsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, SALES_QUOTE_REQUESTS), where("organizationId", "==", orgId), where("status", "==", "new"))
+  }, [firestore, orgId])
+  const { data: requestsData } = useCollection(requestsQuery)
+  const openRequests = useMemo(() => (requestsData || []) as QuoteRequest[], [requestsData])
+
+  const noticesQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, SALES_TRANSFER_NOTICES), where("organizationId", "==", orgId))
+  }, [firestore, orgId])
+  const { data: noticesData } = useCollection(noticesQuery)
+  const notices = useMemo(() => (noticesData || []) as TransferNotice[], [noticesData])
+
+  const salesOrdersQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId) return null
+    return query(collection(firestore, SALES_ORDERS), where("organizationId", "==", orgId), where("status", "==", "awaiting_deposit"))
+  }, [firestore, orgId])
+  const { data: gatedOrdersData } = useCollection(salesOrdersQuery)
+  const gatedOrders = useMemo(() => (gatedOrdersData || []) as SalesOrder[], [gatedOrdersData])
+
+  // "Needs your decision" — one action per row, nearest risk first: a quote
+  // Finance could not match, a request past its due date, an order stuck on
+  // its advance, a request waiting to be priced.
+  const decisions = useMemo(() => {
+    const rows: Array<{ key: string; tone: "destructive" | "warning" | "cta"; icon: typeof Send; text: string; action: string; href: string }> = []
+    for (const q of quotations) {
+      const qNotices = notices.filter((n) => n.quotationId === q.id)
+      if (qNotices.length === 0) continue
+      for (const s of installmentStates(q)) {
+        if (installmentNoticeState(s, qNotices) === "not_found") {
+          rows.push({
+            key: `nf:${q.id}:${s.id}`,
+            tone: "destructive",
+            icon: SearchX,
+            text: t("sales_dec_not_found", { number: q.quotationNumber, contact: q.contactName || "—" }),
+            action: t("sales_dec_action_recheck"),
+            href: `${base}/payments`,
+          })
+        }
+      }
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    for (const r of openRequests) {
+      rows.push({
+        key: `rq:${r.id}`,
+        tone: r.dueDate && r.dueDate < today ? "destructive" : "cta",
+        icon: Inbox,
+        text: t("sales_dec_rq", { number: r.requestNumber, contact: r.contactName || "—" }),
+        action: t("sales_dec_action_price"),
+        href: `${base}/quotations/new?request=${r.id}`,
+      })
+    }
+    for (const o of gatedOrders) {
+      rows.push({
+        key: `adv:${o.id}`,
+        tone: "warning",
+        icon: Send,
+        text: t("sales_dec_awaiting_advance", { number: o.orderNumber, contact: o.contactName || "—" }),
+        action: t("sales_dec_action_report"),
+        href: `${base}/payments`,
+      })
+    }
+    const rank = { destructive: 0, warning: 1, cta: 2 }
+    return rows.sort((a, b) => rank[a.tone] - rank[b.tone])
+  }, [quotations, notices, openRequests, gatedOrders, t, base])
 
   const data = useMemo(() => salesDashboard(quotations), [quotations])
   const [pay, setPay] = useState<{ quotation: CrmQuotation; installmentId: string } | null>(null)
@@ -79,6 +156,29 @@ export function SalesDashboardView({ portal }: { portal: CrmPortal }) {
         </div>
       ) : (
         <>
+          {decisions.length > 0 && (
+            <SalesSection title={t("sales_dec_title")} icon={AlertTriangle}>
+              <ul className="divide-y">
+                {decisions.map((d) => (
+                  <li key={d.key}>
+                    <Link
+                      href={d.href}
+                      className="flex items-center gap-3 px-5 py-3 hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      <d.icon
+                        size={16}
+                        className={cn("shrink-0", d.tone === "destructive" ? "text-destructive" : d.tone === "warning" ? "text-warning" : "text-cta")}
+                        aria-hidden="true"
+                      />
+                      <span className="text-sm font-semibold min-w-0 flex-1" dir="auto">{d.text}</span>
+                      <span className="text-xs font-bold text-cta shrink-0">{d.action}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </SalesSection>
+          )}
+
           <CrmStatRow>
             <CrmStat icon={TrendingUp} label={t("sales_stat_quoted")} value={formatSarCompact(data.totals.quoted, locale)} accent="cta" />
             <CrmStat icon={CheckCircle2} label={t("sales_stat_accepted")} value={formatSarCompact(data.totals.accepted, locale)} accent="primary" />

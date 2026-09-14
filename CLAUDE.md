@@ -148,6 +148,12 @@ quotation and cash; delivered/invoiced are DERIVED from notes and invoices, neve
 stored) · `salesDeliveryNotes` (customer deliveries; stock leaves at confirm) ·
 `salesInvoices` (built on delivered notes; deposits recovered pro-rata) ·
 `salesReturns` (Sales decides, Finance issues the credit note) ·
+`salesTransferNotices` (إشعار حوالة — the seller reports a client's transfer,
+only Finance answers "confirmed"/"not found"; a confirmed deposit releases the
+gated sales order; instalment states are DERIVED from quotation payments +
+notices) · `salesQuoteRequests` (طلب تقديم العرض — CRM asks Sales for a quote;
+Sales prices it into the composer or declines with one of five factual
+reasons; no direct requests in Sales) ·
 `manufacturingRequests` (طلب تصنيع — Sales asks, the plant accepts into a work
 order or rejects with a reason) · `accounting_journal` (the general journal —
 append-only, entry id is `{orgId}__{sourceType}__{sourceId}`) ·
@@ -163,7 +169,14 @@ permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM 
 needs `crm.close`. Sales reads `crmQuotations`: marking one accepted needs `sales.approve`
 (or `crm.close`) — that notifies Finance of the deposit and opens the work order; recording
 a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.manage`; a
-`post_manufacturing` quotation never spawns a work order. A finished work order hands
+`post_manufacturing` quotation never spawns a work order. Sellers never record
+payments themselves: they file a transfer notice (`sales.manage`), and answering
+it needs `invoices.manage`/`accounting.post`/`sales.approve` — a confirmed answer
+records the advance on the quotation and may release the order, which is why
+`invoices.manage` may update `salesOrders`. Quotation issue enforces the discount
+policy client-side and in the shared form hook: below standard cost is blocked
+for everyone; discounts off the list price are capped 3% (seller) / 8%
+(`sales.approve`) / uncapped (owner). A finished work order hands
 over on a `deliveryNotes` doc and its stock lands only when someone with
 `warehouses.receive` (or `warehouses.manage`) confirms; the virtual distribution
 warehouse is received on the spot. Manufacturing splits four ways: `manufacturing.manage` is the workshop manager

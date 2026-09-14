@@ -20,6 +20,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  Send,
   Tag,
   Target,
   Trash2,
@@ -38,7 +39,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Link, useRouter } from "@/i18n/routing"
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
@@ -72,6 +73,7 @@ import {
 import { CrmContactDialog } from "@/components/crm/CrmContactDialog"
 import { CrmOpportunityDialog } from "@/components/crm/CrmOpportunityDialog"
 import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
+import { RequestQuoteDialog } from "@/components/crm/RequestQuoteDialog"
 import { CrmActivityDialog } from "@/components/crm/CrmActivityDialog"
 import { CrmEmptyState, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
 
@@ -84,6 +86,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const router = useRouter()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const { user } = useUser()
   const { can } = usePermissions()
   const canManageCrm = can("crm.manage")
   const base = crmBasePath(portal)
@@ -107,6 +110,7 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
   const [editOpp, setEditOpp] = useState<CrmOpportunity | null>(null)
   const [deleteOpp, setDeleteOpp] = useState<CrmOpportunity | null>(null)
   const [showAddQuote, setShowAddQuote] = useState(false)
+  const [showRequestQuote, setShowRequestQuote] = useState(false)
   const [editQuote, setEditQuote] = useState<CrmQuotation | null>(null)
   const [deleteQuote, setDeleteQuote] = useState<CrmQuotation | null>(null)
   const [showAddActivity, setShowAddActivity] = useState(false)
@@ -410,10 +414,16 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
               )}
             </h2>
             {canManageCrm && (
-              <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowAddQuote(true)}>
-                <Plus size={13} />
-                {t("crm_quote_add_btn")}
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowRequestQuote(true)}>
+                  <Send size={13} />
+                  {t("crm_rq_button")}
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setShowAddQuote(true)}>
+                  <Plus size={13} />
+                  {t("crm_quote_add_btn")}
+                </Button>
+              </div>
             )}
           </header>
           {contactQuotations.length === 0 ? (
@@ -567,6 +577,13 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
         orgId={orgId}
         contactId={contact.id}
         contactName={contact.name}
+      />
+      <RequestQuoteDialog
+        open={showRequestQuote}
+        onOpenChange={setShowRequestQuote}
+        orgId={orgId}
+        contact={{ id: contact.id, name: contact.name }}
+        actorName={teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""}
       />
       <CrmQuotationDialog
         key={editQuote?.id ?? "edit-quote"}

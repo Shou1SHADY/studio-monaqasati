@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
+import { useSearchParams } from "next/navigation"
+import { collection, doc, getDoc, query, where } from "firebase/firestore"
 import {
   ArrowRight, Building2, Contact, Eye, FileSignature, Loader2, Lock, PencilLine, Save, Wallet,
 } from "lucide-react"
@@ -12,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
@@ -30,6 +31,7 @@ import {
   validityDaysBetween,
   type QuotationSheetData,
 } from "@/lib/quotation-document"
+import { SALES_QUOTE_REQUESTS, markQuoteRequestQuoted, type QuoteRequest } from "@/lib/sales-transfers"
 import { RequiredMark } from "@/components/crm/CrmFormDialog"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import {
@@ -98,6 +100,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const router = useRouter()
   const firestore = useFirestore()
   const { toast } = useToast()
+  const { user } = useUser()
   const { can } = usePermissions()
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
@@ -117,7 +120,46 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const contactOptions = useMemo(() => contacts.map((c) => ({ id: c.id, name: c.name })), [contacts])
   const sortedContacts = useMemo(() => [...contactOptions].sort((a, b) => a.name.localeCompare(b.name)), [contactOptions])
 
-  const form = useQuotationForm({ open: true, orgId, contacts: contactOptions, finishedOrders })
+  // "Price it" from the CRM request inbox: `?request=` seeds the client and
+  // the lines, and the first save takes the request out of the inbox.
+  const searchParams = useSearchParams()
+  const requestId = searchParams.get("request")
+  const [request, setRequest] = useState<QuoteRequest | null>(null)
+  const [requestLoading, setRequestLoading] = useState(!!requestId)
+  useEffect(() => {
+    if (!firestore || !requestId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const snap = await getDoc(doc(firestore, SALES_QUOTE_REQUESTS, requestId))
+        if (!cancelled && snap.exists()) setRequest({ id: snap.id, ...(snap.data() as Omit<QuoteRequest, "id">) })
+      } catch (err) {
+        console.error("Quote request load failed:", err)
+      } finally {
+        if (!cancelled) setRequestLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [firestore, requestId])
+
+  const requestDefaults = useMemo(
+    () =>
+      request
+        ? {
+            contactId: request.contactId,
+            items: request.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, unitPrice: 0 })),
+          }
+        : undefined,
+    [request]
+  )
+
+  const form = useQuotationForm({
+    open: !requestId || !requestLoading,
+    orgId,
+    contacts: contactOptions,
+    finishedOrders,
+    defaults: requestDefaults,
+  })
   const { isSaving } = form
 
   // The document's own fields.
@@ -214,11 +256,23 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
       },
     })
     if (!id) return
+    if (request && request.status === "new" && user) {
+      try {
+        await markQuoteRequestQuoted(firestore, {
+          requestId: request.id,
+          quotationId: id,
+          quotationNumber,
+          actor: { id: user.uid, name: user.email || "" },
+        })
+      } catch (err) {
+        console.error("Quote request stamp failed:", err)
+      }
+    }
     setLeaving(true)
     router.push(`${base}/quotations/${id}`)
   }
 
-  if (isLoading || brandingLoading) {
+  if (isLoading || brandingLoading || requestLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 size={32} className="animate-spin text-muted-foreground" />
@@ -266,6 +320,12 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
           </p>
         )}
       </div>
+
+      {request && (
+        <p className="rounded-lg border border-cta/30 bg-cta/5 px-3 py-2 text-xs font-semibold text-cta" dir="auto">
+          {t("sales_rq_banner", { number: request.requestNumber, contact: request.contactName || "—" })}
+        </p>
+      )}
 
       {/* Below lg the two sides take turns. */}
       <div role="group" aria-label={t("sales_qb_view_switch")} className="lg:hidden grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1">
