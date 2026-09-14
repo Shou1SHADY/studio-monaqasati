@@ -56,7 +56,6 @@ import {
   Banknote,
   Tags,
   ClipboardCheck,
-  Calculator,
   Truck,
   Lock,
   CalendarCheck2,
@@ -326,15 +325,16 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     sections: [
       {
         labelKey: "component_manufacturing",
-        // Workshop and Today stay ungated: stage assignees are plain members
-        // and must reach their tasks. The rest follows the permission split.
+        // Today, Work orders and Shop floor stay ungated: stage assignees are
+        // plain members and must reach their tasks. Each screen hides what the
+        // viewer's role cannot act on; Settings needs manufacturing.manage.
         items: [
-          { titleKey: "mfg2_nav_workshop", href: "/contractor/manufacturing", icon: Factory },
-          { titleKey: "mfg2_nav_today", href: "/contractor/manufacturing/today", icon: CalendarCheck2 },
-          { titleKey: "mfg2_nav_requests", href: "/contractor/manufacturing/requests", icon: Inbox },
-          { titleKey: "mfg2_nav_estimates", href: "/contractor/manufacturing/estimates", icon: Calculator },
-          { titleKey: "mfg2_nav_products", href: "/contractor/manufacturing/products", icon: Layers },
-          { titleKey: "mfg2_nav_settings", href: "/contractor/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+          { titleKey: "mfg3_nav_today", href: "/contractor/manufacturing", icon: CalendarCheck2 },
+          { titleKey: "mfg3_nav_orders", href: "/contractor/manufacturing/orders", icon: ClipboardList },
+          { titleKey: "mfg3_nav_floor", href: "/contractor/manufacturing/floor", icon: Factory },
+          { titleKey: "mfg3_nav_requests", href: "/contractor/manufacturing/requests", icon: Inbox },
+          { titleKey: "mfg3_nav_products", href: "/contractor/manufacturing/products", icon: Layers },
+          { titleKey: "mfg3_nav_settings", href: "/contractor/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
         ],
       },
     ],
@@ -609,12 +609,12 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_manufacturing",
         items: [
-          { titleKey: "mfg2_nav_workshop", href: "/supplier/manufacturing", icon: Factory },
-          { titleKey: "mfg2_nav_today", href: "/supplier/manufacturing/today", icon: CalendarCheck2 },
-          { titleKey: "mfg2_nav_requests", href: "/supplier/manufacturing/requests", icon: Inbox },
-          { titleKey: "mfg2_nav_estimates", href: "/supplier/manufacturing/estimates", icon: Calculator },
-          { titleKey: "mfg2_nav_products", href: "/supplier/manufacturing/products", icon: Layers },
-          { titleKey: "mfg2_nav_settings", href: "/supplier/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
+          { titleKey: "mfg3_nav_today", href: "/supplier/manufacturing", icon: CalendarCheck2 },
+          { titleKey: "mfg3_nav_orders", href: "/supplier/manufacturing/orders", icon: ClipboardList },
+          { titleKey: "mfg3_nav_floor", href: "/supplier/manufacturing/floor", icon: Factory },
+          { titleKey: "mfg3_nav_requests", href: "/supplier/manufacturing/requests", icon: Inbox },
+          { titleKey: "mfg3_nav_products", href: "/supplier/manufacturing/products", icon: Layers },
+          { titleKey: "mfg3_nav_settings", href: "/supplier/manufacturing/settings", icon: SlidersHorizontal, requiredPermission: "manufacturing.manage" },
         ],
       },
     ],

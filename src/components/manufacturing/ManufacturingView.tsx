@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, serverTimestamp } from "firebase/firestore"
 import { Factory, Plus, Trash2, ArrowUp, ArrowDown, Loader2, CheckCircle2, CircleDot, Circle, ArrowLeftRight, XCircle, PackageCheck, Truck, Boxes, List, Waypoints, ClipboardCheck } from "lucide-react"
@@ -50,6 +50,8 @@ export function ManufacturingView({
   projectId,
   projectName,
   hideTitle,
+  legacyOnly,
+  openCreate,
 }: {
   /** When set, the view is embedded in that project's page: orders are scoped
    * to the project, new orders are pre-linked to it, and the org-level chrome
@@ -58,6 +60,12 @@ export function ManufacturingView({
   projectName?: string
   /** The MfgShell renders the page header — skip the view's own. */
   hideTitle?: boolean
+  /** Inside the Manufacturing module's Work orders tab: only orders created
+   * before product cards (stage-flow orders), without the department editor
+   * (now in Settings) or the requests list (now in Requests). */
+  legacyOnly?: boolean
+  /** Open the quick "order from stock materials" form on mount. */
+  openCreate?: boolean
 } = {}) {
   const embedded = !!projectId
   const t = useTranslations("Portal.Shared")
@@ -101,8 +109,11 @@ export function ManufacturingView({
     [ordersData]
   )
   const orders = useMemo(
-    () => (projectId ? allOrders.filter((o) => o.projectId === projectId) : allOrders),
-    [allOrders, projectId]
+    () =>
+      (projectId ? allOrders.filter((o) => o.projectId === projectId) : allOrders).filter(
+        (o) => !legacyOnly || !isV2Order(o as { productId?: string | null })
+      ),
+    [allOrders, projectId, legacyOnly]
   )
 
   const membersQuery = useMemoFirebase(() => {
@@ -238,6 +249,9 @@ export function ManufacturingView({
 
   // ── Create order ──
   const [showCreate, setShowCreate] = useState(false)
+  useEffect(() => {
+    if (openCreate && departments.length > 0) setShowCreate(true)
+  }, [openCreate, departments.length])
   const [isCreating, setIsCreating] = useState(false)
   const [orderTitle, setOrderTitle] = useState("")
   const [orderDue, setOrderDue] = useState("")
@@ -570,7 +584,7 @@ export function ManufacturingView({
       </div>
 
       {/* Department chain */}
-      {!embedded && (
+      {!embedded && !legacyOnly && (
       <div className="rounded-2xl border bg-white p-5 space-y-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-black text-foreground flex items-center gap-2">
@@ -624,7 +638,7 @@ export function ManufacturingView({
       )}
 
       {/* Requests from Sales — answered with a work order or a reason */}
-      {!embedded && salesRequests.length > 0 && (
+      {!embedded && !legacyOnly && salesRequests.length > 0 && (
         <div className="rounded-2xl border bg-white p-5 space-y-3">
           <h2 className="text-sm font-black text-foreground flex items-center gap-2">
             <ClipboardCheck size={15} className="text-accent" />
