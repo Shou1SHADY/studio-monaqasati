@@ -1179,6 +1179,8 @@ export async function markEstimateWon(
     confirmedBy: string
     products: MfgProduct[]
     actor: Actor
+    /** The award date as reported (ISO date); defaults to now. */
+    awardDate?: string | null
   }
 ): Promise<string[]> {
   if (!input.confirmedBy.trim()) throw new Error("by_required")
@@ -1207,7 +1209,7 @@ export async function markEstimateWon(
   const batch = writeBatch(firestore)
   batch.update(doc(firestore, MFG_COST_ESTIMATES, input.estimate.id), {
     state: "won",
-    wonAt: nowIso(),
+    wonAt: input.awardDate || nowIso(),
     wonConfirmedBy: input.confirmedBy.trim(),
     workOrderIds,
     updatedAt: serverTimestamp(),
