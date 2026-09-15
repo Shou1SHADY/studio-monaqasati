@@ -26,7 +26,7 @@ import {
   INSTALLMENT_DEPOSIT_ID,
   type CrmQuotation,
 } from "./crm"
-import { applyInstallmentPayment, type InstallmentState } from "./sales"
+import { applyInstallmentPayment, type InstallmentState } from "./sales-installments"
 import { SALES_ORDERS, type SalesOrder } from "./sales-orders"
 import { ALL_PERMISSION, type PermissionId, type TeamGroup } from "./permissions"
 import { onQuotationPaymentRecorded } from "./accounting/hooks"
