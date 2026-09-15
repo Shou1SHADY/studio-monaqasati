@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { getAuth } from 'firebase/auth';
 import type { ChatMessage, PendingAction, RagContext } from '@/lib/rag-types';
 
 function genId() {
@@ -38,9 +39,14 @@ export function useRagChat() {
     setIsLoading(true);
 
     try {
+      // The route verifies the caller before spending AI tokens on them.
+      const idToken = await getAuth().currentUser?.getIdToken();
       const res = await fetch('/api/rag/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
         body: JSON.stringify({ question: question.trim(), locale, userRole, context }),
       });
 

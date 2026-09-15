@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ragAsk, type RagAskInput } from '@/ai/flows/rag-ask-flow';
 import { OpenRouterRateLimitError } from '@/ai/errors';
+import { getAdminAuth } from '@/lib/firebaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
+    // The context the client assembles carries the caller's own Firestore
+    // data, and the flow spends paid AI tokens — signed-in callers only.
+    // Web and mobile both send the Firebase ID token as a Bearer header.
+    const authHeader = request.headers.get('authorization') || '';
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!idToken) {
+      return NextResponse.json(
+        { error: true, message: 'Authentication required', code: 'UNAUTHENTICATED' },
+        { status: 401 }
+      );
+    }
+    try {
+      await getAdminAuth().verifyIdToken(idToken);
+    } catch {
+      return NextResponse.json(
+        { error: true, message: 'Invalid or expired session', code: 'UNAUTHENTICATED' },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json() as Partial<RagAskInput>;
 
     const { question, locale, userRole, context } = body;
