@@ -62,6 +62,18 @@ export const PERMISSION_IDS = [
 export type PermissionId = (typeof PERMISSION_IDS)[number]
 export type PermissionValue = PermissionId | typeof ALL_PERMISSION
 
+/**
+ * Accepting or rejecting a supplier's guarantee.
+ *
+ * Named here rather than written inline at the button, because the answer is
+ * fixed by firestore.rules — the `guarantees` update clause requires
+ * `deliveries.confirm` — and the UI once asked for `offers.accept` instead.
+ * The two never overlap in the seeded groups, so Finance saw buttons the rules
+ * refused while Supply Chain, the group actually authorised, saw none. Owners
+ * pass both, which is why it survived. Change this only alongside the rule.
+ */
+export const GUARANTEE_REVIEW_PERMISSION: PermissionId = "deliveries.confirm"
+
 /** The catalog grouped by portal component, for the group editor — a
  * permission belongs to exactly one section (guarded by a test). */
 export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId[] }> = [

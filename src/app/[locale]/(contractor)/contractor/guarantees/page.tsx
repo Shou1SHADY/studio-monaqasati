@@ -13,6 +13,7 @@ import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@
 import { collection, query, where, doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { GUARANTEE_REVIEW_PERMISSION } from "@/lib/permissions"
 import {
   Loader2,
   ShieldCheck,
@@ -157,7 +158,7 @@ function GuaranteeCard({ guarantee, locale, t }: { guarantee: Guarantee; locale:
                 </a>
               </Button>
             )}
-            {guarantee.status === "pending_review" && can("offers.accept") && (
+            {guarantee.status === "pending_review" && can(GUARANTEE_REVIEW_PERMISSION) && (
               <div className="flex gap-2">
                 <Button
                   size="sm"

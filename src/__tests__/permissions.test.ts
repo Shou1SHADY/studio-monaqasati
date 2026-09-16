@@ -16,6 +16,7 @@
 import {
   can,
   ALL_PERMISSION,
+  GUARANTEE_REVIEW_PERMISSION,
   PERMISSION_IDS,
   PERMISSION_SECTIONS,
   SEEDED_GROUPS,
@@ -701,5 +702,45 @@ describe("role separation — finance vs supply_chain", () => {
   })
   it("supply_chain does not get offers.accept", () => {
     expect(can("offers.accept", makeGroupCtx("supply_chain"))).toBe(false)
+  })
+})
+
+/**
+ * The guarantee answer, which firestore.rules gates on `deliveries.confirm`.
+ *
+ * This once asked for `offers.accept` in the UI. Because the two permissions
+ * never overlap in the seeded groups, that showed the buttons to exactly the
+ * group the rules refuse and hid them from exactly the group the rules allow —
+ * and owners, who hold both, never saw it. These assertions fail if the
+ * constant drifts back.
+ */
+describe("reviewing a guarantee", () => {
+  const groupCtx = (key: "finance" | "supply_chain"): PermissionContext => {
+    const seeded = SEEDED_GROUPS.find((g) => g.key === key)!
+    const group: TeamGroup = {
+      id: `${key}_id`,
+      organizationId: "org1",
+      key,
+      name: seeded.name,
+      permissions: seeded.permissions,
+      isSystem: seeded.isSystem,
+    }
+    return { organizationRole: "member", defaultGroupId: group.id, groups: [group] }
+  }
+
+  it("is gated on the permission the rules require", () => {
+    expect(GUARANTEE_REVIEW_PERMISSION).toBe("deliveries.confirm")
+  })
+
+  it("reaches supply chain, the group the rules authorise", () => {
+    expect(can(GUARANTEE_REVIEW_PERMISSION, groupCtx("supply_chain"))).toBe(true)
+  })
+
+  it("does not reach finance, whose write the rules would refuse", () => {
+    expect(can(GUARANTEE_REVIEW_PERMISSION, groupCtx("finance"))).toBe(false)
+  })
+
+  it("never becomes offers.accept, which the rules do not accept here", () => {
+    expect(GUARANTEE_REVIEW_PERMISSION).not.toBe("offers.accept")
   })
 })
