@@ -64,7 +64,6 @@ import {
   seededGroupDocId,
   isSuperAdminGroup,
   ALL_PERMISSION,
-  can as resolveCan,
   type TeamGroup,
   type PermissionValue,
 } from "@/lib/permissions"
@@ -158,12 +157,6 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
   const groups = ((groupsRaw || []) as TeamGroup[]).slice().sort((a, b) => {
     if (a.isSystem !== b.isSystem) return a.isSystem ? -1 : 1
     return (a.name || "").localeCompare(b.name || "")
-  })
-
-  const canManageTeam = isOwner || resolveCan("team.manage", {
-    organizationRole: (profile?.organizationRole as string) || null,
-    defaultGroupId: (profile?.defaultGroupId as string) || null,
-    groups,
   })
 
   // Incoming team invitations addressed to me: new token-based format + legacy
@@ -516,7 +509,12 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               {(profile?.role || role) === "Contractor" ? t("team_page_desc_contractor") : t("team_page_desc_supplier")}
             </p>
           </div>
-          {canManageTeam && (
+          {/* Owner only, and not `team.manage`: every org-membership write is
+              owner-gated on the server — api/invitations/send refuses anyone
+              else, and firestore.rules requires organizationRole == 'owner' to
+              assign a group or remove a member. `team.manage` governs project
+              seating (projects/{id}/members), not who joins the company. */}
+          {isOwner && (
             <Button
               onClick={() => setIsInviteOpen(true)}
               className="gap-2 bg-primary hover:bg-primary/90 text-white rounded-xl"
@@ -590,7 +588,7 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
               <Layers size={14} />
               {t("team_tab_groups")}
             </TabsTrigger>
-            {canManageTeam && (
+            {isOwner && (
               <TabsTrigger value="sent" className="gap-2">
                 <Send size={14} />
                 {t("team_tab_sent")}
