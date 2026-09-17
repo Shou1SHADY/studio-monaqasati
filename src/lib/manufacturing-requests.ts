@@ -169,19 +169,30 @@ export interface AnswerWindow {
   leftHours: number
 }
 
-export function answerWindow(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number): AnswerWindow {
+/** A request that reached us while Sales' order still waits for its down
+ * payment is for PLANNING: Finance has not confirmed, nothing may be executed,
+ * and the answer clock does not run — "no answer" is not counted before the
+ * confirmation (Sales PRD PAY-07, D8). */
+export function awaitsDownPayment(
+  r: Pick<ManufacturingRequest, "sourceKind" | "orderId" | "kind">,
+  salesOrder: Pick<SalesOrder, "payment"> | null | undefined
+): boolean {
+  return requestDownPayment(r, salesOrder) === "pending"
+}
+
+export function answerWindow(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number, downPaymentPending = false): AnswerWindow {
   const at = r.requestedAt ? new Date(r.requestedAt).getTime() : NaN
   const ageHours = Number.isFinite(at) ? Math.max(0, (nowMs - at) / 3600000) : 0
-  const overdue = r.status === "new" && ageHours >= windowHours
+  const overdue = r.status === "new" && !downPaymentPending && ageHours >= windowHours
   return { ageHours, overdue, leftHours: overdue ? 0 : Math.max(0, Math.ceil(windowHours - ageHours)) }
 }
 
 export type RequestState = "awaiting" | "overdue" | "accepted" | "partial" | "costed" | "declined" | "moved"
 
-export function requestState(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number): RequestState {
+export function requestState(r: Pick<ManufacturingRequest, "requestedAt" | "status">, windowHours: number, nowMs: number, downPaymentPending = false): RequestState {
   switch (r.status) {
     case "new":
-      return answerWindow(r, windowHours, nowMs).overdue ? "overdue" : "awaiting"
+      return answerWindow(r, windowHours, nowMs, downPaymentPending).overdue ? "overdue" : "awaiting"
     case "accepted":
       return "accepted"
     case "partial":

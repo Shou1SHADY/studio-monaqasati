@@ -1,9 +1,13 @@
 "use client"
 
-// التسليم والفوترة — where promises become facts. Delivery notes confirm here
-// (stock leaves at that moment), invoices are built on delivered notes, and
-// the banner that matters most is the one nobody enjoys: delivered but not
-// yet invoiced.
+// التسليم والفوترة — where promises become facts. A delivery is a three-step
+// handshake (DLV-02): Sales requests it, Inventory authorises the issue from
+// its own desk against stock it truly has, and the client signs for what
+// actually arrived — stock leaves then, at that quantity, under the signer's
+// name. A hold is Finance's (DLV-03): here it is a state with no reason and no
+// figures, and the seller's only act is to ask for the release. Invoices are
+// built on delivered notes, and the banner that matters most is the one
+// nobody enjoys: delivered but not yet invoiced.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -13,8 +17,12 @@ import {
   Banknote,
   CheckCircle2,
   FileText,
+  Hourglass,
+  Info,
   Loader2,
   PauseCircle,
+  PenLine,
+  PlayCircle,
   Receipt,
   RotateCcw,
   Truck,
@@ -23,6 +31,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -37,8 +46,9 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection } from "./SalesShell"
-import { formatSar } from "@/lib/crm"
+import { formatCrmDate, formatSar } from "@/lib/crm"
 import {
+  RETURN_DISPOSITIONS,
   SALES_DELIVERY_NOTES,
   SALES_INVOICES,
   SALES_ORDERS,
@@ -46,7 +56,9 @@ import {
   computeInvoice,
   deliveryNoteValue,
   returnValue,
+  returnableQty,
   unbilledDeliveries,
+  type ReturnDisposition,
   type SalesDeliveryNote,
   type SalesInvoice,
   type SalesOrder,
@@ -59,6 +71,8 @@ import {
   issueCreditNote,
   issueInvoiceFromDeliveries,
   markInvoicePaid,
+  releaseDelivery,
+  requestDeliveryRelease,
   requestReturn,
 } from "@/lib/sales-order-writes"
 
@@ -68,9 +82,16 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
-  const { can } = usePermissions()
+  const { can, isOrgOwner } = usePermissions()
   const canManage = can("sales.manage")
-  const canConfirm = canManage || can("warehouses.manage") || can("warehouses.receive")
+  // The rep records the client's signature (T18); Inventory authorises from
+  // its own desk; a hold and its release are Finance's alone (T19).
+  const canSign = canManage
+  const canHold = can("invoices.manage")
+  // Approving a return is a prices-&-returns role's — the manager's, never a rep's (DLV-05).
+  const canDecideReturn = isOrgOwner || can("sales.approve")
+  // Settling a return with the credit note is Finance's alone (T21).
+  const canSettleReturn = can("invoices.manage")
   const canBill = canManage || can("invoices.manage")
   const canMarkPaid = can("invoices.manage") || can("sales.approve")
 
@@ -125,37 +146,101 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
 
   const actor = { id: user?.uid || "", name: actorName }
 
-  const doConfirm = async (note: SalesDeliveryNote) => {
-    if (!firestore || busyId) return
-    const order = orderById.get(note.orderId)
+  /** The handshake's refusals, in the reader's words. */
+  const handshakeError = (err: unknown): string => {
+    const code = err instanceof Error ? err.message : ""
+    const known: Record<string, string> = {
+      held: "sf_err_held",
+      not_authorized: "sf_err_not_authorized",
+      not_requested: "sf_err_state",
+      not_held: "sf_err_state",
+      insufficient_stock: "sf_err_stock",
+      signer_required: "sf_err_signer",
+      nothing_received: "sf_err_nothing",
+      invalid_quantity: "sf_err_quantity",
+      over_requested: "sf_err_over",
+    }
+    return t(known[code] || "so_save_error")
+  }
+
+  // ── The client signs (step 3) ──
+  const [signFor, setSignFor] = useState<SalesDeliveryNote | null>(null)
+  const [signerName, setSignerName] = useState("")
+  const [signedQty, setSignedQty] = useState<Record<string, string>>({})
+  const [signNote, setSignNote] = useState("")
+  const [signError, setSignError] = useState<string | null>(null)
+
+  const openSign = (note: SalesDeliveryNote) => {
+    setSignFor(note)
+    setSignerName(note.receiverName || "")
+    setSignedQty(Object.fromEntries(note.lines.map((l) => [l.name, String(l.quantity)])))
+    setSignNote("")
+    setSignError(null)
+  }
+
+  const submitSign = async () => {
+    if (!firestore || !signFor || busyId) return
+    const order = orderById.get(signFor.orderId)
     if (!order) return
-    setBusyId(note.id)
+    setBusyId(signFor.id)
+    setSignError(null)
     try {
       let stockRows: Array<{ id: string; name: string; quantity: number; lot: string | null; remnant: boolean }> = []
-      if (note.warehouseId) {
-        const snap = await getDocs(collection(firestore, "warehouses", note.warehouseId, "inventoryItems"))
+      if (signFor.warehouseId) {
+        const snap = await getDocs(collection(firestore, "warehouses", signFor.warehouseId, "inventoryItems"))
         stockRows = snap.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "", quantity: Number(d.data().quantity) || 0, lot: (d.data().lot as string) || null, remnant: !!d.data().remnant }))
       }
-      await confirmDelivery(firestore, { note, order, allNotes: notes, stockRows, actor })
-      toast({ title: t("sf_delivered_toast", { number: note.noteNumber }) })
+      const signed = signFor.lines.map((l) => ({ name: l.name, quantity: (signedQty[l.name] ?? "").trim() === "" ? NaN : Number(signedQty[l.name]) }))
+      await confirmDelivery(firestore, { note: signFor, order, allNotes: notes, stockRows, signerName, signed, varianceNote: signNote.trim() || null, actor })
+      toast({ title: t("sf_delivered_toast", { number: signFor.noteNumber }) })
+      setSignFor(null)
     } catch (err) {
       console.error(err)
-      toast({ title: t("so_save_error"), variant: "destructive" })
+      setSignError(handshakeError(err))
     } finally {
       setBusyId(null)
     }
   }
 
+  // ── Finance holds and releases; the seller only asks ──
   const doHold = async () => {
     if (!firestore || !holdFor || !holdReason.trim()) return
     try {
-      await holdDelivery(firestore, holdFor.id, holdReason.trim())
+      await holdDelivery(firestore, { noteId: holdFor.id, reason: holdReason.trim(), actor })
       toast({ title: t("sf_held_toast") })
       setHoldFor(null)
       setHoldReason("")
     } catch (err) {
       console.error(err)
-      toast({ title: t("so_save_error"), variant: "destructive" })
+      toast({ title: handshakeError(err), variant: "destructive" })
+    }
+  }
+
+  const doRelease = async (note: SalesDeliveryNote) => {
+    if (!firestore || busyId) return
+    setBusyId(note.id)
+    try {
+      await releaseDelivery(firestore, { noteId: note.id, actor })
+      toast({ title: t("sf_released_toast", { number: note.noteNumber }) })
+    } catch (err) {
+      console.error(err)
+      toast({ title: handshakeError(err), variant: "destructive" })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const askRelease = async (note: SalesDeliveryNote) => {
+    if (!firestore || busyId) return
+    setBusyId(note.id)
+    try {
+      await requestDeliveryRelease(firestore, { noteId: note.id, actor })
+      toast({ title: t("sf_release_requested_toast", { number: note.noteNumber }) })
+    } catch (err) {
+      console.error(err)
+      toast({ title: handshakeError(err), variant: "destructive" })
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -205,7 +290,7 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
     const order = orderById.get(returnFor.orderId)
     if (!order) return
     const lines = returnFor.lines
-      .map((l) => ({ name: l.name, quantity: Number(returnQty[l.name]) || 0, max: l.quantity }))
+      .map((l) => ({ name: l.name, quantity: Number(returnQty[l.name]) || 0, max: returnableQty(returnFor, l.name, returns) }))
       .filter((l) => l.quantity > 0)
     if (lines.length === 0 || !returnReason.trim()) {
       toast({ title: t("sr_needs_lines"), variant: "destructive" })
@@ -216,7 +301,7 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
       return
     }
     try {
-      await requestReturn(firestore, { order, deliveryNote: returnFor, lines, reason: returnReason.trim(), actor })
+      await requestReturn(firestore, { order, deliveryNote: returnFor, lines, reason: returnReason.trim(), existingReturns: returns, actor })
       toast({ title: t("sr_requested") })
       setReturnFor(null)
     } catch (err) {
@@ -225,11 +310,13 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
     }
   }
 
+  const [dispositions, setDispositions] = useState<Record<string, ReturnDisposition>>({})
+
   const decide = async (salesReturn: SalesReturn, approve: boolean) => {
     if (!firestore || busyId) return
     setBusyId(salesReturn.id)
     try {
-      await decideReturn(firestore, { salesReturn, approve, actor })
+      await decideReturn(firestore, { salesReturn, approve, disposition: approve ? dispositions[salesReturn.id] || "stock" : null, actor })
       toast({ title: approve ? t("sr_approved") : t("sr_rejected") })
     } catch (err) {
       console.error(err)
@@ -277,8 +364,10 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
       <Badge className="bg-success/10 text-success border-none">{t("sf_status_delivered")}</Badge>
     ) : note.status === "held" ? (
       <Badge className="bg-destructive/10 text-destructive border-none">{t("sf_status_held")}</Badge>
+    ) : note.status === "authorized" ? (
+      <Badge className="bg-cta/10 text-cta border-none">{t("sf_status_authorized")}</Badge>
     ) : (
-      <Badge className="bg-cta/10 text-cta border-none">{t("sf_status_requested")}</Badge>
+      <Badge className="bg-warning/10 text-warning border-none">{t("sf_status_requested")}</Badge>
     )
 
   return (
@@ -307,8 +396,8 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
             {notes.map((note) => {
               const order = orderById.get(note.orderId)
               return (
-                <div key={note.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <div className="min-w-0 flex-1">
+                <div key={note.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1 basis-64">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-sm">{note.noteNumber}</span>
                       {noteBadge(note)}
@@ -317,24 +406,59 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
                       </span>
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {note.lines.map((l) => `${l.name} × ${l.quantity}`).join(" · ")}
+                      {note.lines
+                        .map((l) => (l.requestedQuantity != null && l.requestedQuantity !== l.quantity ? `${l.name} × ${t("sf_signed_of", { signed: l.quantity, requested: l.requestedQuantity })}` : `${l.name} × ${l.quantity}`))
+                        .join(" · ")}
                       {note.warehouseName && <span className="mx-1.5">— {note.warehouseName}</span>}
                     </p>
-                    {note.status === "held" && note.holdReason && (
-                      <p className="text-[11px] text-destructive mt-0.5">{note.holdReason}</p>
+                    {note.status === "requested" && (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Hourglass size={11} aria-hidden="true" />
+                        {t("sf_waits_inventory")}
+                      </p>
+                    )}
+                    {note.status === "delivered" && note.signerName && (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <PenLine size={11} aria-hidden="true" />
+                        {t("sf_signed_by", { name: note.signerName, date: formatCrmDate(note.signedAt || note.deliveredAt || "", locale) })}
+                      </p>
+                    )}
+                    {/* A hold is a state, not an explanation: the reason is Finance's
+                        and shows only to Finance (D3). */}
+                    {note.status === "held" && (
+                      <p className="mt-0.5 text-[11px] text-destructive">
+                        {canHold && note.holdReason ? note.holdReason : t("sf_held_no_reason")}
+                        {note.releaseRequestedAt && (
+                          <span className="ms-1.5 text-muted-foreground">
+                            · {t("sf_release_requested_by", { name: note.releaseRequestedByUserName || "—", date: formatCrmDate(note.releaseRequestedAt, locale) })}
+                          </span>
+                        )}
+                      </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold tabular-nums" dir="ltr">
                       {formatSar(deliveryNoteValue(note, order), locale)}
                     </span>
-                    {(note.status === "requested" || note.status === "held") && canConfirm && (
-                      <Button size="sm" className="gap-1.5 h-8" disabled={busyId === note.id} onClick={() => doConfirm(note)}>
-                        {busyId === note.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                    {note.status === "authorized" && canSign && (
+                      <Button size="sm" className="gap-1.5 h-8" disabled={busyId === note.id} onClick={() => openSign(note)}>
+                        <PenLine size={13} />
                         {t("sf_confirm_btn")}
                       </Button>
                     )}
-                    {note.status === "requested" && canManage && (
+                    {note.status === "held" && canManage && !canHold && (
+                      <Button size="sm" variant="outline" className="gap-1.5 h-8" disabled={busyId === note.id || !!note.releaseRequestedAt} onClick={() => askRelease(note)}>
+                        {busyId === note.id ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />}
+                        {note.releaseRequestedAt ? t("sf_release_requested") : t("sf_request_release_btn")}
+                      </Button>
+                    )}
+                    {note.status === "held" && canHold && (
+                      <Button size="sm" className="gap-1.5 h-8" disabled={busyId === note.id} onClick={() => doRelease(note)}>
+                        {busyId === note.id ? <Loader2 size={13} className="animate-spin" /> : <PlayCircle size={13} />}
+                        {t("sf_release_btn")}
+                      </Button>
+                    )}
+                    {(note.status === "requested" || note.status === "authorized") && canHold && (
                       <Button size="sm" variant="outline" className="gap-1.5 h-8" onClick={() => setHoldFor(note)}>
                         <PauseCircle size={13} />
                         {t("sf_hold_btn")}
@@ -388,8 +512,8 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
               const order = orderById.get(salesReturn.orderId)
               const value = returnValue(salesReturn, order)
               return (
-                <div key={salesReturn.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                  <div className="min-w-0 flex-1">
+                <div key={salesReturn.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <div className="min-w-0 flex-1 basis-64">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-sm">{salesReturn.returnNumber}</span>
                       {salesReturn.status === "awaiting_decision" && (
@@ -408,12 +532,35 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
                       {salesReturn.lines.map((l) => `${l.name} × ${l.quantity}`).join(" · ")} — {salesReturn.reason}
+                      {salesReturn.disposition && <span className="ms-1.5">· {t(`sr_disposition_${salesReturn.disposition}`)}</span>}
                     </p>
+                    {salesReturn.status === "awaiting_decision" && !canDecideReturn && (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Hourglass size={11} aria-hidden="true" />
+                        {t("sr_waits_manager")}
+                      </p>
+                    )}
+                    {salesReturn.status === "approved" && !canSettleReturn && (
+                      <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Hourglass size={11} aria-hidden="true" />
+                        {t("sr_waits_finance")}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold tabular-nums" dir="ltr">{formatSar(value, locale)}</span>
-                    {salesReturn.status === "awaiting_decision" && canManage && (
+                    {salesReturn.status === "awaiting_decision" && canDecideReturn && (
                       <>
+                        <Select value={dispositions[salesReturn.id] || "stock"} onValueChange={(v) => setDispositions((p) => ({ ...p, [salesReturn.id]: v as ReturnDisposition }))}>
+                          <SelectTrigger className="h-8 w-40 text-xs" aria-label={t("sr_disposition")}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {RETURN_DISPOSITIONS.map((d) => (
+                              <SelectItem key={d} value={d}>{t(`sr_disposition_${d}`)}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Button size="sm" className="h-8 gap-1.5" disabled={busyId === salesReturn.id} onClick={() => decide(salesReturn, true)}>
                           <CheckCircle2 size={13} />
                           {t("sr_approve_btn")}
@@ -423,7 +570,7 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
                         </Button>
                       </>
                     )}
-                    {salesReturn.status === "approved" && canMarkPaid && (
+                    {salesReturn.status === "approved" && canSettleReturn && (
                       <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={busyId === salesReturn.id} onClick={() => creditNote(salesReturn)}>
                         {busyId === salesReturn.id ? <Loader2 size={13} className="animate-spin" /> : <Receipt size={13} />}
                         {t("sr_credit_btn")}
@@ -514,7 +661,7 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
                 {returnFor.lines.map((line) => (
                   <div key={line.name} className="flex items-center gap-2">
                     <span className="flex-1 text-sm font-semibold truncate">{line.name}</span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{t("sr_delivered_qty", { qty: line.quantity })}</span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{t("sr_delivered_qty", { qty: returnableQty(returnFor, line.name, returns) })}</span>
                     <Input
                       dir="ltr"
                       inputMode="decimal"
@@ -541,7 +688,64 @@ export function SalesFulfillmentView({ portal }: { portal: CrmPortal }) {
         </DialogContent>
       </Dialog>
 
-      {/* ── Hold reason ── */}
+      {/* ── The client signs for what arrived (step 3) ── */}
+      <Dialog open={!!signFor} onOpenChange={(open) => { if (!open && !busyId) setSignFor(null) }}>
+        <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-md">
+          {signFor && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("sf_sign_title", { number: signFor.noteNumber })}</DialogTitle>
+                <DialogDescription>{t("sf_sign_desc")}</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-1">
+                <div className="space-y-1.5">
+                  <Label htmlFor="signer-name">
+                    {t("sf_signer_name")}
+                    <span className="ms-0.5 text-destructive">*</span>
+                  </Label>
+                  <Input id="signer-name" dir="auto" value={signerName} onChange={(e) => setSignerName(e.target.value)} />
+                  <p className="text-[11px] text-muted-foreground">{t("sf_signer_hint")}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{t("sf_received_qty")}</p>
+                  {signFor.lines.map((line, i) => (
+                    <div key={line.name} className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">{line.name}</span>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">{t("sf_sent_qty", { qty: line.quantity })}</span>
+                      <Input
+                        dir="ltr"
+                        inputMode="decimal"
+                        className="h-9 w-24"
+                        aria-label={t("sf_received_qty_line", { n: i + 1 })}
+                        value={signedQty[line.name] ?? ""}
+                        onChange={(e) => setSignedQty((p) => ({ ...p, [line.name]: e.target.value }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sign-note">{t("sf_variance_note")}</Label>
+                  <Input id="sign-note" dir="auto" value={signNote} onChange={(e) => setSignNote(e.target.value)} />
+                </div>
+                <p className="flex items-start gap-1.5 rounded-lg border border-cta/20 bg-cta/5 px-3 py-2 text-[11px] text-cta">
+                  <Info size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                  {t("sf_sign_effect")}
+                </p>
+                {signError && <p className="text-xs font-semibold text-destructive" role="alert">{signError}</p>}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSignFor(null)} disabled={!!busyId}>{t("crm_cancel")}</Button>
+                <Button onClick={submitSign} disabled={!!busyId} className="gap-1.5">
+                  {busyId === signFor.id ? <Loader2 size={14} className="animate-spin" /> : <PenLine size={14} />}
+                  {t("sf_confirm_btn")}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Hold reason (Finance) ── */}
       <Dialog open={!!holdFor} onOpenChange={(open) => { if (!open) setHoldFor(null) }}>
         <DialogContent dir={locale === "ar" ? "rtl" : "ltr"} className="max-w-sm">
           <DialogHeader>

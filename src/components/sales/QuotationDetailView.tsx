@@ -3,49 +3,32 @@
 import { useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
-import { doc, updateDoc, serverTimestamp } from "firebase/firestore"
 import {
-  ArrowRight, Pencil, Banknote, CheckCircle2, XCircle, Send, RotateCcw, Loader2, FileText,
-  Factory, Contact, Clock, CalendarDays, Boxes, Lock,
+  ArrowRight, Banknote, CheckCircle2, Loader2, FileText,
+  Factory, Contact, Clock, CalendarDays, Boxes,
 } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { useFirestore, useUser } from "@/firebase"
-import { useToast } from "@/hooks/use-toast"
+import { useUser } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCrmData } from "@/hooks/useCrmData"
 import { cn } from "@/lib/utils"
 import {
-  CRM_QUOTATIONS,
   QUOTATION_PHASE_BADGE_CLASS,
-  QUOTATION_STATUS_BADGE_CLASS,
   formatCrmDate,
   formatSar,
   quotationPhase,
-  type QuotationStatus,
 } from "@/lib/crm"
 import {
-  QUOTATION_STATUS_ACTIONS,
   installmentStates,
   isAwaitingPayment,
   isFullyPaid,
   paidSoFar,
   quotationTimeline,
-  runQuotationAcceptance,
-  statusStamp,
 } from "@/lib/sales"
-import { CrmQuotationDialog } from "@/components/crm/CrmQuotationDialog"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { QuotationLifecycleBar } from "./QuotationLifecycleBar"
 import { CrmEmptyState, crmBasePath, type CrmPortal } from "@/components/crm/CrmShell"
 import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
 import { sheetDataFromQuotation } from "@/lib/quotation-document"
@@ -62,9 +45,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const isRtl = locale === "ar"
   const params = useParams()
   const id = String(params.id ?? "")
-  const firestore = useFirestore()
   const { user } = useUser()
-  const { toast } = useToast()
   const { can } = usePermissions()
   const canManage = can("sales.manage")
   const canApprove = can("sales.approve") || can("crm.close")
@@ -81,64 +62,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   // simply "not found", the same way the CRM contact page treats it.
   const q = useMemo(() => quotations.find((x) => x.id === id) ?? null, [quotations, id])
 
-  const [showEdit, setShowEdit] = useState(false)
   const [payInstallment, setPayInstallment] = useState<string | null>(null)
-  const [confirm, setConfirm] = useState<"accepted" | "rejected" | null>(null)
-  const [isChanging, setIsChanging] = useState(false)
-
-  const changeStatus = async (to: QuotationStatus) => {
-    if (!firestore || !user || !q || isChanging) return
-    setIsChanging(true)
-    try {
-      const now = new Date().toISOString()
-      await updateDoc(doc(firestore, CRM_QUOTATIONS, q.id), { status: to, ...statusStamp(q.status, to, now), updatedAt: serverTimestamp() })
-      if (to === "accepted") {
-        try {
-          const result = await runQuotationAcceptance(firestore, {
-            orgId,
-            user: { id: user.uid, name: actorName },
-            quotation: {
-              id: q.id,
-              quotationNumber: q.quotationNumber,
-              contactId: q.contactId,
-              contactName: q.contactName ?? null,
-              opportunityId: q.opportunityId ?? null,
-              amount: q.amount,
-              items: q.items ?? null,
-              installments: q.installments ?? null,
-              phase: quotationPhase(q),
-              workOrderId: q.workOrderId ?? null,
-              vatPercent: q.vatPercent ?? null,
-            },
-            notification: {
-              title: t("sales_notif_approved_title"),
-              message: (deposit) =>
-                t("sales_notif_approved_msg", {
-                  contact: q.contactName || "—",
-                  number: q.quotationNumber,
-                  amount: formatSar(q.amount, locale),
-                  deposit: deposit
-                    ? t("sales_notif_approved_deposit", { label: deposit.label || t("crm_quote_installment_full"), percent: deposit.percent, amount: formatSar(deposit.amount, locale) })
-                    : "",
-                }),
-            },
-          })
-          if (result.notified > 0) toast({ title: t("crm_quote_finance_notified") })
-          if (result.workOrderId) toast({ title: t("crm_quote_work_order_created") })
-        } catch (err) {
-          console.error("Work order auto-create failed:", err)
-          toast({ title: t("crm_quote_work_order_failed"), variant: "destructive" })
-        }
-      }
-      toast({ title: t("sales_status_updated") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("crm_save_error"), variant: "destructive" })
-    } finally {
-      setIsChanging(false)
-      setConfirm(null)
-    }
-  }
 
   if (isLoading) {
     return (
@@ -170,38 +94,11 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
   const fully = isFullyPaid(q)
   const paid = paidSoFar(q)
   const timeline = quotationTimeline(q)
-  const actions = QUOTATION_STATUS_ACTIONS[q.status]
   const itemsTotal = (q.items || []).reduce((s, i) => s + i.quantity * i.unitPrice, 0)
   const label = (l: string) => l || t("crm_quote_installment_full")
   const contact = contacts.find((c) => c.id === q.contactId) ?? null
   const sheetData = sheetDataFromQuotation(q, { fallbackBranding, contact })
   const documentTitle = [t("sales_qb_sheet_title"), q.quotationNumber, q.contactName].filter(Boolean).join(" - ")
-
-  const actionButton = (to: QuotationStatus) => {
-    if (to === "accepted") {
-      return (
-        <Button key={to} size="sm" className="gap-1.5 bg-success hover:bg-success/90 text-white" disabled={!canApprove || isChanging} onClick={() => setConfirm("accepted")}>
-          <CheckCircle2 size={14} />
-          {t("sales_action_accept")}
-        </Button>
-      )
-    }
-    if (to === "rejected") {
-      return (
-        <Button key={to} size="sm" variant="outline" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive hover:text-white" disabled={!canManage || isChanging} onClick={() => setConfirm("rejected")}>
-          <XCircle size={14} />
-          {t("sales_action_reject")}
-        </Button>
-      )
-    }
-    const reopen = q.status === "rejected"
-    return (
-      <Button key={to} size="sm" variant="outline" className="gap-1.5" disabled={!canManage || isChanging} onClick={() => changeStatus(to)}>
-        {reopen ? <RotateCcw size={14} /> : <Send size={14} />}
-        {reopen ? t("sales_action_reopen") : t("sales_action_mark_sent")}
-      </Button>
-    )
-  }
 
   return (
     <SalesShell portal={portal} title={t("sales_page_title")} description={t("sales_quotations_desc")}>
@@ -218,9 +115,8 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0 space-y-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm text-muted-foreground">{q.quotationNumber}</span>
+              <span className="font-mono text-sm text-muted-foreground" dir="ltr">{displayDocNumber(q.quotationNumber, locale)}</span>
               <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS[phase])}>{t(`crm_quote_phase_${phase}`)}</Badge>
-              <Badge className={cn("text-[10px]", QUOTATION_STATUS_BADGE_CLASS[q.status])}>{t(`crm_quote_status_${q.status}`)}</Badge>
               {fully && (
                 <Badge className="text-[10px] bg-success/10 text-success border-success/20 gap-1">
                   <CheckCircle2 size={10} aria-hidden="true" />
@@ -242,6 +138,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
                 <span className="flex items-center gap-1"><CalendarDays size={12} aria-hidden="true" />{formatCrmDate(q.date, locale)}</span>
               )}
               {q.validityDays != null && <span>{t("sales_validity_line", { days: q.validityDays })}</span>}
+              {q.createdByUserName && <span>{t("sales_q_written_by", { name: q.createdByUserName })}</span>}
             </p>
           </div>
           <div className="text-start md:text-end shrink-0">
@@ -254,31 +151,21 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap border-t pt-4">
-          {canManage && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setShowEdit(true)} disabled={isChanging}>
-              <Pencil size={14} />
-              {t("sales_edit_btn")}
-            </Button>
-          )}
           <QuotationPrintButton
             size="sm"
             sheet={<QuotationPdfSheet data={sheetData} />}
             documentTitle={documentTitle}
           />
-          {actions.map(actionButton)}
           {canRecordPayment && isAwaitingPayment(q) && (
             <Button size="sm" className="gap-1.5" onClick={() => setPayInstallment("")}>
               <Banknote size={14} />
               {t("sales_record_payment_btn")}
             </Button>
           )}
-          {actions.includes("accepted") && !canApprove && (
-            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
-              <Lock size={11} aria-hidden="true" />
-              {t("crm_quote_accept_locked")}
-            </span>
-          )}
         </div>
+        {/* One step at a time: issue → log as sent → convert | close as lost;
+            a change after issue is a new revision (D6, D7). */}
+        <QuotationLifecycleBar quotation={q} orgId={orgId} base={base} actor={{ id: user?.uid || "", name: actorName }} canManage={canManage} canApprove={canApprove} />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
@@ -405,7 +292,7 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
             <ol className="p-5 space-y-3">
               {timeline.map((e, i) => (
                 <li key={i} className="flex gap-3 text-sm">
-                  <span className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", e.kind === "accepted" || e.kind === "payment" ? "bg-success" : e.kind === "rejected" ? "bg-destructive" : e.kind === "work_order" ? "bg-warning" : "bg-cta")} aria-hidden="true" />
+                  <span className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", e.kind === "accepted" || e.kind === "payment" ? "bg-success" : e.kind === "rejected" ? "bg-destructive" : e.kind === "work_order" || e.kind === "issued" ? "bg-warning" : e.kind === "superseded" ? "bg-muted-foreground" : "bg-cta")} aria-hidden="true" />
                   <div className="min-w-0">
                     <p className="font-semibold" dir="auto">
                       {e.kind === "payment"
@@ -423,16 +310,6 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
         </div>
       </div>
 
-      {showEdit && (
-        <CrmQuotationDialog
-          open
-          onOpenChange={(open) => { if (!open) setShowEdit(false) }}
-          orgId={orgId}
-          contactId={q.contactId}
-          contactName={q.contactName}
-          quotation={q}
-        />
-      )}
       <RecordPaymentDialog
         quotation={payInstallment !== null ? q : null}
         installmentId={payInstallment || null}
@@ -442,24 +319,6 @@ export function QuotationDetailView({ portal }: { portal: CrmPortal }) {
         actorName={actorName}
       />
 
-      <AlertDialog open={confirm !== null} onOpenChange={(open) => { if (!open && !isChanging) setConfirm(null) }}>
-        <AlertDialogContent dir={isRtl ? "rtl" : "ltr"}>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm === "accepted" ? t("sales_accept_confirm_title") : t("sales_reject_confirm_title")}</AlertDialogTitle>
-            <AlertDialogDescription>{confirm === "accepted" ? t("sales_accept_confirm_desc") : t("sales_reject_confirm_desc")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isChanging}>{t("crm_cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={isChanging}
-              onClick={(e) => { e.preventDefault(); if (confirm) void changeStatus(confirm) }}
-              className={confirm === "accepted" ? "bg-success hover:bg-success/90" : "bg-destructive hover:bg-destructive/90"}
-            >
-              {isChanging ? <Loader2 size={15} className="animate-spin" /> : confirm === "accepted" ? t("sales_action_accept") : t("sales_action_reject")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </SalesShell>
   )
 }

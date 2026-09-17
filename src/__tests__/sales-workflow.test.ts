@@ -21,15 +21,19 @@ function quote(overrides: Partial<CrmQuotation> & { id: string }): CrmQuotation 
 const schedule = defaultInstallments({ deposit: "دفعة مقدمة", balance: "المتبقي" })
 
 describe("status workflow", () => {
-  it("lets a draft be sent, accepted or rejected; accepted is final; rejected can be re-sent", () => {
-    expect(QUOTATION_STATUS_ACTIONS.draft).toEqual(["sent", "accepted", "rejected"])
+  it("moves one step at a time: a draft is issued, an issued quote is sent, only a sent quote is won or lost — and both are final", () => {
+    // Sales PRD §5, D6/D7: a draft never jumps to "accepted", and a lost quote
+    // is not re-opened — a change of heart is a new revision.
+    expect(QUOTATION_STATUS_ACTIONS.draft).toEqual(["issued"])
+    expect(QUOTATION_STATUS_ACTIONS.issued).toEqual(["sent"])
     expect(QUOTATION_STATUS_ACTIONS.sent).toEqual(["accepted", "rejected"])
     expect(QUOTATION_STATUS_ACTIONS.accepted).toEqual([])
-    expect(QUOTATION_STATUS_ACTIONS.rejected).toEqual(["sent"])
+    expect(QUOTATION_STATUS_ACTIONS.rejected).toEqual([])
   })
 
   it("stamps the moment a status is entered, and nothing when it does not change", () => {
-    expect(statusStamp("draft", "sent", "T1")).toEqual({ sentAt: "T1" })
+    expect(statusStamp("draft", "issued", "T0")).toEqual({ issuedAt: "T0" })
+    expect(statusStamp("issued", "sent", "T1")).toEqual({ sentAt: "T1" })
     expect(statusStamp("sent", "accepted", "T2")).toEqual({ acceptedAt: "T2" })
     expect(statusStamp("sent", "rejected", "T3")).toEqual({ rejectedAt: "T3" })
     expect(statusStamp("accepted", "accepted", "T4")).toEqual({})
@@ -67,7 +71,7 @@ describe("salesDashboard", () => {
   const data = salesDashboard(list, 2)
 
   it("counts per status, shows the latest quotations and the largest amounts due", () => {
-    expect(data.statusCounts).toEqual({ draft: 1, sent: 1, accepted: 1, rejected: 1 })
+    expect(data.statusCounts).toEqual({ draft: 1, issued: 0, sent: 1, accepted: 1, rejected: 1 })
     expect(data.recent.map((q) => q.id)).toEqual(["d", "b"])
     expect(data.due.map((d) => [d.installment.id, d.installment.amount])).toEqual([["balance", 2800], ["deposit", 1200]])
     expect(data.dueCount).toBe(2)

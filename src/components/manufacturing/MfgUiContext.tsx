@@ -222,7 +222,7 @@ export function MfgUiProvider({ portal, children }: { portal: CrmPortal; childre
   const decisions = useMemo(
     () =>
       persona
-        ? buildDecisions({ world, requests: data.requests, estimates: data.estimates, departments: data.departments, settings: data.settings, actor: data.engineActor, persona, today, nowMs })
+        ? buildDecisions({ world, salesOrders: data.salesOrders, requests: data.requests, estimates: data.estimates, departments: data.departments, settings: data.settings, actor: data.engineActor, persona, today, nowMs })
         : [],
     [persona, world, data.requests, data.estimates, data.departments, data.settings, data.engineActor, today, nowMs]
   )

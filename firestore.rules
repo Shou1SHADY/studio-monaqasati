@@ -934,15 +934,57 @@ service cloud.firestore {
       return hasOrgPermission('sales.approve') || hasOrgPermission('crm.close');
     }
 
+    // The quotation's lifecycle (Sales PRD §5, D6, INV-06): one step at a time
+    //   draft → issued → sent → accepted | rejected
+    // Issuing locks the figures; sending locks the whole document. A change
+    // after that is a NEW revision (its own document), never an edit — so an
+    // issued quote can no longer have its prices rewritten, a draft can no
+    // longer jump straight to "accepted", and a lost quote is not re-opened.
+    // Payments, the order/work-order stamps, `validUntil` (set at sending,
+    // moved by an extension) and `supersededById` stay writable: they are
+    // facts ABOUT the document, not the document. `contactName` is a
+    // denormalised label a CRM rename may refresh.
+    function qFrom() { return resource.data.get('status', 'draft'); }
+    function qTo() { return request.resource.data.get('status', 'draft'); }
+    function qChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function quoteStepAllowed() {
+      return qTo() == qFrom()
+        || (qFrom() == 'draft' && qTo() == 'issued')
+        || (qFrom() == 'issued' && qTo() == 'sent')
+        || (qFrom() == 'sent' && qTo() in ['accepted', 'rejected']);
+    }
+    function quoteFiguresUntouched() {
+      return !qChanged().hasAny(['items', 'amount', 'installments', 'contactId', 'quotationNumber',
+                                 'vatPercent', 'validityDays', 'phase', 'revision', 'revisionOf']);
+    }
+    function quoteTextsUntouched() {
+      return !qChanged().hasAny(['terms', 'notes', 'leadTime', 'branding', 'date']);
+    }
+    // A quote closed as lost carries its reason (T8).
+    function lossHasReason() {
+      return qTo() != 'rejected' || qFrom() == 'rejected'
+        || (request.resource.data.get('lostReason', '') is string && request.resource.data.get('lostReason', '').size() > 0);
+    }
+
     match /crmQuotations/{quotationId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow list: if isSignedIn();
       allow create: if isSignedIn() && (isAdmin() || (isOrgMember(request.resource.data.organizationId)
         && (request.resource.data.get('status', 'draft') != 'accepted' || canApproveQuotation())));
       allow update: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && quoteStepAllowed()
+        && lossHasReason()
+        && (qFrom() == 'draft' || quoteFiguresUntouched())
+        && (qFrom() in ['draft', 'issued'] || quoteTextsUntouched())
         && (!acceptsQuotation() || canApproveQuotation())
-        && (!recordsQuotationPayment() || hasOrgPermission('sales.approve') || hasOrgPermission('invoices.manage'))));
-      allow delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+        && (!recordsQuotationPayment() || hasOrgPermission('sales.approve') || hasOrgPermission('invoices.manage')
+            || hasOrgPermission('accounting.post'))));
+      // A draft is anyone's to discard; a quote that left the house is a
+      // record — removing one (with its deal, from CRM) is a closer's act.
+      allow delete: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (resource.data.get('status', 'draft') == 'draft'
+            || hasOrgPermission('crm.close') || hasOrgPermission('sales.approve'))));
     }
 
     // Sales price list — the org's known items with fixed prices, picked into
@@ -955,7 +997,10 @@ service cloud.firestore {
     // Finance confirms the down payment a deposit order waits on: only the
     // payment flag and the status move, and only from awaiting to running.
     function confirmsSalesOrderDeposit() {
-      return hasOrgPermission('invoices.manage')
+      // Whoever may answer a transfer notice may finish the act: confirming the
+      // advance records the payment AND releases the order in one batch, so a
+      // permission that covers one half and not the other denies the whole.
+      return (hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post'))
         && resource.data.status == 'awaiting_deposit'
         && request.resource.data.status == 'running'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payment', 'status', 'updatedAt'])
@@ -1009,34 +1054,80 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Customer delivery notes. Sales schedules them; confirming one is the
-    // moment stock actually leaves, so the warehouse keeper's permissions
-    // count there too.
+    // Customer delivery notes — a three-step handshake (Sales PRD DLV-02, T16–T19):
+    //   Sales requests the issue      → 'requested'
+    //   Inventory authorises it       → 'authorized'  (warehouses.manage/receive)
+    //   the client signs, Sales records it under the signer's name → 'delivered'
+    // A hold and its release are Finance's alone (invoices.manage); on a held
+    // note the seller may only stamp a release request. Each role moves the
+    // note one step and touches only that step's fields — so a seller can no
+    // longer deliver a held note, skip Inventory, or hold a shipment himself.
+    function dnFrom() { return resource.data.get('status', ''); }
+    function dnTo() { return request.resource.data.get('status', ''); }
+    function dnChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function isSeller() { return hasOrgPermission('sales.manage') || hasOrgPermission('sales.approve'); }
+
     match /salesDeliveryNotes/{noteId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && hasOrgPermission('sales.manage');
+        && hasOrgPermission('sales.manage')
+        && request.resource.data.get('status', '') == 'requested';
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
-        && (hasOrgPermission('sales.manage') || hasOrgPermission('warehouses.manage')
-            || hasOrgPermission('warehouses.receive'));
-      // Only a note that never delivered may be removed — a delivered note is
-      // the proof behind quantities and invoices.
+        && (
+          // Inventory authorises the issue.
+          ((hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))
+            && dnFrom() == 'requested' && dnTo() == 'authorized'
+            && dnChanged().hasOnly(['status', 'authorizedAt', 'authorizedByUserId', 'authorizedByUserName', 'updatedAt']))
+          // The client signs: never without a signer, never from any state but authorised.
+          || (isSeller()
+            && dnFrom() == 'authorized' && dnTo() == 'delivered'
+            && request.resource.data.get('signerName', '') is string
+            && request.resource.data.get('signerName', '').size() > 0
+            && dnChanged().hasOnly(['status', 'lines', 'signerName', 'signedAt', 'deliveredAt', 'deliveredByUserId',
+                                    'deliveredByUserName', 'varianceNote', 'updatedAt']))
+          // The seller's only act on a held shipment.
+          || (isSeller()
+            && dnFrom() == 'held' && dnTo() == 'held'
+            && dnChanged().hasOnly(['releaseRequestedAt', 'releaseRequestedByUserName', 'updatedAt']))
+          // Finance holds a shipment that has not left…
+          || (hasOrgPermission('invoices.manage')
+            && dnFrom() in ['requested', 'authorized'] && dnTo() == 'held'
+            && dnChanged().hasOnly(['status', 'heldFrom', 'holdReason', 'heldAt', 'heldByUserName',
+                                    'releaseRequestedAt', 'releaseRequestedByUserName', 'updatedAt']))
+          // …and releases it to where it stood.
+          || (hasOrgPermission('invoices.manage')
+            && dnFrom() == 'held' && dnTo() in ['requested', 'authorized']
+            && dnChanged().hasOnly(['status', 'heldFrom', 'releasedAt', 'releasedByUserName', 'updatedAt']))
+        );
+      // Only a note Inventory has not touched may be removed — anything later
+      // is the proof behind quantities and invoices.
       allow delete: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && hasOrgPermission('sales.manage')
         && resource.data.status == 'requested';
     }
 
-    // Returns — Sales owns the request and the decision; issuing the credit
-    // note is a Finance act.
+    // Returns (DLV-05, T21) — a seller raises the request; approving or
+    // rejecting it is a prices-&-returns role's (sales.approve), never a
+    // rep's; settling it with the credit note is Finance's.
+    function rtFrom() { return resource.data.get('status', ''); }
+    function rtTo() { return request.resource.data.get('status', ''); }
+
     match /salesReturns/{returnId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && hasOrgPermission('sales.manage');
+        && hasOrgPermission('sales.manage')
+        && request.resource.data.get('status', '') == 'awaiting_decision';
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && request.resource.data.organizationId == resource.data.organizationId
-        && (hasOrgPermission('sales.approve') || hasOrgPermission('invoices.manage')
-            || hasOrgPermission('sales.manage'));
+        && (
+          (hasOrgPermission('sales.approve')
+            && rtFrom() == 'awaiting_decision' && rtTo() in ['approved', 'rejected']
+            && dnChanged().hasOnly(['status', 'disposition', 'decidedAt', 'decidedByUserId', 'decidedByUserName', 'updatedAt']))
+          || (hasOrgPermission('invoices.manage')
+            && rtFrom() == 'approved' && rtTo() == 'credit_note_issued'
+            && dnChanged().hasOnly(['status', 'creditNoteIssuedAt', 'creditNoteByUserId', 'creditNoteByUserName', 'updatedAt']))
+        );
       allow delete: if isAdmin();
     }
 
@@ -1077,10 +1168,13 @@ service cloud.firestore {
 
     match /salesPriceItems/{itemId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      // Prices (and the standard cost they carry) are a prices-&-returns role's:
+      // the sales manager's and the owner's — a rep reads the list and quotes
+      // from it, he does not set it (Sales PRD §3).
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && hasOrgPermission('sales.manage');
+        && hasOrgPermission('sales.approve');
       allow update, delete: if isAdmin() || (isSignedIn() && isOrgMember(resource.data.organizationId)
-        && hasOrgPermission('sales.manage'));
+        && hasOrgPermission('sales.approve'));
     }
 
     // ── Accounting (المحاسبة والمالية) ──

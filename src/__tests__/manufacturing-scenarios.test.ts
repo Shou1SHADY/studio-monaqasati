@@ -74,8 +74,10 @@ import {
   type MfgStop,
   type OutputInput,
   type QcDecisionInput,
+  salesOrderOfWorkOrder,
   type WorkOrderV2,
 } from "@/lib/manufacturing-writes"
+import { clientDrawingsDue, workshopGatesFor } from "@/lib/manufacturing-view"
 import { createManufacturingRequest, markDepositPaid } from "@/lib/sales-order-writes"
 import {
   CAUSE_MATERIAL,
@@ -797,7 +799,7 @@ describe("1 · the down-payment gate (tour 1)", () => {
 
     let w = load(orderId)
     expect(w.order).toMatchObject({ docNumber: "WO-2026/056", sourceKind: "client", salesOrderId: "so-131", quantity: 400, releasedAt: null })
-    expect(readDoc<ManufacturingRequest>(`manufacturingRequests/${w.order.mfgRequestId}`)).toMatchObject({ requestNumber: "MR-2026/001", sourceKind: "sales", status: "accepted", neededBy: "2026-10-07" })
+    expect(readDoc<ManufacturingRequest>(`manufacturingRequests/${w.order.mfgRequestId}`)).toMatchObject({ requestNumber: "MR-2026/001", sourceKind: "sales", status: "accepted", neededBy: "2026-10-05" }) // two days before the 7 Oct promise (Sales PRD SO-16)
     expect(w.calc.stage).toBe("pay")
     expect(releaseBlocks(w.calc).map((b) => b.key)).toEqual(["down_payment"])
     const cands = candidates(w.calc, ctx())
@@ -1248,6 +1250,55 @@ describe("5 · PRD full flows", () => {
     w = load(stockId)
     expect(w.order.drawing).toMatchObject({ approverOrg: "workshop", code: "A", recordedBy: A.badr.name })
     expect(w.calc.drawingState).toBe("ok")
+  })
+
+  it("a client order that carries only its quotation is still its sales order's: gated by that deposit, found by Sales, answered by Sales", async () => {
+    // Quote-born data: the order names no sales order, only Q-9RT2KD — the
+    // quotation so-131 was born of.
+    const so = seedSalesOrder("so-131", 131, false)
+    const id = await clientOrder(so, P.cladding, 5)
+    const stored = (path: string): Record<string, unknown> => {
+      const copy: Record<string, unknown> = { ...readDoc<Record<string, unknown>>(path)! }
+      delete copy.id
+      return copy
+    }
+    seed(`workOrders/${id}`, { ...stored(`workOrders/${id}`), salesOrderId: null, salesOrderNumber: null, source: { kind: "quotation", quotationId: "q44", quotationNumber: "Q-9RT2KD", contactName: null } })
+    // Another client's sales order, born of another quotation, deposit unpaid.
+    seedSalesOrder("so-200", 200, false)
+    seed("salesOrders/so-200", { ...stored("salesOrders/so-200"), quotationId: "q99", quotationNumber: "Q-OTHER1" })
+
+    const salesOrders = () => listCollection<SalesOrder>("salesOrders")
+    const resolved = () => salesOrderOfWorkOrder(readDoc<WorkOrderV2>(`workOrders/${id}`)!, salesOrders())
+    const calc = () => {
+      const w = load(id)
+      return calcOf(w.order, w.product, w.departments, w.noteSlices, resolved())
+    }
+    expect(resolved()?.id).toBe("so-131")
+
+    // The same gate as a named order: no release before the down payment —
+    // and an id the order does not belong to is never trusted.
+    expect(calc().stage).toBe("pay")
+    await survey(id)
+    await refused("release before the deposit", () => releaseOrder(db, { ...releaseInput(id), salesOrderId: "so-131" }), "blocked")
+    await act("markDepositPaid", markDepositPaid(db, so))
+    expect(calc().stage).toBe("wait")
+    await act("releaseOrder", releaseOrder(db, { ...releaseInput(id), salesOrderId: "so-200" }))
+    expect(load(id).order.releasedAt).toBe(NOW.toISOString())
+
+    // The workshop submits; the drawing is Sales' to answer and Sales finds it
+    // without a sales order id on the work order.
+    await act("submitDrawing", submitDrawing(db, submitInput(id, "technical_office")))
+    const products = new Map(listCollection<MfgProduct>("mfgProducts").map((p) => [p.id, p]))
+    const orders = () => listCollection<WorkOrderV2>("workOrders")
+    expect(clientDrawingsDue(orders(), products).map((o) => o.id)).toEqual([id])
+    expect(workshopGatesFor(resolved()!, orders(), products).gates).toEqual([{ gate: "approval", orderId: id, ref: load(id).order.docNumber }])
+    expect(workshopGatesFor(salesOrders().find((s) => s.id === "so-200")!, orders(), products).gates).toEqual([])
+    expect(candidates(calc(), ctx()).find((c) => c.key === "drawing_wait")!.owner).toEqual({ kind: "external", module: "sales" })
+
+    await act("recordDrawingResult B", recordDrawingResult(db, { orderId: id, code: "B", notes: "Edge profile to be eased", approverName: so.contactName ?? null, actor: A.reem }))
+    expect(load(id).order.drawing).toMatchObject({ code: "B", recordedBy: A.reem.name, approverName: "Al-Ofuq Contracting" })
+    expect(calc().drawingState).toBe("ok")
+    expect(clientDrawingsDue(orders(), products)).toEqual([])
   })
 
   it("QC rework sends quantity back to the station that caused it and out of QC's hands — never counted twice", async () => {

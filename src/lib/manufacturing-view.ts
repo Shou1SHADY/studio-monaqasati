@@ -57,7 +57,8 @@ import {
 import type { DeliveryNote } from "./delivery-notes"
 import type { MfgDepartment } from "./manufacturing"
 import type { ManufacturingRequest, SalesOrder } from "./sales-orders"
-import { calcOf, sourceOf, toNoteSlice, type MfgBlockNotice, type MfgStop, type WorkOrderV2 } from "./manufacturing-writes"
+import { awaitsDownPayment } from "./manufacturing-requests"
+import { belongsToSalesOrder, calcOf, salesOrderOfWorkOrder, sourceOf, toNoteSlice, type MfgBlockNotice, type MfgStop, type SalesOrderKey, type WorkOrderV2 } from "./manufacturing-writes"
 
 // ---------------------------------------------------------------------------
 // The world
@@ -156,13 +157,14 @@ function sourceNameOf(o: WorkOrderV2): string {
 
 export function buildWorld(input: MfgWorldInput): MfgWorld {
   const lost = lostHoursToday(input.stops, input.today)
-  const rows: Array<{ order: WorkOrderV2; product: MfgProduct; notes: DeliveryNote[]; calc: OrderCalc }> = []
+  const rows: Array<{ order: WorkOrderV2; product: MfgProduct; notes: DeliveryNote[]; calc: OrderCalc; salesOrder: SalesOrder | null }> = []
   for (const order of input.orders) {
     const product = input.products.get(order.productId || "")
     if (!product) continue
     const notes = input.notesByOrder.get(order.id) || []
-    const salesOrder = order.salesOrderId ? input.salesOrders.get(order.salesOrderId) : null
-    rows.push({ order, product, notes, calc: calcOf(order, product, input.departments, notes.map(toNoteSlice), salesOrder) })
+    // Named → one lookup; else the sales order born of the same quotation.
+    const salesOrder = (order.salesOrderId ? input.salesOrders.get(order.salesOrderId) : salesOrderOfWorkOrder(order, input.salesOrders.values())) ?? null
+    rows.push({ order, product, notes, calc: calcOf(order, product, input.departments, notes.map(toNoteSlice), salesOrder), salesOrder })
   }
   const calcs = rows.map((r) => r.calc)
   const alloc = input.stock ? allocateStock(calcs, input.stock) : null
@@ -170,7 +172,7 @@ export function buildWorld(input: MfgWorldInput): MfgWorld {
   const schedule = timeOn ? scheduleOrders(calcs, input.departments, lost, alloc) : new Map<string, ScheduleResult>()
   const ctx = { settings: input.settings, alloc, today: input.today, nowMs: input.nowMs }
 
-  const views = rows.map(({ order, product, notes, calc }): OrderView => {
+  const views = rows.map(({ order, product, notes, calc, salesOrder }): OrderView => {
     const sched = schedule.get(order.id) || null
     const neededBy = calc.slice.neededBy ? calc.slice.neededBy.slice(0, 10) : null
     const possibleDate = timeOn && sched && sched.finishDays != null ? addDaysISO(input.today, sched.finishDays) : null
@@ -192,7 +194,9 @@ export function buildWorld(input: MfgWorldInput): MfgWorld {
       quantity: calc.slice.quantity,
       source: calc.slice.source,
       sourceName: sourceNameOf(order),
-      salesOrderNumber: order.salesOrderNumber ?? null,
+      // The one it names, else the one it was resolved to — so an order held
+      // for a down payment always says which sales order it waits on.
+      salesOrderNumber: order.salesOrderNumber ?? salesOrder?.orderNumber ?? null,
       stage: calc.stage,
       released: calc.released,
       done: calc.done_,
@@ -265,6 +269,8 @@ export type DecisionItem =
 
 export interface DecisionContext {
   world: MfgWorld
+  /** For the down payment a Sales request waits on; omit and no request is held. */
+  salesOrders?: Map<string, SalesOrder>
   requests: ManufacturingRequest[]
   estimates: MfgCostEstimate[]
   departments: DeptCapacityFields[]
@@ -286,7 +292,9 @@ export function buildDecisions(ctx: DecisionContext): DecisionItem[] {
     for (const r of ctx.requests) {
       if (r.status !== "new") continue
       const ageHours = r.requestedAt ? Math.max(0, (ctx.nowMs - new Date(r.requestedAt).getTime()) / 3600000) : 0
-      const overdue = ageHours >= ctx.settings.answerWindowHours
+      // The clock does not run while Finance has yet to confirm the advance (PAY-07).
+      const held = awaitsDownPayment(r, r.orderId ? ctx.salesOrders?.get(r.orderId) : null)
+      const overdue = !held && ageHours >= ctx.settings.answerWindowHours
       out.push({ kind: "request", severity: overdue ? "r" : "a", request: r, overdue, ageHours })
     }
   }
@@ -691,7 +699,7 @@ export function documentTrail(v: OrderView, estimates: MfgCostEstimate[]): Trail
     const est = o.estimateId ? estimates.find((e) => e.id === o.estimateId) : null
     if (est) items.push({ kind: "estimate", ref: est.estimateNumber, module: "manufacturing", detail: est.sentByName || null })
     if (est?.quoteNumber) items.push({ kind: "quote", ref: est.quoteNumber, module: "sales", detail: est.contactName })
-    if (o.salesOrderNumber != null) items.push({ kind: "sales_order", ref: `SO-${o.salesOrderNumber}`, module: "sales", done: v.calc.slice.downPayment.confirmed })
+    if (v.salesOrderNumber != null) items.push({ kind: "sales_order", ref: `SO-${v.salesOrderNumber}`, module: "sales", done: v.calc.slice.downPayment.confirmed })
   }
   if (o.mfgRequestNumber) items.push({ kind: "request", ref: o.mfgRequestNumber, module: v.source === "client" ? "sales" : "procurement", detail: o.requestedByName || null })
   items.push({ kind: "work_order", ref: v.ref, module: "manufacturing", done: v.done })
@@ -777,14 +785,36 @@ export interface WorkshopGate {
   ref: string
 }
 
+export { belongsToSalesOrder, salesOrderOfWorkOrder, type SalesOrderKey }
+
+/** Where the client stands behind a work order, as Sales names it. */
+export function clientRefOf(o: Pick<WorkOrderV2, "salesOrderNumber" | "source">, so?: Pick<SalesOrder, "orderNumber"> | null): string {
+  const n = so?.orderNumber ?? o.salesOrderNumber
+  return n != null ? `SO-${n}` : o.source?.quotationNumber || ""
+}
+
+/** Shop drawings the workshop submitted and the client has not answered — the
+ * result is Sales' to record (D11), whether or not the order names a sales
+ * order. Oldest first: the workshop is standing still on these. */
+export function clientDrawingsDue(orders: WorkOrderV2[], products: Map<string, MfgProduct>): WorkOrderV2[] {
+  return orders
+    .filter((o) => {
+      if (o.status !== "open" || !o.productId || !products.has(o.productId)) return false
+      const d = o.drawing
+      return !!d?.submittedAt && !d.code && d.approverOrg === "client"
+    })
+    .sort((a, b) => (a.drawing?.submittedAt || "").localeCompare(b.drawing?.submittedAt || ""))
+}
+
 /** The sales order's view of its work orders' gates (T5, T7): a made-to-measure
  * line waits on the order's documented survey, a drawn one on its A/B. The
  * facts live on the work order; Sales reads them and never records a copy. */
-export function workshopGatesFor(salesOrderId: string, orders: WorkOrderV2[], products: Map<string, MfgProduct>): { gates: WorkshopGate[]; lineKeys: Set<string> } {
+export function workshopGatesFor(salesOrder: string | SalesOrderKey, orders: WorkOrderV2[], products: Map<string, MfgProduct>): { gates: WorkshopGate[]; lineKeys: Set<string> } {
+  const so: SalesOrderKey = typeof salesOrder === "string" ? { id: salesOrder } : salesOrder
   const gates: WorkshopGate[] = []
   const lineKeys = new Set<string>()
   for (const o of orders) {
-    if (o.salesOrderId !== salesOrderId || o.status === "cancelled") continue
+    if (!belongsToSalesOrder(o, so) || o.status === "cancelled") continue
     const p = products.get(o.productId || "")
     if (!p) continue
     lineKeys.add(itemKey(o.productName || p.name))

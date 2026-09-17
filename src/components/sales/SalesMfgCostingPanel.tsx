@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import { formatCrmDate, formatSar, type CrmContact } from "@/lib/crm"
 import {
@@ -57,6 +58,11 @@ const newLine = (): DraftLine => ({ key: `${Date.now()}-${Math.random().toString
 
 export function SalesMfgCostingPanel({ contacts, canManage }: { portal: CrmPortal; contacts: CrmContact[]; canManage: boolean }) {
   const t = useTranslations("Portal.Shared")
+  // The statement's figure IS a cost: it shows to the owner and the sales
+  // manager, who price from it — a rep sees its lead time, validity and state
+  // and never the number (Sales PRD PRC-05, INV-08).
+  const { can, isOrgOwner } = usePermissions()
+  const seesCost = isOrgOwner || can("sales.approve")
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -166,7 +172,7 @@ export function SalesMfgCostingPanel({ contacts, canManage }: { portal: CrmPorta
             <RequestRow key={r.id} request={r} settings={settings} />
           ))}
           {(tab === "open" ? openStatements : closedStatements).map((e) => (
-            <StatementRow key={e.id} estimate={e} settings={settings} today={today} canManage={canManage} actor={actor} />
+            <StatementRow key={e.id} estimate={e} settings={settings} today={today} canManage={canManage} seesCost={seesCost} actor={actor} />
           ))}
         </ul>
       )}
@@ -234,12 +240,14 @@ function StatementRow({
   settings,
   today,
   canManage,
+  seesCost,
   actor,
 }: {
   estimate: MfgCostEstimate
   settings: MfgSettings
   today: string
   canManage: boolean
+  seesCost: boolean
   actor: { id: string; name: string }
 }) {
   const t = useTranslations("Portal.Shared")
@@ -327,7 +335,7 @@ function StatementRow({
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
         <div>
           <dt className="text-[11px] text-muted-foreground">{t("mfy_cost_make_cost")}</dt>
-          <dd className="font-black tabular-nums text-foreground" dir="ltr">{formatSar(estimateCost(e), locale)}</dd>
+          <dd className="font-black tabular-nums text-foreground" dir="ltr">{seesCost ? formatSar(estimateCost(e), locale) : <span className="font-normal text-muted-foreground" dir="auto">{t("mfy_cost_hidden")}</span>}</dd>
         </div>
         <div>
           <dt className="text-[11px] text-muted-foreground">{t("mfy_cost_earliest")}</dt>

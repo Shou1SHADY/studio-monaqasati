@@ -463,7 +463,10 @@ export function CrmLeadDetailView({ portal }: { portal: CrmPortal }) {
                     >
                       <ExternalLink size={13} />
                     </Link>
-                    {canManageCrm && (
+                    {/* Only a draft is edited or discarded: an issued quote's figures
+                        are locked and a sent one is a record — a change is a new
+                        revision, made in Sales (D6). */}
+                    {canManageCrm && q.status === "draft" && (
                       <>
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-primary"
                           onClick={() => setEditQuote(q)} aria-label={`${t("crm_quote_edit_title")} — ${q.quotationNumber}`}>

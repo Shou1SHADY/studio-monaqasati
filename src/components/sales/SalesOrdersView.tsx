@@ -39,13 +39,14 @@ import { usePermissions } from "@/hooks/usePermissions"
 import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection } from "./SalesShell"
-import { formatSar } from "@/lib/crm"
+import { formatCrmDate, formatSar } from "@/lib/crm"
 import { MFG_DEPARTMENTS, effectiveOutput } from "@/lib/manufacturing"
 import {
   MANUFACTURING_REQUESTS,
   SALES_DELIVERY_NOTES,
   SALES_ORDERS,
   allocateCoverage,
+  claimedFromWarehouse,
   committedValue,
   depositSatisfied,
   depositTotal,
@@ -54,6 +55,7 @@ import {
   orderLineProgress,
   orderMargin,
   orderNet,
+  trulyAvailable,
   type ManufacturingRequest,
   type SalesDeliveryNote,
   type SalesOrder,
@@ -62,24 +64,34 @@ import {
   approveOrderDrawings,
   createCallOff,
   createManufacturingRequest,
-  markDepositPaid,
   reportDepositReceived,
   recordOrderMeasurement,
+  resetOrderPromise,
+  scheduleBlock,
   scheduleDelivery,
   schedulableLines,
+  type ScheduleError,
 } from "@/lib/sales-order-writes"
 import { orderGate, creditVerdict, type CreditSnapshot } from "@/lib/sales-orders"
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
+import { confirmAdvanceForOrder } from "@/lib/sales-transfers"
 import { JOURNAL_ENTRIES, type JournalEntry } from "@/lib/accounting/journal"
 import { ACC } from "@/lib/accounting/accounts"
 import { MFG_PRODUCTS, itemKey, type DeptCapacityFields, type MfgProduct } from "@/lib/manufacturing-engine"
 import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
-import { heldByItem, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
+import { heldByItem, salesOrderOfWorkOrder, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
 import { emitDownPaymentConfirmed, emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
-import { Ruler, FileCheck2 } from "lucide-react"
-import { SalesOrderWorkshopSection } from "./SalesOrderWorkshopSection"
+import { CalendarClock, Ruler, FileCheck2 } from "lucide-react"
+import { SalesOrderWorkshopSection, SalesWorkshopInbox } from "./SalesOrderWorkshopSection"
 
 type Segment = "running" | "awaiting_deposit" | "framework" | "closed" | "all"
+
+const SCHEDULE_ERROR_KEY: Record<ScheduleError, string> = {
+  order_not_running: "so_delivery_not_running",
+  lines_required: "so_delivery_needs_lines",
+  over_open: "so_delivery_over_open",
+  insufficient_stock: "so_delivery_no_stock",
+}
 
 export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
@@ -87,8 +99,9 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const { toast } = useToast()
-  const { can } = usePermissions()
+  const { can, isOrgOwner } = usePermissions()
   const canManage = can("sales.manage")
+  const seesCost = isOrgOwner || can("sales.approve")
   const canApprove = can("sales.approve") || can("crm.close")
   // The deposit is Finance's fact; Sales approvers may record it as before.
   const canConfirmDeposit = canApprove || can("invoices.manage")
@@ -139,9 +152,11 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
           const out = effectiveOutput(w)
           // A product-born order's handed-over units already sit in stock.
           const remainingQty = isV2Order(w) ? Math.max(0, (w.quantity ?? out.quantity) - (Number(w.shippedQuantity) || 0)) : out.quantity
-          return { id: w.id, outputName: w.productName || out.name, remainingQty, salesOrderId: w.salesOrderId ?? null }
+          // Its own sales order — named, or born of the same quotation — so
+          // coverage never offers this output to another client's order.
+          return { id: w.id, outputName: w.productName || out.name, remainingQty, salesOrderId: salesOrderOfWorkOrder(w, orders)?.id ?? w.salesOrderId ?? null }
         }),
-    [workOrdersData]
+    [workOrdersData, orders]
   )
 
   // The workshop's product cards: a line asked of Manufacturing carries the
@@ -166,6 +181,15 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
       ((mfgRequestsData || []) as ManufacturingRequest[]).find(
         (r) => r.orderId === orderId && r.itemName.trim().toLowerCase() === itemName.trim().toLowerCase() && ["new", "accepted", "partial", "estimated"].includes(r.status)
       ) || null,
+    [mfgRequestsData]
+  )
+  // A request the plant declined comes back as a decision: adjust the order or
+  // tell the client — so its reason must show on the line, not vanish (SO-16).
+  const declinedRequestFor = useCallback(
+    (orderId: string, itemName: string) =>
+      ((mfgRequestsData || []) as ManufacturingRequest[])
+        .filter((r) => r.orderId === orderId && r.itemName.trim().toLowerCase() === itemName.trim().toLowerCase() && r.status === "rejected")
+        .sort((a, b) => (b.decidedAt || "").localeCompare(a.decidedAt || ""))[0] || null,
     [mfgRequestsData]
   )
   const mfgProductIdByName = useMemo(() => {
@@ -301,6 +325,30 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const [deliverQty, setDeliverQty] = useState<Record<string, string>>({})
   const [deliverReceiver, setDeliverReceiver] = useState("")
   const [isScheduling, setIsScheduling] = useState(false)
+  // The chosen warehouse's shelf: a delivery never asks for more than it
+  // truly has after the other open notes drawing on it (DLV-01).
+  const [deliverStock, setDeliverStock] = useState<Array<{ name: string; quantity: number }> | null>(null)
+  useEffect(() => {
+    setDeliverStock(null)
+    if (!firestore || !deliverWarehouseId) return
+    let alive = true
+    getDocs(collection(firestore, "warehouses", deliverWarehouseId, "inventoryItems"))
+      .then((snap) => {
+        if (alive) setDeliverStock(snap.docs.map((d) => ({ name: (d.data().name as string) || "", quantity: Number(d.data().quantity) || 0 })))
+      })
+      .catch((err) => {
+        console.error(err)
+        if (alive) setDeliverStock([])
+      })
+    return () => {
+      alive = false
+    }
+  }, [firestore, deliverWarehouseId])
+  const availableFor = (name: string): number | null => {
+    if (!deliverStock || !deliverWarehouseId) return null
+    const onHand = deliverStock.filter((r) => itemKey(r.name) === itemKey(name)).reduce((a, r) => a + r.quantity, 0)
+    return trulyAvailable(onHand, claimedFromWarehouse(notes, deliverWarehouseId, name))
+  }
 
   const openDeliver = (order: SalesOrder) => {
     setDeliverFor(order)
@@ -324,6 +372,12 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
       toast({ title: t("so_delivery_over_open"), variant: "destructive" })
       return
     }
+    if (!deliverStock) return
+    const block = scheduleBlock({ order: deliverFor, lines, warehouseId: deliverWarehouseId, stockRows: deliverStock, allNotes: notes })
+    if (block) {
+      toast({ title: t(SCHEDULE_ERROR_KEY[block]), variant: "destructive" })
+      return
+    }
     setIsScheduling(true)
     try {
       await scheduleDelivery(firestore, {
@@ -332,13 +386,16 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
         warehouseId: deliverWarehouseId,
         warehouseName: warehouses.find((w) => w.id === deliverWarehouseId)?.name || "",
         receiverName: deliverReceiver.trim() || null,
+        stockRows: deliverStock,
+        allNotes: notes,
         actor: { id: user.uid, name: actorName },
       })
       toast({ title: t("so_delivery_scheduled") })
       setDeliverFor(null)
     } catch (err) {
       console.error(err)
-      toast({ title: t("so_save_error"), variant: "destructive" })
+      const code = err instanceof Error ? err.message : ""
+      toast({ title: t(SCHEDULE_ERROR_KEY[code as ScheduleError] || "so_save_error"), variant: "destructive" })
     } finally {
       setIsScheduling(false)
     }
@@ -398,9 +455,15 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   const confirmDeposit = async (order: SalesOrder) => {
     if (!firestore) return
     try {
-      await markDepositPaid(firestore, order)
+      // The same end as answering the seller's notice: the advance settles on
+      // the quotation, an open notice is answered, the order is released.
+      await confirmAdvanceForOrder(firestore, {
+        order,
+        actor: { id: user?.uid || "", name: actorName },
+        notification: { title: t("sales_tn_notif_confirmed_title"), message: t("sales_tn_notif_confirmed_msg", { number: order.quotationNumber || `#${order.orderNumber}`, amount: formatSar(depositTotal(order), locale) }) },
+      })
       toast({ title: t("so_deposit_marked") })
-      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, actor: { id: user?.uid || "", name: actorName } })
+      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor: { id: user?.uid || "", name: actorName } })
     } catch (err) {
       console.error(err)
       toast({ title: t("so_save_error"), variant: "destructive" })
@@ -431,6 +494,18 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
         </span>
       }
     >
+      {/* What the workshop waits on Sales for — found here whichever sales
+          order it belongs to, and even when it names none. */}
+      <SalesWorkshopInbox
+        salesOrders={orders}
+        workOrders={allWorkOrders}
+        products={mfgProducts}
+        orgId={orgId}
+        actor={{ id: user?.uid || "", name: actorName }}
+        canManage={canManage}
+        onOpenOrder={setDetailId}
+      />
+
       <div className="flex items-center gap-2 flex-wrap">
         {segments.map((s) => (
           <button
@@ -535,7 +610,8 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                 </div>
                 <div className="text-end shrink-0">
                   <p className="font-black tabular-nums text-sm" dir="ltr">{formatSar(net, locale)}</p>
-                  {orderMargin(order) != null && (
+                  {/* Margin is a cost figure: the owner's and the manager's, never a rep's (INV-08). */}
+                  {seesCost && orderMargin(order) != null && (
                     <p className="text-[11px] text-muted-foreground tabular-nums" dir="ltr">{orderMargin(order)}%</p>
                   )}
                 </div>
@@ -567,10 +643,12 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                 </DialogDescription>
               </DialogHeader>
 
+              <OrderPromise order={detail} canManage={canManage} actor={{ id: user?.uid || "", name: actorName }} />
+
               {(() => {
                 // Lines made on product-born work orders read their survey and
                 // drawing from those orders; the rest keep the sales order's flags.
-                const ws = workshopGatesFor(detail.id, allWorkOrders, mfgProductById)
+                const ws = workshopGatesFor(detail, allWorkOrders, mfgProductById)
                 const first = ws.gates[0]
                 if (first) {
                   return (
@@ -676,13 +754,21 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                                 {cov.fromManufacturing > 0 && (
                                   <span className="text-accent flex items-center gap-1"><Factory size={11} />{t("so_cov_mfg", { qty: cov.fromManufacturing })}</span>
                                 )}
-                                {cov.gap > 0 && <span className="text-destructive font-bold">{t("so_cov_gap", { qty: cov.gap })}</span>}
+                                {/* Awaiting its advance: nothing is reserved, made or asked of
+                                    the plant until Finance confirms (SO-06, D8). */}
+                                {detail.status === "awaiting_deposit" && <span className="font-semibold text-warning">{t("so_cov_held_advance")}</span>}
+                                {detail.status !== "awaiting_deposit" && cov.gap > 0 && <span className="text-destructive font-bold">{t("so_cov_gap", { qty: cov.gap })}</span>}
                                 {cov.gap > 0 && openRequestFor(detail.id, line.name) && (
                                   <span className="text-[11px] font-semibold text-muted-foreground">
                                     {t("mfy_so_request_sent", { number: openRequestFor(detail.id, line.name)!.requestNumber })}
                                   </span>
                                 )}
-                                {cov.gap > 0 && canManage && !openRequestFor(detail.id, line.name) && (
+                                {cov.gap > 0 && !openRequestFor(detail.id, line.name) && declinedRequestFor(detail.id, line.name) && (
+                                  <span className="basis-full text-[11px] font-semibold text-destructive" dir="auto">
+                                    {t("so_mfg_declined", { number: declinedRequestFor(detail.id, line.name)!.requestNumber, reason: declinedRequestFor(detail.id, line.name)!.rejectionReason || declinedRequestFor(detail.id, line.name)!.answerNote || "—" })}
+                                  </span>
+                                )}
+                                {detail.status !== "awaiting_deposit" && cov.gap > 0 && canManage && !openRequestFor(detail.id, line.name) && (
                                   <button
                                     type="button"
                                     className="text-[11px] font-bold text-accent underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
@@ -747,19 +833,31 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
                     </SelectContent>
                   </Select>
                 </div>
-                {schedulableLines(deliverFor, notes).map((line) => (
-                  <div key={line.name} className="flex items-center gap-2">
-                    <span className="flex-1 text-sm font-semibold truncate">{line.name}</span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{t("so_delivery_open", { qty: line.open })}</span>
-                    <Input
-                      dir="ltr"
-                      inputMode="decimal"
-                      className="w-24 h-9"
-                      value={deliverQty[line.name] ?? ""}
-                      onChange={(e) => setDeliverQty((p) => ({ ...p, [line.name]: e.target.value }))}
-                    />
-                  </div>
-                ))}
+                {schedulableLines(deliverFor, notes).map((line) => {
+                  const available = availableFor(line.name)
+                  const short = available != null && (Number(deliverQty[line.name]) || 0) > available + 0.005
+                  return (
+                    <div key={line.name} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 text-sm font-semibold truncate">{line.name}</span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">{t("so_delivery_open", { qty: line.open })}</span>
+                        <Input
+                          dir="ltr"
+                          inputMode="decimal"
+                          className={cn("w-24 h-9", short && "border-destructive")}
+                          aria-invalid={short}
+                          value={deliverQty[line.name] ?? ""}
+                          onChange={(e) => setDeliverQty((p) => ({ ...p, [line.name]: e.target.value }))}
+                        />
+                      </div>
+                      {available != null && (
+                        <p className={cn("text-[11px]", short ? "font-semibold text-destructive" : "text-muted-foreground")} role={short ? "alert" : undefined}>
+                          {short ? t("so_delivery_short", { qty: available }) : t("so_delivery_available", { qty: available })}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
                 <div className="space-y-1.5">
                   <Label>{t("so_delivery_receiver")}</Label>
                   <Input value={deliverReceiver} onChange={(e) => setDeliverReceiver(e.target.value)} className="h-9" />
@@ -767,7 +865,7 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDeliverFor(null)} disabled={isScheduling}>{t("crm_cancel")}</Button>
-                <Button onClick={submitDelivery} disabled={isScheduling} className="gap-1.5">
+                <Button onClick={submitDelivery} disabled={isScheduling || !deliverStock} className="gap-1.5">
                   {isScheduling ? <Loader2 size={14} className="animate-spin" /> : <Truck size={14} />}
                   {t("so_delivery_submit")}
                 </Button>
@@ -876,6 +974,98 @@ function CreditChip({
       <span dir="ltr" className="tabular-nums">
         {formatSar(credit.outstanding, locale)} / {credit.limit ? formatSar(credit.limit, locale) : "—"}
       </span>
+    </div>
+  )
+}
+
+/**
+ * The promise — "the single most watched field" — and its trail (SO-11). It is
+ * set at conversion; resetting it needs a date that is not in the past and a
+ * written reason, and lands in the order's trail under the user's name.
+ */
+function OrderPromise({ order, canManage, actor }: { order: SalesOrder; canManage: boolean; actor: { id: string; name: string } }) {
+  const t = useTranslations("Portal.Shared")
+  const locale = useLocale()
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const today = new Date().toISOString().slice(0, 10)
+  const [editing, setEditing] = useState(false)
+  const [date, setDate] = useState("")
+  const [reason, setReason] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const promise = order.promiseDate ? order.promiseDate.slice(0, 10) : null
+  const open = order.status === "running" || order.status === "awaiting_deposit"
+  const late = !!promise && promise < today && open
+  const trail = (order.log || []).filter((e) => e.kind === "promise_reset" || e.kind === "promise_set")
+
+  const submit = async () => {
+    if (!firestore || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await resetOrderPromise(firestore, { orderId: order.id, promiseDate: date, reason, today, actor })
+      toast({ title: t("so_promise_reset_toast") })
+      setEditing(false)
+    } catch (err) {
+      console.error(err)
+      const code = err instanceof Error ? err.message : ""
+      setError(t(code === "reason_required" ? "so_promise_err_reason" : code === "promise_in_past" ? "so_promise_err_past" : "so_save_error"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (order.type === "framework") return null
+
+  return (
+    <div className={cn("space-y-2 rounded-xl border p-3.5", late ? "border-destructive/30 bg-destructive/5" : "bg-muted/20")}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className={cn("text-sm font-bold", late ? "text-destructive" : "text-foreground")}>
+          {promise ? t(late ? "so_promise_passed" : "so_promise_line", { date: promise }) : t("so_promise_none")}
+        </p>
+        {canManage && open && !editing && (
+          <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => { setDate(promise && promise >= today ? promise : ""); setReason(""); setError(null); setEditing(true) }}>
+            <CalendarClock size={13} aria-hidden="true" />
+            {t(promise ? "so_promise_reset_btn" : "so_promise_set_btn")}
+          </Button>
+        )}
+      </div>
+
+      {editing && (
+        <div className="space-y-2.5 border-t pt-2.5">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={`promise-date-${order.id}`}>{t("sales_q_promise_date")} <span className="text-destructive">*</span></Label>
+              <Input id={`promise-date-${order.id}`} type="date" dir="ltr" min={today} value={date} onChange={(e) => setDate(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`promise-reason-${order.id}`}>{t("so_promise_reason")} <span className="text-destructive">*</span></Label>
+              <Input id={`promise-reason-${order.id}`} dir="auto" value={reason} onChange={(e) => setReason(e.target.value)} className="h-9" />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">{t("so_promise_effect")}</p>
+          {error && <p className="text-xs font-semibold text-destructive" role="alert">{error}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)} disabled={busy}>{t("crm_cancel")}</Button>
+            <Button size="sm" className="gap-1.5" onClick={submit} disabled={busy || !date || !reason.trim()}>
+              {busy ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <CalendarClock size={13} aria-hidden="true" />}
+              {t(promise ? "so_promise_reset_btn" : "so_promise_set_btn")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {trail.length > 0 && (
+        <ul className="space-y-0.5 border-t pt-2 text-[11px] text-muted-foreground">
+          {trail.map((e, i) => (
+            <li key={i} dir="auto">
+              {formatCrmDate(e.at, locale)} · {e.by} · <span dir="ltr">{e.detail}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

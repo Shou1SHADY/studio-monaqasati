@@ -14,23 +14,29 @@ import { cn } from "@/lib/utils"
 import {
   QUOTATION_PHASES,
   QUOTATION_PHASE_BADGE_CLASS,
-  QUOTATION_STATUSES,
-  QUOTATION_STATUS_BADGE_CLASS,
   formatCrmDate,
   formatSar,
   quotationPhase,
   type QuotationPhase,
-  type QuotationStatus,
 } from "@/lib/crm"
 import { isFullyPaid, paidSoFar, quotationMatchesSearch } from "@/lib/sales"
+import { daysToExpiry, quoteLifecycle, type QuoteLifecycle } from "@/lib/sales-quotes"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { useSalesScope } from "@/hooks/useSalesScope"
+import { LIFECYCLE_BADGE } from "./QuotationLifecycleBar"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { useUser } from "@/firebase"
 import { SalesShell, salesBasePath } from "./SalesShell"
 import { QuoteRequestsInbox } from "./QuoteRequestsInbox"
 import { SalesMfgCostingPanel } from "./SalesMfgCostingPanel"
 
-type StatusFilter = QuotationStatus | "all"
+/** Live · issued (not yet sent) · expired · draft · won · lost · all. A
+ * superseded revision shows only under "all" — it is history, not work. */
+type StateFilter = "sent" | "issued" | "expired" | "draft" | "won" | "lost" | "all"
+const STATE_FILTERS: StateFilter[] = ["sent", "issued", "expired", "draft", "won", "lost", "all"]
 type PhaseFilter = QuotationPhase | "all"
+type SortKey = "expiry" | "value" | "newest"
+const SORTS: SortKey[] = ["expiry", "value", "newest"]
 
 /** All quotations, filterable, each row opening its own page. */
 export function QuotationsListView({ portal }: { portal: CrmPortal }) {
@@ -42,33 +48,57 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
   const base = salesBasePath(portal)
 
   const { user } = useUser()
-  const { orgId, quotations, contacts, teamMembers, isLoading } = useCrmData({ quotations: true })
+  const { orgId, quotations: allQuotations, contacts, teamMembers, isLoading } = useCrmData({ quotations: true })
   const actorName = teamMembers.find((m) => m.id === user?.uid)?.name || user?.email || ""
+  // A rep sees only his own clients' quotes (D10).
+  const scope = useSalesScope(contacts)
+  const quotations = useMemo(() => allQuotations.filter(scope.mine), [allQuotations, scope.mine])
+  const today = new Date().toISOString().slice(0, 10)
 
-  const [status, setStatus] = useState<StatusFilter>("all")
+  const [status, setStatus] = useState<StateFilter>("sent")
   const [phase, setPhase] = useState<PhaseFilter>("all")
+  const [sort, setSort] = useState<SortKey>("expiry")
   const [search, setSearch] = useState("")
   useEffect(() => {
     // Drill-downs from the dashboard arrive as `?status=` / `?phase=`.
     try {
       const params = new URLSearchParams(window.location.search)
-      const s = params.get("status")
+      const s = params.get("state") || params.get("status")
       const p = params.get("phase")
-      if (s && (QUOTATION_STATUSES as string[]).includes(s)) setStatus(s as QuotationStatus)
+      // Older links said `?status=accepted|rejected`.
+      const mapped = s === "accepted" ? "won" : s === "rejected" ? "lost" : s
+      if (mapped && (STATE_FILTERS as string[]).includes(mapped)) setStatus(mapped as StateFilter)
       if (p && (QUOTATION_PHASES as string[]).includes(p)) setPhase(p as QuotationPhase)
     } catch {
       /* not in a browser */
     }
   }, [])
 
-  const sorted = useMemo(() => [...quotations].sort((a, b) => (b.date || "").localeCompare(a.date || "")), [quotations])
+  const stateOf = useMemo(() => new Map<string, QuoteLifecycle>(quotations.map((q) => [q.id, quoteLifecycle(q, today)])), [quotations, today])
+  const sorted = useMemo(() => {
+    const list = [...quotations]
+    if (sort === "value") return list.sort((a, b) => (b.amount || 0) - (a.amount || 0))
+    if (sort === "newest") return list.sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    // Nearest expiry first; what has no clock running goes last, newest first.
+    return list.sort((a, b) => {
+      const da = daysToExpiry(a, today)
+      const db = daysToExpiry(b, today)
+      if (da == null && db == null) return (b.date || "").localeCompare(a.date || "")
+      if (da == null) return 1
+      if (db == null) return -1
+      return da - db
+    })
+  }, [quotations, sort, today])
   const counts = useMemo(() => {
-    const c: Record<StatusFilter, number> = { all: quotations.length, draft: 0, sent: 0, accepted: 0, rejected: 0 }
-    for (const q of quotations) c[q.status] += 1
+    const c: Record<StateFilter, number> = { all: quotations.length, sent: 0, issued: 0, expired: 0, draft: 0, won: 0, lost: 0 }
+    for (const q of quotations) {
+      const st = stateOf.get(q.id)
+      if (st && st !== "superseded") c[st] += 1
+    }
     return c
-  }, [quotations])
+  }, [quotations, stateOf])
   const visible = sorted.filter(
-    (q) => (status === "all" || q.status === status) && (phase === "all" || quotationPhase(q) === phase) && quotationMatchesSearch(q, search)
+    (q) => (status === "all" || stateOf.get(q.id) === status) && (phase === "all" || quotationPhase(q) === phase) && quotationMatchesSearch(q, search)
   )
 
   const Chevron = isRtl ? ChevronLeft : ChevronRight
@@ -103,7 +133,7 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
         </p>
       )}
 
-      {orgId && <QuoteRequestsInbox portal={portal} orgId={orgId} actorName={actorName} />}
+      {orgId && <QuoteRequestsInbox portal={portal} orgId={orgId} actorName={actorName} mine={scope.mine} />}
 
       {/* Cost statements from Manufacturing for non-standard lines (REQ-02) —
           renders nothing for an org that has no workshop. */}
@@ -111,7 +141,7 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          {(["all", ...QUOTATION_STATUSES] as StatusFilter[]).map((s) => (
+          {STATE_FILTERS.map((s) => (
             <button
               key={s}
               type="button"
@@ -122,12 +152,22 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
                 status === s ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
               )}
             >
-              {s === "all" ? t("sales_filter_all") : t(`crm_quote_status_${s}`)}
+              {s === "all" ? t("sales_filter_all") : t(`sales_q_state_${s}`)}
               <span className={cn("text-[10px] tabular-nums", status === s ? "text-white/70" : "text-muted-foreground")}>{counts[s]}</span>
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+            <SelectTrigger className="h-9 w-40 text-xs" aria-label={t("sales_q_sort")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SORTS.map((k) => (
+                <SelectItem key={k} value={k}>{t(`sales_q_sort_${k}`)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={phase} onValueChange={(v) => setPhase(v as PhaseFilter)}>
             <SelectTrigger className="h-9 w-44 text-xs" aria-label={t("sales_filter_phase")}>
               <SelectValue />
@@ -161,6 +201,8 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
             const ph = quotationPhase(q)
             const fully = isFullyPaid(q)
             const paid = paidSoFar(q)
+            const st = stateOf.get(q.id) || "draft"
+            const left = daysToExpiry(q, today)
             return (
               <li key={q.id}>
                 <Link
@@ -169,9 +211,12 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono text-xs text-muted-foreground">{q.quotationNumber}</span>
+                      <span className="font-mono text-xs text-muted-foreground" dir="ltr">{displayDocNumber(q.quotationNumber, locale)}</span>
                       <Badge className={cn("text-[10px]", QUOTATION_PHASE_BADGE_CLASS[ph])}>{t(`crm_quote_phase_${ph}`)}</Badge>
-                      <Badge className={cn("text-[10px]", QUOTATION_STATUS_BADGE_CLASS[q.status])}>{t(`crm_quote_status_${q.status}`)}</Badge>
+                      <Badge className={cn("text-[10px]", LIFECYCLE_BADGE[st])}>{t(`sales_q_state_${st}`)}</Badge>
+                      {st === "sent" && left != null && left <= 3 && (
+                        <Badge className="border-warning/20 bg-warning/10 text-[10px] text-warning">{t("sales_q_expires_in", { days: left })}</Badge>
+                      )}
                       {fully && (
                         <Badge className="text-[10px] bg-success/10 text-success border-success/20 gap-1">
                           <CheckCircle2 size={10} aria-hidden="true" />

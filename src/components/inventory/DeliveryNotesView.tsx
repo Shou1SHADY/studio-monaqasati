@@ -37,6 +37,7 @@ import { MFG_SETTINGS, normalizeMfgSettings, type MfgSettings } from "@/lib/manu
 import { isV2Note, noteEscalated, noteHoursOut, noteOrderRef, type MfgDeliveryNote } from "@/lib/mfg-outside"
 import { MfgNoteReceiptDialog } from "./MfgNoteReceiptDialog"
 import { NoteShipmentFacts, ageText, useNowMs } from "./MfgOutsideBits"
+import { CustomerIssuesPanel } from "./CustomerIssuesPanel"
 
 type Tab = DeliveryNoteStatus | "all"
 const TABS: Tab[] = ["in_transit", ...DELIVERY_NOTE_STATUSES.filter((s) => s !== "in_transit"), "all"]
@@ -187,6 +188,10 @@ export function DeliveryNotesView({ portal }: { portal: CrmPortal }) {
           )}
         </div>
       </header>
+
+      {/* Going the other way: what Sales asked to issue to a client. The
+          storekeeper authorises it against real stock before the client can sign. */}
+      {orgId && <CustomerIssuesPanel orgId={orgId} actor={{ id: user?.uid || "", name: actorName }} canAuthorize={canReceive} />}
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">

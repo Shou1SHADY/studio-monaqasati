@@ -154,6 +154,28 @@ export function sourceOf(o: Pick<WorkOrderV2, "sourceKind" | "salesOrderId" | "s
   return "stock"
 }
 
+/** What a work order needs of a sales order to know it is its own. */
+export type SalesOrderKey = Pick<SalesOrder, "id" | "quotationId" | "quotationNumber">
+
+/** A work order belongs to the sales order it names — or, when it names none,
+ * to the one born of the same quotation: an order that carries only `Q-…` is
+ * still that client's order. Every reader of the relation asks here — the
+ * down-payment gate, release, Sales' screens, coverage — so the two modules
+ * can never disagree about whose order it is. */
+export function belongsToSalesOrder(o: Pick<WorkOrderV2, "salesOrderId" | "source">, so: SalesOrderKey): boolean {
+  if (o.salesOrderId) return o.salesOrderId === so.id
+  const qid = o.source?.quotationId
+  if (qid) return qid === so.quotationId
+  const qno = o.source?.quotationNumber
+  return !!qno && qno === so.quotationNumber
+}
+
+export function salesOrderOfWorkOrder<T extends SalesOrderKey>(o: Pick<WorkOrderV2, "salesOrderId" | "source">, salesOrders: Iterable<T>): T | null {
+  if (!o.salesOrderId && !o.source?.quotationId && !o.source?.quotationNumber) return null
+  for (const so of salesOrders) if (belongsToSalesOrder(o, so)) return so
+  return null
+}
+
 /** The down payment is Sales' and Finance's; we read the sales order. An order
  * with no deposit terms is not gated. A pre-1.2 quote-born order whose quote
  * was not won stays gated until it is. */
@@ -720,17 +742,24 @@ export async function recordSurvey(
 }
 
 /** Release enters the queue and reserves the need incl. waste. Never before the
- * down payment is confirmed, never without a survey for made-to-measure. */
+ * down payment is confirmed, never without a survey for made-to-measure.
+ *
+ * An order that names no sales order may still have one — born of the same
+ * quotation. A transaction cannot query, so the screen passes the id it
+ * resolved (`salesOrderId`); it is re-read here and trusted only if the order
+ * really belongs to it. */
 export async function releaseOrder(
   firestore: Firestore,
-  input: { orderId: string; product: MfgProduct; departments: DeptCapacityFields[]; actor: Actor }
+  input: { orderId: string; product: MfgProduct; departments: DeptCapacityFields[]; salesOrderId?: string | null; actor: Actor }
 ): Promise<void> {
   await mutateOrder(firestore, input.orderId, async (fresh, tx) => {
     if (fresh.status !== "open" || fresh.releasedAt) throw new Error("already_released")
     let salesOrder: Pick<SalesOrder, "payment"> | null = null
-    if (fresh.salesOrderId) {
-      const so = await tx.get(doc(firestore, SALES_ORDERS, fresh.salesOrderId))
-      salesOrder = so.exists() ? (so.data() as SalesOrder) : null
+    const soId = fresh.salesOrderId || input.salesOrderId || null
+    if (soId) {
+      const so = await tx.get(doc(firestore, SALES_ORDERS, soId))
+      const found = so.exists() ? ({ ...(so.data() as SalesOrder), id: so.id } as SalesOrder) : null
+      salesOrder = found && belongsToSalesOrder(fresh, found) ? found : null
     }
     const calc = calcOf(fresh, input.product, input.departments, [], salesOrder)
     if (releaseBlocks(calc).length) throw new Error("blocked")

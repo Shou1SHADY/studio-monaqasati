@@ -2,7 +2,7 @@
 
 import type { ElementType, ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { LayoutDashboard, FileText, Banknote, Tags, HandCoins, ClipboardList, Truck } from "lucide-react"
+import { LayoutDashboard, FileText, Banknote, Tags, HandCoins, ClipboardList, Truck, BarChart3, Settings2 } from "lucide-react"
 import { Link, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
@@ -17,7 +17,9 @@ const SALES_TABS: Array<{ segment: string; labelKey: string; icon: ElementType }
   { segment: "orders", labelKey: "sales_nav_orders", icon: ClipboardList },
   { segment: "fulfillment", labelKey: "sales_nav_fulfillment", icon: Truck },
   { segment: "payments", labelKey: "sales_nav_payments", icon: Banknote },
+  { segment: "reports", labelKey: "sales_nav_reports", icon: BarChart3 },
   { segment: "price-list", labelKey: "sales_nav_price_list", icon: Tags },
+  { segment: "settings", labelKey: "sales_nav_settings", icon: Settings2 },
 ]
 
 /**

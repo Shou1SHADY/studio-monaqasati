@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { collection, getDocs, query, where } from "firebase/firestore"
 import { AlertTriangle, CheckCircle2, Hourglass, Loader2, Send, SearchX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,9 +19,12 @@ import {
 import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import { formatCrmDate, formatSar, type CrmQuotation } from "@/lib/crm"
+import { INSTALLMENT_DEPOSIT_ID, formatCrmDate, formatSar, type CrmQuotation } from "@/lib/crm"
+import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { installmentStates, loadFinanceRecipients } from "@/lib/sales"
-import type { SalesOrder } from "@/lib/sales-orders"
+import { MANUFACTURING_REQUESTS, type ManufacturingRequest, type SalesOrder } from "@/lib/sales-orders"
+import { productionNeeds, requestProductionForAdvance } from "@/lib/sales-order-writes"
+import { emitDownPaymentConfirmed } from "@/lib/mfg-events"
 import {
   answerTransferNotice,
   reportTransfer,
@@ -111,7 +115,37 @@ export function ReportTransferDialog({
           }),
         },
       })
-      toast({ title: t("sales_tn_sent_toast") })
+      // PAY-07 / D8 — reporting the ADVANCE sends the production request: the
+      // plant plans while Finance verifies, and executes nothing before it.
+      let asked = 0
+      if (order && order.status === "awaiting_deposit" && installment.id === (order.payment.advanceInstallmentId || INSTALLMENT_DEPOSIT_ID)) {
+        try {
+          const org = where("organizationId", "==", order.organizationId)
+          const [cards, requests, warehouses] = await Promise.all([
+            getDocs(query(collection(firestore, MFG_PRODUCTS), org)),
+            getDocs(query(collection(firestore, MANUFACTURING_REQUESTS), org, where("orderId", "==", order.id))),
+            getDocs(query(collection(firestore, "warehouses"), org)),
+          ])
+          const stock = new Map<string, number>()
+          for (const wh of warehouses.docs) {
+            const inv = await getDocs(collection(firestore, "warehouses", wh.id, "inventoryItems"))
+            inv.forEach((d) => {
+              const name = ((d.data().name as string) || "").trim()
+              if (name) stock.set(name, (stock.get(name) || 0) + (Number(d.data().quantity) || 0))
+            })
+          }
+          const needs = productionNeeds(
+            order,
+            cards.docs.map((d) => ({ id: d.id, name: (d.data().name as string) || "", unit: (d.data().unit as string) || "", archived: !!d.data().archived })),
+            stock,
+            requests.docs.map((d) => d.data() as ManufacturingRequest)
+          )
+          asked = (await requestProductionForAdvance(firestore, { order, needs, actor: { id: user.uid, name: actorName } })).length
+        } catch (err) {
+          console.warn("production requests after the advance report skipped:", err)
+        }
+      }
+      toast({ title: asked > 0 ? t("sales_tn_sent_toast_mfg", { count: asked }) : t("sales_tn_sent_toast") })
       onOpenChange(false)
     } catch (err) {
       console.error(err)
@@ -212,7 +246,7 @@ export function AnswerTransferDialog({
     }
     setSaving(result)
     try {
-      await answerTransferNotice(firestore, {
+      const { released } = await answerTransferNotice(firestore, {
         notice,
         quotation,
         order,
@@ -227,6 +261,12 @@ export function AnswerTransferDialog({
           }),
         },
       })
+      // finance.down_payment.confirmed — the workshop hears that this order's
+      // work may now be released; the same notice the direct path sends, so
+      // the two ways of confirming an advance end the same way.
+      if (released && order) {
+        await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor: { id: user.uid, name: actorName } })
+      }
       toast({ title: t(result === "confirmed" ? "sales_tn_confirmed_toast" : "sales_tn_not_found_toast") })
       onOpenChange(false)
     } catch (err) {

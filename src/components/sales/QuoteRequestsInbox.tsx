@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CalendarClock, Inbox, Loader2, Tag, XCircle } from "lucide-react"
+import { CalendarClock, Inbox, Loader2, Tag, XCircle, PencilLine } from "lucide-react"
 import { collection, query, where } from "firebase/firestore"
 import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
@@ -28,15 +28,29 @@ import {
   type QuoteDeclineReason,
   type QuoteRequest,
 } from "@/lib/sales-transfers"
+import { displayDocNumber } from "@/lib/sales-numbering"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { salesBasePath } from "./SalesShell"
 
 /**
  * The one door quote work arrives through: CRM's requests, priced or returned
- * with a factual reason. "Price it" opens the composer pre-filled; the
- * quotation's first save takes the request out of the inbox.
+ * with a factual reason. "Price it" opens the composer pre-filled. A request
+ * with a draft stays here as "Finish the draft" — continued, never priced
+ * twice — and leaves the inbox when that draft is ISSUED (RQ-04). A rep sees
+ * only his own clients' requests (RQ-05).
  */
-export function QuoteRequestsInbox({ portal, orgId, actorName }: { portal: CrmPortal; orgId: string; actorName: string }) {
+export function QuoteRequestsInbox({
+  portal,
+  orgId,
+  actorName,
+  mine,
+}: {
+  portal: CrmPortal
+  orgId: string
+  actorName: string
+  /** The viewer's scope; omit to show every request. */
+  mine?: (record: { contactId?: string | null }) => boolean
+}) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -54,12 +68,12 @@ export function QuoteRequestsInbox({ portal, orgId, actorName }: { portal: CrmPo
   const today = new Date().toISOString().slice(0, 10)
   const requests = useMemo(
     () =>
-      ((data || []) as QuoteRequest[]).slice().sort((a, b) => {
+      ((data || []) as QuoteRequest[]).filter((r) => (mine ? mine(r) : true)).sort((a, b) => {
         const aLate = a.dueDate && a.dueDate < today ? 0 : 1
         const bLate = b.dueDate && b.dueDate < today ? 0 : 1
         return aLate - bLate || (a.dueDate || "9999").localeCompare(b.dueDate || "9999")
       }),
-    [data, today]
+    [data, today, mine]
   )
 
   const [declining, setDeclining] = useState<QuoteRequest | null>(null)
@@ -110,7 +124,7 @@ export function QuoteRequestsInbox({ portal, orgId, actorName }: { portal: CrmPo
             <li key={r.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs text-muted-foreground">{r.requestNumber}</span>
+                  <span className="font-mono text-xs text-muted-foreground" dir="ltr">{displayDocNumber(r.requestNumber, locale)}</span>
                   <span className="text-sm font-bold" dir="auto">{r.contactName || "—"}</span>
                   {r.dueDate && (
                     <span className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1", late ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-muted text-muted-foreground border-border")}>
@@ -133,10 +147,17 @@ export function QuoteRequestsInbox({ portal, orgId, actorName }: { portal: CrmPo
                     {t("sales_rq_decline_btn")}
                   </Button>
                   <Button size="sm" className="h-8 gap-1.5" asChild>
-                    <Link href={`${base}/quotations/new?request=${r.id}`}>
-                      <Tag size={13} />
-                      {t("sales_rq_price_btn")}
-                    </Link>
+                    {r.draftQuotationId ? (
+                      <Link href={`${base}/quotations/new?draft=${r.draftQuotationId}`}>
+                        <PencilLine size={13} />
+                        {t("sales_rq_finish_draft_btn")}
+                      </Link>
+                    ) : (
+                      <Link href={`${base}/quotations/new?request=${r.id}`}>
+                        <Tag size={13} />
+                        {t("sales_rq_price_btn")}
+                      </Link>
+                    )}
                   </Button>
                 </div>
               )}

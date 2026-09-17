@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { QUOTATION_PHASES, QUOTATION_STATUSES, formatSar, type QuotationStatus } from "@/lib/crm"
+import { QUOTATION_PHASES, formatSar } from "@/lib/crm"
 import type { QuotationForm } from "@/hooks/useQuotationForm"
 
 // The quotation form's field groups, shared by the quick dialog and the Sales
@@ -194,7 +194,19 @@ export function QuotationScheduleEditor({ form }: { form: QuotationForm }) {
         <p className="text-[11px] text-muted-foreground">{t("crm_quote_installments_none_hint")}</p>
       )}
       {installments.map((row, i) => (
-        <div key={row.id} className="flex items-center gap-2">
+        <div key={row.id} className="flex flex-wrap items-center gap-2">
+          {/* The advance: due before production, confirmed by Finance before
+              anything made to order is executed (D8, QC-12). */}
+          <label className="flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border bg-white px-2 text-[11px] font-semibold text-slate-600 has-[:checked]:border-warning/50 has-[:checked]:bg-warning/10 has-[:checked]:text-warning has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-current"
+              checked={row.beforeProduction}
+              onChange={(e) => updateInstallment(i, { beforeProduction: e.target.checked })}
+              disabled={isSaving}
+            />
+            {t("crm_quote_installment_before_production")}
+          </label>
           <Input
             placeholder={t("crm_quote_installment_label")}
             aria-label={t("crm_quote_installment_label")}
@@ -239,29 +251,20 @@ export function QuotationScheduleEditor({ form }: { form: QuotationForm }) {
   )
 }
 
-/** Status picker — "accepted" is locked without the approval permission. */
+/** The status, shown — never picked. A quotation moves one step at a time from
+ * its own page in Sales (Issue → Log as sent → Convert / Close as lost), where
+ * each step runs its checks; a form that could set any status was the way
+ * around all of them (D6, D7). */
 export function QuotationStatusField({ form, id = "quote-status" }: { form: QuotationForm; id?: string }) {
   const t = useTranslations("Portal.Shared")
-  const { status, setStatus, isSaving, acceptLocked } = form
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{t("crm_quote_status")}</Label>
-      <Select value={status} onValueChange={(v) => setStatus(v as QuotationStatus)} disabled={isSaving}>
-        <SelectTrigger id={id}><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {QUOTATION_STATUSES.map((s) => (
-            <SelectItem key={s} value={s} disabled={s === "accepted" && acceptLocked}>
-              {t(`crm_quote_status_${s}`)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {acceptLocked && (
-        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-          <Lock size={11} aria-hidden="true" />
-          {t("crm_quote_accept_locked")}
-        </p>
-      )}
+      <p id={id} className="flex h-10 items-center rounded-lg border bg-muted/30 px-3 text-sm font-semibold">{t(`crm_quote_status_${form.status}`)}</p>
+      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+        <Lock size={11} aria-hidden="true" />
+        {t("crm_quote_status_hint")}
+      </p>
     </div>
   )
 }

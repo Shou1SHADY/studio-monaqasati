@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl"
 import { Calculator, Check, ClipboardList, Clock, Layers, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { addDaysISO } from "@/lib/manufacturing-engine"
-import { answerWindow, estimateStatus, screenRequest, summarizeScreen, workOrderIdsOf } from "@/lib/manufacturing-requests"
+import { answerWindow, awaitsDownPayment, estimateStatus, screenRequest, summarizeScreen, workOrderIdsOf } from "@/lib/manufacturing-requests"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgModuleChip, MfgStatePill } from "./MfgOrderBits"
 import {
@@ -53,7 +53,8 @@ export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null;
   const r = request
   const isNew = r.status === "new"
   const timeOn = data.settings.features.time
-  const win = answerWindow(r, data.settings.answerWindowHours, nowMs)
+  const forPlanning = awaitsDownPayment(r, r.orderId ? data.salesOrders.get(r.orderId) : null)
+  const win = answerWindow(r, data.settings.answerWindowHours, nowMs, forPlanning)
   const Icon = sourceIcon(info)
   const moduleName = t(`mfg4_module_${info.source}`)
   const orderIds = workOrderIdsOf(r)
@@ -103,6 +104,13 @@ export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null;
       {r.note && (
         <MfgNote tone="info">
           <span dir="auto">{r.note}</span>
+        </MfgNote>
+      )}
+      {/* The advance was reported, not confirmed: plan, do not execute — and the
+          answer clock starts only once Finance confirms (Sales PRD PAY-07, D8). */}
+      {isNew && forPlanning && (
+        <MfgNote tone="warn" icon={Clock} title={t("mfr_planning_title")}>
+          {t("mfr_planning_body")}
         </MfgNote>
       )}
       {isNew && win.overdue && (

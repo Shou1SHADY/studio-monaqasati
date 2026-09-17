@@ -47,11 +47,21 @@ export interface SalesOrderPayment {
    * An unpaid deposit gates the whole order — nothing ships against a promise
    * the client has not yet backed with money. */
   depositPercent?: number | null
+  /** The quotation instalment that IS the advance — confirming it releases the
+   * order. Absent on orders from before it was recorded (the `deposit` row). */
+  advanceInstallmentId?: string | null
   depositPaid?: boolean
   depositPaidAt?: string | null
   /** Sales reports the client's transfer; Finance confirms it (T4). */
   depositReportedAt?: string | null
   depositReportedBy?: string | null
+}
+
+export interface SalesOrderLogEntry {
+  at: string
+  by: string
+  kind: "created" | "promise_set" | "promise_reset" | "amended" | "checklist"
+  detail?: string | null
 }
 
 export interface SalesOrder {
@@ -73,8 +83,13 @@ export interface SalesOrder {
   frameworkCap?: number | null
   frameworkValidUntil?: string | null
   payment: SalesOrderPayment
+  /** The payment schedule as the client accepted it — inherited from the
+   * quotation and read-only here (SO-02). */
+  paymentSchedule?: Array<{ id: string; label: string; percent: number; beforeProduction?: boolean | null }> | null
   /** The date promised to the customer. The single most watched field. */
   promiseDate?: string | null
+  /** The order's trail: who did what and why (INV-07, SO-09, SO-11). */
+  log?: SalesOrderLogEntry[] | null
   vatPercent: number
   lines: SalesOrderLine[]
   /** Gate 1 — site measurement. A made-to-measure item must not enter
@@ -93,7 +108,12 @@ export interface SalesOrder {
 
 export interface SalesDeliveryNoteLine {
   name: string
+  /** What counts: the requested quantity until the client signs, then the
+   * quantity actually received — so value, stock, invoices and what is still
+   * owed all follow the signature with no second code path (DLV-02). */
   quantity: number
+  /** Kept at signing when the client received less than was sent out. */
+  requestedQuantity?: number | null
 }
 
 export interface SalesDeliveryNote {
@@ -109,10 +129,28 @@ export interface SalesDeliveryNote {
   /** Where the goods were drawn from — stock leaves when the note delivers. */
   warehouseId?: string | null
   warehouseName?: string | null
-  /** Who signed on the receiving side. */
+  /** The receiving contact named when scheduling — not the signature. */
   receiverName?: string | null
-  /** Why Finance froze it, when status is "held". */
+  /** Step 2 — Inventory authorises the issue against stock it actually has. */
+  authorizedAt?: string | null
+  authorizedByUserId?: string | null
+  authorizedByUserName?: string | null
+  /** Step 3 — the client's signer, typed by the rep: the one name in Sales
+   * that does not come from a login, because the client is not a user (D11). */
+  signerName?: string | null
+  signedAt?: string | null
+  /** Finance's own note on a hold. Never shown in Sales: there a hold is a
+   * state with no reason and no figures (D3, DLV-03). */
   holdReason?: string | null
+  /** Where the note stood when Finance held it — release returns it there. */
+  heldFrom?: "requested" | "authorized" | null
+  heldAt?: string | null
+  heldByUserName?: string | null
+  /** The seller's only act on a held shipment. */
+  releaseRequestedAt?: string | null
+  releaseRequestedByUserName?: string | null
+  releasedAt?: string | null
+  releasedByUserName?: string | null
   /** Short note when delivered ≠ requested (rejected units etc.). */
   varianceNote?: string | null
   requestedAt?: string | null
@@ -162,6 +200,9 @@ export interface SalesInvoice {
 // ---------------------------------------------------------------------------
 
 export type SalesReturnStatus = "awaiting_decision" | "approved" | "credit_note_issued" | "rejected"
+/** What happens to the goods that came back: onto the shelf, or written off. */
+export type ReturnDisposition = "stock" | "scrap"
+export const RETURN_DISPOSITIONS: ReturnDisposition[] = ["stock", "scrap"]
 
 export interface SalesReturn {
   id: string
@@ -176,14 +217,30 @@ export interface SalesReturn {
   lines: SalesDeliveryNoteLine[]
   reason: string
   status: SalesReturnStatus
+  /** Chosen by whoever approves (DLV-05); absent on returns from before it. */
+  disposition?: ReturnDisposition | null
   decidedAt?: string | null
   decidedByUserId?: string | null
   decidedByUserName?: string | null
   creditNoteIssuedAt?: string | null
+  /** Finance's act: who issued the credit note (INV-07). */
+  creditNoteByUserId?: string | null
+  creditNoteByUserName?: string | null
   createdByUserId: string
   createdByUserName: string
   createdAt?: unknown
   updatedAt?: unknown
+}
+
+/** What may still come back from a delivered note: what the client signed
+ * for, less every earlier return against it that was not rejected. */
+export function returnableQty(note: Pick<SalesDeliveryNote, "id" | "lines">, name: string, returns: Array<Pick<SalesReturn, "deliveryNoteId" | "lines" | "status">>): number {
+  const k = key(name)
+  const signed = note.lines.filter((l) => key(l.name) === k).reduce((s, l) => s + l.quantity, 0)
+  const back = returns
+    .filter((r) => r.deliveryNoteId === note.id && r.status !== "rejected")
+    .reduce((s, r) => s + r.lines.filter((l) => key(l.name) === k).reduce((x, l) => x + l.quantity, 0), 0)
+  return Math.max(0, round2(signed - back))
 }
 
 /** Value of the returned goods at the ORDER's prices — same rule as delivery
@@ -310,6 +367,83 @@ export function inTransitQty(orderId: string, name: string, notes: SalesDelivery
   return notes
     .filter((n) => n.orderId === orderId && (n.status === "requested" || n.status === "authorized" || n.status === "held"))
     .reduce((sum, n) => sum + n.lines.filter((l) => key(l.name) === k).reduce((s, l) => s + l.quantity, 0), 0)
+}
+
+// ---------------------------------------------------------------------------
+// The three-step handshake (DLV-01…03, INV-09): Sales requests, Inventory
+// authorises against stock it truly has, the client signs for what arrived.
+// ---------------------------------------------------------------------------
+
+const OPEN_NOTE: DeliveryNoteStatus[] = ["requested", "authorized", "held"]
+
+/** What other open notes already claim from a warehouse — stock that is on
+ * the shelf but spoken for. */
+export function claimedFromWarehouse(notes: SalesDeliveryNote[], warehouseId: string, name: string, exceptNoteId?: string | null): number {
+  const k = key(name)
+  return round2(
+    notes
+      .filter((n) => n.warehouseId === warehouseId && n.id !== exceptNoteId && OPEN_NOTE.includes(n.status))
+      .reduce((sum, n) => sum + n.lines.filter((l) => key(l.name) === k).reduce((s, l) => s + l.quantity, 0), 0)
+  )
+}
+
+/** On hand minus what is claimed elsewhere — never below zero. */
+export const trulyAvailable = (onHand: number, claimed: number): number => Math.max(0, round2(onHand - claimed))
+
+export interface StockShortfall {
+  name: string
+  wanted: number
+  available: number
+}
+
+/** Lines that ask for more than the warehouse can truly give. Empty = clear. */
+export function deliveryShortfalls(
+  lines: Array<{ name: string; quantity: number }>,
+  warehouseId: string,
+  stockRows: Array<{ name: string; quantity?: number | null }>,
+  notes: SalesDeliveryNote[],
+  exceptNoteId?: string | null
+): StockShortfall[] {
+  const out: StockShortfall[] = []
+  for (const l of lines) {
+    if (!(l.quantity > 0)) continue
+    const onHand = stockRows.filter((r) => key(r.name) === key(l.name)).reduce((s, r) => s + (Number(r.quantity) || 0), 0)
+    const available = trulyAvailable(onHand, claimedFromWarehouse(notes, warehouseId, l.name, exceptNoteId))
+    if (l.quantity > available + 0.005) out.push({ name: l.name, wanted: round2(l.quantity), available })
+  }
+  return out
+}
+
+export type SignatureError = "signer_required" | "nothing_received" | "invalid_quantity" | "over_requested"
+
+/** The client signs for what actually arrived: never more than was sent, never
+ * nothing at all, and always under a name. */
+export function validateSignature(
+  note: Pick<SalesDeliveryNote, "lines">,
+  signerName: string,
+  signed: Array<{ name: string; quantity: number }>
+): SignatureError | null {
+  if (!signerName.trim()) return "signer_required"
+  let any = false
+  for (const l of note.lines) {
+    const got = signed.find((x) => key(x.name) === key(l.name))?.quantity
+    const q = got == null ? l.quantity : got
+    if (!Number.isFinite(q) || q < 0) return "invalid_quantity"
+    if (q > l.quantity + 0.005) return "over_requested"
+    if (q > 0) any = true
+  }
+  return any ? null : "nothing_received"
+}
+
+/** The note's lines as signed: the received quantity counts, the requested one
+ * is kept beside it when they differ. Units never received are simply still
+ * owed on the order — no return is invented for them. */
+export function signedLines(note: Pick<SalesDeliveryNote, "lines">, signed: Array<{ name: string; quantity: number }>): SalesDeliveryNoteLine[] {
+  return note.lines.map((l) => {
+    const got = signed.find((x) => key(x.name) === key(l.name))?.quantity
+    const q = got == null ? l.quantity : round2(got)
+    return q === l.quantity ? { name: l.name, quantity: l.quantity } : { name: l.name, quantity: q, requestedQuantity: l.quantity }
+  })
 }
 
 export interface OrderLineProgress extends SalesOrderLine {

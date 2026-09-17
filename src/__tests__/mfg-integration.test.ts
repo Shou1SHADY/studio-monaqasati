@@ -9,7 +9,7 @@ import fs from "fs"
 import path from "path"
 import { buildNotification, holdersOf, notificationCopy, notificationHref, resolveRecipients, type TeamSnapshot } from "@/lib/mfg-events"
 import { emptyProgress, type DeptCapacityFields, type MfgProduct } from "@/lib/manufacturing-engine"
-import { heldByItem, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
+import { belongsToSalesOrder, clientDrawingsDue, clientRefOf, heldByItem, salesOrderOfWorkOrder, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
 import { allocateCoverage, orderGate, orderLineProgress, type SalesOrder } from "@/lib/sales-orders"
 import { postMfgRemnantReceipt } from "@/lib/accounting/posting-rules"
 import { ACC } from "@/lib/accounting/accounts"
@@ -302,6 +302,69 @@ describe("sales order gates from its work orders", () => {
     const lines = orderLineProgress(so, [])
     expect(orderGate(so, lines, flags, [])).toBe("measurement")
     expect(orderGate(so, lines, flags, [], new Set(["marble countertop"]))).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A client order Sales can always find (D11) — even one that names no sales order
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a client work order and its sales order", () => {
+  const products = new Map([[COUNTER.id, COUNTER]])
+  const atClient = { submittedAt: "2026-09-02T08:00:00Z", approverOrg: "client", code: null, revision: 1 } as WorkOrderV2["drawing"]
+  const fromQuote = (over: Partial<WorkOrderV2> = {}) =>
+    workOrder({ salesOrderId: null, sourceKind: "client", source: { kind: "quotation", quotationId: "q1", quotationNumber: "Q-MFGE2E" }, ...over })
+
+  it("belongs to the sales order it names — a shared quotation never overrides that", () => {
+    const named = fromQuote({ salesOrderId: "so1" })
+    expect(belongsToSalesOrder(named, { id: "so1" })).toBe(true)
+    expect(belongsToSalesOrder(named, { id: "so2", quotationId: "q1", quotationNumber: "Q-MFGE2E" })).toBe(false)
+  })
+
+  it("naming none, belongs to the sales order born of the same quotation — by id, else by number", () => {
+    expect(belongsToSalesOrder(fromQuote(), { id: "so1", quotationId: "q1" })).toBe(true)
+    expect(belongsToSalesOrder(fromQuote(), { id: "so1", quotationId: "q2", quotationNumber: "Q-MFGE2E" })).toBe(false)
+    const numberOnly = fromQuote({ source: { kind: "quotation", quotationNumber: "Q-MFGE2E" } })
+    expect(belongsToSalesOrder(numberOnly, { id: "so1", quotationNumber: "Q-MFGE2E" })).toBe(true)
+    expect(belongsToSalesOrder(numberOnly, { id: "so1", quotationNumber: "Q-OTHER1" })).toBe(false)
+    // Neither side naming a quotation is not a match.
+    expect(belongsToSalesOrder(workOrder({ salesOrderId: null }), { id: "so1", quotationId: null, quotationNumber: null })).toBe(false)
+  })
+
+  it("finds its sales order among many, or none", () => {
+    const orders = [{ id: "so1", quotationId: "q9" }, { id: "so2", quotationId: "q1" }]
+    expect(salesOrderOfWorkOrder(fromQuote(), orders)?.id).toBe("so2")
+    expect(salesOrderOfWorkOrder(fromQuote({ source: { kind: "quotation", quotationId: "q404" } }), orders)).toBeNull()
+  })
+
+  it("the sales order's gate counts the quotation-born order too", () => {
+    const so = { id: "so1", quotationId: "q1", quotationNumber: "Q-MFGE2E" }
+    expect(workshopGatesFor(so, [fromQuote({ drawing: atClient })], products).gates.map((g) => g.gate)).toEqual(["approval"])
+    expect(workshopGatesFor("so1", [fromQuote({ drawing: atClient })], products).gates).toEqual([])
+  })
+
+  it("every drawing at the client is due from Sales — linked or not, oldest first", () => {
+    const linked = workOrder({ id: "w1", salesOrderId: "so1", drawing: { ...atClient!, submittedAt: "2026-09-05T08:00:00Z" } })
+    const orphan = fromQuote({ id: "w2", drawing: atClient })
+    const due = clientDrawingsDue(
+      [
+        linked,
+        orphan,
+        workOrder({ id: "w3", salesOrderId: "so1" }), // already an A
+        workOrder({ id: "w4", drawing: { ...atClient!, approverOrg: "consultant" } }), // the project's, not Sales'
+        workOrder({ id: "w5", status: "cancelled", drawing: atClient }),
+        workOrder({ id: "w6", productId: "gone", drawing: atClient }), // no product card to compute from
+      ],
+      products
+    )
+    expect(due.map((o) => o.id)).toEqual(["w2", "w1"])
+  })
+
+  it("names the client's side as Sales does: the sales order, else the quotation", () => {
+    expect(clientRefOf(fromQuote(), { orderNumber: 12 })).toBe("SO-12")
+    expect(clientRefOf(fromQuote({ salesOrderNumber: 7 }))).toBe("SO-7")
+    expect(clientRefOf(fromQuote())).toBe("Q-MFGE2E")
+    expect(clientRefOf(workOrder({ salesOrderId: null }))).toBe("")
   })
 })
 
