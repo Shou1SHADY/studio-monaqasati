@@ -11,7 +11,10 @@ const config: Config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/', '<rootDir>/e2e/', '<rootDir>/.claude/worktrees/'],
+  // Tool worktrees are whole copies of the repo: their Playwright specs are not
+  // Jest's, and their package.json files collide with ours in the module map.
+  testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/', '<rootDir>/e2e/', '<rootDir>/.claude/worktrees/', '<rootDir>/.kilo/'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude/worktrees/', '<rootDir>/.kilo/'],
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',
     '!src/**/*.d.ts',
