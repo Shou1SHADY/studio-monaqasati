@@ -171,8 +171,13 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
     .map((a) => ({ code: a.code, value: nodeNatural(windows.closing, a.code) }))
     .filter((a) => Math.abs(a.value) > 0.005)
 
+  // One page, nested: the head (integrity, the four performance figures, quick
+  // links) stays open; everything else is a heading with its content folded
+  // underneath, opening on click and remembered — the order drawer's pattern in
+  // Manufacturing, which the customer asked for instead of one long screen.
+  const inPeriod = entries.filter((e) => e.date >= data.period.from && e.date <= data.period.to).length
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {failing.length > 0 && (
         <Link href={`${base}/checks`} className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <AlertTriangle size={18} className="mt-0.5 shrink-0 text-destructive" />
@@ -193,138 +198,227 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
         </Link>
       </div>
 
-      {/* Position */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <button
-          type="button"
-          title={t("acc_tree_open_breakdown")}
-          onClick={() => setSelected(accountNode([ACC.clientsReceivable, ACC.retentionReceivable], receivables, { ar: t("acc_kpi_receivables"), en: t("acc_kpi_receivables") }))}
-          className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Kpi label={t("acc_kpi_receivables")} value={compact(receivables)} hint={t("acc_dash_receivables_hint", { overdue: compact(receivableAging.buckets[2] + receivableAging.buckets[3]) })} tone="warn" />
-        </button>
-        <button
-          type="button"
-          title={t("acc_tree_open_breakdown")}
-          onClick={() => setSelected(accountNode([ACC.suppliersPayable, ACC.subcontractorRetentionPayable], payables, { ar: t("acc_dash_payables"), en: t("acc_dash_payables") }))}
-          className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Kpi label={t("acc_dash_payables")} value={compact(payables)} hint={t("acc_dash_payables_hint", { overdue: compact(payableAging.buckets[2] + payableAging.buckets[3]) })} />
-        </button>
-        <Kpi
-          label={t("acc_dash_working_capital")}
-          value={compact(liq.workingCapital)}
-          hint={t("acc_dash_current_ratio", { ratio: liq.currentRatio === null ? "—" : liq.currentRatio.toFixed(2), quick: liq.quickRatio === null ? "—" : liq.quickRatio.toFixed(2) })}
-          tone={liq.workingCapital >= 0 ? "good" : "bad"}
-        />
-        <Link href={`${base}/locked#ccc`} className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Kpi
-            label={t("acc_ccc_title_short")}
-            value={ccc.ccc === null ? "—" : t("acc_ccc_days", { days: Math.round(ccc.ccc) })}
-            hint={t("acc_dash_ccc_hint", { dso: ccc.dso === null ? "—" : Math.round(ccc.dso), dio: ccc.dio === null ? "—" : Math.round(ccc.dio), dpo: ccc.dpo === null ? "—" : Math.round(ccc.dpo) })}
-            tone={ccc.ccc === null ? "default" : ccc.ccc > 90 ? "bad" : ccc.ccc > 45 ? "warn" : "good"}
-          />
-        </Link>
-      </div>
-
-      {/* Trend + cash */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <AccountingSection
-          title={t("acc_dash_trend_title", { year: fiscalYearLabel(trendYear, data.settings.fiscalYearStartMonth) })}
-          icon={BarChart3}
-          className="lg:col-span-2"
-          action={<ScaleCaption scale={data.scale} />}
-        >
-          <MonthlyPerformanceChart points={trend} scale={data.scale} />
-        </AccountingSection>
-        <AccountingSection title={t("acc_dash_cash_title")} icon={Wallet}>
-          <CashTrendChart points={trend} scale={data.scale} />
-          <div className="border-t px-5 py-3 space-y-1.5">
-            {cashAccounts.length === 0 && <p className="text-xs text-muted-foreground">{t("acc_dash_no_cash_accounts")}</p>}
-            {cashAccounts.map((a) => (
-              <button
-                key={a.code}
-                type="button"
-                title={t("acc_tree_open_breakdown")}
-                onClick={() => setSelected(accountNode([a.code], a.value))}
-                className="flex w-full items-center justify-between gap-2 rounded text-start text-xs hover:text-cta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      <div className="flex flex-wrap items-center gap-1.5">
+        {[
+          canPost && { href: `${base}/journal/new`, icon: FilePlus2, key: "acc_nav_new_entry" },
+          { href: `${base}/statements`, icon: FileSpreadsheet, key: "acc_nav_account_statements" },
+          { href: `${base}/cash-flow`, icon: Wallet, key: "acc_nav_cashflow" },
+          { href: `${base}/settlements`, icon: ArrowLeftRight, key: "acc_nav_settlements" },
+          { href: `${base}/audit-trail`, icon: BookOpen, key: "acc_nav_audit_trail" },
+          canDocuments && { href: `/${portal}/guarantees`, icon: Receipt, key: "fin_nav_guarantees" },
+        ]
+          .filter(Boolean)
+          .map((item) => {
+            const it = item as { href: string; icon: typeof FilePlus2; key: string }
+            return (
+              <Link
+                key={it.href}
+                href={it.href}
+                className="inline-flex items-center gap-1.5 rounded-full border bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-module hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Landmark size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="font-mono text-muted-foreground" dir="ltr">{a.code}</span>
-                  <span className="truncate underline-offset-4 decoration-dotted hover:underline">{accountName(a.code, locale)}</span>
-                </span>
-                <Money value={a.value} className="font-bold" />
-              </button>
-            ))}
-          </div>
-        </AccountingSection>
+                <it.icon size={13} aria-hidden="true" />
+                {t(it.key)}
+              </Link>
+            )
+          })}
       </div>
 
-      {/* Mix, inventory, aging */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <AccountingSection title={t("acc_dash_expense_mix_title")} icon={TrendingUp}>
-          <div className="p-5 space-y-2.5">
-            {expenses.length === 0 && <p className="text-xs text-muted-foreground">{t("acc_dash_no_expenses")}</p>}
-            {expenses.map((e) => {
-              const total = expenses.reduce((s, x) => s + x.value, 0)
-              return (
-                <div key={e.code}>
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate">{locale === "ar" ? e.nameAr : e.nameEn}</span>
-                    <span className="shrink-0 font-bold" dir="ltr">
-                      {formatMoneyCompact(e.value, data.scale)} <span className="font-normal text-muted-foreground">· {pctText(e.value, total)}</span>
-                    </span>
-                  </div>
-                  <div className="mt-1 h-2 rounded-full bg-muted/60 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: pctText(e.value, expenses[0].value), backgroundColor: CHART_SERIES[1] }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </AccountingSection>
-
-        <InventoryCompositionCard data={data} />
-
-        <AccountingSection title={t("acc_dash_aging_title")} icon={Receipt} action={<span className="text-[10px] text-muted-foreground" dir="ltr">{data.period.to}</span>}>
-          <div className="p-5 space-y-5">
-            <AgingBars label={t("acc_dash_aging_receivables")} buckets={receivableAging.buckets} color={CHART_SERIES[1]} scale={data.scale} />
-            <AgingBars label={t("acc_dash_aging_payables")} buckets={payableAging.buckets} color={CHART_SERIES[2]} scale={data.scale} />
-            <Link href={`${base}/settlements`} className="inline-flex items-center gap-1 text-xs font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-              <ArrowLeftRight size={12} aria-hidden="true" />
-              {t("acc_nav_settlements")}
+      <AccountingSection collapsible id="board" defaultOpen title={t("acc_sec_board")} icon={LayoutDashboard} summary={<span dir="ltr">{t("acc_kpi_net_profit")} {compact(net)} · {t("acc_kpi_cash")} {compact(liq.cash)}</span>}>
+        <div className="space-y-4 p-4">
+          {/* Position */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <button
+              type="button"
+              title={t("acc_tree_open_breakdown")}
+              onClick={() => setSelected(accountNode([ACC.clientsReceivable, ACC.retentionReceivable], receivables, { ar: t("acc_kpi_receivables"), en: t("acc_kpi_receivables") }))}
+              className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Kpi label={t("acc_kpi_receivables")} value={compact(receivables)} hint={t("acc_dash_receivables_hint", { overdue: compact(receivableAging.buckets[2] + receivableAging.buckets[3]) })} tone="warn" />
+            </button>
+            <button
+              type="button"
+              title={t("acc_tree_open_breakdown")}
+              onClick={() => setSelected(accountNode([ACC.suppliersPayable, ACC.subcontractorRetentionPayable], payables, { ar: t("acc_dash_payables"), en: t("acc_dash_payables") }))}
+              className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <Kpi label={t("acc_dash_payables")} value={compact(payables)} hint={t("acc_dash_payables_hint", { overdue: compact(payableAging.buckets[2] + payableAging.buckets[3]) })} />
+            </button>
+            <Kpi
+              label={t("acc_dash_working_capital")}
+              value={compact(liq.workingCapital)}
+              hint={t("acc_dash_current_ratio", { ratio: liq.currentRatio === null ? "—" : liq.currentRatio.toFixed(2), quick: liq.quickRatio === null ? "—" : liq.quickRatio.toFixed(2) })}
+              tone={liq.workingCapital >= 0 ? "good" : "bad"}
+            />
+            <Link href={`${base}/locked#ccc`} className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Kpi
+                label={t("acc_ccc_title_short")}
+                value={ccc.ccc === null ? "—" : t("acc_ccc_days", { days: Math.round(ccc.ccc) })}
+                hint={t("acc_dash_ccc_hint", { dso: ccc.dso === null ? "—" : Math.round(ccc.dso), dio: ccc.dio === null ? "—" : Math.round(ccc.dio), dpo: ccc.dpo === null ? "—" : Math.round(ccc.dpo) })}
+                tone={ccc.ccc === null ? "default" : ccc.ccc > 90 ? "bad" : ccc.ccc > 45 ? "warn" : "good"}
+              />
             </Link>
           </div>
-        </AccountingSection>
-      </div>
 
-      <CashConversionCycleCard ccc={ccc} compact />
+          {/* Trend + cash */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <AccountingSection
+              title={t("acc_dash_trend_title", { year: fiscalYearLabel(trendYear, data.settings.fiscalYearStartMonth) })}
+              icon={BarChart3}
+              className="lg:col-span-2"
+              action={<ScaleCaption scale={data.scale} />}
+            >
+              <MonthlyPerformanceChart points={trend} scale={data.scale} />
+            </AccountingSection>
+            <AccountingSection title={t("acc_dash_cash_title")} icon={Wallet}>
+              <CashTrendChart points={trend} scale={data.scale} />
+              <div className="border-t px-5 py-3 space-y-1.5">
+                {cashAccounts.length === 0 && <p className="text-xs text-muted-foreground">{t("acc_dash_no_cash_accounts")}</p>}
+                {cashAccounts.map((a) => (
+                  <button
+                    key={a.code}
+                    type="button"
+                    title={t("acc_tree_open_breakdown")}
+                    onClick={() => setSelected(accountNode([a.code], a.value))}
+                    className="flex w-full items-center justify-between gap-2 rounded text-start text-xs hover:text-cta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Landmark size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="font-mono text-muted-foreground" dir="ltr">{a.code}</span>
+                      <span className="truncate underline-offset-4 decoration-dotted hover:underline">{accountName(a.code, locale)}</span>
+                    </span>
+                    <Money value={a.value} className="font-bold" />
+                  </button>
+                ))}
+              </div>
+            </AccountingSection>
+          </div>
 
-      {/* Statements, expandable in place */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <AccountingSection title={`${t("acc_nav_income")} · ${periodLabel(data.period, locale)}`} icon={TrendingUp}>
-          <StatementTreeTable nodes={income.nodes} onSelect={setSelected} headerExtra={<ScaleCaption scale={data.scale} />} />
-        </AccountingSection>
-        <AccountingSection
-          title={`${t("acc_nav_balance")} · ${periodRangeText(data.period).split(" – ")[1]}`}
-          icon={Scale}
-          action={
-            position.statement.difference === 0 ? (
-              <Badge className="border-none bg-success/10 text-success gap-1"><CheckCircle2 size={11} />{t("acc_tb_balanced")}</Badge>
-            ) : (
-              <Badge className="border-none bg-destructive/10 text-destructive">{t("acc_bs_unbalanced")}</Badge>
-            )
-          }
-        >
-          <StatementTreeTable nodes={position.nodes} onSelect={setSelected} headerExtra={<ScaleCaption scale={data.scale} />} />
-        </AccountingSection>
-      </div>
-      <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
+        </div>
+      </AccountingSection>
 
-      {/* Projects, recent activity, shortcuts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <AccountingSection title={t("acc_dash_projects_title")} icon={Briefcase} className="lg:col-span-2" action={<ScaleCaption scale={data.scale} />}>
+      <AccountingSection
+        collapsible
+        id="locked"
+        defaultOpen={false}
+        title={t("acc_nav_locked")}
+        icon={Lock}
+        summary={ccc.ccc === null ? undefined : t("acc_ccc_days", { days: Math.round(ccc.ccc) })}
+        action={
+          <Link href={`${base}/locked`} className="text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            {t("acc_nav_locked")} →
+          </Link>
+        }
+      >
+        <div className="space-y-4 p-4">
+          <CashConversionCycleCard ccc={ccc} compact />
+          {/* Mix, inventory, aging */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <AccountingSection title={t("acc_dash_expense_mix_title")} icon={TrendingUp}>
+              <div className="p-5 space-y-2.5">
+                {expenses.length === 0 && <p className="text-xs text-muted-foreground">{t("acc_dash_no_expenses")}</p>}
+                {expenses.map((e) => {
+                  const total = expenses.reduce((s, x) => s + x.value, 0)
+                  return (
+                    <div key={e.code}>
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate">{locale === "ar" ? e.nameAr : e.nameEn}</span>
+                        <span className="shrink-0 font-bold" dir="ltr">
+                          {formatMoneyCompact(e.value, data.scale)} <span className="font-normal text-muted-foreground">· {pctText(e.value, total)}</span>
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2 rounded-full bg-muted/60 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: pctText(e.value, expenses[0].value), backgroundColor: CHART_SERIES[1] }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </AccountingSection>
+
+            <InventoryCompositionCard data={data} />
+
+            <AccountingSection title={t("acc_dash_aging_title")} icon={Receipt} action={<span className="text-[10px] text-muted-foreground" dir="ltr">{data.period.to}</span>}>
+              <div className="p-5 space-y-5">
+                <AgingBars label={t("acc_dash_aging_receivables")} buckets={receivableAging.buckets} color={CHART_SERIES[1]} scale={data.scale} />
+                <AgingBars label={t("acc_dash_aging_payables")} buckets={payableAging.buckets} color={CHART_SERIES[2]} scale={data.scale} />
+                <Link href={`${base}/settlements`} className="inline-flex items-center gap-1 text-xs font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                  <ArrowLeftRight size={12} aria-hidden="true" />
+                  {t("acc_nav_settlements")}
+                </Link>
+              </div>
+            </AccountingSection>
+          </div>
+
+        </div>
+      </AccountingSection>
+
+      <AccountingSection
+        collapsible
+        id="vouchers"
+        defaultOpen={false}
+        title={t("acc_sec_vouchers")}
+        icon={BookOpen}
+        summary={t("acc_journal_entries", { count: inPeriod })}
+        action={
+          <span className="flex items-center gap-3">
+            {canPost && (
+              <Link href={`${base}/journal/new`} className="text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                {t("acc_nav_new_entry")}
+              </Link>
+            )}
+            <Link href={`${base}/journal`} className="text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+              {t("acc_nav_journal")} →
+            </Link>
+          </span>
+        }
+      >
+              <ul className="divide-y">
+                {recent.map((e) => (
+                  <li key={e.id}>
+                    <Link href={`${base}/journal?entry=${encodeURIComponent(e.id)}`} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold">
+                          <span className="me-1 tabular-nums text-muted-foreground" dir="ltr">#{e.entryNumber}</span>
+                          {e.description}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground">
+                          <span dir="ltr">{e.date}</span>
+                          {SOURCE_LABEL_KEY[e.sourceType] && ` · ${t(SOURCE_LABEL_KEY[e.sourceType])}`}
+                          {e.status === "draft" && ` · ${t("acc_status_draft")}`}
+                        </span>
+                      </span>
+                      <Money value={e.totalDebit} className="shrink-0 text-xs font-bold" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+      </AccountingSection>
+
+      <AccountingSection collapsible id="statements" defaultOpen={false} title={t("acc_nav_group_statements")} icon={Scale} summary={<span dir="ltr">{t("acc_kpi_revenue")} {compact(revenue)}</span>}>
+        <div className="p-4">
+          {/* Statements, expandable in place */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <AccountingSection title={`${t("acc_nav_income")} · ${periodLabel(data.period, locale)}`} icon={TrendingUp}>
+              <StatementTreeTable nodes={income.nodes} onSelect={setSelected} initialDepth={0} headerExtra={<ScaleCaption scale={data.scale} />} />
+            </AccountingSection>
+            <AccountingSection
+              title={`${t("acc_nav_balance")} · ${periodRangeText(data.period).split(" – ")[1]}`}
+              icon={Scale}
+              action={
+                position.statement.difference === 0 ? (
+                  <Badge className="border-none bg-success/10 text-success gap-1"><CheckCircle2 size={11} />{t("acc_tb_balanced")}</Badge>
+                ) : (
+                  <Badge className="border-none bg-destructive/10 text-destructive">{t("acc_bs_unbalanced")}</Badge>
+                )
+              }
+            >
+              <StatementTreeTable nodes={position.nodes} onSelect={setSelected} initialDepth={0} headerExtra={<ScaleCaption scale={data.scale} />} />
+            </AccountingSection>
+          </div>
+        </div>
+      </AccountingSection>
+
+      <AccountingSection collapsible id="projects" defaultOpen={false} title={t("acc_dash_projects_title")} icon={Briefcase} summary={String(projects.length)} action={<ScaleCaption scale={data.scale} />}>
           {projects.length === 0 ? (
             <p className="p-6 text-center text-xs text-muted-foreground">{t("acc_dash_no_projects")}</p>
           ) : (
@@ -364,61 +458,8 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
               </table>
             </div>
           )}
-        </AccountingSection>
-
-        <div className="space-y-4">
-          <AccountingSection title={t("acc_dash_shortcuts_title")} icon={LayoutDashboard}>
-            <div className="grid grid-cols-2 gap-2 p-4">
-              {[
-                canPost && { href: `${base}/journal/new`, icon: FilePlus2, key: "acc_nav_new_entry" },
-                { href: `${base}/statements`, icon: FileSpreadsheet, key: "acc_nav_account_statements" },
-                { href: `${base}/cash-flow`, icon: Wallet, key: "acc_nav_cashflow" },
-                { href: `${base}/settlements`, icon: ArrowLeftRight, key: "acc_nav_settlements" },
-                { href: `${base}/locked`, icon: Lock, key: "acc_nav_locked" },
-                { href: `${base}/audit-trail`, icon: BookOpen, key: "acc_nav_audit_trail" },
-                canDocuments && { href: `/${portal}/guarantees`, icon: Receipt, key: "fin_nav_guarantees" },
-              ]
-                .filter(Boolean)
-                .map((item) => {
-                  const it = item as { href: string; icon: typeof FilePlus2; key: string }
-                  return (
-                    <Link
-                      key={it.href}
-                      href={it.href}
-                      className="flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <it.icon size={14} aria-hidden="true" />
-                      {t(it.key)}
-                    </Link>
-                  )
-                })}
-            </div>
-          </AccountingSection>
-
-          <AccountingSection title={t("acc_dash_recent_title")} icon={BookOpen}>
-            <ul className="divide-y">
-              {recent.map((e) => (
-                <li key={e.id}>
-                  <Link href={`${base}/journal?entry=${encodeURIComponent(e.id)}`} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-                    <span className="min-w-0">
-                      <span className="block truncate text-xs font-semibold">
-                        <span className="me-1 tabular-nums text-muted-foreground" dir="ltr">#{e.entryNumber}</span>
-                        {e.description}
-                      </span>
-                      <span className="block text-[10px] text-muted-foreground">
-                        <span dir="ltr">{e.date}</span>
-                        {SOURCE_LABEL_KEY[e.sourceType] && ` · ${t(SOURCE_LABEL_KEY[e.sourceType])}`}
-                        {e.status === "draft" && ` · ${t("acc_status_draft")}`}
-                      </span>
-                    </span>
-                    <Money value={e.totalDebit} className="shrink-0 text-xs font-bold" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </AccountingSection>
-        </div>
-      </div>
+      </AccountingSection>
+      <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
     </div>
   )
 }

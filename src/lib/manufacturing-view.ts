@@ -838,6 +838,8 @@ export interface WorkshopHold {
   requested: number
   /** Reserved by released orders in queue order (MAT-04). */
   reserved: number
+  /** A purchase request exists for the shortfall (sent, ordered or arrived). */
+  purchaseRequested: boolean
   /** Still needed by released orders beyond what the store holds. */
   short: number
   /** What the stores can still promise elsewhere. */
@@ -865,7 +867,7 @@ export function workshopHolds(input: { orders: WorkOrderV2[]; products: Map<stri
     const k = itemKey(itemName)
     let r = rows.get(k)
     if (!r) {
-      r = { itemKey: k, itemName, unit, onHand: input.stock.onHand.get(k) || 0, requested: 0, reserved: 0, short: 0, free: Math.max(0, alloc.free.get(k) ?? input.stock.onHand.get(k) ?? 0), orders: [] }
+      r = { itemKey: k, itemName, unit, onHand: input.stock.onHand.get(k) || 0, requested: 0, reserved: 0, short: 0, purchaseRequested: false, free: Math.max(0, alloc.free.get(k) ?? input.stock.onHand.get(k) ?? 0), orders: [] }
       rows.set(k, r)
     }
     return r
@@ -887,6 +889,7 @@ export function workshopHolds(input: { orders: WorkOrderV2[]; products: Map<stri
     for (const s of shortages(c, alloc)) {
       const r = rowFor(s.itemName, s.unit)
       r.short = round2(r.short + s.short)
+      if (s.requested) r.purchaseRequested = true
     }
     for (const [k, qty] of mine) if (qty > 0) rows.get(k)?.orders.push({ id: c.slice.id, ref: refs.get(c.slice.id) || "", quantity: qty })
   }

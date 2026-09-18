@@ -311,11 +311,11 @@ export function MfgSegments<T extends string>({ value, onChange, items, label }:
   )
 }
 
-export function MfgSearchField({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+export function MfgSearchField({ value, onChange, placeholder, className, id }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string; id?: string }) {
   return (
     <div className={cn("relative", className)}>
       <Search size={14} className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-      <Input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9 ps-8 text-xs" />
+      <Input id={id} type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9 ps-8 text-xs" />
     </div>
   )
 }

@@ -57,6 +57,25 @@ export default {
           DEFAULT: '#B45309',
           foreground: '#FFFFFF',
         },
+        // Two more identities so no two modules share a colour (Sales, HR).
+        // Extending keeps Tailwind's indigo-*/violet-* scales intact.
+        indigo: {
+          DEFAULT: '#4F46E5',
+          foreground: '#FFFFFF',
+        },
+        violet: {
+          DEFAULT: '#7C3AED',
+          foreground: '#FFFFFF',
+        },
+        // The ACTIVE module's own colour. `--module` is set by data-accent on the
+        // portal frame (globals.css), so `bg-module/10 text-module` inside any
+        // screen is that module's colour without per-screen wiring. `on-dark`
+        // is the same colour except where it would vanish on the navy sidebar.
+        module: {
+          DEFAULT: 'hsl(var(--module) / <alpha-value>)',
+          foreground: 'hsl(var(--module-foreground) / <alpha-value>)',
+          'on-dark': 'hsl(var(--module-on-dark) / <alpha-value>)',
+        },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',

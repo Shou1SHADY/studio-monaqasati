@@ -13,7 +13,7 @@ import { useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { Mountain, SearchX } from "lucide-react"
 import { usePathname, useRouter } from "@/i18n/routing"
-import { standardCost, type MfgProduct } from "@/lib/manufacturing-engine"
+import { labourCostOn, standardCost, type MfgProduct } from "@/lib/manufacturing-engine"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgPrdDrawer } from "./MfgPrdDrawer"
 import { MfgPrdFlags, MfgPrdRouteChips, productTime, stepName } from "./MfgPrdBits"
@@ -52,7 +52,7 @@ export function MfgProductsView() {
   return (
     <div className="space-y-4">
       {/* "New product" lives in the shell's header for this tab (UI-04: no duplicate actions). */}
-      <MfgSearchField value={search} onChange={setSearch} placeholder={t("mfr_prd_search")} />
+      <MfgSearchField id="mfr-prd-search" value={search} onChange={setSearch} placeholder={t("mfr_prd_search")} />
 
       <MfgNote tone="info">{t("mfr_prd_ownership_note")}</MfgNote>
 
@@ -127,7 +127,7 @@ function ProductCard({ product, onOpen }: { product: MfgProduct; onOpen: () => v
             )}
             {seesMoney && (
               <span>
-                {t("mfr_prd_std_cost")}{" "}
+                {t(labourCostOn(data.settings) ? "mfr_prd_std_cost" : "mfr_prd_std_cost_materials")}{" "}
                 <b dir="ltr" className="tabular-nums text-foreground">
                   {fmtSar(std.total)}
                 </b>

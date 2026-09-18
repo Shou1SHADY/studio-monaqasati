@@ -129,7 +129,7 @@ function TreeStatement({
   return (
     <>
       <AccountingSection title={periodTitle(data, locale)} icon={icon}>
-        <StatementTreeTable nodes={nodes} onSelect={setSelected} headerExtra={<ScaleCaption scale={data.scale} />} />
+        <StatementTreeTable nodes={nodes} onSelect={setSelected} initialDepth={1} headerExtra={<ScaleCaption scale={data.scale} />} />
       </AccountingSection>
       <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
     </>
@@ -519,17 +519,22 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
     [data.entries, data.period, kind, status, q]
   )
   const totals = inPeriod.filter((e) => e.status === "posted").reduce((s, e) => s + e.totalDebit, 0)
+  // A year of entries is thousands of rows; the page shows them a page at a time.
+  const PAGE = 25
+  const [limit, setLimit] = useState(PAGE)
+  useEffect(() => setLimit(PAGE), [data.period.from, data.period.to, kind, status, q])
+  const shown = inPeriod.slice(0, limit)
   // دفتر اليومية is a DAY book: entries read under their day, with the day's total.
   const days = useMemo(() => {
     const out: { date: string; entries: JournalEntry[]; posted: number }[] = []
-    for (const e of inPeriod) {
+    for (const e of shown) {
       const last = out[out.length - 1]
       const day = last && last.date === e.date ? last : (out.push({ date: e.date, entries: [], posted: 0 }), out[out.length - 1])
       day.entries.push(e)
       if (e.status === "posted") day.posted += e.totalDebit
     }
     return out
-  }, [inPeriod])
+  }, [shown])
   const formatDay = (iso: string) =>
     new Date(`${iso}T00:00:00`).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn-ca-gregory" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
 
@@ -621,6 +626,13 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
               </div>
             </div>
           ))}
+          {inPeriod.length > limit && (
+            <div className="border-t p-3 text-center">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setLimit((n) => n + PAGE)}>
+                {t("acc_show_more", { count: Math.min(PAGE, inPeriod.length - limit) })}
+              </Button>
+            </div>
+          )}
         </AccountingSection>
       )}
       <JournalEntrySheet

@@ -22,17 +22,20 @@ export function StatementTreeTable({
   onSelect,
   headerExtra,
   caption,
+  initialDepth,
 }: {
   nodes: TreeNode[]
   onSelect?: (node: TreeNode) => void
   /** Rendered beside the expand controls (e.g. the scale caption). */
   headerExtra?: ReactNode
   caption?: string
+  /** How many group levels start open: 0 = headings only, 1 = one level in; omit for all. */
+  initialDepth?: number
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const allIds = useMemo(() => expandableIds(nodes), [nodes])
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(defaultExpandedIds(nodes)))
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(defaultExpandedIds(nodes, initialDepth)))
 
   const toggle = (id: string) =>
     setExpanded((prev) => {

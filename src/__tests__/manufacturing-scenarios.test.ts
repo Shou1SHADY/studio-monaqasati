@@ -998,8 +998,17 @@ describe("3 · shortage → purchase → arrival → stop (tour 3)", () => {
     expect(shortages(w.calc, alloc)[0].requested?.id).toBe(pr.id)
     expect(scheduleOrders(worldCalcs(), departments(), lostHours(), alloc).get(cladId)!.finishDays).toBeNull()
 
-    // T23: Procurement marks it arrived; Inventory receives a new block
+    // T23: Procurement marks it arrived. Until Inventory books the block the
+    // shortfall is Inventory's to close — not back on the manager as "no
+    // purchase requested" (the review of 18 Sep).
     await act("markPurchaseArrived", markPurchaseArrived(db, { orderId: cladId, purchaseRequestId: pr.id, actor: A.huda }))
+    w = load(cladId)
+    alloc = allocate()
+    expect(w.order.purchaseRequests![0]).toMatchObject({ state: "arrived", arrivedBy: A.huda.name })
+    cands = candidates(w.calc, ctx(alloc))
+    expect(cands.some((c) => c.key === "shortage" || c.key === "purchase_wait")).toBe(false)
+    expect(cands.find((c) => c.key === "arrived_wait")).toMatchObject({ owner: { kind: "external", module: "inventory" } })
+    // Inventory receives the new block
     stockRow("wh-main", "row-sta-8100", STATUARIO, 50, "BLK-8100")
     expectWorldInvariants("Inventory receives BLK-8100")
     w = load(cladId)

@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { MFG_DEPARTMENTS, type MfgDepartment } from "@/lib/manufacturing"
-import { deptCapacity, isQcStation, stationGate, stationQueueDays, type DeptCapacityFields, type GateKind } from "@/lib/manufacturing-engine"
+import { deptCapacity, isQcStation, labourCostOn, stationGate, stationQueueDays, type DeptCapacityFields, type GateKind } from "@/lib/manufacturing-engine"
 import { updateStation } from "@/lib/manufacturing-writes"
 import { cn } from "@/lib/utils"
 import { useMfgUi } from "./MfgUiContext"
@@ -40,6 +40,7 @@ export function MfgSetStations() {
   const { toast } = useToast()
   const canEdit = perms.canManage
   const timeOn = data.settings.features.time
+  const costOn = labourCostOn(data.settings)
   const stations = data.departments as Station[]
 
   const [editing, setEditing] = useState<Station | null>(null)
@@ -105,7 +106,7 @@ export function MfgSetStations() {
               <tr className="border-b border-border/60 bg-muted/30 text-[11px] font-bold text-muted-foreground">
                 <th scope="col" className="px-4 py-2.5 text-start">{t("mfr_set_col_station")}</th>
                 <th scope="col" className="px-3 py-2.5 text-start">{timeOn ? t("mfr_set_col_capacity") : t("mfr_set_workers")}</th>
-                {timeOn && <th scope="col" className="px-3 py-2.5 text-start">{t("mfr_set_col_rate")}</th>}
+                {costOn && <th scope="col" className="px-3 py-2.5 text-start">{t("mfr_set_col_rate")}</th>}
                 {timeOn && <th scope="col" className="px-3 py-2.5 text-start">{t("mfr_set_col_queue")}</th>}
                 <th scope="col" className="px-3 py-2.5 text-start">{t("mfr_set_col_routes")}</th>
                 {canEdit && <th scope="col" className="px-4 py-2.5 text-end"><span className="sr-only">{t("mfr_set_col_actions")}</span></th>}
@@ -151,7 +152,7 @@ export function MfgSetStations() {
                         <b className="tabular-nums text-foreground">{fmtQty(Number(s.workers) || 1)}</b>
                       )}
                     </td>
-                    {timeOn && (
+                    {costOn && (
                       <td className="px-3 py-2.5">
                         <span className="inline-flex flex-wrap items-center gap-1.5">
                           {seesMoney ? (

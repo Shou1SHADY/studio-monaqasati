@@ -21,14 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { MFG_DEPARTMENTS } from "@/lib/manufacturing"
-import { deptCapacity, effectiveRoute, itemKey, standardCost, stationGate, type MfgBomLine, type MfgProduct, type MfgRouteStep } from "@/lib/manufacturing-engine"
+import { deptCapacity, effectiveRoute, itemKey, labourCostOn, perUnit, rateOf, standardCost, stationGate, type MfgBomLine, type MfgProduct, type MfgRouteStep } from "@/lib/manufacturing-engine"
 import { createMfgProduct, updateMfgProduct } from "@/lib/manufacturing-writes"
 import { cn } from "@/lib/utils"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgRecordedAs } from "./MfgOrderBits"
 import { reqErrorText } from "./MfgReqBits"
-import { STONE_UNITS, liveOrdersOn, stepName } from "./MfgPrdBits"
-import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtSar, fmtQty } from "./ui/MfgUi"
+import { PRODUCT_UNITS, STONE_UNITS, unitLabel, liveOrdersOn, stepName } from "./MfgPrdBits"
+import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtSar, fmtQty, fmtMoney } from "./ui/MfgUi"
 
 interface RouteRow {
   key: string
@@ -63,6 +63,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
   const { toast } = useToast()
   const existing: MfgProduct | null = productId ? data.productById.get(productId) || null : null
   const timeOn = data.settings.features.time
+  const costOn = labourCostOn(data.settings)
   const locked = !!existing && liveOrdersOn(existing.id, ui.views) > 0
 
   const [step, setStep] = useState(0)
@@ -94,7 +95,8 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const units = useMemo(() => (existing && !STONE_UNITS.includes(existing.unit as (typeof STONE_UNITS)[number]) ? [...STONE_UNITS, existing.unit] : [...STONE_UNITS]), [existing])
+  // The fixed list, plus a stored value from before it (shown as it is) — never twice.
+  const units = useMemo(() => Array.from(new Set<string>([...PRODUCT_UNITS, ...(existing?.unit ? [existing.unit] : [])])), [existing])
   const suggestions = useMemo(() => {
     const byKey = new Map<string, { name: string; unit: string; unitCost: number | null }>()
     for (const rows of data.stockRows.values()) for (const r of rows) if (r.name && !r.isManufactured && !byKey.has(itemKey(r.name))) byKey.set(itemKey(r.name), { name: r.name, unit: r.unit, unitCost: r.unitCost })
@@ -295,7 +297,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
                 <SelectContent>
                   {units.map((u) => (
                     <SelectItem key={u} value={u} className="text-xs">
-                      {u === "m²" ? t("mfr_prd_unit_m2") : u === "m" ? t("mfr_prd_unit_m") : u}
+                      {unitLabel(u, t)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -353,7 +355,9 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
                       </span>
                       <span className="block text-[10px] text-muted-foreground">
                         {stationGate(d || { name: r.departmentName }) ? `${t("mfr_prd_order_level_step")} · ` : ""}
-                        {timeOn ? t("mfr_set_capacity_value", { hours: fmtQty(deptCapacity(d || { workers: 1, hoursPerDay: 8 })) }) : t("mfr_set_workers_value", { count: Number(d?.workers) || 1 })}
+                        {timeOn
+                          ? `${t("mfr_set_capacity_value", { hours: fmtQty(deptCapacity(d || { workers: 1, hoursPerDay: 8 })) })} · ${Number(d?.workers) || 1}×${Number(d?.hoursPerDay) || 8}`
+                          : t("mfr_set_workers_value", { count: Number(d?.workers) || 1 })}
                       </span>
                     </span>
                     {timeOn && (
@@ -428,7 +432,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
                     <Plus size={14} aria-hidden="true" /> {t("mfr_prd_create_station_add")}
                   </Button>
                   <span className="text-[11px] text-muted-foreground">
-                    {t("mfr_set_capacity_note", { hours: fmtQty((Number(newStation.workers) || 0) * (Number(newStation.hours) || 0)) })}
+                    {t("mfr_set_capacity_note", { workers: Number(newStation.workers) || 0, hoursEach: Number(newStation.hours) || 0, hours: fmtQty((Number(newStation.workers) || 0) * (Number(newStation.hours) || 0)) })}
                   </span>
                 </div>
               </div>
@@ -437,6 +441,13 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
         </>
       ) : (
         <>
+          <datalist id="mfr-bom-units">
+            {PRODUCT_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {unitLabel(u, t)}
+              </option>
+            ))}
+          </datalist>
           <datalist id="mfr-bom-items">
             {suggestions.map((s) => (
               <option key={s.name} value={s.name} />
@@ -452,7 +463,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
                     <Input id={`${b.key}-item`} list="mfr-bom-items" dir="auto" value={b.itemName} onChange={(e) => onItemName(b, e.target.value)} className="h-10 text-xs" />
                   </MfgField>
                   <MfgField label={t("mfr_prd_bom_unit")} htmlFor={`${b.key}-unit`}>
-                    <Input id={`${b.key}-unit`} dir="auto" value={b.unit} onChange={(e) => setBomRow(b.key, { unit: e.target.value })} className="h-10 text-xs" />
+                    <Input id={`${b.key}-unit`} list="mfr-bom-units" dir="auto" value={b.unit} onChange={(e) => setBomRow(b.key, { unit: e.target.value })} className="h-10 text-xs" />
                   </MfgField>
                   <MfgField label={t("mfr_prd_bom_qty")} htmlFor={`${b.key}-qty`} error={attempted && !(Number(b.qty) > 0) ? t("mfr_prd_err_bom_qty") : undefined}>
                     <Input id={`${b.key}-qty`} type="number" inputMode="decimal" min={0} step="any" dir="ltr" value={b.qty} onChange={(e) => setBomRow(b.key, { qty: e.target.value })} className="h-10 text-xs tabular-nums" />
@@ -508,10 +519,31 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
           {seesMoney && (
             <MfgReview
               rows={[
+                // Each figure with its arithmetic under it: "where does this number come from?"
                 [t("mfr_prd_cost_materials"), <Money key="m" value={std.materials} />],
-                timeOn && [t("mfr_prd_cost_labour"), <Money key="l" value={std.labour} />],
-                timeOn && [t("mfr_prd_cost_overhead"), <Money key="o" value={std.overhead} />],
-                [<b key="tk">{t("mfr_prd_std_unit_cost")}</b>, <b key="tv"><Money value={std.total} /></b>],
+                ...bomLines.map((b, i): [ReactNode, ReactNode] => [
+                  <span key={`bl${i}`} className="ps-3 text-[11px]">· {b.itemName || "—"}</span>,
+                  <span key={`bv${i}`} className="text-[11px] font-normal text-muted-foreground" dir="ltr">
+                    {b.unitCost == null
+                      ? t("mfr_prd_cost_line_unpriced")
+                      : `${fmtQty(perUnit({ wastePercent: wastePct }, b))} ${b.unit} × ${fmtMoney(b.unitCost)} = ${fmtMoney(perUnit({ wastePercent: wastePct }, b) * b.unitCost)}`}
+                  </span>,
+                ]),
+                costOn && [t("mfr_prd_cost_labour"), <Money key="l" value={std.labour} />],
+                ...(costOn
+                  ? routeSteps.map((r, i): [ReactNode, ReactNode] => [
+                      <span key={`rl${i}`} className="ps-3 text-[11px]">· {nameOf(route[i] ?? { departmentId: r.departmentId, departmentName: r.departmentName })}</span>,
+                      <span key={`rv${i}`} className="text-[11px] font-normal text-muted-foreground" dir="ltr">
+                        {r.hoursPerUnit == null ? t("mfr_prd_not_estimated_long") : `${fmtQty(r.hoursPerUnit)} h × ${fmtMoney(rateOf(data.departments, r.departmentId))} = ${fmtMoney(r.hoursPerUnit * rateOf(data.departments, r.departmentId))}`}
+                      </span>,
+                    ])
+                  : []),
+                costOn && [t("mfr_prd_cost_overhead"), <Money key="o" value={std.overhead} />],
+                costOn && [
+                  <span key="ol" className="ps-3 text-[11px]">· {t("mfr_prd_cost_overhead_how")}</span>,
+                  <span key="ov" className="text-[11px] font-normal text-muted-foreground" dir="ltr">{`${fmtQty(std.hours)} h × ${fmtMoney(data.settings.overheadRatePerHour)}`}</span>,
+                ],
+                [<b key="tk">{t(costOn ? "mfr_prd_std_unit_cost" : "mfr_prd_std_unit_cost_materials")}</b>, <b key="tv"><Money value={std.total} /></b>],
                 existing?.referenceBuyPrice ? [t("mfr_prd_ref_buy"), <span key="rb"><Money value={existing.referenceBuyPrice} /> · {t("mfg4_from_module", { module: t("mfg4_module_procurement") })}</span>] : null,
               ]}
             />

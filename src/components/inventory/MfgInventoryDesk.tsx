@@ -221,7 +221,7 @@ export function MfgInventoryDesk({ portal }: { portal: CrmPortal }) {
                     <li key={g.key} className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start">
                       <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-foreground" dir="ltr">{g.requestNumber}</span>
+                          <span className="font-mono text-xs font-bold text-foreground" dir="ltr">{g.requestNumber || "—"}</span>
                           <Badge variant="outline" className="font-mono text-[10px]" dir="ltr">{g.orderRef}</Badge>
                           <span className="text-sm font-bold text-foreground" dir="auto">{g.productName}</span>
                           <Badge className="gap-1 border-none bg-cta/10 text-[10px] text-cta">
@@ -277,7 +277,7 @@ export function MfgInventoryDesk({ portal }: { portal: CrmPortal }) {
                 <ul className="divide-y overflow-hidden rounded-2xl border bg-white">
                   {issued.map((g) => (
                     <li key={g.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-xs">
-                      <span className="font-mono font-bold text-foreground" dir="ltr">{g.requestNumber}</span>
+                      <span className="font-mono font-bold text-foreground" dir="ltr">{g.requestNumber || "—"}</span>
                       <span className="font-mono text-muted-foreground" dir="ltr">{g.orderRef}</span>
                       <span className="text-muted-foreground">{stationName(g.departmentId)}</span>
                       <Badge className="border-none bg-warning/10 text-[10px] text-warning">{t("mfx_desk_issued_awaiting")}</Badge>
@@ -364,7 +364,7 @@ export function MfgInventoryDesk({ portal }: { portal: CrmPortal }) {
                       {h.short > 0 && (
                         <Badge className="gap-1 border-none bg-destructive/10 text-[10px] text-destructive">
                           <AlertTriangle size={10} aria-hidden="true" />
-                          {t("mfx_hold_short", { qty: `${fmt(h.short)} ${h.unit}` })}
+                          {t(h.purchaseRequested ? "mfx_hold_short" : "mfx_hold_short_unrequested", { qty: `${fmt(h.short)} ${h.unit}` })}
                         </Badge>
                       )}
                     </div>

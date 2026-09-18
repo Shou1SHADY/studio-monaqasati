@@ -40,6 +40,7 @@ const TABS: TabDef[] = [
 
 /** The Workshop's own search field — Ctrl/⌘K focuses it on that tab. */
 export const WORKSHOP_SEARCH_ID = "mfw-search"
+export const PRODUCTS_SEARCH_ID = "mfr-prd-search"
 
 export function MfgShell({ tab, children }: { tab: MfgTabId; children: ReactNode }) {
   const t = useTranslations("Portal.Shared")
@@ -170,10 +171,15 @@ function PersonaSwitch({ value, onChange }: { value: Persona; onChange: (p: Pers
 function ShortcutK({ tab }: { tab: MfgTabId }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return
+      // `code`, not `key`: on an Arabic layout the K key reports "ن".
+      if (!(e.metaKey || e.ctrlKey) || e.code !== "KeyK") return
+      // Not from behind a dialog, and not out of a field someone is typing in.
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return
+      const active = document.activeElement as HTMLElement | null
+      if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName) && !active.id.endsWith("search")) return
       e.preventDefault()
-      const id = tab === "workshop" ? WORKSHOP_SEARCH_ID : "mfw-jump-search"
-      const el = document.getElementById(id) as HTMLInputElement | null
+      const id = tab === "workshop" ? WORKSHOP_SEARCH_ID : tab === "products" ? PRODUCTS_SEARCH_ID : "mfw-jump-search"
+      const el = (document.getElementById(id) ?? document.getElementById("mfw-jump-search")) as HTMLInputElement | null
       el?.focus()
       el?.select()
     }

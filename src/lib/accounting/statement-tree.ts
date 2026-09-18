@@ -392,17 +392,19 @@ export function expandableIds(nodes: TreeNode[]): string[] {
 
 /** Groups open, lines and accounts closed — the statement's face with its
  * sections visible, the way it is usually first read. */
-export function defaultExpandedIds(nodes: TreeNode[]): string[] {
+/** Groups open by default. `maxDepth` limits how deep: 0 opens only the top
+ * groups (a statement folded to its headings), undefined opens every group. */
+export function defaultExpandedIds(nodes: TreeNode[], maxDepth?: number): string[] {
   const out: string[] = []
-  const walk = (list: TreeNode[]) => {
+  const walk = (list: TreeNode[], depth: number) => {
     for (const n of list) {
-      if (n.kind === "group" && n.children && n.children.length > 0) {
+      if (n.kind === "group" && n.children && n.children.length > 0 && (maxDepth === undefined || depth <= maxDepth)) {
         out.push(n.id)
-        walk(n.children)
+        walk(n.children, depth + 1)
       }
     }
   }
-  walk(nodes)
+  walk(nodes, 0)
   return out
 }
 

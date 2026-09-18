@@ -1,12 +1,12 @@
 "use client"
 
-import type { ElementType, ReactNode } from "react"
+import { type ElementType, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Calculator } from "lucide-react"
+import { Calculator, ChevronDown, FileText, LayoutDashboard, Percent, Scale, Settings2, Wrench } from "lucide-react"
 import { Link, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { usePermissions } from "@/hooks/usePermissions"
-import { useMoneyScale } from "@/hooks/useAccountingPrefs"
+import { setAccountingPrefs, useAccountingPrefs, useMoneyScale } from "@/hooks/useAccountingPrefs"
 import { formatMoney, formatMoneyCompact, type MoneyScale } from "@/lib/accounting/display"
 import type { PermissionId } from "@/lib/permissions"
 import type { CrmPortal } from "@/components/crm/CrmShell"
@@ -32,6 +32,15 @@ interface ShellTab {
  * documents clerk never sees the ledger and an accountant never needs the
  * documents right to read a statement.
  */
+const GROUP_ICON: Record<string, ElementType> = {
+  acc_nav_group_overview: LayoutDashboard,
+  fin_nav_group_documents: FileText,
+  acc_nav_group_statements: Scale,
+  acc_nav_group_tools: Wrench,
+  acc_nav_group_tax: Percent,
+  acc_nav_group_settings: Settings2,
+}
+
 const TAB_GROUPS: Array<{ labelKey: string; tabs: ShellTab[] }> = [
   {
     labelKey: "acc_nav_group_overview",
@@ -116,25 +125,53 @@ export function AccountingShell({
     .sort((a, b) => b.length - a.length)[0]
 
   const groups = TAB_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((tab) => can(tab.permission)) })).filter((g) => g.tabs.length > 0)
+  // The rail shows the groups; the active group's pages sit under it as pills.
+  // The old six-row box of every page at once was taller than some screens'
+  // content — Manufacturing's one-row rail is the pattern the customer asked for.
+  const activeGroup = groups.find((g) => g.tabs.some((tab) => hrefOf(tab) === activeHref)) ?? groups[0]
 
   return (
-    <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
+    <div className="space-y-5" dir={isRtl ? "rtl" : "ltr"}>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-black text-primary flex items-center gap-2">
-            <Icon size={22} className="shrink-0" aria-hidden="true" />
-            {title}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-module/10 text-module">
+            <Icon size={22} aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black text-primary">{title}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{description}</p>
+          </div>
         </div>
         {action && <div className="shrink-0 flex flex-wrap items-center gap-2">{action}</div>}
       </div>
 
-      <nav aria-label={t("acc_page_title")} className="rounded-xl border bg-muted/30 p-2 space-y-1.5">
-        {groups.map((group) => (
-          <div key={group.labelKey} className="flex flex-wrap items-center gap-1">
-            <span className="text-[10px] font-bold text-muted-foreground px-1.5 shrink-0 min-w-16">{t(group.labelKey)}</span>
-            {group.tabs.map((tab) => {
+      <nav aria-label={t("acc_page_title")} className="space-y-2">
+        <ul className="flex items-center gap-1 overflow-x-auto border-b">
+          {groups.map((group) => {
+            const isActive = group === activeGroup
+            const first = group.tabs[0]
+            const GroupIcon = GROUP_ICON[group.labelKey] ?? Calculator
+            return (
+              <li key={group.labelKey} className="shrink-0">
+                <Link
+                  href={hrefOf(first)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-bold transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-t",
+                    isActive ? "border-module text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  <GroupIcon size={15} className={cn("shrink-0", isActive && "text-module")} aria-hidden="true" />
+                  {t(group.labelKey)}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+        {activeGroup && activeGroup.tabs.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1">
+            {activeGroup.tabs.map((tab) => {
               const href = hrefOf(tab)
               const isActive = href === activeHref
               return (
@@ -145,7 +182,7 @@ export function AccountingShell({
                   className={cn(
                     "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                    isActive ? "bg-primary text-white" : "bg-white text-slate-600 hover:text-foreground"
+                    isActive ? "bg-module text-module-foreground" : "bg-white border text-slate-600 hover:text-foreground"
                   )}
                 >
                   {t(tab.labelKey)}
@@ -153,10 +190,11 @@ export function AccountingShell({
               )
             })}
           </div>
-        ))}
+        )}
       </nav>
 
-      {toolbar}
+      {/* The period, scale and filter stay in reach while a long statement scrolls. */}
+      {toolbar && <div className="sticky top-0 z-20 -mx-1 bg-background px-1 pb-2">{toolbar}</div>}
 
       {children}
     </div>
@@ -169,20 +207,59 @@ export function AccountingSection({
   action,
   children,
   className,
+  collapsible,
+  id,
+  defaultOpen = true,
+  summary,
 }: {
   title: string
   icon?: ElementType
   action?: ReactNode
   children: ReactNode
   className?: string
+  /** A heading with its content folded underneath, opening on click — the
+   * order drawer's pattern in Manufacturing. `id` remembers the reader's choice. */
+  collapsible?: boolean
+  id?: string
+  defaultOpen?: boolean
+  /** The figure that still shows while the section is closed. */
+  summary?: ReactNode
 }) {
+  const prefs = useAccountingPrefs()
+  const open = collapsible ? (id && id in prefs.openSections ? prefs.openSections[id] : defaultOpen) : true
+  const heading = (
+    <h2 className="text-sm font-black text-foreground flex items-center gap-2">
+      {Icon && <Icon size={15} className="text-module" aria-hidden="true" />}
+      {title}
+    </h2>
+  )
+  if (collapsible) {
+    return (
+      <details
+        open={open}
+        onToggle={(e) => {
+          if (id) setAccountingPrefs({ openSections: { ...prefs.openSections, [id]: e.currentTarget.open } })
+        }}
+        className={cn("group rounded-xl border bg-white overflow-hidden", className)}
+      >
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-3.5 bg-muted/30 group-open:border-b [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+          <span className="flex min-w-0 items-center gap-2">
+            <ChevronDown size={15} className="shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+            {heading}
+          </span>
+          <span className="flex flex-wrap items-center gap-3">
+            {summary && <span className="text-xs font-semibold text-muted-foreground">{summary}</span>}
+            {action && <span onClick={(e) => e.stopPropagation()}>{action}</span>}
+          </span>
+        </summary>
+        {children}
+      </details>
+    )
+  }
   return (
     <section className={cn("rounded-xl border bg-white overflow-hidden", className)}>
       <header className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b bg-muted/30">
-        <h2 className="text-sm font-black text-foreground flex items-center gap-2">
-          {Icon && <Icon size={15} className="text-primary" aria-hidden="true" />}
-          {title}
-        </h2>
+        {heading}
         {action}
       </header>
       {children}

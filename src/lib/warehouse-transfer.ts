@@ -69,7 +69,8 @@ export function carriedValueFields(source: CarriedValueFields | null | undefined
  * so repeated transfers top up one row instead of piling up duplicates. A
  * block (lot) or a remnant is its own row — merging them would mix colours. */
 export function itemMergeKey(item: { name: string; unit: string; lot?: string | null; remnant?: boolean | null }): string {
-  return `${item.name.trim()}|${item.unit.trim().toLowerCase()}${item.lot ? `|lot:${item.lot.trim()}` : ""}${item.remnant ? "|remnant" : ""}`
+  // Lower-cased like the BOM's itemKey: "Statuario" and "statuario" are one item there, so here too.
+  return `${item.name.trim().toLowerCase()}|${item.unit.trim().toLowerCase()}${item.lot ? `|lot:${item.lot.trim()}` : ""}${item.remnant ? "|remnant" : ""}`
 }
 
 export interface RunTransferParams {

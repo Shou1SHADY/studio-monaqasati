@@ -104,7 +104,8 @@ public/                 # Static assets — favicons, OG image, manifest
 scripts/                # Ops scripts (demo seed, data repair, migrations,
                         #   cleanup-seed-demo.js — dry-run-first removal of what
                         #   /admin/seed wrote; that page is OFF in production)
-docs/                   # sales-prd-status.md, customer-review-2026-09-17.md
+docs/                   # sales-prd-status.md, customer-review-2026-09-17.md,
+                        #   customer-review-2026-09-18.md
 ```
 
 ## Key Utilities
@@ -128,6 +129,9 @@ docs/                   # sales-prd-status.md, customer-review-2026-09-17.md
 | `src/lib/riyal.ts` + `public/fonts/saudi-riyal.otf` | The official Saudi Riyal symbol, **U+20C1** — a one-glyph font (`scripts/build-riyal-font.js`, registered in globals.css with `unicode-range`) so it works inside strings. `sarLtr`/`sarRtl`/`withSarSign` put it LEFT of the figure in both scripts (SAMA's rule). Never U+FDFC ﷼ (a test guards it); never in CSV, e-mail, push text or the self-written print windows — no font there |
 | `src/lib/search-text.ts` | `matchesSearch`/`foldSearchText` — every-word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, ٠-٩) matching; use it for any search box. A search must look across state filters, not inside the active chip |
 | `src/lib/accounting/source-links.ts` + `src/components/accounting/JournalEntrySheet.tsx` | The document behind a journal entry (`sourceType`+`sourceId` → screen) and the side panel every ledger / statement / breakdown row opens |
+| `src/lib/manufacturing-mindmap.ts` + `ManufacturingMindMap.tsx` | The optional mind-map view (Workshop → view: Mind map): `buildMindMapFromViews` over PRD 1.2 order views; the legacy builder stays for old orders |
+| `src/components/contractor/PurchaseRequestsInbox.tsx` | Procurement's desk for Manufacturing's shortfalls (`/contractor/rfqs/requests`) — answers requests (start RFQ → `ordered`, arrived, declined with a reason), never raises one |
+| `module` colour token (tailwind.config.ts + globals.css) | The ACTIVE module's colour: `data-accent` is set on the portal frame from the registry's `accentToken`, so `bg-module/10 text-module` inside any screen is that module's colour. Every module has its own token (Sales indigo, HR violet) |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
@@ -154,14 +158,17 @@ a product-born order carries `productId`, `quantity`, `docNumber` WO-yyyy/nnn,
 form), `materials` (per-station withdrawals: requested → issued by Inventory → received),
 `rejects` (typed NCRs), `scrapRecords` (pending → approved/returned, re-make decision),
 `qcReleases`, `closures` + `frozenCost` (production close is a decision), `remnants`,
-`purchaseRequests`, `overrides`, `changeRequest` (from the order's owner),
+`purchaseRequests` (sent → ordered [RFQ linked] → arrived [Inventory books it] | declined [back to
+the manager with a reason]; only a declined one re-surfaces as a shortage; the rules let
+Purchasing/Inventory CHANGE entries, never add one), `overrides`, `changeRequest` (from the order's owner),
 `cancellation`, `varianceReviews`, `log`; stage, WIP, ready, next step and lateness are
 DERIVED by `src/lib/manufacturing-engine.ts` — never stored) · `mfgProducts` (بطاقة
 المنتج — the product's own route with standard time that starts EMPTY, BOM with waste
 and station-custody flags, blocking flags; no prices) · `mfgCostEstimates` (cost
 statements: cost, lead time, validity — no price; the cost controller sends, Sales
 records quoted/won/lost) · `manufacturingSettings` (doc id = orgId — `features` are the
-workshop manager's; the policies overhead rate, scrap limit, answer window, note
+workshop manager's: `time`, `labourCost` (needs time; off = an order's cost is materials only,
+`labourCostOn()`), `estimates`, `checklists`; the policies overhead rate, scrap limit, answer window, note
 escalation, validity, remnant % are Finance's, edited in Accounting settings) ·
 `mfgStops` (hours lost today per station — they move dates) · `mfgBlockNotices` (a
 defective stone block; Inventory quarantines, Procurement claims) · `mfgCounters`

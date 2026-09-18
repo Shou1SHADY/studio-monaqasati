@@ -487,7 +487,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "mfg_purchase_requests",
       tier: TIER.mfg_purchase_requests,
       sortMs: oldestAge(purchases.map((p) => p.at)),
-      actionUrl: "/contractor/rfqs",
+      actionUrl: "/contractor/rfqs/requests",
       data: { count: purchases.length },
     })
   }

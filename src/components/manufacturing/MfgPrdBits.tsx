@@ -12,7 +12,35 @@ import { effectiveRoute, round2, stationGate, type MfgProduct, type MfgRouteStep
 import type { OrderView } from "@/lib/manufacturing-view"
 import { MfgChip, departmentIcon, type MfgTone } from "./ui/MfgUi"
 
-/** Stone products are measured in square or linear metres (PC-05). */
+/** The units a product or a BOM line can be measured in. Square and linear
+ * metres first (stone, PC-05), then the rest of what a workshop makes and
+ * consumes — a fixed list, never a free-text "other": the engine rounds
+ * counted units to whole pieces and Inventory matches by unit. Labels are
+ * `mfr_prd_unit_<key>`. */
+export const PRODUCT_UNITS = ["m²", "m", "pcs", "set", "kg", "ton", "m³", "lt", "box", "sheet", "bundle", "roll", "bag", "drum"] as const
+export type ProductUnit = (typeof PRODUCT_UNITS)[number]
+export const UNIT_LABEL_KEY: Record<ProductUnit, string> = {
+  "m²": "mfr_prd_unit_m2",
+  m: "mfr_prd_unit_m",
+  pcs: "mfr_prd_unit_pcs",
+  set: "mfr_prd_unit_set",
+  kg: "mfr_prd_unit_kg",
+  ton: "mfr_prd_unit_ton",
+  "m³": "mfr_prd_unit_m3",
+  lt: "mfr_prd_unit_lt",
+  box: "mfr_prd_unit_box",
+  sheet: "mfr_prd_unit_sheet",
+  bundle: "mfr_prd_unit_bundle",
+  roll: "mfr_prd_unit_roll",
+  bag: "mfr_prd_unit_bag",
+  drum: "mfr_prd_unit_drum",
+}
+/** The label for a unit — one of ours, or a legacy/inventory label shown as it is. */
+export function unitLabel(unit: string, t: (key: string) => string): string {
+  const key = (UNIT_LABEL_KEY as Record<string, string>)[unit]
+  return key ? t(key) : unit
+}
+/** @deprecated the two stone units — kept for callers that default to them. */
 export const STONE_UNITS = ["m²", "m"] as const
 
 /** A station's current name — a renamed station shows its new name on every
