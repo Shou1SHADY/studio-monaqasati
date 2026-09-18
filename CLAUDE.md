@@ -414,13 +414,19 @@ still match git before touching them.
 root, so `node_modules` resolve:
 
 ```bash
-node scripts/deploy-rules.js prod   # service-account creds from .env.local
-node scripts/deploy-rules.js uat    # gcloud auth print-access-token
+node scripts/deploy-rules.js prod --check   # READ-ONLY: what is live, and which commit it is
+node scripts/deploy-rules.js prod           # service-account creds from .env.local
+node scripts/deploy-rules.js uat --check
+node scripts/deploy-rules.js uat            # gcloud token if gcloud is installed, else the
+                                            # service account in .env.uat (no gcloud on the WSL box)
 ```
 
 It POSTs a ruleset to `firebaserules.googleapis.com`, PATCHes
 `releases/cloud.firestore` to point at it, then reads the live ruleset back and
 prints whether it matches the file byte-for-byte. **Always `git fetch` and diff
 `firestore.rules` against `origin/main` first** — deploying a stale local copy
-silently wipes another session's rules. The same API (GET release → GET ruleset
-source) is how to diff live rules against git.
+silently wipes another session's rules. Then run `--check`: it names the commit
+the live rules came from, or says they match no commit — in which case someone
+deployed uncommitted rules and they must be compared before being overwritten.
+(A service-account token must NOT send `x-goog-user-project`; only a gcloud
+user token needs that header — the script handles it.)
