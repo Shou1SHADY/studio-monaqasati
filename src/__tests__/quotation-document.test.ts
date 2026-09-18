@@ -163,6 +163,17 @@ describe("letterhead and sheet data", () => {
       { fallbackBranding: fallback }
     )
     expect(issued.branding).toBe(snap)
+
+    // A quotation written BEFORE the owner uploaded a logo: the snapshot keeps
+    // its identity, and only the missing logo comes from the org's default —
+    // otherwise it would print bare for ever (a sent quote's branding is locked).
+    const bare = { ...EMPTY_QUOTATION_BRANDING, companyName: "Issued Co", logoUrl: null }
+    const withDefault = { ...fallback, logoUrl: "https://org-logo" }
+    const early = sheetDataFromQuotation({ ...base, branding: bare }, { fallbackBranding: withDefault })
+    expect(early.branding.companyName).toBe("Issued Co")
+    expect(early.branding.logoUrl).toBe("https://org-logo")
+    // its own logo always wins over the default
+    expect(sheetDataFromQuotation({ ...base, branding: snap }, { fallbackBranding: withDefault }).branding.logoUrl).toBe("https://old-logo")
     expect(issued.validUntil).toBe("2026-09-30")
     expect(issued.vatPercent).toBe(5)
     expect(issued.terms).toBe("T")

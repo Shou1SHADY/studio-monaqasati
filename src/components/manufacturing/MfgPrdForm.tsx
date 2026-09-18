@@ -28,7 +28,7 @@ import { useMfgUi } from "./MfgUiContext"
 import { MfgRecordedAs } from "./MfgOrderBits"
 import { reqErrorText } from "./MfgReqBits"
 import { STONE_UNITS, liveOrdersOn, stepName } from "./MfgPrdBits"
-import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtSar, fmtQty } from "./ui/MfgUi"
 
 interface RouteRow {
   key: string
@@ -442,6 +442,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
               <option key={s.name} value={s.name} />
             ))}
           </datalist>
+          {seesMoney && bom.length > 0 && <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">{t("mfr_prd_bom_cost_hint")}</p>}
           <div className="space-y-2">
             {bom.length === 0 && <p className="rounded-xl border border-dashed bg-white px-3.5 py-4 text-center text-xs text-muted-foreground">{t("mfr_prd_bom_empty_form")}</p>}
             {bom.map((b, i) => (
@@ -527,7 +528,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
 function Money({ value }: { value: number }) {
   return (
     <span dir="ltr" className="tabular-nums">
-      {fmtMoney(value)} ﷼
+      {fmtSar(value)}
     </span>
   )
 }

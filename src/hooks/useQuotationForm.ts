@@ -1,19 +1,17 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { useLocale, useTranslations } from "next-intl"
-import { collection, doc, addDoc, updateDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
+import { collection, doc, updateDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore"
 import { useFirestore, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import {
   CRM_QUOTATIONS,
   defaultInstallments,
-  formatSar,
-  generateQuotationNumber,
+  isAdvanceInstallment,
   quotationItemsTotal,
   quotationPhase,
-  validateInstallments,
   type CrmQuotation,
   type QuotationInstallment,
   type QuotationItem,
@@ -21,19 +19,14 @@ import {
   type QuotationStatus,
 } from "@/lib/crm"
 import type { WorkOrder } from "@/lib/manufacturing"
-import {
-  SALES_PRICE_ITEMS,
-  findPriceItem,
-  quotationPrefillFromWorkOrder,
-  runQuotationAcceptance,
-  statusStamp,
-  type SalesPriceItem,
-} from "@/lib/sales"
-import { discountCapPercent, quotationPriceIssues } from "@/lib/sales-transfers"
+import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
+import { SALES_PRICE_ITEMS, findPriceItem, quotationPrefillFromWorkOrder, type SalesPriceItem } from "@/lib/sales"
+import { discountCapPercent } from "@/lib/sales-transfers"
+import { DEFAULT_VALIDITY_DAYS, createQuotation, quoteEditable, withAdvance, type IssueContext } from "@/lib/sales-quotes"
 
 export type QuotationItemRow = { name: string; quantity: string; unit: string; unitPrice: string }
 export type QuotationStockOption = { name: string; unit: string; available: number }
-export type QuotationInstallmentRow = { id: string; label: string; percent: string }
+export type QuotationInstallmentRow = { id: string; label: string; percent: string; beforeProduction: boolean }
 
 /** Seeds for a NEW quotation (ignored when editing): its phase, a prefilled
  * line list, and the finished work order being sold — how Sales quotes a
@@ -45,12 +38,15 @@ export interface QuotationDefaults {
   workOrderNumber?: number | null
   /** Sales mode: preselect this customer (a CRM quote request's client). */
   contactId?: string | null
+  /** The CRM request this quote answers, and the deal behind it (RQ-04, INT-01). */
+  requestId?: string | null
+  opportunityId?: string | null
 }
 
 const emptyRow = (): QuotationItemRow => ({ name: "", quantity: "", unit: "", unitPrice: "" })
 
 function parseInstallments(rows: QuotationInstallmentRow[]): QuotationInstallment[] {
-  return rows.map((r) => ({ id: r.id, label: r.label.trim(), percent: Number(r.percent) }))
+  return rows.map((r) => ({ id: r.id, label: r.label.trim(), percent: Number(r.percent), beforeProduction: r.beforeProduction }))
 }
 
 function newInstallmentId(): string {
@@ -83,12 +79,10 @@ export interface UseQuotationFormOptions {
 }
 
 export interface QuotationSaveOptions {
-  /** Use this number for a NEW quotation (the builder shows it before saving). */
-  quotationNumber?: string
   /** Extra fields written with the quotation — the builder's document fields. */
   extra?: Record<string, unknown>
-  /** VAT carried to the sales order when this save accepts the quotation. */
-  vatPercent?: number | null
+  /** Say nothing on success — the caller goes straight on to Issue. */
+  quiet?: boolean
 }
 
 /**
@@ -109,7 +103,6 @@ export function useQuotationForm({
   finishedOrders,
 }: UseQuotationFormOptions) {
   const t = useTranslations("Portal.Shared")
-  const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
@@ -132,6 +125,8 @@ export function useQuotationForm({
   const [installments, setInstallments] = useState<QuotationInstallmentRow[]>([])
   const [stockOptions, setStockOptions] = useState<QuotationStockOption[]>([])
   const [priceItems, setPriceItems] = useState<SalesPriceItem[]>([])
+  const [manufacturedNames, setManufacturedNames] = useState<string[]>([])
+  const [validityDays, setValidityDays] = useState(String(DEFAULT_VALIDITY_DAYS))
   const [stockPick, setStockPick] = useState("")
   const [pricePick, setPricePick] = useState("")
   // Sales mode: the customer is chosen inside the form, and a finished work
@@ -155,6 +150,7 @@ export function useQuotationForm({
     setPhase(quotation ? quotationPhase(quotation) : seeds?.phase ?? "pre_manufacturing")
     setDate(quotation?.date ?? new Date().toISOString().split("T")[0])
     setNotes(quotation?.notes ?? "")
+    setValidityDays(String(Number(quotation?.validityDays) > 0 ? quotation?.validityDays : DEFAULT_VALIDITY_DAYS))
     setItemRows(
       (quotation?.items || seeds?.items || []).map((i) => ({
         name: i.name,
@@ -168,7 +164,7 @@ export function useQuotationForm({
     const schedule = quotation
       ? quotation.installments || []
       : defaultInstallments({ deposit: t("crm_quote_installment_deposit"), balance: t("crm_quote_installment_balance") })
-    setInstallments(schedule.map((i) => ({ id: i.id, label: i.label, percent: String(i.percent) })))
+    setInstallments(schedule.map((i) => ({ id: i.id, label: i.label, percent: String(i.percent), beforeProduction: isAdvanceInstallment(i) })))
     setStockPick("")
     setPricePick("")
   }, [open, quotation, contactId, t])
@@ -200,6 +196,14 @@ export function useQuotationForm({
       } catch (err) {
         console.error("Inventory load for quotation template failed:", err)
       }
+      // What the workshop MAKES (it has a product card) — a made-to-order line
+      // needs an advance before production (QC-13).
+      try {
+        const cards = await getDocs(query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)))
+        if (!cancelled) setManufacturedNames(cards.docs.filter((d) => !d.data().archived).map((d) => (d.data().name as string) || ""))
+      } catch (err) {
+        console.error("Product cards load for quotation failed:", err)
+      }
       // The Sales price list — known items with fixed prices.
       try {
         const priceSnap = await getDocs(query(collection(firestore, SALES_PRICE_ITEMS), where("organizationId", "==", orgId)))
@@ -224,6 +228,20 @@ export function useQuotationForm({
   const parsedInstallments = parseInstallments(installments)
   const installmentsPercent = parsedInstallments.reduce((sum, i) => sum + (Number.isFinite(i.percent) ? i.percent : 0), 0)
   const acceptLocked = !canApprove && quotation?.status !== "accepted"
+
+  // What blocks Issue, live as you type (T4) — the same function the write
+  // runs again, so the screen and the refusal can never disagree.
+  const issueContext: IssueContext = useMemo(
+    () => ({
+      priceItems,
+      capPercent: discountCapPercent({ isOwner: isOrgOwner, canApprove: can("sales.approve") }),
+      manufacturedNames,
+      stockByName: new Map(stockOptions.map((o) => [o.name, o.available])),
+    }),
+    [priceItems, isOrgOwner, can, manufacturedNames, stockOptions]
+  )
+  /** What may still be typed: everything in a draft, the texts once issued, nothing once sent (D6). */
+  const editable = quotation ? quoteEditable(quotation, new Date().toISOString().slice(0, 10)) : "all"
   /** The work order this quotation is tied to, for the phase hint. */
   const workOrderNumber = quotation?.workOrderNumber ?? defaultsRef.current?.workOrderNumber ?? null
 
@@ -274,148 +292,86 @@ export function useQuotationForm({
   const updateInstallment = (index: number, patch: Partial<Omit<QuotationInstallmentRow, "id">>) =>
     setInstallments((p) => p.map((x, j) => (j === index ? { ...x, ...patch } : x)))
   const removeInstallment = (index: number) => setInstallments((p) => p.filter((_, j) => j !== index))
-  const addInstallment = () => setInstallments((p) => [...p, { id: newInstallmentId(), label: "", percent: "" }])
+  const addInstallment = () => setInstallments((p) => [...p, { id: newInstallmentId(), label: "", percent: "", beforeProduction: false }])
+  /** The one button behind "made to order needs an advance" (QC-13). */
+  const addAdvance = () =>
+    setInstallments((p) =>
+      withAdvance(parseInstallments(p), { advance: t("crm_quote_installment_deposit"), balance: t("crm_quote_installment_balance") }, newInstallmentId).map((i) => ({
+        id: i.id,
+        label: i.label,
+        percent: String(i.percent),
+        beforeProduction: isAdvanceInstallment(i),
+      }))
+    )
 
-  /** Validates and writes the quotation, then runs acceptance when this save
-   * is the flip to "accepted". Resolves to the quotation id, or null when
-   * nothing was saved (the reason has already been toasted). */
+  /**
+   * Writes the quotation as a DRAFT and resolves to its id, or null when
+   * nothing was saved (the reason has already been toasted). A draft saves
+   * whatever state it is in — closing never loses work (QC-17); what blocks a
+   * quote blocks it at Issue, which is its own act on the quote's page, as are
+   * sending, converting and closing as lost. Saving never moves the status.
+   *
+   * The number is drawn on the FIRST save, in the transaction that writes the
+   * document — a composer closed without saving consumes none (QC-15). Once
+   * issued only the texts may change; once sent, nothing (D6).
+   */
   const save = async (options: QuotationSaveOptions = {}): Promise<string | null> => {
-    if (!firestore || isSaving) return null
+    if (!firestore || isSaving || !user) return null
+    if (editable === "none") {
+      toast({ title: t("sales_q_locked"), variant: "destructive" })
+      return null
+    }
     const parsed = hasItems ? itemsTotal : parseFloat(amount)
-    if (!Number.isFinite(parsed) || parsed <= 0) {
+    if (!hasItems && !(Number.isFinite(parsed) && parsed > 0)) {
       toast({ title: t("crm_quote_amount_error"), variant: "destructive" })
       return null
-    }
-    const scheduleError = validateInstallments(parsedInstallments)
-    if (scheduleError) {
-      toast({
-        title: t(
-          scheduleError === "empty_label"
-            ? "crm_quote_installments_error_label"
-            : scheduleError === "bad_percent"
-              ? "crm_quote_installments_error_percent"
-              : "crm_quote_installments_error_total"
-        ),
-        variant: "destructive",
-      })
-      return null
-    }
-    if (status === "accepted" && acceptLocked) {
-      toast({ title: t("crm_quote_accept_locked"), variant: "destructive" })
-      return null
-    }
-    // Price policy (drafts pass — the block guards what leaves the house):
-    // below standard cost is blocked for everyone, and a discount off the list
-    // price beyond the role's cap (approver 8%, others 3%, owner uncapped)
-    // needs someone with a higher cap. The below-cost message deliberately
-    // never states the cost — not every seller may see it.
-    if (status !== "draft" && hasItems) {
-      const cap = discountCapPercent({ isOwner: isOrgOwner, canApprove })
-      const issues = quotationPriceIssues(parsedItems, priceItems, cap)
-      const belowCost = issues.find((i) => i.kind === "below_cost")
-      if (belowCost) {
-        toast({ title: t("sales_below_cost_blocked", { name: belowCost.name }), variant: "destructive" })
-        return null
-      }
-      const overCap = issues.find((i) => i.kind === "over_cap")
-      if (overCap) {
-        toast({
-          title: t("sales_discount_cap_blocked", { name: overCap.name, discount: overCap.discountPercent ?? 0, cap: cap ?? 0 }),
-          variant: "destructive",
-        })
-        return null
-      }
     }
 
     setIsSaving(true)
     try {
-      const nowIso = new Date().toISOString()
+      const seeds = defaultsRef.current
+      const days = Number(validityDays)
+      const texts = { notes: notes.trim() || null, ...(options.extra || {}) }
+      if (quotation && editable === "texts") {
+        // Issued: figures, client and validity are locked — the texts are not.
+        const { validUntil: _v, validityDays: _d, vatPercent: _p, ...textOnly } = texts as Record<string, unknown>
+        await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), { ...textOnly, updatedAt: serverTimestamp() })
+        if (!options.quiet) toast({ title: t("crm_quote_saved") })
+        return quotation.id
+      }
       const data = {
         contactId: effectiveContactId,
         contactName: effectiveContactName,
-        ...statusStamp(quotation?.status, status, nowIso),
-        amount: parsed,
+        amount: Number.isFinite(parsed) ? parsed : 0,
         items: hasItems ? parsedItems : null,
         installments: parsedInstallments.length > 0 ? parsedInstallments : null,
-        status,
         phase,
         date: date || null,
-        notes: notes.trim() || null,
-        ...(options.extra || {}),
-        organizationId: orgId,
-        updatedAt: serverTimestamp(),
+        validityDays: Number.isFinite(days) && days > 0 ? Math.round(days) : DEFAULT_VALIDITY_DAYS,
+        ...texts,
+        // Validity runs from the SEND date — a draft has none yet (QC-09).
+        validUntil: null,
       }
-      let quotationId = quotation?.id
-      let quotationNumber = quotation?.quotationNumber
-      const seeds = defaultsRef.current
+      let quotationId = quotation?.id ?? null
       if (quotation) {
-        await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), data)
+        await updateDoc(doc(firestore, CRM_QUOTATIONS, quotation.id), { ...data, updatedAt: serverTimestamp() })
       } else {
-        quotationNumber = options.quotationNumber || generateQuotationNumber()
-        const ref = await addDoc(collection(firestore, CRM_QUOTATIONS), {
-          ...data,
-          quotationNumber,
-          workOrderId: linkedOrder?.id ?? seeds?.workOrderId ?? null,
-          workOrderNumber: linkedOrder?.orderNumber ?? seeds?.workOrderNumber ?? null,
-          createdAt: serverTimestamp(),
+        const created = await createQuotation(firestore, {
+          organizationId: orgId,
+          data: {
+            ...data,
+            status: "draft",
+            opportunityId: seeds?.opportunityId ?? null,
+            requestId: seeds?.requestId ?? null,
+            workOrderId: linkedOrder?.id ?? seeds?.workOrderId ?? null,
+            workOrderNumber: linkedOrder?.orderNumber ?? seeds?.workOrderNumber ?? null,
+          },
+          actor: { id: user.uid, name: user.displayName || user.email || "" },
         })
-        quotationId = ref.id
+        quotationId = created.id
       }
-
-      // Acceptance is the manufacturing trigger: the first flip to "accepted"
-      // spawns a work order routed through the org's department chain —
-      // unless one already exists for this quotation, or every requested good
-      // is already sitting in a warehouse (see the lib). A post-manufacturing
-      // quotation prices goods that already exist, so it never manufactures.
-      // Everything the customer's approval sets in motion (Finance told of
-      // the deposit, the work order for goods not in stock) lives in the lib,
-      // shared with the Sales detail page.
-      const becameAccepted = status === "accepted" && quotation?.status !== "accepted"
-      if (becameAccepted && quotationId && user) {
-        try {
-          const result = await runQuotationAcceptance(firestore, {
-            orgId,
-            user: { id: user.uid, name: user.email || "" },
-            quotation: {
-              id: quotationId,
-              quotationNumber: quotationNumber || "",
-              contactId: effectiveContactId,
-              contactName: effectiveContactName,
-              opportunityId: quotation?.opportunityId ?? null,
-              amount: parsed,
-              items: hasItems ? parsedItems : null,
-              installments: parsedInstallments.length > 0 ? parsedInstallments : null,
-              phase,
-              workOrderId: quotation?.workOrderId ?? linkedOrder?.id ?? seeds?.workOrderId ?? null,
-              vatPercent: options.vatPercent ?? quotation?.vatPercent ?? null,
-            },
-            notification: {
-              title: t("sales_notif_approved_title"),
-              message: (deposit) =>
-                t("sales_notif_approved_msg", {
-                  contact: effectiveContactName || "—",
-                  number: quotationNumber || "",
-                  amount: formatSar(parsed, locale),
-                  deposit: deposit
-                    ? t("sales_notif_approved_deposit", {
-                        label: deposit.label || t("crm_quote_installment_full"),
-                        percent: deposit.percent,
-                        amount: formatSar(deposit.amount, locale),
-                      })
-                    : "",
-                }),
-            },
-          })
-          if (result.notified > 0) toast({ title: t("crm_quote_finance_notified") })
-          if (result.workOrderId) toast({ title: t("crm_quote_work_order_created") })
-        } catch (err) {
-          console.error("Work order auto-create failed:", err)
-          toast({ title: t("crm_quote_work_order_failed"), variant: "destructive" })
-        }
-      }
-
-      toast({ title: t("crm_quote_saved") })
-      return quotationId ?? null
+      if (!options.quiet) toast({ title: t("crm_quote_saved") })
+      return quotationId
     } catch (err) {
       console.error(err)
       toast({ title: t("crm_save_error"), variant: "destructive" })
@@ -443,6 +399,11 @@ export function useQuotationForm({
     installments,
     stockOptions,
     priceItems,
+    manufacturedNames,
+    issueContext,
+    editable,
+    validityDays,
+    setValidityDays,
     stockPick,
     pricePick,
     selectedContactId,
@@ -469,6 +430,7 @@ export function useQuotationForm({
     updateInstallment,
     removeInstallment,
     addInstallment,
+    addAdvance,
     save,
   }
 }

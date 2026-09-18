@@ -32,6 +32,9 @@ import { ALL_PERMISSION, type TeamGroup } from "./permissions"
 import { createWorkOrderFromQuotation, effectiveOutput, type WorkOrder } from "./manufacturing"
 import { onQuotationPaymentRecorded } from "./accounting/hooks"
 import { createSalesOrderFromQuotation } from "./sales-order-writes"
+import { MFG_PRODUCTS } from "./manufacturing-engine"
+import { matchesSearch } from "./search-text"
+import { displayDocNumber } from "./sales-numbering"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -150,15 +153,17 @@ export function salesTotals(quotations: CrmQuotation[]): SalesTotals {
   return totals
 }
 
-/** Case-insensitive match on the number, the customer, or the linked order. */
+/** What a seller types to find a quotation: its number — as stored
+ * (QT-2026/014) or as the Arabic screen shows it — the client, a product on it,
+ * or the work order it opened. Arabic letter forms are folded. */
 export function quotationMatchesSearch(q: CrmQuotation, term: string): boolean {
-  const needle = term.trim().toLowerCase()
-  if (!needle) return true
-  return (
-    q.quotationNumber.toLowerCase().includes(needle) ||
-    (q.contactName || "").toLowerCase().includes(needle) ||
-    (q.workOrderNumber != null && `#${q.workOrderNumber}`.includes(needle))
-  )
+  return matchesSearch(term, [
+    q.quotationNumber,
+    displayDocNumber(q.quotationNumber, "ar"),
+    q.contactName,
+    q.workOrderNumber != null ? `#${q.workOrderNumber}` : null,
+    ...(q.items || []).map((i) => i.name),
+  ])
 }
 
 // ---------------------------------------------------------------------------
@@ -348,17 +353,24 @@ export async function recordInstallmentPayment(firestore: Firestore, input: Reco
 // ---------------------------------------------------------------------------
 
 
-/** Where a quotation may go next. Accepted is final; a rejected one can be re-sent. */
+/** Where a quotation may go next (Sales PRD §5): one step at a time. A draft
+ * is issued; an issued quote is logged as sent; only a SENT quote is accepted
+ * or lost. Won and lost are final — a change of heart is a new revision, never
+ * a re-opened document (D6, D7). The Sales screens drive these through
+ * `quoteActions` in sales-quotes.ts, which also knows "expired" and
+ * "superseded"; this map is the stored-status half that forms validate. */
 export const QUOTATION_STATUS_ACTIONS: Record<QuotationStatus, QuotationStatus[]> = {
-  draft: ["sent", "accepted", "rejected"],
+  draft: ["issued"],
+  issued: ["sent"],
   sent: ["accepted", "rejected"],
   accepted: [],
-  rejected: ["sent"],
+  rejected: [],
 }
 
 /** The timestamp a status change writes, so the timeline can tell the story. */
-export function statusStamp(from: QuotationStatus | undefined, to: QuotationStatus, now: string): Partial<Record<"sentAt" | "acceptedAt" | "rejectedAt", string>> {
+export function statusStamp(from: QuotationStatus | undefined, to: QuotationStatus, now: string): Partial<Record<"issuedAt" | "sentAt" | "acceptedAt" | "rejectedAt", string>> {
   if (from === to) return {}
+  if (to === "issued") return { issuedAt: now }
   if (to === "sent") return { sentAt: now }
   if (to === "accepted") return { acceptedAt: now }
   if (to === "rejected") return { rejectedAt: now }
@@ -374,7 +386,7 @@ export interface SalesDashboardData {
 }
 
 export function salesDashboard(quotations: CrmQuotation[], limit = 5): SalesDashboardData {
-  const statusCounts: Record<QuotationStatus, number> = { draft: 0, sent: 0, accepted: 0, rejected: 0 }
+  const statusCounts: Record<QuotationStatus, number> = { draft: 0, issued: 0, sent: 0, accepted: 0, rejected: 0 }
   for (const q of quotations) statusCounts[q.status] += 1
   const { due } = collectInstallments(quotations)
   return {
@@ -388,7 +400,7 @@ export function salesDashboard(quotations: CrmQuotation[], limit = 5): SalesDash
 
 export interface TimelineEntry {
   at: string
-  kind: "created" | "sent" | "accepted" | "rejected" | "payment" | "work_order"
+  kind: "created" | "issued" | "sent" | "accepted" | "rejected" | "superseded" | "payment" | "work_order"
   /** Installment label for payments. */
   label?: string
   amount?: number
@@ -410,7 +422,9 @@ export function quotationTimeline(q: CrmQuotation): TimelineEntry[] {
   const entries: TimelineEntry[] = []
   const created = isoOf(q.createdAt) || q.date
   if (created) entries.push({ at: created, kind: "created" })
+  if (q.issuedAt) entries.push({ at: q.issuedAt, kind: "issued" })
   if (q.sentAt) entries.push({ at: q.sentAt, kind: "sent" })
+  if (q.supersededAt) entries.push({ at: q.supersededAt, kind: "superseded" })
   if (q.acceptedAt) entries.push({ at: q.acceptedAt, kind: "accepted" })
   if (q.rejectedAt) entries.push({ at: q.rejectedAt, kind: "rejected" })
   if (q.workOrderNumber != null && q.workOrderId && quotationPhase(q) === "pre_manufacturing") {
@@ -441,21 +455,53 @@ export interface AcceptanceInput {
      * sales order's standard rate, as before documents existed. */
     vatPercent?: number | null
   }
+  /** The delivery promise made at conversion (SO-05). */
+  promiseDate?: string | null
   /** Localised by the caller. `message` receives the first installment so it can name the deposit. */
   notification: { title: string; message: (deposit: InstallmentState | null) => string }
 }
 
 /**
  * Everything that happens when the customer approves, shared by the dialog
- * and the detail page: Finance hears about the deposit (best-effort — a
- * failed notification never blocks the sale) and, for a pre-manufacturing
- * quotation without a linked order, the goods not in stock become a work
- * order. Errors from the work order propagate so the caller can say so.
+ * and the detail page (Sales PRD T9, D7, D8).
+ *
+ * The ORDER comes first and is the step that may fail loudly: the quotation is
+ * flipped to "accepted" in the same batch that writes the sales order, so a
+ * won quote always has its order, and a conversion that failed can simply be
+ * pressed again. Finance then hears about the advance (best-effort — a failed
+ * notification never blocks the sale).
+ *
+ * Nothing made to order is executed before Finance confirms the advance, so
+ * acceptance opens NO work order in a workshop that runs on product cards:
+ * production is asked for by a manufacturing request, which the plant accepts
+ * into a work order. Only an org still on the legacy stage-flow (no product
+ * cards at all) keeps its auto work order — after the order, and never fatal.
  */
 export async function runQuotationAcceptance(
   firestore: Firestore,
   input: AcceptanceInput
 ): Promise<{ notified: number; notifyFailed: boolean; workOrderId: string | null; salesOrderId: string | null }> {
+  const priceSnap = await getDocs(
+    query(collection(firestore, SALES_PRICE_ITEMS), where("organizationId", "==", input.orgId))
+  )
+  const salesOrderId = await createSalesOrderFromQuotation(firestore, {
+    organizationId: input.orgId,
+    quotation: {
+      id: input.quotation.id,
+      quotationNumber: input.quotation.quotationNumber,
+      contactId: input.quotation.contactId,
+      contactName: input.quotation.contactName ?? null,
+      items: input.quotation.items ?? null,
+      installments: input.quotation.installments ?? null,
+      amount: input.quotation.amount,
+    },
+    priceItems: priceSnap.docs.map((d) => d.data() as { name: string; cost?: number | null }),
+    vatPercent: input.quotation.vatPercent ?? undefined,
+    promiseDate: input.promiseDate ?? null,
+    accept: true,
+    actor: { id: input.user.id, name: input.user.name },
+  })
+
   let notified = 0
   let notifyFailed = false
   try {
@@ -474,46 +520,25 @@ export async function runQuotationAcceptance(
 
   let workOrderId: string | null = null
   if (input.quotation.phase !== "post_manufacturing" && !input.quotation.workOrderId) {
-    workOrderId = await createWorkOrderFromQuotation(firestore, {
-      organizationId: input.orgId,
-      quotationId: input.quotation.id,
-      quotationNumber: input.quotation.quotationNumber,
-      amount: input.quotation.amount,
-      contactId: input.quotation.contactId,
-      contactName: input.quotation.contactName,
-      opportunityId: input.quotation.opportunityId ?? null,
-      items: input.quotation.items ? input.quotation.items.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })) : undefined,
-      userId: input.user.id,
-      userName: input.user.name,
-    })
-  }
-
-  // Acceptance's second half: the quotation becomes a SALES ORDER — the
-  // backbone that deliveries and invoices hang off. Revenue is deliberately
-  // NOT posted here any more: it posts when an invoice bills delivered goods,
-  // so a signed quotation that never ships never inflates the income statement.
-  let salesOrderId: string | null = null
-  try {
-    const priceSnap = await getDocs(
-      query(collection(firestore, SALES_PRICE_ITEMS), where("organizationId", "==", input.orgId))
-    )
-    salesOrderId = await createSalesOrderFromQuotation(firestore, {
-      organizationId: input.orgId,
-      quotation: {
-        id: input.quotation.id,
-        quotationNumber: input.quotation.quotationNumber,
-        contactId: input.quotation.contactId,
-        contactName: input.quotation.contactName ?? null,
-        items: input.quotation.items ?? null,
-        installments: input.quotation.installments ?? null,
-        amount: input.quotation.amount,
-      },
-      priceItems: priceSnap.docs.map((d) => d.data() as { name: string; cost?: number | null }),
-      vatPercent: input.quotation.vatPercent ?? undefined,
-      actor: { id: input.user.id, name: input.user.name },
-    })
-  } catch (err) {
-    console.error("Sales order creation failed:", err)
+    try {
+      const cards = await getDocs(query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", input.orgId)))
+      if (cards.empty) {
+        workOrderId = await createWorkOrderFromQuotation(firestore, {
+          organizationId: input.orgId,
+          quotationId: input.quotation.id,
+          quotationNumber: input.quotation.quotationNumber,
+          amount: input.quotation.amount,
+          contactId: input.quotation.contactId,
+          contactName: input.quotation.contactName,
+          opportunityId: input.quotation.opportunityId ?? null,
+          items: input.quotation.items ? input.quotation.items.map((i) => ({ name: i.name, quantity: i.quantity, unit: i.unit })) : undefined,
+          userId: input.user.id,
+          userName: input.user.name,
+        })
+      }
+    } catch (err) {
+      console.error("Legacy work order not created:", err)
+    }
   }
 
   return { notified, notifyFailed, workOrderId, salesOrderId }

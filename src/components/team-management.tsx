@@ -1,5 +1,6 @@
 "use client"
 
+import { legacyAwareRole } from "@/hooks/usePermissions"
 import { useState, useEffect, useRef } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -102,7 +103,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const orgId = profile?.organizationId as string | undefined
-  const isOwner = profile?.organizationRole === "owner"
+  // Same reading as firestore.rules and usePermissions: no role field = legacy owner.
+  const isOwner = legacyAwareRole(profile as Record<string, unknown> | null | undefined) === "owner"
 
   const membersQuery = useMemoFirebase(() => {
     if (!firestore || !orgId) return null

@@ -23,6 +23,9 @@ import {
   Loader2,
   Banknote,
   Search,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Undo2,
   Send,
   Trash2,
@@ -43,7 +46,7 @@ import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingShell, AccountingSection, Money, accountingBasePath, useMoneyFormat } from "./AccountingShell"
 import { AccountingToolbar, ScaleCaption, periodLabel, periodRangeText } from "./AccountingToolbar"
 import { StatementTreeTable } from "./StatementTreeTable"
-import { AccountBreakdownSheet } from "./AccountBreakdownSheet"
+import { AccountBreakdownSheet, accountNode } from "./AccountBreakdownSheet"
 import { useAccounting, type AccountingData } from "@/hooks/useAccounting"
 import { CHART_OF_ACCOUNTS, accountName, naturalSign, ACC } from "@/lib/accounting/accounts"
 import { accountLedger, integrityChecks, nodeNatural, trialBalance } from "@/lib/accounting/balances"
@@ -53,7 +56,8 @@ import { ACCOUNTING_PERIODS, ClosedPeriodError, periodOf, type JournalEntry } fr
 import { deleteDraftEntry, postDraftEntry, reverseJournalEntry } from "@/lib/accounting/manual-entry"
 import { isoToday } from "@/lib/accounting/periods"
 
-import { EmptyBooks, Kpi, LoadingBooks, SOURCE_LABEL_KEY } from "./AccountingParts"
+import { EmptyBooks, Kpi, LoadingBooks } from "./AccountingParts"
+import { JournalEntryBadges, JournalEntryFacts, JournalEntryLines, JournalEntrySheet } from "./JournalEntrySheet"
 
 export { AccountingDashboard } from "./FinanceDashboard"
 export { LockedCashView } from "./LockedCashView"
@@ -319,6 +323,7 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
   const locale = useLocale()
   const data = useAccounting()
   const [query, setQuery] = useState("")
+  const [selected, setSelected] = useState<TreeNode | null>(null)
   const q = query.trim().toLowerCase()
   const rows = CHART_OF_ACCOUNTS.filter(
     (a) => !q || a.code.startsWith(q) || a.nameAr.includes(query.trim()) || a.nameEn.toLowerCase().includes(q)
@@ -364,7 +369,14 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
                     )}
                   </td>
                   <td className="px-5 py-2" style={{ paddingInlineStart: `${a.level * 14}px` }}>
-                    {locale === "ar" ? a.nameAr : a.nameEn}
+                    <button
+                      type="button"
+                      title={t("acc_tree_open_breakdown")}
+                      onClick={() => setSelected(accountNode([a.code], nodeNatural(data.windows.closing, a.code)))}
+                      className="text-start rounded hover:text-primary hover:underline underline-offset-4 decoration-dotted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {locale === "ar" ? a.nameAr : a.nameEn}
+                    </button>
                     {!a.postable && (
                       <Badge variant="outline" className="ms-2 text-[10px]">
                         {t("acc_rollup")}
@@ -383,6 +395,7 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
           </table>
         </div>
       </AccountingSection>
+      <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
     </AccountingShell>
   )
 }
@@ -425,10 +438,15 @@ export function TrialBalanceView({ portal }: { portal: CrmPortal }) {
                   {tb.rows.map((row) => (
                     <tr key={row.code} className="border-t">
                       <td className="px-4 py-2">
-                        <Link href={`${accountingBasePath(portal)}/ledger?account=${row.code}`} className="text-muted-foreground tabular-nums me-2 hover:text-primary hover:underline" dir="ltr">
-                          {row.code}
+                        <Link
+                          href={`${accountingBasePath(portal)}/ledger?account=${row.code}`}
+                          className="group rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <span className="text-muted-foreground tabular-nums me-2" dir="ltr">
+                            {row.code}
+                          </span>
+                          <span className="group-hover:text-primary group-hover:underline underline-offset-4 decoration-dotted">{accountName(row.code, locale)}</span>
                         </Link>
-                        {accountName(row.code, locale)}
                       </td>
                       <td className="px-4 py-2 text-end"><Money value={row.movementDebit} /></td>
                       <td className="px-4 py-2 text-end"><Money value={row.movementCredit} /></td>
@@ -463,6 +481,10 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
   const { can } = usePermissions()
   const canPost = can("accounting.post")
   const [openId, setOpenId] = useState<string | null>(null)
+  // An entry reached by link (dashboard, audit trail, "entry saved", a ledger
+  // row). It opens in the panel rather than in the list: the list shows only
+  // the selected period and filters, and a link must land regardless of both.
+  const [linkedId, setLinkedId] = useState<string | null>(null)
   const [kind, setKind] = useState<KindFilter>("all")
   const [status, setStatus] = useState<StatusFilter>("all")
   const [search, setSearch] = useState("")
@@ -471,7 +493,7 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
     // Arriving from "entry saved" or the audit trail: open that entry.
     try {
       const id = new URLSearchParams(window.location.search).get("entry")
-      if (id) setOpenId(id)
+      if (id) setLinkedId(id)
     } catch {
       /* not in a browser */
     }
@@ -497,6 +519,19 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
     [data.entries, data.period, kind, status, q]
   )
   const totals = inPeriod.filter((e) => e.status === "posted").reduce((s, e) => s + e.totalDebit, 0)
+  // دفتر اليومية is a DAY book: entries read under their day, with the day's total.
+  const days = useMemo(() => {
+    const out: { date: string; entries: JournalEntry[]; posted: number }[] = []
+    for (const e of inPeriod) {
+      const last = out[out.length - 1]
+      const day = last && last.date === e.date ? last : (out.push({ date: e.date, entries: [], posted: 0 }), out[out.length - 1])
+      day.entries.push(e)
+      if (e.status === "posted") day.posted += e.totalDebit
+    }
+    return out
+  }, [inPeriod])
+  const formatDay = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn-ca-gregory" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
 
   return (
     <AccountingShell
@@ -557,23 +592,45 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
             </span>
           }
         >
-          <div className="divide-y">
-            {inPeriod.map((entry) => (
-              <JournalRow
-                key={entry.id}
-                entry={entry}
-                data={data}
-                locale={locale}
-                canPost={canPost}
-                reversal={entry.reversedByEntryId ? byId.get(entry.reversedByEntryId) : undefined}
-                reverses={entry.reversesEntryId ? byId.get(entry.reversesEntryId) : undefined}
-                open={openId === entry.id}
-                onToggle={() => setOpenId(openId === entry.id ? null : entry.id)}
-              />
-            ))}
-          </div>
+          {days.map((day) => (
+            <div key={day.date}>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-y bg-muted/40 px-5 py-1.5 text-[11px] font-bold text-muted-foreground first:border-t-0">
+                <span>
+                  {formatDay(day.date)} <span className="font-normal">· {t("acc_journal_day_entries", { count: day.entries.length })}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  {t("acc_journal_day_total")} <Money value={day.posted} className="text-foreground" />
+                </span>
+              </div>
+              <div className="divide-y">
+                {day.entries.map((entry) => (
+                  <JournalRow
+                    key={entry.id}
+                    entry={entry}
+                    data={data}
+                    portal={portal}
+                    locale={locale}
+                    canPost={canPost}
+                    reversal={entry.reversedByEntryId ? byId.get(entry.reversedByEntryId) : undefined}
+                    reverses={entry.reversesEntryId ? byId.get(entry.reversesEntryId) : undefined}
+                    open={openId === entry.id}
+                    onToggle={() => setOpenId(openId === entry.id ? null : entry.id)}
+                    onOpenEntry={setLinkedId}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
         </AccountingSection>
       )}
+      <JournalEntrySheet
+        entry={linkedId && !data.isLoading ? byId.get(linkedId) ?? null : null}
+        entries={data.entries}
+        portal={portal}
+        onClose={() => setLinkedId(null)}
+        onOpenEntry={setLinkedId}
+        showJournalLink={false}
+      />
     </AccountingShell>
   )
 }
@@ -581,26 +638,30 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
 function JournalRow({
   entry,
   data,
+  portal,
   locale,
   canPost,
   reversal,
   reverses,
   open,
   onToggle,
+  onOpenEntry,
 }: {
   entry: JournalEntry
   data: AccountingData
+  portal: CrmPortal
   locale: string
   canPost: boolean
   reversal?: JournalEntry
   reverses?: JournalEntry
   open: boolean
   onToggle: () => void
+  onOpenEntry: (id: string) => void
 }) {
   const t = useTranslations("Portal.Shared")
   const firestore = useFirestore()
   const { toast } = useToast()
-  const srcKey = SOURCE_LABEL_KEY[entry.sourceType]
+  const Closed = locale === "ar" ? ChevronLeft : ChevronRight
   const [busy, setBusy] = useState<"post" | "delete" | "reverse" | null>(null)
   const [reverseOpen, setReverseOpen] = useState(false)
   const [reverseDate, setReverseDate] = useState(isoToday())
@@ -670,23 +731,14 @@ function JournalRow({
         aria-expanded={open}
         className="w-full text-start flex items-center justify-between gap-3 px-5 py-3 hover:bg-muted/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
+        {open ? <ChevronDown size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /> : <Closed size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-black text-muted-foreground tabular-nums" dir="ltr">
               #{entry.entryNumber}
             </span>
             <span className={cn("font-semibold text-sm truncate", entry.reversedByEntryId && "line-through decoration-muted-foreground/60")}>{entry.description}</span>
-            {srcKey && (
-              <Badge variant="outline" className="text-[10px]">
-                {t(srcKey)}
-              </Badge>
-            )}
-            {entry.kind === "manual" && <Badge className="bg-cta/10 text-cta border-none text-[10px]">{t("acc_journal_kind_manual")}</Badge>}
-            {entry.status === "draft" && (
-              <Badge className="bg-warning/10 text-warning border-none text-[10px]">{t("acc_status_draft")}</Badge>
-            )}
-            {entry.reversedByEntryId && <Badge className="bg-muted text-muted-foreground border-none text-[10px]">{t("acc_entry_badge_reversed")}</Badge>}
-            {entry.reversesEntryId && <Badge className="bg-destructive/10 text-destructive border-none text-[10px]">{t("acc_entry_badge_reversal")}</Badge>}
+            <JournalEntryBadges entry={entry} />
           </div>
           <p className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-2">
             <span dir="ltr">{entry.date}</span>
@@ -697,42 +749,20 @@ function JournalRow({
         <Money value={entry.totalDebit} className="text-sm font-bold shrink-0" />
       </button>
       {open && (
-        <div className="px-5 pb-4 bg-muted/20 space-y-3">
-          <table className="w-full text-xs">
-            <thead className="text-muted-foreground font-bold">
-              <tr>
-                <th className="py-2 text-start">{t("acc_account_name")}</th>
-                <th className="py-2 text-end w-28">{t("acc_debit")}</th>
-                <th className="py-2 text-end w-28">{t("acc_credit")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entry.lines.map((line, i) => (
-                <tr key={i} className="border-t border-border/50">
-                  <td className="py-1.5">
-                    <span className="tabular-nums text-muted-foreground me-2" dir="ltr">
-                      {line.account}
-                    </span>
-                    {accountName(line.account, locale)}
-                    {line.partyName && <span className="text-cta"> · {line.partyName}</span>}
-                    {line.projectName && <span className="text-muted-foreground"> · {line.projectName}</span>}
-                    {line.note && <span className="text-muted-foreground"> — {line.note}</span>}
-                  </td>
-                  <td className="py-1.5 text-end">{line.debit ? <Money value={line.debit} /> : "—"}</td>
-                  <td className="py-1.5 text-end">{line.credit ? <Money value={line.credit} /> : "—"}</td>
-                </tr>
-              ))}
-              <tr className="border-t font-bold">
-                <td className="py-1.5">{t("acc_total")}</td>
-                <td className="py-1.5 text-end"><Money value={entry.totalDebit} /></td>
-                <td className="py-1.5 text-end"><Money value={entry.totalCredit} /></td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="px-5 pb-4 pt-1 bg-muted/20 space-y-3">
+          <JournalEntryFacts entry={entry} portal={portal} />
+          <JournalEntryLines entry={entry} portal={portal} />
           {(reversal || reverses) && (
             <p className="text-[11px] text-muted-foreground">
               {reversal && t("acc_entry_reversed_by", { number: reversal.entryNumber, date: reversal.date })}
               {reverses && t("acc_entry_reverses", { number: reverses.entryNumber })}
+              <button
+                type="button"
+                onClick={() => onOpenEntry((reversal || reverses)!.id)}
+                className="ms-2 font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {t("acc_entry_open_other", { number: (reversal || reverses)!.entryNumber })}
+              </button>
             </p>
           )}
           {canPost && (entry.status === "draft" || canReverse) && (
@@ -797,6 +827,7 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
   const locale = useLocale()
   const data = useAccounting()
   const [account, setAccount] = useState<string>(ACC.bankMain)
+  const [entryId, setEntryId] = useState<string | null>(null)
 
   useEffect(() => {
     // Deep links from the statements, the chart of accounts and the trial balance.
@@ -859,13 +890,20 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
                 </td>
               </tr>
               {ledger.rows.map((row, i) => (
-                <tr key={i} className="border-t">
+                <tr key={i} className="border-t hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-2 tabular-nums text-muted-foreground" dir="ltr">
                     {row.date}
                   </td>
                   <td className="px-4 py-2">
-                    <span className="text-muted-foreground tabular-nums me-1.5" dir="ltr">#{row.entryNumber}</span>
-                    {row.description}
+                    <button
+                      type="button"
+                      onClick={() => setEntryId(row.entryId)}
+                      title={t("acc_entry_details")}
+                      className="text-start hover:text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                    >
+                      <span className="text-muted-foreground tabular-nums me-1.5" dir="ltr">#{row.entryNumber}</span>
+                      {row.description}
+                    </button>
                   </td>
                   <td className="px-4 py-2 text-end">{row.debit ? <Money value={row.debit} /> : "—"}</td>
                   <td className="px-4 py-2 text-end">{row.credit ? <Money value={row.credit} /> : "—"}</td>
@@ -886,6 +924,13 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
           </table>
         </div>
       </AccountingSection>
+      <JournalEntrySheet
+        entry={entryId ? data.entries.find((e) => e.id === entryId) ?? null : null}
+        entries={data.entries}
+        portal={portal}
+        onClose={() => setEntryId(null)}
+        onOpenEntry={setEntryId}
+      />
     </AccountingShell>
   )
 }

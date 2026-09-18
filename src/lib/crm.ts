@@ -898,8 +898,12 @@ export function needsHigherApproval(amount: number, limit: number): boolean {
 // Quotations — offer versions
 // ---------------------------------------------------------------------------
 
-export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected"
-export const QUOTATION_STATUSES: QuotationStatus[] = ["draft", "sent", "accepted", "rejected"]
+/** What is STORED. Draft → issued (figures locked) → sent (the document
+ * locked, validity running) → accepted | rejected. "Expired" and "superseded"
+ * are never typed: they are derived from `validUntil` and `supersededById`
+ * by `quoteLifecycle` in sales-quotes.ts (Sales PRD §5, INV-04). */
+export type QuotationStatus = "draft" | "issued" | "sent" | "accepted" | "rejected"
+export const QUOTATION_STATUSES: QuotationStatus[] = ["draft", "issued", "sent", "accepted", "rejected"]
 
 /** Before manufacturing: an estimate whose acceptance sends the missing goods
  * to Manufacturing. After manufacturing: the price of a finished item, so
@@ -924,6 +928,10 @@ export interface QuotationInstallment {
   id: string
   label: string
   percent: number
+  /** The advance: due before production, confirmed by Finance before anything
+   * made to order is executed (D8). Absent on schedules written before the
+   * flag existed — there the default schedule's first row (`deposit`) was it. */
+  beforeProduction?: boolean | null
 }
 
 /** A customer payment recorded against one installment, keyed by its id in
@@ -950,13 +958,27 @@ export const INSTALLMENT_BALANCE_ID = "balance"
 /** The synthetic single installment of a quotation with no schedule. */
 export const INSTALLMENT_FULL_ID = "full"
 
-/** Default schedule for a new quotation — the 30% deposit the client's
+/** Default schedule for a new quotation — the 30% advance the client's
  * finance asked for, and the rest on delivery. Labels are filled by the UI. */
 export function defaultInstallments(labels: { deposit: string; balance: string }): QuotationInstallment[] {
   return [
-    { id: INSTALLMENT_DEPOSIT_ID, label: labels.deposit, percent: 30 },
-    { id: INSTALLMENT_BALANCE_ID, label: labels.balance, percent: 70 },
+    { id: INSTALLMENT_DEPOSIT_ID, label: labels.deposit, percent: 30, beforeProduction: true },
+    { id: INSTALLMENT_BALANCE_ID, label: labels.balance, percent: 70, beforeProduction: false },
   ]
+}
+
+/** Is this instalment the advance? The flag decides; a schedule from before
+ * the flag falls back to the id the default schedule always used — so a seller
+ * who deletes the default row and adds his own advance no longer loses the
+ * gate silently, and old quotations keep theirs. */
+export function isAdvanceInstallment(inst: Pick<QuotationInstallment, "id" | "beforeProduction">): boolean {
+  if (inst.beforeProduction != null) return inst.beforeProduction === true
+  return inst.id === INSTALLMENT_DEPOSIT_ID
+}
+
+/** The before-production instalment that actually asks for money, if any. */
+export function advanceInstallment(list: QuotationInstallment[] | null | undefined): QuotationInstallment | null {
+  return (list || []).find((i) => isAdvanceInstallment(i) && Number(i.percent) > 0) ?? null
 }
 
 /** A quotation without a schedule is one payment of the whole amount. */
@@ -996,6 +1018,7 @@ export function quotationItemsTotal(items: QuotationItem[]): number {
 }
 export const QUOTATION_STATUS_BADGE_CLASS: Record<QuotationStatus, string> = {
   draft: "bg-muted text-muted-foreground border-border",
+  issued: "bg-warning/10 text-warning border-warning/20",
   sent: "bg-cta/10 text-cta border-cta/20",
   accepted: "bg-success/10 text-success border-success/20",
   rejected: "bg-destructive/10 text-destructive border-destructive/20",
@@ -1031,9 +1054,28 @@ export interface CrmQuotation {
   salesOrderId?: string | null
   workOrderNumber?: number | null
   /** When the status last moved into each state — the detail page's timeline. */
+  issuedAt?: string | null
+  issuedByUserName?: string | null
   sentAt?: string | null
+  sentByUserName?: string | null
   acceptedAt?: string | null
   rejectedAt?: string | null
+  /** Why we lost it — required to close a quote as lost; feeds the win rate
+   * and the loss reasons, and closes the CRM opportunity (T8). */
+  lostReason?: string | null
+  /** Revisions (D6): a change after issue is a NEW draft carrying the base
+   * number and a suffix (-2, -3); the one it replaces stays on record. */
+  revisionOf?: string | null
+  revision?: number | null
+  supersededById?: string | null
+  supersededAt?: string | null
+  /** The CRM quote request this answers — one request, one live quote (RQ-04). */
+  requestId?: string | null
+  /** The earliest we can honestly be ready, as quoted (QC-08). */
+  leadTime?: string | null
+  /** Every write has an author (INV-07); the rep's own quotes (D10). */
+  createdByUserId?: string | null
+  createdByUserName?: string | null
   /** Payment schedule (deposit, installments). Absent = one full payment. */
   installments?: QuotationInstallment[] | null
   /** Payments recorded against installments, by installment id. */

@@ -45,6 +45,8 @@ const TAB_GROUPS: Array<{ labelKey: string; tabs: ShellTab[] }> = [
     tabs: [
       { segment: "invoices", labelKey: "fin_nav_invoices", permission: "invoices.manage", portalRoot: true },
       { segment: "guarantees", labelKey: "fin_nav_guarantees", permission: "invoices.manage", portalRoot: true },
+      // Finance's counterpart to Sales: transfer notices, holds, credit notes.
+      { segment: "sales-desk", labelKey: "fin_nav_sales_desk", permission: "invoices.manage" },
     ],
   },
   {

@@ -20,13 +20,14 @@ import {
   where,
   writeBatch,
   type Firestore,
+  getDoc,
 } from "firebase/firestore"
 import {
   CRM_QUOTATIONS,
   INSTALLMENT_DEPOSIT_ID,
   type CrmQuotation,
 } from "./crm"
-import { applyInstallmentPayment, type InstallmentState } from "./sales-installments"
+import { applyInstallmentPayment, installmentStates, type InstallmentState } from "./sales-installments"
 import { SALES_ORDERS, type SalesOrder } from "./sales-orders"
 import { ALL_PERMISSION, type PermissionId, type TeamGroup } from "./permissions"
 import { onQuotationPaymentRecorded } from "./accounting/hooks"
@@ -150,15 +151,19 @@ export function reportableInstallments(
 }
 
 /** A confirmed advance releases the order only when the order is actually
- * gated on its deposit and this notice is the deposit instalment. */
+ * gated on its advance, this notice is THAT instalment, and the confirmation
+ * settles it in full — 1,000 confirmed against a 19,734 advance releases
+ * nothing (PAY-04). */
 export function shouldReleaseOrder(
   order: Pick<SalesOrder, "status" | "payment"> | null | undefined,
-  installmentId: string
+  installmentId: string,
+  installmentSettled = true
 ): boolean {
   if (!order) return false
   if (order.status !== "awaiting_deposit") return false
   if (order.payment.kind !== "deposit") return false
-  return installmentId === INSTALLMENT_DEPOSIT_ID
+  if (!installmentSettled) return false
+  return installmentId === (order.payment.advanceInstallmentId || INSTALLMENT_DEPOSIT_ID)
 }
 
 // ---------------------------------------------------------------------------
@@ -244,6 +249,10 @@ export interface QuoteRequest {
   /** When CRM needs the quote submitted by. */
   dueDate?: string | null
   status: QuoteRequestStatus
+  /** The draft being written for it — the request stays in the inbox as
+   * "finish the draft" until that draft is issued (RQ-04). */
+  draftQuotationId?: string | null
+  draftQuotationNumber?: string | null
   quotationId?: string | null
   quotationNumber?: string | null
   declineReason?: QuoteDeclineReason | null
@@ -362,6 +371,9 @@ export async function reportTransfer(
   })
   queueNotifications(firestore, batch, input.recipients, {
     type: "transfer_notice_reported",
+    // Opens Finance's own desk — portal-relative, so it lands under the
+    // reader's portal (see `notificationHref`).
+    link: "accounting/sales-desk",
     organizationId: input.quotation.organizationId,
     title: input.notification.title,
     message: input.notification.message,
@@ -394,8 +406,9 @@ export async function answerTransferNotice(
     actor: Actor
     notification: NotificationCopy
   }
-): Promise<void> {
+): Promise<{ released: boolean }> {
   if (input.notice.status !== "reported") throw new Error("already_answered")
+  let released = false
   const answeredAt = nowIso()
   const batch = writeBatch(firestore)
   batch.update(doc(firestore, SALES_TRANSFER_NOTICES, input.notice.id), {
@@ -422,7 +435,8 @@ export async function answerTransferNotice(
       ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name, paymentNote: input.notice.noticeNumber } : {}),
       updatedAt: serverTimestamp(),
     })
-    if (shouldReleaseOrder(input.order, input.notice.installmentId)) {
+    if (shouldReleaseOrder(input.order, input.notice.installmentId, next.installmentSettled)) {
+      released = true
       batch.update(doc(firestore, SALES_ORDERS, (input.order as SalesOrder).id), {
         "payment.depositPaid": true,
         "payment.depositPaidAt": answeredAt,
@@ -434,6 +448,8 @@ export async function answerTransferNotice(
 
   queueNotifications(firestore, batch, [input.notice.createdByUserId].filter((id) => id && id !== input.actor.id), {
     type: input.result === "confirmed" ? "transfer_notice_confirmed" : "transfer_notice_not_found",
+    // Back to the seller: where he re-reports a transfer Finance could not find.
+    link: "sales/payments",
     organizationId: input.notice.organizationId,
     title: input.notification.title,
     message: input.notification.message,
@@ -461,6 +477,92 @@ export async function answerTransferNotice(
       }
     )
   }
+  return { released }
+}
+
+/**
+ * Finance confirms the advance straight from its list of orders awaiting one —
+ * the second door to the same room. It must end exactly as answering a notice
+ * does, or the two drift: the seller's open notice (if he filed one) is
+ * answered "confirmed"; otherwise the advance is recorded on the quotation's
+ * instalment for what is still owed on it. Either way the order is released in
+ * the same batch and the ledger hears of the advance — so the instalment never
+ * stays "awaiting Finance" after Finance has confirmed it, and a later invoice
+ * recovers a deposit that was actually booked.
+ *
+ * An order with no quotation behind it (a call-off, an older record) has no
+ * instalment to settle: it is simply released, as before.
+ */
+export async function confirmAdvance(
+  firestore: Firestore,
+  input: {
+    order: SalesOrder
+    quotation: CrmQuotation | null
+    /** The quotation's notices — an open one for the advance is answered. */
+    notices: TransferNotice[]
+    actor: Actor
+    notification: NotificationCopy
+  }
+): Promise<{ released: boolean; via: "notice" | "direct" }> {
+  const { order, quotation } = input
+  if (order.status !== "awaiting_deposit" || order.payment.kind !== "deposit") throw new Error("not_awaiting_advance")
+  const advanceId = order.payment.advanceInstallmentId || INSTALLMENT_DEPOSIT_ID
+  const open = input.notices.find((n) => n.status === "reported" && n.installmentId === advanceId && (!quotation || n.quotationId === quotation.id))
+  if (open && quotation) {
+    // Finance confirms what it found: the advance is settled by this act even
+    // when the seller stated a different figure than the instalment.
+    const settled = { ...open, amountStated: Math.max(Number(open.amountStated) || 0, remainingOn(quotation, advanceId)) }
+    const { released } = await answerTransferNotice(firestore, { notice: settled, quotation, order, result: "confirmed", message: null, actor: input.actor, notification: input.notification })
+    return { released, via: "notice" }
+  }
+
+  const at = nowIso()
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, SALES_ORDERS, order.id), { "payment.depositPaid": true, "payment.depositPaidAt": at, status: "running", updatedAt: serverTimestamp() })
+  const amount = quotation ? remainingOn(quotation, advanceId) : 0
+  if (quotation && amount > 0) {
+    const next = applyInstallmentPayment(quotation, advanceId, { paidAt: at, paidAmount: amount, paidByUserId: input.actor.id, paidByUserName: input.actor.name, note: null })
+    batch.update(doc(firestore, CRM_QUOTATIONS, quotation.id), {
+      payments: next.payments,
+      paidAmount: next.paidAmount,
+      paidAt: next.paidAt,
+      ...(next.allPaid ? { paidByUserId: input.actor.id, paidByUserName: input.actor.name } : {}),
+      updatedAt: serverTimestamp(),
+    })
+  }
+  await batch.commit()
+  if (quotation && amount > 0) {
+    onQuotationPaymentRecorded(
+      firestore,
+      { organizationId: order.organizationId, userId: input.actor.id, userName: input.actor.name },
+      { quotationId: quotation.id, quotationNumber: quotation.quotationNumber, installmentId: advanceId, amount, contactId: quotation.contactId, contactName: quotation.contactName, isAdvance: true }
+    )
+  }
+  return { released: true, via: "direct" }
+}
+
+/** `confirmAdvance` for a caller that holds only the order: reads the
+ * quotation behind it and that quotation's notices first. */
+export async function confirmAdvanceForOrder(
+  firestore: Firestore,
+  input: { order: SalesOrder; actor: Actor; notification: NotificationCopy }
+): Promise<{ released: boolean; via: "notice" | "direct" }> {
+  let quotation: CrmQuotation | null = null
+  let notices: TransferNotice[] = []
+  if (input.order.quotationId) {
+    const snap = await getDoc(doc(firestore, CRM_QUOTATIONS, input.order.quotationId))
+    if (snap.exists()) quotation = { ...(snap.data() as CrmQuotation), id: snap.id }
+    const found = await getDocs(
+      query(collection(firestore, SALES_TRANSFER_NOTICES), where("organizationId", "==", input.order.organizationId), where("quotationId", "==", input.order.quotationId))
+    )
+    notices = found.docs.map((d) => ({ ...(d.data() as TransferNotice), id: d.id }))
+  }
+  return confirmAdvance(firestore, { order: input.order, quotation, notices, actor: input.actor, notification: input.notification })
+}
+
+/** What is still owed on one instalment of a quotation. */
+function remainingOn(quotation: CrmQuotation, installmentId: string): number {
+  return installmentStates(quotation).find((s) => s.id === installmentId)?.remaining ?? 0
 }
 
 // ---------------------------------------------------------------------------
@@ -565,6 +667,22 @@ export async function declineQuoteRequest(
 }
 
 /** The request produced a quotation — it leaves the inbox as "quoted". */
+/** The first save of a quote that answers a request: the request is NOT
+ * closed — it shows "finish the draft", and is never offered for a second
+ * draft while one exists (RQ-04). Issuing the draft closes it. */
+export async function linkQuoteRequestDraft(
+  firestore: Firestore,
+  input: { requestId: string; quotationId: string; quotationNumber: string }
+): Promise<void> {
+  const batch = writeBatch(firestore)
+  batch.update(doc(firestore, SALES_QUOTE_REQUESTS, input.requestId), {
+    draftQuotationId: input.quotationId,
+    draftQuotationNumber: input.quotationNumber,
+    updatedAt: serverTimestamp(),
+  })
+  await batch.commit()
+}
+
 export async function markQuoteRequestQuoted(
   firestore: Firestore,
   input: { requestId: string; quotationId: string; quotationNumber: string; actor: Actor }

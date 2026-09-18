@@ -71,8 +71,9 @@ src/
                         #   opportunities,rfqs}, inventory/warehouses, invoices/
                         #   guarantees + accounting (ONE "Finance & Accounting"
                         #   component, id `payments`; pages keep separate
-                        #   permissions), sales (quotations before/after
-                        #   manufacturing + customer payments — NOT part of finance),
+                        #   permissions), sales (Today, requests & quotations, orders,
+                        #   delivery, payments, reports, price list, settings & boundary
+                        #   — NOT part of finance; see docs/sales-prd-status.md),
                         #   manufacturing (work orders), employees (HR), profile/team
       (supplier)/       # Supplier portal (mirrors contractor structure incl. crm/)
       offer/[token]/    # Guest supplier offer page (no account needed)
@@ -100,7 +101,10 @@ src/
   utils/                # Shared utilities
 messages/               # Translation JSON files (ar.json, en.json)
 public/                 # Static assets — favicons, OG image, manifest
-scripts/                # Ops scripts (demo seed, data repair, migrations)
+scripts/                # Ops scripts (demo seed, data repair, migrations,
+                        #   cleanup-seed-demo.js — dry-run-first removal of what
+                        #   /admin/seed wrote; that page is OFF in production)
+docs/                   # sales-prd-status.md, customer-review-2026-09-17.md
 ```
 
 ## Key Utilities
@@ -118,6 +122,12 @@ scripts/                # Ops scripts (demo seed, data repair, migrations)
 | `src/hooks/useWorkQueue.ts` | Cross-module "needs your action" queue + org stats feeding the contractor dashboard |
 | `src/lib/mfg-events.ts` | Manufacturing's boundary events (NT-01): `emitMfgEvent` resolves recipients by role/station/project and writes notifications carrying i18n keys (each reader renders its own language) plus text rendered by the sender for push and the mobile app — use it for any act that crosses into or out of Manufacturing |
 | `src/lib/crm.ts` / `crm-writes.ts` | CRM domain types, tracks/gates/value ladder, deal→project handover writes |
+| `src/lib/sales-quotes.ts` | The quotation's lifecycle (Sales PRD §5): draft → issued → sent → accepted/rejected; "expired" and "superseded" are DERIVED (`quoteLifecycle`), never stored. `issueBlocks`/`convertBlocks` are the blocking rules the composer shows live and the write runs again; revisions, CRM activity log, rep scoping (`inSalesScope`) |
+| `src/lib/sales-numbering.ts` | Yearly Sales sequences drawn inside the write (`QT-2026/NNN`, revisions `-2`/`-3`) in `mfgCounters`; `displayDocNumber` shows the Arabic prefix (ع.س) — the stored number stays Latin |
+| `src/lib/sales-today.ts` / `sales-reports.ts` + `src/hooks/useSalesWorld.ts` | Today's KPIs, flow strip and decision queue, and the three report families — pure, over one scoped "world"; sales count on SIGNED delivery; cost only for the owner / `sales.approve` |
+| `src/lib/riyal.ts` + `public/fonts/saudi-riyal.otf` | The official Saudi Riyal symbol, **U+20C1** — a one-glyph font (`scripts/build-riyal-font.js`, registered in globals.css with `unicode-range`) so it works inside strings. `sarLtr`/`sarRtl`/`withSarSign` put it LEFT of the figure in both scripts (SAMA's rule). Never U+FDFC ﷼ (a test guards it); never in CSV, e-mail, push text or the self-written print windows — no font there |
+| `src/lib/search-text.ts` | `matchesSearch`/`foldSearchText` — every-word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, ٠-٩) matching; use it for any search box. A search must look across state filters, not inside the active chip |
+| `src/lib/accounting/source-links.ts` + `src/components/accounting/JournalEntrySheet.tsx` | The document behind a journal entry (`sourceType`+`sourceId` → screen) and the side panel every ledger / statement / breakdown row opens |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
@@ -129,8 +139,10 @@ scripts/                # Ops scripts (demo seed, data repair, migrations)
 for a module) · `projects` (+ `boqItems`, `boqGroups`, `members`, `ipcClaims`,
 `wasteRecords`) · `rfqs` (+ `inquiries`) · `offers` · `deliveries` · `guarantees` ·
 `warehouses` (+ `inventoryItems`, `transfers`, `wasteRecords`) · `crmContacts` ·
-`crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule,
-payments) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
+`crmOpportunities` · `crmQuotations` (also the Sales pipeline: phase, payment schedule
+— an instalment flagged `beforeProduction` is the advance — payments, `createdByUser*`,
+`requestId`, `revision`/`revisionOf`/`supersededById`, `lostReason`; status moves one step
+at a time and the rules lock figures once issued and the document once sent) · `crmActivities` · `crmOrgProfile` (doc id = orgId) · `salesPriceItems` ·
 `manufacturingDepartments` (the station registry: capacity workers × hoursPerDay,
 hourlyRate, `leadUserId` — the station's recorder, `qcStation` — QC & packing, only
 Quality records it, `gate` — an order-level step drawing|slab, checklist template) ·
@@ -153,14 +165,20 @@ workshop manager's; the policies overhead rate, scrap limit, answer window, note
 escalation, validity, remnant % are Finance's, edited in Accounting settings) ·
 `mfgStops` (hours lost today per station — they move dates) · `mfgBlockNotices` (a
 defective stone block; Inventory quarantines, Procurement claims) · `mfgCounters`
-(`{orgId}__{type}__{year}` yearly document sequences) · `fleetVehicles` (HR's drivers and
+(`{orgId}__{type}__{year}` yearly document sequences — Manufacturing's and Sales' `QT`) · `fleetVehicles` (HR's drivers and
 vehicles a delivery note picks from) · `deliveryNotes` (manufacturing → warehouse
 handovers, signed by the receiver; v2 adds partial quantities, transit breakage,
 driver/crates) · `salesOrders` (أوامر البيع — the backbone between
 quotation and cash; delivered/invoiced are DERIVED from notes and invoices, never
-stored) · `salesDeliveryNotes` (customer deliveries; stock leaves at confirm) ·
+stored; carries `paymentSchedule` inherited from the quotation, `promiseDate`, a `log`
+trail, `payment.advanceInstallmentId`) · `salesDeliveryNotes` (customer deliveries —
+a three-step handshake: Sales `requested` → Inventory `authorized` → the client signs
+`delivered` with `signerName`; stock leaves at the signature, at the quantity actually
+received, which REPLACES `lines[].quantity` (`requestedQuantity` kept beside it);
+`held` is Finance's, with `heldFrom` to return to) ·
 `salesInvoices` (built on delivered notes; deposits recovered pro-rata) ·
-`salesReturns` (Sales decides, Finance issues the credit note) ·
+`salesReturns` (the sales manager approves with a `disposition` stock|scrap, Finance
+issues the credit note; never on an unsigned shipment) ·
 `salesTransferNotices` (إشعار حوالة — the seller reports a client's transfer,
 only Finance answers "confirmed"/"not found"; a confirmed deposit releases the
 gated sales order; instalment states are DERIVED from quotation payments +
@@ -178,7 +196,10 @@ units|thousands|millions is the default presentation) ·
 (server-only)
 
 Permission notes: org **owner** passes every check; members get their group's
-permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM deal
+permissions (`teamGroups.permissions`, `'*'` = all). An account with NO
+`organizationRole` field is a legacy solo account and IS an owner — the rules say so
+(`isOrgOwner()`), and the client must read it the same way: use `legacyAwareRole` /
+`usePermissions().isOrgOwner`, never `profile.organizationRole === "owner"`. Closing/handing over a CRM deal
 needs `crm.close`. Sales reads `crmQuotations`: marking one accepted needs `sales.approve`
 (or `crm.close`) — that notifies Finance of the deposit and opens the work order; recording
 a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.manage`; a
@@ -200,7 +221,9 @@ requests, releases, rushes, closes production, issues notes, applies incoming ch
 creates stock orders, approves scrap up to Finance's limit, edits stations/products);
 `manufacturing.work` is a station lead (records the station's output, requests and
 receives its materials, reports stops — a station with a `leadUserId` belongs to that
-lead only); `manufacturing.qc` is Quality (reject decisions, the quality release at QC &
+lead only — except the org OWNER, who may stand in at any non-QC station (`Actor.owner`):
+the lock is client-side only, and with the lead away issued materials would sit "not
+received" with nobody able to move the order); `manufacturing.qc` is Quality (reject decisions, the quality release at QC &
 packing — nothing closes before it — slab sign-off, block notices); `manufacturing.cost`
 approves any scrap, sends cost statements, reviews variance and the WIP reconciliation;
 `manufacturing.view` is management (read-only in SAR). A client order waits for the
@@ -208,12 +231,24 @@ down payment (read from the sales order; no release before it). Other modules ac
 their own screens and the rules scope their work-order fields: Inventory issues
 withdrawals, receives remnants and warehouse notes (Warehouses → Manufacturing desk,
 Delivery notes); Projects records drawing results, receives notes into custody and
-requests changes (project page); Sales records the client's drawing result, requests
+requests changes (project page); Sales records the client's drawing result (the workshop
+manager may record it too, from the order drawer — the customer's flow is that an order
+need not travel back to Sales before it is finished), requests
 changes and records cost-statement quote status; Procurement routes project needs to
 make and marks purchase requests arrived; Finance owns the manufacturing policies.
 The down payment: Sales reports it (`payment.depositReportedAt`), Finance confirms it
 from Sales → Payments — `invoices.manage` may move a sales order only from
 `awaiting_deposit` to `running` with the payment flag (Sales approvers still may too).
+A work order belongs to the sales order it names — or, naming none, to the one born of
+the same quotation (`belongsToSalesOrder`): the gate, release, Sales' screens, coverage
+and the "advance confirmed" notice all ask that one function. Reporting the advance
+sends the production request while the order still waits, so the plant PLANS: its answer
+clock does not run before Finance confirms (`awaitsDownPayment`). Acceptance opens NO
+work order in a product-card workshop — production is asked for by a request.
+In Sales: the owner and `sales.approve` see cost and margin, set the price list and
+approve returns; a rep (`sales.manage`) sees only his own clients (by the client's CRM
+owner) and never a cost. A shipment hold and its release are Finance's
+(`invoices.manage`, from Finance → Sales desk); the seller only requests the release.
 Stock the workshop holds for released orders (`workshopHolds` in manufacturing-view)
 is shown on the Inventory desk and subtracted from what Sales coverage offers; a sales
 order reads its product-born work orders' survey and drawing instead of its own flags.
@@ -426,13 +461,19 @@ still match git before touching them.
 root, so `node_modules` resolve:
 
 ```bash
-node scripts/deploy-rules.js prod   # service-account creds from .env.local
-node scripts/deploy-rules.js uat    # gcloud auth print-access-token
+node scripts/deploy-rules.js prod --check   # READ-ONLY: what is live, and which commit it is
+node scripts/deploy-rules.js prod           # service-account creds from .env.local
+node scripts/deploy-rules.js uat --check
+node scripts/deploy-rules.js uat            # gcloud token if gcloud is installed, else the
+                                            # service account in .env.uat (no gcloud on the WSL box)
 ```
 
 It POSTs a ruleset to `firebaserules.googleapis.com`, PATCHes
 `releases/cloud.firestore` to point at it, then reads the live ruleset back and
 prints whether it matches the file byte-for-byte. **Always `git fetch` and diff
 `firestore.rules` against `origin/main` first** — deploying a stale local copy
-silently wipes another session's rules. The same API (GET release → GET ruleset
-source) is how to diff live rules against git.
+silently wipes another session's rules. Then run `--check`: it names the commit
+the live rules came from, or says they match no commit — in which case someone
+deployed uncommitted rules and they must be compared before being overwritten.
+(A service-account token must NOT send `x-goog-user-project`; only a gcloud
+user token needs that header — the script handles it.)

@@ -15,11 +15,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { cn, sanitizeDecimalInput } from "@/lib/utils"
-import { isQcStation, type DeptCapacityFields } from "@/lib/manufacturing-engine"
+import { isQcStation, type DeptCapacityFields, type ExternalModule } from "@/lib/manufacturing-engine"
 import { toggleChecklistItem } from "@/lib/manufacturing-writes"
 import { emitMfgEvent, mfgLinks, type EventParams, type MfgEventKind, type RecipientSpec } from "@/lib/mfg-events"
 import type { MfgDepartment } from "@/lib/manufacturing"
-import type { OrderView } from "@/lib/manufacturing-view"
+import { salesOrderOfWorkOrder, type OrderView } from "@/lib/manufacturing-view"
+import type { SalesOrder } from "@/lib/sales-orders"
 import { useMfgUi, type MfgUi } from "./MfgUiContext"
 import { errorText, sourceNameOf } from "./MfgOrderBits"
 import { MfgField, MfgReview, fmtQty, useMfgDate } from "./ui/MfgUi"
@@ -127,6 +128,32 @@ export function ownerRecipients(view: OrderView): RecipientSpec[] {
   else out.push({ permission: "rfq.manage" })
   if (view.source === "project" && view.order.projectId) out.push({ projectPermission: "projects.edit", projectId: view.order.projectId })
   return out
+}
+
+/** Where Sales opens a client order: its sales order — named, or born of the
+ * same quotation — else the Sales orders inbox. Never a workshop link: the
+ * reader is a seller, and the act it asks for is recorded in Sales. */
+export function salesLinkOf(view: OrderView, salesOrders: Map<string, SalesOrder>): string {
+  const so = salesOrderOfWorkOrder(view.order, salesOrders.values())
+  return so ? mfgLinks.salesOrder(so.id) : mfgLinks.salesOrders(view.order.source?.quotationNumber)
+}
+
+/** Where the module a work order waits on does its part, relative to the
+ * portal root. "Waiting for Sales" with no way to Sales is a dead end: the
+ * workshop cannot act there, but it can walk over and show someone. */
+export function moduleLinkOf(module: ExternalModule, view: OrderView, salesOrders: Map<string, SalesOrder>): string | null {
+  switch (module) {
+    case "sales":
+      return salesLinkOf(view, salesOrders)
+    case "finance":
+      return mfgLinks.financeSalesDesk()
+    case "inventory":
+      return mfgLinks.inventoryDesk()
+    case "procurement":
+      return mfgLinks.procurement()
+    case "projects":
+      return view.order.projectId ? mfgLinks.project(view.order.projectId) : null
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -196,8 +196,21 @@ describe("MfgRequestsView", () => {
     expect(screen.getByText(/Two doors only/)).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /new request/i })).not.toBeInTheDocument()
     const card = screen.getByRole("article", { name: /MR-2026\/045/ })
-    expect(within(card).getByText(/Overdue/)).toBeInTheDocument()
+    // 30 hours old against a 24-hour window — but its sales order's advance is
+    // not confirmed, so it is for planning: no "overdue" alarm (Sales PRD S4, PAY-07).
+    expect(within(card).queryByText(/Overdue/)).not.toBeInTheDocument()
     expect(within(card).getByText("down payment awaiting Finance")).toBeInTheDocument()
+  })
+
+  it("counts the answer window once Finance has confirmed the advance", () => {
+    const waiting = data.salesOrders.get("so1")!
+    data.salesOrders.set("so1", { ...waiting, payment: { ...waiting.payment, depositPaid: true } })
+    try {
+      render(<MfgRequestsView />)
+      expect(within(screen.getByRole("article", { name: /MR-2026\/045/ })).getByText(/Overdue/)).toBeInTheDocument()
+    } finally {
+      data.salesOrders.set("so1", waiting)
+    }
   })
 
   it("opens the request panel first; the manager answers from there", () => {
@@ -206,7 +219,9 @@ describe("MfgRequestsView", () => {
     const panel = screen.getByRole("dialog")
     noLeaks(panel.textContent)
     expect(within(panel).getByText("Line by line — computed verdict")).toBeInTheDocument()
-    expect(within(panel).getByText(/Unanswered for/)).toBeInTheDocument()
+    // For planning until Finance confirms — never "unanswered for…".
+    expect(within(panel).queryByText(/Unanswered for/)).not.toBeInTheDocument()
+    expect(within(panel).getByText(/For planning/)).toBeInTheDocument()
     fireEvent.click(within(panel).getByRole("button", { name: /Accept or decline/ }))
     expect(mockUi.openGlobal).toHaveBeenCalledWith({ kind: "answerRequest", requestId: "r1" })
   })

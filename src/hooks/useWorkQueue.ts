@@ -25,6 +25,7 @@ export type WorkQueueItemType =
   | "mfg_materials_to_issue"
   | "mfg_requests_unanswered"
   | "mfg_drawing_results_due"
+  | "mfg_client_drawings_due"
   | "mfg_notes_to_receive"
   | "mfg_custody_to_receive"
   | "mfg_purchase_requests"
@@ -68,6 +69,7 @@ const TIER: Record<WorkQueueItemType, number> = {
   mfg_materials_to_issue: 3,
   mfg_requests_unanswered: 4,
   mfg_drawing_results_due: 4,
+  mfg_client_drawings_due: 4,
   mfg_notes_to_receive: 5,
   mfg_custody_to_receive: 5,
   mfg_purchase_requests: 5,
@@ -411,8 +413,21 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     })
   }
 
+  // A drawing with the client: the result is Sales' to record, from the inbox
+  // heading its orders page — whether or not the order names a sales order.
+  const clientDrawings = liveOrders.filter((o) => !!o.drawing?.submittedAt && !o.drawing.code && o.drawing.approverOrg === "client")
+  if (clientDrawings.length) {
+    items.push({
+      id: "mfg_client_drawings_due",
+      type: "mfg_client_drawings_due",
+      tier: TIER.mfg_client_drawings_due,
+      sortMs: oldestAge(clientDrawings.map((o) => o.drawing?.submittedAt || undefined)),
+      actionUrl: "/contractor/sales/orders",
+      data: { count: clientDrawings.length },
+    })
+  }
+
   // A drawing waiting on its approver: the project's office or consultant.
-  // (A client's result is Sales' — shown on the sales order itself.)
   const drawingsByProject = new Map<string, { name: string; count: number; since: string[] }>()
   for (const o of liveOrders) {
     const d = o.drawing

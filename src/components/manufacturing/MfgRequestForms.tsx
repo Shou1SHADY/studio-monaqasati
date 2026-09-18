@@ -52,14 +52,14 @@ import {
   useScreenContext,
   useSourceInfo,
 } from "./MfgReqBits"
-import { MfgChip, MfgChoiceCards, MfgEffects, MfgField, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtQty, useMfgDate, type MfgChoice } from "./ui/MfgUi"
+import { MfgChip, MfgChoiceCards, MfgEffects, MfgField, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtSar, fmtQty, useMfgDate, type MfgChoice } from "./ui/MfgUi"
 
 type T = ReturnType<typeof useTranslations>
 
 function Money({ value }: { value: number }) {
   return (
     <span dir="ltr" className="tabular-nums">
-      {fmtMoney(value)} ﷼
+      {fmtSar(value)}
     </span>
   )
 }

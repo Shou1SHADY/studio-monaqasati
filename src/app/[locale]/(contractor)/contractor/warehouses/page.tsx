@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Button } from "@/components/ui/button"
@@ -36,8 +36,9 @@ import { useCentralWarehouse, createCentralWarehouse, type OrgWarehouse } from "
 import { useWarehouseDashboardStats } from "@/hooks/useWarehouseDashboardStats"
 import { InventoryValuationCard } from "@/components/inventory/InventoryValuationCard"
 import { SAUDI_CITIES } from "@/lib/constants"
-import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft, AlertTriangle, ArrowLeftRight } from "lucide-react"
+import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, ArrowRight, Building2, Star, ArrowLeft, AlertTriangle, ArrowLeftRight, Search, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { matchesSearch } from "@/lib/search-text"
 
 type WarehouseDoc = {
   id: string
@@ -280,10 +281,25 @@ export default function ContractorWarehousesPage() {
   // Group each project warehouse under its linked central — data from before
   // multi-central support (or created with no explicit link) falls back to
   // the FIRST central rather than disappearing once a second central exists.
-  const groups = centrals.map((c) => ({
-    central: c,
-    projects: list.filter((w) => (w.centralWarehouseId || centrals[0]?.id) === c.id),
-  }))
+  const centralOf = (w: WarehouseDoc) => w.centralWarehouseId || centrals[0]?.id || ""
+  const centralName = (id: string) => centrals.find((c) => c.id === id)?.name || ""
+
+  // Two sections — every central first, then every project warehouse — with
+  // one search over both. They used to interleave (central → its projects →
+  // the next central → …), which buries the second central under the first
+  // one's project stores and stops working at ten or fifteen projects.
+  const [search, setSearch] = useState("")
+  const [centralFilter, setCentralFilter] = useState<string>("all")
+  const searching = search.trim().length > 0
+  const shownCentrals = useMemo(
+    () => centrals.filter((c) => matchesSearch(search, [c.name, c.city, c.description])),
+    [centrals, search]
+  )
+  const shownProjects = list.filter(
+    (w) =>
+      (centralFilter === "all" || centralOf(w) === centralFilter) &&
+      matchesSearch(search, [w.name, w.location, w.description, w.projectName, centralName(centralOf(w))])
+  )
 
   const handleDelete = async () => {
     if (!firestore || !deleteWarehouse || deleteWarehouse.isCentral) return
@@ -369,73 +385,141 @@ export default function ContractorWarehousesPage() {
             after manufacturing has moved value between them */}
         <InventoryValuationCard valuation={valuation} isLoading={valuationLoading} partial={valuationPartial} />
 
-        {/* One card per central warehouse, each with its own linked project warehouses beneath it */}
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 size={32} className="animate-spin text-muted-foreground" />
           </div>
-        ) : groups.length === 0 ? (
+        ) : centrals.length === 0 && list.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3 text-center border border-dashed rounded-2xl">
             <Warehouse size={40} className="text-muted-foreground/20" />
             <p className="font-bold text-muted-foreground">{t("wh_empty_title")}</p>
             <p className="text-sm text-muted-foreground/70">{t("wh_empty_desc")}</p>
           </div>
         ) : (
-          groups.map(({ central, projects }) => (
-            <div key={central.id} className="space-y-4">
-              <Card className="border-2 border-accent/30 bg-gradient-to-bl from-accent/5 via-transparent to-transparent overflow-hidden">
-                <CardContent className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4">
-                  <div className="h-14 w-14 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
-                    <Warehouse size={26} className="text-accent" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-lg font-black text-primary">{central.name}</h2>
-                      <span className="inline-flex items-center gap-1 text-[10px] font-black text-accent bg-accent/10 border border-accent/30 rounded-full px-2 py-0.5">
-                        <Star size={10} />
-                        {t("wh_central_badge")}
-                      </span>
-                      {central.city && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted rounded-full px-2 py-0.5">
-                          <MapPin size={10} />
-                          {central.city}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{central.description || t("wh_central_desc")}</p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {canManageWarehouses && (
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditWarehouse(central as WarehouseDoc)} aria-label={t("wh_edit_title")}>
-                        <Pencil size={14} />
-                      </Button>
-                    )}
-                    <Button asChild className="gap-2 bg-accent hover:bg-accent/90 text-white">
-                      <Link href={`/contractor/warehouses/${central.id}`}>
-                        <Package size={15} />
-                        {t("wh_view_inventory")}
-                        {isRtl ? <ArrowLeft size={14} /> : <ArrowRight size={14} />}
-                      </Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+          <>
+            <div className="relative sm:max-w-md">
+              <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" aria-hidden="true" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("wh_search_placeholder")}
+                aria-label={t("wh_search_placeholder")}
+                className="h-10 ps-9 pe-9 text-sm"
+              />
+              {searching && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label={t("wh_search_clear")}
+                  className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
 
-              <div className="flex items-center gap-2 pt-1 ps-1">
-                <Building2 size={16} className="text-primary" />
-                <h3 className="font-bold text-primary text-sm">{t("wh_project_section_title")}</h3>
+            {/* 1 — the central warehouses, together */}
+            <section aria-labelledby="wh-centrals-title" className="space-y-3">
+              <div className="flex items-center gap-2 ps-1">
+                <Star size={16} className="text-accent" aria-hidden="true" />
+                <h2 id="wh-centrals-title" className="font-bold text-primary text-sm">{t("wh_central_section_title")}</h2>
+                <span className="text-xs text-muted-foreground tabular-nums">{shownCentrals.length}</span>
+              </div>
+              {shownCentrals.length === 0 ? (
+                <p className="rounded-2xl border border-dashed py-8 text-center text-sm text-muted-foreground">{t("wh_search_none", { term: search.trim() })}</p>
+              ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  {shownCentrals.map((central) => {
+                    const linked = list.filter((w) => centralOf(w) === central.id).length
+                    return (
+                      <Card key={central.id} className="border-2 border-accent/30 bg-gradient-to-bl from-accent/5 via-transparent to-transparent overflow-hidden">
+                        <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                          <div className="h-12 w-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0">
+                            <Warehouse size={22} className="text-accent" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="text-base font-black text-primary">{central.name}</h3>
+                              <span className="inline-flex items-center gap-1 text-[10px] font-black text-accent bg-accent/10 border border-accent/30 rounded-full px-2 py-0.5">
+                                <Star size={10} />
+                                {t("wh_central_badge")}
+                              </span>
+                              {central.city && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                                  <MapPin size={10} />
+                                  {central.city}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">{central.description || t("wh_central_desc")}</p>
+                            {linked > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => { setCentralFilter(central.id); document.getElementById("wh-projects-title")?.scrollIntoView({ behavior: "smooth", block: "start" }) }}
+                                className="mt-1.5 text-[11px] font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                              >
+                                {t("wh_central_linked_count", { count: linked })}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {canManageWarehouses && (
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                onClick={() => setEditWarehouse(central as WarehouseDoc)} aria-label={t("wh_edit_title")}>
+                                <Pencil size={14} />
+                              </Button>
+                            )}
+                            <Button asChild className="gap-2 bg-accent hover:bg-accent/90 text-white">
+                              <Link href={`/contractor/warehouses/${central.id}`}>
+                                <Package size={15} />
+                                {t("wh_view_inventory")}
+                                {isRtl ? <ArrowLeft size={14} /> : <ArrowRight size={14} />}
+                              </Link>
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* 2 — the project warehouses, in their own section */}
+            <section aria-labelledby="wh-projects-title" className="space-y-3 scroll-mt-24">
+              <div className="flex items-center gap-2 flex-wrap ps-1">
+                <Building2 size={16} className="text-primary" aria-hidden="true" />
+                <h2 id="wh-projects-title" className="font-bold text-primary text-sm scroll-mt-24">{t("wh_project_section_title")}</h2>
+                <span className="text-xs text-muted-foreground tabular-nums">{shownProjects.length}</span>
                 <span className="text-xs text-muted-foreground">{t("wh_project_section_desc")}</span>
               </div>
+              {centrals.length > 1 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[{ id: "all", name: t("wh_filter_all_centrals") }, ...centrals.map((c) => ({ id: c.id, name: c.name }))].map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      aria-pressed={centralFilter === c.id}
+                      onClick={() => setCentralFilter(c.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        centralFilter === c.id ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                      )}
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-              {projects.length === 0 ? (
+              {shownProjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 gap-2 text-center border border-dashed rounded-2xl">
                   <Warehouse size={32} className="text-muted-foreground/20" />
-                  <p className="text-sm font-semibold text-muted-foreground">{t("wh_empty_title")}</p>
+                  <p className="text-sm font-semibold text-muted-foreground">{searching ? t("wh_search_none", { term: search.trim() }) : t("wh_empty_title")}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {projects.map((wh) => (
+                  {shownProjects.map((wh) => (
                     <Card key={wh.id} className="hover:shadow-md transition-shadow group">
                       <CardContent className="p-5">
                         <div className="flex items-start justify-between gap-3 mb-3">
@@ -463,18 +547,23 @@ export default function ContractorWarehousesPage() {
                         {wh.description && (
                           <p className="text-xs text-muted-foreground/70 truncate">{wh.description}</p>
                         )}
-                        {wh.projectId && (
-                          <Link
-                            href={`/contractor/projects/${wh.projectId}`}
-                            className={cn(
-                              "mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5 hover:bg-accent/10 transition-colors",
-                              isRtl ? "flex-row-reverse" : ""
-                            )}
-                          >
-                            <Building2 size={10} />
-                            {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
-                          </Link>
-                        )}
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {wh.projectId && (
+                            <Link
+                              href={`/contractor/projects/${wh.projectId}`}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent bg-accent/5 border border-accent/20 rounded-full px-2 py-0.5 hover:bg-accent/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              <Building2 size={10} />
+                              {t("wh_linked_project", { name: wh.projectName || wh.projectId })}
+                            </Link>
+                          )}
+                          {centrals.length > 1 && centralName(centralOf(wh)) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                              <Star size={10} />
+                              {t("wh_draws_from", { name: centralName(centralOf(wh)) })}
+                            </span>
+                          )}
+                        </div>
                         <Link
                           href={`/contractor/warehouses/${wh.id}`}
                           className={cn(
@@ -491,8 +580,8 @@ export default function ContractorWarehousesPage() {
                   ))}
                 </div>
               )}
-            </div>
-          ))
+            </section>
+          </>
         )}
       </div>
 

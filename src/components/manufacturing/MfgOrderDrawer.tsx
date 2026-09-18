@@ -40,7 +40,10 @@ import {
   Undo2,
   Warehouse,
   Zap,
+  ExternalLink,
+  FileCheck2,
 } from "lucide-react"
+import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { useFirestore } from "@/firebase"
 import { cn } from "@/lib/utils"
@@ -80,7 +83,9 @@ import {
   useCandidateWords,
 } from "./MfgOrderBits"
 import { MfgChip, MfgDrawer, MfgNote, MfgPill, MfgQtyLegend, MfgRow, MfgSection, MfgStat, fmtMoney, fmtQty, useMfgDate, type MfgTone } from "./ui/MfgUi"
-import { Num, canTickChecklist, stationOf } from "./MfgFormKit"
+import { Num, canTickChecklist, moduleLinkOf, stationOf } from "./MfgFormKit"
+import { ProjectDrawingResultDialog } from "@/components/projects/ProjectDrawingResultDialog"
+import { mfgLinks } from "@/lib/mfg-events"
 import { availableTo } from "./MfgFormMaterials"
 import { causeLabel } from "./MfgFormOutput"
 import { printableFromNote, useDeliveryNotePrint } from "./MfgDeliveryNotePrint"
@@ -191,6 +196,7 @@ function NextStepBox({ view }: { view: OrderView }) {
   const ui = useMfgUi()
   const d = useMfgDate()
   const words = useCandidateWords()
+  const [drawingHere, setDrawingHere] = useState(false)
   const ns = ui.nextStepOf(view)
   const w = ns ? null : ui.waitingOf(view)
   const canRush = ui.perms.canManage && view.live && view.released && !view.rush
@@ -238,6 +244,13 @@ function NextStepBox({ view }: { view: OrderView }) {
   if (w) {
     const mod = candidateModule(w)
     const who = mod ? t(`mfg4_module_${mod}`) : holderLabel(w, ui, t)
+    const there = mod ? moduleLinkOf(mod, view, ui.data.salesOrders) : null
+    // The client's (or the consultant's) answer on the drawing is normally
+    // recorded by Sales or Projects. The customer's flow is that an order, once
+    // its advance is confirmed, does not have to travel back to Sales before it
+    // is finished — so the workshop manager may record the answer he was given,
+    // under his own name and in the order's log. The rules already let him.
+    const canRecordDrawing = w.key === "drawing_wait" && ui.perms.canManage
     return (
       <section className="flex flex-wrap items-center gap-3 rounded-xl border bg-white px-3.5 py-3">
         <div className="min-w-0 flex-1">
@@ -249,13 +262,37 @@ function NextStepBox({ view }: { view: OrderView }) {
             {mod ? (
               <>
                 <MfgModuleChip module={mod} /> {t("mfg4_done_there")}
+                {there && (
+                  <Link
+                    href={`/${ui.portal}/${there}`}
+                    className="inline-flex items-center gap-1 font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  >
+                    {t("mfg4_open_there", { module: who })}
+                    <ExternalLink size={11} className="rtl-flip" aria-hidden="true" />
+                  </Link>
+                )}
               </>
             ) : (
               t("mfg4_no_action_role")
             )}
           </p>
         </div>
+        {canRecordDrawing && (
+          <Button type="button" variant="outline" className="h-10 gap-1.5 text-xs" onClick={() => setDrawingHere(true)}>
+            <FileCheck2 size={14} aria-hidden="true" /> {t("mfg4_drawing_record_here")}
+          </Button>
+        )}
         {rush}
+        {canRecordDrawing && (
+          <ProjectDrawingResultDialog
+            target={drawingHere ? { order: view.order, orderRef: view.ref, productName: view.product.name } : null}
+            orgId={ui.data.orgId}
+            actor={ui.data.actor}
+            link={mfgLinks.order(view.id)}
+            description={t("mfg4_drawing_record_here_desc", { order: view.ref, who })}
+            onClose={() => setDrawingHere(false)}
+          />
+        )}
       </section>
     )
   }

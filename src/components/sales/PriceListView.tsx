@@ -29,6 +29,7 @@ import {
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
+import { cn } from "@/lib/utils"
 import { useCrmData } from "@/hooks/useCrmData"
 import { formatSar } from "@/lib/crm"
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
@@ -43,8 +44,11 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { toast } = useToast()
-  const { can } = usePermissions()
-  const canManage = can("sales.manage")
+  const { can, isOrgOwner } = usePermissions()
+  // The price list is a prices-&-returns role's: the owner and the sales
+  // manager set prices and SEE cost; a rep reads the price and never a cost
+  // (Sales PRD §3, PRC-05, INV-08).
+  const canManage = isOrgOwner || can("sales.approve")
   const { orgId, isLoading: isOrgLoading } = useCrmData()
 
   const itemsQuery = useMemoFirebase(() => {
@@ -175,6 +179,16 @@ export function PriceListView({ portal }: { portal: CrmPortal }) {
                   {item.notes && <span className="ms-1.5">· {item.notes}</span>}
                 </p>
               </div>
+              {/* Cost roles only: the margin this price earns, or that the item has
+                  no standard cost yet — it still sells, and is left out of margin (PRC-04). */}
+              {canManage &&
+                (item.cost != null && item.cost > 0 ? (
+                  <span className={cn("shrink-0 text-[11px] font-bold tabular-nums", item.unitPrice > 0 && (item.unitPrice - item.cost) / item.unitPrice < 0.2 ? "text-destructive" : "text-muted-foreground")} dir="ltr">
+                    {t("pl_margin", { percent: item.unitPrice > 0 ? Math.round(((item.unitPrice - item.cost) / item.unitPrice) * 100) : 0 })}
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-bold text-warning">{t("pl_no_cost")}</span>
+                ))}
               <span className="text-sm font-black tabular-nums shrink-0" dir="ltr">{formatSar(item.unitPrice, locale)}</span>
               {canManage && (
                 <div className="flex items-center gap-1 shrink-0">

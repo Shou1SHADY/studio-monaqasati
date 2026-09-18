@@ -180,7 +180,7 @@ export async function loadTeam(firestore: Firestore, organizationId: string, to:
   ])
   return {
     ownerId: organizationId,
-    members: users.docs.map((d) => ({ id: d.id, defaultGroupId: (d.data().defaultGroupId as string | null) ?? null, organizationRole: (d.data().organizationRole as string | null) ?? null })),
+    members: users.docs.map((d) => ({ id: d.id, defaultGroupId: (d.data().defaultGroupId as string | null) ?? null, organizationRole: "organizationRole" in d.data() ? ((d.data().organizationRole as string | null) ?? null) : "owner" })),
     groups: groups.docs.map((d) => ({ id: d.id, permissions: (d.data().permissions as TeamGroup["permissions"]) || [] })),
     departments: depts,
     projectMembers: new Map(projectMembers),
@@ -275,15 +275,30 @@ export async function emitMfgEvent(firestore: Firestore, e: MfgEvent): Promise<n
  * sales order, so this only tells). Silent when nothing is being made. */
 export async function emitDownPaymentConfirmed(
   firestore: Firestore,
-  input: { organizationId: string; salesOrderId: string; salesOrderNumber: number | string; actor: { id: string; name: string }; copy: Translator }
+  input: {
+    organizationId: string
+    salesOrderId: string
+    salesOrderNumber: number | string
+    /** The quotation the sales order was born of — its work orders that name
+     * no sales order are this order's too (see `belongsToSalesOrder`). */
+    quotationId?: string | null
+    actor: { id: string; name: string }
+    copy: Translator
+  }
 ): Promise<number> {
   try {
-    const snap = await getDocs(
-      query(collection(firestore, "workOrders"), where("organizationId", "==", input.organizationId), where("salesOrderId", "==", input.salesOrderId))
-    )
-    const live = snap.docs
-      .map((d) => ({ id: d.id, ...(d.data() as { docNumber?: string | null; orderNumber?: number | null; status?: string | null }) }))
-      .filter((o) => o.status !== "done" && o.status !== "cancelled")
+    const orders = collection(firestore, "workOrders")
+    const org = where("organizationId", "==", input.organizationId)
+    const [named, quoted] = await Promise.all([
+      getDocs(query(orders, org, where("salesOrderId", "==", input.salesOrderId))),
+      input.quotationId ? getDocs(query(orders, org, where("source.quotationId", "==", input.quotationId))) : null,
+    ])
+    type Row = { id: string; docNumber?: string | null; orderNumber?: number | null; status?: string | null; salesOrderId?: string | null }
+    const byId = new Map<string, Row>()
+    for (const d of named.docs) byId.set(d.id, { id: d.id, ...(d.data() as Omit<Row, "id">) })
+    // A quote-born order that names another sales order is that one's, not ours.
+    for (const d of quoted?.docs || []) if (!(d.data() as Row).salesOrderId) byId.set(d.id, { id: d.id, ...(d.data() as Omit<Row, "id">) })
+    const live = Array.from(byId.values()).filter((o) => o.status !== "done" && o.status !== "cancelled")
     if (!live.length) return 0
     const only = live.length === 1 ? live[0] : null
     return emitMfgEvent(firestore, {
@@ -344,6 +359,12 @@ export const mfgLinks = {
   deliveryNotes: () => "warehouses/delivery-notes",
   project: (projectId: string) => `projects/${projectId}?tab=mfg`,
   salesOrder: (orderId: string) => `sales/orders?open=${orderId}`,
+  /** The Sales orders page — its workshop inbox lists what waits on Sales,
+   * including a client order that names no sales order. `q` lands the reader on
+   * a search for what the workshop DOES know: the quotation's number. */
+  salesOrders: (q?: string | null) => (q ? `sales/orders?q=${encodeURIComponent(q)}` : "sales/orders"),
+  /** Where Finance confirms a client's advance and holds or releases a shipment. */
+  financeSalesDesk: () => "accounting/sales-desk",
   salesQuotations: () => "sales/quotations",
   salesPayments: () => "sales/payments",
   procurement: () => "rfqs",

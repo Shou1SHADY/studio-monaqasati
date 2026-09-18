@@ -208,9 +208,17 @@ export interface QuotationSheetCustomer {
 /** Everything `QuotationPdfSheet` renders — built live from the builder form,
  * or from a saved quotation for the detail page's download. */
 export interface QuotationSheetData {
+  /** Empty until the first save draws it — the sheet says so (QC-15). */
   quotationNumber: string
   date: string | null
+  /** Set when the quote is logged as sent; until then validity is a number of
+   * days "from the send date" (QC-09). */
   validUntil: string | null
+  validityDays?: number | null
+  /** A draft prints with its watermark — it never reaches the client as final (QC-18). */
+  isDraft?: boolean
+  /** The earliest we can honestly be ready, as quoted (QC-08). */
+  leadTime?: string | null
   customer: QuotationSheetCustomer
   items: QuotationItem[] | null
   /** Net lump sum, used when there are no item lines. */
@@ -245,12 +253,18 @@ export function sheetDataFromQuotation(
   q: CrmQuotation,
   input: { fallbackBranding: QuotationBranding; contact?: CrmContact | null }
 ): QuotationSheetData {
+  // A quotation from before the lifecycle counted validity from its own date;
+  // one written since has no end date until it is logged as sent.
+  const legacy = q.status !== "draft" && q.status !== "issued" && !q.sentAt
   const validUntil =
-    q.validUntil || (q.date && q.validityDays != null ? addDaysToIsoDate(q.date, q.validityDays) || null : null)
+    q.validUntil || (legacy && q.date && q.validityDays != null ? addDaysToIsoDate(q.date, q.validityDays) || null : null)
   return {
     quotationNumber: q.quotationNumber,
     date: q.date ?? null,
     validUntil,
+    validityDays: q.validityDays ?? null,
+    isDraft: q.status === "draft",
+    leadTime: q.leadTime ?? null,
     customer: sheetCustomerFromContact(input.contact, q.contactName),
     items: q.items && q.items.length > 0 ? q.items : null,
     amount: Number(q.amount) || 0,
@@ -258,6 +272,14 @@ export function sheetDataFromQuotation(
     installments: q.installments ?? null,
     terms: q.terms ?? q.paymentTerms ?? null,
     notes: q.notes ?? null,
-    branding: q.branding ?? input.fallbackBranding,
+    // The snapshot is the identity the quotation was written with — but a
+    // snapshot with NO logo is a gap, not a decision: a quote written before the
+    // owner uploaded one would print bare for ever, and once sent the rules lock
+    // `branding`, so nobody could fix it. Fall back per field for the logo only.
+    branding: !q.branding
+      ? input.fallbackBranding
+      : q.branding.logoUrl || !input.fallbackBranding.logoUrl
+        ? q.branding
+        : { ...q.branding, logoUrl: input.fallbackBranding.logoUrl },
   }
 }

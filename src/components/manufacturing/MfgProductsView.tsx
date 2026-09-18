@@ -17,7 +17,7 @@ import { standardCost, type MfgProduct } from "@/lib/manufacturing-engine"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgPrdDrawer } from "./MfgPrdDrawer"
 import { MfgPrdFlags, MfgPrdRouteChips, productTime, stepName } from "./MfgPrdBits"
-import { MfgEmpty, MfgNote, MfgSearchField, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgEmpty, MfgNote, MfgSearchField, fmtSar, fmtQty } from "./ui/MfgUi"
 
 export function MfgProductsView() {
   const t = useTranslations("Portal.Shared")
@@ -129,7 +129,7 @@ function ProductCard({ product, onOpen }: { product: MfgProduct; onOpen: () => v
               <span>
                 {t("mfr_prd_std_cost")}{" "}
                 <b dir="ltr" className="tabular-nums text-foreground">
-                  {fmtMoney(std.total)} ﷼
+                  {fmtSar(std.total)}
                 </b>
                 {!std.allPriced && <span className="ms-1 text-warning">({t("mfr_cost_incomplete")})</span>}
               </span>
@@ -138,7 +138,7 @@ function ProductCard({ product, onOpen }: { product: MfgProduct; onOpen: () => v
               <span>
                 {t("mfr_prd_buy")}{" "}
                 <b dir="ltr" className="tabular-nums text-foreground">
-                  {fmtMoney(buy)} ﷼
+                  {fmtSar(buy)}
                 </b>
               </span>
             )}

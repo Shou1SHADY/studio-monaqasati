@@ -15,7 +15,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { formatSar } from "@/lib/crm"
 import { SALES_ORDERS, depositTotal, type SalesOrder } from "@/lib/sales-orders"
-import { markDepositPaid } from "@/lib/sales-order-writes"
+import { confirmAdvanceForOrder } from "@/lib/sales-transfers"
 import { emitDownPaymentConfirmed } from "@/lib/mfg-events"
 
 export function SalesDepositsToConfirm({
@@ -51,9 +51,15 @@ export function SalesDepositsToConfirm({
     if (!firestore || busyId) return
     setBusyId(order.id)
     try {
-      await markDepositPaid(firestore, order)
+      // One act, the same end as answering the seller's notice: the advance is
+      // settled on the quotation, an open notice is answered, the order released.
+      await confirmAdvanceForOrder(firestore, {
+        order,
+        actor,
+        notification: { title: t("sales_tn_notif_confirmed_title"), message: t("sales_tn_notif_confirmed_msg", { number: order.quotationNumber || `#${order.orderNumber}`, amount: formatSar(depositTotal(order), locale) }) },
+      })
       toast({ title: t("so_deposit_marked") })
-      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, actor })
+      await emitDownPaymentConfirmed(firestore, { copy: t, organizationId: order.organizationId, salesOrderId: order.id, salesOrderNumber: order.orderNumber, quotationId: order.quotationId ?? null, actor })
     } catch (err) {
       console.error(err)
       toast({ title: t("so_save_error"), variant: "destructive" })

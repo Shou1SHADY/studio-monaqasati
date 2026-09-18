@@ -25,7 +25,7 @@ import {
 } from "@/lib/manufacturing-engine"
 import { completeOrderStep, recordSurvey, releaseOrder, rushOrder, signOffSlab, submitDrawing } from "@/lib/manufacturing-writes"
 import { mfgLinks } from "@/lib/mfg-events"
-import type { OrderView } from "@/lib/manufacturing-view"
+import { salesOrderOfWorkOrder, type OrderView } from "@/lib/manufacturing-view"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgRecordedAs, blockTexts, departmentNameOf } from "./MfgOrderBits"
 import { MfgFileField, type UploadedFile } from "./MfgFileField"
@@ -43,6 +43,7 @@ import {
   optNum,
   todayIso,
   ownerRecipients,
+  salesLinkOf,
   useNotify,
   useSubmit,
 } from "./MfgFormKit"
@@ -147,7 +148,7 @@ export function ReleaseForm({ view, onClose }: Props) {
     setTried(true)
     if (!firestore || invalid) return
     void run(
-      () => releaseOrder(firestore, { orderId: view.id, product: view.product, departments: data.departments, actor: data.actor }),
+      () => releaseOrder(firestore, { orderId: view.id, product: view.product, departments: data.departments, salesOrderId: salesOrderOfWorkOrder(view.order, data.salesOrders.values())?.id ?? null, actor: data.actor }),
       () => {
         const first = c.route[0]?.departmentId
         const unit = c.route[c.firstQ]?.departmentId
@@ -339,7 +340,7 @@ export function SubmitDrawingForm({ view, onClose }: Props) {
       () => {
         if (!internal) {
           const to = client ? ownerRecipients(view) : view.order.projectId ? [{ projectPermission: "projects.edit" as const, projectId: view.order.projectId }] : ownerRecipients(view)
-          const link = client && view.order.salesOrderId ? mfgLinks.salesOrder(view.order.salesOrderId) : view.order.projectId ? mfgLinks.project(view.order.projectId) : null
+          const link = client ? salesLinkOf(view, data.salesOrders) : view.order.projectId ? mfgLinks.project(view.order.projectId) : null
           notify.emit("drawing_submitted", to, { ref: view.ref, revision: (prev?.revision || 0) + 1, approver: client ? "@mfg4_approver_client" : `@mfg4_approver_${org}` }, view.id, link)
         }
         return t("mfo_drawing_toast", { ref: view.ref, approver })

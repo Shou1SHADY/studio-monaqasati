@@ -7,6 +7,11 @@
 // a shop drawing the workshop submitted, and asking for a quantity change or a
 // cancellation. The workshop manager applies a change; Manufacturing reads the
 // drawing result.
+//
+// `SalesWorkshopInbox` heads the orders page with every drawing the client has
+// not answered, so the act is found without knowing which sales order to open —
+// and at all, for a client order that names no sales order (one that carries
+// only its quotation, `Q-…`).
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -26,7 +31,7 @@ import { DELIVERY_NOTES, type DeliveryNote } from "@/lib/delivery-notes"
 import { minQuantity, type DrawingCode, type MfgProduct, type OrderCalc, type Stage } from "@/lib/manufacturing-engine"
 import { calcOf, isV2Order, recordDrawingResult, requestOrderChange, toNoteSlice, type WorkOrderV2 } from "@/lib/manufacturing-writes"
 import { emitMfgEvent, mfgLinks, type EventParams, type MfgEventKind } from "@/lib/mfg-events"
-import { orderRef } from "@/lib/manufacturing-view"
+import { belongsToSalesOrder, clientDrawingsDue, clientRefOf, orderRef, salesOrderOfWorkOrder } from "@/lib/manufacturing-view"
 import type { SalesOrder } from "@/lib/sales-orders"
 import { fmtQty } from "@/components/manufacturing/ui/MfgUi"
 import { SignedInAs, mfgActError } from "@/components/shared/MfgHandoffBits"
@@ -47,6 +52,42 @@ interface Row {
   order: WorkOrderV2
   product: MfgProduct
   calc: OrderCalc
+  /** Null for a client order that names no sales order. */
+  salesOrder: SalesOrder | null
+}
+
+/** The given work orders as Sales reads them. Stations and delivery notes are
+ * fetched only when there is an order to compute. */
+function useWorkshopRows(mine: WorkOrderV2[], products: MfgProduct[], orgId: string, salesOrderOf: (w: WorkOrderV2) => SalesOrder | null): Row[] {
+  const firestore = useFirestore()
+  const wanted = mine.length > 0
+
+  const departmentsQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId || !wanted) return null
+    return query(collection(firestore, MFG_DEPARTMENTS), where("organizationId", "==", orgId))
+  }, [firestore, orgId, wanted])
+  const { data: departmentsData } = useCollection(departmentsQuery)
+
+  const notesQuery = useMemoFirebase(() => {
+    if (!firestore || !orgId || !wanted) return null
+    return query(collection(firestore, DELIVERY_NOTES), where("organizationId", "==", orgId))
+  }, [firestore, orgId, wanted])
+  const { data: notesData } = useCollection(notesQuery)
+
+  return useMemo<Row[]>(() => {
+    const byId = new Map(products.map((p) => [p.id, p]))
+    const departments = (departmentsData || []) as MfgDepartment[]
+    const notes = (notesData || []) as DeliveryNote[]
+    return mine
+      .map((w) => {
+        const product = byId.get(w.productId || "")
+        if (!product) return null
+        const salesOrder = salesOrderOf(w)
+        const slices = notes.filter((n) => n.source?.workOrderId === w.id).map(toNoteSlice)
+        return { order: w, product, calc: calcOf(w, product, departments, slices, salesOrder), salesOrder }
+      })
+      .filter((r): r is Row => !!r)
+  }, [mine, products, departmentsData, notesData, salesOrderOf])
 }
 
 export function SalesOrderWorkshopSection({
@@ -66,37 +107,13 @@ export function SalesOrderWorkshopSection({
   portal: CrmPortal
 }) {
   const t = useTranslations("Portal.Shared")
-  const firestore = useFirestore()
 
-  const mine = useMemo(() => workOrders.filter((w) => w.salesOrderId === order.id && isV2Order(w)), [workOrders, order.id])
-  const wanted = mine.length > 0
-
-  const departmentsQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId || !wanted) return null
-    return query(collection(firestore, MFG_DEPARTMENTS), where("organizationId", "==", orgId))
-  }, [firestore, orgId, wanted])
-  const { data: departmentsData } = useCollection(departmentsQuery)
-
-  const notesQuery = useMemoFirebase(() => {
-    if (!firestore || !orgId || !wanted) return null
-    return query(collection(firestore, DELIVERY_NOTES), where("organizationId", "==", orgId))
-  }, [firestore, orgId, wanted])
-  const { data: notesData } = useCollection(notesQuery)
-
-  const rows = useMemo<Row[]>(() => {
-    const byId = new Map(products.map((p) => [p.id, p]))
-    const departments = (departmentsData || []) as MfgDepartment[]
-    const notes = (notesData || []) as DeliveryNote[]
-    return mine
-      .map((w) => {
-        const product = byId.get(w.productId || "")
-        if (!product) return null
-        const slices = notes.filter((n) => n.source?.workOrderId === w.id).map(toNoteSlice)
-        return { order: w, product, calc: calcOf(w, product, departments, slices, order) }
-      })
-      .filter((r): r is Row => !!r)
-      .sort((a, b) => (a.order.orderNumber || 0) - (b.order.orderNumber || 0))
-  }, [mine, products, departmentsData, notesData, order])
+  const mine = useMemo(
+    () => workOrders.filter((w) => belongsToSalesOrder(w, order) && isV2Order(w)).sort((a, b) => (a.orderNumber || 0) - (b.orderNumber || 0)),
+    [workOrders, order]
+  )
+  const salesOrderOf = useMemo(() => () => order, [order])
+  const rows = useWorkshopRows(mine, products, orgId, salesOrderOf)
 
   if (!rows.length) return null
 
@@ -111,7 +128,72 @@ export function SalesOrderWorkshopSection({
       </header>
       <ul className="divide-y">
         {rows.map((row) => (
-          <WorkOrderLine key={row.order.id} row={row} salesOrder={order} orgId={orgId} actor={actor} canManage={canManage} />
+          <WorkOrderLine key={row.order.id} row={row} orgId={orgId} actor={actor} canManage={canManage} />
+        ))}
+      </ul>
+      {!canManage && (
+        <p className="flex items-center gap-1.5 border-t px-4 py-2 text-[11px] text-muted-foreground">
+          <Lock size={11} aria-hidden="true" />
+          {t("mfy_so_ws_read_only")}
+        </p>
+      )}
+    </section>
+  )
+}
+
+/** Heads the Sales orders page: every shop drawing the client has not answered,
+ * with the act beside it. Renders nothing when the workshop waits on nothing. */
+export function SalesWorkshopInbox({
+  salesOrders,
+  workOrders,
+  products,
+  orgId,
+  actor,
+  canManage,
+  onOpenOrder,
+}: {
+  salesOrders: SalesOrder[]
+  workOrders: WorkOrderV2[]
+  products: MfgProduct[]
+  orgId: string
+  actor: { id: string; name: string }
+  canManage: boolean
+  onOpenOrder: (salesOrderId: string) => void
+}) {
+  const t = useTranslations("Portal.Shared")
+
+  const due = useMemo(() => clientDrawingsDue(workOrders, new Map(products.map((p) => [p.id, p]))), [workOrders, products])
+  const salesOrderOf = useMemo(() => (w: WorkOrderV2) => salesOrderOfWorkOrder(w, salesOrders), [salesOrders])
+  const rows = useWorkshopRows(due, products, orgId, salesOrderOf)
+
+  if (!rows.length) return null
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-accent/30 bg-white" aria-labelledby="sales-ws-inbox-title">
+      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-accent/20 bg-accent/5 px-4 py-3">
+        <div className="min-w-0">
+          <h2 id="sales-ws-inbox-title" className="flex items-center gap-2 text-sm font-black text-foreground">
+            <FileCheck2 size={15} className="text-secondary" aria-hidden="true" />
+            {t("mfy_inbox_title")}
+            <Badge className="border-none bg-accent/15 text-[10px] tabular-nums text-secondary">{rows.length}</Badge>
+          </h2>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{t("mfy_inbox_desc")}</p>
+        </div>
+      </header>
+      <ul className="divide-y">
+        {rows.map((row) => (
+          <WorkOrderLine
+            key={row.order.id}
+            row={row}
+            orgId={orgId}
+            actor={actor}
+            canManage={canManage}
+            client={{
+              name: row.salesOrder?.contactName || row.order.source?.contactName || "",
+              ref: clientRefOf(row.order, row.salesOrder),
+              onOpen: row.salesOrder ? () => onOpenOrder(row.salesOrder!.id) : null,
+            }}
+          />
         ))}
       </ul>
       {!canManage && (
@@ -126,22 +208,23 @@ export function SalesOrderWorkshopSection({
 
 function WorkOrderLine({
   row,
-  salesOrder,
   orgId,
   actor,
   canManage,
+  client,
 }: {
   row: Row
-  salesOrder: SalesOrder
   orgId: string
   actor: { id: string; name: string }
   canManage: boolean
+  /** Shown in the inbox, where the row stands outside its sales order. */
+  client?: { name: string; ref: string; onOpen: (() => void) | null }
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const { order: w, product, calc } = row
+  const { order: w, product, calc, salesOrder } = row
   const unit = w.unit || product.unit
   const ref = orderRef(w)
   const pct = calc.target > 0 ? Math.min(100, (calc.delivered / calc.target) * 100) : 0
@@ -184,7 +267,7 @@ function WorkOrderLine({
     setError(null)
     try {
       const text = notes.trim() || null
-      await recordDrawingResult(firestore, { orderId: w.id, code, notes: text, approverName: salesOrder.contactName ?? null, actor })
+      await recordDrawingResult(firestore, { orderId: w.id, code, notes: text, approverName: salesOrder?.contactName ?? w.source?.contactName ?? null, actor })
       // projects/sales.drawing.approved|rejected — back to the manager and the drafter.
       await tell("drawing_result", [drawing?.submittedById], { ref, code, notes: text ? ` — ${text}` : "" })
       toast({ title: t("mfy_draw_saved") })
@@ -229,6 +312,20 @@ function WorkOrderLine({
 
   return (
     <li className="space-y-2.5 px-4 py-3">
+      {client && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-black text-foreground" dir="auto">{client.name || t("mfy_inbox_no_client")}</span>
+          {client.ref && <span className="font-mono text-xs text-muted-foreground" dir="ltr">{client.ref}</span>}
+          {client.onOpen ? (
+            <Button size="sm" variant="ghost" className="ms-auto h-8 gap-1.5 text-cta hover:text-cta" onClick={client.onOpen}>
+              <ExternalLink size={13} className="rtl-flip" aria-hidden="true" />
+              {t("mfy_inbox_open_order")}
+            </Button>
+          ) : (
+            <Badge variant="outline" className="ms-auto border-warning/40 text-[10px] text-warning">{t("mfy_inbox_no_order")}</Badge>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs text-muted-foreground" dir="ltr">{ref}</span>
         <span className="text-sm font-bold text-foreground" dir="auto">{w.productName || product.name}</span>

@@ -1,27 +1,45 @@
 // Deploys firestore.rules via the firebaserules REST API (firebase CLI does
 // not work in this environment — see CLAUDE.md "Deploying firestore.rules").
 //
-//   node scripts/deploy-rules.js prod   — studio prod project, service-account creds from .env.local
-//   node scripts/deploy-rules.js uat    — mdmaktech-uat, OAuth token from `gcloud auth print-access-token`
+//   node scripts/deploy-rules.js prod            — studio prod project, service-account creds from .env.local
+//   node scripts/deploy-rules.js uat             — mdmaktech-uat: `gcloud auth print-access-token` when gcloud
+//                                                  is installed, else the service account in .env.uat
+//   node scripts/deploy-rules.js <prod|uat> --check
+//                                                — READ-ONLY: which ruleset is live, when it was released,
+//                                                  and whether it matches the file byte for byte
 //
 // Always `git fetch` and diff firestore.rules against origin/main BEFORE
 // running this: deploying a stale local copy wipes other sessions' rules.
+// Run --check first: if the live ruleset already matches git there is
+// nothing to deploy, and if it matches neither git nor the previous commit,
+// someone deployed rules that were never committed — find out before
+// overwriting them.
 
 const fs = require("fs")
 const { execSync } = require("child_process")
-require("dotenv").config({ path: ".env.local" })
 
 const target = process.argv[2]
+const checkOnly = process.argv.includes("--check")
 if (target !== "prod" && target !== "uat") {
-  console.error("usage: node scripts/deploy-rules.js <prod|uat>")
+  console.error("usage: node scripts/deploy-rules.js <prod|uat> [--check]")
   process.exit(1)
 }
+// Only the chosen target's credentials are loaded — never both.
+require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 
 const source = fs.readFileSync("firestore.rules", "utf8")
 const base = "https://firebaserules.googleapis.com/v1"
 
-async function token(project) {
-  if (target === "uat") return execSync("gcloud auth print-access-token").toString().trim()
+function hasGcloud() {
+  try {
+    execSync("command -v gcloud", { stdio: "ignore" })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function serviceAccountToken() {
   const { GoogleAuth } = require("google-auth-library")
   const auth = new GoogleAuth({
     credentials: {
@@ -33,10 +51,72 @@ async function token(project) {
   return (await (await auth.getClient()).getAccessToken()).token
 }
 
+// A gcloud USER token needs a quota project named in a header; a service
+// account of the project itself must not send one (it would need
+// serviceusage.services.use on top, and 403s without it).
+let quotaHeader = false
+
+async function token() {
+  if (target === "uat" && hasGcloud()) {
+    quotaHeader = true
+    return execSync("gcloud auth print-access-token").toString().trim()
+  }
+  if (!process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
+    console.error(`no credentials: ${target === "uat" ? "install gcloud (gcloud auth login) or provide .env.uat" : ".env.local"} with FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY`)
+    process.exit(1)
+  }
+  return serviceAccountToken()
+}
+
 ;(async () => {
   const project = target === "uat" ? "mdmaktech-uat" : process.env.FIREBASE_PROJECT_ID
-  const h = { Authorization: "Bearer " + (await token(project)), "Content-Type": "application/json" }
-  if (target === "uat") h["x-goog-user-project"] = project
+  if (target === "uat" && process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PROJECT_ID !== project) {
+    console.error(`refusing: .env.uat credentials are for "${process.env.FIREBASE_PROJECT_ID}", not ${project}`)
+    process.exit(1)
+  }
+  if (target === "prod" && project === "mdmaktech-uat") {
+    console.error("refusing: .env.local credentials are for UAT")
+    process.exit(1)
+  }
+  const h = { Authorization: "Bearer " + (await token()), "Content-Type": "application/json" }
+  if (quotaHeader) h["x-goog-user-project"] = project
+
+  const live = async () => {
+    const rel = await fetch(`${base}/projects/${project}/releases/cloud.firestore`, { headers: h }).then((r) => r.json())
+    if (!rel.rulesetName) throw new Error(`no cloud.firestore release: ${JSON.stringify(rel).slice(0, 300)}`)
+    const rs = await fetch(`${base}/${rel.rulesetName}`, { headers: h }).then((r) => r.json())
+    return { id: rel.rulesetName.split("/").pop(), updated: rel.updateTime, content: rs.source.files[0].content }
+  }
+
+  if (checkOnly) {
+    const l = await live()
+    // Which commit, if any, the live rules came from: the file's history,
+    // newest first. A match means overwriting loses nothing that git does
+    // not have; no match means someone deployed rules that were never
+    // committed — compare before overwriting.
+    let from = null
+    if (l.content !== source) {
+      try {
+        const commits = execSync("git log --format='%h|%ad|%s' --date=short -- firestore.rules", { maxBuffer: 1 << 24 }).toString().trim().split("\n")
+        for (const line of commits) {
+          const [h] = line.split("|")
+          if (execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString() === l.content) {
+            from = line
+            break
+          }
+        }
+      } catch {
+        /* not a git checkout */
+      }
+    }
+    const verdict = l.content === source
+      ? "matches the file (nothing to deploy)"
+      : from
+        ? `is the file as committed in ${from} — deploying loses nothing`
+        : "matches NO commit in the file's history — someone deployed uncommitted rules; compare before overwriting"
+    console.log(`${target.toUpperCase()} project=${project} live ruleset ${l.id} released ${l.updated} (${l.content.length} chars; file ${source.length}) — ${verdict}`)
+    return
+  }
 
   let res = await fetch(`${base}/projects/${project}/rulesets`, {
     method: "POST",
@@ -63,9 +143,9 @@ async function token(project) {
     process.exit(1)
   }
 
-  const rel = await fetch(`${base}/projects/${project}/releases/cloud.firestore`, { headers: h }).then((r) => r.json())
-  const live = await fetch(`${base}/${rel.rulesetName}`, { headers: h }).then((r) => r.json())
-  console.log(
-    `${target.toUpperCase()} live ruleset: ${rel.rulesetName.split("/").pop()} | updated: ${rel.updateTime} | matches git: ${live.source.files[0].content === source}`
-  )
-})()
+  const l = await live()
+  console.log(`${target.toUpperCase()} live ruleset: ${l.id} | updated: ${l.updated} | matches git: ${l.content === source}`)
+})().catch((e) => {
+  console.error(e.message)
+  process.exit(1)
+})

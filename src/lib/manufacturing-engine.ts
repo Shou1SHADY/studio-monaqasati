@@ -1660,6 +1660,12 @@ export type Persona = "manager" | "lead" | "qc" | "cost" | "management"
 
 export interface Actor {
   uid: string
+  /** The org owner. He passes every permission check on the platform and the
+   * security rules know no station lead, so a station that names a lead must
+   * not lock HIM out: with the lead away, issued materials would sit "not
+   * received" and the order would stall with nobody able to move it. Whatever
+   * he records carries his own name. */
+  owner?: boolean
   manage: boolean
   work: boolean
   qc: boolean
@@ -1686,7 +1692,7 @@ export function ownsCandidate(c: Candidate, actor: Actor, departments: DeptCapac
     case "station": {
       const d = departments.find((x) => x.id === o.departmentId)
       if (isQcStation(d)) return as("qc") && actor.qc
-      if (d?.leadUserId) return as("lead") && actor.work && actor.uid === d.leadUserId
+      if (d?.leadUserId) return as("lead") && actor.work && (actor.uid === d.leadUserId || !!actor.owner)
       // No lead assigned yet: the manager records — and the station's hands
       // (manufacturing.work) keep working until the manager assigns one.
       return (as("manager") && actor.manage) || (as("lead") && actor.work)

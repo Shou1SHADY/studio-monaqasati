@@ -36,12 +36,15 @@ export function ProjectDrawingResultDialog({
   orgId,
   actor,
   link,
+  description,
   onClose,
 }: {
   target: DrawingTarget | null
   orgId: string
   actor: Actor
   link: string | null
+  /** Replaces the Projects wording when another desk records the result. */
+  description?: string
   onClose: () => void
 }) {
   const t = useTranslations("Portal.Shared")
@@ -105,7 +108,7 @@ export function ProjectDrawingResultDialog({
             <PencilRuler size={18} className="text-cta" aria-hidden="true" />
             {t("mfx_prj_drawing_title")}
           </DialogTitle>
-          <DialogDescription>{t("mfx_prj_drawing_desc", { order: target.orderRef, product: target.productName })}</DialogDescription>
+          <DialogDescription>{description ?? t("mfx_prj_drawing_desc", { order: target.orderRef, product: target.productName })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-1">

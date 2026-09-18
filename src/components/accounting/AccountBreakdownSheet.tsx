@@ -8,11 +8,31 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils"
 import type { AccountingData } from "@/hooks/useAccounting"
 import { accountLedger } from "@/lib/accounting/balances"
-import { naturalSign } from "@/lib/accounting/accounts"
+import { CHART_OF_ACCOUNTS, naturalSign } from "@/lib/accounting/accounts"
 import { accountBreakdown, type TreeNode } from "@/lib/accounting/statement-tree"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { Money, accountingBasePath } from "./AccountingShell"
 import { ScaleCaption, periodLabel, periodRangeText } from "./AccountingToolbar"
+
+/**
+ * A figure that is not a statement row — a cash account on the dashboard, a
+ * KPI, a "locked cash" line — as something the panel can open. `codes` may be
+ * leaves or rollups (they are prefix-matched); the label defaults to the first
+ * code's name in the chart of accounts.
+ */
+export function accountNode(codes: string[], value: number, label?: { ar: string; en: string }): TreeNode {
+  const account = CHART_OF_ACCOUNTS.find((a) => a.code === codes[0])
+  return {
+    id: `acct-${codes.join("-")}`,
+    kind: "account",
+    labelAr: label?.ar ?? account?.nameAr ?? codes[0],
+    labelEn: label?.en ?? account?.nameEn ?? codes[0],
+    value,
+    basis: "closing",
+    codes,
+    ...(codes.length === 1 && account?.postable ? { accountCode: codes[0] } : {}),
+  }
+}
 
 /**
  * What a statement figure is made of: every account behind it with its number,
@@ -138,7 +158,15 @@ export function AccountBreakdownSheet({
                                       {lines.rows.map((l, i) => (
                                         <tr key={`${l.entryId}-${i}`} className="border-t border-border/50">
                                           <td className="py-1 tabular-nums" dir="ltr">{l.date}</td>
-                                          <td className="py-1 tabular-nums text-muted-foreground" dir="ltr">{l.entryNumber}</td>
+                                          <td className="py-1 tabular-nums" dir="ltr">
+                                            <Link
+                                              href={`${base}/journal?entry=${encodeURIComponent(l.entryId)}`}
+                                              title={t("acc_entry_details")}
+                                              className="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                                            >
+                                              {l.entryNumber}
+                                            </Link>
+                                          </td>
                                           <td className="py-1">{l.description}{l.note ? <span className="text-muted-foreground"> — {l.note}</span> : null}</td>
                                           <td className="py-1 text-end">{l.debit ? <Money value={l.debit} /> : "—"}</td>
                                           <td className="py-1 text-end">{l.credit ? <Money value={l.credit} /> : "—"}</td>

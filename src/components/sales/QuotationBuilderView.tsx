@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
 import { collection, doc, getDoc, query, where } from "firebase/firestore"
 import {
-  ArrowRight, Building2, Contact, Eye, FileSignature, Loader2, Lock, PencilLine, Save, Wallet,
+  AlertTriangle, ArrowRight, BadgeCheck, Building2, Contact, Eye, FileSignature, Loader2, Lock, PencilLine, Plus, Save, Wallet,
 } from "lucide-react"
 import { Link, useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
@@ -20,25 +20,23 @@ import { useCrmData } from "@/hooks/useCrmData"
 import { useQuotationForm } from "@/hooks/useQuotationForm"
 import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
 import { cn } from "@/lib/utils"
-import { generateQuotationNumber, type QuotationBranding } from "@/lib/crm"
+import { CRM_QUOTATIONS, type CrmQuotation, type QuotationBranding } from "@/lib/crm"
 import { WORK_ORDERS, type WorkOrder } from "@/lib/manufacturing"
 import {
-  DEFAULT_QUOTATION_VALIDITY_DAYS,
   DEFAULT_QUOTATION_VAT_PERCENT,
   EMPTY_QUOTATION_BRANDING,
-  addDaysToIsoDate,
   sheetCustomerFromContact,
-  validityDaysBetween,
   type QuotationSheetData,
 } from "@/lib/quotation-document"
-import { SALES_QUOTE_REQUESTS, markQuoteRequestQuoted, type QuoteRequest } from "@/lib/sales-transfers"
+import { SALES_QUOTE_REQUESTS, linkQuoteRequestDraft, type QuoteRequest } from "@/lib/sales-transfers"
+import { VALIDITY_CHOICES, issueBlocks, issueQuotation, quoteEditable, type IssueBlock } from "@/lib/sales-quotes"
+import { displayDocNumber } from "@/lib/sales-numbering"
 import { RequiredMark } from "@/components/crm/CrmFormDialog"
 import { DATE_INPUT_CLASS } from "@/components/crm/CrmOpportunityDialog"
 import {
   QuotationItemsEditor,
   QuotationPhaseControl,
   QuotationScheduleEditor,
-  QuotationStatusField,
 } from "@/components/crm/QuotationFormFields"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesShell, SalesSection, salesBasePath } from "./SalesShell"
@@ -101,7 +99,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const firestore = useFirestore()
   const { toast } = useToast()
   const { user } = useUser()
-  const { can } = usePermissions()
+  const { can, isOrgOwner } = usePermissions()
   const canManage = can("sales.manage")
   const base = salesBasePath(portal)
 
@@ -120,86 +118,101 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const contactOptions = useMemo(() => contacts.map((c) => ({ id: c.id, name: c.name })), [contacts])
   const sortedContacts = useMemo(() => [...contactOptions].sort((a, b) => a.name.localeCompare(b.name)), [contactOptions])
 
-  // "Price it" from the CRM request inbox: `?request=` seeds the client and
-  // the lines, and the first save takes the request out of the inbox.
+  // "Price it" from the CRM request inbox: `?request=` seeds the client and the
+  // lines. `?draft=` reopens a draft (or an issued quote, texts only) — a
+  // request with a draft is continued here, never priced twice (RQ-04).
   const searchParams = useSearchParams()
   const requestId = searchParams.get("request")
+  const draftId = searchParams.get("draft")
   const [request, setRequest] = useState<QuoteRequest | null>(null)
-  const [requestLoading, setRequestLoading] = useState(!!requestId)
+  const [draft, setDraft] = useState<CrmQuotation | null>(null)
+  const [requestLoading, setRequestLoading] = useState(!!requestId || !!draftId)
   useEffect(() => {
-    if (!firestore || !requestId) return
+    if (!firestore || (!requestId && !draftId)) return
     let cancelled = false
     ;(async () => {
       try {
-        const snap = await getDoc(doc(firestore, SALES_QUOTE_REQUESTS, requestId))
-        if (!cancelled && snap.exists()) setRequest({ id: snap.id, ...(snap.data() as Omit<QuoteRequest, "id">) })
+        if (draftId) {
+          const snap = await getDoc(doc(firestore, CRM_QUOTATIONS, draftId))
+          if (!cancelled && snap.exists()) setDraft({ id: snap.id, ...(snap.data() as Omit<CrmQuotation, "id">) })
+        } else if (requestId) {
+          const snap = await getDoc(doc(firestore, SALES_QUOTE_REQUESTS, requestId))
+          if (!cancelled && snap.exists()) {
+            const loaded = { id: snap.id, ...(snap.data() as Omit<QuoteRequest, "id">) }
+            // The request already has its draft: continue that one.
+            if (loaded.status === "new" && loaded.draftQuotationId) {
+              router.replace(`${base}/quotations/new?draft=${loaded.draftQuotationId}`)
+              return
+            }
+            setRequest(loaded)
+          }
+        }
       } catch (err) {
-        console.error("Quote request load failed:", err)
+        console.error("Composer seed load failed:", err)
       } finally {
         if (!cancelled) setRequestLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [firestore, requestId])
+  }, [firestore, requestId, draftId, router, base])
 
+  // A request that is no longer open seeds nothing: it was answered already.
+  const openRequest = request && request.status === "new" ? request : null
   const requestDefaults = useMemo(
     () =>
-      request
+      openRequest
         ? {
-            contactId: request.contactId,
-            items: request.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, unitPrice: 0 })),
+            contactId: openRequest.contactId,
+            requestId: openRequest.id,
+            opportunityId: openRequest.opportunityId ?? null,
+            items: openRequest.lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit, unitPrice: 0 })),
           }
         : undefined,
-    [request]
+    [openRequest]
   )
 
   const form = useQuotationForm({
-    open: !requestId || !requestLoading,
+    open: !requestLoading,
     orgId,
-    contacts: contactOptions,
+    contacts: draft ? undefined : contactOptions,
+    quotation: draft ?? undefined,
     finishedOrders,
     defaults: requestDefaults,
   })
   const { isSaving } = form
 
-  // The document's own fields.
-  const [quotationNumber, setQuotationNumber] = useState("")
-  const [validUntil, setValidUntil] = useState("")
+  // The document's own fields. The number is drawn on the FIRST save — a
+  // composer closed without saving consumes none (QC-15).
+  const quotationNumber = draft?.quotationNumber ?? ""
   const [vatPercent, setVatPercent] = useState(String(DEFAULT_QUOTATION_VAT_PERCENT))
   const [terms, setTerms] = useState("")
+  const [leadTime, setLeadTime] = useState("")
   const [branding, setBranding] = useState<QuotationBranding>(EMPTY_QUOTATION_BRANDING)
   const [logoUploading, setLogoUploading] = useState(false)
   const [pane, setPane] = useState<Pane>("form")
   const [leaving, setLeaving] = useState(false)
 
-  // Numbered up front so the preview (and a PDF printed before saving) carries
-  // the number the quotation will be saved under.
   const documentSeeded = useRef(false)
   useEffect(() => {
-    if (documentSeeded.current) return
+    if (documentSeeded.current || requestLoading) return
     documentSeeded.current = true
-    setQuotationNumber(generateQuotationNumber())
-    setTerms(t("sales_qb_terms_default"))
-  }, [t])
+    setTerms(draft ? draft.terms ?? "" : t("sales_qb_terms_default"))
+    setLeadTime(draft?.leadTime ?? "")
+    if (draft?.vatPercent != null) setVatPercent(String(draft.vatPercent))
+  }, [t, draft, requestLoading])
 
-  const validitySeeded = useRef(false)
-  useEffect(() => {
-    if (validitySeeded.current || !form.date) return
-    validitySeeded.current = true
-    setValidUntil(addDaysToIsoDate(form.date, DEFAULT_QUOTATION_VALIDITY_DAYS))
-  }, [form.date])
-
+  // Identity is READ from Settings & Governance, never typed here (QC-02); a
+  // saved quotation keeps the letterhead it was written under.
   const brandingSeeded = useRef(false)
   useEffect(() => {
-    if (brandingSeeded.current || brandingLoading) return
+    if (brandingSeeded.current || brandingLoading || requestLoading) return
     brandingSeeded.current = true
-    setBranding((current) => ({ ...brandingDefaults, logoUrl: current.logoUrl ?? brandingDefaults.logoUrl }))
-  }, [brandingLoading, brandingDefaults])
+    setBranding((current) => (draft?.branding ? draft.branding : { ...brandingDefaults, logoUrl: current.logoUrl ?? brandingDefaults.logoUrl }))
+  }, [brandingLoading, brandingDefaults, draft, requestLoading])
 
-  const setBrandingField = (key: Exclude<keyof QuotationBranding, "logoUrl">, value: string) =>
-    setBranding((b) => ({ ...b, [key]: value }))
-
-  const contact = contacts.find((c) => c.id === form.selectedContactId) ?? null
+  const today = new Date().toISOString().slice(0, 10)
+  const editable = draft ? quoteEditable(draft, today) : "all"
+  const contact = contacts.find((c) => c.id === form.effectiveContactId) ?? null
   // Lines appear on the sheet as soon as they have a name, before a quantity.
   const previewItems = form.itemRows
     .filter((r) => r.name.trim())
@@ -207,7 +220,10 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   const sheetData: QuotationSheetData = {
     quotationNumber,
     date: form.date || null,
-    validUntil: validUntil || null,
+    validUntil: null,
+    validityDays: Number(form.validityDays) > 0 ? Number(form.validityDays) : null,
+    isDraft: !draft || draft.status === "draft",
+    leadTime,
     customer: sheetCustomerFromContact(contact, form.effectiveContactName),
     items: previewItems.length > 0 ? previewItems : null,
     amount: form.effectiveAmount,
@@ -219,20 +235,44 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
   }
   const documentTitle = [t("sales_qb_sheet_title"), quotationNumber, form.effectiveContactName].filter(Boolean).join(" - ")
 
-  const busy = isSaving || leaving
-  const formDisabled = busy || !canManage
+  // What blocks Issue, live as you type — the write runs the same function (T4).
+  const blocks: IssueBlock[] = issueBlocks(
+    {
+      contactId: form.effectiveContactId,
+      items: form.parsedItems,
+      installments: form.parsedInstallments,
+      validityDays: Number(form.validityDays),
+    },
+    form.issueContext
+  )
+  const blockText = (b: IssueBlock): string => {
+    switch (b.kind) {
+      case "below_cost":
+        return t("sales_below_cost_blocked", { name: b.name })
+      case "over_cap":
+        return t("sales_discount_cap_blocked", { name: b.name, discount: b.discountPercent, cap: b.capPercent })
+      case "advance_required":
+        return t("sales_q_block_advance", { items: b.names.join(" · ") })
+      default:
+        return t(`sales_q_block_${b.kind}`)
+    }
+  }
 
-  const handleSave = async () => {
-    if (busy || !canManage) return
+  const busy = isSaving || leaving
+  const formDisabled = busy || !canManage || editable === "none"
+  const figuresDisabled = formDisabled || editable !== "all"
+
+  const handleSave = async (issue: boolean) => {
+    if (busy || !canManage || !user) return
     const fail = (title: string) => {
       setPane("form")
       toast({ title, variant: "destructive" })
     }
-    if (!form.selectedContactId) return fail(t("sales_pick_contact_required"))
+    if (!form.effectiveContactId) return fail(t("sales_pick_contact_required"))
     if (logoUploading) return fail(t("sales_qb_logo_wait"))
     const vat = Number(vatPercent)
     if (vatPercent.trim() === "" || !Number.isFinite(vat) || vat < 0 || vat > 100) return fail(t("sales_qb_vat_error"))
-    if (validUntil && form.date && validUntil < form.date) return fail(t("sales_qb_valid_until_error"))
+    if (issue && blocks.length) return fail(blockText(blocks[0]))
 
     const trimmed: QuotationBranding = {
       logoUrl: branding.logoUrl && !branding.logoUrl.startsWith("blob:") ? branding.logoUrl : null,
@@ -245,30 +285,28 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
       website: branding.website.trim(),
     }
     const id = await form.save({
-      quotationNumber,
-      vatPercent: vat,
-      extra: {
-        validUntil: validUntil || null,
-        validityDays: validityDaysBetween(form.date, validUntil),
-        terms: terms.trim() || null,
-        vatPercent: vat,
-        branding: trimmed,
-      },
+      quiet: issue,
+      extra: { terms: terms.trim() || null, leadTime: leadTime.trim() || null, vatPercent: vat, branding: trimmed },
     })
     if (!id) return
-    if (request && request.status === "new" && user) {
-      try {
-        await markQuoteRequestQuoted(firestore, {
-          requestId: request.id,
-          quotationId: id,
-          quotationNumber,
-          actor: { id: user.uid, name: user.email || "" },
-        })
-      } catch (err) {
-        console.error("Quote request stamp failed:", err)
-      }
-    }
+    const actor = { id: user.uid, name: user.displayName || user.email || "" }
     setLeaving(true)
+    try {
+      // The request keeps its place in the inbox as "finish the draft" until
+      // the draft is issued — issuing is what answers it.
+      if (openRequest && !draft) {
+        const snap = await getDoc(doc(firestore, CRM_QUOTATIONS, id))
+        await linkQuoteRequestDraft(firestore, { requestId: openRequest.id, quotationId: id, quotationNumber: (snap.data()?.quotationNumber as string) || "" })
+      }
+      if (issue) {
+        const issued = await issueQuotation(firestore, { quotationId: id, context: form.issueContext, actor })
+        toast({ title: t("sales_q_issued_toast", { number: displayDocNumber(issued.quotationNumber, locale) }) })
+      }
+    } catch (err) {
+      console.error(err)
+      const code = err instanceof Error ? err.message : ""
+      toast({ title: code.startsWith("blocked:") ? t("sales_q_issue_blocked") : t("crm_save_error"), variant: "destructive" })
+    }
     router.push(`${base}/quotations/${id}`)
   }
 
@@ -280,14 +318,14 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
     )
   }
 
-  const brandingFields: Array<{ key: Exclude<keyof QuotationBranding, "logoUrl">; label: string; ltr?: boolean; wide?: boolean; type?: string }> = [
-    { key: "companyName", label: t("sales_qb_company_name"), wide: true },
-    { key: "crNumber", label: t("sales_qb_cr_number"), ltr: true },
-    { key: "vatNumber", label: t("sales_qb_vat_number"), ltr: true },
-    { key: "phone", label: t("sales_qb_phone"), ltr: true, type: "tel" },
-    { key: "email", label: t("sales_qb_email"), ltr: true, type: "email" },
-    { key: "website", label: t("sales_qb_website"), ltr: true },
-    { key: "address", label: t("sales_qb_address"), wide: true },
+  const identityRows: Array<{ label: string; value: string; ltr?: boolean }> = [
+    { label: t("sales_qb_company_name"), value: branding.companyName },
+    { label: t("sales_qb_cr_number"), value: branding.crNumber, ltr: true },
+    { label: t("sales_qb_vat_number"), value: branding.vatNumber, ltr: true },
+    { label: t("sales_qb_address"), value: branding.address },
+    { label: t("sales_qb_phone"), value: branding.phone, ltr: true },
+    { label: t("sales_qb_email"), value: branding.email, ltr: true },
+    { label: t("sales_qb_website"), value: branding.website, ltr: true },
   ]
 
   return (
@@ -298,10 +336,16 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
       action={
         <>
           <QuotationPrintButton sheet={<QuotationPdfSheet data={sheetData} />} documentTitle={documentTitle} disabled={busy} />
-          <Button className="gap-2" onClick={() => void handleSave()} disabled={busy || !canManage}>
+          <Button variant={editable === "all" ? "outline" : "default"} className="gap-2" onClick={() => void handleSave(false)} disabled={formDisabled}>
             {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Save size={16} aria-hidden="true" />}
-            {t("sales_qb_save")}
+            {editable === "all" ? t("sales_q_save_draft") : t("sales_qb_save")}
           </Button>
+          {editable === "all" && (
+            <Button className="gap-2" onClick={() => void handleSave(true)} disabled={formDisabled || blocks.length > 0} aria-describedby={blocks.length ? "qb-issue-blocks" : undefined}>
+              <BadgeCheck size={16} aria-hidden="true" />
+              {t("sales_q_issue_btn")}
+            </Button>
+          )}
         </>
       }
     >
@@ -321,10 +365,48 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
         )}
       </div>
 
-      {request && (
+      {openRequest && (
         <p className="rounded-lg border border-cta/30 bg-cta/5 px-3 py-2 text-xs font-semibold text-cta" dir="auto">
-          {t("sales_rq_banner", { number: request.requestNumber, contact: request.contactName || "—" })}
+          {t("sales_rq_banner", { number: displayDocNumber(openRequest.requestNumber, locale), contact: openRequest.contactName || "—" })}
         </p>
+      )}
+      {request && !openRequest && (
+        <p className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning" dir="auto">
+          {t("sales_rq_already_answered", { number: displayDocNumber(request.requestNumber, locale) })}
+        </p>
+      )}
+      {editable === "texts" && (
+        <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-xs font-semibold text-warning">
+          <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {t("sales_q_issued_lock")}
+        </p>
+      )}
+      {editable === "none" && (
+        <p className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs font-semibold text-destructive">
+          <Lock size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {t("sales_q_locked")}
+        </p>
+      )}
+
+      {/* Why Issue is off — every reason, as you type (T4). */}
+      {editable === "all" && blocks.length > 0 && (
+        <div id="qb-issue-blocks" className="space-y-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2.5" role="status">
+          <p className="flex items-center gap-2 text-xs font-black text-warning">
+            <AlertTriangle size={13} aria-hidden="true" />
+            {t("sales_q_blocks_title")}
+          </p>
+          <ul className="list-disc space-y-1 ps-5 text-xs text-slate-700">
+            {blocks.map((b, i) => (
+              <li key={`${b.kind}-${i}`}>{blockText(b)}</li>
+            ))}
+          </ul>
+          {blocks.some((b) => b.kind === "advance_required") && (
+            <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={form.addAdvance} disabled={formDisabled}>
+              <Plus size={13} aria-hidden="true" />
+              {t("sales_q_add_advance")}
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Below lg the two sides take turns. */}
@@ -350,11 +432,13 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
         {/* ── Form side ─────────────────────────────────────────────── */}
         <div className={cn("space-y-4 min-w-0", pane !== "form" && "hidden lg:block")}>
           <SalesSection title={t("sales_qb_section_customer")} icon={Contact}>
-            <fieldset disabled={formDisabled} className="p-5 space-y-4 min-w-0">
+            <fieldset disabled={figuresDisabled} className="p-5 space-y-4 min-w-0">
               <div className="space-y-1.5">
                 <Label htmlFor="qb-customer">{t("sales_pick_contact")} <RequiredMark /></Label>
-                {sortedContacts.length > 0 ? (
-                  <Select value={form.selectedContactId || undefined} onValueChange={form.setSelectedContactId} disabled={formDisabled}>
+                {draft ? (
+                  <p id="qb-customer" className="rounded-lg border bg-muted/30 px-3 py-2 text-sm font-semibold" dir="auto">{form.effectiveContactName || "—"}</p>
+                ) : sortedContacts.length > 0 ? (
+                  <Select value={form.selectedContactId || undefined} onValueChange={form.setSelectedContactId} disabled={figuresDisabled || !!openRequest}>
                     <SelectTrigger id="qb-customer"><SelectValue placeholder={t("sales_pick_contact_placeholder")} /></SelectTrigger>
                     <SelectContent>
                       {sortedContacts.map((c) => (
@@ -373,7 +457,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                   <Select
                     value={form.linkedOrderId || "__none__"}
                     onValueChange={(v) => form.pickFinishedOrder(v === "__none__" ? "" : v)}
-                    disabled={formDisabled}
+                    disabled={figuresDisabled}
                   >
                     <SelectTrigger id="qb-order"><SelectValue placeholder={t("sales_pick_work_order_placeholder")} /></SelectTrigger>
                     <SelectContent>
@@ -389,7 +473,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
           </SalesSection>
 
           <SalesSection title={t("sales_qb_section_pricing")} icon={Wallet}>
-            <fieldset disabled={formDisabled} className="p-5 space-y-4 min-w-0">
+            <fieldset disabled={figuresDisabled} className="p-5 space-y-4 min-w-0">
               <QuotationItemsEditor form={form} />
               <QuotationScheduleEditor form={form} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -399,7 +483,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                     id="qb-amount" type="number" min="0" step="any" inputMode="decimal" dir="ltr"
                     value={form.hasItems ? String(form.itemsTotal) : form.amount}
                     onChange={(e) => form.setAmount(e.target.value)}
-                    disabled={formDisabled || form.hasItems}
+                    disabled={figuresDisabled || form.hasItems}
                     aria-describedby="qb-amount-hint"
                   />
                   <p id="qb-amount-hint" className="text-[11px] text-muted-foreground">
@@ -412,7 +496,7 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                     id="qb-vat" type="number" min="0" max="100" step="any" inputMode="decimal" dir="ltr"
                     value={vatPercent}
                     onChange={(e) => setVatPercent(e.target.value)}
-                    disabled={formDisabled}
+                    disabled={figuresDisabled}
                     aria-describedby="qb-vat-hint"
                   />
                   <p id="qb-vat-hint" className="text-[11px] text-muted-foreground">{t("sales_qb_vat_hint")}</p>
@@ -429,21 +513,65 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
                   <input
                     id="qb-date" type="date" dir="ltr" value={form.date}
                     onChange={(e) => form.setDate(e.target.value)}
-                    disabled={formDisabled}
+                    disabled={figuresDisabled}
                     className={DATE_INPUT_CLASS}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="qb-valid-until">{t("sales_qb_valid_until")}</Label>
-                  <input
-                    id="qb-valid-until" type="date" dir="ltr" value={validUntil} min={form.date || undefined}
-                    onChange={(e) => setValidUntil(e.target.value)}
-                    disabled={formDisabled}
-                    className={DATE_INPUT_CLASS}
-                  />
+                  <Label htmlFor="qb-validity">{t("sales_q_validity_days")} <RequiredMark /></Label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {VALIDITY_CHOICES.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        aria-pressed={Number(form.validityDays) === d}
+                        onClick={() => form.setValidityDays(String(d))}
+                        disabled={figuresDisabled}
+                        className={cn(
+                          "h-10 rounded-lg border px-3 text-xs font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+                          Number(form.validityDays) === d ? "border-primary bg-primary text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        )}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                    <Input
+                      id="qb-validity" type="number" min="1" step="1" inputMode="numeric" dir="ltr" className="h-10 w-20"
+                      value={form.validityDays}
+                      onChange={(e) => form.setValidityDays(e.target.value)}
+                      disabled={figuresDisabled}
+                      aria-describedby="qb-validity-hint"
+                    />
+                  </div>
+                  <p id="qb-validity-hint" className="text-[11px] text-muted-foreground">{t("sales_q_validity_hint")}</p>
                 </div>
               </div>
-              <QuotationStatusField form={form} id="qb-status" />
+              <div className="space-y-1.5">
+                <Label htmlFor="qb-lead-time">{t("sales_qb_lead_time")}</Label>
+                <Input id="qb-lead-time" dir="auto" value={leadTime} onChange={(e) => setLeadTime(e.target.value)} disabled={formDisabled} aria-describedby="qb-lead-time-hint" />
+                <div className="flex flex-wrap gap-1.5">
+                  {[7, 21, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setLeadTime(t("sales_q_lead_days", { days: d }))}
+                      disabled={formDisabled}
+                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                    >
+                      {t("sales_q_lead_days", { days: d })}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setLeadTime(t("sales_q_lead_schedule"))}
+                    disabled={formDisabled}
+                    className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    {t("sales_q_lead_schedule")}
+                  </button>
+                </div>
+                <p id="qb-lead-time-hint" className="text-[11px] text-muted-foreground">{t("sales_q_lead_hint")}</p>
+              </div>
               <div className="space-y-1.5">
                 <Label htmlFor="qb-terms">{t("sales_qb_terms")}</Label>
                 <Textarea id="qb-terms" rows={6} value={terms} onChange={(e) => setTerms(e.target.value)} disabled={formDisabled} dir="auto" />
@@ -457,29 +585,28 @@ export function QuotationBuilderView({ portal }: { portal: CrmPortal }) {
 
           <SalesSection title={t("sales_qb_section_branding")} icon={Building2}>
             <div className="p-5 space-y-4">
-              <QuotationLogoField
-                orgId={orgId}
-                value={branding.logoUrl}
-                onChange={(url) => setBranding((b) => ({ ...b, logoUrl: url }))}
-                onUploadingChange={setLogoUploading}
-                disabled={formDisabled}
-              />
-              <p className="text-[11px] text-muted-foreground">{t("sales_qb_branding_hint")}</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {brandingFields.map((f) => (
-                  <div key={f.key} className={cn("space-y-1.5", f.wide && "sm:col-span-2")}>
-                    <Label htmlFor={`qb-brand-${f.key}`}>{f.label}</Label>
-                    <Input
-                      id={`qb-brand-${f.key}`}
-                      type={f.type ?? "text"}
-                      dir={f.ltr ? "ltr" : "auto"}
-                      value={branding[f.key]}
-                      onChange={(e) => setBrandingField(f.key, e.target.value)}
-                      disabled={formDisabled}
-                    />
+              {/* The logo is the owner's to set, once (QC-02). */}
+              {isOrgOwner && !draft ? (
+                <QuotationLogoField
+                  orgId={orgId}
+                  value={branding.logoUrl}
+                  onChange={(url) => setBranding((b) => ({ ...b, logoUrl: url }))}
+                  onUploadingChange={setLogoUploading}
+                  disabled={formDisabled}
+                />
+              ) : null}
+              <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+                <Lock size={11} className="mt-0.5 shrink-0" aria-hidden="true" />
+                {t("sales_q_identity_read_only")}
+              </p>
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
+                {identityRows.map((r) => (
+                  <div key={r.label}>
+                    <dt className="text-[11px] text-muted-foreground">{r.label}</dt>
+                    <dd className="font-semibold text-foreground" dir={r.ltr ? "ltr" : "auto"}>{r.value || "—"}</dd>
                   </div>
                 ))}
-              </div>
+              </dl>
             </div>
           </SalesSection>
         </div>

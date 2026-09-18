@@ -4,6 +4,8 @@ import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { ImageIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { amountInWords } from "@/lib/amount-in-words"
+import { displayDocNumber } from "@/lib/sales-numbering"
 import {
   formatDocumentDate,
   formatDocumentMoney,
@@ -72,6 +74,15 @@ export function QuotationPdfSheet({ data, className }: { data: QuotationSheetDat
         className
       )}
     >
+      {/* A draft never reads as final — on screen or on paper (QC-16, QC-18). */}
+      {data.isDraft && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 grid place-items-center overflow-hidden">
+          <span className="-rotate-[28deg] select-none whitespace-nowrap text-[120px] font-black uppercase text-destructive/10">
+            {t("sales_qb_sheet_draft_mark")}
+          </span>
+        </div>
+      )}
+
       {/* Brand band — navy with a teal rule, the platform's two brand tokens. */}
       <div aria-hidden="true" className="-mx-[14mm] mb-[7mm] print:mx-0 print:mb-5">
         <div className="h-[5mm] bg-primary" />
@@ -113,11 +124,25 @@ export function QuotationPdfSheet({ data, className }: { data: QuotationSheetDat
           <p className="text-[11px] font-semibold text-muted-foreground">{t("sales_qb_sheet_title_alt")}</p>
           <dl className="mt-3 grid grid-cols-[auto_auto] justify-end gap-x-3 gap-y-1 text-[11px]">
             <dt className="text-muted-foreground">{t("sales_qb_sheet_number")}</dt>
-            <dd className="font-bold"><Num>{data.quotationNumber || "—"}</Num></dd>
+            <dd className="font-bold">
+              {data.quotationNumber ? <Num>{displayDocNumber(data.quotationNumber, locale)}</Num> : <span className="font-normal text-muted-foreground">{t("sales_qb_sheet_number_pending")}</span>}
+            </dd>
             <dt className="text-muted-foreground">{t("sales_qb_sheet_date")}</dt>
             <dd className="font-semibold">{formatDocumentDate(data.date, locale)}</dd>
             <dt className="text-muted-foreground">{t("sales_qb_valid_until")}</dt>
-            <dd className="font-semibold">{formatDocumentDate(data.validUntil, locale)}</dd>
+            <dd className="font-semibold">
+              {data.validUntil
+                ? formatDocumentDate(data.validUntil, locale)
+                : data.validityDays
+                  ? t("sales_qb_sheet_validity_days", { days: data.validityDays })
+                  : "—"}
+            </dd>
+            {data.leadTime && data.leadTime.trim() && (
+              <>
+                <dt className="text-muted-foreground">{t("sales_qb_lead_time")}</dt>
+                <dd className="font-semibold" dir="auto">{data.leadTime.trim()}</dd>
+              </>
+            )}
           </dl>
         </div>
       </header>
@@ -232,6 +257,14 @@ export function QuotationPdfSheet({ data, className }: { data: QuotationSheetDat
           </div>
         </dl>
       </section>
+
+      {/* Generated from the total, never typed (QC-14). */}
+      {totals.total > 0 && (
+        <p className="mt-2 break-inside-avoid rounded-md bg-muted/40 px-3 py-2 text-[11px]">
+          <span className="text-muted-foreground">{t("sales_qb_sheet_in_words")} </span>
+          <span className="font-bold text-primary">{amountInWords(totals.total, locale)}</span>
+        </p>
+      )}
 
       {data.terms && data.terms.trim() && (
         <section className="mt-5 break-inside-avoid">

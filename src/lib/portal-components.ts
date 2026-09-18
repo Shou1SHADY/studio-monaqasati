@@ -71,6 +71,7 @@ import {
   FileSpreadsheet,
   ArrowLeftRight,
   Settings2,
+  BarChart3,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -243,6 +244,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_invoices", href: "/contractor/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
           { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage", comingSoon: RECEIPTS_COMING_SOON },
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
+          { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
         ],
       },
       {
@@ -367,7 +369,9 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "sales_nav_orders", href: "/contractor/sales/orders", icon: ClipboardList, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_fulfillment", href: "/contractor/sales/fulfillment", icon: Truck, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_payments", href: "/contractor/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_reports", href: "/contractor/sales/reports", icon: BarChart3, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/contractor/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_settings", href: "/contractor/sales/settings", icon: Settings2, requiredPermission: "sales.manage" },
         ],
       },
     ],
@@ -470,7 +474,9 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "sales_nav_orders", href: "/supplier/sales/orders", icon: ClipboardList, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_fulfillment", href: "/supplier/sales/fulfillment", icon: Truck, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_payments", href: "/supplier/sales/payments", icon: Banknote, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_reports", href: "/supplier/sales/reports", icon: BarChart3, requiredPermission: "sales.manage" },
           { titleKey: "sales_nav_price_list", href: "/supplier/sales/price-list", icon: Tags, requiredPermission: "sales.manage" },
+          { titleKey: "sales_nav_settings", href: "/supplier/sales/settings", icon: Settings2, requiredPermission: "sales.manage" },
         ],
       },
     ],
@@ -522,6 +528,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         items: [
           { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
           { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
+          { titleKey: "fin_nav_sales_desk", href: "/supplier/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
         ],
       },
       {

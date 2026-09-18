@@ -32,6 +32,7 @@ const ITEM_TILE: Record<WorkQueueItemType, PortalComponentId> = {
   mfg_materials_to_issue: "warehouses",
   mfg_requests_unanswered: "manufacturing",
   mfg_drawing_results_due: "project-management",
+  mfg_client_drawings_due: "sales",
   mfg_notes_to_receive: "warehouses",
   mfg_custody_to_receive: "project-management",
   mfg_purchase_requests: "procurement",
@@ -63,6 +64,7 @@ const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
   mfg_materials_to_issue: "action_mfg_materials_to_issue",
   mfg_requests_unanswered: "action_mfg_requests_unanswered",
   mfg_drawing_results_due: "action_mfg_drawing_results_due",
+  mfg_client_drawings_due: "action_mfg_client_drawings_due",
   mfg_notes_to_receive: "action_mfg_notes_to_receive",
   mfg_custody_to_receive: "action_mfg_custody_to_receive",
   mfg_purchase_requests: "action_mfg_purchase_requests",
@@ -145,6 +147,8 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
       return t("queue_item_mfg_requests_unanswered", { count: item.data.count as number })
     case "mfg_drawing_results_due":
       return t("queue_item_mfg_drawing_results_due", { count: item.data.count as number, projectName: (item.data.projectName as string) || "" })
+    case "mfg_client_drawings_due":
+      return t("queue_item_mfg_client_drawings_due", { count: item.data.count as number })
     case "mfg_notes_to_receive":
       return t("queue_item_mfg_notes_to_receive", { count: item.data.count as number })
     case "mfg_custody_to_receive":
@@ -204,6 +208,7 @@ export default function ContractorDashboard() {
     mfg_materials_to_issue: can("warehouses.manage"),
     mfg_requests_unanswered: can("manufacturing.manage"),
     mfg_drawing_results_due: can("projects.edit"),
+    mfg_client_drawings_due: can("sales.manage"),
     mfg_notes_to_receive: can("warehouses.receive") || can("warehouses.manage"),
     mfg_custody_to_receive: can("projects.edit"),
     mfg_purchase_requests: can("rfq.manage") || can("rfq.create"),
@@ -239,7 +244,13 @@ export default function ContractorDashboard() {
   const accessibleCount = sortedComponents.filter((c) => accessibleById.get(c.id)).length
   const lockedCount = sortedComponents.length - accessibleCount
   const [showLocked, setShowLocked] = useState(true)
-  const gridComponents = showLocked ? sortedComponents : sortedComponents.filter((c) => accessibleById.get(c.id))
+  // A member's own modules come FIRST, in their usual order; what is locked
+  // follows. A Manufacturing- or Sales-only member used to scroll past seven
+  // locked tiles to reach the one they work in, because the grid kept the fixed
+  // order whatever they could open. The owner opens everything, so his order
+  // does not change.
+  const openFirst = [...sortedComponents.filter((c) => accessibleById.get(c.id)), ...sortedComponents.filter((c) => !accessibleById.get(c.id))]
+  const gridComponents = showLocked ? openFirst : openFirst.filter((c) => accessibleById.get(c.id))
 
   // Role-aware hero KPIs — the first 3 stats this member is allowed to see, so
   // the hero keeps the same size and shape for every role. Finance-leaning

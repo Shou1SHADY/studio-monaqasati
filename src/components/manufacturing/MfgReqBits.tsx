@@ -22,6 +22,7 @@ import {
   type SalesQuoteState,
   type ScreenContext,
   type ScreenedLine,
+  awaitsDownPayment,
 } from "@/lib/manufacturing-requests"
 import { cn } from "@/lib/utils"
 import { useMfgUi } from "./MfgUiContext"
@@ -130,7 +131,7 @@ const STATE_TONE: Record<RequestState, MfgTone> = {
 export function RequestStatePill({ request }: { request: ManufacturingRequest }) {
   const t = useTranslations("Portal.Shared")
   const { data, nowMs } = useMfgUi()
-  const state = requestState(request, data.settings.answerWindowHours, nowMs)
+  const state = requestState(request, data.settings.answerWindowHours, nowMs, awaitsDownPayment(request, request.orderId ? data.salesOrders.get(request.orderId) : null))
   const hours = request.requestedAt ? Math.max(0, (nowMs - new Date(request.requestedAt).getTime()) / 3600000) : 0
   return (
     <MfgPill tone={STATE_TONE[state]} icon={state === "awaiting" || state === "overdue" ? Clock : undefined} dot={state !== "awaiting" && state !== "overdue"}>

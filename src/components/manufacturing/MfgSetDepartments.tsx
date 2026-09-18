@@ -28,7 +28,7 @@ import { MfgRecordedAs } from "./MfgOrderBits"
 import { MfgAnyModuleChip } from "./MfgSetReference"
 import { reqErrorText } from "./MfgReqBits"
 import { queueTone, stationUsage } from "./MfgPrdBits"
-import { MfgChip, MfgEffects, MfgField, MfgFormModal, MfgNote, MfgPanel, MfgPill, departmentIcon, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgChip, MfgEffects, MfgField, MfgFormModal, MfgNote, MfgPanel, MfgPill, departmentIcon, fmtMoney, fmtSar, fmtQty } from "./ui/MfgUi"
 
 type Station = MfgDepartment & DeptCapacityFields
 
@@ -156,7 +156,7 @@ export function MfgSetStations() {
                         <span className="inline-flex flex-wrap items-center gap-1.5">
                           {seesMoney ? (
                             <span dir="ltr" className="tabular-nums text-foreground">
-                              {s.hourlyRate == null ? "—" : `${fmtMoney(s.hourlyRate)} ﷼`}
+                              {s.hourlyRate == null ? "—" : fmtSar(s.hourlyRate)}
                             </span>
                           ) : (
                             <span aria-hidden="true">•••</span>

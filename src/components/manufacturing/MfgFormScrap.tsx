@@ -27,7 +27,7 @@ import type { OrderView } from "@/lib/manufacturing-view"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgRecordedAs, deptName } from "./MfgOrderBits"
 import { MfgChoiceCards, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
-import { Num, OrderSummary, SelectField, TextField, ownerRecipients, useNotify, useSubmit } from "./MfgFormKit"
+import { Num, OrderSummary, SelectField, TextField, ownerRecipients, salesLinkOf, useNotify, useSubmit } from "./MfgFormKit"
 import { mfgLinks } from "@/lib/mfg-events"
 import { causeLabel } from "./MfgFormOutput"
 
@@ -84,7 +84,7 @@ export function ReviewScrapForm({ view, scrapId, onClose }: Props & { scrapId: s
           if (bearer === "supplier") {
             notify.emit("scrap_claim_supplier", [{ permission: "rfq.manage" }], { ref: view.ref, value: fmtMoney(s.value), defect: defectParam, lot: view.calc.slice.slabApproval?.lot || "—" }, view.id, mfgLinks.procurement())
           } else if (bearer === "client" && view.source === "client") {
-            notify.emit("scrap_claim_client", ownerRecipients(view), { ref: view.ref, value: fmtMoney(s.value), defect: defectParam }, view.id, view.order.salesOrderId ? mfgLinks.salesOrder(view.order.salesOrderId) : null)
+            notify.emit("scrap_claim_client", ownerRecipients(view), { ref: view.ref, value: fmtMoney(s.value), defect: defectParam }, view.id, salesLinkOf(view, data.salesOrders))
           }
           return t("mfo_scrap_toast_approved", { value: fmtMoney(s.value) })
         }
