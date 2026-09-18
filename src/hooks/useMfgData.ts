@@ -86,7 +86,7 @@ function useOrgCollection(name: string, orgId: string) {
 export function useMfgData(): MfgData {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
-  const { can, groups } = usePermissions()
+  const { can, groups, isOrgOwner } = usePermissions()
 
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -178,7 +178,10 @@ export function useMfgData(): MfgData {
   const canQc = can("manufacturing.qc")
   const canWork = can("manufacturing.work")
   const canView = can("manufacturing.view")
-  const engineActor = useMemo<EngineActor>(() => ({ uid: user?.uid || "", manage: canManage, work: canWork, qc: canQc, cost: canCost, view: canView }), [user?.uid, canManage, canWork, canQc, canCost, canView])
+  const engineActor = useMemo<EngineActor>(
+    () => ({ uid: user?.uid || "", owner: isOrgOwner, manage: canManage, work: canWork, qc: canQc, cost: canCost, view: canView }),
+    [user?.uid, isOrgOwner, canManage, canWork, canQc, canCost, canView]
+  )
 
   return {
     orgId,

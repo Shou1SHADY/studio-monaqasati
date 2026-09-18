@@ -17,6 +17,7 @@
 // quotation items in this codebase have no shared product-code system yet.
 
 import { round2 } from "./accounting/journal"
+import { matchesSearch } from "./search-text"
 
 export const SALES_ORDERS = "salesOrders"
 export const SALES_DELIVERY_NOTES = "salesDeliveryNotes"
@@ -334,6 +335,29 @@ export const generateReturnNumber = (): string => `SR-${randomSuffix()}`
 export const generateMfgRequestNumber = (): string => `MR-${randomSuffix()}`
 
 const key = (name: string) => name.trim().toLowerCase()
+
+/**
+ * What someone types to find a sales order. Other modules rarely know its
+ * number: the workshop knows the QUOTATION it was born of (Q-…/QT-…) and its
+ * own work-order reference, Finance knows the client. So all of them find it —
+ * the order's number (SO-12, #12), the quotation's, the client, the project, a
+ * product on it, and `refs`: whatever else the caller knows points here (the
+ * references of its work orders).
+ */
+export function salesOrderMatchesSearch(
+  order: Pick<SalesOrder, "orderNumber" | "quotationNumber" | "contactName" | "projectName" | "lines">,
+  term: string,
+  refs: Array<string | null | undefined> = []
+): boolean {
+  return matchesSearch(term, [
+    `SO-${order.orderNumber} #${order.orderNumber}`,
+    order.quotationNumber,
+    order.contactName,
+    order.projectName,
+    ...order.lines.map((l) => l.name),
+    ...refs,
+  ])
+}
 
 export function nextSalesOrderNumber(orders: Array<{ orderNumber?: number }>): number {
   return orders.reduce((max, o) => Math.max(max, Number(o.orderNumber) || 0), 0) + 1

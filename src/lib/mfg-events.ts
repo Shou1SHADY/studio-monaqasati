@@ -180,7 +180,7 @@ export async function loadTeam(firestore: Firestore, organizationId: string, to:
   ])
   return {
     ownerId: organizationId,
-    members: users.docs.map((d) => ({ id: d.id, defaultGroupId: (d.data().defaultGroupId as string | null) ?? null, organizationRole: (d.data().organizationRole as string | null) ?? null })),
+    members: users.docs.map((d) => ({ id: d.id, defaultGroupId: (d.data().defaultGroupId as string | null) ?? null, organizationRole: "organizationRole" in d.data() ? ((d.data().organizationRole as string | null) ?? null) : "owner" })),
     groups: groups.docs.map((d) => ({ id: d.id, permissions: (d.data().permissions as TeamGroup["permissions"]) || [] })),
     departments: depts,
     projectMembers: new Map(projectMembers),
@@ -360,8 +360,11 @@ export const mfgLinks = {
   project: (projectId: string) => `projects/${projectId}?tab=mfg`,
   salesOrder: (orderId: string) => `sales/orders?open=${orderId}`,
   /** The Sales orders page — its workshop inbox lists what waits on Sales,
-   * including a client order that names no sales order. */
-  salesOrders: () => "sales/orders",
+   * including a client order that names no sales order. `q` lands the reader on
+   * a search for what the workshop DOES know: the quotation's number. */
+  salesOrders: (q?: string | null) => (q ? `sales/orders?q=${encodeURIComponent(q)}` : "sales/orders"),
+  /** Where Finance confirms a client's advance and holds or releases a shipment. */
+  financeSalesDesk: () => "accounting/sales-desk",
   salesQuotations: () => "sales/quotations",
   salesPayments: () => "sales/payments",
   procurement: () => "rfqs",

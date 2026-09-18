@@ -72,16 +72,16 @@ import {
   schedulableLines,
   type ScheduleError,
 } from "@/lib/sales-order-writes"
-import { orderGate, creditVerdict, type CreditSnapshot } from "@/lib/sales-orders"
+import { orderGate, creditVerdict, salesOrderMatchesSearch, type CreditSnapshot } from "@/lib/sales-orders"
 import { SALES_PRICE_ITEMS, type SalesPriceItem } from "@/lib/sales"
 import { confirmAdvanceForOrder } from "@/lib/sales-transfers"
 import { JOURNAL_ENTRIES, type JournalEntry } from "@/lib/accounting/journal"
 import { ACC } from "@/lib/accounting/accounts"
 import { MFG_PRODUCTS, itemKey, type DeptCapacityFields, type MfgProduct } from "@/lib/manufacturing-engine"
 import { isV2Order, type WorkOrderV2 } from "@/lib/manufacturing-writes"
-import { heldByItem, salesOrderOfWorkOrder, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
+import { belongsToSalesOrder, heldByItem, orderRef, salesOrderOfWorkOrder, workshopGatesFor, workshopHolds } from "@/lib/manufacturing-view"
 import { emitDownPaymentConfirmed, emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
-import { CalendarClock, Ruler, FileCheck2 } from "lucide-react"
+import { CalendarClock, Ruler, FileCheck2, Search, X } from "lucide-react"
 import { SalesOrderWorkshopSection, SalesWorkshopInbox } from "./SalesOrderWorkshopSection"
 
 type Segment = "running" | "awaiting_deposit" | "framework" | "closed" | "all"
@@ -292,7 +292,16 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
     { key: "closed", labelKey: "so_seg_closed", count: orders.filter((o) => o.status === "closed").length },
     { key: "all", labelKey: "so_seg_all", count: orders.length },
   ]
+  // Search looks in EVERY segment: whoever arrives with a quotation number from
+  // the workshop, or a client's name from Finance, does not know — and should
+  // not need to know — whether the order is running or still awaits its advance.
+  const [search, setSearch] = useState("")
+  const searching = search.trim().length > 0
   const visible = orders.filter((o) => {
+    if (searching) {
+      const refs = allWorkOrders.filter((w) => belongsToSalesOrder(w, o)).map((w) => orderRef(w))
+      return salesOrderMatchesSearch(o, search, refs)
+    }
     if (segment === "all") return true
     if (segment === "framework") return o.type === "framework"
     if (segment === "running") return o.status === "running" && o.type !== "framework"
@@ -307,6 +316,10 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
   // one order: `?open=<id>` is consumed once, then leaves the URL.
   const searchParams = useSearchParams()
   const openParam = searchParams?.get("open") || null
+  const queryParam = searchParams?.get("q") || null
+  useEffect(() => {
+    if (queryParam) setSearch(queryParam)
+  }, [queryParam])
   useEffect(() => {
     if (!openParam || !orders.some((o) => o.id === openParam)) return
     setDetailId(openParam)
@@ -506,15 +519,36 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
         onOpenOrder={setDetailId}
       />
 
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="relative sm:max-w-md">
+        <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" aria-hidden="true" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("so_search_placeholder")}
+          aria-label={t("so_search_placeholder")}
+          className="h-10 ps-9 pe-9 text-sm"
+        />
+        {searching && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            aria-label={t("so_search_clear")}
+            className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
+      <div className={cn("flex items-center gap-2 flex-wrap", searching && "opacity-60")}>
         {segments.map((s) => (
           <button
             key={s.key}
             type="button"
-            onClick={() => setSegment(s.key)}
+            onClick={() => { setSearch(""); setSegment(s.key) }}
             className={cn(
               "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              segment === s.key ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+              segment === s.key && !searching ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
             )}
           >
             {t(s.labelKey)}
@@ -530,10 +564,10 @@ export function SalesOrdersView({ portal }: { portal: CrmPortal }) {
       ) : visible.length === 0 ? (
         <div className="p-10 text-center text-muted-foreground border border-dashed rounded-xl">
           <Package size={36} className="mx-auto mb-2 opacity-20" />
-          <p className="text-sm">{t("so_empty")}</p>
-          <p className="text-xs mt-1">{t("so_empty_hint")}</p>
+          <p className="text-sm">{searching ? t("so_search_none", { term: search.trim() }) : t("so_empty")}</p>
+          <p className="text-xs mt-1">{searching ? t("so_search_none_hint") : t("so_empty_hint")}</p>
         </div>
-      ) : segment === "framework" ? (
+      ) : segment === "framework" && !searching ? (
         <div className="space-y-3">
           {visible.map((frame) => {
             const usage = frameworkUsage(frame, orders)

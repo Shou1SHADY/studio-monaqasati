@@ -246,6 +246,8 @@ export function personasOf(actor: Actor, _departments: DeptCapacityFields[]): Pe
 export function myStations(actor: Actor, departments: DeptCapacityFields[], persona: Persona): string[] {
   if (persona === "qc") return departments.filter((d) => !stationGate(d) && isQc(d)).map((d) => d.id)
   if (persona !== "lead" || !actor.work) return []
+  // The owner may stand in at any station that is not Quality's (see Actor.owner).
+  if (actor.owner) return departments.filter((d) => !isQc(d)).map((d) => d.id)
   // Order-level stations count too: the design lead submits the drawing.
   const mine = departments.filter((d) => d.leadUserId === actor.uid).map((d) => d.id)
   if (mine.length) return mine

@@ -101,7 +101,10 @@ src/
   utils/                # Shared utilities
 messages/               # Translation JSON files (ar.json, en.json)
 public/                 # Static assets — favicons, OG image, manifest
-scripts/                # Ops scripts (demo seed, data repair, migrations)
+scripts/                # Ops scripts (demo seed, data repair, migrations,
+                        #   cleanup-seed-demo.js — dry-run-first removal of what
+                        #   /admin/seed wrote; that page is OFF in production)
+docs/                   # sales-prd-status.md, customer-review-2026-09-17.md
 ```
 
 ## Key Utilities
@@ -122,6 +125,9 @@ scripts/                # Ops scripts (demo seed, data repair, migrations)
 | `src/lib/sales-quotes.ts` | The quotation's lifecycle (Sales PRD §5): draft → issued → sent → accepted/rejected; "expired" and "superseded" are DERIVED (`quoteLifecycle`), never stored. `issueBlocks`/`convertBlocks` are the blocking rules the composer shows live and the write runs again; revisions, CRM activity log, rep scoping (`inSalesScope`) |
 | `src/lib/sales-numbering.ts` | Yearly Sales sequences drawn inside the write (`QT-2026/NNN`, revisions `-2`/`-3`) in `mfgCounters`; `displayDocNumber` shows the Arabic prefix (ع.س) — the stored number stays Latin |
 | `src/lib/sales-today.ts` / `sales-reports.ts` + `src/hooks/useSalesWorld.ts` | Today's KPIs, flow strip and decision queue, and the three report families — pure, over one scoped "world"; sales count on SIGNED delivery; cost only for the owner / `sales.approve` |
+| `src/lib/riyal.ts` + `public/fonts/saudi-riyal.otf` | The official Saudi Riyal symbol, **U+20C1** — a one-glyph font (`scripts/build-riyal-font.js`, registered in globals.css with `unicode-range`) so it works inside strings. `sarLtr`/`sarRtl`/`withSarSign` put it LEFT of the figure in both scripts (SAMA's rule). Never U+FDFC ﷼ (a test guards it); never in CSV, e-mail, push text or the self-written print windows — no font there |
+| `src/lib/search-text.ts` | `matchesSearch`/`foldSearchText` — every-word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, ٠-٩) matching; use it for any search box. A search must look across state filters, not inside the active chip |
+| `src/lib/accounting/source-links.ts` + `src/components/accounting/JournalEntrySheet.tsx` | The document behind a journal entry (`sourceType`+`sourceId` → screen) and the side panel every ledger / statement / breakdown row opens |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
@@ -190,7 +196,10 @@ units|thousands|millions is the default presentation) ·
 (server-only)
 
 Permission notes: org **owner** passes every check; members get their group's
-permissions (`teamGroups.permissions`, `'*'` = all). Closing/handing over a CRM deal
+permissions (`teamGroups.permissions`, `'*'` = all). An account with NO
+`organizationRole` field is a legacy solo account and IS an owner — the rules say so
+(`isOrgOwner()`), and the client must read it the same way: use `legacyAwareRole` /
+`usePermissions().isOrgOwner`, never `profile.organizationRole === "owner"`. Closing/handing over a CRM deal
 needs `crm.close`. Sales reads `crmQuotations`: marking one accepted needs `sales.approve`
 (or `crm.close`) — that notifies Finance of the deposit and opens the work order; recording
 a customer payment (`payments`/`paidAt`) needs `sales.approve` or `invoices.manage`; a
@@ -212,7 +221,9 @@ requests, releases, rushes, closes production, issues notes, applies incoming ch
 creates stock orders, approves scrap up to Finance's limit, edits stations/products);
 `manufacturing.work` is a station lead (records the station's output, requests and
 receives its materials, reports stops — a station with a `leadUserId` belongs to that
-lead only); `manufacturing.qc` is Quality (reject decisions, the quality release at QC &
+lead only — except the org OWNER, who may stand in at any non-QC station (`Actor.owner`):
+the lock is client-side only, and with the lead away issued materials would sit "not
+received" with nobody able to move the order); `manufacturing.qc` is Quality (reject decisions, the quality release at QC &
 packing — nothing closes before it — slab sign-off, block notices); `manufacturing.cost`
 approves any scrap, sends cost statements, reviews variance and the WIP reconciliation;
 `manufacturing.view` is management (read-only in SAR). A client order waits for the
@@ -220,7 +231,9 @@ down payment (read from the sales order; no release before it). Other modules ac
 their own screens and the rules scope their work-order fields: Inventory issues
 withdrawals, receives remnants and warehouse notes (Warehouses → Manufacturing desk,
 Delivery notes); Projects records drawing results, receives notes into custody and
-requests changes (project page); Sales records the client's drawing result, requests
+requests changes (project page); Sales records the client's drawing result (the workshop
+manager may record it too, from the order drawer — the customer's flow is that an order
+need not travel back to Sales before it is finished), requests
 changes and records cost-statement quote status; Procurement routes project needs to
 make and marks purchase requests arrived; Finance owns the manufacturing policies.
 The down payment: Sales reports it (`payment.depositReportedAt`), Finance confirms it

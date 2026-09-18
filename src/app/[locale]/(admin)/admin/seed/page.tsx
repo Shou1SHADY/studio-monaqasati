@@ -12,6 +12,7 @@ import { signInAnonymously } from "firebase/auth"
 import { Loader2, Database, RefreshCw, Warehouse } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useTranslations, useLocale } from 'next-intl'
+import { IS_UAT } from "@/lib/app-env"
 
 const SAMPLE_CATEGORIES = [
   { id: "cat-1", name: "حديد ومعادن", description: "جميع أنواع حديد التسليح والصلب" },
@@ -25,6 +26,8 @@ const SAUDI_CITIES_SEED = [
   "الأحساء", "الجبيل", "تبوك", "حائل", "القصيم", "بريدة", "عنيزة", "أبها", "خميس مشيط",
   "جازان", "نجران", "الباحة", "سكاكا", "عرعر"
 ]
+
+const SEEDING_ALLOWED = IS_UAT || process.env.NODE_ENV === "development"
 
 export default function SeedPage() {
   const t = useTranslations("Portal.Admin.Seed")
@@ -42,6 +45,7 @@ export default function SeedPage() {
   const addWhLog = (msg: string) => setWhLog(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
 
   const handleSeedWarehouse = async () => {
+    if (!SEEDING_ALLOWED) return
     if (!firestore) return
     const orgId = whOrgId.trim()
     if (!orgId) { toast({ title: "أدخل معرّف المنظمة أولاً", variant: "destructive" }); return }
@@ -119,6 +123,7 @@ export default function SeedPage() {
   }
 
   const handleSeed = async () => {
+    if (!SEEDING_ALLOWED) return
     if (!auth || !firestore) {
       addLog("خطأ: خدمات Firebase غير جاهزة بعد.")
       return
@@ -222,6 +227,27 @@ export default function SeedPage() {
     } finally {
       setIsSeeding(false)
     }
+  }
+
+  // Demo seeding writes fake suppliers (sup-1..3 — "أسمنت اليمامة" among them),
+  // demo RFQs and sample warehouses straight into the database the build is
+  // bound to, and overwrites the admin's own user document. On production that
+  // is how phantom suppliers reached the real supplier directory, so there it
+  // is off: UAT and a local dev server only.
+  if (!SEEDING_ALLOWED) {
+    return (
+      <PortalLayout>
+        <div className="max-w-2xl mx-auto py-10">
+          <Card className="border-none shadow-xl bg-white">
+            <CardHeader className="text-center">
+              <Database size={48} className="mx-auto text-muted-foreground mb-3" />
+              <CardTitle className="text-xl font-bold">{t("disabled_title")}</CardTitle>
+              <CardDescription className="leading-relaxed">{t("disabled_desc")}</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </PortalLayout>
+    )
   }
 
   return (

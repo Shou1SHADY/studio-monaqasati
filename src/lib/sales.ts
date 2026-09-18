@@ -33,6 +33,8 @@ import { createWorkOrderFromQuotation, effectiveOutput, type WorkOrder } from ".
 import { onQuotationPaymentRecorded } from "./accounting/hooks"
 import { createSalesOrderFromQuotation } from "./sales-order-writes"
 import { MFG_PRODUCTS } from "./manufacturing-engine"
+import { matchesSearch } from "./search-text"
+import { displayDocNumber } from "./sales-numbering"
 
 // ---------------------------------------------------------------------------
 // Price list — the org's known items with fixed prices, picked into quotations.
@@ -151,15 +153,17 @@ export function salesTotals(quotations: CrmQuotation[]): SalesTotals {
   return totals
 }
 
-/** Case-insensitive match on the number, the customer, or the linked order. */
+/** What a seller types to find a quotation: its number — as stored
+ * (QT-2026/014) or as the Arabic screen shows it — the client, a product on it,
+ * or the work order it opened. Arabic letter forms are folded. */
 export function quotationMatchesSearch(q: CrmQuotation, term: string): boolean {
-  const needle = term.trim().toLowerCase()
-  if (!needle) return true
-  return (
-    q.quotationNumber.toLowerCase().includes(needle) ||
-    (q.contactName || "").toLowerCase().includes(needle) ||
-    (q.workOrderNumber != null && `#${q.workOrderNumber}`.includes(needle))
-  )
+  return matchesSearch(term, [
+    q.quotationNumber,
+    displayDocNumber(q.quotationNumber, "ar"),
+    q.contactName,
+    q.workOrderNumber != null ? `#${q.workOrderNumber}` : null,
+    ...(q.items || []).map((i) => i.name),
+  ])
 }
 
 // ---------------------------------------------------------------------------

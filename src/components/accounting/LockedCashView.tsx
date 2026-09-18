@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Hourglass, Lock } from "lucide-react"
 import { useAccounting, type AccountingData } from "@/hooks/useAccounting"
@@ -13,6 +13,8 @@ import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingSection, AccountingShell, Money, useMoneyFormat } from "./AccountingShell"
 import { AccountingToolbar, ScaleCaption } from "./AccountingToolbar"
 import { EmptyBooks, Kpi, LoadingBooks } from "./AccountingParts"
+import { AccountBreakdownSheet, accountNode } from "./AccountBreakdownSheet"
+import type { TreeNode } from "@/lib/accounting/statement-tree"
 import { CHART_SERIES } from "./chart-palette"
 
 const DAYS_FMT = (d: number | null) => (d === null ? "—" : `${Math.round(d)}`)
@@ -56,12 +58,12 @@ export function LockedCashView({ portal }: { portal: CrmPortal }) {
       icon={Lock}
       toolbar={<AccountingToolbar data={data} />}
     >
-      {data.isLoading ? <LoadingBooks /> : data.entries.length === 0 ? <EmptyBooks /> : <LockedCashBody data={data} />}
+      {data.isLoading ? <LoadingBooks /> : data.entries.length === 0 ? <EmptyBooks /> : <LockedCashBody data={data} portal={portal} />}
     </AccountingShell>
   )
 }
 
-function LockedCashBody({ data }: { data: AccountingData }) {
+function LockedCashBody({ data, portal }: { data: AccountingData; portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
   const { compact } = useMoneyFormat()
@@ -69,6 +71,14 @@ function LockedCashBody({ data }: { data: AccountingData }) {
   const days = elapsedDays(data.period.from, data.period.to)
   const ccc = useMemo(() => cashConversionCycle(data.windows, days), [data.windows, days])
   const max = Math.max(...locked.rows.map((r) => r.value), 1)
+  const [selected, setSelected] = useState<TreeNode | null>(null)
+
+  // The dashboard's "cash conversion cycle" figure links to #ccc. The card
+  // exists only once the books have loaded, after the browser gave up looking
+  // for the anchor — so go to it now.
+  useEffect(() => {
+    if (window.location.hash === "#ccc") document.getElementById("ccc")?.scrollIntoView({ block: "start" })
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -84,7 +94,9 @@ function LockedCashBody({ data }: { data: AccountingData }) {
         />
       </div>
 
-      <CashConversionCycleCard ccc={ccc} />
+      <div id="ccc" className="scroll-mt-24">
+        <CashConversionCycleCard ccc={ccc} />
+      </div>
 
       <AccountingSection title={t("acc_locked_title")} icon={Lock} action={<ScaleCaption scale={data.scale} />}>
         <div className="overflow-x-auto">
@@ -107,10 +119,17 @@ function LockedCashBody({ data }: { data: AccountingData }) {
               {locked.rows.map((row) => {
                 const turn = daysToCash(row.code, ccc)
                 return (
-                  <tr key={row.code} className="border-t">
+                  <tr key={row.code} className="border-t hover:bg-muted/30 transition-colors">
                     <td className="px-5 py-3 font-semibold">
-                      <span className="font-mono text-[11px] text-muted-foreground me-1.5" dir="ltr">{row.code}</span>
-                      {locale === "ar" ? row.labelAr : row.labelEn}
+                      <button
+                        type="button"
+                        title={t("acc_tree_open_breakdown")}
+                        onClick={() => setSelected(accountNode([row.code], row.value, { ar: row.labelAr, en: row.labelEn }))}
+                        className="text-start rounded hover:text-cta hover:underline underline-offset-4 decoration-dotted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="font-mono text-[11px] text-muted-foreground me-1.5" dir="ltr">{row.code}</span>
+                        {locale === "ar" ? row.labelAr : row.labelEn}
+                      </button>
                     </td>
                     <td className="px-5 py-3 text-end">
                       <Money value={row.value} />
@@ -138,6 +157,7 @@ function LockedCashBody({ data }: { data: AccountingData }) {
           </table>
         </div>
       </AccountingSection>
+      <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
     </div>
   )
 }

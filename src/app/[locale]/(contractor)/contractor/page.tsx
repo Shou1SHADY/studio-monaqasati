@@ -244,7 +244,13 @@ export default function ContractorDashboard() {
   const accessibleCount = sortedComponents.filter((c) => accessibleById.get(c.id)).length
   const lockedCount = sortedComponents.length - accessibleCount
   const [showLocked, setShowLocked] = useState(true)
-  const gridComponents = showLocked ? sortedComponents : sortedComponents.filter((c) => accessibleById.get(c.id))
+  // A member's own modules come FIRST, in their usual order; what is locked
+  // follows. A Manufacturing- or Sales-only member used to scroll past seven
+  // locked tiles to reach the one they work in, because the grid kept the fixed
+  // order whatever they could open. The owner opens everything, so his order
+  // does not change.
+  const openFirst = [...sortedComponents.filter((c) => accessibleById.get(c.id)), ...sortedComponents.filter((c) => !accessibleById.get(c.id))]
+  const gridComponents = showLocked ? openFirst : openFirst.filter((c) => accessibleById.get(c.id))
 
   // Role-aware hero KPIs — the first 3 stats this member is allowed to see, so
   // the hero keeps the same size and shape for every role. Finance-leaning

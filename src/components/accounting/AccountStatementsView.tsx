@@ -19,6 +19,7 @@ import { AccountingSection, AccountingShell, Money, useMoneyFormat } from "./Acc
 import { AccountingToolbar, ScaleCaption, periodLabel, periodRangeText } from "./AccountingToolbar"
 import { EmptyBooks, Kpi, LoadingBooks, SOURCE_LABEL_KEY } from "./AccountingParts"
 import { escapeHtml, openPrintWindow } from "./print"
+import { JournalEntrySheet } from "./JournalEntrySheet"
 
 type Mode = "party" | "account"
 type Scope = "all" | "customer" | "supplier"
@@ -46,6 +47,7 @@ export function AccountStatementsView({ portal }: { portal: CrmPortal }) {
   const { compact } = useMoneyFormat()
 
   const [mode, setMode] = useState<Mode>("party")
+  const [entryId, setEntryId] = useState<string | null>(null)
   const [party, setParty] = useState("")
   const [scope, setScope] = useState<Scope>("all")
   const [account, setAccount] = useState<string>(ACC.clientsReceivable)
@@ -232,11 +234,18 @@ ${rows}
                     </tr>
                   )}
                   {statement.rows.map((r, i) => (
-                    <tr key={`${r.entryId}-${i}`} className="border-t">
+                    <tr key={`${r.entryId}-${i}`} className="border-t hover:bg-muted/30 transition-colors">
                       <td className="px-4 py-2 tabular-nums text-muted-foreground" dir="ltr">{r.date}</td>
                       <td className="px-4 py-2">
-                        <span className="text-muted-foreground tabular-nums me-1.5" dir="ltr">#{r.entryNumber}</span>
-                        {r.description}
+                        <button
+                          type="button"
+                          onClick={() => setEntryId(r.entryId)}
+                          title={t("acc_entry_details")}
+                          className="text-start hover:text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                        >
+                          <span className="text-muted-foreground tabular-nums me-1.5" dir="ltr">#{r.entryNumber}</span>
+                          {r.description}
+                        </button>
                         {SOURCE_LABEL_KEY[r.sourceType] && <span className="ms-1.5 text-[10px] text-muted-foreground">({t(SOURCE_LABEL_KEY[r.sourceType])})</span>}
                         {r.note && <span className="block text-[11px] text-muted-foreground">{r.note}</span>}
                       </td>
@@ -265,6 +274,13 @@ ${rows}
           </AccountingSection>
         </div>
       ) : null}
+      <JournalEntrySheet
+        entry={entryId ? data.entries.find((e) => e.id === entryId) ?? null : null}
+        entries={data.entries}
+        portal={portal}
+        onClose={() => setEntryId(null)}
+        onOpenEntry={setEntryId}
+      />
     </AccountingShell>
   )
 }

@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { cn, sanitizeDecimalInput } from "@/lib/utils"
-import { isQcStation, type DeptCapacityFields } from "@/lib/manufacturing-engine"
+import { isQcStation, type DeptCapacityFields, type ExternalModule } from "@/lib/manufacturing-engine"
 import { toggleChecklistItem } from "@/lib/manufacturing-writes"
 import { emitMfgEvent, mfgLinks, type EventParams, type MfgEventKind, type RecipientSpec } from "@/lib/mfg-events"
 import type { MfgDepartment } from "@/lib/manufacturing"
@@ -135,7 +135,25 @@ export function ownerRecipients(view: OrderView): RecipientSpec[] {
  * reader is a seller, and the act it asks for is recorded in Sales. */
 export function salesLinkOf(view: OrderView, salesOrders: Map<string, SalesOrder>): string {
   const so = salesOrderOfWorkOrder(view.order, salesOrders.values())
-  return so ? mfgLinks.salesOrder(so.id) : mfgLinks.salesOrders()
+  return so ? mfgLinks.salesOrder(so.id) : mfgLinks.salesOrders(view.order.source?.quotationNumber)
+}
+
+/** Where the module a work order waits on does its part, relative to the
+ * portal root. "Waiting for Sales" with no way to Sales is a dead end: the
+ * workshop cannot act there, but it can walk over and show someone. */
+export function moduleLinkOf(module: ExternalModule, view: OrderView, salesOrders: Map<string, SalesOrder>): string | null {
+  switch (module) {
+    case "sales":
+      return salesLinkOf(view, salesOrders)
+    case "finance":
+      return mfgLinks.financeSalesDesk()
+    case "inventory":
+      return mfgLinks.inventoryDesk()
+    case "procurement":
+      return mfgLinks.procurement()
+    case "projects":
+      return view.order.projectId ? mfgLinks.project(view.order.projectId) : null
+  }
 }
 
 // ---------------------------------------------------------------------------

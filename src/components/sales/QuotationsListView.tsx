@@ -69,6 +69,9 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
       const mapped = s === "accepted" ? "won" : s === "rejected" ? "lost" : s
       if (mapped && (STATE_FILTERS as string[]).includes(mapped)) setStatus(mapped as StateFilter)
       if (p && (QUOTATION_PHASES as string[]).includes(p)) setPhase(p as QuotationPhase)
+      // Another module that knows a quotation's number lands on it: `?q=`.
+      const term = params.get("q")
+      if (term) setSearch(term)
     } catch {
       /* not in a browser */
     }
@@ -97,9 +100,16 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
     }
     return c
   }, [quotations, stateOf])
-  const visible = sorted.filter(
-    (q) => (status === "all" || stateOf.get(q.id) === status) && (phase === "all" || quotationPhase(q) === phase) && quotationMatchesSearch(q, search)
-  )
+  // A search looks in every state. The list opens on "live", and the quote
+  // someone comes looking for — by a number the workshop or Finance gave them —
+  // is usually already won: filtered by state too, it "does not exist".
+  // Replaced revisions stay out unless "all" asks for them.
+  const searching = search.trim().length > 0
+  const visible = sorted.filter((q) => {
+    const st = stateOf.get(q.id)
+    const inState = searching ? status === "all" || st !== "superseded" : status === "all" || st === status
+    return inState && (phase === "all" || quotationPhase(q) === phase) && quotationMatchesSearch(q, search)
+  })
 
   const Chevron = isRtl ? ChevronLeft : ChevronRight
 
@@ -145,15 +155,16 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
             <button
               key={s}
               type="button"
-              aria-pressed={status === s}
-              onClick={() => setStatus(s)}
+              aria-pressed={status === s && !searching}
+              onClick={() => { setSearch(""); setStatus(s) }}
               className={cn(
                 "px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                status === s ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                searching && "opacity-60",
+                status === s && !searching ? "bg-primary text-white border-primary" : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
               )}
             >
               {s === "all" ? t("sales_filter_all") : t(`sales_q_state_${s}`)}
-              <span className={cn("text-[10px] tabular-nums", status === s ? "text-white/70" : "text-muted-foreground")}>{counts[s]}</span>
+              <span className={cn("text-[10px] tabular-nums", status === s && !searching ? "text-white/70" : "text-muted-foreground")}>{counts[s]}</span>
             </button>
           ))}
         </div>
@@ -193,7 +204,8 @@ export function QuotationsListView({ portal }: { portal: CrmPortal }) {
       ) : visible.length === 0 ? (
         <div className="p-10 text-center text-muted-foreground border border-dashed rounded-xl">
           <FileText size={36} className="mx-auto mb-2 opacity-20" />
-          <p className="text-sm">{t("sales_empty")}</p>
+          <p className="text-sm">{searching ? t("so_search_none", { term: search.trim() }) : t("sales_empty")}</p>
+          {searching && <p className="text-xs mt-1">{t("sales_q_search_none_hint")}</p>}
         </div>
       ) : (
         <ul className="rounded-2xl border bg-white divide-y overflow-hidden">

@@ -125,7 +125,7 @@ export function StatementTreeTable({
               <td colSpan={2} className="py-2 pe-4 text-xs font-black text-muted-foreground" style={indent}>
                 <div className="flex items-center gap-2">
                   {toggleButton}
-                  <span>{label(node)}</span>
+                  {labelCell(label(node))}
                 </div>
               </td>
             </tr>

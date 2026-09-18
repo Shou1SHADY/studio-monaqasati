@@ -272,6 +272,14 @@ export function sheetDataFromQuotation(
     installments: q.installments ?? null,
     terms: q.terms ?? q.paymentTerms ?? null,
     notes: q.notes ?? null,
-    branding: q.branding ?? input.fallbackBranding,
+    // The snapshot is the identity the quotation was written with — but a
+    // snapshot with NO logo is a gap, not a decision: a quote written before the
+    // owner uploaded one would print bare for ever, and once sent the rules lock
+    // `branding`, so nobody could fix it. Fall back per field for the logo only.
+    branding: !q.branding
+      ? input.fallbackBranding
+      : q.branding.logoUrl || !input.fallbackBranding.logoUrl
+        ? q.branding
+        : { ...q.branding, logoUrl: input.fallbackBranding.logoUrl },
   }
 }

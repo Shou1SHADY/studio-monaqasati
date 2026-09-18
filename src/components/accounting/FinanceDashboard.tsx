@@ -49,6 +49,7 @@ import { EmptyBooks, Kpi, LoadingBooks, SOURCE_LABEL_KEY } from "./AccountingPar
 import { StatementTreeTable } from "./StatementTreeTable"
 import { AccountBreakdownSheet } from "./AccountBreakdownSheet"
 import { CashConversionCycleCard } from "./LockedCashView"
+import { accountNode } from "./AccountBreakdownSheet"
 import { CHART_INK, CHART_SERIES } from "./chart-palette"
 
 /**
@@ -187,20 +188,36 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
         <Kpi label={t("acc_kpi_revenue")} value={compact(revenue)} hint={t("acc_kpi_revenue_hint")} />
         <Kpi label={t("acc_kpi_gross_profit")} value={compact(gross)} hint={t("acc_kpi_margin", { value: pctText(gross, revenue) })} tone={gross >= 0 ? "good" : "bad"} />
         <Kpi label={t("acc_kpi_net_profit")} value={compact(net)} hint={t("acc_kpi_margin", { value: pctText(net, revenue) })} tone={net >= 0 ? "good" : "bad"} />
-        <Kpi label={t("acc_kpi_cash")} value={compact(liq.cash)} hint={t("acc_kpi_cash_hint")} />
+        <Link href={`${base}/cash-flow`} title={t("acc_nav_cashflow")} className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Kpi label={t("acc_kpi_cash")} value={compact(liq.cash)} hint={t("acc_kpi_cash_hint")} />
+        </Link>
       </div>
 
       {/* Position */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label={t("acc_kpi_receivables")} value={compact(receivables)} hint={t("acc_dash_receivables_hint", { overdue: compact(receivableAging.buckets[2] + receivableAging.buckets[3]) })} tone="warn" />
-        <Kpi label={t("acc_dash_payables")} value={compact(payables)} hint={t("acc_dash_payables_hint", { overdue: compact(payableAging.buckets[2] + payableAging.buckets[3]) })} />
+        <button
+          type="button"
+          title={t("acc_tree_open_breakdown")}
+          onClick={() => setSelected(accountNode([ACC.clientsReceivable, ACC.retentionReceivable], receivables, { ar: t("acc_kpi_receivables"), en: t("acc_kpi_receivables") }))}
+          className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Kpi label={t("acc_kpi_receivables")} value={compact(receivables)} hint={t("acc_dash_receivables_hint", { overdue: compact(receivableAging.buckets[2] + receivableAging.buckets[3]) })} tone="warn" />
+        </button>
+        <button
+          type="button"
+          title={t("acc_tree_open_breakdown")}
+          onClick={() => setSelected(accountNode([ACC.suppliersPayable, ACC.subcontractorRetentionPayable], payables, { ar: t("acc_dash_payables"), en: t("acc_dash_payables") }))}
+          className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Kpi label={t("acc_dash_payables")} value={compact(payables)} hint={t("acc_dash_payables_hint", { overdue: compact(payableAging.buckets[2] + payableAging.buckets[3]) })} />
+        </button>
         <Kpi
           label={t("acc_dash_working_capital")}
           value={compact(liq.workingCapital)}
           hint={t("acc_dash_current_ratio", { ratio: liq.currentRatio === null ? "—" : liq.currentRatio.toFixed(2), quick: liq.quickRatio === null ? "—" : liq.quickRatio.toFixed(2) })}
           tone={liq.workingCapital >= 0 ? "good" : "bad"}
         />
-        <Link href={`${base}/locked`} className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Link href={`${base}/locked#ccc`} className="rounded-xl text-start transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <Kpi
             label={t("acc_ccc_title_short")}
             value={ccc.ccc === null ? "—" : t("acc_ccc_days", { days: Math.round(ccc.ccc) })}
@@ -225,14 +242,20 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
           <div className="border-t px-5 py-3 space-y-1.5">
             {cashAccounts.length === 0 && <p className="text-xs text-muted-foreground">{t("acc_dash_no_cash_accounts")}</p>}
             {cashAccounts.map((a) => (
-              <div key={a.code} className="flex items-center justify-between gap-2 text-xs">
+              <button
+                key={a.code}
+                type="button"
+                title={t("acc_tree_open_breakdown")}
+                onClick={() => setSelected(accountNode([a.code], a.value))}
+                className="flex w-full items-center justify-between gap-2 rounded text-start text-xs hover:text-cta focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <span className="flex min-w-0 items-center gap-1.5">
                   <Landmark size={12} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                   <span className="font-mono text-muted-foreground" dir="ltr">{a.code}</span>
-                  <span className="truncate">{accountName(a.code, locale)}</span>
+                  <span className="truncate underline-offset-4 decoration-dotted hover:underline">{accountName(a.code, locale)}</span>
                 </span>
                 <Money value={a.value} className="font-bold" />
-              </div>
+              </button>
             ))}
           </div>
         </AccountingSection>
@@ -349,6 +372,7 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
               {[
                 canPost && { href: `${base}/journal/new`, icon: FilePlus2, key: "acc_nav_new_entry" },
                 { href: `${base}/statements`, icon: FileSpreadsheet, key: "acc_nav_account_statements" },
+                { href: `${base}/cash-flow`, icon: Wallet, key: "acc_nav_cashflow" },
                 { href: `${base}/settlements`, icon: ArrowLeftRight, key: "acc_nav_settlements" },
                 { href: `${base}/locked`, icon: Lock, key: "acc_nav_locked" },
                 { href: `${base}/audit-trail`, icon: BookOpen, key: "acc_nav_audit_trail" },

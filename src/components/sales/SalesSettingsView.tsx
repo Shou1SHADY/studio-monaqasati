@@ -10,7 +10,7 @@
 // plant's answer window from Finance's manufacturing policy.
 
 import type { ElementType } from "react"
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
 import {
@@ -45,6 +45,8 @@ import { DEFAULT_QUOTATION_VAT_PERCENT } from "@/lib/quotation-document"
 import { discountCapPercent } from "@/lib/sales-transfers"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { SalesSection, SalesShell } from "./SalesShell"
+import { QuotationLogoField } from "./QuotationLogoField"
+import { useQuotationBrandingDefaults } from "@/hooks/useQuotationBranding"
 
 type Module = "crm" | "sal" | "mfg" | "inv" | "fin" | "gov"
 
@@ -112,6 +114,13 @@ export function SalesSettingsView({ portal }: { portal: CrmPortal }) {
   const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, MFG_SETTINGS, orgId) : null), [firestore, orgId])
   const { data: settingsData } = useDoc(settingsRef)
   const answerWindowHours = useMemo(() => normalizeMfgSettings(settingsData as Partial<MfgSettings> | null).answerWindowHours, [settingsData])
+
+  const { branding: defaultBranding } = useQuotationBrandingDefaults()
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    // Follow the stored default until the owner picks a file here.
+    setLogoUrl((current) => (current && current.startsWith("blob:") ? current : defaultBranding.logoUrl ?? null))
+  }, [defaultBranding.logoUrl])
 
   const myRole: RoleKey | null = isOrgOwner ? "owner" : can("sales.approve") ? "manager" : can("sales.manage") ? "rep" : null
   const capOf = (role: RoleKey) => discountCapPercent({ isOwner: role === "owner", canApprove: role === "manager" })
@@ -231,6 +240,13 @@ export function SalesSettingsView({ portal }: { portal: CrmPortal }) {
                 </li>
               ))}
             </ul>
+            {/* The document's logo is the owner's to set — here, once, for every
+                quotation, instead of only from inside a new quote's composer. */}
+            <div className="border-t px-5 py-4 space-y-2">
+              <p className="text-xs font-bold text-slate-700">{t("sset_logo_title")}</p>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{t(isOrgOwner ? "sset_logo_hint" : "sset_logo_owner_only")}</p>
+              {isOrgOwner && orgId ? <QuotationLogoField orgId={orgId} value={logoUrl} onChange={setLogoUrl} /> : null}
+            </div>
           </SalesSection>
 
           <SalesSection title={t("sset_roles_title")} icon={Lock} action={<span className="text-[11px] text-muted-foreground">{t("sset_roles_sub")}</span>}>

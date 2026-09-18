@@ -9,6 +9,14 @@ import { doc, collection, query, where } from "firebase/firestore"
 import { useUser, useFirestore, useDoc, useCollection, useMemoFirebase } from "@/firebase"
 import { can as resolveCan, type PermissionId, type TeamGroup } from "@/lib/permissions"
 
+/** The role the security rules see: a missing field is a legacy owner; a
+ * present one — even null — is taken as it is. */
+export function legacyAwareRole(profile: Record<string, unknown> | null | undefined): string | null {
+  if (!profile) return null
+  if (!("organizationRole" in profile)) return "owner"
+  return (profile.organizationRole as string | null) || null
+}
+
 export function usePermissions(projectId?: string) {
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -36,20 +44,27 @@ export function usePermissions(projectId?: string) {
   const isLoading =
     isUserLoading || profileLoading || groupsLoading || (projectId ? projectMemberLoading : false)
 
+  // Mirrors isOrgOwner() in firestore.rules. An account from before the
+  // org-role migration has NO organizationRole field and is the owner of its
+  // own one-person org — the rules let it do everything, so a client that read
+  // the missing field as "member" hid every button from someone the server
+  // would never refuse. Only a LOADED profile counts: no profile is not an owner.
+  const organizationRole = legacyAwareRole(profile)
+
   const can = useMemo(() => {
     const ctx = {
-      organizationRole: (profile?.organizationRole as string) || null,
+      organizationRole,
       defaultGroupId: (profile?.defaultGroupId as string) || null,
       groups: (groups || []) as TeamGroup[],
       projectGroupId: projectId ? ((projectMember?.groupId as string) ?? null) : undefined,
     }
     return (permission: PermissionId) => resolveCan(permission, ctx)
-  }, [profile, groups, projectMember, projectId])
+  }, [profile, organizationRole, groups, projectMember, projectId])
 
   return {
     can,
     isLoading,
-    isOrgOwner: profile?.organizationRole === "owner",
+    isOrgOwner: organizationRole === "owner",
     profile,
     groups: (groups || []) as TeamGroup[],
   }
