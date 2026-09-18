@@ -45,6 +45,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { sarLtr } from "@/lib/riyal"
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -56,6 +57,12 @@ export function fmtQty(n: number | null | undefined): string {
 
 export function fmtMoney(n: number | null | undefined): string {
   return Math.round(Number(n) || 0).toLocaleString("en-US")
+}
+
+/** A figure with the Riyal sign, for a number isolated with `dir="ltr"`: the
+ * sign leads so it stands to the LEFT of the figure in both scripts. */
+export function fmtSar(n: number | null | undefined): string {
+  return sarLtr(fmtMoney(n))
 }
 
 /** Short day + month, Western digits in both locales (Arabic dates would

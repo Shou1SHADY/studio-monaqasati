@@ -1,4 +1,5 @@
 import type {Config} from 'tailwindcss';
+import defaultTheme from 'tailwindcss/defaultTheme';
 
 export default {
   darkMode: ['class'],
@@ -7,10 +8,15 @@ export default {
   ],
   theme: {
     extend: {
+      // 'Saudi Riyal Sign' leads every stack: it holds ONE glyph (U+20C1) and
+      // its @font-face in globals.css is limited to that code point, so it
+      // never competes with Noto/Inter for anything else.
       fontFamily: {
-        body: ['var(--font-body)', 'sans-serif'],
-        headline: ['var(--font-headline)', 'sans-serif'],
-        code: ['monospace'],
+        body: ['Saudi Riyal Sign', 'var(--font-body)', 'sans-serif'],
+        headline: ['Saudi Riyal Sign', 'var(--font-headline)', 'sans-serif'],
+        code: ['Saudi Riyal Sign', 'monospace'],
+        sans: ['Saudi Riyal Sign', ...defaultTheme.fontFamily.sans],
+        mono: ['Saudi Riyal Sign', ...defaultTheme.fontFamily.mono],
       },
       colors: {
         background: '#F8FAFC',

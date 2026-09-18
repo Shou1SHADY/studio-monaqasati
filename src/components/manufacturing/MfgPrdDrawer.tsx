@@ -15,7 +15,7 @@ import { compareOrders } from "@/lib/manufacturing-view"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgModuleChip, MfgStatePill, sourceNameOf } from "./MfgOrderBits"
 import { MfgPrdFlags, liveOrdersOn, productTime, stepName } from "./MfgPrdBits"
-import { MfgChip, MfgDrawer, MfgRow, MfgSection, MfgStat, departmentIcon, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgChip, MfgDrawer, MfgRow, MfgSection, MfgStat, departmentIcon, fmtSar, fmtQty } from "./ui/MfgUi"
 
 const ORDERS_SHOWN = 8
 
@@ -72,7 +72,7 @@ export function MfgPrdDrawer({ productId, onClose }: { productId: string | null;
               label={t("mfr_prd_std_unit_cost")}
               value={
                 <span dir="ltr" className="tabular-nums">
-                  {fmtMoney(std.total)} ﷼
+                  {fmtSar(std.total)}
                 </span>
               }
               sub={!std.allPriced ? t("mfr_cost_incomplete") : timeOn && time.unestimated ? t("mfr_prd_not_estimated_count", { count: time.unestimated }) : undefined}
@@ -81,7 +81,7 @@ export function MfgPrdDrawer({ productId, onClose }: { productId: string | null;
               label={t("mfr_prd_ref_buy")}
               value={
                 <span dir="ltr" className="tabular-nums">
-                  {product.referenceBuyPrice ? `${fmtMoney(product.referenceBuyPrice)} ﷼` : "—"}
+                  {product.referenceBuyPrice ? fmtSar(product.referenceBuyPrice) : "—"}
                 </span>
               }
               sub={t("mfg4_from_module", { module: t("mfg4_module_procurement") })}

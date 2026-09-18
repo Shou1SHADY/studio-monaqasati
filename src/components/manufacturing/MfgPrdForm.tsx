@@ -28,7 +28,7 @@ import { useMfgUi } from "./MfgUiContext"
 import { MfgRecordedAs } from "./MfgOrderBits"
 import { reqErrorText } from "./MfgReqBits"
 import { STONE_UNITS, liveOrdersOn, stepName } from "./MfgPrdBits"
-import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtMoney, fmtQty } from "./ui/MfgUi"
+import { MfgField, MfgFormModal, MfgNote, MfgReview, fmtSar, fmtQty } from "./ui/MfgUi"
 
 interface RouteRow {
   key: string
@@ -527,7 +527,7 @@ export function MfgProductForm({ productId, onClose }: { productId?: string; onC
 function Money({ value }: { value: number }) {
   return (
     <span dir="ltr" className="tabular-nums">
-      {fmtMoney(value)} ﷼
+      {fmtSar(value)}
     </span>
   )
 }

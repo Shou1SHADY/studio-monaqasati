@@ -36,7 +36,7 @@ import {
   useAgo,
   useSourceInfo,
 } from "./MfgReqBits"
-import { fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
+import { fmtSar, fmtQty, useMfgDate } from "./ui/MfgUi"
 
 const HEADER_BUTTON =
   "flex w-full items-start gap-3 border-b border-border/60 px-4 py-3 text-start transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -230,7 +230,7 @@ function Row({ label, children, strong }: { label: ReactNode; children: ReactNod
 function Money({ value }: { value: number }) {
   return (
     <span dir="ltr" className="tabular-nums">
-      {fmtMoney(value)} ﷼
+      {fmtSar(value)}
     </span>
   )
 }

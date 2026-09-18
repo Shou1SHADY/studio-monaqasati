@@ -33,7 +33,7 @@ import {
   useSourceInfo,
   useVerdictReason,
 } from "./MfgReqBits"
-import { MfgDrawer, MfgNote, MfgRow, MfgSection, MfgStat, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
+import { MfgDrawer, MfgNote, MfgRow, MfgSection, MfgStat, fmtMoney, fmtSar, fmtQty, useMfgDate } from "./ui/MfgUi"
 
 export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null; onClose: () => void }) {
   const t = useTranslations("Portal.Shared")
@@ -126,7 +126,7 @@ export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null;
             label={t("mfr_full_make_cost")}
             value={
               <span dir="ltr" className="tabular-nums">
-                {fmtMoney(summary.fullCost)} ﷼
+                {fmtSar(summary.fullCost)}
               </span>
             }
             sub={summary.unscreened ? t("mfr_unscreened", { count: summary.unscreened }) : !summary.allPriced ? t("mfr_cost_incomplete") : undefined}
@@ -149,7 +149,7 @@ export function MfgReqDrawer({ requestId, onClose }: { requestId: string | null;
                   <p>
                     {t("mfr_line_cost")}{" "}
                     <b dir="ltr" className="tabular-nums text-foreground">
-                      {fmtMoney(l.std.total)} ﷼
+                      {fmtSar(l.std.total)}
                     </b>
                     {" · "}
                     {t("mfr_line_per_unit", { amount: fmtMoney(l.verdict.unitCost) })}
