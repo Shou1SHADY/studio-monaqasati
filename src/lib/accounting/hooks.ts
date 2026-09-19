@@ -30,6 +30,8 @@ import {
   postMfgScrap,
   postMfgRemnantReceipt,
   type PostingContext,
+  postGoodsReceipt,
+  STANDARD_VAT_PERCENT,
 } from "./posting-rules"
 
 export interface HookActor {
@@ -330,6 +332,31 @@ export function onMfgRemnantReceived(
 ): void {
   void ifEnabled(firestore, actor.organizationId, () =>
     postToLedgerSafe(firestore, ctxOf(actor), postMfgRemnantReceipt({ ...remnant, date: remnant.date || today() }))
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Procurement — a supplier's delivery confirmed received
+// ---------------------------------------------------------------------------
+
+export function onGoodsReceived(
+  firestore: Firestore,
+  actor: HookActor,
+  receipt: {
+    deliveryId: string
+    date?: string
+    /** The offer's price for the delivery, EXCLUDING VAT. */
+    net: number
+    supplierId?: string | null
+    supplierName?: string | null
+    rfqTitle?: string | null
+    projectId?: string | null
+    projectName?: string | null
+  }
+): void {
+  const vat = Math.round(receipt.net * STANDARD_VAT_PERCENT) / 100
+  void ifEnabled(firestore, actor.organizationId, () =>
+    postToLedgerSafe(firestore, ctxOf(actor), postGoodsReceipt({ ...receipt, vat, date: receipt.date || today() }))
   )
 }
 

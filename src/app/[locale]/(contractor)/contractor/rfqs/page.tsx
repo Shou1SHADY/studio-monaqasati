@@ -3,7 +3,9 @@
 import { useState, useEffect } from "react"
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { cn } from "@/lib/utils"
+import { matchesSearch } from "@/lib/search-text"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -50,6 +52,7 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
+  const searching = searchQuery.trim().length > 0
   const [statusFilter, setStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
   const [selectedRfqs, setSelectedRfqs] = useState<string[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
@@ -100,8 +103,8 @@ const handleBatchPublish = async () => {
     const missingFields = getIncompletePublishFields(profile, locale)
     if (missingFields.length > 0) {
       toast({
-        title: locale === "ar" ? "الملف الشخصي غير مكتمل" : "Incomplete Profile",
-        description: (locale === "ar" ? "يرجى إكمال الحقول التالية أولاً: " : "Please complete the following fields first: ") + missingFields.join("، "),
+        title: t("rfqs_profile_incomplete_title"),
+        description: t("rfqs_profile_incomplete_desc", { fields: missingFields.join(locale === "ar" ? "، " : ", ") }),
         variant: "destructive",
       })
       return
@@ -275,7 +278,9 @@ const handleBatchPublish = async () => {
       where("organizationId", "==", profile?.organizationId || user.uid)
     );
 
-    if (statusFilter !== "all") {
+    // A search looks in every status: whoever types a tender's name does not
+    // know — and should not need to know — whether it is a draft or awarded.
+    if (statusFilter !== "all" && !searching) {
       q = query(q, where("status", "==", statusFilter));
     }
     if (categoryFilter !== "all") {
@@ -289,7 +294,7 @@ const handleBatchPublish = async () => {
     }
 
     return q;
-  }, [firestore, user, isUserLoading, statusFilter, categoryFilter, locationFilter, projectFilter, profile?.organizationId])
+  }, [firestore, user, isUserLoading, statusFilter, searching, categoryFilter, locationFilter, projectFilter, profile?.organizationId])
 
   // Projects belonging to this org, used only to populate the project filter dropdown.
   const projectsQuery = useMemoFirebase(() => {
@@ -308,10 +313,12 @@ const handleBatchPublish = async () => {
     if (isUserLoading || !user || !firestore) return null
     return query(
       collection(firestore, "offers"),
-      where("contractorId", "==", user.uid),
+      // The org's accepted offers, not only those on tenders this member
+      // created — a colleague's awarded tender must not become editable.
+      where("contractorOrgId", "==", profile?.organizationId || user.uid),
       where("status", "==", "مقبول")
     )
-  }, [firestore, user, isUserLoading])
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const { data: acceptedOffers } = useCollection(acceptedOffersQuery)
   const acceptedRfqIds = new Set((acceptedOffers || []).map((o: any) => o.rfqId))
@@ -322,15 +329,8 @@ const handleBatchPublish = async () => {
 
 const filteredRfqs = rfqs?.filter((rfq: any) => {
     // Search query filter
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch = (
-        rfq.title?.toLowerCase().includes(q) ||
-        rfq.category?.toLowerCase().includes(q) ||
-        rfq.subCategory?.toLowerCase().includes(q) ||
-        rfq.id?.toLowerCase().includes(q)
-      );
-      if (!matchesSearch) return false;
+    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
+      return false
     }
 
     // Deadline filter
@@ -438,20 +438,21 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("rfq_all_tenders_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("rfq_all_tenders_desc")}</p>
-          </div>
-          {can("rfq.create") && (
-            <Link href="/contractor/rfqs/new">
-              <Button className="gap-2 rounded-xl shadow-lg shadow-primary/20 cursor-pointer">
-                <Send size={16} />
-                {t("rfq_new_tender")}
+        <ProcurementHeader
+          icon={FileText}
+          title={t("rfq_all_tenders_title")}
+          description={t("rfq_all_tenders_desc")}
+          action={
+            can("rfq.create") && (
+              <Button asChild className="gap-2 rounded-xl">
+                <Link href="/contractor/rfqs/new">
+                  <Send size={16} aria-hidden="true" />
+                  {t("rfq_new_tender")}
+                </Link>
               </Button>
-            </Link>
-          )}
-        </div>
+            )
+          }
+        />
 
         {/* Manufacturing's material shortfalls and supplier claims — Procurement acts on them here (MAT-05) */}
         <MfgPurchaseRequestsPanel
@@ -461,7 +462,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
         />
 
         {/* Status Filter Tabs */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={cn("flex items-center gap-2 flex-wrap", searching && "opacity-60")} role="group" aria-label={t("rfq_status_filter")}>
           {[
             { value: "all", label: t("rfq_all") },
             { value: "Draft", label: t("rfq_status_draft") },
@@ -470,10 +471,12 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
           ].map(tab => (
             <Button
               key={tab.value}
-              variant={statusFilter === tab.value ? "default" : "outline"}
+              variant={statusFilter === tab.value && !searching ? "default" : "outline"}
               size="sm"
+              aria-pressed={statusFilter === tab.value && !searching}
               className="rounded-lg cursor-pointer"
               onClick={() => {
+                setSearchQuery("");
                 setStatusFilter(tab.value as any);
                 setSelectedRfqs([]);
               }}
@@ -1047,7 +1050,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                   variant="outline"
                   className="font-bold"
                 >
-                  {isLoadingMore && <Loader2 className={cn("animate-spin", locale === 'ar' ? 'ml-2' : 'mr-2')} size={16} />}
+                  {isLoadingMore && <Loader2 className="animate-spin me-2" size={16} />}
                   {t("rfq_load_more")}
                 </Button>
               </div>

@@ -154,6 +154,8 @@ export interface ReceiveDeliveryItem {
   name: string
   unit: string
   quantity: number
+  /** Net of VAT, when the receipt knows it. */
+  unitCost?: number | null
 }
 
 export interface ReceiveDeliveryParams {
@@ -193,16 +195,27 @@ export async function receiveDelivery(params: ReceiveDeliveryParams): Promise<vo
       ? doc(firestore, "warehouses", warehouseId, "inventoryItems", matchId)
       : doc(itemsColRef)
 
+    // What one unit cost, when the receipt knows it (net of VAT). Merged into
+    // a row that already has stock, the row's cost becomes the quantity-
+    // weighted average — the same figure Inventory values the row at.
+    const unitCost = item.unitCost != null && Number.isFinite(item.unitCost) && item.unitCost >= 0 ? item.unitCost : null
+
     await runTransaction(firestore, async (tx) => {
       const destSnap = matchId ? await tx.get(destRef) : null
       if (destSnap?.exists()) {
-        tx.update(destRef, { quantity: (destSnap.data().quantity || 0) + quantity, updatedAt: serverTimestamp() })
+        const cur = destSnap.data() as { quantity?: number; unitCost?: number | null }
+        const onHand = Math.max(0, Number(cur.quantity) || 0)
+        const oldCost = cur.unitCost != null && Number.isFinite(cur.unitCost) ? cur.unitCost : null
+        const averaged =
+          unitCost == null ? undefined : oldCost == null || onHand === 0 ? unitCost : Math.round(((onHand * oldCost + quantity * unitCost) / (onHand + quantity)) * 100) / 100
+        tx.update(destRef, { quantity: onHand + quantity, ...(averaged !== undefined ? { unitCost: averaged } : {}), updatedAt: serverTimestamp() })
       } else {
         tx.set(destRef, {
           name,
           sku: null,
           quantity,
           unit,
+          unitCost,
           minStockLevel: null,
           trackingMode: null,
           organizationId,

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -212,7 +213,7 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
 
         {/* Handover recipient */}
         {(delivery.handoverRecipientName || delivery.receivedByName) && (
-          <div className={cn("mt-3 pt-3 border-t border-success/10 text-xs text-slate-500", isRtl ? "text-right" : "")}>
+          <div className="mt-3 pt-3 border-t border-success/10 text-xs text-slate-500 text-start">
             <span className="font-bold">{t("goods_received_by")}:</span>{" "}
             {delivery.handoverRecipientName || delivery.receivedByName}
           </div>
@@ -220,7 +221,7 @@ function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: str
 
         {/* Attachments */}
         {delivery.attachmentUrls && delivery.attachmentUrls.length > 0 && (
-          <div className={cn("mt-3 pt-3 border-t border-success/10", isRtl ? "text-right" : "")}>
+          <div className="mt-3 pt-3 border-t border-success/10 text-start">
             <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
               <Paperclip size={11} />
               {t("goods_attachments")} ({delivery.attachmentUrls.length})
@@ -516,9 +517,9 @@ function ManualReceiptDialog({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b">
-                    <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs", isRtl ? "text-right" : "text-left")}>{t("goods_manual_item_name")}</th>
-                    <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-24", isRtl ? "text-right" : "text-left")}>{t("goods_manual_item_qty")}</th>
-                    <th className={cn("px-3 py-2 font-medium text-muted-foreground text-xs w-20", isRtl ? "text-right" : "text-left")}>{t("goods_manual_item_unit")}</th>
+                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs text-start">{t("goods_manual_item_name")}</th>
+                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-24 text-start">{t("goods_manual_item_qty")}</th>
+                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20 text-start">{t("goods_manual_item_unit")}</th>
                     <th className="w-8" />
                   </tr>
                 </thead>
@@ -683,18 +684,19 @@ export default function GoodsReceivedPage() {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("goods_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("goods_desc")}</p>
-          </div>
-          {canConfirmDeliveries && (
-            <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
-              <PlusCircle size={18} />
-              {t("goods_manual_add_button")}
-            </Button>
-          )}
-        </div>
+        <ProcurementHeader
+          icon={PackageCheck}
+          title={t("goods_title")}
+          description={t("goods_desc")}
+          action={
+            canConfirmDeliveries && (
+              <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
+                <PlusCircle size={18} aria-hidden="true" />
+                {t("goods_manual_add_button")}
+              </Button>
+            )
+          }
+        />
 
         <ManualReceiptDialog
           open={isManualDialogOpen}

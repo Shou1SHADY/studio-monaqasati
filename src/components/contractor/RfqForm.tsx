@@ -835,7 +835,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
   return (
     <PortalLayout>
-      <div className={cn("max-w-4xl mx-auto py-8", locale === 'ar' ? 'text-right' : 'text-left')}>
+      <div className="max-w-4xl mx-auto py-8 text-start">
         <div className="mb-8">
           <h1 className="text-3xl font-black text-foreground font-headline">{isEditing ? t("newrfq_edit_title") : t("newrfq_page_title")}</h1>
           <p className="text-muted-foreground mt-2">{isEditing ? t("newrfq_edit_desc") : t("newrfq_page_desc")}</p>
@@ -1017,7 +1017,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
                               <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />
                             </div>
-                            <div className="text-right">
+                            <div className="text-start">
                               <span className="text-sm font-semibold text-slate-700 block">{t("newrfq_click_upload_pdf")}</span>
                               <span className="text-xs text-slate-400">{t("newrfq_pdf_technical_desc")}</span>
                             </div>

@@ -236,6 +236,7 @@ export function StandaloneWasteView({ portal }: { portal: "contractor" | "suppli
               wasteTargetPercent,
               userId: user.uid,
               userName,
+              organizationId: orgId || null,
             })
             toast({ title: t("waste_recorded_toast") })
           }}

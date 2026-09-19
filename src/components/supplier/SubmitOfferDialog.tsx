@@ -323,6 +323,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             userId: selectedRfq.contractorId,
             organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
             type: "new_offer",
+            i18n: { title: "pn_new_offer_title", message: "pn_new_offer", params: { supplier: activeCompanyName || "", price: Number(offerPrice).toLocaleString("en-US"), rfq: selectedRfq.title || "" } },
             title: "عرض سعر جديد",
             message: `قدم المورد ${activeCompanyName || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}`,
             offerId: null,

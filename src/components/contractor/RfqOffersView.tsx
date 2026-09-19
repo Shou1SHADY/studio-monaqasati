@@ -62,6 +62,10 @@ import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
 import { receiveDelivery } from "@/lib/warehouse-transfer"
+import { onGoodsReceived } from "@/lib/accounting/hooks"
+import { markPurchaseArrived, type WorkOrderV2 } from "@/lib/manufacturing-writes"
+import { orderRef } from "@/lib/manufacturing-view"
+import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { formatCurrency } from "@/utils/invoice-utils"
 import { GuestNotifyDialog, type GuestNotifyTarget } from "@/components/contractor/GuestNotifyDialog"
@@ -85,6 +89,8 @@ function fmtDate(val: any, locale: string) {
 // read from route params so this component is agnostic to which route rendered it.
 export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const t = useTranslations("Portal.Contractor")
+  // Manufacturing events carry Portal.Shared keys (mfn_*) for their pushed text.
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const router = useRouter()
   const { toast } = useToast()
@@ -258,11 +264,19 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       // otherwise the org's central warehouse (created here if it doesn't exist yet,
       // same deterministic id as useCentralWarehouse). Kept isolated from the delivery
       // confirmation above, which already committed and must not be rolled back by this.
+      let stockLanded = true
+      const orgId = confirmDeliveryDoc.contractorOrgId as string | undefined
+      // What the delivery is worth: the awarded offer's price — quoted EXCLUDING
+      // VAT (the offer form says so). One offer, one delivery.
+      const offerOfDelivery = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { price?: string | number; totalBatchesPrice?: number } | undefined
+      const deliveryNet = Math.max(0, Number(offerOfDelivery?.totalBatchesPrice ?? offerOfDelivery?.price) || 0)
       try {
-        const orgId = confirmDeliveryDoc.contractorOrgId as string | undefined
-        const deliveryItems = ((confirmDeliveryDoc.items || []) as { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[])
+        const rawItems = ((confirmDeliveryDoc.items || []) as { name?: string; quantity?: number; unitOfMeasure?: string; unit?: string }[])
           .map((it) => ({ name: it.name || "", unit: it.unitOfMeasure || it.unit || "", quantity: Number(it.quantity) || 0 }))
           .filter((it) => it.name && it.unit && it.quantity > 0)
+        // A unit cost only when it is exact: one line, one price. Splitting one
+        // total across lines in different units would invent prices.
+        const deliveryItems = rawItems.map((it) => ({ ...it, unitCost: rawItems.length === 1 && deliveryNet > 0 ? Math.round((deliveryNet / it.quantity) * 100) / 100 : null }))
 
         if (orgId && deliveryItems.length > 0) {
           let targetWarehouseId: string | null = null
@@ -291,7 +305,54 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           await receiveDelivery({ firestore, warehouseId: targetWarehouseId, items: deliveryItems, organizationId: orgId })
         }
       } catch (receiptErr) {
+        stockLanded = false
         console.error("Goods receipt into warehouse failed:", receiptErr)
+      }
+
+      const actorName = profile?.name || user.email || ""
+      if (orgId && stockLanded) {
+        // The books: the company now holds the goods and owes the supplier.
+        onGoodsReceived(
+          firestore,
+          { organizationId: orgId, userId: user.uid, userName: actorName },
+          {
+            deliveryId: confirmDeliveryDoc.id,
+            net: deliveryNet,
+            supplierId: confirmDeliveryDoc.supplierOrgId && confirmDeliveryDoc.supplierOrgId !== "guest" ? confirmDeliveryDoc.supplierOrgId : null,
+            supplierName: confirmDeliveryDoc.supplierName || null,
+            rfqTitle: confirmDeliveryDoc.rfqTitle || null,
+            projectId: confirmDeliveryDoc.projectId || null,
+            projectName: (project as { name?: string } | null)?.name || null,
+          }
+        )
+      }
+
+      // This RFQ answered one of Manufacturing's purchase requests: the goods
+      // are in stock now, so the request is "arrived" and the workshop hears it
+      // — instead of the request staying "RFQ started" for ever.
+      const purchaseSource = (rfq as { purchaseSource?: { kind?: string; workOrderId?: string; purchaseRequestId?: string } } | null)?.purchaseSource
+      if (orgId && stockLanded && purchaseSource?.kind === "mfg_purchase" && purchaseSource.workOrderId && purchaseSource.purchaseRequestId) {
+        try {
+          await markPurchaseArrived(firestore, { orderId: purchaseSource.workOrderId, purchaseRequestId: purchaseSource.purchaseRequestId, actor: { id: user.uid, name: actorName } })
+          const woSnap = await getDoc(doc(firestore, "workOrders", purchaseSource.workOrderId))
+          const wo = woSnap.exists() ? ({ ...(woSnap.data() as WorkOrderV2), id: woSnap.id }) : null
+          const pr = wo?.purchaseRequests?.find((p) => p.id === purchaseSource.purchaseRequestId)
+          if (wo && pr) {
+            await emitMfgEvent(firestore, {
+              kind: "purchase_arrived",
+              copy: tShared,
+              organizationId: orgId,
+              actor: { id: user.uid, name: actorName },
+              to: [{ permission: "manufacturing.manage" }, { users: [pr.byId] }],
+              params: { ref: orderRef(wo), qty: String(pr.quantity), unit: pr.unit, item: pr.itemName, block: "" },
+              workOrderId: wo.id,
+              link: mfgLinks.order(wo.id),
+            })
+          }
+        } catch (linkErr) {
+          // Stock has landed either way; the request can still be closed from the inbox.
+          console.warn("purchase request not closed:", linkErr)
+        }
       }
 
       // Guest deliveries have no user doc to notify — the guest sees the
@@ -302,6 +363,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           userId: confirmDeliveryDoc.supplierId,
           organizationId: confirmDeliveryDoc.supplierOrgId || confirmDeliveryDoc.supplierId,
           type: "delivery_confirmed",
+          i18n: { title: "pn_delivery_confirmed_title", message: "pn_delivery_confirmed", params: { rfq: confirmDeliveryDoc.rfqTitle || "" } },
           title: "✅ تم تأكيد الاستلام",
           message: `أكد المقاول استلام الشحنة لطلب عروض الأسعار: ${confirmDeliveryDoc.rfqTitle || ""}`,
           offerId: confirmDeliveryDoc.offerId,
@@ -311,7 +373,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         })
       }
 
-      toast({ title: t("delivery_confirm_success"), description: t("delivery_receipt_link") })
+      toast(
+        stockLanded
+          ? { title: t("delivery_confirm_success"), description: t("delivery_receipt_link") }
+          : { title: t("delivery_confirm_success"), description: t("delivery_stock_not_landed"), variant: "destructive" }
+      )
       setConfirmDeliveryDoc(null)
       setReceiverName("")
     } catch (err) {
@@ -403,10 +469,16 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           if (note) baseMsg += `\n${t("offers_notif_reduction_note", { note })}`
           notifMessage = baseMsg
         }
+        const i18nKey = notifType === "offer_accepted" ? "pn_offer_accepted" : notifType === "price_reduction" ? "pn_price_reduction" : "pn_offer_rejected"
         await addDoc(collection(firestore, "users", offer.supplierId, "notifications"), {
           userId: offer.supplierId,
           organizationId: offer.organizationId || offer.supplierId,
           type: notifType,
+          i18n: {
+            title: `${i18nKey}_title`,
+            message: i18nKey,
+            params: { rfq: offer.rfqTitle || "", price: requestedPrice || "", note: note || "" },
+          },
           title: notifTitle,
           message: notifMessage,
           offerId: offerId,
@@ -456,6 +528,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
             type: "sample_requested",
+            i18n: { title: "pn_sample_requested_title", message: "pn_sample_requested", params: { rfq: offerData.rfqTitle || "" } },
             title: "طلب عينة جديد",
             message: `قام المقاول بطلب عينة لطلب عروض الأسعار: ${offerData.rfqTitle || ""}`,
             offerId: offerId,
@@ -470,6 +543,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
             userId: offerData.supplierId,
             organizationId: offerData.organizationId || offerData.supplierId,
             type: "sample_received",
+            i18n: { title: "pn_sample_received_title", message: "pn_sample_received", params: { rfq: offerData.rfqTitle || "" } },
             title: "✅ تم استلام العينة",
             message: `قام المقاول بتأكيد استلام العينة لطلب عروض الأسعار: ${offerData.rfqTitle || ""}`,
             offerId: offerId,
@@ -519,6 +593,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           userId: offerData.supplierId,
           organizationId: offerData.organizationId || offerData.supplierId,
           type: "supply_completed",
+          i18n: { title: "pn_supply_completed_title", message: "pn_supply_completed", params: { rfq: offerData.rfqTitle || "" } },
           title: "🎉 تم تأكيد اكتمال التوريد",
           message: `قام المقاول بتأكيد اكتمال التوريد لطلب عروض الأسعار: ${offerData.rfqTitle || ""}`,
           offerId: offerId,
@@ -588,12 +663,12 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
   return (
     <PortalLayout>
-      <div className={cn("space-y-6", locale === 'ar' ? 'text-right' : 'text-left')}>
+      <div className="space-y-6 text-start">
 
         {/* ── Unified Hero Banner ── */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white shadow-2xl shadow-primary/20">
-          <div className={cn("absolute top-0 -mt-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl pointer-events-none", locale === 'ar' ? '-mr-20 right-0' : '-ml-20 left-0')} />
-          <div className={cn("absolute bottom-0 -mb-20 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl pointer-events-none", locale === 'ar' ? '-ml-20 left-0' : '-mr-20 right-0')} />
+          <div className="absolute top-0 start-0 -mt-20 -ms-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 end-0 -mb-20 -me-20 h-64 w-64 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
 
           <div className="relative z-10 space-y-5">
             {/* Back */}
@@ -656,7 +731,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 {rfq.products && rfq.products.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <Package size={13} className="shrink-0" />
-                    <span>{rfq.products.length} {locale === 'ar' ? 'منتج' : 'products'}</span>
+                    <span>{rfq.products.length} {t("offers_products_word")}</span>
                   </div>
                 )}
                 {rfq.pdfUrl && (
@@ -669,7 +744,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 {rfq.notes && (
                   <div className="flex items-center gap-1.5 bg-blue-500/15 text-blue-200 rounded-lg px-2.5 py-1 text-xs">
                     <Tag size={11} className="shrink-0" />
-                    {locale === 'ar' ? 'يوجد ملاحظات' : 'Has notes'}
+                    {t("offers_has_notes")}
                   </div>
                 )}
                 {rfq.requiresWarranty && (
@@ -917,7 +992,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               </div>
                               <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-blue-200 text-blue-700 hover:bg-blue-600 hover:text-white transition-all">
                                 <a href={offer.offerPdfUrl} target="_blank" rel="noopener noreferrer">
-                                  <Download size={12} className="ml-1" />
+                                  <Download size={12} className="me-1" aria-hidden="true" />
                                   {t("offers_view_file")}
                                 </a>
                               </Button>
@@ -940,7 +1015,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                     {g.fileUrl && (
                                       <Button variant="outline" size="sm" asChild className="h-8 rounded-lg bg-white border-amber-200 text-amber-700 hover:bg-amber-600 hover:text-white transition-all shrink-0">
                                         <a href={g.fileUrl} target="_blank" rel="noopener noreferrer">
-                                          <Download size={12} className="ml-1" />
+                                          <Download size={12} className="me-1" aria-hidden="true" />
                                           {t("offers_view_warranty_file")}
                                         </a>
                                       </Button>
@@ -1179,9 +1254,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
               /* ─── criteria config ─── */
               const CRIT: Record<string, { color: string; tint: string; soft: string; wash: string; label: string; sub: string; win: string }> = {
-                price: { color: GREEN, tint: "hsl(155 80% 35% / 0.10)", soft: "hsl(155 50% 40%)", wash: "linear-gradient(90deg, hsl(155 80% 35% / 0.06), transparent 80%)", label: t("offers_price_col"), sub: locale === 'ar' ? 'ريال سعودي' : 'SAR', win: locale === 'ar' ? 'الأوفر' : 'Cheapest' },
-                dur:   { color: BLUE,  tint: "hsl(202 96% 32% / 0.10)", soft: "hsl(202 60% 40%)", wash: "linear-gradient(90deg, hsl(202 96% 32% / 0.05), transparent 80%)", label: t("offers_duration_col"), sub: locale === 'ar' ? 'وقت التنفيذ' : 'Execution', win: locale === 'ar' ? 'الأسرع' : 'Fastest' },
-                date:  { color: TEAL,  tint: "hsl(184 74% 40% / 0.14)", soft: "hsl(184 60% 32%)", wash: "linear-gradient(90deg, hsl(184 74% 40% / 0.07), transparent 80%)", label: t("offers_date_col"), sub: locale === 'ar' ? 'تاريخ التقديم' : 'Submitted', win: locale === 'ar' ? 'الأحدث' : 'Newest' },
+                price: { color: GREEN, tint: "hsl(155 80% 35% / 0.10)", soft: "hsl(155 50% 40%)", wash: "linear-gradient(90deg, hsl(155 80% 35% / 0.06), transparent 80%)", label: t("offers_price_col"), sub: t("offers_cmp_sub_price"), win: t("offers_cmp_win_price") },
+                dur:   { color: BLUE,  tint: "hsl(202 96% 32% / 0.10)", soft: "hsl(202 60% 40%)", wash: "linear-gradient(90deg, hsl(202 96% 32% / 0.05), transparent 80%)", label: t("offers_duration_col"), sub: t("offers_cmp_sub_duration"), win: t("offers_cmp_win_duration") },
+                date:  { color: TEAL,  tint: "hsl(184 74% 40% / 0.14)", soft: "hsl(184 60% 32%)", wash: "linear-gradient(90deg, hsl(184 74% 40% / 0.07), transparent 80%)", label: t("offers_date_col"), sub: t("offers_cmp_sub_date"), win: t("offers_cmp_win_date") },
               }
 
               /* ─── Eastern Arabic-Indic numeral converter ─── */
@@ -1236,8 +1311,8 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
               cells.push(makeCell({ key: "rh", row: 1, col: 1, kind: "rail", first: true,
                 children: (
                   <div style={{ padding: "16px 18px 14px", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", minHeight: 140 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, ...(locale !== 'ar' && { letterSpacing: ".08em" }), color: SL400 }}>{locale === 'ar' ? 'المعيار' : 'Criteria'}</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 3 }}>{locale === 'ar' ? 'تفاصيل العرض' : 'Offer Details'}</span>
+                    <span style={{ fontSize: 10, fontWeight: 800, ...(locale !== 'ar' && { letterSpacing: ".08em" }), color: SL400 }}>{t("offers_cmp_criteria")}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: INK, marginTop: 3 }}>{t("offers_cmp_offer_details")}</span>
                   </div>
                 ),
               }))
@@ -1253,7 +1328,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                       <div style={{ padding: "18px 14px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, minHeight: 140, justifyContent: "center" }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "3px 10px", color: best ? "#fff" : SL400, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 4px 12px -4px hsl(220 56% 11% / 0.5)" : "none" }}>
                           {best && <Star size={10} className="fill-white text-white shrink-0" />}
-                          {best ? (locale === 'ar' ? 'الأفضل شاملاً' : 'Overall Best') : `#${toAr(i + 1)}`}
+                          {best ? t("offers_cmp_overall_best") : `#${toAr(i + 1)}`}
                         </span>
                         <span style={{ width: 44, height: 44, borderRadius: 14, display: "grid", placeItems: "center", fontSize: 18, fontWeight: 900, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(140deg, ${NAVY}, ${NAVY2})` : SL100, boxShadow: best ? "0 8px 20px -8px hsl(220 56% 11% / 0.6)" : `inset 0 0 0 1px ${LINE}` }}>
                           {initials}
@@ -1322,7 +1397,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                     {isW && savings > 0 && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 800, color: c.color }}>
                         <ArrowDown size={11} />
-                        {locale === 'ar' ? `أقل من الأعلى بنسبة ${toAr(savings)}٪` : `${savings}% below highest`}
+                        {t("offers_cmp_below_highest", { pct: locale === "ar" ? toAr(savings) : String(savings) })}
                       </span>
                     )}
                     {isW && <WinChip type="price" />}
@@ -1437,7 +1512,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                           disabled={processingId === offer.id}
                           style={{ width: "auto", minWidth: 130, height: 38, borderRadius: 10, border: "none", cursor: processingId === offer.id ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, fontSize: 13, fontWeight: 800, paddingLeft: 28, paddingRight: 28, color: best ? "#fff" : NAVY2, background: best ? `linear-gradient(135deg, ${NAVY}, ${NAVY2})` : "#fff", boxShadow: best ? "0 10px 22px -10px hsl(220 56% 11% / 0.55)" : `inset 0 0 0 1.5px ${LINE}`, transition: "transform .15s ease, box-shadow .2s ease", opacity: processingId === offer.id ? 0.7 : 1 }}>
                           {processingId === offer.id ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                          {processingId === offer.id ? (locale === 'ar' ? 'جارٍ القبول…' : 'Processing…') : t("offers_accept_btn")}
+                          {processingId === offer.id ? t("offers_cmp_processing") : t("offers_accept_btn")}
                         </Button>
                       )}
                     </div>
@@ -1452,22 +1527,22 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
                     <div>
                       <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 800, color: TEAL, background: "hsl(184 74% 40% / 0.12)", padding: "5px 12px", borderRadius: 999, marginBottom: 12 }}>
-                        <Star size={12} />{locale === 'ar' ? 'مقارنة ذكية' : 'Smart Compare'}
+                        <Star size={12} />{t("offers_cmp_smart")}
                       </div>
                       <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: NAVY, ...(locale !== 'ar' && { letterSpacing: "-.01em" }), lineHeight: 1.6 }}>
-                        {locale === 'ar' ? 'مقارنة العروض المقدّمة' : 'Submitted Offer Comparison'}
+                        {t("offers_cmp_title")}
                       </h2>
                       <p style={{ margin: "6px 0 0", fontSize: 14.5, color: MUTED }}>
-                        {locale === 'ar' ? 'راجع العروض جنباً إلى جنب واتخذ قرارك بثقة.' : 'Review offers side by side and decide with confidence.'}
+                        {t("offers_cmp_subtitle")}
                       </p>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: MUTED }}>{locale === 'ar' ? 'ترتيب حسب' : 'Sort by'}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: MUTED }}>{t("offers_cmp_sort_by")}</span>
                       <div style={{ display: "inline-flex", background: SL100, borderRadius: 14, padding: 5, gap: 3 }}>
                         {([
-                          { k: "price",    label: locale === 'ar' ? 'الأقل سعراً'    : 'Lowest Price' },
-                          { k: "date",     label: locale === 'ar' ? 'الأحدث'         : 'Newest' },
-                          { k: "duration", label: locale === 'ar' ? 'الأسرع تنفيذاً' : 'Fastest' },
+                          { k: "price",    label: t("offers_cmp_sort_price") },
+                          { k: "date",     label: t("offers_cmp_sort_date") },
+                          { k: "duration", label: t("offers_cmp_sort_duration") },
                         ] as const).map(tb => (
                           <button key={tb.k} onClick={() => setSortBy(tb.k)} style={{ border: "none", outline: "none", cursor: "pointer", fontFamily: "inherit", padding: "8px 16px", borderRadius: 10, fontSize: 13, fontWeight: 800, color: sortBy === tb.k ? NAVY : SL400, background: sortBy === tb.k ? "#fff" : "transparent", boxShadow: sortBy === tb.k ? "0 4px 12px -6px hsl(220 30% 20% / 0.35)" : "none", transition: "all .18s ease" }}>
                             {tb.label}
@@ -1489,7 +1564,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                   </div>
 
                   <p style={{ textAlign: "center", fontSize: 12.5, color: SL400, marginTop: 18 }}>
-                    {locale === 'ar' ? 'العمود المميّز يُحدَّد تلقائياً وفق أعلى عدد من نقاط التفوّق (السعر · المدة · التاريخ).' : 'The highlighted column is auto-selected based on the highest number of wins across all criteria.'}
+                    {t("offers_cmp_highlight_note")}
                   </p>
                 </div>
               )
@@ -1600,7 +1675,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader>
             <DialogTitle>{t("offers_sample_dialog_title")}</DialogTitle>
-            <DialogDescription className="text-right mt-2 text-slate-600">
+            <DialogDescription className="text-start mt-2 text-slate-600">
               {t("offers_sample_dialog_desc")}
             </DialogDescription>
           </DialogHeader>
@@ -1642,9 +1717,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         }
       }}>
         <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
+          <DialogHeader className="text-start sm:text-start">
             <DialogTitle>{t("offers_request_reduction")}</DialogTitle>
-            <DialogDescription className="text-right mt-2 text-slate-600">
+            <DialogDescription className="text-start mt-2 text-slate-600">
               {t("offers_reduction_dialog_desc", { supplier: reductionOffer?.supplierName || reductionOffer?.companyName || t("offers_registered_supplier") })}
             </DialogDescription>
           </DialogHeader>
@@ -1710,7 +1785,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       {/* Confirm Delivery Dialog */}
       <Dialog open={!!confirmDeliveryDoc} onOpenChange={(open) => { if (!open) { setConfirmDeliveryDoc(null); setReceiverName("") } }}>
         <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
+          <DialogHeader className="text-start sm:text-start">
             <DialogTitle className="flex items-center gap-2">
               <CheckCircle2 size={18} className="text-success" />
               {t("delivery_confirm_title")}
@@ -1815,6 +1890,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
           userId: inquiry.userId,
           organizationId: inquiry.organizationId || inquiry.userId,
           type: "inquiry_reply",
+          i18n: { title: "pn_inquiry_reply_title", message: "pn_inquiry_reply", params: { rfq: rfqTitle || "", reply: replyText[inquiryId].trim().substring(0, 100) } },
           title: "رد على استفسارك",
           description: `رد المقاول على استفسارك في "${rfqTitle}": ${replyText[inquiryId].trim().substring(0, 100)}${replyText[inquiryId].trim().length > 100 ? "..." : ""}`,
           rfqId: rfqId,
@@ -1883,7 +1959,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <span className="font-bold text-sm text-slate-700">
                       {inq.supplierName || t("offers_registered_supplier")}
-                      {inq.submittedByUserName && <span className="text-[11px] font-normal text-slate-500 mr-2">({inq.submittedByUserName})</span>}
+                      {inq.submittedByUserName && <span className="text-[11px] font-normal text-slate-500 ms-2">({inq.submittedByUserName})</span>}
                     </span>
                     <span className="text-xs text-muted-foreground" suppressHydrationWarning>
                       {fmtDate(inq.createdAt, locale)}

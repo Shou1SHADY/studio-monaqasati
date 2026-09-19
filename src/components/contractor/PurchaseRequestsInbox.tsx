@@ -32,6 +32,7 @@ import { declinePurchaseRequest, isV2Order, markPurchaseArrived, sourceOf, type 
 import { orderRef } from "@/lib/manufacturing-view"
 import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { fmtQty } from "@/components/manufacturing/ui/MfgUi"
+import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { SignedInAs, mfgActError } from "@/components/shared/MfgHandoffBits"
 
 type StateFilter = "open" | "arrived" | "declined" | "all"
@@ -177,22 +178,7 @@ export function PurchaseRequestsInbox() {
 
   return (
     <div className="space-y-5" dir={isRtl ? "rtl" : "ltr"}>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-module/10 text-module">
-            <Inbox size={22} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-black text-primary">{t("pri_title")}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{t("pri_desc")}</p>
-          </div>
-        </div>
-        <Button asChild variant="outline" className="gap-2">
-          <Link href="/contractor/rfqs">
-            {t("pri_back_to_rfqs")}
-          </Link>
-        </Button>
-      </div>
+      <ProcurementHeader icon={Inbox} title={t("pri_title")} description={t("pri_desc")} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:max-w-md">
@@ -269,10 +255,10 @@ export function PurchaseRequestsInbox() {
                         <p className="font-bold" dir="auto">{r.itemName}</p>
                         <p className="text-xs text-muted-foreground" dir="ltr">
                           {fmtQty(r.quantity)} {r.unit}
-                          {row.lotted && <span className="ms-1">· {t("mfy_pr_lotted")}</span>}
+                          {row.lotted && <span className="ms-1">· {t("pri_lotted")}</span>}
                         </p>
                         {r.note && <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">{r.note}</p>}
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">{t("mfy_pr_by", { name: r.by, date: formatCrmDate(r.at, locale) })}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">{t("mfy_pr_requested", { name: r.by, date: formatCrmDate(r.at, locale) })}</p>
                       </td>
                       <td className="px-4 py-3">
                         <Link href={`/contractor/${mfgLinks.order(o.id)}`} className="font-mono text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded" dir="ltr">

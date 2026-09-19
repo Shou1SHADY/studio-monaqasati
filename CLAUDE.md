@@ -105,7 +105,7 @@ scripts/                # Ops scripts (demo seed, data repair, migrations,
                         #   cleanup-seed-demo.js — dry-run-first removal of what
                         #   /admin/seed wrote; that page is OFF in production)
 docs/                   # sales-prd-status.md, customer-review-2026-09-17.md,
-                        #   customer-review-2026-09-18.md
+                        #   customer-review-2026-09-18.md, procurement-review-2026-09-19.md
 ```
 
 ## Key Utilities
@@ -132,6 +132,8 @@ docs/                   # sales-prd-status.md, customer-review-2026-09-17.md,
 | `src/lib/manufacturing-mindmap.ts` + `ManufacturingMindMap.tsx` | The optional mind-map view (Workshop → view: Mind map): `buildMindMapFromViews` over PRD 1.2 order views; the legacy builder stays for old orders |
 | `src/components/contractor/PurchaseRequestsInbox.tsx` | Procurement's desk for Manufacturing's shortfalls (`/contractor/rfqs/requests`) — answers requests (start RFQ → `ordered`, arrived, declined with a reason), never raises one |
 | `module` colour token (tailwind.config.ts + globals.css) | The ACTIVE module's colour: `data-accent` is set on the portal frame from the registry's `accentToken`, so `bg-module/10 text-module` inside any screen is that module's colour. Every module has its own token (Sales indigo, HR violet) |
+| `src/components/contractor/ProcurementHeader.tsx` | The head of every Procurement page: module tile, title, actions, and the tab rail (RFQs · purchase requests · suppliers · goods received), permission-gated like the sidebar |
+| `scripts/check-i18n-links.mjs` | Every translation key used in `src/` must exist in both message files under its namespace; every portal link must hit a route. Run before committing |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
@@ -196,6 +198,10 @@ reasons; no direct requests in Sales) ·
 order or rejects with a reason) · `accounting_journal` (the general journal —
 append-only, entry id is `{orgId}__{sourceType}__{sourceId}`) ·
 `accounting_accounts` · `accounting_periods` (month locks) ·
+(what posts: sales, manufacturing, IPC claims, settlements, manual vouchers, supplier GOODS
+RECEIPTS — Inventory + input VAT / Suppliers payable, offer prices read EXCLUDING VAT — and
+project MATERIAL ISSUES at snapshotted cost; not automated: VAT settlement, expenses, payroll,
+guarantee margins) ·
 `accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`;
 `fiscalYearStartMonth` 1–12 defines Q1/H1/FY on every screen, `displayScale`
 units|thousands|millions is the default presentation) ·

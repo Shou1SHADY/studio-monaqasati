@@ -470,6 +470,53 @@ export function postSalesInvoice(e: SalesInvoiceEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
+// 8b. Goods received from a supplier — Procurement's delivery confirmed
+// ---------------------------------------------------------------------------
+
+/** Saudi VAT, the standard rate a supplier's net price is taxed at. */
+export const STANDARD_VAT_PERCENT = 15
+
+export interface GoodsReceiptEvent {
+  deliveryId: string
+  date: string
+  /** The awarded offer's price for what arrived — offer prices are quoted
+   * EXCLUDING VAT (the owner's decision, 19 Sep 2026; the offer form says so). */
+  net: number
+  vat: number
+  supplierId?: string | null
+  supplierName?: string | null
+  rfqTitle?: string | null
+  projectId?: string | null
+  projectName?: string | null
+}
+
+/**
+ * The moment a supplier's goods are confirmed received, the company owns
+ * the stock and owes the supplier: Inventory and input VAT up, Suppliers
+ * payable up by the gross. That payable is what Finance's "pay a supplier"
+ * settlement clears — without this entry it never had a balance to pay.
+ */
+export function postGoodsReceipt(e: GoodsReceiptEvent): PostingResult {
+  const dim = { project: e.projectId ?? null, projectName: e.projectName ?? null }
+  const party = { party: e.supplierId ?? null, partyName: e.supplierName ?? null }
+  const net = round2(e.net)
+  const vat = round2(e.vat)
+  return {
+    sourceType: "goods_receipt",
+    sourceId: e.deliveryId,
+    date: e.date,
+    description: `استلام توريد${e.rfqTitle ? ` — ${e.rfqTitle}` : ""}${e.supplierName ? ` — ${e.supplierName}` : ""}`,
+    costCenter: COST_CENTERS.execution,
+    lines: [
+      { ...dim, account: ACC.inventoryMaterials, debit: net, note: "مواد مستلمة من المورد" },
+      { ...dim, account: ACC.vatInput, debit: vat, note: "ضريبة القيمة المضافة — مدخلات" },
+      { ...dim, ...party, account: ACC.suppliersPayable, credit: round2(net + vat), note: "مستحق للمورد" },
+    ],
+    empty: net === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 8a. Sales credit note — a return unwinds an invoice
 // ---------------------------------------------------------------------------
 
