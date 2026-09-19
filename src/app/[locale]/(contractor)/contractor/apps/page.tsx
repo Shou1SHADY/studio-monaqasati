@@ -16,6 +16,8 @@ const ACCENT_CLASSES: Record<AccentToken, { tile: string }> = {
   cta: { tile: "bg-cta/10 text-cta" },
   warning: { tile: "bg-warning/10 text-warning" },
   destructive: { tile: "bg-destructive/10 text-destructive" },
+  indigo: { tile: "bg-indigo/10 text-indigo" },
+  violet: { tile: "bg-violet/10 text-violet" },
 }
 
 // Full-page "app launcher" — the ERP-style browsable alternative to the

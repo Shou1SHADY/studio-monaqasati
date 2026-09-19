@@ -47,11 +47,33 @@
     --cta-foreground: 0 0% 100%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 100%;
+    --warning: 27 96% 37%;
+    --warning-foreground: 0 0% 100%;
+    --indigo: 243 75% 59%;
+    --indigo-foreground: 0 0% 100%;
+    --violet: 262 83% 58%;
+    --violet-foreground: 0 0% 100%;
+    /* The active module's colour — see `module` in tailwind.config.ts. Defaults
+       to the brand navy; the portal frame sets data-accent from the module
+       registry (portal-components.ts) and the rules below pick the colour. */
+    --module: var(--primary);
+    --module-foreground: var(--primary-foreground);
+    --module-on-dark: var(--cta);
     --border: 214 32% 91%;
     --input: 214 32% 91%;
     --ring: 220 56% 11%;
     --radius: 0.75rem;
   }
+
+  [data-accent="primary"] { --module: var(--primary); --module-foreground: var(--primary-foreground); --module-on-dark: var(--cta); }
+  [data-accent="secondary"] { --module: var(--secondary); --module-foreground: var(--secondary-foreground); --module-on-dark: var(--cta); }
+  [data-accent="accent"] { --module: var(--accent); --module-foreground: var(--accent-foreground); --module-on-dark: var(--accent); }
+  [data-accent="success"] { --module: var(--success); --module-foreground: var(--success-foreground); --module-on-dark: var(--success); }
+  [data-accent="cta"] { --module: var(--cta); --module-foreground: var(--cta-foreground); --module-on-dark: var(--cta); }
+  [data-accent="warning"] { --module: var(--warning); --module-foreground: var(--warning-foreground); --module-on-dark: var(--warning); }
+  [data-accent="destructive"] { --module: var(--destructive); --module-foreground: var(--destructive-foreground); --module-on-dark: var(--destructive); }
+  [data-accent="indigo"] { --module: var(--indigo); --module-foreground: var(--indigo-foreground); --module-on-dark: var(--indigo); }
+  [data-accent="violet"] { --module: var(--violet); --module-foreground: var(--violet-foreground); --module-on-dark: var(--violet); }
 
   .dark {
     --background: 222 47% 11%;

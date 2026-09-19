@@ -111,7 +111,9 @@ export type PortalComponentId =
   | "sales"
   | "users"
 
-export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive"
+// One colour per module, carried through its tile, its sidebar, its shell and
+// its inner screens (the `module` colour token). No two modules share one.
+export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive" | "indigo" | "violet"
 
 // Tailwind can't resolve dynamically-built class strings, so every
 // accent-token combination used by a tile must appear as a literal here.
@@ -124,6 +126,8 @@ export const COMPONENT_ACCENT_CLASSES: Record<AccentToken, { tile: string; ring:
   cta: { tile: "bg-cta/10 text-cta", ring: "ring-cta" },
   warning: { tile: "bg-warning/10 text-warning", ring: "ring-warning" },
   destructive: { tile: "bg-destructive/10 text-destructive", ring: "ring-destructive" },
+  indigo: { tile: "bg-indigo/10 text-indigo", ring: "ring-indigo" },
+  violet: { tile: "bg-violet/10 text-violet", ring: "ring-violet" },
 }
 
 export interface PortalComponentDef {
@@ -176,6 +180,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             requiredPermission: "rfq.manage",
             children: [
               { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
+              { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredPermission: "rfq.manage" },
             ],
           },
           { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
@@ -291,7 +296,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     descKey: "component_hr_desc",
     homeHref: "/contractor/employees",
     icon: Briefcase,
-    accentToken: "warning",
+    accentToken: "violet",
     displayOrder: 6,
     sections: [
       {
@@ -358,7 +363,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     descKey: "component_sales_desc",
     homeHref: "/contractor/sales",
     icon: HandCoins,
-    accentToken: "cta",
+    accentToken: "indigo",
     displayOrder: 8,
     sections: [
       {
@@ -575,7 +580,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     descKey: "component_hr_desc",
     homeHref: "/supplier/employees",
     icon: Briefcase,
-    accentToken: "warning",
+    accentToken: "violet",
     displayOrder: 6,
     sections: [
       {

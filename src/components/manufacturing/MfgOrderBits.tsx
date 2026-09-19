@@ -352,6 +352,7 @@ export const CANDIDATE_ICON: Record<Candidate["key"], ElementType> = {
   release: Play,
   shortage: ShoppingCart,
   purchase_wait: ShoppingCart,
+  arrived_wait: PackageCheck,
   submit_drawing: PencilRuler,
   drawing_wait: PencilRuler,
   slab: Eye,
@@ -394,9 +395,11 @@ export function candidateText(c: Candidate, v: OrderView, departments: MfgDepart
     case "release":
       return t("mfg4_c_release")
     case "shortage":
-      return t("mfg4_c_shortage", { qty, unit, item: c.itemName || "" })
+      return c.declinedReason ? t("mfg4_c_shortage_declined", { qty, unit, item: c.itemName || "", reason: c.declinedReason }) : t("mfg4_c_shortage", { qty, unit, item: c.itemName || "" })
     case "purchase_wait":
       return t("mfg4_c_purchase_wait", { qty, unit, item: c.itemName || "" })
+    case "arrived_wait":
+      return t("mfg4_c_arrived_wait", { qty, unit, item: c.itemName || "" })
     case "submit_drawing":
       return c.previousC ? t("mfg4_c_submit_drawing_c", { notes: c.previousC }) : t("mfg4_c_submit_drawing")
     case "drawing_wait":
@@ -406,7 +409,7 @@ export function candidateText(c: Candidate, v: OrderView, departments: MfgDepart
     case "gate":
       return t("mfg4_c_gate", { dept })
     case "issue_wait":
-      return t("mfg4_c_issue_wait", { ref: c.requestNumber || "", dept })
+      return t("mfg4_c_issue_wait", { ref: c.requestNumber || "—", dept })
     case "confirm_receipt":
       return t("mfg4_c_confirm_receipt", { dept })
     case "request_materials":
@@ -557,7 +560,7 @@ export function holderLabel(c: Candidate, ui: Pick<ReturnType<typeof useMfgUi>, 
 export function lateReasonText(r: LateReason, v: OrderView, departments: MfgDepartment[], t: T): string {
   switch (r.key) {
     case "shortage":
-      return t(r.requested ? "mfg4_late_shortage_requested" : "mfg4_late_shortage_not_requested", { qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName })
+      return t(r.arrived ? "mfg4_late_shortage_arrived" : r.requested ? "mfg4_late_shortage_requested" : "mfg4_late_shortage_not_requested", { qty: fmtQty(r.quantity), unit: r.unit, item: r.itemName })
     case "drawing":
       return v.calc.drawingState === "draft" ? t("mfg4_late_drawing_draft") : t("mfg4_late_drawing", { days: r.days })
     case "materials":

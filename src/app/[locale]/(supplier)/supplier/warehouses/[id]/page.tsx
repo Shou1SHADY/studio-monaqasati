@@ -47,6 +47,7 @@ import {
   Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { foldSearchText } from "@/lib/search-text"
 
 type InventoryItem = {
   id: string
@@ -86,6 +87,7 @@ function ItemDialog({
   orgId,
   t,
   locale,
+  existingItems,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -94,6 +96,7 @@ function ItemDialog({
   orgId: string
   t: ReturnType<typeof useTranslations<"Portal.Supplier">>
   locale: string
+  existingItems: InventoryItem[]
 }) {
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -121,6 +124,14 @@ function ItemDialog({
     if (!firestore) return
     if (!name.trim() || !unit.trim()) {
       toast({ title: t("inv_item_validation_error"), variant: "destructive" })
+      return
+    }
+    // One name per item in a store — the BOM and transfers find items by name.
+    const duplicate = existingItems.find(
+      (x) => x.id !== item?.id && !x.lot && !x.remnant && !lot.trim() && foldSearchText(x.name) === foldSearchText(name) && (x.unit || "").trim().toLowerCase() === unit.trim().toLowerCase()
+    )
+    if (duplicate) {
+      toast({ title: t("inv_item_name_duplicate", { name: duplicate.name }), variant: "destructive" })
       return
     }
     setIsSaving(true)
@@ -573,9 +584,10 @@ export default function SupplierWarehouseDetailPage() {
         )}
       </div>
 
-      <ItemDialog open={showAdd} onOpenChange={setShowAdd} warehouseId={warehouseId} orgId={myOrgId} t={t} locale={locale} />
+      <ItemDialog open={showAdd} onOpenChange={setShowAdd} warehouseId={warehouseId} orgId={myOrgId} t={t} locale={locale} existingItems={list} />
       {editItem && (
         <ItemDialog open={!!editItem} onOpenChange={(open) => { if (!open) setEditItem(null) }}
+          existingItems={list}
           item={editItem} warehouseId={warehouseId} orgId={myOrgId} t={t} locale={locale} />
       )}
       {unitsItem && (

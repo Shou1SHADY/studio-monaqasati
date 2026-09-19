@@ -125,7 +125,7 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
             className={cn(
               "flex items-center gap-1 h-10 px-3 rounded-md transition-all",
               isParentActive
-                ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                ? "bg-module-on-dark text-module-foreground shadow-sm"
                 : "text-sidebar-foreground hover:bg-sidebar-accent"
             )}
           >
@@ -158,7 +158,7 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
                   className={cn(
                     "h-9 transition-all",
                     hrefIsActive(child.href, pathname, search)
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+                      ? "bg-module-on-dark text-module-foreground shadow-sm"
                       : "text-sidebar-foreground/80 hover:bg-sidebar-accent"
                   )}
                 >
@@ -206,7 +206,7 @@ function NavItemRenderer({ item, pathname, search, t, can }: { item: NavItem; pa
         className={cn(
           "h-10 transition-all",
           isParentActive
-            ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
+            ? "bg-module-on-dark text-module-foreground shadow-sm"
             : "text-sidebar-foreground hover:bg-sidebar-accent"
         )}
       >

@@ -186,7 +186,12 @@ export function MfgPurchaseRequestsPanel({
           {t("mfy_pr_title")}
           {requests.length > 0 && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{requests.length}</Badge>}
         </CardTitle>
-        <p className="text-xs text-muted-foreground">{t("mfy_pr_desc")}</p>
+        <p className="text-xs text-muted-foreground">
+          {t("mfy_pr_desc")}{" "}
+          <Link href="/contractor/rfqs/requests" className="font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            {t("pri_open_inbox")} →
+          </Link>
+        </p>
       </CardHeader>
       <CardContent className="p-0">
         {requests.length > 0 && (

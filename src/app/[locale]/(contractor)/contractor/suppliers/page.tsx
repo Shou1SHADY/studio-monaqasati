@@ -2,6 +2,7 @@
 
 import { useTranslations, useLocale } from 'next-intl'
 import { PortalLayout } from "@/components/layout/portal-layout"
+import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { cn } from "@/lib/utils"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +26,7 @@ import {
   XCircle,
   Calendar,
   UserPlus,
+  Users
 } from "lucide-react"
 import {
   Popover,
@@ -395,13 +397,12 @@ export default function SuppliersDirectory() {
   return (
     <PortalLayout>
       <div className="space-y-8">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("suppliers_page_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("suppliers_page_desc")}</p>
-          </div>
-          <div className="flex gap-2">
-            {canManageSuppliers && <Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
+        <ProcurementHeader
+          icon={Users}
+          title={t("suppliers_page_title")}
+          description={t("suppliers_page_desc")}
+          action={
+            canManageSuppliers && (<Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
               <UserPlus size={18} />
               {t("my_sup_invite_tab")}
               {sentInvitations.filter((inv: any) => inv.status === "pending").length > 0 && (
@@ -409,19 +410,25 @@ export default function SuppliersDirectory() {
                   {sentInvitations.filter((inv: any) => inv.status === "pending").length}
                 </Badge>
               )}
-            </Button>}
-            <div className="relative w-64">
-              <Search className={cn("absolute top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground", locale === 'ar' ? 'right-3' : 'left-3')} />
+            </Button>)
+          }
+        />
+        <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute top-1/2 -translate-y-1/2 start-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input 
-                placeholder={t("suppliers_search")} 
-                className={cn("pl-8", locale === 'ar' ? 'pr-10' : 'pl-10 pr-8')}
+                placeholder={t("suppliers_search")}
+                aria-label={t("suppliers_search")}
+                className="ps-10 pe-8"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               {searchQuery && (
                 <button
+                  type="button"
                   onClick={() => setSearchQuery("")}
-                  className={cn("absolute top-1/2 -translate-y-1/2 text-slate-400 hover:text-destructive transition-colors", locale === 'ar' ? 'left-2' : 'right-2')}
+                  aria-label={t("suppliers_search_clear")}
+                  className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <X size={14} />
                 </button>
@@ -433,7 +440,7 @@ export default function SuppliersDirectory() {
                   <Filter size={18} />
                   {t("suppliers_filter")}
                   {hasActiveFilters && (
-                    <span className={cn("absolute -top-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center", locale === 'ar' ? '-right-1' : '-left-1')}>
+                    <span className="absolute -top-1 -start-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center">
                       {(filterCity !== "all" ? 1 : 0) + (filterSpecialization !== "all" ? 1 : 0)}
                     </span>
                   )}
@@ -495,7 +502,6 @@ export default function SuppliersDirectory() {
                 </div>
               </PopoverContent>
             </Popover>
-          </div>
         </div>
 
         {isLoading ? (
@@ -574,13 +580,13 @@ export default function SuppliersDirectory() {
 
                       {supplier.certificates?.length > 0 && (
                         <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
-                          <ShieldCheck size={14} className={locale === 'ar' ? 'ml-1' : 'mr-1'} />
+                          <ShieldCheck size={14} className="me-1" aria-hidden="true" />
                           {t("suppliers_cert_count", { count: supplier.certificates.length })}
                         </Badge>
                       )}
                       {supplier.isFavorite && (
                         <Badge variant="outline" className="border-amber-200 text-amber-600 bg-amber-50 px-2 py-0.5 h-6">
-                          <Star size={10} className={cn("fill-amber-500", locale === 'ar' ? 'ml-1' : 'mr-1')} />
+                          <Star size={10} className="fill-amber-500 me-1" aria-hidden="true" />
                           {t("suppliers_fav_badge")}
                         </Badge>
                       )}
@@ -604,7 +610,7 @@ export default function SuppliersDirectory() {
                               className={star <= Math.round(supplier.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
                             />
                           ))}
-                          <span className={cn("text-sm font-bold text-slate-700", locale === 'ar' ? 'mr-1' : 'ml-1')}>{supplier.rating}</span>
+                          <span className="text-sm font-bold text-slate-700 ms-1">{supplier.rating}</span>
                           <span className="text-[10px] text-muted-foreground">{t("suppliers_review_count", { count: supplier.reviewsCount || 0 })}</span>
                         </>
                       ) : (
@@ -612,7 +618,7 @@ export default function SuppliersDirectory() {
                           {[1, 2, 3, 4, 5].map((star) => (
                             <Star key={star} size={13} className="text-slate-200 fill-slate-200" />
                           ))}
-                          <span className={cn("text-[10px] text-muted-foreground", locale === 'ar' ? 'mr-1' : 'ml-1')}>{t("suppliers_no_reviews")}</span>
+                          <span className="text-[10px] text-muted-foreground ms-1">{t("suppliers_no_reviews")}</span>
                         </>
                       )}
                     </div>
@@ -829,7 +835,7 @@ export default function SuppliersDirectory() {
                             "{review.comment}"
                           </p>
                         )}
-                        <p className={cn("text-[10px] text-slate-400", locale === 'ar' ? 'text-left' : 'text-right')}>
+                        <p className="text-[10px] text-slate-400 text-end">
                           {new Date(review.createdAt).toLocaleDateString(locale)}
                         </p>
                       </div>

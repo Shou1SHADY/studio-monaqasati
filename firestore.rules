@@ -1330,8 +1330,12 @@ service cloud.firestore {
                  || (resource.data.get('projectId', null) is string && hasProjectPermission(resource.data.projectId, 'projects.edit')))
                 && woChanged().hasOnly(['drawing', 'changeRequest', 'log', 'receivedAt', 'receivedByUserId', 'receivedByUserName', 'status', 'completedAt', 'updatedAt'])
                 && request.resource.data.status in ['open', 'done'])
+            // Purchasing and Inventory answer a purchase request (RFQ started, arrived,
+            // declined) — they never raise one: the shortfall travels manufacturing →
+            // warehouse → purchasing, so the array may change but never grow here.
             || ((hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('warehouses.manage'))
-                && woChanged().hasOnly(['purchaseRequests', 'updatedAt']))
+                && woChanged().hasOnly(['purchaseRequests', 'updatedAt'])
+                && request.resource.data.get('purchaseRequests', []).size() == resource.data.get('purchaseRequests', []).size())
             || (resource.data.get('productId', null) == null
                 && woChanged().hasOnly(['stages', 'currentStageIndex', 'status', 'completedAt', 'deliveredTo', 'deliveredAt',
                                         'deliveryNoteId', 'deliveryNoteNumber', 'receivedAt', 'receivedByUserId', 'receivedByUserName',

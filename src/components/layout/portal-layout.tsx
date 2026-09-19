@@ -28,6 +28,7 @@ import { getAuth, signOut } from "firebase/auth"
 import { useSearchParams } from "next/navigation"
 import { useRouter, usePathname } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
+import { resolveActiveContractorComponent, resolveActiveSupplierComponent } from "@/lib/portal-components"
 import { notificationCopy, notificationHref } from "@/lib/mfg-events"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
@@ -636,8 +637,17 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }
 
+  // The active module's colour, for the whole frame: sidebar, header and
+  // every screen inside. Read once here from the registry the sidebar already
+  // resolves against, so a module never has to colour itself.
+  const moduleAccent = pathname.startsWith("/supplier")
+    ? resolveActiveSupplierComponent(pathname).accentToken
+    : pathname.startsWith("/contractor")
+      ? resolveActiveContractorComponent(pathname).accentToken
+      : undefined
+
   return (
-    <SidebarProvider>
+    <SidebarProvider data-accent={moduleAccent}>
       <CompanySwitchOverlay show={!!switchingOrgId} />
       {!isContractorDashboardHome && <RoleSidebar />}
       <SidebarInset>

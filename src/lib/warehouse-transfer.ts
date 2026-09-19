@@ -69,7 +69,8 @@ export function carriedValueFields(source: CarriedValueFields | null | undefined
  * so repeated transfers top up one row instead of piling up duplicates. A
  * block (lot) or a remnant is its own row — merging them would mix colours. */
 export function itemMergeKey(item: { name: string; unit: string; lot?: string | null; remnant?: boolean | null }): string {
-  return `${item.name.trim()}|${item.unit.trim().toLowerCase()}${item.lot ? `|lot:${item.lot.trim()}` : ""}${item.remnant ? "|remnant" : ""}`
+  // Lower-cased like the BOM's itemKey: "Statuario" and "statuario" are one item there, so here too.
+  return `${item.name.trim().toLowerCase()}|${item.unit.trim().toLowerCase()}${item.lot ? `|lot:${item.lot.trim()}` : ""}${item.remnant ? "|remnant" : ""}`
 }
 
 export interface RunTransferParams {
@@ -153,6 +154,8 @@ export interface ReceiveDeliveryItem {
   name: string
   unit: string
   quantity: number
+  /** Net of VAT, when the receipt knows it. */
+  unitCost?: number | null
 }
 
 export interface ReceiveDeliveryParams {
@@ -192,16 +195,27 @@ export async function receiveDelivery(params: ReceiveDeliveryParams): Promise<vo
       ? doc(firestore, "warehouses", warehouseId, "inventoryItems", matchId)
       : doc(itemsColRef)
 
+    // What one unit cost, when the receipt knows it (net of VAT). Merged into
+    // a row that already has stock, the row's cost becomes the quantity-
+    // weighted average — the same figure Inventory values the row at.
+    const unitCost = item.unitCost != null && Number.isFinite(item.unitCost) && item.unitCost >= 0 ? item.unitCost : null
+
     await runTransaction(firestore, async (tx) => {
       const destSnap = matchId ? await tx.get(destRef) : null
       if (destSnap?.exists()) {
-        tx.update(destRef, { quantity: (destSnap.data().quantity || 0) + quantity, updatedAt: serverTimestamp() })
+        const cur = destSnap.data() as { quantity?: number; unitCost?: number | null }
+        const onHand = Math.max(0, Number(cur.quantity) || 0)
+        const oldCost = cur.unitCost != null && Number.isFinite(cur.unitCost) ? cur.unitCost : null
+        const averaged =
+          unitCost == null ? undefined : oldCost == null || onHand === 0 ? unitCost : Math.round(((onHand * oldCost + quantity * unitCost) / (onHand + quantity)) * 100) / 100
+        tx.update(destRef, { quantity: onHand + quantity, ...(averaged !== undefined ? { unitCost: averaged } : {}), updatedAt: serverTimestamp() })
       } else {
         tx.set(destRef, {
           name,
           sku: null,
           quantity,
           unit,
+          unitCost,
           minStockLevel: null,
           trackingMode: null,
           organizationId,

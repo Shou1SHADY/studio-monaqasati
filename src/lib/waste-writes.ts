@@ -6,6 +6,7 @@ import {
   type Firestore,
 } from "firebase/firestore"
 import { logFinanceAudit } from "@/lib/finance-audit"
+import { onMaterialIssued } from "@/lib/accounting/hooks"
 import { wasteRecordsCollection, type WasteScope } from "@/hooks/useProjectWasteStats"
 
 /** One line of an "issue from warehouse" — what left, what was used, why the difference. */
@@ -43,6 +44,8 @@ export interface RecordWasteInput {
   wasteTargetPercent: number
   userId: string
   userName: string
+  /** The org whose books the issue posts to. Without it nothing is posted. */
+  organizationId?: string | null
 }
 
 /**
@@ -117,6 +120,32 @@ export async function recordWasteConsumption(firestore: Firestore, input: Record
     })
   }
   await batch.commit()
+
+  // The books: stock left Inventory into the project's (or the site's) cost.
+  // At the unit cost snapshotted on each row — the same figure the waste
+  // record keeps — so the ledger and the waste report agree. Rows with no
+  // cost contribute nothing rather than a guess. Posts only when Accounting
+  // is on (the hook checks); a posting failure never undoes the issue.
+  if (input.organizationId) {
+    const priced = rows.filter((r) => r.unitCost != null && r.quantityTaken > 0)
+    const totalValue = priced.reduce((s, r) => s + r.quantityTaken * (r.unitCost as number), 0)
+    const wasteValue = priced.reduce((s, r) => s + Math.max(0, r.quantityTaken - r.quantityUsed) * (r.unitCost as number), 0)
+    if (totalValue > 0) {
+      const names = rows.map((r) => r.itemName)
+      onMaterialIssued(
+        firestore,
+        { organizationId: input.organizationId, userId, userName },
+        {
+          batchId,
+          projectId: scope.projectId ?? null,
+          projectName: input.projectName ?? null,
+          totalValue: parseFloat(totalValue.toFixed(2)),
+          wasteValue: parseFloat(wasteValue.toFixed(2)),
+          itemName: names.length > 3 ? `${names.slice(0, 3).join("، ")} …` : names.join("، "),
+        }
+      )
+    }
+  }
 
   // The finance trail is per project — a warehouse has no ledger to write to.
   if (input.exceptionReason && scope.projectId) {

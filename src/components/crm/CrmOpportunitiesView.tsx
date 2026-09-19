@@ -106,7 +106,8 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
   const { profile } = useCrmOrgProfile()
   const router = useRouter()
   const base = crmBasePath(portal)
-  const projectsBase = portal === "contractor" ? "/contractor/projects" : "/supplier/projects"
+  // Projects exist on the contractor portal only.
+  const projectsBase = portal === "contractor" ? "/contractor/projects" : null
 
   const [view, setView] = useState<"board" | "list">("board")
   const [showAdd, setShowAdd] = useState(false)
@@ -382,7 +383,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       opp={opp}
                       detailHref={`${base}/opportunities/${opp.id}`}
                       contactHref={`${base}/leads/${opp.contactId}`}
-                      projectHref={opp.projectId ? `${projectsBase}/${opp.projectId}` : null}
+                      projectHref={opp.projectId && projectsBase ? `${projectsBase}/${opp.projectId}` : null}
                       canManage={canManageCrm}
                       isMoving={movingId === opp.id}
                       blocking={gatesRemaining(opp, gateCtx).length}
@@ -428,7 +429,7 @@ export function CrmOpportunitiesView({ portal }: { portal: CrmPortal }) {
                       opp={opp}
                       detailHref={`${base}/opportunities/${opp.id}`}
                       contactHref={`${base}/leads/${opp.contactId}`}
-                      projectHref={opp.projectId ? `${projectsBase}/${opp.projectId}` : null}
+                      projectHref={opp.projectId && projectsBase ? `${projectsBase}/${opp.projectId}` : null}
                       canManage={canManageCrm}
                       isMoving={movingId === opp.id}
                       blocking={0}

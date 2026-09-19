@@ -108,7 +108,7 @@ export function CrmStat({
   icon: ElementType
   label: string
   value: string | number
-  accent?: "primary" | "accent" | "success" | "warning" | "destructive" | "cta"
+  accent?: "primary" | "accent" | "success" | "warning" | "destructive" | "cta" | "indigo" | "violet"
   hint?: string
 }) {
   const accentClass = {
@@ -118,6 +118,8 @@ export function CrmStat({
     warning: "bg-warning/10 text-warning",
     destructive: "bg-destructive/10 text-destructive",
     cta: "bg-cta/10 text-cta",
+    indigo: "bg-indigo/10 text-indigo",
+    violet: "bg-violet/10 text-violet",
   }[accent]
 
   return (

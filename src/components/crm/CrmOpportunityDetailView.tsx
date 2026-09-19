@@ -123,7 +123,8 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
   const { profile } = useCrmOrgProfile()
 
   const base = crmBasePath(portal)
-  const projectsBase = portal === "contractor" ? "/contractor/projects" : "/supplier/projects"
+  // Projects exist on the contractor portal only; a supplier's won deal continues in Sales.
+  const projectsBase = portal === "contractor" ? "/contractor/projects" : null
 
   // Picked out of the org-scoped list rather than read by id: the query is
   // already filtered by `organizationId`, so a deal from another org simply is
@@ -346,7 +347,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
               </p>
             )}
           </div>
-          {opp.projectId && (
+          {opp.projectId && projectsBase && (
             <Button asChild variant="outline" size="sm" className="gap-1.5 shrink-0">
               <Link href={`${projectsBase}/${opp.projectId}`}>
                 <ExternalLink size={13} />
@@ -632,7 +633,19 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
             </div>
           )}
 
-          {state === "won" && (
+          {state === "won" && !projectsBase && (
+            <div className="p-4 border-t space-y-3 bg-success/5">
+              <p className="text-xs text-muted-foreground">{t("crm_won_continue_in_sales")}</p>
+              <Button asChild size="sm" variant="outline" className="gap-1.5">
+                <Link href={`/${portal}/sales/quotations`}>
+                  <Building2 size={13} />
+                  {t("crm_open_sales")}
+                </Link>
+              </Button>
+            </div>
+          )}
+
+          {state === "won" && projectsBase && (
             <div className="p-4 border-t space-y-3 bg-success/5">
               <p className="text-xs text-muted-foreground">{t("crm_handover_prompt")}</p>
               <Button
@@ -1058,6 +1071,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
           opportunity={opp}
         />
       )}
+      {projectsBase && (
       <CrmHandoverDialog
         open={showHandover}
         onOpenChange={setShowHandover}
@@ -1068,6 +1082,7 @@ export function CrmOpportunityDetailView({ portal }: { portal: CrmPortal }) {
         handedOverCount={handedOverCount}
         projectsBasePath={projectsBase}
       />
+      )}
       <CrmAddendumDialog open={showAddendum} onOpenChange={setShowAddendum} opportunity={opp} />
       <CrmActivityDialog
         open={showActivity}

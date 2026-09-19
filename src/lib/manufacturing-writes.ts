@@ -1790,7 +1790,38 @@ export async function markPurchaseArrived(firestore: Firestore, input: { orderId
     const ref = doc(firestore, WORK_ORDERS, input.orderId)
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new Error("order_missing")
-    const rows = ((snap.data() as WorkOrderV2).purchaseRequests || []).map((p) => (p.id === input.purchaseRequestId && p.state === "sent" ? { ...p, state: "arrived" as const, arrivedAt: nowIso() } : p))
+    const rows = ((snap.data() as WorkOrderV2).purchaseRequests || []).map((p) =>
+      p.id === input.purchaseRequestId && (p.state === "sent" || p.state === "ordered") ? { ...p, state: "arrived" as const, arrivedAt: nowIso(), arrivedBy: input.actor.name } : p
+    )
+    tx.update(ref, { purchaseRequests: rows, updatedAt: serverTimestamp() })
+  })
+}
+
+/** Purchasing started an RFQ for the line: the request now says which one. */
+export async function linkPurchaseRequestRfq(firestore: Firestore, input: { orderId: string; purchaseRequestId: string; rfqId: string; rfqNumber?: string | null }): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const ref = doc(firestore, WORK_ORDERS, input.orderId)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error("order_missing")
+    const rows = ((snap.data() as WorkOrderV2).purchaseRequests || []).map((p) =>
+      p.id === input.purchaseRequestId && p.state === "sent" ? { ...p, state: "ordered" as const, rfqId: input.rfqId, rfqNumber: input.rfqNumber ?? null, orderedAt: nowIso() } : p
+    )
+    tx.update(ref, { purchaseRequests: rows, updatedAt: serverTimestamp() })
+  })
+}
+
+/** Purchasing sends the shortfall back — the workshop manager sees why and decides again. */
+export async function declinePurchaseRequest(firestore: Firestore, input: { orderId: string; purchaseRequestId: string; reason: string; actor: Actor }): Promise<void> {
+  if (!input.reason.trim()) throw new Error("reason_required")
+  await runTransaction(firestore, async (tx) => {
+    const ref = doc(firestore, WORK_ORDERS, input.orderId)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error("order_missing")
+    const rows = ((snap.data() as WorkOrderV2).purchaseRequests || []).map((p) =>
+      p.id === input.purchaseRequestId && (p.state === "sent" || p.state === "ordered")
+        ? { ...p, state: "declined" as const, declinedAt: nowIso(), declinedBy: input.actor.name, declinedReason: input.reason.trim() }
+        : p
+    )
     tx.update(ref, { purchaseRequests: rows, updatedAt: serverTimestamp() })
   })
 }

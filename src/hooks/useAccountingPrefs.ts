@@ -21,10 +21,12 @@ export interface AccountingPrefs {
   fiscalYear: number | null
   customFrom: string
   customTo: string
+  /** Collapsible sections the reader opened or closed, by section id. */
+  openSections: Record<string, boolean>
 }
 
 const STORAGE_KEY = "mdmak.accounting.prefs.v1"
-const DEFAULT_PREFS: AccountingPrefs = { scale: null, periodKey: "FY", fiscalYear: null, customFrom: "", customTo: "" }
+const DEFAULT_PREFS: AccountingPrefs = { scale: null, periodKey: "FY", fiscalYear: null, customFrom: "", customTo: "", openSections: {} }
 
 let prefs: AccountingPrefs = DEFAULT_PREFS
 let loaded = false
@@ -38,6 +40,10 @@ function sanitize(raw: Partial<AccountingPrefs>): AccountingPrefs {
     fiscalYear: Number.isInteger(raw.fiscalYear) ? (raw.fiscalYear as number) : null,
     customFrom: typeof raw.customFrom === "string" ? raw.customFrom : "",
     customTo: typeof raw.customTo === "string" ? raw.customTo : "",
+    openSections:
+      raw.openSections && typeof raw.openSections === "object"
+        ? (Object.fromEntries(Object.entries(raw.openSections).filter(([, v]) => typeof v === "boolean")) as Record<string, boolean>)
+        : {},
   }
 }
 

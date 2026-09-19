@@ -39,6 +39,7 @@ import {
 } from "@/lib/warehouse-requests"
 import { Warehouse, Plus, Pencil, Trash2, Loader2, MapPin, Package, AlertTriangle, Barcode, Ban, X, ArrowLeftRight, Star, ArrowDownToLine, Send, Search, ArrowUpDown, Shapes, Wrench, GripVertical, Layers } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { foldSearchText } from "@/lib/search-text"
 import { INVENTORY_UNIT_CODES, formatUnit, isKnownUnitCode, unitMessageKey } from "@/lib/inventory-units"
 import { DEFAULT_ITEM_TYPE, composeItemTypeOptions, resolveItemTypeId, type CustomItemType, type ItemTypeOption } from "@/lib/inventory-types"
 import { useInventoryItemTypes } from "@/hooks/useInventoryItemTypes"
@@ -97,6 +98,7 @@ function ItemDialog({
   defaultTypeId,
   t,
   locale,
+  existingItems,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -104,6 +106,8 @@ function ItemDialog({
   warehouseId: string
   orgId: string
   typeOptions: ItemTypeOption[]
+  /** The warehouse's rows, to refuse a second item with the same name and unit. */
+  existingItems: InventoryItem[]
   /** Preselected type for a new item — the section whose add button opened the dialog. */
   defaultTypeId: string
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
@@ -158,12 +162,23 @@ function ItemDialog({
 
   const nameError = !name.trim()
   const unitError = !resolvedUnit
+  // The BOM, transfers and issues all find an item by its NAME. A second
+  // "أسمنت" in the same store is drawn against by both and never told apart;
+  // the fix the customer chose is to refuse it at creation.
+  const duplicate = existingItems.find(
+    (x) => x.id !== item?.id && !x.lot && !x.remnant && foldSearchText(x.name) === foldSearchText(name) && (x.unit || "").trim().toLowerCase() === resolvedUnit.trim().toLowerCase()
+  )
 
   const handleSave = async () => {
     if (!firestore) return
     if (nameError || unitError) {
       setShowErrors(true)
       toast({ title: t("inv_item_validation_error"), variant: "destructive" })
+      return
+    }
+    if (duplicate && !lot.trim()) {
+      setShowErrors(true)
+      toast({ title: t("inv_item_name_duplicate", { name: duplicate.name }), variant: "destructive" })
       return
     }
     setIsSaving(true)
@@ -1579,6 +1594,7 @@ export function WarehouseInventoryPanel({
           defaultTypeId={addItemType}
           t={t}
           locale={locale}
+          existingItems={(items || []) as InventoryItem[]}
         />
       )}
       {editItem && (
@@ -1592,6 +1608,7 @@ export function WarehouseInventoryPanel({
           defaultTypeId={DEFAULT_ITEM_TYPE}
           t={t}
           locale={locale}
+          existingItems={(items || []) as InventoryItem[]}
         />
       )}
       {showAddType && (

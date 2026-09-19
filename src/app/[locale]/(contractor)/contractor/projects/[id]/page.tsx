@@ -3533,6 +3533,7 @@ export default function ProjectDetailPage() {
               wasteTargetPercent: typedProject.wasteTargetPercent ?? 12,
               userId: user.uid,
               userName: actorName,
+              organizationId: typedProject.organizationId || null,
             })
             toast({ title: t("proj_boq_consume_success") })
           }}

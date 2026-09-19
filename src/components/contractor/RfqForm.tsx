@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from 'next-intl'
@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
+import { linkPurchaseRequestRfq } from "@/lib/manufacturing-writes"
 import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { collection, doc, getDoc, setDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
@@ -76,6 +77,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // screen (Manufacturing's purchase requests, from the RFQs list).
   const itemsParam = searchParams.get("items")
   const itemsApplied = useRef<string | null>(null)
+  // ?source=<workOrderId>:<purchaseRequestId> — the purchase request this RFQ
+  // answers. The RFQ carries it, and the request is told which RFQ it became.
+  const sourceParam = searchParams.get("source")
+  const purchaseSource = useMemo(() => {
+    const [workOrderId, purchaseRequestId] = (sourceParam || "").split(":")
+    return workOrderId && purchaseRequestId ? { workOrderId, purchaseRequestId } : null
+  }, [sourceParam])
   const tShared = useTranslations("Portal.Shared")
   const [editRfqData, setEditRfqData] = useState<any>(null)
   const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
@@ -685,8 +693,16 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Awaited (not fire-and-forget) so a failed write is caught before we tell the user it worked.
       // Skipped entirely for standalone RFQs (no project to sync into).
       try {
-        const ref = await addDoc(rfqsRef, rfqData)
+        const ref = await addDoc(rfqsRef, purchaseSource ? { ...rfqData, purchaseSource: { kind: "mfg_purchase", ...purchaseSource } } : rfqData)
         createdRfqIds.push(ref.id)
+        if (purchaseSource && createdRfqIds.length === 1) {
+          try {
+            await linkPurchaseRequestRfq(firestore, { orderId: purchaseSource.workOrderId, purchaseRequestId: purchaseSource.purchaseRequestId, rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null })
+          } catch (linkErr) {
+            // The RFQ exists; only the back-reference failed — Purchasing can still see both.
+            console.error("purchase request ↔ RFQ link failed:", linkErr)
+          }
+        }
         if (projectId) {
           await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayUnion(ref.id) })
         }
@@ -819,7 +835,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
   return (
     <PortalLayout>
-      <div className={cn("max-w-4xl mx-auto py-8", locale === 'ar' ? 'text-right' : 'text-left')}>
+      <div className="max-w-4xl mx-auto py-8 text-start">
         <div className="mb-8">
           <h1 className="text-3xl font-black text-foreground font-headline">{isEditing ? t("newrfq_edit_title") : t("newrfq_page_title")}</h1>
           <p className="text-muted-foreground mt-2">{isEditing ? t("newrfq_edit_desc") : t("newrfq_page_desc")}</p>
@@ -1001,7 +1017,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                             <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
                               <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />
                             </div>
-                            <div className="text-right">
+                            <div className="text-start">
                               <span className="text-sm font-semibold text-slate-700 block">{t("newrfq_click_upload_pdf")}</span>
                               <span className="text-xs text-slate-400">{t("newrfq_pdf_technical_desc")}</span>
                             </div>

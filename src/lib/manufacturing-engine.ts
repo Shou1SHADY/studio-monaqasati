@@ -132,8 +132,11 @@ export function deptCapacity(dept: Pick<DeptCapacityFields, "workers" | "hoursPe
 // ---------------------------------------------------------------------------
 
 export interface MfgSettings {
-  /** Feature switches: turning one off hides a whole computation, deletes nothing. */
-  features: { time: boolean; estimates: boolean; checklists: boolean }
+  /** Feature switches: turning one off hides a whole computation, deletes nothing.
+   * `labourCost` needs `time` (hours are what it prices): off, an order's cost
+   * is materials only — for a workshop whose workers are on salaries and
+   * whose wages are booked by HR, costing the hour again would count them twice. */
+  features: { time: boolean; estimates: boolean; checklists: boolean; labourCost: boolean }
   /** Finance policies — read here, owned (and edited) by Finance (FN-01). */
   overheadRatePerHour: number
   /** Scrap value the workshop manager may approve; above it → cost controller. */
@@ -150,13 +153,18 @@ export interface MfgSettings {
 }
 
 export const DEFAULT_MFG_SETTINGS: MfgSettings = {
-  features: { time: true, estimates: true, checklists: true },
+  features: { time: true, estimates: true, checklists: true, labourCost: true },
   overheadRatePerHour: 32,
   scrapApprovalLimit: 3000,
   answerWindowHours: 24,
   noteEscalationHours: 48,
   estimateValidityDays: 15,
   remnantValuePercent: 50,
+}
+
+/** Labour and overhead are priced only when time is on AND the workshop wants them priced. */
+export function labourCostOn(settings: Pick<MfgSettings, "features">): boolean {
+  return settings.features.time && settings.features.labourCost !== false
 }
 
 export function normalizeMfgSettings(raw: Partial<MfgSettings> | null | undefined): MfgSettings {
@@ -402,8 +410,17 @@ export interface PurchaseRequestRecord {
   by: string
   byId?: string | null
   at: string
-  state: "sent" | "arrived"
+  /** sent → (ordered) → arrived; declined sends the shortfall back to the workshop with a reason. */
+  state: "sent" | "ordered" | "arrived" | "declined"
   arrivedAt?: string | null
+  arrivedBy?: string | null
+  /** Set by Purchasing when it starts an RFQ for this line. */
+  rfqId?: string | null
+  rfqNumber?: string | null
+  orderedAt?: string | null
+  declinedAt?: string | null
+  declinedBy?: string | null
+  declinedReason?: string | null
 }
 
 export interface OverrideRecord {
@@ -514,7 +531,7 @@ export interface MfgNoteSlice {
 export const round2 = (n: number): number => Math.round((Number(n) || 0) * 100) / 100
 export const r1 = (n: number): number => Math.round((Number(n) || 0) * 10) / 10
 
-const COUNT_UNIT = /^(pc|pcs|piece|pieces|set|sets|crate|crates|pail|pails|box|boxes|unit|units|ea|each|حبة|قطعة|طقم|صندوق|عبوة|وحدة|كرتون)$/i
+const COUNT_UNIT = /^(pc|pcs|piece|pieces|set|sets|crate|crates|pail|pails|box|boxes|unit|units|ea|each|حبة|قطعة|طقم|صندوق|عبوة|وحدة|كرتون|sheet|bundle|roll|bag|drum)$/i
 
 /** A need is rounded UP — no shortage is created by rounding: fractional units
  * to one decimal, counted units to whole ones. */
@@ -777,7 +794,7 @@ export function requestedBom(product: Pick<MfgProduct, "bom">, departmentId?: st
   return (product.bom || []).filter((b) => !b.custody && (!departmentId || b.departmentId === departmentId))
 }
 
-const perUnit = (product: Pick<MfgProduct, "wastePercent">, b: MfgBomLine) => b.qtyPerUnit * (b.withWaste ? wasteFactor(product) : 1)
+export const perUnit = (product: Pick<MfgProduct, "wastePercent">, b: MfgBomLine) => b.qtyPerUnit * (b.withWaste ? wasteFactor(product) : 1)
 
 /** Units passing station i over the order's life: what it finished, what was
  * scrapped there, and everything still before or at it. */
@@ -969,7 +986,10 @@ export function shortages(c: OrderCalc, alloc: Allocation): ShortLine[] {
     .map((it) => {
       const k = itemKey(it.itemName)
       const short = Math.max(0, r1(needRemain(c, it.itemName) - (mine.get(k) || 0) - Math.max(0, alloc.free.get(k) || 0)))
-      const requested = c.slice.purchaseRequests.find((p) => p.state === "sent" && itemKey(p.itemName) === k) || null
+      // A request Purchasing is still handling, or whose goods have arrived but are
+      // not yet booked into stock, counts as requested — only a declined one puts
+      // the shortfall back on the workshop manager.
+      const requested = c.slice.purchaseRequests.find((p) => p.state !== "declined" && itemKey(p.itemName) === k) || null
       return { itemName: it.itemName, unit: it.unit, short, requested }
     })
     .filter((x) => x.short > 0)
@@ -1172,7 +1192,7 @@ export function fitQty(product: MfgProduct, days: number, calcs: OrderCalc[], de
 // Cost — built from real movements; one WIP definition (FN-06)
 // ---------------------------------------------------------------------------
 
-const rateOf = (departments: DeptCapacityFields[], id: string) => Number(departments.find((d) => d.id === id)?.hourlyRate) || 0
+export const rateOf = (departments: DeptCapacityFields[], id: string) => Number(departments.find((d) => d.id === id)?.hourlyRate) || 0
 
 export interface StdCost {
   materials: number
@@ -1202,14 +1222,15 @@ export function standardCost(product: Pick<MfgProduct, "bom" | "route" | "wasteP
   if (!settings.features.time) {
     return { materials: round2(materials * q), labour: 0, overhead: 0, hours: 0, total: round2(materials * q), allPriced, unestimated: [] }
   }
+  const costOn = labourCostOn(settings)
   let hours = 0
   let labour = 0
   for (const r of route) {
     if (r.hoursPerUnit == null) continue
     hours += r.hoursPerUnit
-    labour += r.hoursPerUnit * rateOf(departments, r.departmentId)
+    if (costOn) labour += r.hoursPerUnit * rateOf(departments, r.departmentId)
   }
-  const overhead = hours * settings.overheadRatePerHour
+  const overhead = costOn ? hours * settings.overheadRatePerHour : 0
   return {
     materials: round2(materials * q),
     labour: round2(labour * q),
@@ -1258,8 +1279,8 @@ export function orderCost(c: OrderCalc, departments: DeptCapacityFields[], setti
     for (const b of bomFor(c.product, r.departmentId)) if (b.custody && b.unitCost != null) custody += b.qtyPerUnit * worked * b.unitCost
   })
   const hours = round2(c.slice.progress.slice(0, c.route.length).reduce((a, p) => a + (p?.hours || 0), 0))
-  const labour = settings.features.time ? c.slice.progress.slice(0, c.route.length).reduce((a, p, i) => a + (p?.hours || 0) * rateOf(departments, c.route[i]?.departmentId || p.departmentId), 0) : 0
-  const overhead = settings.features.time ? hours * settings.overheadRatePerHour : 0
+  const labour = labourCostOn(settings) ? c.slice.progress.slice(0, c.route.length).reduce((a, p, i) => a + (p?.hours || 0) * rateOf(departments, c.route[i]?.departmentId || p.departmentId), 0) : 0
+  const overhead = labourCostOn(settings) ? hours * settings.overheadRatePerHour : 0
   const remnantCredit = c.slice.remnants.filter((x) => x.state === "received").reduce((a, x) => a + x.value, 0)
   const live = materials + custody + labour + overhead - remnantCredit
   const total = c.slice.frozenCost ? c.slice.frozenCost.cost : live
@@ -1291,7 +1312,7 @@ export function orderCost(c: OrderCalc, departments: DeptCapacityFields[], setti
 export function unitStandardAt(product: MfgProduct, departments: DeptCapacityFields[], settings: MfgSettings, departmentId: string, hoursPerUnit: number | null): number {
   let m = 0
   for (const b of bomFor(product, departmentId)) if (b.unitCost != null) m += perUnit(product, b) * b.unitCost
-  const h = settings.features.time && hoursPerUnit != null ? hoursPerUnit * (rateOf(departments, departmentId) + settings.overheadRatePerHour) : 0
+  const h = labourCostOn(settings) && hoursPerUnit != null ? hoursPerUnit * (rateOf(departments, departmentId) + settings.overheadRatePerHour) : 0
   return m + h
 }
 
@@ -1486,6 +1507,7 @@ export type CandidateKey =
   | "release"
   | "shortage"
   | "purchase_wait"
+  | "arrived_wait"
   | "submit_drawing"
   | "drawing_wait"
   | "slab"
@@ -1522,6 +1544,8 @@ export interface Candidate {
   escalated?: boolean
   destination?: "project" | "warehouse"
   approverOrg?: ApproverOrg
+  /** A shortage Purchasing sent back: why. */
+  declinedReason?: string | null
   previousC?: string | null
   pctPercent?: number | null
   changeKind?: ChangeRequest["kind"]
@@ -1579,12 +1603,17 @@ export function candidates(c: OrderCalc, ctx: CandidateContext): Candidate[] {
   if (c.released) {
     if (ctx.alloc) {
       for (const x of shortages(c, ctx.alloc)) {
+        if (x.requested?.state === "arrived") {
+          add({ key: "arrived_wait", owner: { kind: "external", module: "inventory" }, severity: "a", itemName: x.itemName, unit: x.unit, quantity: x.short })
+          continue
+        }
         if (x.requested) continue
-        add({ key: "shortage", owner: { kind: "manager" }, severity: "r", itemName: x.itemName, unit: x.unit, quantity: x.short })
+        const declined = c.slice.purchaseRequests.find((p) => p.state === "declined" && itemKey(p.itemName) === itemKey(x.itemName))
+        add({ key: "shortage", owner: { kind: "manager" }, severity: "r", itemName: x.itemName, unit: x.unit, quantity: x.short, declinedReason: declined?.declinedReason ?? null })
       }
     }
     for (const p of s.purchaseRequests) {
-      if (p.state === "sent") add({ key: "purchase_wait", owner: { kind: "external", module: "procurement" }, severity: "a", itemName: p.itemName, unit: p.unit, quantity: p.quantity })
+      if (p.state === "sent" || p.state === "ordered") add({ key: "purchase_wait", owner: { kind: "external", module: "procurement" }, severity: "a", itemName: p.itemName, unit: p.unit, quantity: p.quantity })
     }
     const hasGate = (g: GateMode) => c.gates.includes(g)
     const drawingStep = (i: number) => {
@@ -1721,7 +1750,7 @@ export type LateReason =
   | { key: "down_payment" }
   | { key: "survey" }
   | { key: "not_released" }
-  | { key: "shortage"; itemName: string; quantity: number; unit: string; requested: boolean }
+  | { key: "shortage"; itemName: string; quantity: number; unit: string; requested: boolean; arrived: boolean }
   | { key: "drawing"; approverOrg: ApproverOrg | null; days: number }
   | { key: "slab" }
   | { key: "materials"; departmentId: string; state: StationMaterialState }
@@ -1741,7 +1770,7 @@ export function whyLate(c: OrderCalc, alloc: Allocation | null, schedule: Schedu
   if (c.stage === "wait") return releaseBlocks(c).some((b) => b.key === "survey") ? { key: "survey" } : { key: "not_released" }
   if (alloc) {
     const sh = shortages(c, alloc)
-    if (sh.length) return { key: "shortage", itemName: sh[0].itemName, quantity: sh[0].short, unit: sh[0].unit, requested: !!sh[0].requested }
+    if (sh.length) return { key: "shortage", itemName: sh[0].itemName, quantity: sh[0].short, unit: sh[0].unit, requested: !!sh[0].requested, arrived: sh[0].requested?.state === "arrived" }
   }
   if (c.stage === "prod") {
     const i = c.current

@@ -31,6 +31,8 @@ import {
   type WorkshopFilter,
 } from "@/lib/manufacturing-view"
 import { ManufacturingView } from "./ManufacturingView"
+import { ManufacturingMindMap } from "./ManufacturingMindMap"
+import { buildMindMapFromViews } from "@/lib/manufacturing-mindmap"
 import { useMfgUi } from "./MfgUiContext"
 import { WORKSHOP_SEARCH_ID } from "./MfgShell"
 import {
@@ -49,7 +51,7 @@ import {
 } from "./MfgOrderBits"
 import { MfgChip, MfgEmpty, MfgLoadBar, MfgPanel, MfgQtyLegend, MfgSegments, departmentIcon, fmtMoney, fmtQty, useMfgDate } from "./ui/MfgUi"
 
-type WsView = "list" | "board" | "legacy"
+type WsView = "list" | "board" | "map" | "legacy"
 
 interface WsState {
   q: string
@@ -70,7 +72,7 @@ function parseState(p: URLSearchParams): WsState {
     q: p.get("q") || "",
     f: f && WORKSHOP_FILTERS.includes(f) ? f : "all",
     late: p.get("late") === "1",
-    view: view === "list" || view === "board" || view === "legacy" ? view : null,
+    view: view === "list" || view === "board" || view === "map" || view === "legacy" ? view : null,
     sta: p.get("sta") === "all" ? "all" : "mine",
   }
 }
@@ -156,6 +158,33 @@ export function MfgWorkshopView({ initialView = "list" }: { initialView?: "list"
 
   const costView = ui.persona === "cost" || ui.persona === "management"
 
+  const mindMapRoot = useMemo(
+    () =>
+      buildMindMapFromViews(list, {
+        root: t("mfw_module_title"),
+        rootSub: (count) => t("mfg_map_root_sub", { count }),
+        noSource: t("mfg_map_no_source"),
+        noSourceHint: t("mfg_map_no_source_hint"),
+        centralTag: t("mfg_map_central_tag"),
+        projectTag: t("mfg4_source_project"),
+        outboundTag: t("mfg_map_outbound_tag"),
+        unassigned: "",
+        statusOpen: t("mfg_status_open"),
+        statusDone: t("mfg_status_done"),
+        statusCancelled: t("mfg_status_cancelled"),
+        destinationPending: t("mfg_map_dest_pending"),
+        destinationOpen: t("mfg_map_dest_open"),
+        delivered: t("mfg_map_delivered"),
+        sourceClient: t("mfg4_source_client"),
+        sourceProject: t("mfg4_source_project"),
+        sourceStock: t("mfg4_source_stock"),
+        inTransit: t("mfg_map_in_transit"),
+        progress: (done, qty) => t("mfg_map_progress", { done: fmtQty(done), qty: fmtQty(qty) }),
+        late: t("mfw_f_late"),
+      }),
+    [list, t]
+  )
+
   return (
     <div className="min-w-0 space-y-3">
       <div className="relative">
@@ -197,6 +226,7 @@ export function MfgWorkshopView({ initialView = "list" }: { initialView?: "list"
             items={[
               { id: "list", label: t("mfw_ws_view_list") },
               { id: "board", label: t("mfw_ws_view_board") },
+              { id: "map", label: t("mfw_ws_view_map") },
               ...(legacyCount ? [{ id: "legacy" as WsView, label: t("mfw_ws_view_legacy"), count: legacyCount }] : []),
             ]}
           />
@@ -215,6 +245,12 @@ export function MfgWorkshopView({ initialView = "list" }: { initialView?: "list"
         </MfgPanel>
       ) : view === "board" ? (
         <WorkshopBoard list={list} sta={state.sta} onSta={(sta) => update({ sta })} />
+      ) : view === "map" ? (
+        // The mind map — optional, for whoever wants the journey drawn; the
+        // BRD dropped it and the customer asked for it back as a view.
+        <MfgPanel bodyClassName="p-0">
+          <ManufacturingMindMap root={mindMapRoot} onSelectOrder={ui.openOrder} />
+        </MfgPanel>
       ) : (
         <MfgPanel>
           {list.length === 0 ? (

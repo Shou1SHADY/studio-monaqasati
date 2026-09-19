@@ -40,6 +40,7 @@ export type MfgEventKind =
   | "materials_issued"
   | "purchase_requested"
   | "purchase_arrived"
+  | "purchase_declined"
   // Stations & quality (T13–T16)
   | "handover"
   | "awaiting_close"

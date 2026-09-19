@@ -185,7 +185,7 @@ const noura: Actor = { uid: "noura", manage: false, work: false, qc: false, cost
 
 describe("settings and helpers", () => {
   it("normalizes Finance's policies over the defaults", () => {
-    const s = normalizeMfgSettings({ scrapApprovalLimit: 5000, features: { time: false, estimates: true, checklists: true } })
+    const s = normalizeMfgSettings({ scrapApprovalLimit: 5000, features: { time: false, estimates: true, checklists: true, labourCost: true } })
     expect(s.scrapApprovalLimit).toBe(5000)
     expect(s.noteEscalationHours).toBe(48)
     expect(s.estimateValidityDays).toBe(15)

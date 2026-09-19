@@ -10,7 +10,7 @@ import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { ClipboardList, Mountain, PackageOpen, PencilLine, Workflow } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { effectiveRoute, itemKey, standardCost, stationGate } from "@/lib/manufacturing-engine"
+import { effectiveRoute, itemKey, labourCostOn, standardCost, stationGate } from "@/lib/manufacturing-engine"
 import { compareOrders } from "@/lib/manufacturing-view"
 import { useMfgUi } from "./MfgUiContext"
 import { MfgModuleChip, MfgStatePill, sourceNameOf } from "./MfgOrderBits"
@@ -30,6 +30,7 @@ export function MfgPrdDrawer({ productId, onClose }: { productId: string | null;
   if (!product || !std) return null
 
   const timeOn = data.settings.features.time
+  const costOn = labourCostOn(data.settings)
   const time = productTime(product)
   const route = effectiveRoute(product)
   const locked = liveOrdersOn(product.id, ui.views) > 0
@@ -69,7 +70,7 @@ export function MfgPrdDrawer({ productId, onClose }: { productId: string | null;
         {seesMoney ? (
           <>
             <MfgStat
-              label={t("mfr_prd_std_unit_cost")}
+              label={t(costOn ? "mfr_prd_std_unit_cost" : "mfr_prd_std_unit_cost_materials")}
               value={
                 <span dir="ltr" className="tabular-nums">
                   {fmtSar(std.total)}

@@ -60,6 +60,7 @@ import {
   stationBlocks,
   type CandidateKey,
   type StationMaterialState,
+  labourCostOn,
 } from "@/lib/manufacturing-engine"
 import { toggleChecklistItem } from "@/lib/manufacturing-writes"
 import { documentTrail, financeEvents, orderLog, type LogItem, type OrderView } from "@/lib/manufacturing-view"
@@ -879,6 +880,7 @@ function CostSection({ view }: { view: OrderView }) {
   const { data } = useMfgUi()
   const cost = view.cost
   const time = data.settings.features.time
+  const costOn = labourCostOn(data.settings)
   const earned = cost.earnedStandard
   const variance = earned > 0 ? Math.round(cost.total - earned) : null
   const full = standardCost(view.product, data.departments, data.settings, view.quantity).total
@@ -898,13 +900,13 @@ function CostSection({ view }: { view: OrderView }) {
       <div className="py-1.5">
         {line(t("mfo_cost_materials"), money(cost.materials))}
         {line(t("mfo_cost_custody"), money(cost.custody))}
-        {time ? (
+        {costOn ? (
           <>
             {line(t("mfo_cost_labour", { hours: fmtQty(cost.hours) }), money(cost.labour))}
             {line(t("mfo_cost_overhead"), money(cost.overhead))}
           </>
         ) : (
-          line(t("mfo_cost_labour_overhead"), <span className="text-muted-foreground">{t("mfo_cost_time_off")}</span>)
+          line(t("mfo_cost_labour_overhead"), <span className="text-muted-foreground">{t(time ? "mfo_cost_cost_off" : "mfo_cost_time_off")}</span>)
         )}
         {cost.remnantCredit > 0 && line(t("mfo_cost_remnants"), <span className="text-success">−{money(cost.remnantCredit)}</span>)}
         {line(<b className="text-foreground">{cost.frozen ? t("mfo_actual_cost_frozen") : t("mfo_cost_so_far")}</b>, <b>{money(cost.total)}</b>, "border-y border-border/60 bg-muted/20 py-2")}

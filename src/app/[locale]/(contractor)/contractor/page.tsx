@@ -48,6 +48,8 @@ const ACCENT_SOLID: Record<string, string> = {
   cta: "bg-cta",
   warning: "bg-warning",
   destructive: "bg-destructive",
+  indigo: "bg-indigo",
+  violet: "bg-violet",
 }
 
 // Primary action label on each decision card, per item type.

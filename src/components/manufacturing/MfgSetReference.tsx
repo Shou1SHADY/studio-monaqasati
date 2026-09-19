@@ -69,7 +69,7 @@ export function MfgAnyModuleChip({ module, prefix = "none" }: { module: MdmakMod
 // ---------------------------------------------------------------------------
 
 type FeatureKey = keyof MfgSettings["features"]
-const FEATURES: FeatureKey[] = ["time", "estimates", "checklists"]
+const FEATURES: FeatureKey[] = ["time", "labourCost", "estimates", "checklists"]
 
 export function MfgSetFeatures() {
   const t = useTranslations("Portal.Shared")
@@ -98,15 +98,18 @@ export function MfgSetFeatures() {
       {FEATURES.map((k) => {
         const on = data.settings.features[k]
         const id = `mfr-feature-${k}`
+        // Labour cost prices hours: without time there are no hours to price.
+        const blocked = k === "labourCost" && !data.settings.features.time
         return (
           <div key={k} className="flex items-start gap-3 border-b border-border/60 px-4 py-3 last:border-b-0">
-            <Switch id={id} checked={on} disabled={!canEdit || saving === k} onCheckedChange={(v) => toggle(k, v)} className="mt-0.5" />
+            <Switch id={id} checked={on && !blocked} disabled={!canEdit || saving === k || blocked} onCheckedChange={(v) => toggle(k, v)} className="mt-0.5" />
             <div className="min-w-0 flex-1">
               <label htmlFor={id} className="block text-xs font-bold text-foreground">
                 {t(`mfr_set_feat_${k}`)}
               </label>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{t(on ? `mfr_set_feat_${k}_on` : `mfr_set_feat_${k}_off`)}</p>
-              {!on && <p className="mt-1 text-[11px] font-semibold leading-relaxed text-warning">{t(`mfr_set_feat_${k}_price`)}</p>}
+              <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{t(on && !blocked ? `mfr_set_feat_${k}_on` : `mfr_set_feat_${k}_off`)}</p>
+              {(!on || blocked) && <p className="mt-1 text-[11px] font-semibold leading-relaxed text-warning">{t(blocked ? "mfr_set_feat_labourCost_needs_time" : `mfr_set_feat_${k}_price`)}</p>}
+              {k === "labourCost" && on && !blocked && <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{t("mfr_set_feat_labourCost_how")}</p>}
             </div>
             <MfgPill tone={on ? "ok" : "muted"}>{on ? t("mfr_set_on") : t("mfr_set_off")}</MfgPill>
           </div>
