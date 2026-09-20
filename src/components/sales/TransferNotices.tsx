@@ -113,6 +113,11 @@ export function ReportTransferDialog({
             number: target.quotation.quotationNumber,
             amount: formatSar(parsed, locale),
           }),
+          i18n: {
+            title: "sales_tn_notif_reported_title",
+            message: "sales_tn_notif_reported_msg",
+            params: { contact: target.quotation.contactName || "—", number: target.quotation.quotationNumber, amount: formatSar(parsed, "en") },
+          },
         },
       })
       // PAY-07 / D8 — reporting the ADVANCE sends the production request: the
@@ -259,6 +264,11 @@ export function AnswerTransferDialog({
             number: notice.quotationNumber,
             amount: formatSar(notice.amountStated, locale),
           }),
+          i18n: {
+            title: result === "confirmed" ? "sales_tn_notif_confirmed_title" : "sales_tn_notif_not_found_title",
+            message: result === "confirmed" ? "sales_tn_notif_confirmed_msg" : "sales_tn_notif_not_found_msg",
+            params: { number: notice.quotationNumber, amount: formatSar(notice.amountStated, "en") },
+          },
         },
       })
       // finance.down_payment.confirmed — the workshop hears that this order's

@@ -7642,7 +7642,9 @@
       "pn_offer_rejected": "Your offer on the RFQ: {rfq} was not accepted",
       "pn_price_reduction_title": "The contractor asked for a lower price",
       "pn_price_reduction": "RFQ: {rfq} — target price SAR {price}. {note}",
-      "proc_nav_label": "Procurement pages"
+      "proc_nav_label": "Procurement pages",
+      "pn_offer_withdrawn_title": "The supplier withdrew their offer",
+      "pn_offer_withdrawn": "The supplier withdrew their offer on the RFQ: {rfq}"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",

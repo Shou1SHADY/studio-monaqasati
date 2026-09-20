@@ -7642,7 +7642,9 @@
       "pn_offer_rejected": "لم يُقبل عرضك على طلب عروض الأسعار: {rfq}",
       "pn_price_reduction_title": "طلب المقاول تخفيض السعر",
       "pn_price_reduction": "طلب عروض الأسعار: {rfq} — السعر المستهدف {price} ر.س. {note}",
-      "proc_nav_label": "صفحات المشتريات"
+      "proc_nav_label": "صفحات المشتريات",
+      "pn_offer_withdrawn_title": "سحب المورد عرضه",
+      "pn_offer_withdrawn": "سحب المورد عرضه على طلب عروض الأسعار: {rfq}"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
