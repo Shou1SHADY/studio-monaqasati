@@ -27,6 +27,7 @@ import {
   BookmarkPlus,
   FileStack,
   Layers,
+  ListOrdered,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompanyName"
@@ -36,6 +37,7 @@ import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollecti
 import { collection, addDoc, doc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
+import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
 
 interface DeliveryBatch {
   id: string
@@ -85,11 +87,19 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const activeCompanyName = useActiveCompanyName(profile, user?.uid)
 
   const [offerPrice, setOfferPrice] = useState("")
+  // When the RFQ asked to be quoted per material (PRD SS4), these rates ARE the
+  // offer and the total is derived from them — the same way a multi-shipment
+  // offer's total is derived from its batches. Keyed by the product's index in
+  // the RFQ, which is its identity (`rfqProductIndex`).
+  const [lineRates, setLineRates] = useState<Record<number, string>>({})
   const [deliveryBatches, setDeliveryBatches] = useState<DeliveryBatch[]>([
     { id: "1", deliveryDate: new Date().toISOString().split('T')[0], price: "", location: "" }
   ])
   const [mapBatchId, setMapBatchId] = useState<string | null>(null)
   const isMultiShipment = selectedRfq?.shipmentMode === "multiple"
+  const byLine = pricingModeOf(selectedRfq) === "line"
+  const lineProducts = byLine ? pricedProducts(selectedRfq) : []
+  const linePricing = priceOffer(lineProducts, lineRates)
   const requiredQuantity = getRfqRequiredQuantity(selectedRfq)
   const unitLabel = getRfqUnitLabel(selectedRfq)
   const allocatedQuantity = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.quantity || "0") || 0), 0)
@@ -156,6 +166,10 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       setOfferPrice(String(deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)))
     }
   }, [isMultiShipment, deliveryBatches])
+
+  useEffect(() => {
+    if (byLine) setOfferPrice(linePricing.total > 0 ? String(linePricing.total) : "")
+  }, [byLine, linePricing.total])
 
   const addShipmentBatch = () => {
     setDeliveryBatches((prev) => [
@@ -262,6 +276,13 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       return;
     }
 
+    if (byLine && !linePricing.complete) {
+      // Half a breakdown is not one: `buildPoLines` keeps no unit price unless
+      // every line has one, so a partial quote would silently go out lump-sum.
+      toast({ title: t("offer_incomplete_data"), description: t("offer_line_prices_incomplete"), variant: "destructive" });
+      return;
+    }
+
     if (isMultiShipment) {
       const incomplete = deliveryBatches.some((b) => !b.location || !b.deliveryDate || !b.price || !(parseFloat(b.quantity || "0") > 0))
       if (incomplete) {
@@ -303,6 +324,14 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
       if (isMultiShipment) {
         offerData.totalBatchesPrice = deliveryBatches.reduce((sum, b) => sum + (parseFloat(b.price) || 0), 0)
+      }
+
+      // The rates travel with the offer; `price` stays the one field every
+      // existing reader has always used, so nothing downstream needs to know.
+      if (byLine) {
+        const fields = offerPricingFields(linePricing)
+        offerData.lines = fields.lines
+        offerData.price = fields.price
       }
 
       if (executionDuration) {
@@ -520,7 +549,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                     type="number"
                     value={offerPrice}
                     onChange={(e) => setOfferPrice(e.target.value)}
-                    readOnly={isMultiShipment}
+                    readOnly={isMultiShipment || byLine}
                     className="w-full h-12 px-4 ps-4 pe-12 rounded-xl border-2 border-input bg-white text-xl font-black text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary read-only:bg-slate-50 read-only:text-slate-500"
                     placeholder="0"
                     min="0"
@@ -530,8 +559,62 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 {isMultiShipment && (
                   <p className="text-[11px] text-muted-foreground">{t("offer_shipment_price_auto_note")}</p>
                 )}
+                {byLine && (
+                  <p className="text-[11px] text-muted-foreground">{t("offer_line_price_auto_note")}</p>
+                )}
               </div>
             </div>
+
+            {byLine && (
+              /* Quoted per material (PRD SS4): a rate each, and the total above is
+                 their sum. This is what gives the order a real unit price — and so
+                 a price history, a drift report and a comparison next time. */
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-1.5">
+                  <ListOrdered size={14} className="text-primary" />
+                  {t("offer_line_prices_title")}
+                </Label>
+                <div className="rounded-xl border divide-y overflow-hidden">
+                  {lineProducts.map((prod) => {
+                    const rate = lineRates[prod.rfqProductIndex] ?? ""
+                    const subtotal = (Number(rate) || 0) * prod.quantity
+                    return (
+                      <div key={prod.rfqProductIndex} className="flex flex-wrap items-center gap-2 p-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {t("offer_line_qty", { qty: prod.quantity, unit: prod.unit })}
+                          </p>
+                        </div>
+                        <div className="relative w-32">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            dir="ltr"
+                            aria-label={t("offer_line_rate_for", { name: prod.name })}
+                            value={rate}
+                            onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
+                            className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                            placeholder="0"
+                          />
+                          <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("offer_sar")}</span>
+                        </div>
+                        <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
+                          {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "\u2014"}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+                {!linePricing.complete && (
+                  <p className="text-[11px] text-amber-700 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
+                    <AlertCircle size={11} className="shrink-0" />
+                    {t("offer_line_prices_incomplete")}
+                  </p>
+                )}
+              </div>
+            )}
 
             {isMultiShipment ? (
               /* Multiple shipments — each batch splits the RFQ's own required quantity, never a whole-order total */

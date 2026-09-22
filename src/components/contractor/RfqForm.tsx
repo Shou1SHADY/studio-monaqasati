@@ -25,7 +25,9 @@ import {
   Save,
   Send,
   AlertCircle,
+  Banknote,
   Globe,
+  ListOrdered,
   Lock,
   Handshake,
 } from "lucide-react"
@@ -38,6 +40,7 @@ import { useProcActor } from "@/hooks/useProcActor"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
+import { toAmount, type PricingMode } from "@/lib/procurement/offer-pricing"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
@@ -98,6 +101,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const [visibilityMode, setVisibilityMode] = useState<"public" | "private" | "direct">("public")
+  // How we ask to be quoted (PRD SS4). A total is what this product always did and
+  // stays the default; per line asks for a rate per material, which is the only
+  // way an order ends up with a unit price somebody can compare later.
+  const [pricingMode, setPricingMode] = useState<PricingMode>("total")
   // Which suppliers a private RFQ goes to. null means "not narrowed" — every
   // connected supplier, which is what private meant before this picker existed
   // and stays the default so an untouched form behaves exactly as it used to.
@@ -153,6 +160,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
   const [products, setProducts] = useState<ProductRow[]>([makeEmptyProductRow("1")])
 
+  // A rate needs something to multiply by, so per-line pricing is only on offer
+  // while every material carries a quantity. Derived from what is typed right
+  // now: emptying a quantity takes the choice away again, and the effect below
+  // puts the RFQ back to a total rather than storing a mode nobody can honour.
+  const canPriceLines = products.some((p) => p.category || p.quantity.trim()) && products.every((p) => toAmount(p.quantity) > 0)
+  useEffect(() => {
+    if (!canPriceLines && pricingMode === "line") setPricingMode("total")
+  }, [canPriceLines, pricingMode])
+
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
@@ -204,6 +220,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             pdfStoragePath: data.pdfStoragePath || null
           })
           setVisibilityMode(data.visibility === "private" ? "private" : "public")
+          setPricingMode(data.pricingMode === "line" ? "line" : "total")
           // An empty list on an existing RFQ means it predates this picker, so
           // leave it null — "everyone connected", the rule it was saved under.
           setPrivateRecipients(Array.isArray(data.allowedSupplierOrgIds) && data.allowedSupplierOrgIds.length > 0 ? data.allowedSupplierOrgIds : null)
@@ -611,6 +628,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: status,
+        pricingMode,
         visibility: visibilityMode,
         allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
@@ -687,6 +705,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: visibilityMode === "direct" ? "Awarded" : status,
+        pricingMode,
         visibility: visibilityMode === "direct" ? "private" : visibilityMode,
         allowedSupplierOrgIds:
           visibilityMode === "direct" ? [directSupplierOrgId]
@@ -1182,6 +1201,45 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 </div>
 
                 {/* Visibility mode */}
+                {/* How to be quoted (PRD SS4): one figure, or a rate per material.
+                    Per line is what gives an order real unit prices — and so a price
+                    history, a drift report and an estimate to route the next need on.
+                    Offered only when every material has a quantity to multiply by. */}
+                <div className="p-5 rounded-2xl border bg-muted/40 border-border">
+                  <p className="text-sm font-bold text-foreground mb-3">{t("newrfq_pricing_label")}</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {([
+                      { mode: "total" as const, icon: Banknote, label: t("newrfq_pricing_total") },
+                      { mode: "line" as const, icon: ListOrdered, label: t("newrfq_pricing_line") },
+                    ]).map(({ mode, icon: Icon, label }) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={mode === "line" && !canPriceLines}
+                        onClick={() => setPricingMode(mode)}
+                        className={cn(
+                          "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
+                          pricingMode === mode
+                            ? "bg-primary text-white border-primary shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                        )}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
+                    {pricingMode === "line" ? t("newrfq_pricing_line_desc") : t("newrfq_pricing_total_desc")}
+                  </p>
+                  {!canPriceLines && (
+                    <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
+                      <AlertCircle size={11} className="shrink-0" />
+                      {t("newrfq_pricing_needs_quantities")}
+                    </p>
+                  )}
+                </div>
+
                 <div className={cn(
                   "p-5 rounded-2xl border transition-all duration-200",
                   visibilityMode !== "public" ? "bg-primary/5 border-primary/20" : "bg-muted/40 border-border"

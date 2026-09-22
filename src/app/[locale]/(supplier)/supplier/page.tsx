@@ -337,7 +337,9 @@ export default function SupplierDashboard() {
                                 district: rfq.district,
                                 deadline: rfq.deadline,
                                 locationCoords: rfq.locationCoords,
-                                requiresWarranty: rfq.requiresWarranty
+                                requiresWarranty: rfq.requiresWarranty,
+                                shipmentMode: rfq.shipmentMode,
+                                pricingMode: rfq.pricingMode ?? null
                               })
                               setShowRfqDetails(true)
                             }}
@@ -364,7 +366,9 @@ export default function SupplierDashboard() {
                                 district: rfq.district,
                                 deadline: rfq.deadline,
                                 locationCoords: rfq.locationCoords,
-                                requiresWarranty: rfq.requiresWarranty
+                                requiresWarranty: rfq.requiresWarranty,
+                                shipmentMode: rfq.shipmentMode,
+                                pricingMode: rfq.pricingMode ?? null
                               })
                               setShowSubmitOffer(true)
                             }}
