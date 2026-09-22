@@ -209,6 +209,9 @@ export async function POST(
       notes: notes || null,
       rfqTitle,
       items: Array.isArray(rfq?.products) ? rfq!.products : [],
+      // The award's purchase order, when one was raised over it — the receipt
+      // is counted against its lines (Procurement PRD 3.0).
+      ...(typeof offer.poId === "string" && offer.poId ? { poId: offer.poId, poNumber: (offer.poNumber as string) || null } : {}),
       status: "pending_confirmation",
       createdAt: FieldValue.serverTimestamp(),
     })

@@ -15,6 +15,15 @@ export const PERMISSION_IDS = [
   "offers.accept",
   "suppliers.manage",
   "deliveries.confirm",
+  // Procurement's purchase order (PRD 3.0). Preparing one is the existing
+  // `offers.accept`; receiving is `deliveries.confirm`. `po.approve` approves
+  // or returns an order up to the manager's limit (above it, when the approver
+  // prepared it, or on a retroactive order: the owner alone). `po.expedite`
+  // sends the order to the supplier, records his acceptance and date, updates
+  // the date and reminds him — a role that sees dates and quantities, never a
+  // price (UI-level; holders of `offers.accept`/`po.approve` may expedite too).
+  "po.approve",
+  "po.expedite",
   "employees.manage",
   "invoices.manage",
   "warehouses.manage",
@@ -78,7 +87,7 @@ export const GUARANTEE_REVIEW_PERMISSION: PermissionId = "deliveries.confirm"
  * permission belongs to exactly one section (guarded by a test). */
 export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId[] }> = [
   { key: "projects", permissions: ["projects.view", "projects.edit", "projects.publish", "projects.delete"] },
-  { key: "procurement", permissions: ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "suppliers.manage", "deliveries.confirm"] },
+  { key: "procurement", permissions: ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"] },
   { key: "inventory", permissions: ["warehouses.manage", "warehouses.receive"] },
   { key: "finance", permissions: ["invoices.manage"] },
   { key: "accounting", permissions: ["accounting.view", "accounting.post", "accounting.close"] },
@@ -139,6 +148,8 @@ export const SEEDED_GROUPS: Array<{
       "projects.publish",
       "offers.view",
       "offers.accept",
+      // Finance awards today, so it approves the purchase order too.
+      "po.approve",
       "invoices.manage",
       "employees.manage",
       // Finance reads and writes the books, but closing a period stays with the
@@ -156,6 +167,8 @@ export const SEEDED_GROUPS: Array<{
       "rfq.create",
       "rfq.manage",
       "offers.view",
+      // Supply chain chases the supplier: sends, records his acceptance, reminds.
+      "po.expedite",
       "suppliers.manage",
       "deliveries.confirm",
       "warehouses.manage",

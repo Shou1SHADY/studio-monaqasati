@@ -1,0 +1,72 @@
+# Procurement — PRD 3.0 (20 Sep 2026) against the code, 22 Sep 2026
+
+Asked: take the Procurement PRD and its reference prototype (`PRD-Mdmak-Procurement.html`,
+`index.html`), see what the product already does, build what is missing and the UI/UX ideas
+worth taking — without breaking what runs, the notifications above all.
+
+## The decision that shaped everything
+Until now an **accepted offer was the order**: the supplier's portal, the tender lock, the
+project's money flow, the bell, the guest flow and the mobile app all read the offer's
+Arabic status literals. The PRD's purchase order is therefore **laid over the award, not
+put in its place**: awarding still writes the offer `مقبول` and the RFQ `Awarded` exactly as
+before (same batch, same chat, same `offer_accepted` notification), and only then
+`createPurchaseOrderFromAward` adds `purchaseOrders/{id}` and `poId`/`poNumber` on the offer.
+An award made before this existed has no order, and every screen keeps working without one.
+`deliveries` stays the store of the supplier's notice **and** the goods receipt, with optional
+order fields; a delivery without them confirms as it always did.
+
+## What was built (PRD §)
+| PRD | Built |
+|---|---|
+| §4 PO `ط.ش-yyyy/NNN`, §6.1 blocks 1, 2, 3, 11, 12 | `purchaseOrders` with a yearly number in `mfgCounters`; approval routing by value (manager ≤ `managerApprovalLimit`, else owner), nobody approves their own order (the org owner excepted — a company of one — flagged in the log and the Exceptions report), retroactive = owner only; blocks are computed facts (no VAT number, unverified, CR expired, order splitting within 30 days above the direct-purchase cap) — the Approve button is disabled while any holds and the write and the rules refuse anyway |
+| §5.1-6/7 approval, dispatch | Finance (`invoices.manage`) is told the commitment incl. VAT; receivers (`deliveries.confirm`) are told to expect an arrival — without an amount; the buyer sends via portal / WhatsApp / e-mail with a ready message (the system only sends to a registered supplier's portal; WhatsApp/e-mail open in the user's own tool and the channel, time and sender are logged) |
+| §5.1-5 award | Reason mandatory when awarding away from the lowest live offer (six codes, free text for "other"), short-competition and no-official-quote warnings (non-blocking), the supplier facts that WILL block the approval shown at award, reject with a coded exclusion reason — all additive on the offer |
+| §5.2 receiving | Supplier's delivery notice per shipment with lines, date & window, driver, plate, paper note, file; the receiver screen at 375 px: **blind count** (the notice quantity appears only after the count is typed), coded rejects, held for inspection with reason, non-blocking checklist, signature, over-receipt refused above outstanding + 5 %; the receipt `ا.س-yyyy/NNN` is immutable; stock lands at the accepted quantity and the line's unit price (this also fixes the old empty-items notice that posted to the books without landing stock), the books get Inventory + input VAT / Suppliers payable at the accepted value (lump-sum orders post on completion), Manufacturing's purchase request is closed, Finance and the supplier are told; arrival with no notice; manual receipt with no order → "No PO" queue → regularise as a retroactive order (owner approves) or mark as cash expense |
+| §5.1-9 close-out & rating | An order completes arithmetically (accepted + cancelled ≥ ordered) or is closed short with a reason; rating = on time / in full / reject % / documents **computed from receipts** + two manual stars, optional anonymous publishing (writes the existing `reviews` doc) |
+| §7.2 tabs | Today · RFQs · Purchase requests · Orders · Goods received (On the way · Receipts · No PO) · Suppliers · Reports · Settings, one rail, gated like the sidebar; three KPI numbers per role |
+| §7.2 Today | "Needs your decision" (approve, awaiting someone's approval, approved-not-sent, supplier has not accepted, late, confirm before the date with a poor on-time supplier, rejected at receipt — decide, arrived today, notice on the way / overdue / later than promised, rate, receipt with no PO, RFQ draft / award / no offers / thin competition), sorted most urgent first; "Waiting on other modules" with no buttons; arriving within 7 days |
+| §7.3 drawers | Order (next step, money trail, line progress bars, deliveries, award facts, documents, log) and receipt (line by line, what follows, attachments & checklist, where it went, trail) |
+| §8 documents | PO (an expediter prints a copy without values), PO receipt statement, goods receipt — unified header, status banner, signatures, "issued electronically" footer; A4, bilingual; no riyal glyph in print |
+| §9 reports | Spend by project, spend by supplier (30 % concentration flag), delivery performance, price drift vs last buy, cycle time & competition, exceptions (retroactive, direct, non-lowest, short competition, self-approval, no official quote, closed short, manual receipt, no PO, self-received), open commitments by due date; CSV each |
+| §6.4 policies | `procurementSettings/{orgId}` — the ten policies with the PRD's reference values as defaults, edited by the owner or an approver |
+| §3 roles | `po.approve` and `po.expedite` added (rules + client + team page); an expediter sees dates and quantities, never an amount (UI-level) |
+| Dashboard | Two work-queue cards: orders awaiting my approval, orders needing attention (late / not accepted / not sent); the old "confirm delivery" card now lands on the receiving desk instead of a page with no action |
+
+## Left as declared waits or out, on purpose
+- **Finance's side of the three-way match** (supplier invoice, payment voucher, the eight
+  held-payment reasons, `fin:PAY`/`fin:REJ`/`fin:PAID`): Finance has no supplier-invoice
+  document yet. The order shows "fully received — invoice, match and payment are Finance's"
+  as a wait; the invoicing ceiling (accepted value) is on the order and in Finance's
+  notification. Build when Finance gets supplier invoices.
+- **Need lines (`DEM`) and the automatic route** (agreement ⇒ direct ⇒ workshop ⇒ RFQ):
+  Manufacturing's requests reach the inbox as before; project requests still do not, and
+  there are no price agreements or price history to route on. The last-order-day maths is in
+  `po.ts` (`lastOrderDay`, `dayParts`) for when need dates exist.
+- **Price agreements, price history, the platform directory as a separate segment,
+  join invitations by WhatsApp, supplier master fields (payment terms, type)** — the
+  suppliers page is unchanged; the supplier facts an approval needs (VAT, verified, CR
+  expiry) are read from the supplier's own platform profile.
+- **Sealed offers, one reduction round to all, manual (staff-keyed) offers, delegate
+  approver, forwarding a notice by link + code, auto-forward, offline receiving** — not
+  built; sealing is a policy field already (`sealOffersUntilDeadline`, default off) so the
+  UI can honour it later without a schema change.
+- **Guest awards** (PRD 6.1-4 says register first): the shipped guest flow stays — a guest's
+  order is created with `supplierOrgId: "guest"`, is never blocked on supplier facts, and the
+  send form carries no portal link for them.
+
+## What must stay true (guarded)
+- No existing notification type or shape changed; the new kinds are `po_*` with both i18n
+  keys and rendered text; the actor is never told.
+- No Arabic status literal changed; new state lives on the new document.
+- `firestore.rules`: every order transition is its own field list; identity fields are
+  frozen; the supplier may write only sent → accepted. **Not deployed** — see the checklist.
+- 1,652 tests (13 new procurement suites, 250 tests; an adversarial review of the change set found five real defects — order resolution for notices written before the order existed, empty-item legacy notices, retroactive approval dead-ending, receipts against a missing order, books posted with nothing landed — all fixed and pinned by tests), typecheck (the only errors are the
+  pre-existing ones in `functions/`, `src/ai/generate.ts`, `lib-seo.test.ts`), lint 0 errors,
+  `scripts/check-i18n-links.mjs` clean, production build.
+
+## Go-live checklist (owner)
+1. `node scripts/deploy-rules.js <env> --check`, then deploy the rules (the app writes
+   `purchaseOrders`/`procurementSettings` only after that).
+2. `node scripts/migrate-po-permissions.js <env>` (dry run), then `--apply`, so existing
+   groups holding `offers.accept` / `rfq.manage` gain `po.approve` / `po.expedite`.
+3. Deploy `firestore.indexes.json` (three `purchaseOrders` composites).

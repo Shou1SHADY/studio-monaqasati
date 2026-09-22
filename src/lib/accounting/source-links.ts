@@ -56,6 +56,9 @@ export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sou
       return "manufacturing/workshop"
     case "work_order_delivery":
       return "warehouses/delivery-notes"
+    case "goods_receipt":
+      // The id is the delivery (receipt) document's; the desk opens it in place.
+      return portal === "contractor" && id ? `goods-received?delivery=${id}` : null
     case "guarantee_margin":
     case "guarantee_release":
       return "guarantees"

@@ -632,7 +632,11 @@
       "sales_nav_reports": "التقارير",
       "sales_nav_settings": "الإعدادات والحدود",
       "fin_nav_sales_desk": "مكتب المبيعات",
-      "contractor_purchase_requests": "طلبات الشراء الواردة"
+      "contractor_purchase_requests": "طلبات الشراء الواردة",
+      "contractor_proc_today": "اليوم",
+      "contractor_purchase_orders": "أوامر الشراء",
+      "contractor_proc_reports": "التقارير",
+      "contractor_proc_settings": "الإعدادات والحدود"
     },
     "Layout": {
       "app_switcher_label": "تبديل المكون",
@@ -1289,7 +1293,76 @@
       "inv_unit_status_in_stock": "متاحة",
       "inv_unit_status_damaged": "تالفة",
       "inv_unit_status_consumed": "مستهلَكة",
-      "inv_item_name_duplicate": "يوجد صنف بهذا الاسم والوحدة في هذا المستودع: «{name}» — عدّل كميته بدلاً من إنشاء صنف ثانٍ، أو اختر اسماً مختلفاً"
+      "inv_item_name_duplicate": "يوجد صنف بهذا الاسم والوحدة في هذا المستودع: «{name}» — عدّل كميته بدلاً من إنشاء صنف ثانٍ، أو اختر اسماً مختلفاً",
+      "po_section_title": "أوامر الشراء",
+      "po_section_desc": "الأوامر التي أرسلها لك المقاولون: اقبل الجديد مع موعدك، وأرسل إشعار تسليم لكل شحنة.",
+      "po_seg_to_accept": "جديدة — بانتظار قبولك",
+      "po_seg_in_delivery": "قيد التوريد",
+      "po_seg_done": "استُلمت أو أُقفلت",
+      "po_seg_all": "الكل",
+      "po_empty_all": "لم يصلك أمر شراء بعد — حين يرسل المقاول أمراً يظهر هنا لتقبله.",
+      "po_empty_segment": "لا أوامر في هذه المجموعة.",
+      "po_value": "قيمة الأمر (بدون الضريبة)",
+      "po_sent_on": "أُرسل في {date}",
+      "po_promised": "موعدكم الملتزم به",
+      "po_no_promise": "لم يُحدَّد بعد",
+      "po_show_lines": "التفاصيل ({count, plural, =0 {بلا بنود} one {بند واحد} two {بندان} few {# بنود} many {# بنداً} other {# بند}})",
+      "po_hide_lines": "إخفاء التفاصيل",
+      "po_lines_title": "بنود الأمر",
+      "po_col_item": "الصنف",
+      "po_col_unit": "الوحدة",
+      "po_col_ordered": "في الأمر",
+      "po_col_accepted": "قُبل",
+      "po_col_rejected": "رُدّ",
+      "po_col_cancelled": "أُلغي",
+      "po_col_outstanding": "بقي لتشحنوه",
+      "po_col_unit_price": "سعر الوحدة",
+      "po_lump_sum": "أمر بمبلغ إجمالي — بلا أسعار للبنود.",
+      "po_payment_terms": "شروط الدفع",
+      "po_cancelled_reason": "أُلغي الأمر: {reason}",
+      "po_closed_short_reason": "أُقفل قبل اكتماله: {reason}",
+      "po_accept_btn": "اقبل الأمر",
+      "po_notify_btn": "أرسل إشعار تسليم",
+      "po_accept_title": "قبول أمر الشراء {number}",
+      "po_accept_desc": "بقبولك تلتزم بتاريخ التسليم الذي تحدده — ويصل إلى المقاول فوراً.",
+      "po_accept_date_label": "تاريخ التسليم الذي تلتزم به",
+      "po_accept_date_hint": "لا يسبق اليوم.",
+      "po_accept_submit": "أقبل وألتزم بالموعد",
+      "po_accepted_toast": "قُبل الأمر",
+      "po_accepted_toast_desc": "أُبلغ المقاول بموعدكم: {date}.",
+      "po_notice_title": "إشعار تسليم — {number}",
+      "po_notice_desc": "ماذا في هذه الشحنة ومتى تصل؟ يصل الإشعار إلى المشتريات فوراً. والإشعار ليس استلاماً: يعدّ المستلم ما يصل، والفرق يُكتب ويصلكم.",
+      "po_notice_lines_title": "ماذا في هذه الشحنة؟",
+      "po_notice_up_to": "حتى {max} {unit}",
+      "po_notice_nothing_left": "لم يبقَ شيء لتشحنوه على هذا الأمر.",
+      "po_notice_date_label": "تاريخ التسليم",
+      "po_notice_window_label": "الفترة",
+      "po_notice_late_hint": "بعد موعدكم {days, plural, one {بيوم واحد} two {بيومين} few {بـ# أيام} many {بـ# يوماً} other {بـ# يوم}} — يظهر للمقاول تأخيراً الآن",
+      "po_notice_driver_label": "السائق أو المندوب",
+      "po_notice_driver_placeholder": "إن عُرف الآن",
+      "po_notice_plate_label": "لوحة المركبة",
+      "po_notice_paper_label": "رقم إشعار التسليم الورقي",
+      "po_notice_file_label": "إشعار التسليم وشهاداته (PDF أو صورة)",
+      "po_notice_file_hint": "يطّلع عليه المستلم قبل وصول الشاحنة.",
+      "po_notice_file_type_error": "الملف يجب أن يكون PDF أو صورة.",
+      "po_notice_notes_label": "ملاحظة للمستلم",
+      "po_notice_notes_placeholder": "مثلاً: تحتاج رافعة للتفريغ",
+      "po_notice_submit": "أرسل إشعار التسليم",
+      "po_notice_sent_toast": "أُرسل إشعار التسليم",
+      "po_notice_sent_desc": "وصل إلى المشتريات — ويؤكد المستلم ما يصل عند الاستلام.",
+      "po_notice_err_date_missing": "حدّد تاريخ التسليم.",
+      "po_notice_err_date_past": "التاريخ مضى.",
+      "po_notice_err_nothing_to_ship": "اكتب كمية شحنة واحدة على الأقل.",
+      "po_notice_err_over_outstanding": "الكمية تتجاوز ما بقي من «{line}» على الأمر ({max} {unit}).",
+      "po_notice_err_not_accepted": "الأمر لم يُقبل بعد، أو لم يبقَ ما يُشحن.",
+      "po_notice_err_quantity": "اكتب رقماً — أو صفراً إن لم يكن الصنف في هذه الشحنة.",
+      "po_notices_title": "إشعارات التسليم على هذا الأمر",
+      "po_notice_none": "لم يُرسل إشعار بعد.",
+      "po_err_wrong_state": "تغيّرت حالة الأمر — حدّث الصفحة وحاول مرة أخرى.",
+      "po_err_date_invalid": "التاريخ غير صالح.",
+      "po_err_generic": "تعذّر الحفظ — حاول مرة أخرى.",
+      "po_open_order": "افتح الأمر",
+      "po_offer_order_label": "أمر الشراء"
     },
     "Errors": {
       "access_denied_title": "عفواً، لا تملك الصلاحيات الكافية",
@@ -7644,7 +7717,48 @@
       "pn_price_reduction": "طلب عروض الأسعار: {rfq} — السعر المستهدف {price} ر.س. {note}",
       "proc_nav_label": "صفحات المشتريات",
       "pn_offer_withdrawn_title": "سحب المورد عرضه",
-      "pn_offer_withdrawn": "سحب المورد عرضه على طلب عروض الأسعار: {rfq}"
+      "pn_offer_withdrawn": "سحب المورد عرضه على طلب عروض الأسعار: {rfq}",
+      "pn_po_awaiting_approval_title": "أمر شراء بانتظار اعتمادك",
+      "pn_po_awaiting_approval": "أعدّ {actor} أمر الشراء {number} للمورد {supplier} بقيمة {amount} (بدون الضريبة) — {rfq}. راجعه واعتمده أو أعده.",
+      "pn_po_approved_title": "اعتُمد أمر الشراء {number}",
+      "pn_po_approved": "اعتمد {actor} أمر الشراء {number} للمورد {supplier} بقيمة {amount} (بدون الضريبة). صار التزاماً على المالية، ويعود إلى المشتري لإرساله.",
+      "pn_po_expected_arrival_title": "توريد متوقع — {number}",
+      "pn_po_expected_arrival": "اعتُمد أمر الشراء {number} من المورد {supplier} (عدد البنود: {lines}). توقّع وصول شحنة له، وسجّل الاستلام من بوابة الاستلام.",
+      "pn_po_returned_title": "أُعيد أمر الشراء {number}",
+      "pn_po_returned": "أعاد {actor} أمر الشراء {number} دون اعتماد: {reason}. عدّله وأعد رفعه.",
+      "pn_po_sent_title": "أمر شراء جديد {number}",
+      "pn_po_sent": "أرسلت {company} أمر الشراء {number}. افتحه في بوابتك، واقبله مع تاريخ التسليم الذي تلتزم به.",
+      "pn_po_supplier_accepted_title": "قبل المورد أمر الشراء {number}",
+      "pn_po_supplier_accepted": "قبل {supplier} أمر الشراء {number} والتزم بالتسليم في {date}.",
+      "pn_po_date_updated_title": "تغيّر موعد التسليم — {number}",
+      "pn_po_date_updated": "موعد تسليم أمر الشراء {number} من المورد {supplier} صار {date}. {note}",
+      "pn_po_reminder_title": "تذكير بأمر الشراء {number}",
+      "pn_po_reminder": "تذكّرك {company} بأمر الشراء {number}: {ask}",
+      "pn_po_receipt_recorded_title": "استلام مسجّل على {number}",
+      "pn_po_receipt_recorded": "سجّل {actor} الاستلام {receipt} على أمر الشراء {number}: قُبل {accepted} من {ordered}. سقف الفوترة الآن: {ceiling}.",
+      "pn_po_rejects_decided_title": "قرار في المرفوض — {number}",
+      "pn_po_rejects_decided": "قررت {company} في الكمية المرفوضة من «{line}» ({qty}) في أمر الشراء {number}: {decision}. {note}",
+      "pn_po_remainder_cancelled_title": "أُلغي المتبقي — {number}",
+      "pn_po_remainder_cancelled": "ألغت {company} المتبقي من «{line}» ({qty} {unit}) في أمر الشراء {number}: {reason}. لن يصل، ويُخفَّض الالتزام بقدره.",
+      "pn_po_closed_title": "أُغلق أمر الشراء {number}",
+      "pn_po_closed": "أغلق {actor} أمر الشراء {number} — {outcome}. {reason}",
+      "pn_po_cancelled_title": "أُلغي أمر الشراء {number}",
+      "pn_po_cancelled": "ألغى {actor} أمر الشراء {number} للمورد {supplier}: {reason}.",
+      "pn_po_rated_title": "تقييم على أمر الشراء {number}",
+      "pn_po_rated": "قيّمت {company} تنفيذك لأمر الشراء {number}: {stars} من 5 — ونُشر التقييم دون اسم على المنصة.",
+      "pn_po_decision_replace": "الاستبدال — أرسل بديلاً عن المرفوض",
+      "pn_po_decision_discount": "الخصم — نحتفظ بالكمية بسعر مخفّض",
+      "pn_po_decision_reduce": "تخفيض الأمر — لن تُستبدل الكمية",
+      "pn_po_closed_complete": "مكتمل",
+      "pn_po_closed_short_flag": "مغلق قبل اكتماله",
+      "pn_po_ceiling_unknown": "غير محدّد (أمر بمبلغ إجمالي)",
+      "pn_po_reminder_ask_accept": "لم يُقبل بعد — اقبله وحدّد موعد التسليم.",
+      "pn_po_reminder_ask_deliver": "التسليم مستحق — أخبرنا بموعد الوصول.",
+      "perm_po_approve": "اعتماد أوامر الشراء",
+      "perm_po_approve_desc": "اعتماد أمر الشراء أو إعادته إلى معدّه، حتى حدّ اعتماد المدير. ما فوق الحدّ، وما أعدّه المعتمِد نفسه، والأمر اللاحق للاستلام: للمالك وحده.",
+      "perm_po_expedite": "متابعة أوامر الشراء مع المورد",
+      "perm_po_expedite_desc": "إرسال أمر الشراء إلى المورد، وتسجيل قبوله وموعد التسليم، وتحديث الموعد، وتذكيره. يرى التواريخ والكميات دون الأسعار.",
+      "proc_kpis_label": "أرقام المشتريات الثلاثة"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -9409,7 +9523,44 @@
       "rfqs_profile_incomplete_title": "الملف الشخصي غير مكتمل",
       "rfqs_profile_incomplete_desc": "يرجى إكمال الحقول التالية أولاً: {fields}",
       "suppliers_search_clear": "امسح البحث",
-      "rfq_status_filter": "حالة الطلب"
+      "rfq_status_filter": "حالة الطلب",
+      "offers_award_this_offer": "هذا العرض (قبل الضريبة)",
+      "offers_award_lowest_offer": "أقل عرض قائم",
+      "offers_award_is_lowest": "هذا هو الأقل",
+      "offers_award_reason_label": "لماذا الترسية على غير الأقل سعراً؟",
+      "offers_award_reason_placeholder": "اختر السبب",
+      "offers_award_reason_text_placeholder": "اكتب السبب — مثلاً: المورد الوحيد الذي عنده الكمية جاهزة",
+      "offers_award_reason_note_placeholder": "توضيح (اختياري)",
+      "offers_award_reason_text_required": "اكتب السبب في ٨ أحرف على الأقل",
+      "offers_award_reason_hint": "يظهر السبب لمن يعتمد أمر الشراء ويبقى في سجله",
+      "offers_award_short_competition": "منافسة ناقصة: {count, plural, =0 {لا عروض} one {عرض واحد فقط} two {عرضان فقط} few {# عروض فقط} many {# عرضاً فقط} other {# عرض فقط}} على شراء فوق حدّ {threshold} — ستظهر لمن يعتمد الأمر (تنبيه لا يمنع).",
+      "offers_award_no_official_quote": "لم يرفع المورد عرض سعر رسمياً بختم شركته — المسجَّل عندنا سعر للمقارنة. اطلبه قبل إصدار الأمر (تنبيه لا يمنع).",
+      "offers_award_order_will_wait": "الترسية تتم الآن، لكن أمر الشراء سينتظر حتى:",
+      "offers_award_order_created": "أُعدّ أمر الشراء {number} — بانتظار الاعتماد",
+      "offers_award_order_failed": "تمت الترسية، لكن تعذّر إعداد أمر الشراء — أعِدّه لاحقاً من بطاقة العرض المقبول بزر «أعِدّ أمر الشراء».",
+      "offers_award_open_order": "افتح الأمر",
+      "offers_award_raise_order": "أعِدّ أمر الشراء",
+      "offers_award_order_word": "أمر شراء",
+      "offers_guest_order_caveat": "زائر — أمر الشراء يحتاج بياناته (السجل والرقم الضريبي)",
+      "offers_exclusion_label": "سبب الاستبعاد",
+      "offers_exclusion_placeholder": "اختر السبب (اختياري)",
+      "offers_exclusion_note_placeholder": "توضيح — ما الذي لم يطابق؟",
+      "offers_exclusion_hint": "يبقى العرض ظاهراً موسوماً «مرفوض» بسببه، ويظهر في السجل لمن يعتمد الأمر",
+      "offers_exclusion_stored": "سبب الاستبعاد: {reason}",
+      "offers_exclusion_price": "السعر أعلى من المقبول",
+      "offers_exclusion_terms": "شروطه لا تناسب (الدفع أو التسليم أو المدة)",
+      "offers_exclusion_incomplete": "العرض ناقص",
+      "offers_exclusion_not_qualified": "المورد غير مؤهّل — بلا وثائق أو رقم ضريبي أو مواصفة غير مطابقة",
+      "offers_exclusion_other": "غير ذلك",
+      "newrfq_direct_success_order": "أُعدّ أمر الشراء {number} وذهب للاعتماد — بعدها يُرسل إلى المورد.",
+      "newrfq_direct_success_no_order": "تمت الترسية المباشرة، لكن تعذّر إعداد أمر الشراء — أعِدّه لاحقاً من بطاقة العرض المقبول.",
+      "queue_item_po_approve": "{count, plural, zero {لا أوامر بانتظار اعتمادك} one {أمر شراء واحد بانتظار اعتمادك} two {أمرا شراء بانتظار اعتمادك} few {# أوامر شراء بانتظار اعتمادك} many {# أمر شراء بانتظار اعتمادك} other {# أمر شراء بانتظار اعتمادك}}",
+      "action_po_approve": "راجع واعتمد",
+      "queue_item_po_attention": "{count, plural, zero {لا أوامر شراء متعثّرة} one {أمر شراء واحد متعثّر عند المورد} two {أمرا شراء متعثّران عند الموردين} few {# أوامر شراء متعثّرة عند الموردين} many {# أمر شراء متعثّراً عند الموردين} other {# أمر شراء متعثّر عند الموردين}}",
+      "action_po_attention": "افتح «اليوم» في المشتريات",
+      "metric_po_late": "متأخر",
+      "metric_po_not_accepted": "لم يُقبل",
+      "metric_po_not_sent": "لم يُرسل"
     },
     "Admin": {
       "Dashboard": {
@@ -9899,6 +10050,1222 @@
         "commission_save_error": "فشل حفظ الإعدادات",
         "cancel": "إلغاء",
         "save_settings": "حفظ الإعدادات"
+      }
+    },
+    "Procurement": {
+      "doc": {
+        "PO": "أمر شراء",
+        "GR": "سند استلام",
+        "RFQ": "طلب عروض"
+      },
+      "status": {
+        "awaiting_approval": "بانتظار الاعتماد",
+        "approved": "اعتُمد — لم يُرسل بعد",
+        "sent": "أُرسل — بانتظار قبول المورد",
+        "accepted": "قبِله المورد",
+        "in_delivery": "عند المورد — التوريد جارٍ",
+        "part_received": "وصل جزء",
+        "received": "استُلم بالكامل",
+        "closed": "أُقفل",
+        "closed_short": "أُقفل ناقصاً",
+        "cancelled": "ملغى"
+      },
+      "basis": {
+        "rfq": "على طلب عروض",
+        "direct": "أمر مباشر — بلا عروض",
+        "retroactive": "أمر لاحق لاستلام بلا أمر شراء"
+      },
+      "channel": {
+        "portal": "بوابة المورد",
+        "whatsapp": "واتساب",
+        "email": "بريد إلكتروني"
+      },
+      "approver": {
+        "manager": "مدير المشتريات",
+        "owner": "مالك الشركة"
+      },
+      "selfApproval": "اعتمده مُعِدّه — شركة بلا شخص ثانٍ، ويظهر في تقرير الاستثناءات",
+      "blocks": {
+        "split_orders": "تجزئة: عدد الأوامر المباشرة لهذا المورد خلال {days, plural, one {يوم واحد} two {يومين} few {# أيام} many {# يوماً} other {# يوم}} صار {count}، ومجموعها {total, number} — فوق سقف الشراء بلا عروض ({cap, number}). يعتمده المالك أو يُطرح للعروض.",
+        "supplier_cr_expired": "السجل التجاري للمورد انتهى {daysAgo, plural, =0 {اليوم} one {أمس} two {قبل يومين} few {قبل # أيام} many {قبل # يوماً} other {قبل # يوم}} ({date}) — حدّثه في ملف المورد",
+        "supplier_unverified": "مورد جديد لم يوثَّق بعد (الرقم الضريبي والسجل وشروط الدفع) — لا يُعتمد له أمر قبل التوثيق",
+        "supplier_no_vat": "المورد بلا رقم ضريبي — المالية لن تقبل فاتورته"
+      },
+      "refusal": {
+        "not_awaiting": "الأمر ليس بانتظار الاعتماد",
+        "no_permission": "الاعتماد ليس من صلاحيتك",
+        "own_order": "لا يعتمد الأمرَ مَن أعدّه",
+        "owner_only_retroactive": "الأمر اللاحق يعتمده المالك وحده",
+        "above_limit": "{value, number} فوق حد اعتمادك ({limit, number}) — يعتمده المالك"
+      },
+      "awardReason": {
+        "delivery_time": "موعد أسرع يدرك الاحتياج",
+        "quality": "جودة أعلى أو مطابقة العيّنة المعتمدة",
+        "payment_terms": "شروط دفع أفضل",
+        "past_performance": "الأقل سعراً ضعيف الالتزام",
+        "availability": "التوفر الفوري",
+        "other": "سبب آخر"
+      },
+      "rejectReason": {
+        "damaged": "تالف أو مكسور",
+        "wrong_item": "صنف غير المطلوب",
+        "wrong_spec": "غير مطابق للمواصفة",
+        "expired": "منتهي الصلاحية",
+        "excess": "زائد عن المطلوب",
+        "other": "سبب آخر"
+      },
+      "holdReason": {
+        "certificate": "بانتظار شهادة المصنع",
+        "test": "بانتظار نتيجة الفحص",
+        "consultant": "بانتظار معاينة الاستشاري"
+      },
+      "rejectDecision": {
+        "replace": "يستبدله المورد",
+        "discount": "يُقبل بخصم",
+        "reduce": "يُخفَّض الأمر بقدره"
+      },
+      "checklist": {
+        "delivery_note": "نسخة إشعار التسليم موقّعة ومصوّرة",
+        "weighbridge": "تذكرة الميزان",
+        "certificate": "شهادة المصنع أو المطابقة",
+        "photos": "صور الحمولة",
+        "driver_signature": "وقّع السائق على الشاشة"
+      },
+      "receiptState": {
+        "on_the_way": "في الطريق",
+        "late_notice": "فات موعد الإشعار — لم يُسجَّل استلام",
+        "received": "مطابق",
+        "received_with_rejects": "فيه مرفوض",
+        "received_held": "بانتظار الفحص",
+        "received_short": "ناقص عن الإشعار",
+        "manual_no_po": "بلا أمر شراء — بانتظار الإلحاق"
+      },
+      "receiptError": {
+        "count_missing": "أدخل الكمية المعدودة",
+        "negative_quantity": "لا كميات سالبة",
+        "over_deducted": "المرفوض والمحجوز معاً أكثر من المعدود ({counted})",
+        "reject_reason_missing": "اختر سبب الرفض",
+        "hold_reason_missing": "اختر سبب الحجز للفحص",
+        "unknown_line": "السطر ليس في أمر الشراء",
+        "over_receipt": "المعدود {counted} يتجاوز المتبقي بأكثر من {tolerance}% — اقبل حتى {limit} ورُدّ الزائد مع السائق",
+        "nothing_counted": "لم تُعدّ أي كمية"
+      },
+      "log": {
+        "created": "أعدّه {by}",
+        "approved": "اعتمده {by}",
+        "returned": "أعاده {by} لمُعِدّه — {note}",
+        "resubmitted": "أعاد {by} تقديمه للاعتماد",
+        "sent": "أرسله {by} إلى المورد عبر {channel}",
+        "supplier_accepted": "سجّل {by} قبول المورد وموعده {date}",
+        "date_updated": "حدّث {by} موعد المورد إلى {date}",
+        "reminded": "ذكّر {by} المورد",
+        "received": "استُلم {number} — سجّله {by}",
+        "remainder_cancelled": "ألغى {by} المتبقي مع المورد — {note}",
+        "reject_decided": "قرّر {by} في المرفوض: {decision}",
+        "closed": "أقفله {by}",
+        "cancelled": "ألغاه {by} — {note}",
+        "rated": "قيّم {by} المورد"
+      },
+      "exception": {
+        "retroactive": "أمر لاحق لاستلام بلا أمر شراء",
+        "direct": "أمر مباشر بلا عروض",
+        "non_lowest": "ترسية على غير الأقل سعراً — {reason}",
+        "short_competition": "منافسة ناقصة — {count, plural, =0 {بلا عروض} one {عرض واحد} two {عرضين} few {# عروض} many {# عرضاً} other {# عرض}}",
+        "self_approval": "اعتمده مُعِدّه — بلا معتمد ثانٍ",
+        "no_official_quote": "أُرسي بلا عرض رسمي مختوم",
+        "closed_short": "أُقفل ناقصاً بقرار المشتريات — {reason}",
+        "manual_receipt": "سند استلام يدوي — شراء خارج المنصة",
+        "no_po": "استلام بلا أمر شراء — لم يُلحق بعد",
+        "self_received": "استلمه مُعِدّ الأمر — بلا مستلم منفصل"
+      },
+      "deliveryState": {
+        "on_time": "في موعده",
+        "late": "متأخر {days, plural, one {يوماً واحداً} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+        "on_time_so_far": "في موعده حتى الآن",
+        "pending": "لا موعد بعد"
+      },
+      "commitmentBucket": {
+        "within7": "خلال أسبوع",
+        "within30": "خلال شهر",
+        "within60": "خلال شهرين",
+        "later": "بعد ذلك",
+        "noDate": "بلا موعد"
+      },
+      "noRecord": "بلا سجل",
+      "err_order_missing": "أمر الشراء غير موجود — ربما حُذف أو ليس من صلاحيتك",
+      "err_offer_missing": "العرض الذي بُني عليه الأمر غير موجود",
+      "err_no_permission": "هذا الإجراء ليس من صلاحيتك",
+      "err_wrong_state": "حالة الأمر تغيّرت — لم يعد هذا الإجراء ممكناً. أُعيد تحميل الأمر",
+      "err_own_order": "لا يعتمد الأمرَ مَن أعدّه",
+      "err_owner_only": "الأمر اللاحق يعتمده المالك وحده",
+      "err_above_limit": "{value, number} فوق حد اعتمادك ({limit, number}) — يعتمده المالك",
+      "err_blocked": "واقعة تمنع الاعتماد — راجع القائمة في «الخطوة التالية»",
+      "err_reason_required": "اكتب السبب",
+      "err_date_invalid": "التاريخ غير صالح — اختر يوماً بصيغة سنة-شهر-يوم",
+      "err_line_missing": "البند ليس على هذا الأمر",
+      "err_nothing_outstanding": "لا متبقٍّ على هذا البند ليُلغى",
+      "err_nothing_rejected": "لا كمية مرفوضة على هذا البند",
+      "err_nothing_held": "لا كمية موقوفة للفحص على هذا البند",
+      "err_cannot_rate": "لا يُقيَّم المورد قبل اكتمال القصة: أمر مستلَم أو مقفل، وسند استلام واحد على الأقل، ولم يُقيَّم من قبل",
+      "err_already_cancelled": "الأمر ملغى أصلاً",
+      "err_has_receipts": "وصل شيء على هذا الأمر — لا يُلغى كاملاً؛ ألغِ المتبقي على كل بند أو أقفله ناقصاً",
+      "deliveryWindow": {
+        "morning": "صباحاً",
+        "afternoon": "بعد الظهر",
+        "evening": "مساءً"
+      }
+    },
+    "ProcToday": {
+      "title": "يحتاج قرارك",
+      "subtitle": "الأخطر أولاً — وكل زر يفتح السجل قبل الفعل",
+      "empty": {
+        "title": "لا شيء ينتظرك",
+        "body": "كل ما يخصّك تحرّك."
+      },
+      "showMore": "عرض {count, plural, one {قرار آخر} two {قرارين آخرين} few {# قرارات أخرى} many {# قراراً آخر} other {# قرار آخر}}",
+      "groups": {
+        "all": "الكل",
+        "rfq": "العروض",
+        "po": "الأوامر",
+        "delivery": "التوريد"
+      },
+      "waits": {
+        "title": "ننتظره من وحدات أخرى",
+        "subtitle": "لا زر هنا — الفعل عندهم والحالة تصل إلينا",
+        "empty": "لا ننتظر أحداً",
+        "more": "أخرى",
+        "on": "بانتظار {module}"
+      },
+      "modules": {
+        "supplier": "المورد",
+        "finance": "المالية",
+        "inventory": "المخزون"
+      },
+      "actions": {
+        "review": "راجع واعتمد",
+        "view": "اطّلع",
+        "send": "أرسِله للمورد",
+        "open": "افتح الأمر",
+        "updateDate": "حدّث الموعد",
+        "decide": "قرّر",
+        "receive": "سجّل الاستلام",
+        "rate": "قيّم",
+        "compare": "قارن العروض",
+        "openDraft": "افتح المسودة",
+        "openRfq": "افتح الطلب",
+        "seeArrived": "اطّلع على ما وصل",
+        "openReceipt": "افتح السند"
+      },
+      "task": {
+        "approve": {
+          "title": "اعتمد {number} — {supplier}",
+          "sub": "أعدّه {preparer} {ago, plural, =0 {اليوم} one {أمس} two {قبل يومين} few {قبل # أيام} many {قبل # يوماً} other {قبل # يوم}}"
+        },
+        "approval_wait": {
+          "title": "{number} بانتظار اعتماد {approver, select, owner {المالك} other {مدير المشتريات}}",
+          "sub": {
+            "own_order": "{supplier} · أعددتَه أنت — ولا يعتمده مَن أعدّه · لا إجراء منك حتى يعتمده",
+            "above_limit": "{supplier} · {value, number} فوق حدّ اعتماد المدير ({limit, number}) · لا إجراء منك حتى يعتمده المالك",
+            "retroactive": "{supplier} · أمر لاحق يعتمده المالك وحده · لا إجراء منك حتى يعتمده",
+            "other": "{supplier} · لا إجراء منك حتى يُعتمد"
+          }
+        },
+        "send": {
+          "title": "{number} اعتُمد ووصل المالية — ولم يصل {supplier} بعد",
+          "sub": "عاد إليك لترسله: بوابته أو واتساب أو بريد — ومن إرساله يبدأ عدّ القبول وموعد التوريد"
+        },
+        "not_accepted": {
+          "title": "{supplier} لم يقبل {number} منذ {days, plural, one {يوم واحد} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+          "sub": "بلا قبول لا يوجد موعد توريد — تابعه وسجّل قبوله وموعده"
+        },
+        "late": {
+          "title": "{number} متأخر {days, plural, one {يوماً واحداً} two {يومين} few {# أيام} many {# يوماً} other {# يوم}} — {supplier}",
+          "sub": "{lines}"
+        },
+        "confirm_before_date": {
+          "title": "أكّد مع {supplier} قبل موعده {inDays, plural, =0 {اليوم} one {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}} — {number}",
+          "sub": "التزامه بالموعد {percent}% فقط — لا تنتظر التأخر لتتحرّك"
+        },
+        "reject_decide": {
+          "title": "مرفوض عند الاستلام: {qty} {unit} {name}",
+          "sub": "{number} · {supplier} — استبدال أو خصم أو تخفيض الأمر"
+        },
+        "arrived_today": {
+          "title": "وصل اليوم {count, plural, one {سند واحد} two {سندان} few {# سندات} many {# سنداً} other {# سند}} على أوامرك",
+          "sub": "{list}"
+        },
+        "notice_incoming": {
+          "title": "{hasDate, select, 0 {إشعار تسليم من {supplier} — بلا تاريخ} other {إشعار تسليم من {supplier} — يصل {inDays, plural, =0 {اليوم} one {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}}}",
+          "sub": "{number} · {lines}"
+        },
+        "notice_overdue": {
+          "title": "لم يُسجَّل استلام ما أشعر به {supplier}",
+          "sub": "{number} · كان مقرراً {date} ({daysAgo, plural, one {أمس} two {قبل يومين} few {قبل # أيام} many {قبل # يوماً} other {قبل # يوم}}) — اسأل المستلم أولاً ثم المورد"
+        },
+        "notice_late_date": {
+          "title": "{supplier} أشعر بتسليم بعد موعده بـ{days, plural, one {يوم واحد} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+          "sub": "{number} · {date} بدل {promised} — عرفتَ التأخر قبل وقوعه: اقبله أو اطلب تقديمه"
+        },
+        "rate": {
+          "title": "قيّم {supplier} على {number}",
+          "sub": "اكتمل التوريد — الموعد والكمال والمرفوض محسوبة من السندات، وتضيف نجمتين"
+        },
+        "receipt_no_po": {
+          "title": "استلام بلا أمر شراء{hasSupplier, select, 0 {} other { — {supplier}}}",
+          "sub": "{number} · {date} · يُلحق بأمر لاحق يعتمده المالك، أو يُقرّ مصروفاً"
+        },
+        "rfq_draft": {
+          "title": "مسودة لم تُنشر: {title}",
+          "sub": "لم تصل أي مورد — لا عروض قبل النشر"
+        },
+        "rfq_award": {
+          "title": "قارن وأرسِ «{title}» — {count, plural, one {عرض واحد} two {عرضين} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "sub": "أُغلق استقبال العروض {ago, plural, =0 {اليوم} one {أمس} two {قبل يومين} few {قبل # أيام} many {قبل # يوماً} other {قبل # يوم}}"
+        },
+        "rfq_no_offers": {
+          "title": "«{title}» أُغلق بلا عروض",
+          "sub": "مدّد الموعد أو أضف موردين أو شارك رابط الزوار"
+        },
+        "rfq_closing_thin": {
+          "title": "«{title}» يُغلق {inDays, plural, =0 {اليوم} one {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}} وعليه {count, plural, =0 {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+          "sub": "شارك رابط الزوار مع موردين خارج المنصة أو مدّد الموعد"
+        }
+      },
+      "wait": {
+        "supplier_acceptance": {
+          "title": "قبول {supplier} لـ{number}",
+          "sub": "أُرسل {ago, plural, =0 {اليوم} one {أمس} two {قبل يومين} few {قبل # أيام} many {قبل # يوماً} other {قبل # يوم}}"
+        },
+        "finance_payment": {
+          "title": "سداد وإقفال {number}",
+          "sub": "استُلم بالكامل — الفاتورة والمطابقة والسداد في المالية"
+        },
+        "held_inspection": {
+          "title": "فحص {qty} {unit} {name} — {number}",
+          "sub": "لا تُصرف ولا تُدفع قبل الإفراج"
+        }
+      },
+      "kpi": {
+        "needs": {
+          "label_requests": "طلبات شراء بلا أمر",
+          "label_rfqs": "طلبات عروض بانتظار الترسية",
+          "note_requests": "من التصنيع — تنتظر طلب عروض أو أمراً",
+          "note_rfqs": "أُغلق استقبال عروضها وعليها عروض",
+          "note_none": "لا شيء ينتظر الشراء"
+        },
+        "committed": {
+          "label": "ملتزم لم يصل",
+          "note_late": "{amount, number} متأخر عن موعد المورد",
+          "note_none": "لا متأخر"
+        },
+        "drift": {
+          "label": "فرق السعر عن آخر شراء — 30 يوماً",
+          "note_up": "{percent}% أعلى من آخر سعر اشترينا به",
+          "note_down": "{percent}% أقل من آخر سعر",
+          "note_none": "لا فرق — أو لا شراء سابق يُقارن به"
+        },
+        "my_approval": {
+          "label": "ينتظر اعتمادك",
+          "note_some": "{count, plural, one {أمر واحد} two {أمران} few {# أوامر} many {# أمراً} other {# أمر}}",
+          "note_none": "لا شيء معلّق عندك"
+        },
+        "finance_due": {
+          "label": "ستطلبه المالية للموردين قريباً",
+          "note": "مستلَم بالكامل لم يُسدَّد بعد"
+        },
+        "late": {
+          "label": "متأخرة عن موعد المورد",
+          "note_some": "تحتاج موعداً جديداً",
+          "note_none": "لا متأخر",
+          "note_value": "{amount, number} لم يصل بعد موعده"
+        },
+        "with_suppliers": {
+          "label": "أوامر عند الموردين",
+          "note": "التوريد جارٍ"
+        },
+        "sent_not_accepted": {
+          "label": "أُرسلت ولم تُقبل",
+          "note": "بلا قبول لا موعد"
+        }
+      },
+      "page": {
+        "title": "اليوم",
+        "subtitle": "الحاجة تولد في المشاريع والتصنيع — ونحن نحوّلها إلى توريد في موعده"
+      },
+      "showLess": "عرض أقل",
+      "moreRows": "{count, plural, one {عرض سطر آخر} two {عرض سطرين آخرين} few {عرض # أسطر أخرى} many {عرض # سطراً آخر} other {عرض # سطر آخر}}",
+      "arriving": {
+        "title": "يصل خلال 7 أيام",
+        "subtitle": "بموعد إشعار المورد — والاستلام يسجّله المخزون",
+        "empty": "لا توريد متوقع هذا الأسبوع",
+        "late": "{days, plural, one {متأخر يوماً} two {متأخر يومين} few {متأخر # أيام} many {متأخر # يوماً} other {متأخر # يوم}}",
+        "on": "{date} · {inDays, plural, =0 {اليوم} =1 {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}"
+      }
+    },
+    "ProcOrders": {
+      "title": "أوامر الشراء",
+      "desc": "ما اعتُمد وأُرسل وما وعد به المورد — كل تاريخ هنا التزام لا أمنية",
+      "search_ph": "ابحث برقم الأمر أو المورد أو الطلب أو المشروع",
+      "search_clear": "امسح البحث",
+      "segments_label": "شرائح الأوامر",
+      "loading": "جارٍ التحميل",
+      "seg": {
+        "awaiting_approval": "بانتظار اعتماد أو قرار",
+        "live": "عند الموردين",
+        "late": "متأخرة",
+        "received": "مستلمة ومقفلة",
+        "all": "كل الأوامر"
+      },
+      "empty": {
+        "awaiting_approval": "لا أوامر بانتظار الاعتماد",
+        "live": "لا أوامر عند الموردين الآن",
+        "late": "لا أوامر متأخرة — كل مورد في موعده",
+        "received": "لا أوامر مستلمة أو مقفلة بعد",
+        "all": "لا أوامر شراء بعد"
+      },
+      "empty_hint": {
+        "awaiting_approval": "يظهر الأمر هنا لحظة الترسية، بانتظار من يعتمده",
+        "live": "الأمر يصل هنا بعد اعتماده ويبقى حتى يصل آخر بند",
+        "late": "يُحسب التأخر من موعد المورد الذي التزم به — لا من موعدنا",
+        "received": "يصل الأمر هنا حين يكتمل التوريد أو يُقفل",
+        "all": "الترسية على عرض تُنشئ أمر الشراء تلقائياً"
+      },
+      "empty_search": "لا أمر يطابق «{term}»",
+      "empty_search_hint": "البحث يمرّ على كل الشرائح — جرّب رقم الأمر أو اسم المورد",
+      "col": {
+        "number": "الأمر",
+        "supplier": "المورد والطلب",
+        "status": "الحالة",
+        "value": "القيمة قبل الضريبة",
+        "date": "موعد المورد"
+      },
+      "pill_returned": "أُعيد لمُعِدّه",
+      "date": {
+        "with_approver": "بانتظار اعتماد {approver} — لا موعد بعد",
+        "not_sent": "لم يُرسل بعد — لا موعد",
+        "no_acceptance": "لم يقبله المورد بعد — لا موعد",
+        "no_date": "قبله المورد بلا موعد",
+        "closed": "أُقفل {date}"
+      },
+      "bar": {
+        "accepted": "مقبول",
+        "held": "بانتظار الفحص",
+        "rejected": "رُدّ مرفوضاً",
+        "cancelled": "أُلغي",
+        "to_arrive": "لم يصل",
+        "aria": "مقبول {accepted}، موقوف {held}، مرفوض {rejected}، ملغى {cancelled}، لم يصل {toArrive} {unit}"
+      },
+      "head": {
+        "prepared": "أعدّه {by} · {date}"
+      },
+      "sec": {
+        "next_step": "الخطوة التالية",
+        "money": "مسار المال",
+        "money_badge": "ما تقرؤه المالية",
+        "lines": "البنود ({count})",
+        "deliveries": "التوريدات وسندات الاستلام",
+        "award": "وقائع الترسية",
+        "documents": "المستندات",
+        "log": "السجل"
+      },
+      "next": {
+        "returned_title": "أُعيد لمُعِدّه",
+        "resubmit": "أعد رفعه للاعتماد",
+        "awaiting_resubmission": "بانتظار أن يعدّله {by} ويعيد رفعه",
+        "flag_retroactive": "أمر لاحق لاستلام تمّ بلا أمر شراء — يعتمده المالك وحده استثناءً ويُسجَّل باسمه",
+        "flag_short_competition": "منافسة ناقصة: {count, plural, =0 {لا عروض} one {عرض واحد فقط} two {عرضان فقط} other {# عروض فقط}} على هذا الشراء",
+        "flag_non_lowest": "أُرسي على غير الأقل سعراً — السبب: {reason}",
+        "flag_no_official_quote": "أُرسي بلا عرض رسمي مختوم — راجع ما أُدخل بيده",
+        "approve": "اعتمد الأمر",
+        "approve_blocked": "لا يُعتمد ما دامت واقعة تمنعه",
+        "return": "أعِده لمُعِدّه",
+        "awaiting_approver": "بانتظار اعتماد {approver}",
+        "cancel_order": "ألغِ الأمر",
+        "approved_body": "اعتمده {by} في {date} ووصل المالية التزاماً — ورجع إليك لترسله إلى {supplier}. من إرساله يبدأ عدّ القبول وموعد التوريد.",
+        "send": "أرسِله إلى المورد",
+        "sent_body": "أُرسل عبر {channel} في {date}. الموعد الصادق يبدأ من قبول المورد: سجّل قبوله وموعد توريده كما التزم به — لا كما نتمنى.",
+        "record_acceptance": "سجّل قبول المورد وموعده",
+        "remind": "ذكّر المورد",
+        "late_body": "متأخر {days, plural, one {يوماً واحداً} two {يومين} few {# أيام} many {# يوماً} other {# يوم}} عن موعد المورد. اتصل به وسجّل موعده الجديد — تقرؤه إدارة المشاريع والمخزون فوراً.",
+        "promised_body": "موعد المورد {date} — والتوريد جارٍ. إذا تغيّر الموعد سجّله كما قاله المورد.",
+        "no_date_body": "وصل شيء قبل أن يلتزم المورد بموعد — سجّل موعد ما تبقّى.",
+        "update_date": "حدّث موعد المورد",
+        "close_short": "أقفله ناقصاً",
+        "received_body": "استُلم كل ما على الأمر. أقفله ليخرج من الالتزامات، وقيّم المورد ما دامت القصة كاملة.",
+        "close": "أقفل الأمر — مكتمل",
+        "rate": "قيّم المورد",
+        "closed_body": "أُقفل مكتملاً",
+        "closed_short_body": "أُقفل ناقصاً — {reason}",
+        "cancelled_body": "أُلغي الأمر — {reason}",
+        "rated_title": "قُيّم: المطابقة {conformity}/5 والتعاون {cooperation}/5",
+        "rated_published": "نُشر بلا اسمنا على المنصة",
+        "rated_internal": "لنا فقط"
+      },
+      "money": {
+        "ex_vat": "قيمة الأمر قبل الضريبة",
+        "vat": "ضريبة القيمة المضافة {rate}%",
+        "commitment": "الالتزام على الأمر — شامل الضريبة",
+        "commitment_hint_approved": "وصل المالية يوم اعتماده {date} التزاماً لم يُفوتر — الضلع الأول للمطابقة الثلاثية",
+        "commitment_hint_pending": "لم يُعتمد بعد — لا يصل المالية قبل الاعتماد",
+        "accepted": "المقبول في سندات الاستلام",
+        "accepted_hint": "سقف ما يجوز للمورد فوترته اليوم — والمرفوض والموقوف خارجه",
+        "accepted_unknown": "غير محدّد حتى يكتمل التوريد — أمر بمبلغ إجمالي بلا أسعار للوحدة",
+        "open": "المتبقي من الالتزام",
+        "open_lump_hint": "أمر بمبلغ إجمالي: مفتوح كاملاً حتى يكتمل",
+        "footer": "لا نرى هنا فاتورة المورد ولا كشف حسابه ولا السداد — تلك للمالية. نحن نرسل الأمر والقرار، ونقرأ ما يخصّ أمرنا."
+      },
+      "line": {
+        "reject_decided": "القرار في المرفوض: {decision}",
+        "cancelled_reason": "أُلغي {qty} {unit} مع المورد — {reason}",
+        "decide_reject": "قرّر في المرفوض ({qty} {unit})",
+        "cancel_remainder": "المورد عجز — ألغِ المتبقي",
+        "none": "لا بنود على هذا الأمر"
+      },
+      "deliveries": {
+        "none_yet": "لم يصل شيء بعد — كل استلام يُسجَّل من بوابة الاستلام ويظهر هنا برقمه",
+        "none": "لا توريدات على هذا الأمر",
+        "notice": "إشعار توريد",
+        "accepted_qty": "قُبل {qty}"
+      },
+      "award": {
+        "basis": "الأساس",
+        "offers": "عدد العروض",
+        "lowest": "أقل عرض",
+        "reason": "سبب الترسية",
+        "open_rfq": "افتح طلب العروض والمقارنة"
+      },
+      "docs": {
+        "print_po": "اطبع أمر الشراء",
+        "no_values": "بلا قيم",
+        "print_statement": "كشف الاستلام",
+        "supplier_date": "موعد المورد",
+        "payment_terms": "شروط الدفع",
+        "delivery_location": "مكان التسليم",
+        "accepted_at": "قبله المورد",
+        "by_supplier": "من بوابته",
+        "by_us": "سجّلناه عنه"
+      },
+      "form": {
+        "cancel": "إلغاء",
+        "reason_required": "اكتب السبب",
+        "date_required": "أدخل التاريخ",
+        "date_past": "الموعد يجب ألا يكون ماضياً"
+      },
+      "return": {
+        "title": "أعِد الأمر لمُعِدّه",
+        "desc": "يعود الأمر إلى من أعدّه مع ما يجب تصحيحه، ويبقى بانتظار الاعتماد حتى يعيد رفعه",
+        "label": "ما المطلوب تصحيحه؟",
+        "submit": "أعِده",
+        "effect": "يصل مُعِدّ الأمر تنبيه بالسبب — ولا يصل المورد شيء"
+      },
+      "cancel_order": {
+        "title": "ألغِ أمر الشراء",
+        "desc": "قبل أن يصل شيء. ما وصل لا يُلغى — يُلغى المتبقي بنداً بنداً أو يُقفل الأمر ناقصاً",
+        "label": "سبب الإلغاء",
+        "submit": "ألغِ الأمر",
+        "effect": "يُبلَّغ مُعِدّ الأمر، والمورد إن كان الأمر وصله، والمالية إن كان التزاماً"
+      },
+      "close_short": {
+        "title": "أقفل الأمر ناقصاً",
+        "desc": "لم يكتمل التوريد ولن يكتمل — يُقفل الأمر بما وصل، ويظهر في تقرير الاستثناءات بسببه",
+        "label": "لماذا يُقفل قبل اكتماله؟",
+        "submit": "أقفله ناقصاً",
+        "effect": "يُخفَّض الالتزام إلى ما قُبل، وتقرأ المالية أن لا فاتورة بعد هذا"
+      },
+      "cancel_line": {
+        "title": "إلغاء المتبقي مع المورد",
+        "desc": "«الباقي لن يصل» — يُنقَص الأمر بقدره ويُخفَّض الالتزام، وما استُلم يبقى على البند",
+        "label": "السبب كما اتُّفق مع المورد",
+        "submit": "أكّد الإلغاء",
+        "context": "{line} — المتبقي {qty} {unit}",
+        "effect_1": "يُنقَص الأمر ويُبلَّغ المورد والمالية",
+        "effect_2": "ما يُلغى هنا يعود إلى الاحتياج ليُطرح على مورد آخر"
+      },
+      "accept": {
+        "title": "قبول المورد وموعده",
+        "desc": "كما التزم به المورد — لا كما نتمنى",
+        "date": "موعد التوريد الذي التزم به",
+        "submit": "سجّل القبول",
+        "effect": "تقرؤه إدارة المشاريع والمخزون موعداً للوصول، ومنه يُحسب التأخر"
+      },
+      "date_form": {
+        "title": "حدّث موعد المورد",
+        "desc": "الموعد القديم يبقى في السجل — والجديد يقرؤه صاحب الحاجة فوراً",
+        "date": "الموعد الجديد",
+        "note": "السبب كما قاله المورد",
+        "note_ph": "مثلاً: نفاد عنده · نقل وشحن · ينتظر دفعة",
+        "submit": "احفظ الموعد",
+        "effect": "يُبلَّغ مُعِدّ الأمر ومن يستلم بالموعد الجديد"
+      },
+      "reject": {
+        "title": "المرفوض عند الاستلام",
+        "desc": "القرار مع المورد لنا — والحركة المخزنية للمخزون",
+        "rejected_qty": "{qty} {unit} مرفوضة",
+        "question": "ما الاتفاق مع المورد؟",
+        "effect_replace": "تبقى الكمية مستحقة على الأمر حتى يصل البديل",
+        "effect_discount": "نحتفظ بالكمية وتُحسب مقبولة — والسعر المخفّض تسوّيه المالية",
+        "effect_reduce": "يُنقَص الأمر بمقدارها ولن تُستبدل",
+        "effect_always": "المخزون يُخرج المرفوض مرتجعاً للمورد، والمالية لا تدفع إلا المقبول",
+        "note": "ملاحظة للمورد والمالية",
+        "note_ph": "مثلاً: البديل قبل نهاية الأسبوع",
+        "note_discount": "السعر المخفّض وما اتُّفق عليه",
+        "note_discount_ph": "مثلاً: 40 بدل 50 للوحدة — قبله صاحب الحاجة فنياً",
+        "submit": "سجّل القرار"
+      },
+      "send": {
+        "title": "أرسِل أمر الشراء إلى المورد",
+        "desc": "اعتُمد الأمر ووصل المالية التزاماً — وبقي أن يصل {supplier} ليقبله ويبدأ موعده",
+        "channel": "كيف يصله الأمر؟",
+        "hint_registered": "المسجّل في المنصة يصله في بوابته ويقبله منها — وهو الأسرع",
+        "hint_guest": "هذا المورد خارج المنصة: تُفتح رسالة جاهزة ترسلها أنت بأداتك",
+        "phone": "جوال المورد",
+        "phone_required": "اكتب جوال المورد",
+        "email": "بريد المورد",
+        "email_invalid": "اكتب بريداً صحيحاً",
+        "note": "رسالة مع الأمر (اختياري)",
+        "note_ph": "مثلاً: التسليم صباحاً ومع الشحنة شهادة المصنع",
+        "message": "الرسالة الجاهزة",
+        "copy": "انسخ النص",
+        "copied": "نُسخ — أرسله بأداتكم",
+        "copied_short": "نُسخ",
+        "subject": "أمر شراء {number}",
+        "effect": "نسجّل الإرسال باسمك ووقته، ومن هنا يبدأ عدّ قبول المورد. النظام لا يراسل نيابةً عنك.",
+        "submit_portal": "أرسِله إلى بوابته",
+        "submit_whatsapp": "افتح واتساب وسجّل الإرسال",
+        "submit_email": "افتح البريد وسجّل الإرسال"
+      },
+      "rate": {
+        "title": "قيّم المورد",
+        "desc": "ثلاثة جوانب محسوبة من السندات — ونجمتان منك",
+        "on_time": "الموعد",
+        "on_time_yes": "✓ وصل في موعده",
+        "on_time_no": "تأخّر {days, plural, one {يوماً واحداً} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+        "in_full": "الكمال",
+        "in_full_yes": "✓ كاملاً",
+        "in_full_no": "قُبل {accepted} من {ordered}",
+        "rejected": "المرفوض عند الاستلام",
+        "documents": "المستندات",
+        "documents_value": "إشعار موقّع في {docs} من {n, plural, one {سند واحد} two {سندين} other {# سندات}}{certs, plural, =0 {} other { · شهادة في #}}",
+        "last_arrival": "آخر وصول {date}",
+        "its_date": "موعده {date}",
+        "conformity": "مطابقة ما وصل للمطلوب",
+        "cooperation": "التعاون والتواصل",
+        "pick_stars": "اختر النجوم في الجانبين",
+        "note": "ملاحظة",
+        "note_ph": "ما الذي يفيد مشترياً بعدك؟",
+        "publish": "في المنصة",
+        "publish_on": "تُنشر النجوم والملاحظة بلا اسم شركتنا",
+        "publish_off": "لنا فقط — لا يخرج من شركتنا",
+        "submit": "احفظ التقييم"
+      },
+      "toast": {
+        "failed": "لم يُحفظ — حاول مرة أخرى",
+        "popup_blocked": "المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة لهذا الموقع",
+        "approved": "اعتُمد الأمر — ووصل المالية التزاماً",
+        "returned": "أُعيد الأمر لمُعِدّه",
+        "resubmitted": "رُفع للاعتماد من جديد",
+        "sent_portal": "وصل بوابة المورد — وبانتظار قبوله وموعده",
+        "sent_offline": "فُتحت الرسالة جاهزة — أرسلها، وسُجّل الإرسال باسمك",
+        "accepted": "سُجّل قبول المورد وموعده",
+        "date_updated": "حُدّث الموعد",
+        "reminded_portal": "سُجّل التذكير — ويصله تنبيه في بوابته",
+        "reminded_offline": "سُجّل التذكير — أرسل له رابط الأمر بأداتكم",
+        "remainder_cancelled": "أُلغي المتبقي — وخُفّض الالتزام بقدره",
+        "reject_decided": "سُجّل القرار",
+        "closed": "أُقفل الأمر",
+        "cancelled": "أُلغي الأمر",
+        "rated": "حُفظ التقييم — في ملف المورد"
+      },
+      "print": {
+        "po_title": "أمر شراء",
+        "st_title": "كشف استلام أمر شراء",
+        "cr": "السجل التجاري",
+        "vat_no": "الرقم الضريبي",
+        "basis_rfq": "على طلب عروض",
+        "basis_direct": "أمر مباشر",
+        "basis_retroactive": "أمر لاحق",
+        "po_status_approved": "اعتمده {by} · {date}",
+        "po_status_draft": "مسودة — لم يُعتمد بعد",
+        "po_status_cancelled": "ملغى",
+        "to_supplier": "إلى المورد",
+        "project": "المشروع",
+        "delivery": "التسليم",
+        "date_on_acceptance": "الموعد عند قبول المورد",
+        "lead_days": "{days, plural, one {يوم واحد} two {يومان} few {# أيام} many {# يوماً} other {# يوم}} من الأمر",
+        "payment": "الدفع",
+        "terms_as_offer": "كما في العرض المقبول",
+        "subject": "الموضوع",
+        "col_description": "البيان",
+        "col_qty": "الكمية",
+        "col_unit": "الوحدة",
+        "col_unit_price": "سعر الوحدة",
+        "col_total": "الإجمالي",
+        "lump_sum_note": "أمر بمبلغ إجمالي — لا أسعار للوحدة",
+        "subtotal": "الإجمالي قبل الضريبة",
+        "vat_line": "ضريبة القيمة المضافة {rate}%",
+        "total_incl": "الإجمالي شاملاً الضريبة",
+        "no_values_copy": "نسخة بلا قيم — للمتابعة والاستلام",
+        "po_clause": "يُذكر رقم هذا الأمر في سند التسليم والفاتورة — لا تُسدَّد فاتورة بلا رقم أمر شراء وإثبات استلام. المقبول عند الاستلام وحده يُفوتَر.",
+        "prepared_by": "أعدّه",
+        "approved_by": "اعتمده",
+        "self_approved": "أصدره مُعِدّه",
+        "supplier_acceptance": "قبول المورد",
+        "signature": "التوقيع",
+        "po_footer_extra": "نسخة الأمر الرسمية — تُطبع بعد الاعتماد.",
+        "footer": "صدر إلكترونياً من منصة مدماك تِك — {company} · طُبع {date} · هذا المستند لا يُعدَّل بعد تسجيله، وأي تصحيح يكون بمستند لاحق.",
+        "st_complete": "اكتمل التوريد — لا متبقٍّ",
+        "st_incomplete": "لم يكتمل التوريد بعد",
+        "st_order": "الأمر",
+        "approved_on": "اعتُمد",
+        "supplier_date": "موعد المورد",
+        "st_destination": "الوجهة · المشروع",
+        "st_col_ordered": "في الأمر",
+        "st_col_accepted": "المقبول",
+        "st_col_rejected": "المرفوض",
+        "st_col_held": "موقوف للفحص",
+        "st_col_cancelled": "أُلغي",
+        "st_col_outstanding": "المتبقي",
+        "st_receipts": "سندات الاستلام",
+        "st_col_receipt": "السند",
+        "st_col_date": "التاريخ",
+        "st_col_receiver": "المستلم",
+        "st_no_receipts": "لم يصل شيء بعد على هذا الأمر",
+        "st_outstanding": "المتبقي على المورد: {lines} — وموعده المسجَّل {date}",
+        "supplier_rep": "المورد أو مندوبه",
+        "buyer": "مسؤول الشراء",
+        "proc_manager": "مدير المشتريات",
+        "st_footer_final": "كشف نهائي: اكتمل التوريد على هذا الأمر.",
+        "st_footer_interim": "كشف مرحلي: يُعاد إصداره بعد كل شحنة حتى يكتمل التوريد."
+      }
+    },
+    "ProcReceipts": {
+      "title": "سندات الاستلام",
+      "subtitle": "ما في الطريق، وما وصل وعُدّ، وما جاء بلا أمر شراء",
+      "searchPlaceholder": "ابحث برقم السند أو الأمر أو المورد أو البند…",
+      "projectFilter": "المشروع",
+      "allProjects": "كل المشاريع",
+      "segments": {
+        "incoming": "في الطريق",
+        "log": "السندات",
+        "nopo": "بلا أمر شراء"
+      },
+      "info": {
+        "incoming": "المشتريات تتابع حتى يكتمل التوريد. يسجّل السندَ من يقف عند نقطة التسليم — أمين المستودع أو مهندس الموقع — يعدّ ما وصل سطراً سطراً ويكتب المرفوض وسببه، والمالية لا تدفع إلا المقبول. إشعار المورد يصلنا أولاً، وإن جاء موعده بعد التزامه عرفنا التأخر قبل وقوعه.",
+        "log": "كل سند وصل — بما قُبل وما رُفض وما نقص عن إشعار المورد، ومن سجّله وأين ذهبت المادة. السند لا يُعدَّل بعد تسجيله؛ التصحيح بسند لاحق أو بمرتجع للمورد.",
+        "nopo": "بضاعة وصلت بلا أمر شراء: أثبتها المستلم لأنه لا يردّ شاحنة واقفة، وتنتظر منّا إلحاقها بأمر لاحق — وحتى تُلحق تُوقف المالية فاتورتها «بلا أمر شراء»."
+      },
+      "empty": {
+        "incoming": "لا شيء في الطريق",
+        "log": "لا سندات استلام بعد",
+        "nopo": "لا سندات بلا أمر شراء"
+      },
+      "incoming": {
+        "noNoticeYet": "لم يُشعر المورد بعد",
+        "lateNoNotice": "متأخر {days, plural, one {يوماً واحداً} two {يومين} few {# أيام} many {# يوماً} other {# يوم}} — بلا إشعار",
+        "afterPromise": "بعد موعده بـ{days, plural, one {يوم واحد} two {يومين} few {# أيام} many {# يوماً} other {# يوم}}",
+        "inDays": "{days, plural, =0 {اليوم} =1 {غداً} one {بعد يوم} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}",
+        "driverUnknown": "السائق لم يُحدَّد بعد",
+        "dueHint": "حلّ موعد المورد ولم يصلنا إشعار — ذكّره من صفحة الأمر، وإن وصلت الشاحنة سجّلها بلا إشعار",
+        "details": "التفاصيل",
+        "openOrder": "افتح الأمر",
+        "record": "سجّل الاستلام",
+        "recordNoNotice": "وصلت بلا إشعار — سجّلها"
+      },
+      "log": {
+        "colReceipt": "سند الاستلام",
+        "colSupplierPo": "المورد وأمر الشراء",
+        "colAccepted": "ما قُبل",
+        "colWhere": "أين استُلم وإلى أين ذهب",
+        "colStatus": "الحالة",
+        "recordedManually": "سجّلته المشتريات يدوياً",
+        "noPo": "بلا أمر شراء",
+        "rejected": "مرفوض {qty}",
+        "held": "بانتظار الفحص {qty}",
+        "short": "ناقص عن الإشعار {qty}",
+        "generalStock": "مخزون عام",
+        "expense": "مصروف نقدي — عند المالية",
+        "complete": "اكتمل التوريد — نهائي",
+        "incomplete": "لم يكتمل — استلام جزئي"
+      },
+      "csv": {
+        "button": "CSV",
+        "exported": "صُدّرت سندات الاستلام — CSV بترميز يقرؤه إكسل بالعربي",
+        "receipt": "السند",
+        "date": "التاريخ",
+        "supplier": "المورد",
+        "po": "أمر الشراء",
+        "material": "المادة",
+        "perNotice": "حسب الإشعار",
+        "counted": "المعدود",
+        "accepted": "المقبول",
+        "rejected": "المرفوض",
+        "held": "بانتظار الفحص",
+        "place": "المكان",
+        "receiver": "المستلم",
+        "recordedIn": "سجّله",
+        "recordedManual": "المشتريات يدوياً",
+        "recordedGate": "المستلم عند البوابة",
+        "noPo": "بلا أمر شراء",
+        "noNotice": "بلا إشعار"
+      },
+      "receive": {
+        "title": "شاشة المستلم — سجّل ما وصل",
+        "supplier": "المورد",
+        "order": "أمر الشراء",
+        "noOrder": "بلا أمر شراء",
+        "buyer": "مسؤول هذا الشراء في المشتريات",
+        "buyerNote": "{name} — هو من يكلّم المورد. أي نقص أو رفض يُكتب هنا فيصله فوراً، ولا يتفاوض الموقع مع المورد.",
+        "driverUnknown": "السائق لم يُحدَّد",
+        "noNotice": "وصلت بلا إشعار مسبق",
+        "selfReceive": "لا مستلم منفصل في هذه الشركة: تستلم بنفسك وأنت مَن اشترى. لن يُمنع، لكن السند سيحمل وسم «استلمه مُعِدّ الأمر» ويظهر للمالك في تقرير الاستثناءات.",
+        "blindHint": "اكتب العدد الفعلي لكل بند كما عددته بنفسك — إشعار المورد لا يظهر قبل عدّك، عمداً. بند تتركه فارغاً يُتجاوز.",
+        "openOnOrder": "بقي على الأمر {qty} {unit}",
+        "counted": "العدد الفعلي",
+        "noticeHidden": "إشعار المورد مخفيّ حتى تكتب عدّك — العدّ أعمى عمداً",
+        "noNoticeToCompare": "بلا إشعار للمقارنة",
+        "matchesNotice": "✓ مطابق لإشعار المورد ({qty})",
+        "belowNotice": "أقل من إشعار المورد ({notice}) بـ {diff} — اكتبه على نسخة الإشعار واطلب توقيع السائق",
+        "aboveNotice": "أكثر من إشعار المورد ({notice}) بـ {diff}",
+        "accepted": "المقبول {qty} {unit}",
+        "reject": "منه مرفوض",
+        "rejectedQty": "الكمية المرفوضة",
+        "rejectReason": "سبب الرفض",
+        "rejectNotePlaceholder": "ملاحظة على المرفوض (اختياري)",
+        "hold": "بانتظار الفحص",
+        "heldQty": "الكمية الموقوفة",
+        "holdReason": "لماذا موقوف؟",
+        "checklist": "قائمة التحقق — لا تمنع التسجيل",
+        "deliveryDate": "تاريخ الوصول",
+        "driver": "السائق أو المندوب",
+        "vehiclePlate": "لوحة المركبة",
+        "paperNote": "رقم إشعار التسليم الورقي",
+        "paperNotePlaceholder": "إن لم يكن معه إشعار يُترك فارغاً",
+        "landing": "إلى أين تذهب المادة",
+        "landingAuto": "تلقائياً — مستودع المشروع أو المستودع المركزي",
+        "note": "ملاحظة",
+        "notePlaceholder": "مثلاً: كرتونتان مبلولتان عُزلتا",
+        "signature": "توقيع المستلم (اختياري)",
+        "effectStock": "يصدر سند استلام باسمك — والمقبول يدخل رصيد المخزون",
+        "effectRejects": "المرفوض يُعاد مع السائق، ويصل المشتريات قرارُه مع المورد",
+        "effectHeld": "الموقوف لا يُصرف ولا يُدفع حتى تفرج عنه بعد الفحص",
+        "effectFinance": "المالية تطابق فاتورة المورد على المقبول وحده، والمورد يرى عدّك في بوابته",
+        "submit": "سجّل الاستلام — المقبول {qty}"
+      },
+      "toast": {
+        "recorded": "صدر السند {number}",
+        "recordedDesc": "وصل المشتريات والمالية والمورد",
+        "noStock": "لم تُقيَّد الكميات في المستودع — أضفها في المخزون يدوياً",
+        "noMfg": "لم يُغلق طلب الشراء في التصنيع — أغلقه من صندوق الطلبات",
+        "refused": "لم يُسجَّل الاستلام",
+        "failed": "تعذّر تسجيل الاستلام — حاول مرة أخرى"
+      },
+      "err": {
+        "order_missing": "المستند غير موجود — ربما حُذف أو سُجّل من جهاز آخر",
+        "offer_missing": "العرض غير موجود",
+        "no_permission": "تسجيل الاستلام ليس من صلاحيتك",
+        "wrong_state": "حالة المستند لا تسمح بهذا — ربما سُجّل الاستلام من جهاز آخر",
+        "own_order": "لا يعتمد الأمرَ مَن أعدّه",
+        "owner_only": "يعتمده المالك وحده",
+        "above_limit": "فوق حد اعتمادك",
+        "blocked": "يمنعه أحد الشروط",
+        "reason_required": "أكمل الحقول المطلوبة",
+        "date_invalid": "التاريخ غير صالح",
+        "line_missing": "السطر ليس في الأمر",
+        "nothing_outstanding": "لا متبقٍ على الأمر",
+        "nothing_rejected": "لا مرفوض على السطر",
+        "nothing_held": "لا موقوف على السطر",
+        "cannot_rate": "لا يمكن التقييم الآن",
+        "already_cancelled": "الأمر ملغى",
+        "has_receipts": "الأمر عليه استلام"
+      },
+      "drawer": {
+        "title": "سند استلام {number}",
+        "noticeTitle": "إشعار تسليم من المورد",
+        "notFound": "السند غير موجود أو ليس من سنداتك",
+        "record": "سجّل الاستلام",
+        "print": "طباعة السند",
+        "openOrder": "افتح أمر الشراء",
+        "regularise": "ألحِقه بأمر لاحق",
+        "markExpense": "أُرسل مصروفاً نقدياً",
+        "recordedManually": "سجّلته المشتريات يدوياً",
+        "noNotice": "بلا إشعار مسبق",
+        "popupBlocked": "المتصفح منع نافذة الطباعة — اسمح بالنوافذ المنبثقة",
+        "noPoCallout": "سند بلا أمر شراء — لا يُسدَّد قبل إلحاقه بأمر لاحق أو إرساله مصروفاً نقدياً، ويظهر في تقرير الاستثناءات.",
+        "expenseCallout": "أُرسل مصروفاً نقدياً إلى المالية: لا أمر شراء له، وتسجّل المالية فاتورته مصروفاً — والسند يبقى إثباتاً لما وصل.",
+        "selfCallout": "استلمه مُعِدّ الأمر نفسه — لا مستلم منفصل في هذه الشركة. لم يُمنع، لكنه يظهر في تقرير الاستثناءات باسمه ليراه المالك.",
+        "supplier": "من المورد",
+        "asWritten": "كما كتبه المستلم",
+        "noPo": "لا أمر شراء",
+        "notice": "إشعار التسليم",
+        "platformNotice": "إشعار عبر المنصة",
+        "noticedFor": "أُشعر به ليوم {date}",
+        "expected": "متوقع",
+        "arrived": "وصل",
+        "place": "مكان الاستلام",
+        "projectCustody": "عهدة المشروع",
+        "generalStock": "مخزون عام",
+        "receiver": "المستلم",
+        "noticeLines": "ما أشعر به المورد",
+        "linesTitle": "ما عُدّ وما قُبل — سطراً سطراً",
+        "noLines": "لا بنود على هذا المستند",
+        "colLine": "البند",
+        "colNotice": "حسب الإشعار",
+        "colCounted": "المعدود",
+        "colAccepted": "المقبول",
+        "colOpenNow": "المتبقي الآن",
+        "onOrder": "في الأمر {qty}",
+        "noNoticeShort": "بلا إشعار",
+        "short": "ناقص {qty}",
+        "rejected": "مرفوض {qty}",
+        "held": "بانتظار الفحص {qty}",
+        "footnote": "المعدود = ما عدّه المستلم بنفسه في حقل فارغ لا يُملأ من الإشعار · المقبول = المعدود − المرفوض − الموقوف للفحص · المتبقي يشمل المرفوض حتى يُقرَّر",
+        "acceptedValue": "قيمة المقبول في هذا السند:",
+        "exVat": "قبل الضريبة — أساس مطابقة فاتورة المورد",
+        "followsTitle": "ما يترتّب عليه",
+        "rejectPending": "رُفض {qty} {unit} من «{line}» — {reason}. أُعيد مع السائق، ويبقى على الأمر حتى تقرّر مع المورد.",
+        "rejectDecided": "المرفوض {qty} {unit} من «{line}»: {decision}.",
+        "decideOnOrder": "قرّر مع المورد — من صفحة الأمر",
+        "heldFollows": "{qty} {unit} من «{line}» {reason} — لا تُصرف ولا تُدفع قبل أن يفرج عنها المستلم.",
+        "awaitingRelease": "بانتظار الإفراج",
+        "shortFollows": "عُدّ {counted} من «{line}» والإشعار يقول {notice}: ناقص {short} {unit}. لا قرار مطلوب — الناقص يبقى مفتوحاً على الأمر، والمورد يرى المعدود فيفوتر عليه لا على إشعاره.",
+        "attachmentsTitle": "المرفقات وقائمة التحقق — كما سجّلها المستلم (غير مانعة)",
+        "noAttachments": "لا مرفقات",
+        "driverUnknown": "السائق لم يُحدَّد",
+        "paperNote": "إشعار",
+        "retention": "المرفقات تُحفظ مع السند نفسه ولا تُنسخ: تقرؤها المالية مع الفاتورة. والسند لا يُعدَّل بعد تسجيله — التصحيح بسند لاحق من المستلم أو بمرتجع للمورد. ومدة الحفظ النظامية للسجلات الضريبية في السعودية ٦ سنوات على الأقل.",
+        "whereTitle": "أين ذهبت — مسار المادة",
+        "wentToWarehouse": "رصيد «{name}» في المخزون — متاح للصرف أو التحويل إلى المواقع",
+        "wentToProject": "«مستودع المشروع» في {name} — يُستهلك على البنود بالقياس في إدارة المشاريع",
+        "wentNowhere": "لم تُقيَّد في مستودع — أضفها في المخزون يدوياً",
+        "heldIsolated": "والموقوف معزول حتى الفحص",
+        "trail": "سجّله {name} · {date}",
+        "arrivedNoNotice": "وصلت بلا إشعار مسبق — لم يُشعر المورد",
+        "financeHold": "المالية: فاتورة هذا السند موقوفة «بلا أمر شراء» حتى يُلحق",
+        "financeCeiling": "المالية تطابق فاتورة المورد على المقبول وحده: {amount} قبل الضريبة",
+        "financeCeilingUnknown": "المالية تطابق فاتورة المورد على المقبول وحده — أمر بمبلغ إجمالي، يُعرف سقفه عند اكتمال التوريد",
+        "closing": "سجّل المستلم هذا السند ولا يُعدَّل هنا. نحن نقرؤه ونتابع: نقرّر في المرفوض مع المورد، ونلاحق المتبقي حتى يكتمل التوريد، ثم نقيّم المورد."
+      },
+      "manual": {
+        "button": "سجّل سند استلام يدوياً",
+        "title": "سند استلام يدوي",
+        "subtitle": "لشراء تمّ خارج المنصة أو بضاعة وصلت بلا أمر — تُكتب بنوده بخط يدك، ويُوسم «سجّلته المشتريات» ويظهر في الاستثناءات",
+        "warning": "البضاعة وصلت فعلاً ولا نكذّب الواقع — لكن السند اليدوي استثناء: يبقى «بلا أمر شراء» حتى تُلحقه بأمر، والمالية لا تسدّد فاتورته قبل ذلك، ويظهر باسمك في تقرير الاستثناءات.",
+        "againstPo": "على أمر شراء؟",
+        "noPoOption": "لا — بلا أمر",
+        "poHint": "سيُحتسب على {po}: اكتب ما عددته من كل بند، وسيتحرك المتبقي على الأمر",
+        "supplierAsInvoiced": "المورد — كما في فاتورته أو ختمه",
+        "whoReceived": "من استلمها فعلاً",
+        "paperNote": "رقم الفاتورة أو الإشعار",
+        "place": "مكان الاستلام",
+        "placeNone": "بلا مستودع — لا تُقيَّد في المخزون",
+        "countOrderLines": "بنود الأمر — اكتب المعدود",
+        "linesTitle": "البنود — كما في فاتورة المحل",
+        "lineDesc": "الوصف كما في فاتورته",
+        "lineDescPlaceholder": "مثلاً: زوايا حديد 50 مم",
+        "unitPlaceholder": "حبة · متر · كجم",
+        "unitDefault": "وحدة",
+        "unitPrice": "سعر الوحدة",
+        "removeLine": "احذف البند",
+        "reason": "لماذا تمّ خارج المنصة؟",
+        "reasonPlaceholder": "مثلاً: شراء نقدي عاجل يوم الصبّة",
+        "effectWithPo": "يُحتسب على أمر الشراء وتطابق به المالية فاتورة المورد",
+        "effectNoPo": "يدخل «بلا أمر شراء» في صفحة السندات، وينتظر «ألحِقه بأمر» — والمالية توقف فاتورته حتى يُلحق",
+        "effectFlagged": "يُوسم «سجّلته المشتريات يدوياً» ويظهر في تقرير الاستثناءات باسمك",
+        "effectPrint": "ويمكن طباعته محضراً بعد حفظه",
+        "submit": "أصدر السند",
+        "doneOnOrder": "صدر السند {number} وحُسب على {po} — وهو موسوم أنه سُجّل يدوياً",
+        "doneNoPo": "صدر السند {number}",
+        "doneNoPoDesc": "وهو «بلا أمر شراء» حتى تُلحقه بأمر"
+      },
+      "regularise": {
+        "title": "ألحِقه بأمر لاحق",
+        "subtitle": "يُنشأ أمر شراء لاحق بما استُلم فعلاً، يعتمده المالك وحده — ويصير هذا السند سنده",
+        "supplier": "المورد",
+        "lines": "ما استُلم",
+        "unitPrice": "سعر الوحدة",
+        "total": "الإجمالي قبل الضريبة: {total}",
+        "reason": "لماذا اشتُري بلا أمر؟",
+        "reasonPlaceholder": "مثلاً: شراء نقدي عاجل يوم الصبّة — لم يكن هناك وقت لطرح عروض",
+        "effect": "الأمر اللاحق يظهر في تقرير الاستثناءات باسمك، ويُرسل إلى المالك للاعتماد؛ وبعد اعتماده تطابق المالية فاتورة المورد عليه.",
+        "cancel": "إلغاء",
+        "submit": "أنشئ الأمر اللاحق",
+        "done": "أُنشئ الأمر اللاحق {number} — بانتظار اعتماد المالك",
+        "notLinked": "السند لم يُربط بالأمر بعد — يربطه من يملك صلاحية الاستلام",
+        "expenseDone": "أُرسل للمالية مصروفاً نقدياً — وبقي السند إثباتاً للاستلام"
+      },
+      "print": {
+        "title": "سند استلام بضاعة",
+        "title_no_po": "سند استلام",
+        "cr": "السجل التجاري",
+        "vat_no": "الرقم الضريبي",
+        "status_final": "اكتمل التوريد على هذا الأمر — محضر نهائي",
+        "status_partial": "استلام جزئي — لم يكتمل التوريد بعد: بقي {list}",
+        "status_no_po": "بلا أمر شراء — سند يدوي",
+        "supplier": "المورد",
+        "supplier_as_written": "المورد كما في فاتورته",
+        "not_registered": "غير مسجّل عندنا",
+        "reference": "المستند المرجعي",
+        "no_purchase_order": "لا أمر شراء",
+        "po_and_notice": "أمر الشراء · إشعار التسليم",
+        "no_prior_notice": "بلا إشعار مسبق",
+        "paper_note": "إشعار المورد",
+        "from_rfq": "عن طلب",
+        "place": "مكان الاستلام",
+        "place_project": "مكان الاستلام · المشروع",
+        "general_stock": "مخزون عام",
+        "col_description": "البيان",
+        "col_on_po": "في الأمر",
+        "col_per_notice": "حسب إشعار المورد",
+        "col_counted": "المعدود",
+        "col_rejected": "المرفوض",
+        "col_held": "موقوف للفحص",
+        "col_accepted": "المقبول",
+        "col_unit": "الوحدة",
+        "col_value": "القيمة",
+        "accepted_value": "قيمة المقبول في هذا السند — أساس مطابقة فاتورة المورد (قبل الضريبة)",
+        "checklist": "قائمة التحقق",
+        "driver_vehicle": "السائق / المركبة",
+        "receiver_note": "ملاحظة المستلم",
+        "reason_outside": "سبب الشراء خارج المنصة",
+        "sig_supplier": "المورد أو مندوبه",
+        "sig_receiver": "المستلم",
+        "sig_procurement": "اطّلعت المشتريات",
+        "signature": "التوقيع",
+        "received_by_role": "المستلم عند نقطة التسليم",
+        "self_received": "استلمه مُعِدّ الأمر",
+        "footer_accepted_only": "المقبول وحده يُحتسب على أمر الشراء ويُفوتَر. المرفوض أُعيد مع المندوب، والموقوف لا يُصرف ولا يُدفع قبل الإفراج عنه.",
+        "footer_no_po": "سند بلا أمر شراء: لا يُسدَّد قبل إلحاقه بأمر أو إقراره مصروفاً نقدياً.",
+        "footer": "صدر إلكترونياً من منصة مدماك تِك — {company} · طُبع {date} · هذا المستند لا يُعدَّل بعد تسجيله، وأي تصحيح يكون بمستند لاحق."
+      }
+    },
+    "ProcReports": {
+      "page": {
+        "title": "التقارير",
+        "subtitle": "محسوبة من السجل الحيّ — لا أرقام تُكتب. القيم التزامات بلا ضريبة القيمة المضافة، لا تكاليف"
+      },
+      "csv": "CSV",
+      "empty": "لا بيانات في الفترة",
+      "emptyCommitments": "لا أوامر مفتوحة",
+      "total": "الإجمالي",
+      "noPrices": "صلاحيتك تُظهر المواعيد والكميات — التقارير ذات القيم لا تظهر لك",
+      "days": "{count, plural, =0 {0 يوم} one {يوم واحد} two {يومان} few {# أيام} many {# يوماً} other {# يوم}}",
+      "ordersCount": "{count, plural, zero {لا أوامر} one {أمر واحد} two {أمران} few {# أوامر} many {# أمراً} other {# أمر}}",
+      "overdueBy": "{days, plural, one {فات موعده بيوم} two {فات موعده بيومين} few {فات موعده بـ# أيام} many {فات موعده بـ# يوماً} other {فات موعده بـ# يوم}}",
+      "dueIn": "{days, plural, =0 {اليوم} =1 {غداً} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}",
+      "concentrated": "تركيز",
+      "concentration": "مورد واحد ({supplier}) يحمل {percent}% من مشتريات الفترة — تركيز يستحق بديلاً جاهزاً.",
+      "shortCompetition": "منافسة ناقصة",
+      "notAwarded": "لم يُرسَ",
+      "exceptionsTotal": "{count, plural, zero {لا استثناءات} one {استثناء واحد} two {استثناءان} few {# استثناءات} many {# استثناءً} other {# استثناء}}",
+      "report": {
+        "project": "المشتريات بحسب المشروع",
+        "supplier": "المشتريات بحسب المورد",
+        "delivery": "أداء التوريد",
+        "drift": "فرق السعر عن آخر شراء",
+        "cycle": "زمن الدورة والمنافسة",
+        "exceptions": "الاستثناءات",
+        "commitments": "التزامات مفتوحة بحسب الاستحقاق"
+      },
+      "period": {
+        "30": "30 يوماً",
+        "90": "90 يوماً",
+        "label": "الفترة",
+        "year": "هذه السنة",
+        "custom": "فترة محددة",
+        "from": "من",
+        "to": "إلى",
+        "notApplied": "بلا فترة — كل الأوامر الحيّة الآن"
+      },
+      "cols": {
+        "requester": "المشروع",
+        "noProject": "بلا مشروع — عام",
+        "orders": "أوامر",
+        "lines": "أسطر",
+        "ordered": "قيمة الأوامر",
+        "received": "استُلم",
+        "receivedUnknownNote": "أمر مقطوعية لم يصل كله: قيمة ما استُلم منه لا تُقدَّر، ولا تدخل في المجموع",
+        "open": "لم يصل",
+        "supplier": "المورد",
+        "value": "القيمة",
+        "share": "الحصة",
+        "onTime": "الالتزام بالموعد",
+        "avgLate": "متوسط التأخر",
+        "rejectPct": "نسبة المرفوض",
+        "po": "الأمر",
+        "promised": "موعد المورد",
+        "lastReceipt": "آخر استلام",
+        "gap": "الفرق",
+        "material": "المادة",
+        "day": "التاريخ",
+        "previous": "السعر السابق",
+        "current": "سعر الأمر",
+        "qty": "الكمية",
+        "impact": "الأثر",
+        "rfq": "طلب العروض",
+        "invited": "مدعوّون",
+        "offers": "عروض",
+        "awarded": "أُرسي",
+        "days": "أيام من النشر إلى الترسية",
+        "lowest": "أقل عرض",
+        "awardedValue": "المُرسى عليه",
+        "competition": "منافسة ناقصة",
+        "document": "المستند",
+        "exception": "الاستثناء",
+        "by": "صاحبه",
+        "approvedBy": "اعتمده",
+        "dueIn": "الاستحقاق",
+        "bucket": "الشريحة"
+      },
+      "notes": {
+        "project": "القيمة التزامٌ هنا لا تكلفة: التكلفة الفعلية على البند تُقرأ من دفتر المالية بعد الفاتورة.",
+        "supplier": "الحصة من قيمة أوامر الفترة بلا ضريبة. الالتزام بالموعد محسوب من سندات الاستلام على كل أوامر المورد.",
+        "delivery": "الاستلام يسجّله المخزون؛ نحن نقيس به التزام المورد. يُحكم على الأمر بآخر استلام مقابل موعد المورد المسجَّل.",
+        "drift": "الأثر = (سعر الأمر − آخر سعر اشترينا به للمادة نفسها بالوحدة نفسها) × الكمية. الموجب ليس خطأً دائماً — الحديد والنحاس يتحرّكان — لكنه يستحق أن يُرى.",
+        "cycle": "أقل من {min} عروض فوق {threshold} ⃁ = منافسة ناقصة، وتظهر لمن يعتمد الأمر وفي تقرير الاستثناءات.",
+        "exceptions": "كل ما خرج عن المسار المعتاد — باسم صاحبه ومعتمده. ليست مخالفات، بل ما يستحق أن يراه المالك شهرياً.",
+        "commitments": "المالية لا ترى أمر الشراء في توقّع النقد حتى تصلها فاتورته — هذا الجدول يسدّ الفجوة. الاستحقاق بموعد المورد، وما فات موعده يقع في الأسبوع الأول. القيمة = ما لم يصل بعد، بلا ضريبة."
+      },
+      "drift": {
+        "totals": "أثر الفترة {impact} على أساس {base} ({percent}%)",
+        "noBase": "لا سعر سابق للمقارنة في هذه الفترة"
+      },
+      "cycle": {
+        "totals": "{rfqs, plural, one {طلب واحد} two {طلبان} few {# طلبات} many {# طلباً} other {# طلب}} · أُرسي {awarded} · منافسة ناقصة {short}"
+      },
+      "kind": {
+        "retroactive": "أمر لاحق",
+        "direct": "أمر مباشر",
+        "non_lowest": "غير الأقل سعراً",
+        "short_competition": "منافسة ناقصة",
+        "self_approval": "اعتماد ذاتي",
+        "no_official_quote": "بلا عرض رسمي",
+        "closed_short": "أُقفل ناقصاً",
+        "manual_receipt": "سند يدوي",
+        "no_po": "بلا أمر شراء",
+        "self_received": "استلمه المُعِدّ"
+      }
+    },
+    "ProcSettings": {
+      "page": {
+        "title": "الإعدادات والحدود",
+        "subtitle": "السياسات التي تحكم المال · الأدوار الأربعة · وما نملك وما نقرأ وما لا نفعله ولو طُلب"
+      },
+      "saved": "حُفظت السياسات",
+      "saveFailed": "لم تُحفظ السياسات — حاول مرة أخرى",
+      "save": "احفظ",
+      "discard": "تراجع",
+      "unit": {
+        "sar": "⃁",
+        "percent": "%",
+        "count": "عروض",
+        "days": "يوم"
+      },
+      "policies": {
+        "title": "السياسات",
+        "subtitle": "الحدّ رقم يمنع فعلاً — والفرض في الخادم، والواجهة انعكاس له",
+        "readOnly": "تُعدَّل بيد المالك أو مَن يعتمد أوامر الشراء",
+        "reference": "القيمة المرجعية: {value}",
+        "enforced": "الفارغ أو السالب يعود إلى القيمة المرجعية عند الحفظ"
+      },
+      "policy": {
+        "managerApprovalLimit": {
+          "label": "حدّ اعتماد مدير المشتريات",
+          "desc": "أقصى قيمة أمر (بلا ضريبة) يعتمدها مَن يحمل صلاحية الاعتماد؛ فوقها يعتمد المالك"
+        },
+        "directPurchaseCap": {
+          "label": "سقف الأمر المباشر بلا عروض",
+          "desc": "الأوامر المباشرة لمورد واحد داخل نافذة التجزئة لا تتجاوزه إلا باعتماد المالك"
+        },
+        "competitionThreshold": {
+          "label": "حدّ المنافسة",
+          "desc": "فوق هذه القيمة، عروض أقل من الحدّ الأدنى = منافسة ناقصة تظهر للمعتمد وفي تقرير الاستثناءات"
+        },
+        "minOffers": {
+          "label": "أقل عدد عروض",
+          "desc": "العدد الذي تُعدّ المنافسة به كافية فوق حدّ المنافسة"
+        },
+        "overReceiptTolerancePercent": {
+          "label": "نسبة السماح في الاستلام",
+          "desc": "ما يُقبل فوق الكمية المفتوحة على السطر قبل أن يُوقف الاستلام"
+        },
+        "rfqWindowDays": {
+          "label": "مدة دورة العروض المعتادة",
+          "desc": "الأيام من نشر طلب العروض إلى إغلاقه — تدخل في حساب «آخر يوم للطلب»"
+        },
+        "awardCycleDays": {
+          "label": "مدة الترسية والاعتماد",
+          "desc": "الأيام من إغلاق العروض إلى أمر معتمد — بعدها يصير طلب عروض مغلق بلا ترسية أحمر"
+        },
+        "supplierAcceptanceDays": {
+          "label": "مهلة قبول المورد للأمر",
+          "desc": "الأيام بعد الإرسال قبل أن يصير «لم يقبل» قراراً على مكتب المتابع"
+        },
+        "splitWindowDays": {
+          "label": "نافذة التجزئة",
+          "desc": "الأيام التي تُجمع فيها الأوامر المباشرة لمورد واحد مقابل سقف الأمر المباشر"
+        },
+        "sealOffersUntilDeadline": {
+          "label": "إخفاء أسعار العروض حتى الموعد النهائي",
+          "desc": "متوقف افتراضياً: الأسعار تظهر فور وصولها والترسية قد تسبق الموعد"
+        }
+      },
+      "roles": {
+        "title": "الأدوار",
+        "subtitle": "أربعة أدوار، لكل دور صلاحية واحدة — تُمنح من صفحة الفريق",
+        "teamLink": "صفحة الفريق",
+        "ownerBadge": "المالك",
+        "prices": "الأسعار يراها المالك ومَن يحمل عرض العروض أو الترسية أو الاعتماد. المتابع ومَن يستلم يريان المواعيد والكميات فقط — على مستوى الواجهة.",
+        "owner": {
+          "name": "مالك الشركة",
+          "desc": "يمرّ على كل فحص: يعتمد ما فوق {limit} وما أعدّه المدير وكل أمر لاحق — ويرى الاستثناءات شهرياً"
+        },
+        "manager": {
+          "name": "مدير المشتريات",
+          "desc": "يعتمد أو يعيد أوامر غيره حتى {limit} — ولا يعتمد ما أعدّه بنفسه"
+        },
+        "buyer": {
+          "name": "مسؤول المشتريات",
+          "desc": "يقارن العروض ويُرسي ويُعِدّ أمر الشراء — ولا يعتمده"
+        },
+        "expediter": {
+          "name": "متابع التوريد",
+          "desc": "يرسل الأمر للمورد ويسجّل قبوله وموعده ويحدّث الموعد ويذكّره — بلا أسعار"
+        },
+        "receiver": {
+          "name": "المستلم",
+          "desc": "يسجّل سند الاستلام عند البوابة: العدّ والمرفوض والمحجوز للفحص — ولا يُعِدّ أمراً"
+        }
+      },
+      "boundaries": {
+        "title": "الحدود",
+        "subtitle": "ما نملك · ما نقرأ · وما لا نفعله ولو طُلب",
+        "owns": {
+          "title": "نملكه",
+          "item1": "طلب عروض الأسعار ودورته",
+          "item2": "العروض والمقارنة والترسية وسببها",
+          "item3": "أمر الشراء واعتماده وإرساله",
+          "item4": "متابعة موعد المورد حتى الإقفال",
+          "item5": "القرار في المرفوض وفي متبقي الأمر",
+          "item6": "تقييم المورد — محسوب لا مكتوب"
+        },
+        "reads": {
+          "title": "نقرؤه",
+          "item1": "الحاجة وكميتها وموعدها — من المشاريع والتصنيع",
+          "item2": "الأصناف والوحدات — من المخزون",
+          "item3": "سند الاستلام وحركة الرصيد — يسجّلها المخزون",
+          "item4": "الفاتورة والسداد — من المالية",
+          "item5": "ملف المورد على المنصة وتوثيقه",
+          "item6": "حالة الأمر عند المورد — من بوابته"
+        },
+        "never": {
+          "title": "لا نفعله",
+          "item1": "لا ننشئ حاجة ولا نعدّل كميتها",
+          "item2": "لا نسجّل استلاماً نيابة عن المستلم",
+          "item3": "لا ندفع ولا نطابق فاتورة",
+          "item4": "لا نعتمد أمراً أعددناه",
+          "item5": "لا نُظهر سعراً لمَن لا يملك رؤيته",
+          "item6": "لا نراسل المورد إلا بإرسال الأمر والتذكير"
+        }
       }
     }
   },

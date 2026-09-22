@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
@@ -26,6 +26,28 @@ import { Star } from "lucide-react"
 import { displayCategory, displaySubcategory, displayCity } from "@/lib/constants"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ToastAction } from "@/components/ui/toast"
+import { useProcActor } from "@/hooks/useProcActor"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type SupplierFacts } from "@/lib/procurement/types"
+import { AWARD_REASON_CODES, lowestOffer, offerPrice, poStatus } from "@/lib/procurement/po"
+import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
+import { procLinks } from "@/lib/procurement/events"
+import { displayPoNumber } from "@/lib/procurement/format"
+import { legacyLinesOf, recordReceipt } from "@/lib/procurement/receipt-writes"
+import {
+  EXCLUSION_CODES,
+  awardSupplierOrgId,
+  buildAwardReason,
+  buildExclusion,
+  competingOffers,
+  parseAwardReason,
+  reviewAward,
+  supplierFactsFromProfile,
+  type OfferAwardReason,
+  type OfferExclusion,
+} from "@/lib/procurement/award"
 
 
 import {
@@ -107,6 +129,13 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
   const [confirmDecisionTarget, setConfirmDecisionTarget] = useState<{ offer: any; decision: "مقبول" | "مرفوض" } | null>(null)
   const [budgetOverrideReason, setBudgetOverrideReason] = useState("")
+  // PRD 3.0: the award's reason when a lower price is passed over, and the
+  // rejection's reason — both ride beside the unchanged status literals.
+  const [awardReasonCode, setAwardReasonCode] = useState<AwardReasonCode | "">("")
+  const [awardReasonText, setAwardReasonText] = useState("")
+  const [exclusionCode, setExclusionCode] = useState<string>("")
+  const [exclusionNote, setExclusionNote] = useState("")
+  const [raisingOrderId, setRaisingOrderId] = useState<string | null>(null)
   const [reductionOffer, setReductionOffer] = useState<any | null>(null)
   const [reductionNote, setReductionNote] = useState("")
   const [targetPrice, setTargetPrice] = useState("")
@@ -198,6 +227,43 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
   const isLoading = isOffersLoading || isRfqLoading
 
+  // The purchase order laid over the award (PRD 3.0): who prepares it, the
+  // org's policies, and the facts about the supplier an approval will check.
+  const tProc = useTranslations("Portal.Procurement")
+  const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor((rfq as { projectId?: string } | null)?.projectId || undefined)
+  const policiesRef = useMemoFirebase(() => (firestore && procOrgId ? doc(firestore, PROCUREMENT_SETTINGS, procOrgId) : null), [firestore, procOrgId])
+  const { data: policiesDoc } = useDoc(policiesRef)
+  const policies = useMemo<ProcurementPolicies>(() => resolvePolicies(policiesDoc as Partial<ProcurementPolicies> | null), [policiesDoc])
+  const [supplierFacts, setSupplierFacts] = useState<Record<string, SupplierFacts>>({})
+  const acceptTargetSupplierOrgId = confirmDecisionTarget?.decision === "مقبول" ? awardSupplierOrgId(confirmDecisionTarget.offer) : null
+  useEffect(() => {
+    if (!firestore || !acceptTargetSupplierOrgId || supplierFacts[acceptTargetSupplierOrgId]) return
+    const id = acceptTargetSupplierOrgId
+    let cancelled = false
+    ;(async () => {
+      let facts: SupplierFacts
+      try {
+        let snap = await getDoc(doc(firestore, "users", id))
+        if (!snap.exists()) snap = await getDoc(doc(firestore, "organizations", id))
+        facts = supplierFactsFromProfile(id, snap.exists() ? (snap.data() as Parameters<typeof supplierFactsFromProfile>[1]) : null)
+      } catch (err) {
+        console.warn("supplier facts not read:", (err as { code?: string })?.code || err)
+        facts = supplierFactsFromProfile(id, null)
+      }
+      if (!cancelled) setSupplierFacts((prev) => ({ ...prev, [id]: facts }))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [firestore, acceptTargetSupplierOrgId, supplierFacts])
+  const awardReview = useMemo(() => {
+    if (!confirmDecisionTarget || confirmDecisionTarget.decision !== "مقبول") return null
+    const orgIdOfSupplier = awardSupplierOrgId(confirmDecisionTarget.offer)
+    return reviewAward(confirmDecisionTarget.offer, (offers || []) as any[], policies, orgIdOfSupplier ? supplierFacts[orgIdOfSupplier] || null : null, new Date())
+  }, [confirmDecisionTarget, offers, policies, supplierFacts])
+  const awardReason = awardReview?.needsReason ? parseAwardReason(awardReasonCode, awardReasonText) : null
+  const awardReasonMissing = Boolean(awardReview?.needsReason) && !awardReason
+
   // Budget-overrun check: project budget + committed spend across every accepted/completed
   // offer in the project (not just this RFQ), so accepting this offer is weighed against
   // the whole project's commitments, not just its own RFQ.
@@ -250,6 +316,52 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
   const handleConfirmDelivery = async () => {
     if (!firestore || !user || !confirmDeliveryDoc || !receiverName.trim()) return
+    // PRD 3.0: a legacy delivery (no order) that names its items is confirmed
+    // through the receipts write — same effects (stock, books, Manufacturing,
+    // the supplier's `delivery_confirmed`), plus a GR number. A notice with
+    // no items (registered suppliers' notices carry none — impl-b §8.2) would
+    // be refused there as "nothing counted", so it keeps today's path below.
+    const offerOfConfirm = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { poId?: string } | undefined
+    if (confirmDeliveryDoc.poId || offerOfConfirm?.poId) {
+      // The award has an order: the receipt is counted at the gate, never "confirmed whole" here.
+      setConfirmDeliveryDoc(null)
+      router.push(procLinks.receipt(confirmDeliveryDoc.id))
+      return
+    }
+    if (legacyLinesOf(confirmDeliveryDoc).length > 0) {
+      setIsConfirmingDelivery(true)
+      try {
+        const offerOfDelivery = (offers || []).find((o: any) => o.id === confirmDeliveryDoc.offerId) as { price?: string | number; totalBatchesPrice?: number } | undefined
+        const legacyNet = Math.max(0, Number(offerOfDelivery?.totalBatchesPrice ?? offerOfDelivery?.price) || 0)
+        const result = await recordReceipt(
+          firestore,
+          procActor,
+          {
+            delivery: confirmDeliveryDoc,
+            po: null,
+            receiverName: receiverName.trim(),
+            policies,
+            purchaseSource: (rfq as { purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } } | null)?.purchaseSource ?? null,
+            legacyNet: legacyNet > 0 ? legacyNet : null,
+            projectName: (project as { name?: string } | null)?.name || null,
+          },
+          { copy: tShared, locale: locale === "en" ? "en" : "ar", centralWarehouseCopy: { name: t("wh_central_name"), location: t("wh_central_location"), description: t("wh_central_desc") } }
+        )
+        toast(
+          result.stockLanded
+            ? { title: t("delivery_confirm_success"), description: t("delivery_receipt_link") }
+            : { title: t("delivery_confirm_success"), description: t("delivery_stock_not_landed"), variant: "destructive" }
+        )
+        setConfirmDeliveryDoc(null)
+        setReceiverName("")
+      } catch (err) {
+        console.error("receipt not recorded:", (err as { code?: string })?.code || err)
+        toast({ title: t("offers_toast_error"), variant: "destructive" })
+      } finally {
+        setIsConfirmingDelivery(false)
+      }
+      return
+    }
     setIsConfirmingDelivery(true)
     try {
       await updateDoc(doc(firestore, "deliveries", confirmDeliveryDoc.id), {
@@ -380,18 +492,88 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       )
       setConfirmDeliveryDoc(null)
       setReceiverName("")
-    } catch (err) {
+    } catch {
       toast({ title: t("offers_toast_error"), variant: "destructive" })
     } finally {
       setIsConfirmingDelivery(false)
     }
   }
 
-  const handleDecision = async (offerId: string, decision: "مقبول" | "مرفوض" | "مطلوب تخفيض", note?: string, requestedPrice?: string) => {
+  // The award's second half (PRD 3.0 §5.1-5): a purchase order laid over the
+  // accepted offer, born awaiting approval. Idempotent — an offer that already
+  // names its order gets it back — so the same call serves the accept flow
+  // and the "raise its order" button on an award whose order never got made.
+  const raisePurchaseOrder = async (offer: any, reason: OfferAwardReason | { code: AwardReasonCode; text?: string | null } | null | undefined) => {
+    if (!firestore || !rfq) throw new Error("rfq_missing")
+    const rfqLike: RfqLike = {
+      id: rfqId,
+      title: (rfq as { title?: string }).title || offer.rfqTitle || "",
+      organizationId: (rfq as { organizationId?: string }).organizationId || null,
+      contractorId: (rfq as { contractorId?: string }).contractorId || null,
+      projectId: (rfq as { projectId?: string }).projectId || null,
+      projectName: (project as { name?: string } | null)?.name || null,
+      category: (rfq as { category?: string }).category || null,
+      city: (rfq as { city?: string }).city || null,
+      directAward: Boolean((rfq as { directAward?: boolean }).directAward),
+      products: (rfq as { products?: RfqLike["products"] }).products || null,
+      purchaseSource: (rfq as { purchaseSource?: RfqLike["purchaseSource"] }).purchaseSource || null,
+    }
+    // An Admin deciding on an Mdmak-posted RFQ may award here without a team
+    // permission; the order's rules ask for membership, so his attempt is
+    // refused cleanly and the award still stands.
+    const actor = { ...procActor, canPrepare: procActor.canPrepare || canDecide }
+    return createPurchaseOrderFromAward(
+      firestore,
+      actor,
+      {
+        rfq: rfqLike,
+        offer: offer as AwardOfferLike,
+        offers: competingOffers(((offers || []) as AwardOfferLike[]).map((o) => (o.id === offer.id ? (offer as AwardOfferLike) : o))),
+        awardReason: reason ? { code: reason.code, text: reason.text ?? null } : null,
+        policies,
+      },
+      { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: procOrgName || activeCompanyName || null }
+    )
+  }
+
+  const toastOrderRaised = (result: { id: string; docNumber: string }) => {
+    toast({
+      title: t("offers_toast_accepted_title"),
+      description: t("offers_award_order_created", { number: displayPoNumber(result.docNumber, locale) }),
+      action: (
+        <ToastAction altText={t("offers_award_open_order")} onClick={() => router.push(procLinks.order(result.id))}>
+          {t("offers_award_open_order")}
+        </ToastAction>
+      ),
+    })
+  }
+
+  const handleRaiseOrder = async (offer: any) => {
+    if (!firestore || !user) return
+    setRaisingOrderId(offer.id)
+    try {
+      const result = await raisePurchaseOrder(offer, offer.awardReason || null)
+      toastOrderRaised(result)
+    } catch (err) {
+      console.error("purchase order not raised:", (err as { code?: string })?.code || err)
+      toast({ title: t("offers_toast_error"), description: t("offers_award_order_failed"), variant: "destructive" })
+    } finally {
+      setRaisingOrderId(null)
+    }
+  }
+
+  const handleDecision = async (
+    offerId: string,
+    decision: "مقبول" | "مرفوض" | "مطلوب تخفيض",
+    note?: string,
+    requestedPrice?: string,
+    extras?: { awardReason?: { code: AwardReasonCode; text: string | null } | null; exclusion?: OfferExclusion | null }
+  ) => {
     if (!firestore || !user) return
     setProcessingId(offerId)
 
     const offer = offers?.find((o: any) => o.id === offerId)
+    const storedAwardReason = decision === "مقبول" && extras?.awardReason ? buildAwardReason(extras.awardReason, user.uid) : null
 
     // Step 1: Update offer status. When accepting, the offer's own status and the RFQ's
     // "Awarded" status must never go out of sync, so they're committed together as one batch.
@@ -407,6 +589,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
         if (requestedPrice) updateData.targetPrice = Number(requestedPrice)
         updateData.reductionNote = note || null
       }
+      // Additive (PRD 3.0): why this supplier over a cheaper one, why that
+      // offer is out — the status literals stay exactly what every reader compares.
+      if (storedAwardReason) updateData.awardReason = storedAwardReason
+      if (decision === "مرفوض" && extras?.exclusion) updateData.exclusion = extras.exclusion
 
       if (decision === "مقبول") {
         const batch = writeBatch(firestore)
@@ -444,10 +630,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           })
         }
       } catch (error: any) {
+        // The award is already written; a chat that failed to open must not
+        // keep the supplier from hearing of it (impl-b §8.4). `openChat`
+        // creates the thread lazily the next time anyone opens it.
         console.error("❌ setDoc chat failed:", error?.code, error?.message)
         toast({ title: t("offers_toast_chat_alert"), description: t("offers_toast_chat_alert_desc"), variant: "destructive" })
-        setProcessingId(null)
-        return
       }
     }
 
@@ -497,6 +684,20 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       note,
       targetPrice: requestedPrice,
     })
+
+    // Step 5 (PRD 3.0): the purchase order over the award. The award stands
+    // whatever happens here — a failed order is raised later from the card.
+    if (decision === "مقبول" && offer) {
+      try {
+        const result = await raisePurchaseOrder({ ...offer, status: "مقبول", awardReason: storedAwardReason || offer.awardReason || null }, storedAwardReason)
+        toastOrderRaised(result)
+      } catch (err) {
+        console.error("purchase order not created after award:", (err as { code?: string })?.code || err)
+        toast({ title: t("offers_toast_accepted_title"), description: t("offers_award_order_failed"), variant: "destructive" })
+      }
+      setProcessingId(null)
+      return
+    }
 
     toast({
       title: decision === "مقبول" ? t("offers_toast_accepted_title") : decision === "مرفوض" ? t("offers_toast_rejected_title") : t("offers_toast_reduction_title"),
@@ -644,7 +845,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     }
     return 0;
   }) : []
-  const lowestPrice = sortedOffers.length > 0 ? sortedOffers[0].price : null
+  // "Best price" is honest (PRD §6.2): the lowest LIVE price — a rejected
+  // offer's figure is out of the running — compared as a number, so an
+  // Mdmak offer stored as 1000 and a web offer stored as "1000" are the same price.
+  const lowestLive = lowestOffer(competingOffers((offers || []) as any[]))
+  const lowestLivePrice = lowestLive ? offerPrice(lowestLive) : null
 
   // Offers contain competitor pricing/notes — never render them to a caller outside the
   // RFQ's own org, even though the `offers` collection's read rule only scopes by rfqId.
@@ -788,7 +993,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
               </Card>
             ) : (
               offers.map((offer: any) => {
-                const isBestOffer = offer.price === lowestPrice && offer.status !== "مرفوض";
+                const isBestOffer = offer.status !== "مرفوض" && lowestLivePrice != null && offerPrice(offer) === lowestLivePrice;
                 const isMdmak = !!offer.isFromMdmak;
 
                 return (
@@ -849,6 +1054,18 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                     <Link2 size={9} />
                                     {t("offers_guest_badge")}
                                   </span>
+                                )}
+                                {offer.isGuestOffer && offer.status === "قيد المراجعة" && (
+                                  <p className="text-[11px] text-amber-700 mt-0.5 flex items-center gap-1">
+                                    <AlertTriangle size={10} className="shrink-0" />
+                                    {t("offers_guest_order_caveat")}
+                                  </p>
+                                )}
+                                {offer.status === "مرفوض" && offer.exclusion?.code && (
+                                  <p className="text-[11px] text-slate-500 mt-0.5" dir="auto">
+                                    {t("offers_exclusion_stored", { reason: t(`offers_exclusion_${offer.exclusion.code}`) })}
+                                    {offer.exclusion.note ? ` — ${offer.exclusion.note}` : ""}
+                                  </p>
                                 )}
                                 {offer.submittedByUserName && (
                                   <p className="text-[11px] text-slate-500 mt-0.5 truncate">
@@ -1105,6 +1322,22 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                         {/* Action Buttons - Accepted */}
                         {offer.status === "مقبول" && (
                           <div className="bg-success/5 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-success/15">
+                            {/* The purchase order over this award (PRD 3.0) — or, for an
+                                award whose order never got made, the way to raise it. */}
+                            {offer.poId ? (
+                              <PoStatusPill poId={offer.poId} poNumber={offer.poNumber} />
+                            ) : canDecide ? (
+                              <Button
+                                onClick={() => handleRaiseOrder(offer)}
+                                disabled={raisingOrderId === offer.id}
+                                variant="outline"
+                                className="w-full gap-2 rounded-full border-module/40 text-module bg-module/10 hover:bg-module/20 text-xs font-bold"
+                                size="sm"
+                              >
+                                {raisingOrderId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <FileCheck size={14} />}
+                                {t("offers_award_raise_order")}
+                              </Button>
+                            ) : null}
                             {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && (
                               <div className="w-full p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs space-y-1.5 mb-1">
                                 <p className="font-bold text-amber-800 flex items-center gap-1.5">
@@ -1118,14 +1351,24 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                               </div>
                             )}
                             {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "pending_confirmation" && canConfirmDelivery && (
-                              <Button
-                                onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
-                                className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs"
-                                size="sm"
-                              >
-                                <CheckCircle2 size={14} />
-                                {t("delivery_confirm_btn")}
-                              </Button>
+                              deliveryByOfferId[offer.id].poId || offer.poId ? (
+                                // A delivery against an order is counted at the gate, line by line.
+                                <Button asChild className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs" size="sm">
+                                  <Link href={procLinks.receipt(deliveryByOfferId[offer.id].id)}>
+                                    <CheckCircle2 size={14} />
+                                    {t("delivery_confirm_btn")}
+                                  </Link>
+                                </Button>
+                              ) : (
+                                <Button
+                                  onClick={() => setConfirmDeliveryDoc(deliveryByOfferId[offer.id])}
+                                  className="w-full bg-success hover:bg-success/90 gap-2 rounded-full transition-all text-xs"
+                                  size="sm"
+                                >
+                                  <CheckCircle2 size={14} />
+                                  {t("delivery_confirm_btn")}
+                                </Button>
+                              )
                             )}
                             {deliveryByOfferId[offer.id] && deliveryByOfferId[offer.id].status === "confirmed" && (
                               <>
@@ -1221,12 +1464,14 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 return n * (u === "أشهر" ? 30 : u === "أسابيع" ? 7 : 1)
               })
               const allDates       = sortedOffers.map((o: any) => o.createdAt ? new Date(o.createdAt).getTime() : 0)
-              const lowestPrice    = Math.min(...allPrices)
+              // The price win is honest (PRD §6.2): a rejected offer's figure never wins.
+              const livePrices     = sortedOffers.filter((o: any) => o.status !== "مرفوض").map((o: any) => parseFloat(o.price) || 0)
+              const lowestPrice    = livePrices.length ? Math.min(...livePrices) : Math.min(...allPrices)
               const highestPrice   = Math.max(...allPrices)
               const fastestDur     = Math.min(...allDurDays)
               const latestDate     = Math.max(...allDates)
 
-              const wp   = (o: any)            => (parseFloat(o.price) || 0) === lowestPrice
+              const wp   = (o: any)            => o.status !== "مرفوض" && (parseFloat(o.price) || 0) === lowestPrice
               const wd   = (o: any, i: number) => allDurDays[i] === fastestDur && allDurDays[i] !== Infinity
               const wdat = (o: any)            => o.createdAt ? new Date(o.createdAt).getTime() === latestDate : false
               const sc   = (o: any, i: number) => [wp(o), wd(o, i), wdat(o)].filter(Boolean).length
@@ -1344,6 +1589,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                         )}
                         <ScoreBar wins={wins} />
                         {getStatusBadge(offer.status || "قيد المراجعة")}
+                        {offer.isGuestOffer && (
+                          <span style={{ fontSize: 10.5, fontWeight: 700, color: "hsl(32 81% 29%)", textAlign: "center", lineHeight: 1.5 }}>{t("offers_guest_order_caveat")}</span>
+                        )}
                       </div>
                     </div>
                   ),
@@ -1579,9 +1827,9 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
 
       <AlertDialog
         open={!!confirmDecisionTarget}
-        onOpenChange={(open) => { if (!open) { setConfirmDecisionTarget(null); setBudgetOverrideReason("") } }}
+        onOpenChange={(open) => { if (!open) { setConfirmDecisionTarget(null); setBudgetOverrideReason(""); setAwardReasonCode(""); setAwardReasonText(""); setExclusionCode(""); setExclusionNote("") } }}
       >
-        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <AlertDialogContent dir={locale === 'ar' ? 'rtl' : 'ltr'} className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {confirmDecisionTarget?.decision === "مقبول"
@@ -1628,6 +1876,111 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
             </div>
           )}
 
+          {/* PRD 3.0 — the award's review: this price against the lowest live
+              one, the reason when a cheaper offer is passed over, and what the
+              ORDER will run into at approval (never a stop at award). */}
+          {awardReview && (
+            <div className="space-y-3 text-xs">
+              {awardReview.thisPrice != null && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-slate-700">
+                  <span>{t("offers_award_this_offer")}<br /><b dir="ltr">{formatCurrency(awardReview.thisPrice, locale)}</b></span>
+                  <span>
+                    {t("offers_award_lowest_offer")}<br />
+                    <b dir="ltr">{awardReview.lowestPrice != null ? formatCurrency(awardReview.lowestPrice, locale) : "—"}</b>
+                    {awardReview.lowestPrice != null && awardReview.lowestPrice === awardReview.thisPrice && (
+                      <span className="ms-1 text-success font-bold">{t("offers_award_is_lowest")}</span>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {awardReview.needsReason && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="award-reason-code" className="text-xs font-bold">
+                    {t("offers_award_reason_label")} <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={awardReasonCode} onValueChange={(v) => setAwardReasonCode(v as AwardReasonCode)}>
+                    <SelectTrigger id="award-reason-code" className="h-9 text-sm">
+                      <SelectValue placeholder={t("offers_award_reason_placeholder")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {AWARD_REASON_CODES.map((code) => (
+                        <SelectItem key={code} value={code}>{tProc(`awardReason.${code}`)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    id="award-reason-text"
+                    rows={2}
+                    value={awardReasonText}
+                    onChange={(e) => setAwardReasonText(e.target.value)}
+                    placeholder={awardReasonCode === "other" ? t("offers_award_reason_text_placeholder") : t("offers_award_reason_note_placeholder")}
+                    aria-label={t("offers_award_reason_label")}
+                    className="text-sm resize-none"
+                  />
+                  {awardReasonCode === "other" && awardReasonText.trim().length < 8 && (
+                    <p className="text-[11px] text-destructive">{t("offers_award_reason_text_required")}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">{t("offers_award_reason_hint")}</p>
+                </div>
+              )}
+
+              {(awardReview.shortCompetition || awardReview.noOfficialQuote || awardReview.guest) && (
+                <ul className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  {awardReview.shortCompetition && (
+                    <li className="flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" />{t("offers_award_short_competition", { count: awardReview.competing, threshold: formatCurrency(policies.competitionThreshold, locale) })}</li>
+                  )}
+                  {awardReview.noOfficialQuote && (
+                    <li className="flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" />{t("offers_award_no_official_quote")}</li>
+                  )}
+                  {awardReview.guest && (
+                    <li className="flex items-start gap-1.5"><AlertTriangle size={12} className="shrink-0 mt-0.5" />{t("offers_guest_order_caveat")}</li>
+                  )}
+                </ul>
+              )}
+
+              {awardReview.blocks.length > 0 && (
+                <div className="rounded-xl border border-amber-300 bg-amber-100/60 p-3 text-amber-900 space-y-1">
+                  <p className="font-bold">{t("offers_award_order_will_wait")}</p>
+                  <ul className="list-disc ps-4 space-y-0.5">
+                    {awardReview.blocks.map((b) => (
+                      <li key={b.code}>{tProc(`blocks.${b.code}`, b.params)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* PRD 3.0 — rejecting with a reason: stored beside the unchanged status. */}
+          {confirmDecisionTarget?.decision === "مرفوض" && (
+            <div className="space-y-1.5 text-xs">
+              <Label htmlFor="exclusion-code" className="text-xs font-bold">
+                {t("offers_exclusion_label")} <span className="text-muted-foreground font-normal">({t("optional")})</span>
+              </Label>
+              <Select value={exclusionCode} onValueChange={setExclusionCode}>
+                <SelectTrigger id="exclusion-code" className="h-9 text-sm">
+                  <SelectValue placeholder={t("offers_exclusion_placeholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXCLUSION_CODES.map((code) => (
+                    <SelectItem key={code} value={code}>{t(`offers_exclusion_${code}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Textarea
+                id="exclusion-note"
+                rows={2}
+                value={exclusionNote}
+                onChange={(e) => setExclusionNote(e.target.value)}
+                placeholder={t("offers_exclusion_note_placeholder")}
+                aria-label={t("offers_exclusion_label")}
+                className="text-sm resize-none"
+              />
+              <p className="text-[11px] text-muted-foreground">{t("offers_exclusion_hint")}</p>
+            </div>
+          )}
+
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
@@ -1636,10 +1989,14 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                   ? "bg-destructive hover:bg-destructive/90"
                   : budgetImpact ? "bg-amber-600 hover:bg-amber-700" : "bg-success hover:bg-success/90"
               }
-              disabled={!!budgetImpact && budgetOverrideReason.trim().length < 8}
+              disabled={(!!budgetImpact && budgetOverrideReason.trim().length < 8) || awardReasonMissing}
               onClick={() => {
                 if (!confirmDecisionTarget) return
-                handleDecision(confirmDecisionTarget.offer.id, confirmDecisionTarget.decision)
+                if (confirmDecisionTarget.decision === "مقبول" && awardReasonMissing) return
+                handleDecision(confirmDecisionTarget.offer.id, confirmDecisionTarget.decision, undefined, undefined, {
+                  awardReason: confirmDecisionTarget.decision === "مقبول" ? awardReason : null,
+                  exclusion: confirmDecisionTarget.decision === "مرفوض" && user ? buildExclusion({ code: exclusionCode, note: exclusionNote, byId: user.uid }) : null,
+                })
                 if (budgetImpact && firestore && user && projectId) {
                   logFinanceAudit(firestore, projectId, {
                     action: "budget_exception_override",
@@ -1661,6 +2018,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                 }
                 setConfirmDecisionTarget(null)
                 setBudgetOverrideReason("")
+                setAwardReasonCode("")
+                setAwardReasonText("")
+                setExclusionCode("")
+                setExclusionNote("")
               }}
             >
               {confirmDecisionTarget?.decision === "مقبول"
@@ -1907,7 +2268,7 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
       toast({ title: t("offers_inq_sent_title"), description: t("offers_inq_sent_desc") })
       setReplyText(prev => ({ ...prev, [inquiryId]: "" }))
       setShowReply(null)
-    } catch (error) {
+    } catch {
       toast({ title: t("offers_toast_error"), description: t("offers_inq_failed"), variant: "destructive" })
     } finally {
       setReplyingTo(null)
@@ -2029,6 +2390,32 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/** The order laid over an accepted offer: its number and its derived state,
+ * read live off the order itself, linking to the orders desk. */
+function PoStatusPill({ poId, poNumber }: { poId: string; poNumber?: string | null }) {
+  const firestore = useFirestore()
+  const locale = useLocale()
+  const t = useTranslations("Portal.Contractor")
+  const tProc = useTranslations("Portal.Procurement")
+  const ref = useMemoFirebase(() => (firestore ? doc(firestore, PURCHASE_ORDERS, poId) : null), [firestore, poId])
+  const { data: po } = useDoc(ref)
+  const status = po ? poStatus({ ...(po as PurchaseOrder), lines: (po as PurchaseOrder).lines || [], log: (po as PurchaseOrder).log || [] }) : null
+  const number = displayPoNumber((po as PurchaseOrder | null)?.docNumber || poNumber, locale)
+  return (
+    <Link
+      href={procLinks.order(poId)}
+      className="w-full rounded-xl border border-module/30 bg-module/10 px-3 py-2 text-xs hover:bg-module/20 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 block"
+      aria-label={t("offers_award_open_order")}
+    >
+      <span className="font-bold text-module flex items-center gap-1.5">
+        <FileCheck size={12} className="shrink-0" />
+        <bdi>{number || t("offers_award_order_word")}</bdi>
+      </span>
+      {status && <span className="block text-[11px] text-slate-600 mt-0.5">{tProc(`status.${status}`)}</span>}
+    </Link>
   )
 }
 

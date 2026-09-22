@@ -104,7 +104,7 @@ public/                 # Static assets — favicons, OG image, manifest
 scripts/                # Ops scripts (demo seed, data repair, migrations,
                         #   cleanup-seed-demo.js — dry-run-first removal of what
                         #   /admin/seed wrote; that page is OFF in production)
-docs/                   # sales-prd-status.md, customer-review-2026-09-17.md,
+docs/                   # sales-prd-status.md, procurement-prd-status.md, customer-review-2026-09-17.md,
                         #   customer-review-2026-09-18.md, procurement-review-2026-09-19.md
 ```
 
@@ -131,6 +131,8 @@ docs/                   # sales-prd-status.md, customer-review-2026-09-17.md,
 | `src/lib/accounting/source-links.ts` + `src/components/accounting/JournalEntrySheet.tsx` | The document behind a journal entry (`sourceType`+`sourceId` → screen) and the side panel every ledger / statement / breakdown row opens |
 | `src/lib/manufacturing-mindmap.ts` + `ManufacturingMindMap.tsx` | The optional mind-map view (Workshop → view: Mind map): `buildMindMapFromViews` over PRD 1.2 order views; the legacy builder stays for old orders |
 | `src/components/contractor/PurchaseRequestsInbox.tsx` | Procurement's desk for Manufacturing's shortfalls (`/contractor/rfqs/requests`) — answers requests (start RFQ → `ordered`, arrived, declined with a reason), never raises one |
+| `src/lib/procurement/` (Procurement PRD 3.0, see docs/procurement-prd-status.md) | `types.ts` the contract · `po.ts` DERIVED order state (`poStatus` in_delivery/part_received/received, `poLate`, `poBlocks`, `approvalRefusal`, `requiredApprover`, `supplierScore`) · `receipts.ts` blind-count maths (`acceptedOf` = counted − rejected − held, `overReceiptRefusal` +5 %) · `today.ts` the decision queue / waits / KPIs · `reports.ts` the 7 reports · `writes.ts` every order transition as ONE transaction that re-runs the rule and appends a log entry (`ProcWriteError.code` → `Portal.Procurement.err_*`) · `receipt-writes.ts` `recordReceipt` (GR number, PO lines, stock, books, Manufacturing closure, notifications — each post-commit effect best-effort) · `events.ts` `emitProcEvent` (recipients by permission, i18n + rendered text) · `numbering.ts` `PO-yyyy/NNN` (ط.ش) and `GR-yyyy/NNN` (ا.س) in `mfgCounters` |
+| `src/hooks/useProcurementWorld.ts` + `useProcActor.ts` | The org's procurement world (orders, deliveries, rfqs, offers, policies, supplier facts) and who is looking (`seesPrices`: owner / offers.view / offers.accept / po.approve — an expediter sees dates and quantities, never an amount) |
 | `module` colour token (tailwind.config.ts + globals.css) | The ACTIVE module's colour: `data-accent` is set on the portal frame from the registry's `accentToken`, so `bg-module/10 text-module` inside any screen is that module's colour. Every module has its own token (Sales indigo, HR violet) |
 | `src/components/contractor/ProcurementHeader.tsx` | The head of every Procurement page: module tile, title, actions, and the tab rail (RFQs · purchase requests · suppliers · goods received), permission-gated like the sidebar |
 | `scripts/check-i18n-links.mjs` | Every translation key used in `src/` must exist in both message files under its namespace; every portal link must hit a route. Run before committing |
@@ -206,7 +208,21 @@ guarantee margins) ·
 `fiscalYearStartMonth` 1–12 defines Q1/H1/FY on every screen, `displayScale`
 units|thousands|millions is the default presentation) ·
 `invoices` · `rfqShareLinks` · `guestOfferLinks`
-(server-only)
+(server-only) · `purchaseOrders` (Procurement PRD 3.0 — the order laid OVER an
+accepted offer: awarding still writes the offer `مقبول` + RFQ `Awarded` exactly as
+before, then `createPurchaseOrderFromAward` adds the order and `poId`/`poNumber`
+on the offer; a legacy award has no order and every screen keeps working without
+one. Stored states: awaiting_approval → approved → sent → accepted → closed |
+cancelled ("returned" = awaiting_approval + `returnedReason`); in delivery / part
+received / received are DERIVED from `lines[].accepted/rejected/held/cancelled`.
+Nobody approves an order they prepared (the org owner excepted — flagged), above
+`managerApprovalLimit` or retroactive → owner only; the supplier may only move
+sent → accepted with a `promisedDate`) · `procurementSettings` (doc id = orgId —
+the §6.4 policies; absent = PRD reference values) · `deliveries` now also carries
+optional PO fields (`poId`, `docNumber` GR-…, `lines[]` with notice/counted/
+rejected/held/accepted, checklist, vehicle, `selfReceived`, `noNotice`,
+`regularisation`) — a delivery without them is a legacy one and confirms as it
+always did
 
 Permission notes: org **owner** passes every check; members get their group's
 permissions (`teamGroups.permissions`, `'*'` = all). An account with NO
@@ -265,6 +281,15 @@ owner) and never a cost. A shipment hold and its release are Finance's
 Stock the workshop holds for released orders (`workshopHolds` in manufacturing-view)
 is shown on the Inventory desk and subtracted from what Sales coverage offers; a sales
 order reads its product-born work orders' survey and drawing instead of its own flags.
+Procurement (PRD 3.0): `offers.accept` prepares an order (award); `po.approve`
+approves/returns it up to `managerApprovalLimit` (seeded into `finance`), the owner
+above it; `po.expedite` (seeded into `supply_chain`, implied by offers.accept /
+po.approve / owner) sends it, records the supplier's acceptance and date, reminds;
+`deliveries.confirm` records the receipt (blind count — the counted quantity is never
+prefilled; a receipt is never edited afterwards); line decisions (cancel the remainder,
+reject decision, close short, cancel) need offers.accept / po.approve / owner.
+Existing `teamGroups` are NOT re-seeded: `scripts/migrate-po-permissions.js <env>`
+(dry run; `--apply`) adds the two ids to groups holding offers.accept / rfq.manage.
 Accounting splits three ways:
 `accounting.view` reads the books, `accounting.post` writes manual vouchers and
 reverses entries, `accounting.close` locks a period. Auto entries are written by
@@ -479,6 +504,8 @@ node scripts/deploy-rules.js prod           # service-account creds from .env.lo
 node scripts/deploy-rules.js uat --check
 node scripts/deploy-rules.js uat            # gcloud token if gcloud is installed, else the
                                             # service account in .env.uat (no gcloud on the WSL box)
+node scripts/deploy-indexes.js prod --check # composite indexes of firestore.indexes.json the
+node scripts/deploy-indexes.js prod         # project lacks — creates only those, deletes nothing
 ```
 
 It POSTs a ruleset to `firebaserules.googleapis.com`, PATCHes
