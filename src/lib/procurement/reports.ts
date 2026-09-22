@@ -295,7 +295,7 @@ export function cycleAndCompetition(w: ProcWorld, period?: Period | null): Cycle
 // violations: what the owner should see monthly.
 // ---------------------------------------------------------------------------
 
-export const EXCEPTION_KINDS = ["retroactive", "direct", "non_lowest", "short_competition", "self_approval", "no_official_quote", "closed_short", "manual_receipt", "no_po", "self_received"] as const
+export const EXCEPTION_KINDS = ["retroactive", "direct", "non_lowest", "short_competition", "self_approval", "no_official_quote", "closed_short", "manual_receipt", "no_po", "self_received", "no_notice", "cash_expense"] as const
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number]
 
 export interface ExceptionRow {
@@ -337,6 +337,11 @@ export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[]
     if (r.source === "manual" && !r.poId && !r.offerId) out.push({ ...base, kind: "no_po", params: {} })
     else if (r.source === "manual" && r.poId) out.push({ ...base, kind: "manual_receipt", params: {} })
     if (r.selfReceived) out.push({ ...base, kind: "self_received", params: {}, byName: po?.preparedByName || "" })
+    // Both already stored on the receipt and both off the usual path (PRD SS9):
+    // a truck that arrived with nothing announcing it, and a no-order receipt
+    // sent to Finance as an expense instead of being regularised by an order.
+    if (r.noNotice) out.push({ ...base, kind: "no_notice", params: {} })
+    if (r.regularisation === "expense") out.push({ ...base, kind: "cash_expense", params: {} })
   }
 
   return out.sort((a, b) => b.day.localeCompare(a.day) || a.docNumber.localeCompare(b.docNumber))

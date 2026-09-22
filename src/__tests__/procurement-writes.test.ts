@@ -113,6 +113,10 @@ async function awardedOrder(offers: AwardOfferLike[] = [offer, cheaper, rejected
 }
 const po = (id: string) => readDoc<PurchaseOrder>(`purchaseOrders/${id}`) as PurchaseOrder
 const last = <T,>(xs: T[]): T | undefined => xs[xs.length - 1]
+// The newest notification OF A KIND. `last(inbox(...))` used to stand in for
+// this, which quietly tied the assertion to how the fake store sorts document
+// ids — and the once-per-order events are now written at an id of their own.
+const told = (uid: string, type: string) => last(inbox(uid).filter((n) => n.type === type))
 
 beforeEach(() => {
   resetFakeDb()
@@ -363,15 +367,15 @@ describe("dispatch and the supplier's answer", () => {
     const id = await approvedOrder()
     await sendPurchaseOrder(db, buyer, id, "portal")
     await remindSupplier(db, buyer, id)
-    expect(last(inbox("sup-user"))).toMatchObject({ type: "po_reminder", i18n: { params: { ask: "@pn_po_reminder_ask_accept" } } })
-    expect(last(inbox("sup-user"))?.message).toContain(PROC_EVENT_PARAM_COPY_AR.pn_po_reminder_ask_accept)
+    expect(told("sup-user", "po_reminder")).toMatchObject({ i18n: { params: { ask: "@pn_po_reminder_ask_accept" } } })
+    expect(told("sup-user", "po_reminder")?.message).toContain(PROC_EVENT_PARAM_COPY_AR.pn_po_reminder_ask_accept)
     await recordSupplierAcceptance(db, buyer, id, { promisedDate: "2026-10-05", by: "buyer" })
     await updatePromisedDate(db, buyer, id, { date: "2026-10-12", note: "تأخر الشحن" })
     expect(po(id).promisedDate).toBe("2026-10-12")
     expect(last(po(id).log)).toMatchObject({ action: "date_updated", note: "تأخر الشحن", params: { from: "2026-10-05", date: "2026-10-12" } })
     expect(inbox("gate").map((n) => n.type)).toContain("po_date_updated")
     await remindSupplier(db, buyer, id)
-    expect(last(inbox("sup-user"))).toMatchObject({ i18n: { params: { ask: "@pn_po_reminder_ask_deliver" } } })
+    expect(told("sup-user", "po_reminder")).toMatchObject({ i18n: { params: { ask: "@pn_po_reminder_ask_deliver" } } })
   })
 })
 
@@ -433,7 +437,7 @@ describe("line decisions", () => {
     await cancelRemainder(db, buyer, id, { lineId: "l1", reason: "توقف المصنع" }, { orgName: "النخبة" })
     expect(po(id).lines[0]).toMatchObject({ cancelled: 4, cancelReason: "توقف المصنع" })
     expect(last(po(id).log)).toMatchObject({ action: "remainder_cancelled", params: { line: "حديد 12مم", qty: 4, unit: "طن" } })
-    expect(last(inbox("sup-user"))).toMatchObject({ type: "po_remainder_cancelled", organizationId: "sup-org" })
+    expect(told("sup-user", "po_remainder_cancelled")).toMatchObject({ organizationId: "sup-org" })
     expect(inbox("fin").map((n) => n.type)).toContain("po_remainder_cancelled")
     await expect(cancelRemainder(db, buyer, id, { lineId: "l1", reason: "again" })).rejects.toMatchObject({ code: "nothing_outstanding" })
   })
@@ -451,8 +455,8 @@ describe("line decisions", () => {
     await receive(id, [{ poLineId: "l1", name: "x", unit: "طن", noticeQuantity: 10, counted: 10, rejected: 2, rejectReason: "damaged" }])
     await decideReject(db, buyer, id, { lineId: "l1", decision: "reduce", note: "لا حاجة للبديل" })
     expect(po(id).lines[0]).toMatchObject({ rejected: 2, cancelled: 2, rejectDecision: "reduce" })
-    const n = last(inbox("sup-user"))
-    expect(n).toMatchObject({ type: "po_rejects_decided", i18n: { params: { decision: "@pn_po_decision_reduce", qty: 2 } } })
+    const n = told("sup-user", "po_rejects_decided")
+    expect(n).toMatchObject({ i18n: { params: { decision: "@pn_po_decision_reduce", qty: 2 } } })
     expect(n?.message).toContain(PROC_EVENT_PARAM_COPY_AR.pn_po_decision_reduce)
   })
 })
@@ -464,7 +468,7 @@ describe("close-out, cancellation, rating", () => {
     await closePurchaseOrder(db, buyer, id, { reason: "المورد أفلس" }, { now: NOW })
     expect(po(id)).toMatchObject({ status: "closed", closedShort: true, closeReason: "المورد أفلس", closedAt: NOW.toISOString() })
     // The preparer closed it himself, so Finance is the one told.
-    expect(last(inbox("fin"))).toMatchObject({ type: "po_closed", i18n: { params: { outcome: "@pn_po_closed_short_flag" } } })
+    expect(told("fin", "po_closed")).toMatchObject({ i18n: { params: { outcome: "@pn_po_closed_short_flag" } } })
     expect(inbox("buyer").map((n) => n.type)).not.toContain("po_closed")
 
     const id2 = await acceptedOrder()
@@ -486,7 +490,7 @@ describe("close-out, cancellation, rating", () => {
 
     const id2 = await acceptedOrder()
     await cancelPurchaseOrder(db, buyer, id2, "تغيّرت المواصفة")
-    expect(last(inbox("sup-user"))?.type).toBe("po_cancelled")
+    expect(told("sup-user", "po_cancelled")).toBeDefined()
     expect(inbox("fin").map((n) => n.type)).toContain("po_cancelled")
 
     const id3 = await acceptedOrder()
@@ -517,7 +521,7 @@ describe("close-out, cancellation, rating", () => {
     expect(reviews.find((r) => r.poId === id)).toMatchObject({ rating: 5, anonymous: true, reviewerName: "", revieweeId: "sup-user" })
     expect(readDoc<{ rating: number; reviewsCount: number }>("users/sup-user")).toMatchObject({ rating: 4, reviewsCount: 2 })
     expect(readDoc<{ contractorRated?: boolean }>("offers/of1")?.contractorRated).toBe(true)
-    expect(last(inbox("sup-user"))).toMatchObject({ type: "po_rated", i18n: { params: { stars: 5 } } })
+    expect(told("sup-user", "po_rated")).toMatchObject({ i18n: { params: { stars: 5 } } })
     await expect(ratePurchaseOrder(db, buyer, id, { conformity: 1, cooperation: 1, publishAnonymously: false, receipts })).rejects.toMatchObject({ code: "cannot_rate" })
   })
 
@@ -615,6 +619,21 @@ describe("emitProcEvent — who hears", () => {
     })
     expect(typeof d.createdAt).toBe("string")
     expect(Number.isNaN(Date.parse(d.createdAt as string))).toBe(false)
+  })
+
+  it("a resent once-per-order event leaves ONE notification, a resent reminder leaves two", async () => {
+    // PRD 3.0 SS5.3: the key is what stops a retry from telling somebody twice.
+    // An order is sent once, so the second emit addresses the same document; a
+    // reminder is a new act every time and must still arrive.
+    const sent = { kind: "po_sent", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" } as const
+    await emitProcEvent(db, { uid: "buyer", name: "Badr" }, sent)
+    await emitProcEvent(db, { uid: "buyer", name: "Badr" }, sent)
+    expect(inbox("fin").filter((n) => n.type === "po_sent")).toHaveLength(1)
+
+    const nudge = { kind: "po_reminder", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" } as const
+    await emitProcEvent(db, { uid: "buyer", name: "Badr" }, nudge)
+    await emitProcEvent(db, { uid: "buyer", name: "Badr" }, nudge)
+    expect(inbox("fin").filter((n) => n.type === "po_reminder")).toHaveLength(2)
   })
 
   it("renders from the sender's translator when it has the key, else from the Arabic table", () => {

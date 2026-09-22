@@ -9,11 +9,45 @@
 // will run into at approval.
 
 import { z } from "zod"
-import { AWARD_REASON_CODES, awardNeedsReason, isShortCompetition, lowestOffer, offerPrice, poBlocks, type OfferLike, type PoBlock } from "./po"
+import { AWARD_REASON_CODES, awardNeedsReason, dayOf, isShortCompetition, lowestOffer, offerPrice, poBlocks, todayOf, type OfferLike, type PoBlock } from "./po"
 import type { AwardReasonCode, ProcurementPolicies, PurchaseOrder, SupplierFacts } from "./types"
 
 /** The stored literal — the one every reader compares (impl-b §2.1). */
 export const OFFER_REJECTED = "مرفوض"
+
+// ---------------------------------------------------------------------------
+// Sealed prices until the deadline (§5.1-4, policy `sealOffersUntilDeadline`)
+// ---------------------------------------------------------------------------
+
+export interface SealableRfq {
+  /** `YYYY-MM-DD` as the RFQ form writes it. */
+  deadline?: string | null
+  status?: string | null
+}
+
+/**
+ * Whether this RFQ's prices are still the suppliers' own business.
+ *
+ * A buyer who watches prices land one by one can tell the next supplier what to
+ * beat, which is the whole reason a sealed round exists. While sealed the screen
+ * says how many offers arrived and from whom — never an amount.
+ *
+ * Sealing ends the day AFTER the deadline: on the deadline day itself a supplier
+ * may still quote, so the round is not closed yet. Days are compared, not
+ * timestamps, because the deadline is stored as a date with no time — inventing
+ * a midnight would be the "number that lies" of §6.2.
+ *
+ * Three things open an RFQ whatever the policy says: no deadline (there is no
+ * moment to open at), a deadline already past, and an award already made —
+ * hiding the decision after the fact hides the record rather than protecting it.
+ */
+export function offersSealed(rfq: SealableRfq | null | undefined, policies: ProcurementPolicies, now: Date): boolean {
+  if (!policies.sealOffersUntilDeadline) return false
+  const day = dayOf(rfq?.deadline)
+  if (!day) return false
+  if (rfq?.status === "Awarded") return false
+  return todayOf(now) <= day
+}
 
 /** Offers still in the running: everything not rejected, whatever else it is. */
 export function competingOffers<T extends { status?: string | null }>(offers: T[]): T[] {

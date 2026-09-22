@@ -14,7 +14,7 @@
 // Notifying is best-effort and runs AFTER the business write: a lost
 // notification never undoes the decision it reports.
 
-import { addDoc, collection, type Firestore } from "firebase/firestore"
+import { collection, doc, setDoc, type Firestore } from "firebase/firestore"
 import { loadTeam, notificationCopy, resolveRecipients, type EventParams, type RecipientSpec, type Translator } from "../mfg-events"
 
 export type ProcEventKind =
@@ -241,6 +241,39 @@ export function buildProcNotification(e: ProcEvent, actor: { uid: string; name: 
 // Recipients and emit
 // ---------------------------------------------------------------------------
 
+/**
+ * The idempotency key (PRD 3.0 SS5.3): these things happen exactly ONCE for an
+ * order, so the notification is written at a document id derived from the event
+ * instead of a fresh one. A retry then addresses the same document, and because
+ * the rules let any signed-in user CREATE a notification for someone else but
+ * only its owner UPDATE one, the second write is refused rather than delivered
+ * twice. The refusal is already swallowed and logged below.
+ *
+ * Everything else is deliberately absent: a second reminder, a new promised
+ * date, the next receipt and a re-return after a resubmission are all real
+ * events that must arrive, and keying them would silently drop the second one.
+ */
+const ONCE_PER_ORDER: ReadonlySet<ProcEventKind> = new Set<ProcEventKind>([
+  "po_approved",
+  "po_expected_arrival",
+  "po_sent",
+  "po_supplier_accepted",
+  "po_remainder_cancelled",
+  "po_closed",
+  "po_cancelled",
+  "po_rated",
+])
+
+/** `po_sent__<poId>`, or null when the event may legitimately repeat. A poId
+ * that is not a plain document id (a slash would address a subcollection) falls
+ * back to an id of its own rather than writing somewhere unintended. */
+export function procEventKey(e: Pick<ProcEvent, "kind" | "poId">): string | null {
+  if (!ONCE_PER_ORDER.has(e.kind)) return null
+  const id = (e.poId || "").trim()
+  if (!id || id.includes("/") || id.startsWith(".")) return null
+  return `${e.kind}__${id}`
+}
+
 /** `{owner:true}` becomes the owner's uid; the rest is Manufacturing's resolver. */
 export function toMfgSpecs(to: ProcRecipientSpec[], ownerId: string): RecipientSpec[] {
   return to.map((s) => ("owner" in s ? { users: [ownerId] } : s))
@@ -262,12 +295,14 @@ export async function emitProcEvent(firestore: Firestore, actor: { uid: string; 
       recipients = resolveRecipients(team, specs, actor.uid)
     }
     const at = new Date().toISOString()
+    const key = procEventKey(e)
     await Promise.all(
-      recipients.map((uid) =>
-        addDoc(collection(firestore, "users", uid, "notifications"), buildProcNotification(e, actor, uid, at)).catch((err) =>
+      recipients.map((uid) => {
+        const box = collection(firestore, "users", uid, "notifications")
+        return setDoc(key ? doc(box, key) : doc(box), buildProcNotification(e, actor, uid, at)).catch((err) =>
           console.warn("notification failed:", (err as { code?: string })?.code || err)
         )
-      )
+      })
     )
     return recipients.length
   } catch (err) {

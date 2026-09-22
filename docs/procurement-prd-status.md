@@ -9,9 +9,12 @@ Until now an **accepted offer was the order**: the supplier's portal, the tender
 project's money flow, the bell, the guest flow and the mobile app all read the offer's
 Arabic status literals. The PRD's purchase order is therefore **laid over the award, not
 put in its place**: awarding still writes the offer `مقبول` and the RFQ `Awarded` exactly as
-before (same batch, same chat, same `offer_accepted` notification), and only then
+before (same batch), and only then
 `createPurchaseOrderFromAward` adds `purchaseOrders/{id}` and `poId`/`poNumber` on the offer.
 An award made before this existed has no order, and every screen keeps working without one.
+Since the 22 Sep review the award no longer TELLS the supplier: no chat, no
+`offer_accepted`, and `awaitingOrderApproval` on the offer until Finance has
+approved the order and it has been sent (`awardDisclosed` / `asSupplierSees`).
 `deliveries` stays the store of the supplier's notice **and** the goods receipt, with optional
 order fields; a delivery without them confirms as it always did.
 
@@ -59,10 +62,23 @@ order fields; a delivery without them confirms as it always did.
   keys and rendered text; the actor is never told.
 - No Arabic status literal changed; new state lives on the new document.
 - `firestore.rules`: every order transition is its own field list; identity fields are
-  frozen; the supplier may write only sent → accepted. **Not deployed** — see the checklist.
+  frozen; the supplier may write only sent → accepted. Deployed to **production** on
+  22 Sep (live ruleset matches the file byte for byte); UAT still needs it.
 - 1,652 tests (13 new procurement suites, 250 tests; an adversarial review of the change set found five real defects — order resolution for notices written before the order existed, empty-item legacy notices, retroactive approval dead-ending, receipts against a missing order, books posted with nothing landed — all fixed and pinned by tests), typecheck (the only errors are the
   pre-existing ones in `functions/`, `src/ai/generate.ts`, `lib-seo.test.ts`), lint 0 errors,
   `scripts/check-i18n-links.mjs` clean, production build.
+
+## Closed since, against the PRD (22 Sep, second pass)
+| PRD | Was | Now |
+|---|---|---|
+| §5.1-4 sealed prices | `sealOffersUntilDeadline` was stored and had a labelled switch in settings that **nothing read** — every price showed as it landed | `offersSealed` decides it, and while sealed the offers tab and the comparison show who quoted and how many, never a figure; "best price" is not computed either. Opens the day AFTER the deadline (a supplier may still quote on the day), and always opens with no deadline, a past deadline, or an award already made. Still ships OFF |
+| §5.3 idempotency keys | a notification was written at a fresh auto-id, so a retry told somebody twice | the eight once-per-order events are written at `<kind>__<poId>`; the rules let a stranger CREATE a notification but never UPDATE one, so the resend is refused rather than delivered. A reminder, a new promised date, the next receipt and a re-return carry no key on purpose — each is a real second event |
+| §9 exceptions | 10 kinds; a truck that arrived with **no notice** and a no-order receipt booked as a **cash expense** were stored on the receipt and never reported | both are rows in the report the owner reads (12 kinds) |
+
+Deliberately NOT done in that pass: the buyer **self-issue limit** (§3, §6.4). It
+relaxes "nobody approves their own order" and needs `firestore.rules` to read
+`procurementSettings` and re-derive the order's value, so it belongs in its own
+considered change rather than beside three repairs.
 
 ## Go-live checklist (owner)
 1. `node scripts/deploy-rules.js <env> --check`, then deploy the rules (the app writes

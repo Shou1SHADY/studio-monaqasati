@@ -8524,6 +8524,9 @@
       "offers_tab_inquiries": "Inquiries",
       "offers_loading": "Loading offers...",
       "offers_no_data": "No offers yet",
+      "offers_sealed_title": "Prices are sealed",
+      "offers_sealed_desc": "{count} offers have arrived. Their prices open the day after the deadline, {date} — until then a supplier cannot be told what to beat.",
+      "offers_sealed_compare_desc": "There is nothing to compare until the prices open, the day after {date}.",
       "offers_no_data_desc": "When suppliers submit offers for this RFQ, they will appear here automatically.",
       "offers_best_price": "Best Price",
       "offers_best_by_date": "Most Recent",
@@ -10210,7 +10213,9 @@
         "closed_short": "Closed short by Procurement — {reason}",
         "manual_receipt": "Manual receipt — bought outside the platform",
         "no_po": "Receipt with no PO — not regularised",
-        "self_received": "Received by the order's preparer — no separate receiver"
+        "self_received": "Received by the order's preparer — no separate receiver",
+        "no_notice": "Arrived with no notice from the supplier",
+        "cash_expense": "Booked as a cash expense instead of an order"
       },
       "deliveryState": {
         "on_time": "On time",
@@ -11202,7 +11207,9 @@
         "closed_short": "Closed short",
         "manual_receipt": "Manual receipt",
         "no_po": "No PO",
-        "self_received": "Self-received"
+        "self_received": "Self-received",
+        "no_notice": "Arrived with no notice",
+        "cash_expense": "Cash expense"
       }
     },
     "ProcSettings": {

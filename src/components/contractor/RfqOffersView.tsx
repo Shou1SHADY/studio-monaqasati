@@ -42,6 +42,7 @@ import {
   buildAwardReason,
   buildExclusion,
   competingOffers,
+  offersSealed,
   parseAwardReason,
   reviewAward,
   supplierFactsFromProfile,
@@ -76,6 +77,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   Link2,
+  Lock,
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -831,7 +833,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   // "Best price" is honest (PRD §6.2): the lowest LIVE price — a rejected
   // offer's figure is out of the running — compared as a number, so an
   // Mdmak offer stored as 1000 and a web offer stored as "1000" are the same price.
-  const lowestLive = lowestOffer(competingOffers((offers || []) as any[]))
+  // Prices stay the suppliers' own until the deadline when the org asked for a
+  // sealed round (§5.1-4). The screen then shows who quoted and how many, and
+  // no figure at all — so "best price" must not be computed either.
+  const sealed = offersSealed(rfq as { deadline?: string | null; status?: string | null } | null, policies, new Date())
+  const lowestLive = sealed ? null : lowestOffer(competingOffers((offers || []) as any[]))
   const lowestLivePrice = lowestLive ? offerPrice(lowestLive) : null
 
   // Offers contain competitor pricing/notes — never render them to a caller outside the
@@ -972,6 +978,25 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                   <TrendingUp size={48} className="opacity-20" />
                   <p className="font-bold text-lg">{t("offers_no_data")}</p>
                   <p className="text-sm">{t("offers_no_data_desc")}</p>
+                </CardContent>
+              </Card>
+            ) : sealed ? (
+              <Card className="border-2 border-slate-200 shadow-none">
+                <CardContent className="p-10 flex flex-col items-center text-center gap-3">
+                  <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                    <Lock size={22} className="text-slate-500" />
+                  </div>
+                  <p className="font-bold text-lg text-slate-800">{t("offers_sealed_title")}</p>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    {t("offers_sealed_desc", { count: offers.length, date: fmtDate(rfq?.deadline, locale) })}
+                  </p>
+                  <div className="flex flex-wrap justify-center gap-2 pt-2">
+                    {offers.map((offer: any) => (
+                      <span key={offer.id} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                        {offer.companyName || offer.supplierName || t("offers_registered_supplier")}
+                      </span>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             ) : (
@@ -1432,7 +1457,13 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           </TabsContent>
 
           <TabsContent value="compare" className="m-0 mt-6">
-            {!sortedOffers || sortedOffers.length < 2 ? (
+            {sealed ? (
+              <div className="rounded-2xl border-2 border-dashed border-slate-200 p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
+                <Lock size={40} className="opacity-20" />
+                <p className="font-bold text-base text-slate-800">{t("offers_sealed_title")}</p>
+                <p className="text-sm">{t("offers_sealed_compare_desc", { date: fmtDate(rfq?.deadline, locale) })}</p>
+              </div>
+            ) : !sortedOffers || sortedOffers.length < 2 ? (
               <div className="rounded-2xl border-2 border-dashed border-slate-200 p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                 <TrendingUp size={40} className="opacity-20" />
                 <p className="font-bold text-base">{t("offers_need_two")}</p>
