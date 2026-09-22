@@ -97,9 +97,13 @@ async function token() {
     let from = null
     if (l.content !== source) {
       try {
-        const commits = execSync("git log --format='%h|%ad|%s' --date=short -- firestore.rules", { maxBuffer: 1 << 24 }).toString().trim().split("\n")
+        // Double quotes and no pipe: cmd.exe leaves single quotes in place and
+        // splits the command at a "|", which turned this whole lookup into a
+        // silent failure on Windows — and its catch reports the alarming
+        // "someone deployed uncommitted rules".
+        const commits = execSync('git log --format="%h %ad %s" --date=short -- firestore.rules', { maxBuffer: 1 << 24 }).toString().trim().split("\n")
         for (const line of commits) {
-          const [h] = line.split("|")
+          const h = line.split(" ")[0]
           if (execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString() === l.content) {
             from = line
             break
