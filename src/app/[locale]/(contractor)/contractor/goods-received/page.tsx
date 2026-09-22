@@ -1,738 +1,503 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { useTranslations, useLocale } from "next-intl"
+// The goods-received desk (PRD 3.0 §7.2 "Goods receipts"): three segments —
+// On the way (the suppliers' pending notices, and live orders whose promised
+// day is near or past with no notice), Receipts (the log, with the state of
+// each), No PO (manual receipts waiting to be regularised by a retroactive
+// order, or booked as a cash expense). Search runs across the segments, the
+// project filter narrows all three, the CSV exports the whole log without a
+// money column. `?tab=` names the segment, `?delivery=<id>` opens the drawer;
+// the receive screen and the drawer live in src/components/procurement.
+
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useLocale, useTranslations } from "next-intl"
+import { collection, query, where } from "firebase/firestore"
+import { AlertTriangle, ClipboardCheck, Download, ExternalLink, Loader2, PackageCheck, PlusCircle, Search, Truck } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
-import { cn } from "@/lib/utils"
-import { Card, CardContent } from "@/components/ui/card"
+import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
+import { ReceiptDrawer, ReceiptStatePill } from "@/components/procurement/ReceiptDrawer"
+import { ReceiveDeliveryDialog } from "@/components/procurement/ReceiveDeliveryDialog"
+import { RegulariseReceiptDialog } from "@/components/procurement/RegulariseReceiptDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Link } from "@/i18n/routing"
-import { useCollection, useFirestore, useStorage, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, doc, updateDoc, arrayUnion, addDoc, serverTimestamp, increment } from "firebase/firestore"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { Link, usePathname, useRouter } from "@/i18n/routing"
+import { cn } from "@/lib/utils"
+import { procLinks } from "@/lib/procurement/events"
+import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { lineToArrive } from "@/lib/procurement/po"
 import {
-  Loader2,
-  PackageCheck,
-  Calendar,
-  Truck,
-  Building2,
-  FileText,
-  ArrowRight,
-  Upload,
-  Paperclip,
-  ExternalLink,
-  PlusCircle,
-  PenLine,
-  Plus,
-  Trash2,
-  Warehouse,
-  FolderOpen,
-} from "lucide-react"
-import { SignaturePad } from "@/components/SignaturePad"
-import { usePermissions } from "@/hooks/usePermissions"
+  RECEIPT_SEGMENTS,
+  incomingRowMatches,
+  incomingRows,
+  receiptCsv,
+  receiptCsvFilename,
+  receiptCsvRows,
+  receiptRowMatches,
+  receiptRows,
+  segmentCounts,
+  type DeskDelivery,
+  type IncomingRow,
+  type ReceiptRow,
+  type ReceiptSegment,
+} from "@/lib/procurement/receipt-desk"
+import { markReceiptAsExpense, type PurchaseSource, type RecordReceiptResult } from "@/lib/procurement/receipt-writes"
+import type { PurchaseOrder } from "@/lib/procurement/types"
 
-function fmtDate(val: unknown, locale: string) {
-  if (!val) return "–"
-  const d =
-    val && typeof val === "object" && "toDate" in val && typeof (val as { toDate: () => Date }).toDate === "function"
-      ? (val as { toDate: () => Date }).toDate()
-      : new Date(val as string | number)
-  if (isNaN(d.getTime())) return "–"
-  return d.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
+const isSegment = (v: string | null): v is ReceiptSegment => RECEIPT_SEGMENTS.includes(v as ReceiptSegment)
+const fmt = (n: number) => new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(n)
 
-type Delivery = {
-  id: string
-  rfqTitle?: string
-  supplierName?: string
-  deliveryPersonName?: string
-  handoverRecipientName?: string
-  receivedByName?: string
-  deliveryDate?: string
-  confirmedAt?: unknown
-  status?: string
-  contractorOrgId?: string
-  attachmentUrls?: string[]
-  notes?: string
-  source?: string
-  projectId?: string | null
-}
-
-function DeliveryCard({ delivery, locale, t }: { delivery: Delivery; locale: string; t: ReturnType<typeof useTranslations<"Portal.Contractor">> }) {
-  const isRtl = locale === "ar"
+export default function GoodsReceivedPage() {
+  const t = useTranslations("Portal.ProcReceipts")
+  const locale = useLocale()
   const firestore = useFirestore()
-  const storage = useStorage()
   const { toast } = useToast()
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [uploading, setUploading] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const world = useProcurementWorld()
+  const { actor, orgId, orgName, orders, deliveries, rfqs, policies, loading } = world
+  const { user } = useUser()
+  const { profile } = useResolvedProfile(user?.uid)
+  const now = useMemo(() => new Date(), [])
 
-  // Resolved live rather than denormalized — covers both manually-logged
-  // receipts and supplier delivery notices (which already carried projectId
-  // before this feature, just never had anywhere to show it).
-  const projectRef = useMemoFirebase(() => {
-    if (!firestore || !delivery.projectId) return null
-    return doc(firestore, "projects", delivery.projectId)
-  }, [firestore, delivery.projectId])
-  const { data: linkedProject } = useDoc(projectRef)
-  const projectName = (linkedProject as { name?: string } | null)?.name
+  const tab: ReceiptSegment = isSegment(searchParams.get("tab")) ? (searchParams.get("tab") as ReceiptSegment) : "incoming"
+  const openDeliveryId = searchParams.get("delivery")
+  const setQuery = useCallback(
+    (next: { tab?: ReceiptSegment; delivery?: string | null }) => {
+      const params = new URLSearchParams(searchParams.toString())
+      if (next.tab) params.set("tab", next.tab)
+      if (next.delivery === null) params.delete("delivery")
+      else if (next.delivery) params.set("delivery", next.delivery)
+      const qs = params.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    },
+    [router, pathname, searchParams]
+  )
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !firestore || !storage) return
-    setUploading(true)
+  const [term, setTerm] = useState("")
+  const [projectFilter, setProjectFilter] = useState<string>("all")
+  const [manualOpen, setManualOpen] = useState(false)
+  const [receiveTarget, setReceiveTarget] = useState<{ delivery: DeskDelivery | null; po: PurchaseOrder | null } | null>(null)
+  const [regulariseTarget, setRegulariseTarget] = useState<DeskDelivery | null>(null)
+
+  const warehousesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const projectsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const { data: warehousesData } = useCollection(warehousesQ)
+  const { data: projectsData } = useCollection(projectsQ)
+  const warehouses = useMemo(() => ((warehousesData || []) as Array<{ id: string; name: string; projectId?: string | null }>), [warehousesData])
+  const projects = useMemo(() => ((projectsData || []) as Array<{ id: string; name: string; warehouseId?: string | null }>), [projectsData])
+  const warehouseName = useCallback((id: string | null | undefined) => (id ? warehouses.find((w) => w.id === id)?.name || null : null), [warehouses])
+  const projectName = useCallback((id: string | null | undefined) => (id ? projects.find((p) => p.id === id)?.name || null : null), [projects])
+
+  const desk = deliveries as DeskDelivery[]
+  const filter = useMemo(() => ({ term, projectId: projectFilter === "all" ? null : projectFilter }), [term, projectFilter])
+  const counts = useMemo(() => segmentCounts(desk, orders, filter, now), [desk, orders, filter, now])
+  const incoming = useMemo(() => incomingRows(desk, orders, now).filter((r) => incomingRowMatches(r, filter)), [desk, orders, filter, now])
+  const log = useMemo(() => receiptRows(desk, orders, "log", now).filter((r) => receiptRowMatches(r, filter)), [desk, orders, filter, now])
+  const nopo = useMemo(() => receiptRows(desk, orders, "nopo", now).filter((r) => receiptRowMatches(r, filter)), [desk, orders, filter, now])
+
+  const openDelivery = useMemo(() => (openDeliveryId ? desk.find((d) => d.id === openDeliveryId) || null : null), [desk, openDeliveryId])
+  // The order behind a delivery: named on it, or — for a notice written
+  // before the order existed (a guest's, an older one) — the one raised over
+  // its offer. Either way the receipt lands on the order's lines.
+  const poOf = useCallback(
+    (d: DeskDelivery | null) => {
+      if (!d) return null
+      const id = d.poId || orders.find((o) => o.offerId && o.offerId === d.offerId)?.id || null
+      return id ? orders.find((o) => o.id === id) || null : null
+    },
+    [orders]
+  )
+  const alreadyPosted = useCallback((po: PurchaseOrder | null, except?: string) => (po ? desk.filter((d) => d.poId === po.id && d.status === "confirmed" && d.id !== except).reduce((s, d) => s + (Number(d.postedNet) || 0), 0) : 0), [desk])
+  const purchaseSourceOf = useCallback(
+    (d: DeskDelivery | null, po: PurchaseOrder | null): PurchaseSource => po?.purchaseSource ?? (d?.rfqId ? rfqs.find((r) => r.id === d.rfqId)?.purchaseSource ?? null : null),
+    [rfqs]
+  )
+  /** A legacy notice is worth its awarded offer's price (ex-VAT) — what the books read. */
+  const legacyNetOf = useCallback(
+    (d: DeskDelivery | null) => {
+      if (!d?.offerId) return null
+      const o = world.offers.find((x) => x.id === d.offerId)
+      if (!o) return null
+      const raw = o.totalBatchesPrice ?? o.price
+      const n = typeof raw === "number" ? raw : Number(String(raw ?? "").replace(/[,\s]/g, ""))
+      return Number.isFinite(n) && n > 0 ? n : null
+    },
+    [world.offers]
+  )
+
+  // The drawer's project filter follows the segment: a `?delivery=` link from
+  // the bell may name a delivery of another segment — the drawer opens anyway.
+  useEffect(() => {
+    if (openDeliveryId && !loading && !openDelivery) toast({ title: t("drawer.notFound"), variant: "destructive" })
+    // Only when the id or the loading state changes — not on every list refresh.
+  }, [openDeliveryId, loading])
+
+  const company = useMemo(() => {
+    const p = (profile || {}) as { companyName?: string; name?: string; crNumber?: string; taxNumber?: string; city?: string; location?: string; phone?: string; phoneNumber?: string; email?: string }
+    return { name: p.companyName || orgName || p.name || "", cr: p.crNumber || null, vat: p.taxNumber || null, address: [p.location, p.city].filter(Boolean).join(" · ") || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
+  }, [profile, orgName])
+
+  const canReceive = actor.isOwner || actor.canReceive
+
+  const exportCsv = () => {
+    const words = {
+      headers: {
+        receipt: t("csv.receipt"),
+        date: t("csv.date"),
+        supplier: t("csv.supplier"),
+        po: t("csv.po"),
+        material: t("csv.material"),
+        perNotice: t("csv.perNotice"),
+        counted: t("csv.counted"),
+        accepted: t("csv.accepted"),
+        rejected: t("csv.rejected"),
+        held: t("csv.held"),
+        place: t("csv.place"),
+        receiver: t("csv.receiver"),
+        recordedIn: t("csv.recordedIn"),
+      },
+      recordedManual: t("csv.recordedManual"),
+      recordedGate: t("csv.recordedGate"),
+      noPo: t("csv.noPo"),
+      noNotice: t("csv.noNotice"),
+    }
+    const rows = receiptCsvRows(desk, orders, (id) => warehouseName(id) || "", words)
+    const blob = new Blob([receiptCsv(rows, words)], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = receiptCsvFilename(now)
+    a.click()
+    URL.revokeObjectURL(url)
+    toast({ title: t("csv.exported") })
+  }
+
+  const onReceived = (r: RecordReceiptResult) => {
+    setReceiveTarget(null)
+    setQuery({ tab: "log", delivery: r.deliveryId })
+  }
+
+  const markExpense = async (d: DeskDelivery) => {
+    if (!firestore) return
     try {
-      const storageRef = ref(storage, `deliveries/${delivery.id}/attachments/${Date.now()}_${file.name}`)
-      await uploadBytes(storageRef, file)
-      const url = await getDownloadURL(storageRef)
-      await updateDoc(doc(firestore, "deliveries", delivery.id), {
-        attachmentUrls: arrayUnion(url),
-      })
-      toast({ title: t("goods_attachment_uploaded") })
+      await markReceiptAsExpense(firestore, actor, d.id)
+      toast({ title: t("regularise.expenseDone") })
     } catch (err) {
       console.error(err)
-      toast({ title: t("goods_upload_error"), variant: "destructive" })
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      toast({ title: t("toast.failed"), variant: "destructive" })
     }
   }
 
+  const segTitle: Record<ReceiptSegment, string> = { incoming: t("segments.incoming"), log: t("segments.log"), nopo: t("segments.nopo") }
+  const segInfo: Record<ReceiptSegment, string> = { incoming: t("info.incoming"), log: t("info.log"), nopo: t("info.nopo") }
+
   return (
-    <Card className="border-success/20 bg-success/5 hover:shadow-md transition-shadow">
-      <CardContent className="p-5" dir={isRtl ? "rtl" : "ltr"}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-          {/* Icon */}
-          <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
-            <PackageCheck size={22} className="text-success" />
-          </div>
-
-          {/* Details */}
-          <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
-                <FileText size={11} />
-                {delivery.source === "manual" ? t("goods_manual_description_label") : t("goods_rfq")}
-              </p>
-              <p className="font-bold text-slate-800 text-sm truncate">
-                {delivery.source === "manual" ? (delivery.notes || "—") : (delivery.rfqTitle || "—")}
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
-                <Building2 size={11} />
-                {t("goods_supplier")}
-              </p>
-              <p className="font-semibold text-slate-700 text-sm truncate">{delivery.supplierName || "—"}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
-                <Truck size={11} />
-                {t("goods_handover_by")}
-              </p>
-              <p className="text-slate-700 text-sm truncate">{delivery.deliveryPersonName || "—"}</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-bold text-slate-400 uppercase mb-0.5 flex items-center gap-1">
-                <Calendar size={11} />
-                {t("goods_confirmed_at")}
-              </p>
-              <p className="text-slate-700 text-sm" suppressHydrationWarning>
-                {fmtDate(delivery.confirmedAt, locale)}
-              </p>
-            </div>
-          </div>
-
-          {/* Right side */}
-          <div className="flex flex-col sm:items-end gap-2 shrink-0">
-            <Badge className="bg-success/10 text-success border-success/20 text-xs font-bold w-fit">
-              ✓ {t("goods_received_confirmed_badge")}
-            </Badge>
-            {delivery.source === "manual" && (
-              <Badge variant="outline" className="text-slate-500 border-slate-200 bg-white text-xs font-semibold w-fit">
-                {t("goods_manual_badge")}
-              </Badge>
-            )}
-            {projectName && (
-              <Badge variant="outline" className="text-primary border-primary/20 bg-primary/5 text-xs font-semibold w-fit gap-1 max-w-[180px]">
-                <FolderOpen size={10} className="shrink-0" />
-                <span className="truncate">{projectName}</span>
-              </Badge>
-            )}
-            <Button
-              asChild
-              size="sm"
-              variant="outline"
-              className="gap-1.5 border-success/30 text-success hover:bg-success hover:text-white hover:border-success"
-            >
-              <Link href={`/contractor/receipts/${delivery.id}`} className="flex items-center gap-1.5">
-                <FileText size={14} />
-                {t("goods_view_receipt")}
-                <ArrowRight size={13} className={cn(isRtl ? "rotate-180" : "")} />
-              </Link>
-            </Button>
-
-            {/* Upload attachment */}
-            <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="gap-1.5 text-slate-500 hover:text-primary h-7 px-2 text-xs"
-            >
-              {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-              {uploading ? t("goods_uploading") : t("goods_upload_receipt")}
-            </Button>
-          </div>
-        </div>
-
-        {/* Handover recipient */}
-        {(delivery.handoverRecipientName || delivery.receivedByName) && (
-          <div className="mt-3 pt-3 border-t border-success/10 text-xs text-slate-500 text-start">
-            <span className="font-bold">{t("goods_received_by")}:</span>{" "}
-            {delivery.handoverRecipientName || delivery.receivedByName}
-          </div>
-        )}
-
-        {/* Attachments */}
-        {delivery.attachmentUrls && delivery.attachmentUrls.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-success/10 text-start">
-            <p className="text-[11px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
-              <Paperclip size={11} />
-              {t("goods_attachments")} ({delivery.attachmentUrls.length})
-            </p>
+    <PortalLayout>
+      <div className="space-y-5">
+        <ProcurementHeader
+          icon={PackageCheck}
+          title={t("title")}
+          description={t("subtitle")}
+          action={
             <div className="flex flex-wrap gap-2">
-              {delivery.attachmentUrls.map((url, idx) => (
-                <a
-                  key={idx}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary font-medium hover:underline bg-primary/5 px-2 py-1 rounded-md"
-                >
-                  <FileText size={11} />
-                  {t("goods_received_document_label", { num: idx + 1 })}
-                  <ExternalLink size={10} />
-                </a>
-              ))}
+              <Button variant="outline" className="gap-2" onClick={exportCsv} disabled={loading}>
+                <Download size={16} aria-hidden="true" />
+                {t("csv.button")}
+              </Button>
+              {canReceive && (
+                <Button className="gap-2" onClick={() => setManualOpen(true)}>
+                  <PlusCircle size={18} aria-hidden="true" />
+                  {t("manual.button")}
+                </Button>
+              )}
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
+          }
+        />
 
-type ItemRow = {
-  rowId: string
-  inventoryItemId: string
-  itemName: string
-  quantity: string
-  unit: string
-}
-
-function ManualReceiptDialog({
-  open,
-  onOpenChange,
-  locale,
-  t,
-  myOrgId,
-  defaultReceiverName,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  locale: string
-  t: ReturnType<typeof useTranslations<"Portal.Contractor">>
-  myOrgId?: string
-  defaultReceiverName?: string
-}) {
-  const firestore = useFirestore()
-  const { user } = useUser()
-  const { toast } = useToast()
-  const [isSaving, setIsSaving] = useState(false)
-  const today = new Date().toISOString().split("T")[0]
-
-  const [supplierName, setSupplierName] = useState("")
-  const [deliveryDate, setDeliveryDate] = useState(today)
-  const [deliveryPersonName, setDeliveryPersonName] = useState("")
-  const [receivedByName, setReceivedByName] = useState(defaultReceiverName || "")
-  const [notes, setNotes] = useState("")
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("")
-  const [selectedProjectId, setSelectedProjectId] = useState("")
-  const [itemRows, setItemRows] = useState<ItemRow[]>([
-    { rowId: "r0", inventoryItemId: "", itemName: "", quantity: "", unit: "" },
-  ])
-  const [supplierCrNumber, setSupplierCrNumber] = useState("")
-  const [supplierVatNumber, setSupplierVatNumber] = useState("")
-  const [contractorCrNumber, setContractorCrNumber] = useState("")
-  const [contractorVatNumber, setContractorVatNumber] = useState("")
-  const [supplierSignatureData, setSupplierSignatureData] = useState<string | null>(null)
-  const [contractorSignatureData, setContractorSignatureData] = useState<string | null>(null)
-
-  const warehousesQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId) return null
-    return query(collection(firestore, "warehouses"), where("organizationId", "==", myOrgId))
-  }, [firestore, myOrgId])
-  const { data: warehousesData } = useCollection(warehousesQuery)
-  const warehouses = (warehousesData || []) as { id: string; name: string }[]
-
-  // Org-wide, single-field query (avoids needing a composite index) — filtered
-  // client-side to whichever projects are linked to the selected warehouse.
-  const orgProjectsQuery = useMemoFirebase(() => {
-    if (!firestore || !myOrgId) return null
-    return query(collection(firestore, "projects"), where("organizationId", "==", myOrgId))
-  }, [firestore, myOrgId])
-  const { data: orgProjectsData } = useCollection(orgProjectsQuery)
-  const warehouseProjects = ((orgProjectsData || []) as { id: string; name: string; warehouseId?: string }[])
-    .filter((p) => p.warehouseId === selectedWarehouseId)
-
-  const inventoryQuery = useMemoFirebase(() => {
-    if (!firestore || !selectedWarehouseId) return null
-    return collection(firestore, "warehouses", selectedWarehouseId, "inventoryItems")
-  }, [firestore, selectedWarehouseId])
-  const { data: inventoryData } = useCollection(inventoryQuery)
-  const inventoryItems = (inventoryData || []) as { id: string; name: string; unit: string }[]
-
-  // A warehouse serving exactly one project is the common case — pre-select it,
-  // but still leave the field changeable (including back to "no project") since
-  // a warehouse can serve several projects or none in particular.
-  useEffect(() => {
-    if (warehouseProjects.length === 1) {
-      setSelectedProjectId(warehouseProjects[0].id)
-    } else {
-      setSelectedProjectId("")
-    }
-    // Only re-run when the set of candidate projects actually changes.
-  }, [warehouseProjects.map((p) => p.id).join(",")])
-
-  const resetForm = () => {
-    setSupplierName("")
-    setDeliveryDate(today)
-    setDeliveryPersonName("")
-    setReceivedByName(defaultReceiverName || "")
-    setNotes("")
-    setSelectedWarehouseId("")
-    setSelectedProjectId("")
-    setItemRows([{ rowId: "r0", inventoryItemId: "", itemName: "", quantity: "", unit: "" }])
-    setSupplierCrNumber("")
-    setSupplierVatNumber("")
-    setContractorCrNumber("")
-    setContractorVatNumber("")
-    setSupplierSignatureData(null)
-    setContractorSignatureData(null)
-  }
-
-  const addItemRow = () =>
-    setItemRows((prev) => [...prev, { rowId: `r${Date.now()}`, inventoryItemId: "", itemName: "", quantity: "", unit: "" }])
-
-  const removeItemRow = (rowId: string) =>
-    setItemRows((prev) => prev.filter((r) => r.rowId !== rowId))
-
-  const updateItemRow = (rowId: string, updates: Partial<ItemRow>) =>
-    setItemRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, ...updates } : r)))
-
-  const selectInventoryItem = (rowId: string, itemId: string) => {
-    const item = inventoryItems.find((i) => i.id === itemId)
-    if (!item) return
-    updateItemRow(rowId, { inventoryItemId: itemId, itemName: item.name, unit: item.unit })
-  }
-
-  const handleSave = async () => {
-    if (!firestore || !user || !myOrgId) return
-
-    const validRows = itemRows.filter((r) => r.itemName.trim() && Number(r.quantity) > 0)
-    if (!supplierName.trim() || !deliveryDate || !receivedByName.trim() || validRows.length === 0) {
-      toast({ title: t("goods_manual_validation_error"), variant: "destructive" })
-      return
-    }
-
-    setIsSaving(true)
-    try {
-      await addDoc(collection(firestore, "deliveries"), {
-        contractorOrgId: myOrgId,
-        contractorId: user.uid,
-        supplierName: supplierName.trim(),
-        deliveryPersonName: deliveryPersonName.trim() || null,
-        receivedByName: receivedByName.trim(),
-        deliveryDate,
-        notes: notes.trim() || null,
-        warehouseId: selectedWarehouseId || null,
-        projectId: selectedProjectId || null,
-        items: validRows.map((r) => ({
-          itemId: r.inventoryItemId || null,
-          name: r.itemName,
-          quantity: Number(r.quantity),
-          unit: r.unit,
-        })),
-        supplierCrNumber: supplierCrNumber.trim() || null,
-        supplierVatNumber: supplierVatNumber.trim() || null,
-        contractorCrNumber: contractorCrNumber.trim() || null,
-        contractorVatNumber: contractorVatNumber.trim() || null,
-        supplierSignatureData: supplierSignatureData || null,
-        contractorSignatureData: contractorSignatureData || null,
-        status: "confirmed",
-        confirmedByUserId: user.uid,
-        confirmedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        source: "manual",
-      })
-
-      if (selectedWarehouseId) {
-        for (const row of validRows.filter((r) => r.inventoryItemId)) {
-          await updateDoc(
-            doc(firestore, "warehouses", selectedWarehouseId, "inventoryItems", row.inventoryItemId),
-            { quantity: increment(Number(row.quantity)), updatedAt: serverTimestamp() }
-          )
-        }
-      }
-
-      toast({ title: t("goods_manual_success") })
-      resetForm()
-      onOpenChange(false)
-    } catch (err) {
-      console.error("Failed to log manual receipt:", err)
-      toast({ title: t("goods_manual_error"), variant: "destructive" })
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const isRtl = locale === "ar"
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => { if (!isSaving) { onOpenChange(next); if (!next) resetForm() } }}>
-      <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t("goods_manual_title")}</DialogTitle>
-          <DialogDescription>{t("goods_manual_desc")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-2">
-          {/* Basic fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-supplier">{t("goods_manual_supplier_name")} *</Label>
-              <Input id="manual-supplier" value={supplierName} onChange={(e) => setSupplierName(e.target.value)}
-                placeholder={t("goods_manual_supplier_placeholder")} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-date">{t("goods_manual_delivery_date")} *</Label>
-              <input id="manual-date" type="date" value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)} max={today} dir="ltr"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-delivery-person">{t("goods_manual_delivery_person")}</Label>
-              <Input id="manual-delivery-person" value={deliveryPersonName}
-                onChange={(e) => setDeliveryPersonName(e.target.value)}
-                placeholder={t("goods_manual_delivery_person_placeholder")} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-receiver">{t("goods_manual_receiver_name")} *</Label>
-              <Input id="manual-receiver" value={receivedByName} onChange={(e) => setReceivedByName(e.target.value)}
-                placeholder={t("goods_manual_receiver_placeholder")} />
-            </div>
-          </div>
-
-          {/* Warehouse picker */}
-          <div className="space-y-1.5 pt-1 border-t">
-            <Label className="flex items-center gap-1.5">
-              <Warehouse size={13} className="text-muted-foreground" />
-              {t("goods_manual_warehouse")}
-            </Label>
-            <Select value={selectedWarehouseId} onValueChange={(v) => {
-              setSelectedWarehouseId(v)
-              setItemRows([{ rowId: "r0", inventoryItemId: "", itemName: "", quantity: "", unit: "" }])
-            }}>
-              <SelectTrigger>
-                <SelectValue placeholder={t("goods_manual_warehouse_placeholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map((w) => (
-                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Project picker — only offered when the selected warehouse actually serves a project */}
-          {selectedWarehouseId && warehouseProjects.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <FolderOpen size={13} className="text-muted-foreground" />
-                {t("goods_manual_project")}
-              </Label>
-              <Select
-                value={selectedProjectId || "__none__"}
-                onValueChange={(v) => setSelectedProjectId(v === "__none__" ? "" : v)}
+        {/* Segments + tools */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div role="tablist" aria-label={t("title")} className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
+            {RECEIPT_SEGMENTS.map((s) => (
+              <button
+                key={s}
+                role="tab"
+                type="button"
+                aria-selected={tab === s}
+                onClick={() => setQuery({ tab: s })}
+                className={cn(
+                  "flex min-h-[40px] items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  tab === s ? "bg-background text-module shadow-sm" : "text-muted-foreground hover:text-foreground"
+                )}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder={t("goods_manual_project_placeholder")} />
+                {segTitle[s]}
+                <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", tab === s ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{counts[s]}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" aria-hidden="true" />
+              <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")} className="h-10 w-full ps-9 sm:w-64" dir="auto" />
+            </div>
+            {projects.length > 0 && (
+              <Select value={projectFilter} onValueChange={setProjectFilter}>
+                <SelectTrigger className="h-10 w-full sm:w-52" aria-label={t("projectFilter")}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">{t("goods_manual_project_none")}</SelectItem>
-                  {warehouseProjects.map((p) => (
+                  <SelectItem value="all">{t("allProjects")}</SelectItem>
+                  {projects.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
-
-          {/* Items table */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>{t("goods_manual_items_label")} *</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addItemRow}
-                className="h-7 px-2 text-xs gap-1">
-                <Plus size={12} />
-                {t("goods_manual_add_item")}
-              </Button>
-            </div>
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-slate-50 border-b">
-                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs text-start">{t("goods_manual_item_name")}</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-24 text-start">{t("goods_manual_item_qty")}</th>
-                    <th className="px-3 py-2 font-medium text-muted-foreground text-xs w-20 text-start">{t("goods_manual_item_unit")}</th>
-                    <th className="w-8" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {itemRows.map((row) => (
-                    <tr key={row.rowId} className="border-b last:border-0 hover:bg-slate-50/50">
-                      <td className="px-2 py-1">
-                        {selectedWarehouseId ? (
-                          <Select value={row.inventoryItemId} onValueChange={(v) => selectInventoryItem(row.rowId, v)}>
-                            <SelectTrigger className="h-8 text-sm border-0 shadow-none bg-transparent focus:ring-0">
-                              <SelectValue placeholder={t("goods_manual_select_item")} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {inventoryItems.map((item) => (
-                                <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        ) : (
-                          <Input value={row.itemName} onChange={(e) => updateItemRow(row.rowId, { itemName: e.target.value })}
-                            placeholder={t("goods_manual_item_name_placeholder")}
-                            className="h-8 text-sm border-0 shadow-none bg-transparent focus-visible:ring-0 px-1" />
-                        )}
-                      </td>
-                      <td className="px-2 py-1">
-                        <Input type="number" min={0} value={row.quantity}
-                          onChange={(e) => updateItemRow(row.rowId, { quantity: e.target.value })}
-                          placeholder="0" dir="ltr"
-                          className="h-8 text-sm border-0 shadow-none bg-transparent focus-visible:ring-0 tabular-nums px-1" />
-                      </td>
-                      <td className="px-2 py-1">
-                        {selectedWarehouseId ? (
-                          <span className="text-muted-foreground text-sm px-1">{row.unit || "—"}</span>
-                        ) : (
-                          <Input value={row.unit} onChange={(e) => updateItemRow(row.rowId, { unit: e.target.value })}
-                            placeholder={t("goods_manual_item_unit_placeholder")}
-                            className="h-8 text-sm border-0 shadow-none bg-transparent focus-visible:ring-0 px-1" />
-                        )}
-                      </td>
-                      <td className="px-1 py-1 text-center">
-                        {itemRows.length > 1 && (
-                          <Button type="button" variant="ghost" size="icon"
-                            className="h-7 w-7 text-destructive/50 hover:text-destructive"
-                            onClick={() => removeItemRow(row.rowId)}>
-                            <Trash2 size={13} />
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Notes (optional) */}
-          <div className="space-y-1.5">
-            <Label htmlFor="manual-notes">{t("goods_manual_notes_label")}</Label>
-            <Textarea id="manual-notes" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder={t("goods_manual_notes_placeholder")} />
-          </div>
-
-          {/* Business registration details */}
-          <div className="pt-2 border-t space-y-3">
-            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-              <FileText size={12} />
-              {t("goods_manual_biz_section")}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="manual-supplier-cr" className="text-xs">{t("goods_manual_supplier_cr")}</Label>
-                <Input id="manual-supplier-cr" value={supplierCrNumber} onChange={(e) => setSupplierCrNumber(e.target.value)}
-                  placeholder={t("goods_manual_cr_placeholder")} className="h-8 text-sm" dir="ltr" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="manual-supplier-vat" className="text-xs">{t("goods_manual_supplier_vat")}</Label>
-                <Input id="manual-supplier-vat" value={supplierVatNumber} onChange={(e) => setSupplierVatNumber(e.target.value)}
-                  placeholder={t("goods_manual_vat_placeholder")} className="h-8 text-sm" dir="ltr" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="manual-contractor-cr" className="text-xs">{t("goods_manual_contractor_cr")}</Label>
-                <Input id="manual-contractor-cr" value={contractorCrNumber} onChange={(e) => setContractorCrNumber(e.target.value)}
-                  placeholder={t("goods_manual_cr_placeholder")} className="h-8 text-sm" dir="ltr" />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="manual-contractor-vat" className="text-xs">{t("goods_manual_contractor_vat")}</Label>
-                <Input id="manual-contractor-vat" value={contractorVatNumber} onChange={(e) => setContractorVatNumber(e.target.value)}
-                  placeholder={t("goods_manual_vat_placeholder")} className="h-8 text-sm" dir="ltr" />
-              </div>
-            </div>
-          </div>
-
-          {/* Signatures */}
-          <div className="pt-2 border-t space-y-4">
-            <p className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-1.5">
-              <PenLine size={12} />
-              {t("goods_manual_signatures_section")}
-            </p>
-            <div>
-              <Label className="text-xs mb-1.5 block">{t("goods_manual_supplier_signature")}</Label>
-              <SignaturePad value={supplierSignatureData} onChange={setSupplierSignatureData}
-                clearLabel={t("goods_manual_sig_clear")} placeholderText={t("goods_manual_sig_placeholder")} height={100} />
-            </div>
-            <div>
-              <Label className="text-xs mb-1.5 block">{t("goods_manual_contractor_signature")}</Label>
-              <SignaturePad value={contractorSignatureData} onChange={setContractorSignatureData}
-                clearLabel={t("goods_manual_sig_clear")} placeholderText={t("goods_manual_sig_placeholder")} height={100} />
-            </div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
-            {t("goods_manual_cancel")}
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
-            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
-            {t("goods_manual_save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-export default function GoodsReceivedPage() {
-  const t = useTranslations("Portal.Contractor")
-  const locale = useLocale()
-  const firestore = useFirestore()
-  const { user, isUserLoading } = useUser()
-  const [isManualDialogOpen, setIsManualDialogOpen] = useState(false)
-  const { can } = usePermissions()
-  const canConfirmDeliveries = can("deliveries.confirm")
-
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile } = useDoc(userDocRef)
-  const typedProfile = profile as { organizationId?: string; name?: string } | null
-  const myOrgId = typedProfile?.organizationId || user?.uid
-
-  const deliveriesQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore || !myOrgId) return null
-    return query(
-      collection(firestore, "deliveries"),
-      where("contractorOrgId", "==", myOrgId),
-      where("status", "==", "confirmed")
-    )
-  }, [firestore, user, isUserLoading, myOrgId])
-
-  const { data: deliveries, isLoading } = useCollection(deliveriesQuery)
-  const confirmedDeliveries = ((deliveries || []) as Delivery[]).sort((a, b) => {
-    const getTime = (v: unknown) =>
-      v && typeof v === "object" && "toDate" in v
-        ? (v as { toDate: () => Date }).toDate().getTime()
-        : v ? new Date(v as string).getTime() : 0
-    return getTime(b.confirmedAt) - getTime(a.confirmedAt)
-  })
-
-  const pageLoading = isUserLoading || (isLoading && !deliveries)
-
-  return (
-    <PortalLayout>
-      <div className="space-y-6">
-        <ProcurementHeader
-          icon={PackageCheck}
-          title={t("goods_title")}
-          description={t("goods_desc")}
-          action={
-            canConfirmDeliveries && (
-              <Button className="gap-2" onClick={() => setIsManualDialogOpen(true)}>
-                <PlusCircle size={18} aria-hidden="true" />
-                {t("goods_manual_add_button")}
-              </Button>
-            )
-          }
-        />
-
-        <ManualReceiptDialog
-          open={isManualDialogOpen}
-          onOpenChange={setIsManualDialogOpen}
-          locale={locale}
-          t={t}
-          myOrgId={myOrgId}
-          defaultReceiverName={typedProfile?.name}
-        />
-
-        {pageLoading ? (
-          <div className="flex items-center justify-center p-20">
-            <Loader2 className="animate-spin text-muted-foreground" size={40} />
-          </div>
-        ) : confirmedDeliveries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-20 bg-slate-50 rounded-xl border border-dashed text-center gap-3">
-            <PackageCheck size={48} className="text-muted-foreground/30" />
-            <div>
-              <p className="text-muted-foreground font-medium">{t("goods_empty")}</p>
-              <p className="text-sm text-muted-foreground mt-1">{t("goods_empty_desc")}</p>
-            </div>
-            {canConfirmDeliveries && (
-              <Button className="gap-2 mt-2" onClick={() => setIsManualDialogOpen(true)}>
-                <PlusCircle size={16} />
-                {t("goods_manual_add_button")}
-              </Button>
             )}
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4">
-            {confirmedDeliveries.map((delivery) => (
-              <DeliveryCard key={delivery.id} delivery={delivery} locale={locale} t={t} />
-            ))}
+        </div>
+
+        <p className="rounded-lg border border-module/20 bg-module/5 p-3 text-xs leading-relaxed text-foreground/80">{segInfo[tab]}</p>
+
+        {loading ? (
+          <div className="flex items-center justify-center p-20">
+            <Loader2 className="animate-spin text-muted-foreground" size={40} aria-hidden="true" />
           </div>
+        ) : tab === "incoming" ? (
+          <IncomingList rows={incoming} locale={locale} canReceive={canReceive} onReceive={(d, po) => setReceiveTarget({ delivery: d, po })} onOpen={(id) => setQuery({ delivery: id })} projectName={projectName} />
+        ) : (
+          <ReceiptList rows={tab === "log" ? log : nopo} locale={locale} onOpen={(id) => setQuery({ delivery: id })} warehouseName={warehouseName} projectName={projectName} nopo={tab === "nopo"} />
+        )}
+
+        {openDelivery && (
+          <ReceiptDrawer
+            delivery={openDelivery}
+            po={poOf(openDelivery)}
+            onOpenChange={(o) => !o && setQuery({ delivery: null })}
+            actor={actor}
+            company={company}
+            warehouseName={warehouseName}
+            projectName={projectName}
+            now={now}
+            onReceive={(d) => setReceiveTarget({ delivery: d, po: poOf(d) })}
+            onRegularise={(d) => setRegulariseTarget(d)}
+            onMarkExpense={markExpense}
+          />
+        )}
+
+        {receiveTarget && (
+          <ReceiveDeliveryDialog
+            open
+            onOpenChange={(o) => !o && setReceiveTarget(null)}
+            delivery={receiveTarget.delivery}
+            po={receiveTarget.po}
+            policies={policies}
+            actor={actor}
+            orgId={orgId}
+            projectName={projectName(receiveTarget.delivery?.projectId || receiveTarget.po?.projectId)}
+            alreadyPostedNet={alreadyPosted(receiveTarget.po, receiveTarget.delivery?.id)}
+            legacyNet={legacyNetOf(receiveTarget.delivery)}
+            purchaseSource={purchaseSourceOf(receiveTarget.delivery, receiveTarget.po)}
+            warehouses={warehouses}
+            defaultWarehouseId={null}
+            onDone={onReceived}
+          />
+        )}
+
+        <ManualReceiptDialog
+          open={manualOpen}
+          onOpenChange={setManualOpen}
+          actor={actor}
+          orgId={orgId}
+          orders={orders}
+          policies={policies}
+          warehouses={warehouses}
+          projects={projects}
+          alreadyPostedNet={(po) => alreadyPosted(po)}
+          projectName={projectName}
+          onDone={(deliveryId, tabAfter) => {
+            setManualOpen(false)
+            setQuery({ tab: tabAfter, delivery: deliveryId })
+          }}
+        />
+
+        {regulariseTarget && (
+          <RegulariseReceiptDialog
+            delivery={regulariseTarget}
+            actor={actor}
+            orgId={orgId}
+            onOpenChange={(o) => !o && setRegulariseTarget(null)}
+            onDone={(poId) => {
+              setRegulariseTarget(null)
+              router.push(procLinks.order(poId))
+            }}
+          />
         )}
       </div>
     </PortalLayout>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// On the way
+// ---------------------------------------------------------------------------
+
+function IncomingList({ rows, locale, canReceive, onReceive, onOpen, projectName }: { rows: IncomingRow[]; locale: string; canReceive: boolean; onReceive: (d: DeskDelivery | null, po: PurchaseOrder | null) => void; onOpen: (id: string) => void; projectName: (id: string | null | undefined) => string | null }) {
+  const t = useTranslations("Portal.ProcReceipts")
+  const tp = useTranslations("Portal.Procurement")
+  if (!rows.length) return <Empty text={t("empty.incoming")} />
+  return (
+    <div className="space-y-2">
+      {rows.map((r) => {
+        const po: PurchaseOrder | null = r.po
+        const supplier = r.kind === "notice" ? r.delivery.supplierName || po?.supplierName : r.po.supplierName
+        const items = r.kind === "notice" ? (r.delivery.lines?.length ? r.delivery.lines.map((l) => `${fmt(l.noticeQuantity)} ${l.unit} ${l.name}`) : (r.delivery.items || []).map((it) => `${it.quantity ?? ""} ${it.unitOfMeasure || it.unit || ""} ${it.name || ""}`.trim())) : r.po.lines.filter((l) => lineToArrive(l) > 0).map((l) => `${fmt(lineToArrive(l))} ${l.unit} ${l.name}`)
+        const project = projectName(r.kind === "notice" ? r.delivery.projectId || po?.projectId : r.po.projectId)
+        const pill =
+          r.kind === "due" ? (
+            <Badge className={cn("border-none text-[11px] font-bold", r.daysLate > 0 ? "bg-destructive/10 text-destructive" : "bg-amber-100 text-amber-800")}>{r.daysLate > 0 ? t("incoming.lateNoNotice", { days: r.daysLate }) : t("incoming.noNoticeYet")}</Badge>
+          ) : r.state === "late_notice" ? (
+            <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{tp("receiptState.late_notice")}</Badge>
+          ) : r.afterPromise > 0 ? (
+            <Badge className="border-none bg-destructive/10 text-[11px] font-bold text-destructive">{t("incoming.afterPromise", { days: r.afterPromise })}</Badge>
+          ) : (
+            <Badge className="border-none bg-success/10 text-[11px] font-bold text-success">{r.daysFromNow == null ? tp("receiptState.on_the_way") : t("incoming.inDays", { days: r.daysFromNow })}</Badge>
+          )
+        return (
+          <div key={r.id} className="flex flex-col gap-3 rounded-lg border bg-card p-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="flex flex-wrap items-center gap-x-2 text-sm">
+                <span className="font-bold" dir="auto">{supplier || "—"}</span>
+                {po && <span className="text-muted-foreground">· {displayPoNumber(po.docNumber, locale)}</span>}
+                {r.kind === "notice" && r.delivery.paperNoteNumber && <Badge variant="outline" className="text-[10px]" dir="ltr">{r.delivery.paperNoteNumber}</Badge>}
+              </p>
+              <p className="text-xs text-muted-foreground" dir="auto">{items.length ? items.join(" · ") : r.kind === "notice" ? r.delivery.rfqTitle || "—" : po?.rfqTitle}</p>
+              {project && <p className="text-[11px] text-muted-foreground">{project}</p>}
+              {r.kind === "notice" && (
+                <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Truck size={11} aria-hidden="true" />
+                  <span dir="auto">{r.delivery.deliveryPersonName || t("incoming.driverUnknown")}</span>
+                  {r.delivery.vehiclePlate && <span dir="ltr">· {r.delivery.vehiclePlate}</span>}
+                </p>
+              )}
+              {r.kind === "due" && (
+                <p className="flex items-center gap-1.5 text-[11px] text-amber-800">
+                  <AlertTriangle size={11} aria-hidden="true" />
+                  {t("incoming.dueHint")}
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              <div className="flex items-center gap-2 sm:flex-col sm:items-end">
+                <span className="text-sm font-bold tabular-nums" dir="ltr">{r.day || "—"}</span>
+                {pill}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {r.kind === "notice" && (
+                  <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onOpen(r.delivery.id)}>
+                    {t("incoming.details")}
+                  </Button>
+                )}
+                {po && (
+                  <Button asChild size="sm" variant="outline" className="h-8 gap-1 text-xs">
+                    <Link href={procLinks.order(po.id)}>
+                      <ExternalLink size={12} aria-hidden="true" />
+                      {t("incoming.openOrder")}
+                    </Link>
+                  </Button>
+                )}
+                {canReceive && (
+                  <Button size="sm" className="h-8 gap-1 text-xs" onClick={() => onReceive(r.kind === "notice" ? r.delivery : null, po)}>
+                    <ClipboardCheck size={12} aria-hidden="true" />
+                    {r.kind === "notice" ? t("incoming.record") : t("incoming.recordNoNotice")}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Receipts / No PO
+// ---------------------------------------------------------------------------
+
+function ReceiptList({ rows, locale, onOpen, warehouseName, projectName, nopo }: { rows: ReceiptRow[]; locale: string; onOpen: (id: string) => void; warehouseName: (id: string | null | undefined) => string | null; projectName: (id: string | null | undefined) => string | null; nopo: boolean }) {
+  const t = useTranslations("Portal.ProcReceipts")
+  const tp = useTranslations("Portal.Procurement")
+  if (!rows.length) return <Empty text={nopo ? t("empty.nopo") : t("empty.log")} />
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="hidden bg-muted/50 text-xs text-muted-foreground md:table-header-group">
+          <tr>
+            <th className="px-3 py-2 text-start font-semibold">{t("log.colReceipt")}</th>
+            <th className="px-3 py-2 text-start font-semibold">{t("log.colSupplierPo")}</th>
+            <th className="px-3 py-2 text-start font-semibold">{t("log.colAccepted")}</th>
+            <th className="px-3 py-2 text-start font-semibold">{t("log.colWhere")}</th>
+            <th className="px-3 py-2 text-start font-semibold">{t("log.colStatus")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const d = r.delivery
+            const number = d.docNumber ? displayReceiptNumber(d.docNumber, locale) : `DEL-${d.id.slice(0, 8).toUpperCase()}`
+            const place = warehouseName(d.landedWarehouseId || (d as { warehouseId?: string | null }).warehouseId)
+            const project = projectName(d.projectId || r.po?.projectId)
+            return (
+              <tr key={d.id} onClick={() => onOpen(d.id)} className="grid cursor-pointer grid-cols-1 gap-1 border-t px-3 py-3 hover:bg-muted/30 md:table-row md:px-0 md:py-0" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(d.id)}>
+                <td className="md:px-3 md:py-2.5">
+                  <p className="font-bold">{number}</p>
+                  <p className="text-[11px] text-muted-foreground" dir="ltr">{r.day || "—"}</p>
+                  {d.source === "manual" && <Badge variant="outline" className="mt-1 text-[10px]">{t("log.recordedManually")}</Badge>}
+                </td>
+                <td className="md:px-3 md:py-2.5">
+                  <p className="font-semibold" dir="auto">{d.supplierName || r.po?.supplierName || "—"}</p>
+                  <p className="text-[11px] text-muted-foreground">{r.po ? displayPoNumber(r.po.docNumber, locale) : d.poNumber ? displayPoNumber(d.poNumber, locale) : <span className="font-bold text-destructive">{t("log.noPo")}</span>}</p>
+                </td>
+                <td className="md:px-3 md:py-2.5">
+                  <p className="text-xs" dir="auto">{r.lines.map((l) => `${l.name} ${fmt(l.accepted ?? 0)} ${l.unit}`).join(" · ") || "—"}</p>
+                  <p className="flex flex-wrap gap-x-2 text-[11px]">
+                    {r.rejected > 0 && <span className="text-destructive">{t("log.rejected", { qty: fmt(r.rejected) })}</span>}
+                    {r.held > 0 && <span className="text-module">{t("log.held", { qty: fmt(r.held) })}</span>}
+                    {r.short > 0 && <span className="text-amber-700">{t("log.short", { qty: fmt(r.short) })}</span>}
+                  </p>
+                </td>
+                <td className="md:px-3 md:py-2.5">
+                  <p className="text-xs">{place || project || (nopo ? "—" : t("log.generalStock"))}</p>
+                  <p className="text-[11px] text-muted-foreground" dir="auto">{d.receivedByName || "—"}</p>
+                </td>
+                <td className="md:px-3 md:py-2.5">
+                  {d.regularisation === "expense" ? <Badge variant="outline" className="text-[11px]">{t("log.expense")}</Badge> : <ReceiptStatePill state={r.state} />}
+                  {r.complete != null && (
+                    <p className={cn("mt-1 text-[11px]", r.complete ? "text-success" : "text-amber-700")}>{r.complete ? t("log.complete") : t("log.incomplete")}</p>
+                  )}
+                  {d.selfReceived && <p className="text-[11px] text-destructive">{tp("exception.self_received")}</p>}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Empty({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/30 p-16 text-center">
+      <PackageCheck size={40} className="text-muted-foreground/30" aria-hidden="true" />
+      <p className="text-sm font-medium text-muted-foreground">{text}</p>
+    </div>
   )
 }

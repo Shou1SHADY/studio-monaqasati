@@ -632,7 +632,11 @@
       "sales_nav_reports": "Reports",
       "sales_nav_settings": "Settings & boundary",
       "fin_nav_sales_desk": "Sales desk",
-      "contractor_purchase_requests": "Incoming purchase requests"
+      "contractor_purchase_requests": "Incoming purchase requests",
+      "contractor_proc_today": "Today",
+      "contractor_purchase_orders": "Purchase orders",
+      "contractor_proc_reports": "Reports",
+      "contractor_proc_settings": "Settings & boundaries"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -1289,7 +1293,76 @@
       "inv_unit_status_in_stock": "In Stock",
       "inv_unit_status_damaged": "Damaged",
       "inv_unit_status_consumed": "Consumed",
-      "inv_item_name_duplicate": "An item with this name and unit already exists in this warehouse: “{name}” — adjust its quantity instead of creating a second one, or choose a different name"
+      "inv_item_name_duplicate": "An item with this name and unit already exists in this warehouse: “{name}” — adjust its quantity instead of creating a second one, or choose a different name",
+      "po_section_title": "Purchase orders",
+      "po_section_desc": "Orders contractors sent you: accept a new one with your date, and send a delivery notice for each shipment.",
+      "po_seg_to_accept": "New — to accept",
+      "po_seg_in_delivery": "In delivery",
+      "po_seg_done": "Received or closed",
+      "po_seg_all": "All",
+      "po_empty_all": "No purchase order has reached you yet — when a contractor sends one it appears here for you to accept.",
+      "po_empty_segment": "No orders in this group.",
+      "po_value": "Order value (excl. VAT)",
+      "po_sent_on": "Sent on {date}",
+      "po_promised": "Your committed date",
+      "po_no_promise": "Not set yet",
+      "po_show_lines": "Details ({count, plural, =0 {no lines} one {# line} other {# lines}})",
+      "po_hide_lines": "Hide details",
+      "po_lines_title": "Order lines",
+      "po_col_item": "Item",
+      "po_col_unit": "Unit",
+      "po_col_ordered": "Ordered",
+      "po_col_accepted": "Accepted",
+      "po_col_rejected": "Rejected",
+      "po_col_cancelled": "Cancelled",
+      "po_col_outstanding": "Left to ship",
+      "po_col_unit_price": "Unit price",
+      "po_lump_sum": "A lump-sum order — no prices per line.",
+      "po_payment_terms": "Payment terms",
+      "po_cancelled_reason": "Order cancelled: {reason}",
+      "po_closed_short_reason": "Closed before completion: {reason}",
+      "po_accept_btn": "Accept the order",
+      "po_notify_btn": "Send a delivery notice",
+      "po_accept_title": "Accept purchase order {number}",
+      "po_accept_desc": "By accepting you commit to the delivery date you set — the contractor sees it at once.",
+      "po_accept_date_label": "The delivery date you commit to",
+      "po_accept_date_hint": "Not before today.",
+      "po_accept_submit": "Accept and commit to the date",
+      "po_accepted_toast": "Order accepted",
+      "po_accepted_toast_desc": "The contractor was told your date: {date}.",
+      "po_notice_title": "Delivery notice — {number}",
+      "po_notice_desc": "What is in this shipment and when does it arrive? The notice reaches Procurement at once. A notice is not a receipt: the receiver counts what arrives, and any difference is recorded and sent to you.",
+      "po_notice_lines_title": "What is in this shipment?",
+      "po_notice_up_to": "up to {max} {unit}",
+      "po_notice_nothing_left": "Nothing is left to ship on this order.",
+      "po_notice_date_label": "Delivery date",
+      "po_notice_window_label": "Time window",
+      "po_notice_late_hint": "{days, plural, one {# day} other {# days}} after your date — shown to the contractor as a delay now",
+      "po_notice_driver_label": "Driver or rep",
+      "po_notice_driver_placeholder": "If known now",
+      "po_notice_plate_label": "Vehicle plate",
+      "po_notice_paper_label": "Paper delivery-note number",
+      "po_notice_file_label": "Delivery note & certificates (PDF or image)",
+      "po_notice_file_hint": "The receiver sees it before the truck arrives.",
+      "po_notice_file_type_error": "The file must be a PDF or an image.",
+      "po_notice_notes_label": "Note to the receiver",
+      "po_notice_notes_placeholder": "e.g. a crane is needed to unload",
+      "po_notice_submit": "Send the delivery notice",
+      "po_notice_sent_toast": "Delivery notice sent",
+      "po_notice_sent_desc": "It reached Procurement — the receiver confirms what arrives on receipt.",
+      "po_notice_err_date_missing": "Pick the delivery date.",
+      "po_notice_err_date_past": "The date has passed.",
+      "po_notice_err_nothing_to_ship": "Enter a quantity for at least one line.",
+      "po_notice_err_over_outstanding": "More than is left of \"{line}\" on the order ({max} {unit}).",
+      "po_notice_err_not_accepted": "The order is not accepted yet, or nothing is left to ship.",
+      "po_notice_err_quantity": "Enter a number — or zero if the item is not in this shipment.",
+      "po_notices_title": "Delivery notices on this order",
+      "po_notice_none": "No notice sent yet.",
+      "po_err_wrong_state": "The order's state changed — refresh the page and try again.",
+      "po_err_date_invalid": "The date is not valid.",
+      "po_err_generic": "Could not save — try again.",
+      "po_open_order": "Open the order",
+      "po_offer_order_label": "Purchase order"
     },
     "Errors": {
       "access_denied_title": "Sorry, you don't have sufficient permissions",
@@ -7642,7 +7715,48 @@
       "pn_offer_rejected": "Your offer on the RFQ: {rfq} was not accepted",
       "pn_price_reduction_title": "The contractor asked for a lower price",
       "pn_price_reduction": "RFQ: {rfq} — target price SAR {price}. {note}",
-      "proc_nav_label": "Procurement pages"
+      "proc_nav_label": "Procurement pages",
+      "pn_po_awaiting_approval_title": "A purchase order awaits your approval",
+      "pn_po_awaiting_approval": "{actor} prepared purchase order {number} for {supplier}, {amount} (excl. VAT) — {rfq}. Review it and approve or return it.",
+      "pn_po_approved_title": "Purchase order {number} approved",
+      "pn_po_approved": "{actor} approved purchase order {number} for {supplier}, {amount} (excl. VAT). Finance carries it as a commitment; it goes back to the buyer to send.",
+      "pn_po_expected_arrival_title": "Expected delivery — {number}",
+      "pn_po_expected_arrival": "Purchase order {number} from {supplier} was approved (lines: {lines}). Expect a delivery against it and record the receipt at the goods-received desk.",
+      "pn_po_returned_title": "Purchase order {number} returned",
+      "pn_po_returned": "{actor} returned purchase order {number} without approval: {reason}. Fix it and resubmit.",
+      "pn_po_sent_title": "New purchase order {number}",
+      "pn_po_sent": "{company} sent you purchase order {number}. Open it in your portal and accept it with the delivery date you commit to.",
+      "pn_po_supplier_accepted_title": "The supplier accepted purchase order {number}",
+      "pn_po_supplier_accepted": "{supplier} accepted purchase order {number} and committed to deliver on {date}.",
+      "pn_po_date_updated_title": "Delivery date changed — {number}",
+      "pn_po_date_updated": "The delivery date of purchase order {number} from {supplier} is now {date}. {note}",
+      "pn_po_reminder_title": "Reminder on purchase order {number}",
+      "pn_po_reminder": "{company} reminds you of purchase order {number}: {ask}",
+      "pn_po_receipt_recorded_title": "Receipt recorded on {number}",
+      "pn_po_receipt_recorded": "{actor} recorded receipt {receipt} on purchase order {number}: {accepted} of {ordered} accepted. The invoicing ceiling is now: {ceiling}.",
+      "pn_po_rejects_decided_title": "Decision on rejected goods — {number}",
+      "pn_po_rejects_decided": "{company} decided on the rejected quantity of “{line}” ({qty}) in purchase order {number}: {decision}. {note}",
+      "pn_po_remainder_cancelled_title": "Remainder cancelled — {number}",
+      "pn_po_remainder_cancelled": "{company} cancelled the remainder of “{line}” ({qty} {unit}) in purchase order {number}: {reason}. It will not arrive; the commitment is reduced accordingly.",
+      "pn_po_closed_title": "Purchase order {number} closed",
+      "pn_po_closed": "{actor} closed purchase order {number} — {outcome}. {reason}",
+      "pn_po_cancelled_title": "Purchase order {number} cancelled",
+      "pn_po_cancelled": "{actor} cancelled purchase order {number} for {supplier}: {reason}.",
+      "pn_po_rated_title": "A rating on purchase order {number}",
+      "pn_po_rated": "{company} rated your delivery of purchase order {number}: {stars} of 5 — published anonymously on the platform.",
+      "pn_po_decision_replace": "Replace — send a replacement for the rejected goods",
+      "pn_po_decision_discount": "Discount — we keep the quantity at a reduced price",
+      "pn_po_decision_reduce": "Reduce the order — the quantity will not be replaced",
+      "pn_po_closed_complete": "complete",
+      "pn_po_closed_short_flag": "closed short",
+      "pn_po_ceiling_unknown": "not determined (lump-sum order)",
+      "pn_po_reminder_ask_accept": "it is not accepted yet — accept it and set the delivery date.",
+      "pn_po_reminder_ask_deliver": "delivery is due — tell us when it arrives.",
+      "perm_po_approve": "Approve purchase orders",
+      "perm_po_approve_desc": "Approve a purchase order or return it to its preparer, up to the manager's limit. Above the limit, one the approver prepared, or a retroactive order: the owner alone.",
+      "perm_po_expedite": "Expedite purchase orders with the supplier",
+      "perm_po_expedite_desc": "Send the purchase order to the supplier, record the acceptance and delivery date, update the date and remind. Sees dates and quantities, never prices.",
+      "proc_kpis_label": "Procurement's three numbers"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -9407,7 +9521,44 @@
       "rfqs_profile_incomplete_title": "Incomplete profile",
       "rfqs_profile_incomplete_desc": "Please complete the following fields first: {fields}",
       "suppliers_search_clear": "Clear search",
-      "rfq_status_filter": "Request status"
+      "rfq_status_filter": "Request status",
+      "offers_award_this_offer": "This offer (excl. VAT)",
+      "offers_award_lowest_offer": "Lowest live offer",
+      "offers_award_is_lowest": "this is the lowest",
+      "offers_award_reason_label": "Why award above the lowest price?",
+      "offers_award_reason_placeholder": "Pick the reason",
+      "offers_award_reason_text_placeholder": "Write the reason — e.g. the only supplier with the quantity in stock",
+      "offers_award_reason_note_placeholder": "Note (optional)",
+      "offers_award_reason_text_required": "Write the reason in at least 8 characters",
+      "offers_award_reason_hint": "The approver of the purchase order sees the reason; it stays in the order's record",
+      "offers_award_short_competition": "Short competition: {count, plural, =0 {no offers} one {only # offer} other {only # offers}} on a purchase above the {threshold} threshold — the approver will see it (a note, not a stop).",
+      "offers_award_no_official_quote": "The supplier attached no stamped official quote — what we hold is a price for comparison. Ask for it before the order is issued (a note, not a stop).",
+      "offers_award_order_will_wait": "The award goes through now, but the purchase order will wait until:",
+      "offers_award_order_created": "Order {number} created — awaiting approval",
+      "offers_award_order_failed": "Awarded, but the purchase order could not be created — raise it later from the accepted offer's card with “Raise its order”.",
+      "offers_award_open_order": "Open the order",
+      "offers_award_raise_order": "Raise its order",
+      "offers_award_order_word": "Purchase order",
+      "offers_guest_order_caveat": "Guest — the order needs their details (CR and VAT number)",
+      "offers_exclusion_label": "Reason for rejecting",
+      "offers_exclusion_placeholder": "Pick a reason (optional)",
+      "offers_exclusion_note_placeholder": "Note — what did not match?",
+      "offers_exclusion_hint": "The offer stays listed as rejected with its reason, and the approver of the order sees it in the record",
+      "offers_exclusion_stored": "Rejected because: {reason}",
+      "offers_exclusion_price": "Price above what we accept",
+      "offers_exclusion_terms": "Terms do not fit (payment, delivery or lead time)",
+      "offers_exclusion_incomplete": "Incomplete offer",
+      "offers_exclusion_not_qualified": "Supplier not qualified — no documents or VAT number, or the spec does not match",
+      "offers_exclusion_other": "Other",
+      "newrfq_direct_success_order": "Purchase order {number} was prepared and sent for approval — after that it goes to the supplier.",
+      "newrfq_direct_success_no_order": "Direct award done, but the purchase order could not be created — raise it later from the accepted offer's card.",
+      "queue_item_po_approve": "{count, plural, one {One purchase order awaits your approval} other {# purchase orders await your approval}}",
+      "action_po_approve": "Review and approve",
+      "queue_item_po_attention": "{count, plural, one {One purchase order is stuck with a supplier} other {# purchase orders are stuck with suppliers}}",
+      "action_po_attention": "Open Procurement's Today",
+      "metric_po_late": "Late",
+      "metric_po_not_accepted": "Not accepted",
+      "metric_po_not_sent": "Not sent"
     },
     "Admin": {
       "Dashboard": {
@@ -9897,6 +10048,1222 @@
         "commission_save_error": "Failed to save settings",
         "cancel": "Cancel",
         "save_settings": "Save Settings"
+      }
+    },
+    "Procurement": {
+      "doc": {
+        "PO": "Purchase order",
+        "GR": "Goods receipt",
+        "RFQ": "Request for quotation"
+      },
+      "status": {
+        "awaiting_approval": "Awaiting approval",
+        "approved": "Approved — not sent",
+        "sent": "Sent — awaiting acceptance",
+        "accepted": "Accepted by the supplier",
+        "in_delivery": "With supplier — in delivery",
+        "part_received": "Part received",
+        "received": "Fully received",
+        "closed": "Closed",
+        "closed_short": "Closed short",
+        "cancelled": "Cancelled"
+      },
+      "basis": {
+        "rfq": "On an RFQ",
+        "direct": "Direct order — no RFQ",
+        "retroactive": "Retroactive order for a receipt with no PO"
+      },
+      "channel": {
+        "portal": "Supplier portal",
+        "whatsapp": "WhatsApp",
+        "email": "Email"
+      },
+      "approver": {
+        "manager": "the procurement manager",
+        "owner": "the owner"
+      },
+      "selfApproval": "Approved by its preparer — a company with no second person; shown in the Exceptions report",
+      "blocks": {
+        "split_orders": "Split orders: {count} direct orders to this supplier in {days, plural, one {# day} other {# days}} total {total, number} — above the no-competition cap ({cap, number}). The owner approves, or it goes to an RFQ.",
+        "supplier_cr_expired": "Supplier CR expired {daysAgo, plural, =0 {today} one {yesterday} other {# days ago}} ({date}) — update the supplier file",
+        "supplier_unverified": "New supplier not yet verified (VAT number, CR, payment terms) — no PO approval before verification",
+        "supplier_no_vat": "Supplier has no VAT number — Finance will not accept the invoice"
+      },
+      "refusal": {
+        "not_awaiting": "The order is not awaiting approval",
+        "no_permission": "Approval is not your permission",
+        "own_order": "The preparer cannot approve the PO",
+        "owner_only_retroactive": "A retroactive PO is approved by the owner only",
+        "above_limit": "{value, number} is above your limit ({limit, number}) — the owner approves"
+      },
+      "awardReason": {
+        "delivery_time": "A faster date that meets the need",
+        "quality": "Higher quality or matches the approved sample",
+        "payment_terms": "Better payment terms",
+        "past_performance": "The lowest bidder's record is poor",
+        "availability": "Immediate availability",
+        "other": "Other reason"
+      },
+      "rejectReason": {
+        "damaged": "Damaged or broken",
+        "wrong_item": "Wrong item",
+        "wrong_spec": "Off-spec",
+        "expired": "Expired",
+        "excess": "More than ordered",
+        "other": "Other reason"
+      },
+      "holdReason": {
+        "certificate": "Awaiting the mill certificate",
+        "test": "Awaiting a test result",
+        "consultant": "Awaiting the consultant's inspection"
+      },
+      "rejectDecision": {
+        "replace": "The supplier replaces it",
+        "discount": "Accepted at a discount",
+        "reduce": "The order is reduced by it"
+      },
+      "checklist": {
+        "delivery_note": "Signed and photographed delivery note",
+        "weighbridge": "Weighbridge ticket",
+        "certificate": "Mill or conformity certificate",
+        "photos": "Load photos",
+        "driver_signature": "Driver signed on screen"
+      },
+      "receiptState": {
+        "on_the_way": "On the way",
+        "late_notice": "Notice date passed — no receipt recorded",
+        "received": "Matched",
+        "received_with_rejects": "With rejects",
+        "received_held": "Pending inspection",
+        "received_short": "Short of the notice",
+        "manual_no_po": "No PO — to regularise"
+      },
+      "receiptError": {
+        "count_missing": "Enter the counted quantity",
+        "negative_quantity": "No negative quantities",
+        "over_deducted": "Rejected plus held exceeds the count ({counted})",
+        "reject_reason_missing": "Choose a reject reason",
+        "hold_reason_missing": "Choose a hold reason",
+        "unknown_line": "The line is not on the purchase order",
+        "over_receipt": "Counted {counted} is over the open quantity by more than {tolerance}% — accept up to {limit} and send the rest back with the driver",
+        "nothing_counted": "Nothing was counted"
+      },
+      "log": {
+        "created": "Prepared by {by}",
+        "approved": "Approved by {by}",
+        "returned": "{by} returned it to the preparer — {note}",
+        "resubmitted": "{by} resubmitted it for approval",
+        "sent": "{by} sent it to the supplier via {channel}",
+        "supplier_accepted": "{by} recorded the supplier's acceptance and date {date}",
+        "date_updated": "{by} updated the supplier date to {date}",
+        "reminded": "{by} reminded the supplier",
+        "received": "Received {number} — recorded by {by}",
+        "remainder_cancelled": "{by} cancelled the remainder with the supplier — {note}",
+        "reject_decided": "{by} decided on the rejects: {decision}",
+        "closed": "Closed by {by}",
+        "cancelled": "Cancelled by {by} — {note}",
+        "rated": "{by} rated the supplier"
+      },
+      "exception": {
+        "retroactive": "Retroactive PO for a receipt with no order",
+        "direct": "Direct order, no RFQ",
+        "non_lowest": "Non-lowest award — {reason}",
+        "short_competition": "Short competition — {count, plural, =0 {no offers} one {# offer} other {# offers}}",
+        "self_approval": "Approved by its preparer — no second approver",
+        "no_official_quote": "Awarded with no stamped official quote",
+        "closed_short": "Closed short by Procurement — {reason}",
+        "manual_receipt": "Manual receipt — bought outside the platform",
+        "no_po": "Receipt with no PO — not regularised",
+        "self_received": "Received by the order's preparer — no separate receiver"
+      },
+      "deliveryState": {
+        "on_time": "On time",
+        "late": "{days, plural, one {# day} other {# days}} late",
+        "on_time_so_far": "On time so far",
+        "pending": "No date yet"
+      },
+      "commitmentBucket": {
+        "within7": "Within a week",
+        "within30": "Within a month",
+        "within60": "Within two months",
+        "later": "Later",
+        "noDate": "No date"
+      },
+      "noRecord": "No record",
+      "err_order_missing": "The purchase order was not found — it may have been deleted, or it is not yours to read",
+      "err_offer_missing": "The offer this order is built on was not found",
+      "err_no_permission": "This action is not your permission",
+      "err_wrong_state": "The order's state changed — this action is no longer possible. The order was reloaded",
+      "err_own_order": "The preparer cannot approve the PO",
+      "err_owner_only": "A retroactive PO is approved by the owner only",
+      "err_above_limit": "{value, number} is above your limit ({limit, number}) — the owner approves",
+      "err_blocked": "A fact blocks the approval — see the list under \"Next step\"",
+      "err_reason_required": "Write the reason",
+      "err_date_invalid": "Invalid date — pick a day as year-month-day",
+      "err_line_missing": "The line is not on this order",
+      "err_nothing_outstanding": "Nothing is outstanding on this line to cancel",
+      "err_nothing_rejected": "No rejected quantity on this line",
+      "err_nothing_held": "No quantity held for inspection on this line",
+      "err_cannot_rate": "The supplier is rated once the story is whole: a received or closed order, at least one receipt, and not rated before",
+      "err_already_cancelled": "The order is already cancelled",
+      "err_has_receipts": "Something arrived on this order — it cannot be cancelled whole; cancel the remainder per line or close it short",
+      "deliveryWindow": {
+        "morning": "Morning",
+        "afternoon": "Afternoon",
+        "evening": "Evening"
+      }
+    },
+    "ProcToday": {
+      "title": "Needs your decision",
+      "subtitle": "Most urgent first — every button opens the record before the action",
+      "empty": {
+        "title": "Nothing is waiting on you",
+        "body": "Everything of yours is moving."
+      },
+      "showMore": "Show {count, plural, one {# more decision} other {# more decisions}}",
+      "groups": {
+        "all": "All",
+        "rfq": "Quotes",
+        "po": "Orders",
+        "delivery": "Delivery"
+      },
+      "waits": {
+        "title": "Waiting on other modules",
+        "subtitle": "No button — the action is theirs and the state reaches us",
+        "empty": "Nothing pending elsewhere",
+        "more": "more",
+        "on": "Waiting on {module}"
+      },
+      "modules": {
+        "supplier": "the supplier",
+        "finance": "Finance",
+        "inventory": "Inventory"
+      },
+      "actions": {
+        "review": "Review and approve",
+        "view": "View",
+        "send": "Send it",
+        "open": "Open",
+        "updateDate": "Update date",
+        "decide": "Decide",
+        "receive": "Record receipt",
+        "rate": "Rate",
+        "compare": "Compare",
+        "openDraft": "Open draft",
+        "openRfq": "Open RFQ",
+        "seeArrived": "See what arrived",
+        "openReceipt": "Open receipt"
+      },
+      "task": {
+        "approve": {
+          "title": "Approve {number} — {supplier}",
+          "sub": "Prepared by {preparer} {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
+        },
+        "approval_wait": {
+          "title": "{number} awaiting {approver, select, owner {the owner's} other {the manager's}} approval",
+          "sub": {
+            "own_order": "{supplier} · you prepared it — the preparer never approves · nothing to do until it is approved",
+            "above_limit": "{supplier} · {value, number} is above the manager's limit ({limit, number}) · nothing to do until the owner approves",
+            "retroactive": "{supplier} · a retroactive order is the owner's alone · nothing to do until it is approved",
+            "other": "{supplier} · nothing to do until it is approved"
+          }
+        },
+        "send": {
+          "title": "{number} approved and with Finance — not yet sent to {supplier}",
+          "sub": "Back with you to send: portal, WhatsApp or email — the acceptance clock and the delivery date start then"
+        },
+        "not_accepted": {
+          "title": "{supplier} has not accepted {number} for {days, plural, one {# day} other {# days}}",
+          "sub": "No acceptance, no delivery date — chase and record it"
+        },
+        "late": {
+          "title": "{number} is {days, plural, one {# day} other {# days}} late — {supplier}",
+          "sub": "{lines}"
+        },
+        "confirm_before_date": {
+          "title": "Confirm with {supplier} before its date {inDays, plural, =0 {today} one {tomorrow} other {in # days}} — {number}",
+          "sub": "Only {percent}% on time — do not wait for the delay"
+        },
+        "reject_decide": {
+          "title": "Rejected at receipt: {qty} {unit} {name}",
+          "sub": "{number} · {supplier} — replace, discount or reduce the order"
+        },
+        "arrived_today": {
+          "title": "{count, plural, one {# receipt} other {# receipts}} arrived today on your orders",
+          "sub": "{list}"
+        },
+        "notice_incoming": {
+          "title": "{hasDate, select, 0 {Delivery notice from {supplier} — no date} other {Delivery notice from {supplier} — arrives {inDays, plural, =0 {today} one {tomorrow} other {in # days}}}}",
+          "sub": "{number} · {lines}"
+        },
+        "notice_overdue": {
+          "title": "No receipt recorded for what {supplier} announced",
+          "sub": "{number} · was due {date} ({daysAgo, plural, one {yesterday} other {# days ago}}) — ask the receiver first, then the supplier"
+        },
+        "notice_late_date": {
+          "title": "{supplier} announced delivery {days, plural, one {# day} other {# days}} after its date",
+          "sub": "{number} · {date} instead of {promised} — you know before it happens: accept it or ask to bring it forward"
+        },
+        "rate": {
+          "title": "Rate {supplier} on {number}",
+          "sub": "Delivery complete — timing, completeness and rejects are computed from the receipts; you add two stars"
+        },
+        "receipt_no_po": {
+          "title": "Receipt with no purchase order{hasSupplier, select, 0 {} other { — {supplier}}}",
+          "sub": "{number} · {date} · regularise with a retroactive order the owner approves, or book it as an expense"
+        },
+        "rfq_draft": {
+          "title": "Unpublished draft: {title}",
+          "sub": "Not sent to any supplier — no offers before publishing"
+        },
+        "rfq_award": {
+          "title": "Compare and award “{title}” — {count, plural, one {# offer} other {# offers}}",
+          "sub": "Offers closed {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
+        },
+        "rfq_no_offers": {
+          "title": "“{title}” closed with no offers",
+          "sub": "Extend the deadline, add suppliers or share the guest link"
+        },
+        "rfq_closing_thin": {
+          "title": "“{title}” closes {inDays, plural, =0 {today} one {tomorrow} other {in # days}} with {count, plural, =0 {no offers} one {# offer} other {# offers}}",
+          "sub": "Share the guest link with off-platform suppliers or extend the deadline"
+        }
+      },
+      "wait": {
+        "supplier_acceptance": {
+          "title": "{supplier} to accept {number}",
+          "sub": "Sent {ago, plural, =0 {today} one {yesterday} other {# days ago}}"
+        },
+        "finance_payment": {
+          "title": "Payment and closure of {number}",
+          "sub": "Fully received — invoice, match and payment are Finance's"
+        },
+        "held_inspection": {
+          "title": "Inspection of {qty} {unit} {name} — {number}",
+          "sub": "Not issued and not paid before release"
+        }
+      },
+      "kpi": {
+        "needs": {
+          "label_requests": "Purchase requests without an order",
+          "label_rfqs": "RFQs awaiting award",
+          "note_requests": "From Manufacturing — waiting for an RFQ or an order",
+          "note_rfqs": "Closed for offers, with offers to compare",
+          "note_none": "Nothing waiting to be sourced"
+        },
+        "committed": {
+          "label": "Committed, not delivered",
+          "note_late": "{amount, number} late vs the supplier date",
+          "note_none": "None late"
+        },
+        "drift": {
+          "label": "Price drift vs last buy — 30 days",
+          "note_up": "{percent}% above our last price",
+          "note_down": "{percent}% below our last price",
+          "note_none": "No drift — or no earlier buy to compare with"
+        },
+        "my_approval": {
+          "label": "Awaiting your approval",
+          "note_some": "{count, plural, one {# order} other {# orders}}",
+          "note_none": "Nothing pending with you"
+        },
+        "finance_due": {
+          "label": "Finance will need for suppliers soon",
+          "note": "Fully received, not yet paid"
+        },
+        "late": {
+          "label": "Late vs supplier date",
+          "note_some": "Need a new date",
+          "note_none": "None late",
+          "note_value": "{amount, number} still owed past its date"
+        },
+        "with_suppliers": {
+          "label": "Orders with suppliers",
+          "note": "In delivery"
+        },
+        "sent_not_accepted": {
+          "label": "Sent, not accepted",
+          "note": "No acceptance, no date"
+        }
+      },
+      "page": {
+        "title": "Today",
+        "subtitle": "Needs are born in Projects and Manufacturing — we turn them into on-time supply"
+      },
+      "showLess": "Show less",
+      "moreRows": "{count, plural, one {Show # more} other {Show # more}}",
+      "arriving": {
+        "title": "Arriving within 7 days",
+        "subtitle": "By the supplier's notice — Inventory records the receipt",
+        "empty": "No deliveries due this week",
+        "late": "{days, plural, one {# day late} other {# days late}}",
+        "on": "{date} · {inDays, plural, =0 {today} =1 {tomorrow} other {in # days}}"
+      }
+    },
+    "ProcOrders": {
+      "title": "Purchase orders",
+      "desc": "What was approved and sent, and what the supplier promised — every date here is a commitment, not a wish",
+      "search_ph": "Search by PO number, supplier, RFQ or project",
+      "search_clear": "Clear search",
+      "segments_label": "Order segments",
+      "loading": "Loading",
+      "seg": {
+        "awaiting_approval": "Awaiting approval / decision",
+        "live": "With suppliers",
+        "late": "Late",
+        "received": "Received & closed",
+        "all": "All orders"
+      },
+      "empty": {
+        "awaiting_approval": "No orders awaiting approval",
+        "live": "No orders with suppliers right now",
+        "late": "No late orders — every supplier is on time",
+        "received": "No received or closed orders yet",
+        "all": "No purchase orders yet"
+      },
+      "empty_hint": {
+        "awaiting_approval": "An order appears here the moment an offer is awarded, waiting for its approver",
+        "live": "An order lands here once approved and stays until the last line arrives",
+        "late": "Lateness counts from the date the supplier committed to — not ours",
+        "received": "An order arrives here when delivery is complete or it is closed",
+        "all": "Awarding an offer creates the purchase order automatically"
+      },
+      "empty_search": "No order matches \"{term}\"",
+      "empty_search_hint": "The search spans every segment — try the PO number or the supplier's name",
+      "col": {
+        "number": "Order",
+        "supplier": "Supplier & request",
+        "status": "Status",
+        "value": "Value excl. VAT",
+        "date": "Supplier date"
+      },
+      "pill_returned": "Returned to preparer",
+      "date": {
+        "with_approver": "With {approver} for approval — no date yet",
+        "not_sent": "Not sent yet — no date",
+        "no_acceptance": "No acceptance yet — no date",
+        "no_date": "Accepted without a date",
+        "closed": "Closed {date}"
+      },
+      "bar": {
+        "accepted": "Accepted",
+        "held": "On hold",
+        "rejected": "Sent back",
+        "cancelled": "Cancelled",
+        "to_arrive": "To arrive",
+        "aria": "Accepted {accepted}, held {held}, rejected {rejected}, cancelled {cancelled}, to arrive {toArrive} {unit}"
+      },
+      "head": {
+        "prepared": "Prepared by {by} · {date}"
+      },
+      "sec": {
+        "next_step": "Next step",
+        "money": "The money trail",
+        "money_badge": "What Finance reads",
+        "lines": "Lines ({count})",
+        "deliveries": "Deliveries & receipts",
+        "award": "Award facts",
+        "documents": "Documents",
+        "log": "Log"
+      },
+      "next": {
+        "returned_title": "Returned to the preparer",
+        "resubmit": "Resubmit for approval",
+        "awaiting_resubmission": "Waiting for {by} to amend and resubmit it",
+        "flag_retroactive": "Retroactive order for a receipt made with no PO — the owner alone approves it, as an exception in his name",
+        "flag_short_competition": "Short competition: {count, plural, =0 {no offers} one {only # offer} other {only # offers}} on this purchase",
+        "flag_non_lowest": "Awarded above the lowest price — reason: {reason}",
+        "flag_no_official_quote": "Awarded with no stamped official quote — check what was typed in by hand",
+        "approve": "Approve the order",
+        "approve_blocked": "Cannot be approved while a fact blocks it",
+        "return": "Return to preparer",
+        "awaiting_approver": "Awaiting {approver}'s approval",
+        "cancel_order": "Cancel the order",
+        "approved_body": "Approved by {by} on {date} and with Finance as a commitment — back to you to send it to {supplier}. The acceptance clock and the delivery date start from the send.",
+        "send": "Send it to the supplier",
+        "sent_body": "Sent via {channel} on {date}. The honest date starts with the supplier's acceptance: record it with the delivery date he committed to — not the one we hope for.",
+        "record_acceptance": "Record supplier acceptance & date",
+        "remind": "Remind the supplier",
+        "late_body": "{days, plural, one {# day} other {# days}} past the supplier's date. Call him and record his new date — Projects and Inventory read it at once.",
+        "promised_body": "Supplier date {date} — delivery in progress. If the date changes, record it as the supplier said it.",
+        "no_date_body": "Something arrived before the supplier committed to a date — record the date for the rest.",
+        "update_date": "Update the supplier's date",
+        "close_short": "Close short",
+        "received_body": "Everything on the order was received. Close it to take it off the commitments, and rate the supplier now that the story is whole.",
+        "close": "Close the order — complete",
+        "rate": "Rate the supplier",
+        "closed_body": "Closed complete",
+        "closed_short_body": "Closed short — {reason}",
+        "cancelled_body": "The order was cancelled — {reason}",
+        "rated_title": "Rated: conformity {conformity}/5, cooperation {cooperation}/5",
+        "rated_published": "Published on the platform without our name",
+        "rated_internal": "Internal only"
+      },
+      "money": {
+        "ex_vat": "Order value excl. VAT",
+        "vat": "VAT {rate}%",
+        "commitment": "Committed on the PO — incl. VAT",
+        "commitment_hint_approved": "Reached Finance on approval {date} as an uninvoiced commitment — the first leg of the three-way match",
+        "commitment_hint_pending": "Not approved yet — nothing reaches Finance before approval",
+        "accepted": "Accepted on the receipts",
+        "accepted_hint": "The ceiling of what the supplier may invoice today — rejects and held goods are outside it",
+        "accepted_unknown": "Unknown until delivery is complete — a lump-sum order with no unit prices",
+        "open": "Still open on the commitment",
+        "open_lump_hint": "Lump-sum order: open in full until it is complete",
+        "footer": "Not shown here: the supplier's invoice, his ledger or the payments — those are Finance's. We send the order and the decision, and read back what concerns our PO."
+      },
+      "line": {
+        "reject_decided": "Decision on the rejects: {decision}",
+        "cancelled_reason": "{qty} {unit} cancelled with the supplier — {reason}",
+        "decide_reject": "Decide on the rejects ({qty} {unit})",
+        "cancel_remainder": "Supplier failed — cancel the remainder",
+        "none": "No lines on this order"
+      },
+      "deliveries": {
+        "none_yet": "Nothing has arrived yet — every receipt is recorded at the goods-received desk and shows here with its number",
+        "none": "No deliveries on this order",
+        "notice": "Delivery notice",
+        "accepted_qty": "{qty} accepted"
+      },
+      "award": {
+        "basis": "Basis",
+        "offers": "Offers",
+        "lowest": "Lowest offer",
+        "reason": "Award reason",
+        "open_rfq": "Open the RFQ and its comparison"
+      },
+      "docs": {
+        "print_po": "Print the PO",
+        "no_values": "no values",
+        "print_statement": "Receipt statement",
+        "supplier_date": "Supplier date",
+        "payment_terms": "Payment terms",
+        "delivery_location": "Delivery location",
+        "accepted_at": "Accepted by the supplier",
+        "by_supplier": "from his portal",
+        "by_us": "recorded by us"
+      },
+      "form": {
+        "cancel": "Cancel",
+        "reason_required": "Write the reason",
+        "date_required": "Enter the date",
+        "date_past": "The date must not be in the past"
+      },
+      "return": {
+        "title": "Return the order to its preparer",
+        "desc": "The order goes back to whoever prepared it with what must be corrected, and stays awaiting approval until resubmitted",
+        "label": "What must be corrected?",
+        "submit": "Return it",
+        "effect": "The preparer is notified with the reason — the supplier hears nothing"
+      },
+      "cancel_order": {
+        "title": "Cancel the purchase order",
+        "desc": "Before anything arrived. What was received is never cancelled — cancel the remainder line by line, or close the order short",
+        "label": "Reason",
+        "submit": "Cancel the order",
+        "effect": "The preparer is told, the supplier if the order had reached him, Finance if it was a commitment"
+      },
+      "close_short": {
+        "title": "Close the order short",
+        "desc": "Delivery is incomplete and will not complete — the order closes with what arrived, and shows in the Exceptions report with its reason",
+        "label": "Why close before it is complete?",
+        "submit": "Close short",
+        "effect": "The commitment drops to what was accepted, and Finance reads that no invoice follows"
+      },
+      "cancel_line": {
+        "title": "Cancel the remainder with the supplier",
+        "desc": "\"The rest will not arrive\" — the order shrinks by it and the commitment drops; what was received stays on the line",
+        "label": "The reason, as agreed with the supplier",
+        "submit": "Confirm the cancellation",
+        "context": "{line} — outstanding {qty} {unit}",
+        "effect_1": "The order is reduced; the supplier and Finance are told",
+        "effect_2": "What is cancelled here goes back to the need, to be sourced from another supplier"
+      },
+      "accept": {
+        "title": "Supplier acceptance & date",
+        "desc": "As the supplier committed to it — not as we wish",
+        "date": "The delivery date he committed to",
+        "submit": "Record the acceptance",
+        "effect": "Projects and Inventory read it as the arrival date, and lateness counts from it"
+      },
+      "date_form": {
+        "title": "Update the supplier's date",
+        "desc": "The old date stays in the log — the need's owner reads the new one at once",
+        "date": "New date",
+        "note": "The reason, as the supplier said it",
+        "note_ph": "e.g. out of stock · transport · waiting for a payment",
+        "submit": "Save the date",
+        "effect": "The preparer and the receivers are told the new date"
+      },
+      "reject": {
+        "title": "Rejected at receipt",
+        "desc": "The decision with the supplier is ours — the stock movement is Inventory's",
+        "rejected_qty": "{qty} {unit} rejected",
+        "question": "What was agreed with the supplier?",
+        "effect_replace": "The quantity stays owed on the order until the replacement arrives",
+        "effect_discount": "We keep the goods and they count as accepted — Finance settles the reduced price",
+        "effect_reduce": "The order shrinks by it and it will not be replaced",
+        "effect_always": "Inventory returns the rejects to the supplier; Finance pays only what was accepted",
+        "note": "Note for the supplier and Finance",
+        "note_ph": "e.g. the replacement before the end of the week",
+        "note_discount": "The reduced price and what was agreed",
+        "note_discount_ph": "e.g. 40 instead of 50 per unit — accepted technically by the need's owner",
+        "submit": "Record the decision"
+      },
+      "send": {
+        "title": "Send the purchase order to the supplier",
+        "desc": "Approved and with Finance as a commitment — now it must reach {supplier} to be accepted and dated",
+        "channel": "How does it reach them?",
+        "hint_registered": "A platform supplier gets it in their portal and accepts it there — the fastest way",
+        "hint_guest": "This supplier is off-platform: a ready message opens and you send it with your own tool",
+        "phone": "Supplier mobile",
+        "phone_required": "Enter the supplier's mobile",
+        "email": "Supplier email",
+        "email_invalid": "Enter a valid email",
+        "note": "Message with the order (optional)",
+        "note_ph": "e.g. deliver in the morning, mill certificate with the load",
+        "message": "Ready message",
+        "copy": "Copy the text",
+        "copied": "Copied — send it with your own tool",
+        "copied_short": "Copied",
+        "subject": "Purchase order {number}",
+        "effect": "We log the send with your name and time; the supplier's acceptance clock starts here. The system never messages on your behalf.",
+        "submit_portal": "Send to their portal",
+        "submit_whatsapp": "Open WhatsApp & log the send",
+        "submit_email": "Open email & log the send"
+      },
+      "rate": {
+        "title": "Rate the supplier",
+        "desc": "Three aspects come from the receipts — two stars come from you",
+        "on_time": "On time",
+        "on_time_yes": "✓ on time",
+        "on_time_no": "{days, plural, one {# day} other {# days}} late",
+        "in_full": "In full",
+        "in_full_yes": "✓ complete",
+        "in_full_no": "{accepted} of {ordered} accepted",
+        "rejected": "Rejected at receipt",
+        "documents": "Documents",
+        "documents_value": "Signed note on {docs} of {n, plural, one {# receipt} other {# receipts}}{certs, plural, =0 {} other { · certificate on #}}",
+        "last_arrival": "Last arrival {date}",
+        "its_date": "its date {date}",
+        "conformity": "Did what arrived match the order?",
+        "cooperation": "Cooperation & communication",
+        "pick_stars": "Pick the stars for both",
+        "note": "Note",
+        "note_ph": "What would help the next buyer?",
+        "publish": "On the platform",
+        "publish_on": "Stars and note are published without our company's name",
+        "publish_off": "Internal only — stays inside the company",
+        "submit": "Save the rating"
+      },
+      "toast": {
+        "failed": "Not saved — try again",
+        "popup_blocked": "The browser blocked the print window — allow pop-ups for this site",
+        "approved": "Approved — now with Finance as a commitment",
+        "returned": "Returned to the preparer",
+        "resubmitted": "Resubmitted for approval",
+        "sent_portal": "In the supplier's portal — awaiting acceptance and date",
+        "sent_offline": "The message opened ready — send it; the dispatch is logged in your name",
+        "accepted": "Supplier acceptance and date recorded",
+        "date_updated": "Date updated",
+        "reminded_portal": "Reminder logged — it reaches the supplier's portal",
+        "reminded_offline": "Reminder logged — send the order link with your own tool",
+        "remainder_cancelled": "Remainder cancelled — the commitment dropped by it",
+        "reject_decided": "Decision recorded",
+        "closed": "Order closed",
+        "cancelled": "Order cancelled",
+        "rated": "Rating saved to the supplier file"
+      },
+      "print": {
+        "po_title": "Purchase Order",
+        "st_title": "Receipt Statement for a Purchase Order",
+        "cr": "CR",
+        "vat_no": "VAT",
+        "basis_rfq": "On an RFQ",
+        "basis_direct": "Direct order",
+        "basis_retroactive": "Retroactive order",
+        "po_status_approved": "Approved by {by} · {date}",
+        "po_status_draft": "Draft — not approved yet",
+        "po_status_cancelled": "Cancelled",
+        "to_supplier": "To supplier",
+        "project": "Project",
+        "delivery": "Delivery",
+        "date_on_acceptance": "Date on supplier acceptance",
+        "lead_days": "{days, plural, one {# day} other {# days}} from the order",
+        "payment": "Payment",
+        "terms_as_offer": "As in the accepted offer",
+        "subject": "Subject",
+        "col_description": "Description",
+        "col_qty": "Qty",
+        "col_unit": "Unit",
+        "col_unit_price": "Unit price",
+        "col_total": "Total",
+        "lump_sum_note": "Lump-sum order — no unit prices",
+        "subtotal": "Subtotal excl. VAT",
+        "vat_line": "VAT {rate}%",
+        "total_incl": "Total incl. VAT",
+        "no_values_copy": "Copy without values — for expediting and receiving",
+        "po_clause": "Quote this PO number on the delivery note and the invoice — no invoice is paid without a PO number and a goods receipt. Only what is accepted at receipt is invoiced.",
+        "prepared_by": "Prepared by",
+        "approved_by": "Approved by",
+        "self_approved": "issued by its preparer",
+        "supplier_acceptance": "Supplier acceptance",
+        "signature": "Signature",
+        "po_footer_extra": "Official copy of the order — printed after approval.",
+        "footer": "Issued electronically by Mdmak Tech — {company} · printed {date} · This document is never edited after recording; any correction is a later document.",
+        "st_complete": "Delivery complete — nothing outstanding",
+        "st_incomplete": "Delivery not complete yet",
+        "st_order": "Order",
+        "approved_on": "Approved",
+        "supplier_date": "Supplier date",
+        "st_destination": "Destination · project",
+        "st_col_ordered": "Ordered",
+        "st_col_accepted": "Accepted",
+        "st_col_rejected": "Rejected",
+        "st_col_held": "On hold",
+        "st_col_cancelled": "Cancelled",
+        "st_col_outstanding": "Outstanding",
+        "st_receipts": "Receipts",
+        "st_col_receipt": "Receipt",
+        "st_col_date": "Date",
+        "st_col_receiver": "Receiver",
+        "st_no_receipts": "Nothing has arrived yet on this order",
+        "st_outstanding": "Outstanding on the supplier: {lines} — recorded date {date}",
+        "supplier_rep": "Supplier / representative",
+        "buyer": "Buyer",
+        "proc_manager": "Procurement manager",
+        "st_footer_final": "Final statement: delivery on this order is complete.",
+        "st_footer_interim": "Interim statement: reissued after each shipment until delivery is complete."
+      }
+    },
+    "ProcReceipts": {
+      "title": "Goods receipts",
+      "subtitle": "What is on the way, what arrived and was counted, and what came with no purchase order",
+      "searchPlaceholder": "Search by receipt, order, supplier or line…",
+      "projectFilter": "Project",
+      "allProjects": "All projects",
+      "segments": {
+        "incoming": "On the way",
+        "log": "Receipts",
+        "nopo": "No PO"
+      },
+      "info": {
+        "incoming": "Procurement follows up until delivery is complete. Whoever stands at the delivery point records the receipt — the storekeeper or the site engineer — counting line by line and giving the reason for any reject; Finance pays only what was accepted. The supplier's notice reaches us first, and when its date falls after the supplier's promise we know the delay before it happens.",
+        "log": "Every receipt — accepted, rejected and short of the supplier's notice, who recorded it and where the material went. A receipt is never edited after recording; a correction is a later receipt or a return to the supplier.",
+        "nopo": "Goods that arrived with no purchase order: the receiver recorded them (nobody turns a waiting truck away), and they wait for us to attach a retroactive order — until then Finance holds the invoice as \"no PO\"."
+      },
+      "empty": {
+        "incoming": "Nothing on the way",
+        "log": "No receipts yet",
+        "nopo": "No receipts without a PO"
+      },
+      "incoming": {
+        "noNoticeYet": "No notice yet",
+        "lateNoNotice": "{days, plural, one {# day} other {# days}} late — no notice",
+        "afterPromise": "{days, plural, one {# day} other {# days}} after its date",
+        "inDays": "{days, plural, =0 {today} =1 {tomorrow} one {in # day} other {in # days}}",
+        "driverUnknown": "Driver not named yet",
+        "dueHint": "The supplier's date is here and no notice came — remind them from the order; if the truck shows up, record it without notice",
+        "details": "Details",
+        "openOrder": "Open PO",
+        "record": "Record the receipt",
+        "recordNoNotice": "Arrived without notice — record it"
+      },
+      "log": {
+        "colReceipt": "Receipt",
+        "colSupplierPo": "Supplier & PO",
+        "colAccepted": "Accepted",
+        "colWhere": "Received where — went where",
+        "colStatus": "Status",
+        "recordedManually": "Recorded manually by Procurement",
+        "noPo": "No PO",
+        "rejected": "Rejected {qty}",
+        "held": "On hold {qty}",
+        "short": "Short of note {qty}",
+        "generalStock": "General stock",
+        "expense": "Cash expense — with Finance",
+        "complete": "Complete — final",
+        "incomplete": "Incomplete — partial receipt"
+      },
+      "csv": {
+        "button": "CSV",
+        "exported": "Receipts exported — CSV in an encoding Excel reads in Arabic",
+        "receipt": "Receipt",
+        "date": "Date",
+        "supplier": "Supplier",
+        "po": "PO",
+        "material": "Material",
+        "perNotice": "Per notice",
+        "counted": "Counted",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "held": "On hold",
+        "place": "Place",
+        "receiver": "Receiver",
+        "recordedIn": "Recorded by",
+        "recordedManual": "Procurement, manually",
+        "recordedGate": "Receiver at the gate",
+        "noPo": "No PO",
+        "noNotice": "No notice"
+      },
+      "receive": {
+        "title": "Receiver screen — record what arrived",
+        "supplier": "Supplier",
+        "order": "Purchase order",
+        "noOrder": "No purchase order",
+        "buyer": "The buyer who owns this purchase",
+        "buyerNote": "{name} — they deal with the supplier. Anything short or rejected is written here and reaches them at once; the site never negotiates with the supplier.",
+        "driverUnknown": "Driver not named",
+        "noNotice": "Arrived without prior notice",
+        "selfReceive": "No separate receiver here: you receive yourself as the buyer. Not blocked, but the receipt is flagged \"received by the buyer\" in the owner's exceptions report.",
+        "blindHint": "Type the actual count of each line as you counted it — the supplier's figure stays hidden until you do, on purpose. A line left blank is skipped.",
+        "openOnOrder": "{qty} {unit} open on PO",
+        "counted": "Counted",
+        "noticeHidden": "The supplier's figure stays hidden until you enter your count — blind on purpose",
+        "noNoticeToCompare": "No notice to compare",
+        "matchesNotice": "✓ Matches the supplier's notice ({qty})",
+        "belowNotice": "{diff} below the supplier's {notice} — write it on the note and get the driver to sign",
+        "aboveNotice": "{diff} above the supplier's {notice}",
+        "accepted": "Accepted {qty} {unit}",
+        "reject": "Of which rejected",
+        "rejectedQty": "Rejected quantity",
+        "rejectReason": "Reject reason",
+        "rejectNotePlaceholder": "Note on the reject (optional)",
+        "hold": "On hold for inspection",
+        "heldQty": "Held quantity",
+        "holdReason": "Why on hold?",
+        "checklist": "Checklist — does not block",
+        "deliveryDate": "Arrival date",
+        "driver": "Driver / rep",
+        "vehiclePlate": "Vehicle plate",
+        "paperNote": "Paper delivery-note number",
+        "paperNotePlaceholder": "Leave empty if there is none",
+        "landing": "Where the material goes",
+        "landingAuto": "Automatic — the project's warehouse, else the central one",
+        "note": "Note",
+        "notePlaceholder": "e.g. two wet cartons set aside",
+        "signature": "Receiver's signature (optional)",
+        "effectStock": "A receipt is issued in your name — the accepted goes to Inventory stock",
+        "effectRejects": "Rejects go back with the driver; Procurement decides with the supplier",
+        "effectHeld": "Held goods are neither issued nor paid until you release them",
+        "effectFinance": "Finance matches the invoice to the accepted only, and the supplier sees your count",
+        "submit": "Record the receipt — accepted {qty}"
+      },
+      "toast": {
+        "recorded": "Receipt {number} issued",
+        "recordedDesc": "Procurement, Finance and the supplier see it",
+        "noStock": "The quantities were not booked into the warehouse — add them in Inventory by hand",
+        "noMfg": "Manufacturing's purchase request was not closed — close it from the requests inbox",
+        "refused": "The receipt was not recorded",
+        "failed": "Could not record the receipt — try again"
+      },
+      "err": {
+        "order_missing": "The document is missing — it may have been deleted or recorded from another device",
+        "offer_missing": "The offer is missing",
+        "no_permission": "Recording receipts is not in your permissions",
+        "wrong_state": "The document's state does not allow this — it may have been recorded from another device",
+        "own_order": "Nobody approves an order they prepared",
+        "owner_only": "The owner alone approves it",
+        "above_limit": "Above your approval limit",
+        "blocked": "A condition blocks it",
+        "reason_required": "Fill in the required fields",
+        "date_invalid": "The date is invalid",
+        "line_missing": "The line is not on the order",
+        "nothing_outstanding": "Nothing outstanding on the order",
+        "nothing_rejected": "Nothing rejected on the line",
+        "nothing_held": "Nothing held on the line",
+        "cannot_rate": "Cannot rate now",
+        "already_cancelled": "The order is cancelled",
+        "has_receipts": "The order has receipts"
+      },
+      "drawer": {
+        "title": "Goods receipt {number}",
+        "noticeTitle": "Delivery notice from the supplier",
+        "notFound": "That receipt is missing or is not one of yours",
+        "record": "Record the receipt",
+        "print": "Print the receipt",
+        "openOrder": "Open the PO",
+        "regularise": "Regularise with a retroactive PO",
+        "markExpense": "Sent as a cash expense",
+        "recordedManually": "Recorded manually by Procurement",
+        "noNotice": "No prior notice",
+        "popupBlocked": "The browser blocked the print window — allow pop-ups",
+        "noPoCallout": "A receipt with no purchase order — not payable before it is regularised by a retroactive order or sent as a cash expense; it appears in the exceptions report.",
+        "expenseCallout": "Sent to Finance as a cash expense: it has no purchase order, Finance books its invoice as an expense — and the receipt stays the proof of what arrived.",
+        "selfCallout": "Received by the order's preparer — no separate receiver in this company. Not blocked, but it appears in the exceptions report by name for the owner to see.",
+        "supplier": "From supplier",
+        "asWritten": "As written by the receiver",
+        "noPo": "No purchase order",
+        "notice": "Delivery notice",
+        "platformNotice": "Notice via the platform",
+        "noticedFor": "Announced for {date}",
+        "expected": "Expected",
+        "arrived": "Arrived",
+        "place": "Place",
+        "projectCustody": "Project custody",
+        "generalStock": "General stock",
+        "receiver": "Receiver",
+        "noticeLines": "What the supplier announced",
+        "linesTitle": "Counted and accepted — line by line",
+        "noLines": "No lines on this document",
+        "colLine": "Line",
+        "colNotice": "Per notice",
+        "colCounted": "Counted",
+        "colAccepted": "Accepted",
+        "colOpenNow": "Open now",
+        "onOrder": "On PO {qty}",
+        "noNoticeShort": "No notice",
+        "short": "Short {qty}",
+        "rejected": "Rejected {qty}",
+        "held": "On hold {qty}",
+        "footnote": "Counted = what the receiver counted in a field never prefilled from the notice · Accepted = counted − rejected − held · Open includes rejects until decided",
+        "acceptedValue": "Value accepted on this receipt:",
+        "exVat": "excl. VAT — the basis for matching the supplier invoice",
+        "followsTitle": "What follows",
+        "rejectPending": "{qty} {unit} of \"{line}\" rejected — {reason}. Sent back with the driver; it stays on the order until you decide with the supplier.",
+        "rejectDecided": "Rejected {qty} {unit} of \"{line}\": {decision}.",
+        "decideOnOrder": "Decide with the supplier — on the order",
+        "heldFollows": "{qty} {unit} of \"{line}\" {reason} — neither issued nor paid until the receiver releases it.",
+        "awaitingRelease": "Awaiting release",
+        "shortFollows": "Counted {counted} of \"{line}\" while the notice says {notice}: {short} {unit} short. No decision needed — the shortfall stays open on the order, and the supplier sees the count and invoices it, not the notice.",
+        "attachmentsTitle": "Attachments & checklist — as the receiver recorded them (non-blocking)",
+        "noAttachments": "No attachments",
+        "driverUnknown": "Driver not named",
+        "paperNote": "Note",
+        "retention": "Attachments stay with the receipt and are never copied: Finance reads them with the invoice. The receipt is never edited after recording — a correction is a later receipt from the receiver or a return to the supplier. Tax records are kept at least 6 years in Saudi Arabia.",
+        "whereTitle": "Where it went — the material trail",
+        "wentToWarehouse": "Stock of \"{name}\" in Inventory — available to issue or transfer to sites",
+        "wentToProject": "The project store of {name} — consumed against items by measurement in Projects",
+        "wentNowhere": "Not booked into a warehouse — add it in Inventory by hand",
+        "heldIsolated": "held goods are isolated until inspected",
+        "trail": "Recorded by {name} · {date}",
+        "arrivedNoNotice": "Arrived without prior notice — the supplier sent none",
+        "financeHold": "Finance: this receipt's invoice is held as \"no PO\" until it is regularised",
+        "financeCeiling": "Finance matches the supplier invoice to the accepted only: {amount} excl. VAT",
+        "financeCeilingUnknown": "Finance matches the supplier invoice to the accepted only — a lump-sum order, its ceiling is known when delivery is complete",
+        "closing": "The receiver recorded this receipt; it is not edited here. We read it and follow up: decide the rejects with the supplier, chase the remainder until delivery is complete, then rate the supplier."
+      },
+      "manual": {
+        "button": "Record a receipt manually",
+        "title": "Manual goods receipt",
+        "subtitle": "For a purchase made outside the platform or goods that arrived with no order — you type its lines; it is flagged \"recorded by Procurement\" and listed in the exceptions",
+        "warning": "The goods did arrive and we do not deny it — but a manual receipt is an exception: it stays \"no PO\" until you attach one, Finance will not pay before that, and it appears by your name in the exceptions report.",
+        "againstPo": "Against a PO?",
+        "noPoOption": "No — no PO",
+        "poHint": "It will count against {po}: type what you counted of each line, and the order's remainder moves",
+        "supplierAsInvoiced": "Supplier — as on its invoice or stamp",
+        "whoReceived": "Who actually received it",
+        "paperNote": "Invoice / note no.",
+        "place": "Place",
+        "placeNone": "No warehouse — not booked into stock",
+        "countOrderLines": "Order lines — type the count",
+        "linesTitle": "Lines — as on the shop invoice",
+        "lineDesc": "Description as on the invoice",
+        "lineDescPlaceholder": "e.g. steel angles 50 mm",
+        "unitPlaceholder": "pc · m · kg",
+        "unitDefault": "unit",
+        "unitPrice": "Unit price",
+        "removeLine": "Remove line",
+        "reason": "Why outside the platform?",
+        "reasonPlaceholder": "e.g. urgent cash purchase on pour day",
+        "effectWithPo": "It counts against the PO and Finance matches the invoice to it",
+        "effectNoPo": "It enters \"No PO\" on the receipts page and waits to be regularised — Finance holds its invoice until then",
+        "effectFlagged": "Flagged \"recorded manually by Procurement\", in the exceptions report by your name",
+        "effectPrint": "It can be printed as a record afterwards",
+        "submit": "Issue the receipt",
+        "doneOnOrder": "Receipt {number} issued and counted against {po} — flagged as recorded manually",
+        "doneNoPo": "Receipt {number} issued",
+        "doneNoPoDesc": "It stays \"no PO\" until you attach an order"
+      },
+      "regularise": {
+        "title": "Regularise with a retroactive PO",
+        "subtitle": "A retroactive purchase order is raised over what was actually received, approved by the owner alone — and this receipt becomes its receipt",
+        "supplier": "Supplier",
+        "lines": "Received",
+        "unitPrice": "Unit price",
+        "total": "Total excl. VAT: {total}",
+        "reason": "Why was it bought without an order?",
+        "reasonPlaceholder": "e.g. urgent cash purchase on pour day — no time to ask for offers",
+        "effect": "The retroactive order appears in the exceptions report by your name and goes to the owner for approval; once approved, Finance matches the supplier invoice to it.",
+        "cancel": "Cancel",
+        "submit": "Raise the retroactive PO",
+        "done": "Retroactive PO {number} raised — awaiting the owner's approval",
+        "notLinked": "The receipt is not linked to the order yet — someone with the receiving permission links it",
+        "expenseDone": "Sent to Finance as a cash expense — the receipt stays the proof of receipt"
+      },
+      "print": {
+        "title": "Goods Receipt Note",
+        "title_no_po": "Goods Receipt",
+        "cr": "CR",
+        "vat_no": "VAT",
+        "status_final": "Delivery complete on this order — final record",
+        "status_partial": "Partial receipt — delivery not yet complete: still outstanding {list}",
+        "status_no_po": "No PO — manual receipt",
+        "supplier": "Supplier",
+        "supplier_as_written": "Supplier as invoiced",
+        "not_registered": "Not registered with us",
+        "reference": "Reference",
+        "no_purchase_order": "No purchase order",
+        "po_and_notice": "PO · delivery notice",
+        "no_prior_notice": "No prior notice",
+        "paper_note": "Supplier's note",
+        "from_rfq": "From RFQ",
+        "place": "Place",
+        "place_project": "Place · project",
+        "general_stock": "General stock",
+        "col_description": "Description",
+        "col_on_po": "On PO",
+        "col_per_notice": "Per notice",
+        "col_counted": "Counted",
+        "col_rejected": "Rejected",
+        "col_held": "On hold",
+        "col_accepted": "Accepted",
+        "col_unit": "Unit",
+        "col_value": "Value",
+        "accepted_value": "Value accepted on this receipt — the basis for matching the supplier invoice (excl. VAT)",
+        "checklist": "Checklist",
+        "driver_vehicle": "Driver / vehicle",
+        "receiver_note": "Receiver's note",
+        "reason_outside": "Reason bought outside the platform",
+        "sig_supplier": "Supplier / rep",
+        "sig_receiver": "Received by",
+        "sig_procurement": "Procurement reviewed",
+        "signature": "Signature",
+        "received_by_role": "Receiver at the delivery point",
+        "self_received": "Received by the order's preparer",
+        "footer_accepted_only": "Only the accepted quantity counts against the purchase order and is invoiced. Rejects went back with the rep; held goods are neither issued nor paid before release.",
+        "footer_no_po": "No-PO receipt: not payable before it is regularised by an order or approved as a cash expense.",
+        "footer": "Issued electronically by Mdmak Tech — {company} · printed {date} · This document is never edited after recording; any correction is a later document."
+      }
+    },
+    "ProcReports": {
+      "page": {
+        "title": "Reports",
+        "subtitle": "Computed from the live record — no numbers are typed. Values are commitments excluding VAT, not costs"
+      },
+      "csv": "CSV",
+      "empty": "No data in the period",
+      "emptyCommitments": "No open orders",
+      "total": "Total",
+      "noPrices": "Your role sees dates and quantities — reports with values are not shown",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "ordersCount": "{count, plural, one {# order} other {# orders}}",
+      "overdueBy": "{days, plural, one {# day overdue} other {# days overdue}}",
+      "dueIn": "{days, plural, =0 {today} =1 {tomorrow} other {in # days}}",
+      "concentrated": "Concentration",
+      "concentration": "One supplier ({supplier}) carries {percent}% of the period's spend — worth a ready alternative.",
+      "shortCompetition": "Short competition",
+      "notAwarded": "Not awarded",
+      "exceptionsTotal": "{count, plural, one {# exception} other {# exceptions}}",
+      "report": {
+        "project": "Spend by project",
+        "supplier": "Spend by supplier",
+        "delivery": "Delivery performance",
+        "drift": "Price drift vs last buy",
+        "cycle": "Cycle time & competition",
+        "exceptions": "Exceptions",
+        "commitments": "Open commitments by due date"
+      },
+      "period": {
+        "30": "30 days",
+        "90": "90 days",
+        "label": "Period",
+        "year": "This year",
+        "custom": "Custom",
+        "from": "From",
+        "to": "To",
+        "notApplied": "No period — every live order, now"
+      },
+      "cols": {
+        "requester": "Project",
+        "noProject": "No project — general",
+        "orders": "Orders",
+        "lines": "Lines",
+        "ordered": "Ordered",
+        "received": "Received",
+        "receivedUnknownNote": "A lump-sum order still on its way: the value received is not estimated and stays out of the total",
+        "open": "Outstanding",
+        "supplier": "Supplier",
+        "value": "Value",
+        "share": "Share",
+        "onTime": "On time",
+        "avgLate": "Avg. days late",
+        "rejectPct": "Rejects",
+        "po": "PO",
+        "promised": "Supplier date",
+        "lastReceipt": "Last receipt",
+        "gap": "Gap",
+        "material": "Material",
+        "day": "Date",
+        "previous": "Previous price",
+        "current": "This PO",
+        "qty": "Qty",
+        "impact": "Impact",
+        "rfq": "RFQ",
+        "invited": "Invited",
+        "offers": "Offers",
+        "awarded": "Awarded",
+        "days": "Days publish → award",
+        "lowest": "Lowest offer",
+        "awardedValue": "Awarded value",
+        "competition": "Short competition",
+        "document": "Document",
+        "exception": "Exception",
+        "by": "By",
+        "approvedBy": "Approved by",
+        "dueIn": "Due",
+        "bucket": "Bucket"
+      },
+      "notes": {
+        "project": "This is commitment, not cost: the actual cost of an item is read from Finance's ledger after the invoice.",
+        "supplier": "Share of the period's order value, excluding VAT. On-time is computed from receipts across all of the supplier's orders.",
+        "delivery": "Receipts are recorded by Inventory; we measure the supplier by them. An order is judged by its last receipt against the supplier's recorded date.",
+        "drift": "Impact = (this PO's price − the last price we paid for the same material in the same unit) × quantity. Positive is not always wrong — steel and copper move — but it deserves to be seen.",
+        "cycle": "Fewer than {min} offers above ⃁ {threshold} = short competition, shown to the approver and in the Exceptions report.",
+        "exceptions": "Everything off the usual path, by name and by approver. Not violations — what the owner should see monthly.",
+        "commitments": "Finance's cash forecast only sees a PO once invoiced — this fills the gap. Due by the supplier's date; the overdue sit in the first week. Value = what has not arrived yet, excluding VAT."
+      },
+      "drift": {
+        "totals": "Period impact {impact} on a base of {base} ({percent}%)",
+        "noBase": "No earlier price to compare with in this period"
+      },
+      "cycle": {
+        "totals": "{rfqs, plural, one {# RFQ} other {# RFQs}} · {awarded} awarded · {short} short competition"
+      },
+      "kind": {
+        "retroactive": "Retroactive",
+        "direct": "Direct order",
+        "non_lowest": "Non-lowest",
+        "short_competition": "Short competition",
+        "self_approval": "Self-approval",
+        "no_official_quote": "No official quote",
+        "closed_short": "Closed short",
+        "manual_receipt": "Manual receipt",
+        "no_po": "No PO",
+        "self_received": "Self-received"
+      }
+    },
+    "ProcSettings": {
+      "page": {
+        "title": "Settings & boundaries",
+        "subtitle": "The policies that gate money · the four roles · what we own, read and never do"
+      },
+      "saved": "Policies saved",
+      "saveFailed": "Policies were not saved — try again",
+      "save": "Save",
+      "discard": "Discard",
+      "unit": {
+        "sar": "⃁",
+        "percent": "%",
+        "count": "offers",
+        "days": "days"
+      },
+      "policies": {
+        "title": "Policies",
+        "subtitle": "A limit is a number that blocks for real — enforced on the server; this form is its reflection",
+        "readOnly": "Edited by the owner or whoever approves purchase orders",
+        "reference": "Reference value: {value}",
+        "enforced": "A blank or a negative falls back to the reference value on save"
+      },
+      "policy": {
+        "managerApprovalLimit": {
+          "label": "Manager approval limit",
+          "desc": "The largest order (excl. VAT) a holder of the approve permission may approve; above it, the owner"
+        },
+        "directPurchaseCap": {
+          "label": "Direct-order cap without offers",
+          "desc": "Direct orders to one supplier inside the splitting window may not pass this without the owner"
+        },
+        "competitionThreshold": {
+          "label": "Competition threshold",
+          "desc": "Above this value, fewer than the minimum offers is short competition — shown to the approver and in Exceptions"
+        },
+        "minOffers": {
+          "label": "Minimum offers",
+          "desc": "How many offers count as enough competition above the threshold"
+        },
+        "overReceiptTolerancePercent": {
+          "label": "Over-receipt tolerance",
+          "desc": "What may be accepted above a line's open quantity before the receipt is stopped"
+        },
+        "rfqWindowDays": {
+          "label": "Typical RFQ window",
+          "desc": "Days from publishing an RFQ to its close — feeds the last order day"
+        },
+        "awardCycleDays": {
+          "label": "Award and approval cycle",
+          "desc": "Days from the offers' close to an approved order — after it, a closed RFQ with no award turns red"
+        },
+        "supplierAcceptanceDays": {
+          "label": "Supplier acceptance window",
+          "desc": "Days after sending before \"not accepted\" becomes a decision on the expediter's desk"
+        },
+        "splitWindowDays": {
+          "label": "Order-splitting window",
+          "desc": "Days over which direct orders to one supplier are added up against the direct-order cap"
+        },
+        "sealOffersUntilDeadline": {
+          "label": "Seal offer prices until the deadline",
+          "desc": "Off by default: prices show as they arrive and the award may come before the deadline"
+        }
+      },
+      "roles": {
+        "title": "Roles",
+        "subtitle": "Four roles, one permission each — granted on the team page",
+        "teamLink": "Team page",
+        "ownerBadge": "owner",
+        "prices": "Prices are seen by the owner and by whoever may view offers, award, or approve. The expediter and the receiver see dates and quantities only — at the interface level.",
+        "owner": {
+          "name": "Company owner",
+          "desc": "Passes every check: approves above {limit}, whatever the manager prepared, and every retroactive order — and reads the exceptions monthly"
+        },
+        "manager": {
+          "name": "Procurement manager",
+          "desc": "Approves or returns others' orders up to {limit} — never one he prepared"
+        },
+        "buyer": {
+          "name": "Buyer",
+          "desc": "Compares offers, awards and prepares the purchase order — never approves it"
+        },
+        "expediter": {
+          "name": "Expediter",
+          "desc": "Sends the order to the supplier, records his acceptance and date, updates the date and reminds him — no prices"
+        },
+        "receiver": {
+          "name": "Receiver",
+          "desc": "Records the goods receipt at the gate: the count, the rejects, what is held for inspection — never prepares an order"
+        }
+      },
+      "boundaries": {
+        "title": "Boundaries",
+        "subtitle": "What we own · what we read · what we never do, even if asked",
+        "owns": {
+          "title": "We own",
+          "item1": "The RFQ and its cycle",
+          "item2": "Offers, comparison, the award and its reason",
+          "item3": "The purchase order, its approval and dispatch",
+          "item4": "Expediting the supplier's date until close-out",
+          "item5": "The decision on rejects and on the order's remainder",
+          "item6": "The supplier rating — computed, never typed"
+        },
+        "reads": {
+          "title": "We read",
+          "item1": "The need, its quantity and date — from Projects and Manufacturing",
+          "item2": "Items and units — from Inventory",
+          "item3": "The goods receipt and stock movement — Inventory records them",
+          "item4": "Invoice and payment — from Finance",
+          "item5": "The supplier's platform profile and verification",
+          "item6": "The order's state with the supplier — from his portal"
+        },
+        "never": {
+          "title": "We never",
+          "item1": "Create a need or change its quantity",
+          "item2": "Record a receipt on the receiver's behalf",
+          "item3": "Pay or match an invoice",
+          "item4": "Approve an order we prepared",
+          "item5": "Show a price to someone who may not see it",
+          "item6": "Message the supplier beyond dispatch and reminders"
+        }
       }
     }
   },

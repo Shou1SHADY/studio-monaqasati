@@ -32,8 +32,13 @@ import {
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
 import { linkPurchaseRequestRfq } from "@/lib/manufacturing-writes"
-import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection } from "@/firebase"
+import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
+import { useProcActor } from "@/hooks/useProcActor"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
+import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
+import { displayPoNumber } from "@/lib/procurement/format"
 import { collection, doc, getDoc, setDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
@@ -101,6 +106,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // RFQ is born Awarded with an accepted offer.
   const [directSupplierOrgId, setDirectSupplierOrgId] = useState("")
   const [directPrice, setDirectPrice] = useState("")
+  // PRD 3.0: a direct award yields a purchase order awaiting approval — who
+  // prepares it and the org's policies (routing, competition threshold).
+  const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor(projectId)
+  const policiesRef = useMemoFirebase(() => (firestore && procOrgId ? doc(firestore, PROCUREMENT_SETTINGS, procOrgId) : null), [firestore, procOrgId])
+  const { data: policiesDoc } = useDoc(policiesRef)
+  const policies = useMemo<ProcurementPolicies>(() => resolvePolicies(policiesDoc as Partial<ProcurementPolicies> | null), [policiesDoc])
 
   const connectedLinksQuery = useMemoFirebase(() => {
     if (!user || !firestore || !profile) return null
@@ -615,7 +626,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           description: t("newrfq_toast_updated_desc"),
         })
         router.push(redirectTarget)
-      } catch (err) {
+      } catch {
         toast({
           title: t("newrfq_toast_update_failed"),
           variant: "destructive"
@@ -748,9 +759,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Born awarded: the accepted offer, the chat, and the supplier's
       // notification are created here — the same end-state the accept flow in
       // RfqOffersView produces, minus the offer round.
+      const rfqId = createdRfqIds[0]
+      const rfqTitle = formData.title
+      let directOffer: { id: string; price: string; supplierId: string; organizationId: string; supplierName: string } | null = null
       try {
-        const rfqId = createdRfqIds[0]
-        const rfqTitle = formData.title
         const supplierOption = supplierOptions.find((o) => o.orgId === directSupplierOrgId)
         const supplierName = supplierOption?.name || ""
         // The picked id is an ORG id; the notification inbox needs a USER id —
@@ -786,6 +798,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           decidedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         })
+        directOffer = { id: offerRef.id, price, supplierId: supplierUserId, organizationId: directSupplierOrgId, supplierName }
         await setDoc(doc(firestore, "chats", offerRef.id), {
           offerId: offerRef.id,
           rfqId,
@@ -815,7 +828,47 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         return
       }
 
-      toast({ title: t("newrfq_direct_success"), description: t("newrfq_direct_success_desc") })
+      // PRD 3.0: the purchase order over the direct award, born awaiting
+      // approval (basis `direct` — the writes read it off `rfq.directAward`).
+      // The award above stands whatever happens here; a missing order is
+      // raised later from the accepted offer's card.
+      let orderNumber: string | null = null
+      if (directOffer) {
+        try {
+          const contractorOrgId = (profile as Record<string, string>)?.organizationId || user.uid
+          const created = await createPurchaseOrderFromAward(
+            firestore,
+            procActor,
+            {
+              rfq: {
+                id: rfqId,
+                title: rfqTitle,
+                organizationId: contractorOrgId,
+                contractorId: user.uid,
+                projectId: projectId || null,
+                category: categories[0] || null,
+                city: formData.city,
+                directAward: true,
+                products: groupedProducts[categories[0]]?.map((p) => ({ name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category, quantity: Number(p.quantity), unitOfMeasure: p.unit })) || null,
+                purchaseSource: purchaseSource ? { kind: "mfg_purchase", ...purchaseSource } : null,
+              },
+              offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول" },
+              offers: [{ ...directOffer, status: "مقبول" }],
+              awardReason: null,
+              policies,
+            },
+            { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: procOrgName || null }
+          )
+          orderNumber = created.docNumber
+        } catch (err) {
+          console.error("purchase order not created after direct award:", (err as { code?: string })?.code || err)
+        }
+      }
+
+      toast({
+        title: t("newrfq_direct_success"),
+        description: orderNumber ? t("newrfq_direct_success_order", { number: displayPoNumber(orderNumber, locale) }) : t("newrfq_direct_success_no_order"),
+      })
       router.push(redirectTarget)
     } else {
       // Update recurring-items catalog — fire and forget, doesn't block the success flow

@@ -17,8 +17,30 @@ import { MFG_COUNTERS } from "./manufacturing-engine"
 
 export type SalesDocType = "QT" | "TN" | "RQ" | "RT" | "SD"
 
-export function formatSalesDocNumber(type: SalesDocType, year: number, seq: number): string {
+/** `QT-2026/070` — any two-letter code, three-digit padded sequence. */
+export function formatYearlyDocNumber(type: string, year: number, seq: number): string {
   return `${type}-${year}/${String(seq).padStart(3, "0")}`
+}
+
+export function formatSalesDocNumber(type: SalesDocType, year: number, seq: number): string {
+  return formatYearlyDocNumber(type, year, seq)
+}
+
+/** Read and bump one `{orgId}__{type}__{year}` sequence inside the caller's
+ * transaction — shared by Sales' and Procurement's document types. Reads must
+ * precede writes in a transaction: call this before the first `tx.set`. */
+export async function drawYearlyDocNumber(
+  firestore: Firestore,
+  tx: Transaction,
+  organizationId: string,
+  type: string,
+  year = new Date().getUTCFullYear()
+): Promise<string> {
+  const ref = doc(firestore, MFG_COUNTERS, `${organizationId}__${type}__${year}`)
+  const snap = await tx.get(ref)
+  const seq = (snap.exists() ? Number(snap.data().last) || 0 : 0) + 1
+  tx.set(ref, { organizationId, type, year, last: seq, updatedAt: serverTimestamp() })
+  return formatYearlyDocNumber(type, year, seq)
 }
 
 /** Read and bump the sequence inside the caller's transaction. */
@@ -29,11 +51,7 @@ export async function drawSalesDocNumber(
   type: SalesDocType,
   year = new Date().getUTCFullYear()
 ): Promise<string> {
-  const ref = doc(firestore, MFG_COUNTERS, `${organizationId}__${type}__${year}`)
-  const snap = await tx.get(ref)
-  const seq = (snap.exists() ? Number(snap.data().last) || 0 : 0) + 1
-  tx.set(ref, { organizationId, type, year, last: seq, updatedAt: serverTimestamp() })
-  return formatSalesDocNumber(type, year, seq)
+  return drawYearlyDocNumber(firestore, tx, organizationId, type, year)
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +92,9 @@ const ARABIC_PREFIX: Record<string, string> = {
   MR: "طت",
   WO: "أت",
   RQ: "ط.ع",
+  // Procurement (PRD 3.0 §15.1): the purchase order and the goods receipt.
+  PO: "ط.ش",
+  GR: "ا.س",
 }
 
 /** "QT-2026/070" reads "ع.س-2026/070" in Arabic. Anything that is not one of

@@ -7,9 +7,12 @@
 // firestore.rules; isolation happens via the `where` clauses below).
 
 import { useEffect, useState } from "react"
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, query, where, getDocs } from "firebase/firestore"
+import { useFirestore, useCollection, useDoc, useMemoFirebase } from "@/firebase"
+import { collection, doc, query, where, getDocs } from "firebase/firestore"
 import { resolveProjectStatus, projectStatusLabelKey, type ProjectStatus } from "@/lib/project-status"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { workQueueCounts } from "@/lib/procurement/shell"
+import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcurementPolicies, type PurchaseOrder } from "@/lib/procurement/types"
 
 export type WorkQueueItemType =
   | "guarantee_expiring"
@@ -29,6 +32,9 @@ export type WorkQueueItemType =
   | "mfg_notes_to_receive"
   | "mfg_custody_to_receive"
   | "mfg_purchase_requests"
+  // Procurement's purchase orders (PRD 3.0) — one card each, a count, a door
+  | "po_approve"
+  | "po_attention"
 
 export interface WorkQueueItem {
   id: string
@@ -73,6 +79,8 @@ const TIER: Record<WorkQueueItemType, number> = {
   mfg_notes_to_receive: 5,
   mfg_custody_to_receive: 5,
   mfg_purchase_requests: 5,
+  po_approve: 2,
+  po_attention: 4,
 }
 
 interface QueueWorkOrder {
@@ -111,7 +119,12 @@ function toMs(v: unknown): number {
   return isNaN(t) ? 0 : t
 }
 
-export function useWorkQueue(organizationId: string | undefined | null, userId: string | undefined | null) {
+export interface WorkQueueOptions {
+  /** The org owner passes every approval check (limit, own order, retroactive) — `usePermissions().isOrgOwner`. */
+  isOrgOwner?: boolean
+}
+
+export function useWorkQueue(organizationId: string | undefined | null, userId: string | undefined | null, options: WorkQueueOptions = {}) {
   const firestore = useFirestore()
 
   const rfqsQuery = useMemoFirebase(() => {
@@ -191,6 +204,16 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     return query(collection(firestore, "manufacturingRequests"), where("organizationId", "==", organizationId), where("status", "==", "new"))
   }, [firestore, organizationId])
   const { data: newMfgRequests } = useCollection(mfgRequestsQuery)
+
+  // Procurement's orders and the org's policies — the same org-scoped read the
+  // module's own screens make; closed and cancelled orders are dropped below.
+  const purchaseOrdersQuery = useMemoFirebase(() => {
+    if (!firestore || !organizationId) return null
+    return query(collection(firestore, PURCHASE_ORDERS), where("organizationId", "==", organizationId))
+  }, [firestore, organizationId])
+  const { data: purchaseOrders } = useCollection(purchaseOrdersQuery)
+  const procSettingsRef = useMemoFirebase(() => (firestore && organizationId ? doc(firestore, PROCUREMENT_SETTINGS, organizationId) : null), [firestore, organizationId])
+  const { data: procSettings } = useDoc(procSettingsRef)
 
   // Low-stock items live in a per-warehouse subcollection — can't be expressed as a
   // single top-level query, so fetch once (not real-time) whenever the warehouse list changes.
@@ -323,7 +346,7 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
       type: "delivery_confirm",
       tier: TIER.delivery_confirm,
       sortMs: toMs(d.deliveryDate || d.createdAt),
-      actionUrl: "/contractor/goods-received",
+      actionUrl: "/contractor/goods-received?tab=incoming",
       data: { rfqTitle: d.rfqTitle || "", supplierName: d.supplierName || "" },
     })
   })
@@ -492,9 +515,39 @@ export function useWorkQueue(organizationId: string | undefined | null, userId: 
     })
   }
 
+  // ── Procurement's purchase orders: what waits for my approval, and what
+  // stalled with a supplier (late · sent and not accepted · approved and not
+  // sent). Two cards at most; the module's Today has the rows.
+  const liveOrders2 = ((purchaseOrders || []) as PurchaseOrder[]).filter((o) => o.status !== "closed" && o.status !== "cancelled").map((o) => ({ ...o, lines: o.lines || [], log: o.log || [] }))
+  if (liveOrders2.length) {
+    const policies = resolvePolicies(procSettings as Partial<ProcurementPolicies> | null)
+    const counts = workQueueCounts(liveOrders2, policies, { uid: userId || "", isOwner: !!options.isOrgOwner }, new Date(now))
+    if (counts.approve) {
+      const waiting = liveOrders2.filter((o) => o.status === "awaiting_approval")
+      items.push({
+        id: "po_approve",
+        type: "po_approve",
+        tier: TIER.po_approve,
+        sortMs: oldestAge(waiting.map((o) => o.createdAt)),
+        actionUrl: "/contractor/rfqs/orders?filter=awaiting_approval",
+        data: { count: counts.approve },
+      })
+    }
+    if (counts.attention.total) {
+      items.push({
+        id: "po_attention",
+        type: "po_attention",
+        tier: TIER.po_attention,
+        sortMs: 0,
+        actionUrl: "/contractor/rfqs/today",
+        data: { count: counts.attention.total, late: counts.attention.late, notAccepted: counts.attention.notAccepted, notSent: counts.attention.notSent },
+      })
+    }
+  }
+
   items.sort((a, b) => (a.tier !== b.tier ? a.tier - b.tier : b.sortMs - a.sortMs))
 
-  const isLoading = !rfqs || !offers || !deliveries || !warehouses || !guarantees || !projects
+  const isLoading = !rfqs || !offers || !deliveries || !warehouses || !guarantees || !projects || !purchaseOrders
 
   const stats: WorkQueueStats = {
     projectsTotal: (projects || []).length,

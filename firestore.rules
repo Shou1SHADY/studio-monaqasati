@@ -768,6 +768,12 @@ service cloud.firestore {
       // A manual (contractor-logged) delivery is created without supplierOrgId/supplierId/
       // offerId/rfqId to prevent impersonating a real supplier — lock that guarantee on
       // update too, so those fields can never be added retroactively once absent.
+      // Procurement PRD 3.0 lays optional purchase-order fields over a delivery
+      // (`poId`, `poNumber`, `docNumber`, `lines[]`, `vehiclePlate`, `paperNoteNumber`,
+      // `deliveryWindow`, `checklist`, `receiverUserId`, `landedWarehouseId`,
+      // `postedNet`, `selfReceived`): there is no field allow-list here, so they need
+      // no entry — and a manual receipt regularised by a retroactive order gains a
+      // `poId`, never the four identity fields above.
       allow update: if isSignedIn() && (
         (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('deliveries.confirm')) ||
         resource.data.supplierOrgId == getOrganizationId() ||
@@ -816,6 +822,148 @@ service cloud.firestore {
           && (request.resource.data.status == 'pending_review' || request.resource.data.status == 'none'))
         || isAdmin()
       );
+      allow delete: if isAdmin();
+    }
+
+    // ── Purchase orders (Procurement PRD 3.0) — the document laid over an award ──
+    //
+    // An accepted offer stays the award; the order carries the number, the
+    // approval, the dispatch, the supplier's promise, the lines' counters and
+    // the close-out. Seven stored states move one step at a time, each step
+    // its own permission and its own field list. Delivery progress, lateness,
+    // blocks and the approver are DERIVED (src/lib/procurement/po.ts) — never
+    // stored, so never written. The hard blocks of §6.1 that are data
+    // conditions live here: nobody approves an order they prepared (the org
+    // owner excepted — a company of one cannot wait for a second person),
+    // nobody approves above the routing the preparer's write recorded
+    // (`approverKind`), a retroactive order is the owner's alone, and no
+    // dispatch before approval.
+    function poFrom() { return resource.data.get('status', ''); }
+    function poTo() { return request.resource.data.get('status', ''); }
+    function poChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // What no update may rewrite: where it came from, who prepared it, what it is worth.
+    function poIdentityUntouched() {
+      return !poChanged().hasAny(['organizationId', 'docNumber', 'preparedById', 'preparedByName', 'offerId', 'rfqId',
+                                  'basis', 'totalExVat', 'vatRate', 'supplierOrgId', 'supplierUserId', 'isGuestSupplier',
+                                  'createdAt', 'approverKind', 'purchaseSource']);
+    }
+    // Chasing the supplier: expediters, and anyone who may prepare or approve.
+    function poExpediter() {
+      return isOrgOwner() || hasOrgPermission('po.expedite') || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve');
+    }
+    // Procurement's own decisions on the order: the rest will not arrive, the
+    // reject decision, closing, cancelling.
+    function poDecider() {
+      return isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve');
+    }
+    // A retroactive order (goods already here) is approved straight into
+    // `accepted` — there is nothing to send and nobody to wait for.
+    function poApproves() {
+      return poFrom() == 'awaiting_approval'
+        && (poTo() == 'approved'
+            || (poTo() == 'accepted' && resource.data.get('basis', '') == 'retroactive'
+                && request.resource.data.get('acceptanceRecordedBy', '') == 'buyer'))
+        && (isOrgOwner() || hasOrgPermission('po.approve'))
+        && request.resource.data.get('approvedById', '') == request.auth.uid
+        && (isOrgOwner() || resource.data.get('preparedById', '') != request.auth.uid)
+        && (isOrgOwner() || resource.data.get('approverKind', 'owner') == 'manager')
+        && (isOrgOwner() || resource.data.get('basis', '') != 'retroactive')
+        && poChanged().hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'returnedReason',
+                                'supplierAcceptedAt', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+    }
+    // Returned = still awaiting approval, with the approver's reason on it.
+    function poReturns() {
+      return poFrom() == 'awaiting_approval' && poTo() == 'awaiting_approval'
+        && (isOrgOwner() || hasOrgPermission('po.approve'))
+        && request.resource.data.get('returnedReason', '') is string
+        && request.resource.data.get('returnedReason', '').size() > 0
+        && poChanged().hasOnly(['returnedReason', 'log', 'updatedAt']);
+    }
+    function poResubmits() {
+      return poFrom() == 'awaiting_approval' && poTo() == 'awaiting_approval'
+        && (isOrgOwner() || hasOrgPermission('offers.accept'))
+        && request.resource.data.get('returnedReason', null) == null
+        && poChanged().hasOnly(['returnedReason', 'log', 'updatedAt']);
+    }
+    // Send (approved → sent), record the supplier's acceptance and date
+    // (sent → accepted), a new date or a reminder (same state).
+    function poExpedites() {
+      return poExpediter()
+        && ((poFrom() == 'approved' && poTo() == 'sent'
+             && request.resource.data.get('sentById', '') == request.auth.uid)
+            || (poFrom() == 'sent' && poTo() in ['sent', 'accepted'])
+            || (poFrom() == 'accepted' && poTo() == 'accepted'))
+        && poChanged().hasOnly(['status', 'sentAt', 'sentById', 'sentByName', 'sentChannel', 'supplierAcceptedAt',
+                                'promisedDate', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+    }
+    // The lines' decisions (cancel the remainder, decide the rejects) and the
+    // close-out; cancelling the whole order before anything arrived.
+    function poDecides() {
+      return poDecider()
+        && ((poFrom() == 'accepted' && poTo() in ['accepted', 'closed'])
+            || (poFrom() in ['awaiting_approval', 'approved', 'sent', 'accepted'] && poTo() == 'cancelled'))
+        && poChanged().hasOnly(['status', 'lines', 'closedAt', 'closedShort', 'closeReason', 'cancelledReason', 'log', 'updatedAt']);
+    }
+    // The gate: whoever confirms deliveries moves the counters (and releases
+    // held goods). An arrival on an order the supplier never acknowledged
+    // records his acceptance for him.
+    function poReceives() {
+      return hasOrgPermission('deliveries.confirm')
+        && poFrom() in ['sent', 'accepted'] && poTo() == 'accepted'
+        && poChanged().hasOnly(['status', 'lines', 'supplierAcceptedAt', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+    }
+    // Rating once, by whoever may prepare, when the story is whole.
+    function poRates() {
+      return (isOrgOwner() || hasOrgPermission('offers.accept'))
+        && poTo() == poFrom() && poFrom() in ['accepted', 'closed']
+        && resource.data.get('rating', null) == null
+        && request.resource.data.get('rating', null) != null
+        && poChanged().hasOnly(['rating', 'log', 'updatedAt']);
+    }
+    // The supplier, in his own portal: sent → accepted with the date he commits to.
+    function poSupplierAccepts() {
+      return resource.data.get('supplierOrgId', '') == getOrganizationId()
+        && resource.data.get('supplierOrgId', '') != 'guest'
+        && poFrom() == 'sent' && poTo() == 'accepted'
+        && request.resource.data.get('acceptanceRecordedBy', '') == 'supplier'
+        && request.resource.data.get('promisedDate', '') is string
+        && poChanged().hasOnly(['status', 'supplierAcceptedAt', 'promisedDate', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+    }
+    match /purchaseOrders/{poId} {
+      // The buyer's team reads its orders; the supplier reads the ones addressed to him.
+      // (A guest's order carries supplierOrgId "guest", which is nobody's org id.)
+      allow get, list: if isSignedIn() && (isAdmin()
+        || isOrgMember(resource.data.organizationId)
+        || resource.data.supplierOrgId == getOrganizationId());
+      // Prepared by whoever may award, in their own name, born awaiting approval —
+      // never born approved, sent or rated.
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (isOrgOwner() || hasOrgPermission('offers.accept'))
+        && request.resource.data.get('preparedById', '') == request.auth.uid
+        && request.resource.data.get('status', '') == 'awaiting_approval'
+        && request.resource.data.get('approvedById', null) == null
+        && request.resource.data.get('sentAt', null) == null
+        && request.resource.data.get('rating', null) == null
+        && request.resource.data.get('basis', '') in ['rfq', 'direct', 'retroactive']
+        && (request.resource.data.get('basis', '') != 'retroactive' || request.resource.data.get('approverKind', '') == 'owner')
+        && request.resource.data.get('approverKind', '') in ['manager', 'owner']
+        && request.resource.data.get('docNumber', '') is string
+        && request.resource.data.get('docNumber', '').size() > 0;
+      allow update: if isSignedIn() && poIdentityUntouched() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId)
+            && (poApproves() || poReturns() || poResubmits() || poExpedites() || poDecides() || poReceives() || poRates()))
+        || poSupplierAccepts());
+      // Orders are records other documents point at — only an admin removes one.
+      allow delete: if isAdmin();
+    }
+
+    // Procurement policies (§6.4) — one document per org, read by every
+    // member, set by the owner or an approver. Absent = the PRD's reference values.
+    match /procurementSettings/{orgId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow create, update: if isSignedIn() && isOrgMember(orgId)
+        && request.resource.data.get('organizationId', orgId) == orgId
+        && (isOrgOwner() || hasOrgPermission('po.approve'));
       allow delete: if isAdmin();
     }
 

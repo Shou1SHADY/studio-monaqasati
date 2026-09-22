@@ -72,12 +72,19 @@ import {
   ArrowLeftRight,
   Settings2,
   BarChart3,
+  Sunrise,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
 /** Manufacturing's desk tabs belong to the manager, the cost controller and management. */
 const MFG_DESK_ROLES: PermissionId[] = ["manufacturing.manage", "manufacturing.cost", "manufacturing.view"]
+
+/** Procurement's Today opens for anyone holding any of the module's
+ * permissions (PRD 3.0 §7.2) — the queue itself shows each role its own rows. */
+const PROC_ANY_ROLE: PermissionId[] = ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"]
+/** The orders list: whoever sees prices, plus the expediter (dates and quantities only). */
+const PROC_ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.approve", "po.expedite"]
 
 export interface NavItem {
   titleKey: string
@@ -165,7 +172,9 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "procurement",
     labelKey: "component_procurement",
     descKey: "component_procurement_desc",
-    homeHref: "/contractor/rfqs",
+    // Today is the home (PRD 3.0 §7.2): three numbers and what needs a
+    // decision, for every Procurement role.
+    homeHref: "/contractor/rfqs/today",
     icon: Handshake,
     accentToken: "cta",
     displayOrder: 3,
@@ -173,6 +182,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_procurement",
         items: [
+          { titleKey: "contractor_proc_today", href: "/contractor/rfqs/today", icon: Sunrise, requiredAnyPermission: PROC_ANY_ROLE },
           {
             titleKey: "contractor_rfqs",
             href: "/contractor/rfqs",
@@ -183,9 +193,12 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
               { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredPermission: "rfq.manage" },
             ],
           },
+          { titleKey: "contractor_purchase_orders", href: "/contractor/rfqs/orders", icon: ClipboardList, requiredAnyPermission: PROC_ORDER_ROLES },
+          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredPermission: "deliveries.confirm" },
           { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
           { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredPermission: "suppliers.manage" },
-          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredPermission: "deliveries.confirm" },
+          { titleKey: "contractor_proc_reports", href: "/contractor/rfqs/reports", icon: BarChart3, requiredAnyPermission: ["offers.view", "offers.accept"] },
+          { titleKey: "contractor_proc_settings", href: "/contractor/rfqs/settings", icon: Settings2, requiredPermission: "po.approve" },
         ],
       },
     ],

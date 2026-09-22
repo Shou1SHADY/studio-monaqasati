@@ -230,8 +230,8 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 27 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(27)
+  it("contains exactly 29 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(29)
   })
 
   it("groups every permission into exactly one component section", () => {
@@ -313,6 +313,8 @@ describe("SEEDED_GROUPS", () => {
     it("grants invoices.manage", () => expect(g.permissions).toContain("invoices.manage"))
     it("grants employees.manage", () => expect(g.permissions).toContain("employees.manage"))
     it("grants offers.accept", () => expect(g.permissions).toContain("offers.accept"))
+    it("approves purchase orders (it awards, so it approves)", () => expect(g.permissions).toContain("po.approve"))
+    it("does NOT expedite purchase orders", () => expect(g.permissions).not.toContain("po.expedite"))
     it("does NOT grant rfq.create", () => expect(g.permissions).not.toContain("rfq.create"))
     it("does NOT grant warehouses.manage", () => expect(g.permissions).not.toContain("warehouses.manage"))
     it("does NOT grant projects.delete", () => expect(g.permissions).not.toContain("projects.delete"))
@@ -337,6 +339,8 @@ describe("SEEDED_GROUPS", () => {
     it("grants rfq.manage", () => expect(g.permissions).toContain("rfq.manage"))
     it("grants deliveries.confirm", () => expect(g.permissions).toContain("deliveries.confirm"))
     it("grants suppliers.manage", () => expect(g.permissions).toContain("suppliers.manage"))
+    it("expedites purchase orders (it chases the supplier)", () => expect(g.permissions).toContain("po.expedite"))
+    it("does NOT approve purchase orders — the preparer never approves", () => expect(g.permissions).not.toContain("po.approve"))
     it("does NOT grant employees.manage", () => expect(g.permissions).not.toContain("employees.manage"))
     it("does NOT grant invoices.manage", () => expect(g.permissions).not.toContain("invoices.manage"))
 
@@ -452,6 +456,8 @@ describe("permissionLabelKey", () => {
       "rfq.manage": "perm_rfq_manage",
       "offers.view": "perm_offers_view",
       "offers.accept": "perm_offers_accept",
+      "po.approve": "perm_po_approve",
+      "po.expedite": "perm_po_expedite",
       "suppliers.manage": "perm_suppliers_manage",
       "deliveries.confirm": "perm_deliveries_confirm",
       "employees.manage": "perm_employees_manage",

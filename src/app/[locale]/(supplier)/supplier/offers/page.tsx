@@ -29,12 +29,14 @@ import { Label } from "@/components/ui/label"
 import { History, Eye, Clock, CheckCircle2, XCircle, MoreVertical, Loader2, Trash2, Calendar, Tag, DollarSign, MessageSquare, Phone, ArrowDown, Box, FileText, CircleDot, Check, AlertCircle, Archive, ChevronDown, ChevronUp, Truck } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
-import { collection, query, where, orderBy, deleteDoc, doc, setDoc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, deleteDoc, doc, getDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
 import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
+import { displayPoNumber } from "@/lib/procurement/format"
+import { legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
 
 export default function SupplierOffersPage() {
   const t = useTranslations("Portal.Supplier")
@@ -120,6 +122,17 @@ export default function SupplierOffersPage() {
     if (!firestore || !user || !deliveryOffer || !deliveryPersonName.trim() || !deliveryDate) return
     setIsSendingDelivery(true)
     try {
+      // The items come from the RFQ — an offer has no `products` (bug B1: the
+      // notice used to carry `items: []`, so nothing landed in stock on confirm).
+      let items = legacyItemsFromRfq(null)
+      if (deliveryOffer.rfqId) {
+        try {
+          const rfqSnap = await getDoc(doc(firestore, "rfqs", deliveryOffer.rfqId))
+          items = legacyItemsFromRfq((rfqSnap.data()?.products as RfqProductLike[] | undefined) || null)
+        } catch {
+          items = []
+        }
+      }
       await addDoc(collection(firestore, "deliveries"), {
         rfqId: deliveryOffer.rfqId || null,
         offerId: deliveryOffer.id,
@@ -134,7 +147,7 @@ export default function SupplierOffersPage() {
         deliveryDate: new Date(deliveryDate).toISOString(),
         notes: deliveryNotes.trim() || null,
         rfqTitle: deliveryOffer.rfqTitle || "",
-        items: deliveryOffer.products || [],
+        items,
         status: "pending_confirmation",
         createdAt: serverTimestamp()
       })
@@ -160,7 +173,7 @@ export default function SupplierOffersPage() {
       setHandoverRecipientName("")
       setDeliveryDate("")
       setDeliveryNotes("")
-    } catch (err) {
+    } catch {
       toast({ title: t("error_title"), variant: "destructive" })
     } finally {
       setIsSendingDelivery(false)
@@ -298,7 +311,7 @@ export default function SupplierOffersPage() {
       toast({ title: t("price_updated"), description: t("price_updated_desc") });
       setUpdatePriceOffer(null);
       setNewPrice("");
-    } catch (error) {
+    } catch {
       toast({ title: t("error_title"), description: t("price_update_failed"), variant: "destructive" });
     } finally {
       setIsUpdatingPrice(false);
@@ -337,7 +350,7 @@ export default function SupplierOffersPage() {
       setConfirmSampleOffer(null);
       // Open chat dialog after sending
       setOpeningChat(offerId);
-    } catch (error) {
+    } catch {
       toast({ title: t("error_title"), description: t("sample_error"), variant: "destructive" });
     } finally {
       setDeletingId(null);
@@ -486,7 +499,16 @@ export default function SupplierOffersPage() {
                                   : <MessageSquare size={16} />}
                               </Button>
                               <ContractorWhatsAppButton contractorId={offer.contractorId} />
-                              {deliveryByOfferId[offer.id] ? (
+                              {offer.poId ? (
+                                <Link
+                                  href={`/supplier/orders?po=${offer.poId}`}
+                                  title={t("po_open_order")}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-module/30 bg-module/10 px-2.5 text-[11px] font-bold text-module transition-colors hover:bg-module/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                >
+                                  <Truck size={12} />
+                                  <span dir="ltr" className="font-mono tracking-latin">{displayPoNumber(offer.poNumber, locale) || t("po_offer_order_label")}</span>
+                                </Link>
+                              ) : deliveryByOfferId[offer.id] ? (
                                 <Badge
                                   variant="outline"
                                   className={cn(
@@ -688,6 +710,17 @@ export default function SupplierOffersPage() {
                 </div>
                 <p className="font-bold">{viewOffer.rfqTitle || t("offer_undefined")}</p>
               </div>
+              {viewOffer.poId && (
+                <div className="p-3 bg-module/10 rounded-lg border border-module/20 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{t("po_offer_order_label")}</p>
+                    <p dir="ltr" className="font-mono text-sm font-bold text-module tracking-latin">{displayPoNumber(viewOffer.poNumber, locale) || "—"}</p>
+                  </div>
+                  <Button variant="outline" size="sm" asChild className="h-8 rounded-lg text-xs">
+                    <Link href={`/supplier/orders?po=${viewOffer.poId}`}>{t("po_open_order")}</Link>
+                  </Button>
+                </div>
+              )}
               <div className="p-3 bg-slate-50 rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">{t("offer_id_label")}</p>
                 <p className="font-mono text-xs text-slate-500">{viewOffer.id}</p>

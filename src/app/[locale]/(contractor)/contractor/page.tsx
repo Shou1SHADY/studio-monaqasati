@@ -36,6 +36,8 @@ const ITEM_TILE: Record<WorkQueueItemType, PortalComponentId> = {
   mfg_notes_to_receive: "warehouses",
   mfg_custody_to_receive: "project-management",
   mfg_purchase_requests: "procurement",
+  po_approve: "procurement",
+  po_attention: "procurement",
 }
 
 // Solid accent classes for the tile hover-bar and decision-card rail — the
@@ -70,6 +72,8 @@ const ITEM_ACTION_KEY: Record<WorkQueueItemType, string> = {
   mfg_notes_to_receive: "action_mfg_notes_to_receive",
   mfg_custody_to_receive: "action_mfg_custody_to_receive",
   mfg_purchase_requests: "action_mfg_purchase_requests",
+  po_approve: "action_po_approve",
+  po_attention: "action_po_attention",
 }
 
 type TFn = ReturnType<typeof useTranslations<"Portal.Contractor">>
@@ -97,6 +101,12 @@ function cardMetrics(item: WorkQueueItem, t: TFn): Array<{ label: string; value:
       return [{ label: t("metric_offers_received"), value: item.data.offerCount as number }]
     case "rfq_no_offers":
       return [{ label: t("metric_days_open"), value: item.data.daysOpen as number }]
+    case "po_attention":
+      return [
+        { label: t("metric_po_late"), value: item.data.late as number },
+        { label: t("metric_po_not_accepted"), value: item.data.notAccepted as number },
+        { label: t("metric_po_not_sent"), value: item.data.notSent as number },
+      ]
     case "low_stock":
       return [
         { label: t("metric_quantity"), value: item.data.quantity as number },
@@ -157,6 +167,10 @@ function describePriorityItem(item: WorkQueueItem, t: ReturnType<typeof useTrans
       return t("queue_item_mfg_custody_to_receive", { count: item.data.count as number, projectName: (item.data.projectName as string) || "" })
     case "mfg_purchase_requests":
       return t("queue_item_mfg_purchase_requests", { count: item.data.count as number })
+    case "po_approve":
+      return t("queue_item_po_approve", { count: item.data.count as number })
+    case "po_attention":
+      return t("queue_item_po_attention", { count: item.data.count as number, late: item.data.late as number, notAccepted: item.data.notAccepted as number, notSent: item.data.notSent as number })
   }
 }
 
@@ -214,8 +228,10 @@ export default function ContractorDashboard() {
     mfg_notes_to_receive: can("warehouses.receive") || can("warehouses.manage"),
     mfg_custody_to_receive: can("projects.edit"),
     mfg_purchase_requests: can("rfq.manage") || can("rfq.create"),
+    po_approve: can("po.approve"),
+    po_attention: can("po.expedite") || can("offers.accept") || can("po.approve"),
   }
-  const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid)
+  const { items: allQueueItems, isLoading: queueLoading, stats, recentItems } = useWorkQueue(myOrgId, user?.uid, { isOrgOwner })
   const queueItems = allQueueItems.filter((item) => itemPermission[item.type])
   const top3 = queueItems.slice(0, 3)
   const ongoingProjectsCount = stats.projectsOngoing
