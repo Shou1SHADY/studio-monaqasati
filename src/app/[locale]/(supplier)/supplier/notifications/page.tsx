@@ -10,6 +10,8 @@ import { Bell, CheckCircle2, Clock, Loader2, TrendingUp, XCircle, ArrowDown, Box
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
+import { asSupplierSees } from "@/lib/procurement/supplier"
 import { Link, useRouter } from "@/i18n/routing"
 
 export default function SupplierNotificationsPage() {
@@ -62,7 +64,10 @@ export default function SupplierNotificationsPage() {
     }
   }, [firestore, user, isUserLoading, profile?.organizationId])
 
-  const { data: offers, isLoading } = useCollection(offersQuery)
+  const { data: offersRaw, isLoading } = useCollection(offersQuery)
+  // An award still waiting for Finance is not news yet (`awardDisclosed`).
+  const { ordersById } = useSupplierOrdersById(profile?.organizationId || user?.uid)
+  const offers = React.useMemo(() => (offersRaw ? asSupplierSees(offersRaw as any[], ordersById) : offersRaw), [offersRaw, ordersById])
 
 
   const supplierOrgId = (profile as any)?.organizationId || user?.uid

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
-import { resolveGuestOfferToken } from "@/lib/guest-offer"
+import { guestVisibleStatus, resolveGuestOfferToken } from "@/lib/guest-offer"
 import { guestOfferAvailability } from "@/utils/guest-offer-workflow"
 
 // Public endpoint: resolves a guest offer token to everything the supplier
@@ -58,8 +58,11 @@ export async function GET(
       // Display-only — the page falls back to a generic label.
     }
 
+    // What the guest may see of an award: nothing until its order is sent.
+    const shownStatus = await guestVisibleStatus(db, offer)
+
     const availability = guestOfferAvailability(
-      { status: offer.status as string, sampleStatus: offer.sampleStatus as string },
+      { status: shownStatus, sampleStatus: offer.sampleStatus as string },
       Boolean(delivery)
     )
 
@@ -71,7 +74,7 @@ export async function GET(
           companyName: offer.companyName || offer.supplierName || "",
           contactName: (offer.guestContact as { name?: string } | undefined)?.name || "",
           price: offer.price ?? null,
-          status: offer.status || "",
+          status: shownStatus,
           sampleStatus: offer.sampleStatus || null,
           targetPrice: offer.targetPrice ?? null,
           reductionNote: offer.reductionNote || null,

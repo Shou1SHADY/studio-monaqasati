@@ -8,6 +8,8 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { PUBLIC_BASE_URL } from "@/lib/rfq-share"
 import { normalizeGuestChannel, type GuestOfferChannel } from "@/utils/guest-offer-workflow"
+import { supplierOfferStatus } from "@/lib/procurement/supplier"
+import { PURCHASE_ORDERS, type PurchaseOrder } from "@/lib/procurement/types"
 
 // Guest links outlive the 3-day RFQ share link: the negotiation (reduction →
 // sample → award → delivery) routinely runs for weeks after the offer lands.
@@ -298,4 +300,28 @@ export async function notifyContractor(params: {
       read: false,
     })
     .catch((err) => console.error("Failed to write contractor notification:", err))
+}
+
+/**
+ * The status a guest supplier may see — the same rule as the portal's
+ * (`awardDisclosed`): an award is internal until Finance has approved its
+ * purchase order and it has been sent. Used for what the guest page shows AND
+ * for what the guest may do, so a guest cannot send a delivery notice against
+ * an award nobody has approved.
+ */
+export async function guestVisibleStatus(
+  db: FirebaseFirestore.Firestore,
+  offer: { status?: unknown; poId?: unknown; awaitingOrderApproval?: unknown }
+): Promise<string> {
+  const facts = {
+    status: typeof offer.status === "string" ? offer.status : "",
+    poId: typeof offer.poId === "string" ? offer.poId : null,
+    awaitingOrderApproval: offer.awaitingOrderApproval === true,
+  }
+  const orders = new Map<string, PurchaseOrder>()
+  if (facts.poId) {
+    const snap = await db.collection(PURCHASE_ORDERS).doc(facts.poId).get()
+    if (snap.exists) orders.set(snap.id, { id: snap.id, ...(snap.data() as Omit<PurchaseOrder, "id">) })
+  }
+  return supplierOfferStatus(facts, orders)
 }

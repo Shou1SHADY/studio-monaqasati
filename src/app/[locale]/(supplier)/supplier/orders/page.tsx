@@ -205,10 +205,13 @@ export default function SupplierOrdersPage() {
     return () => window.clearTimeout(id)
   }, [focusPoId, visiblePoIds])
 
-  // Legacy awards: every accepted offer that is NOT already shown as an order card.
+  // Legacy awards: an accepted offer from before purchase orders. An award
+  // that has (or is waiting for) an order is that order's to show — and only
+  // once Finance has approved it and it has been sent; listing it here used to
+  // show every award still awaiting approval as an accepted order.
   const orders = (allOffers || [])
     .filter((o) => ["مقبول", "Accepted", "accepted", "جاري التوصيل", "تم التسليم", "قيد التجهيز"].includes(o.status || ""))
-    .filter((o) => !(o.poId && visiblePoIds.has(o.poId)))
+    .filter((o) => !o.poId && !(o as { awaitingOrderApproval?: boolean }).awaitingOrderApproval)
     .sort((a, b) => {
       const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
       const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0

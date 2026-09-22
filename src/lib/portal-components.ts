@@ -263,6 +263,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage", comingSoon: RECEIPTS_COMING_SOON },
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
+          { titleKey: "fin_nav_procurement_desk", href: "/contractor/accounting/procurement-desk", icon: ClipboardCheck, requiredPermission: "po.approve" },
         ],
       },
       {

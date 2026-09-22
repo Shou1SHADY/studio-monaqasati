@@ -36,7 +36,8 @@ import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
+import { asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
+import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 
 export default function SupplierOffersPage() {
   const t = useTranslations("Portal.Supplier")
@@ -192,12 +193,18 @@ export default function SupplierOffersPage() {
       deleteDoc(doc(firestore, "offers", o.id)).catch(() => {})
     })
   }, [firestore, rawOffers])
+  // An award still waiting for Finance reads "under review" here — the
+  // badge, the counts and the delivery button all follow (`awardDisclosed`).
+  const { ordersById } = useSupplierOrdersById(profile?.organizationId || user?.uid)
   const allOffers = rawOffers
-    ? [...rawOffers].sort((a: any, b: any) => {
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-        return bTime - aTime
-      })
+    ? asSupplierSees(
+        [...rawOffers].sort((a: any, b: any) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
+          return bTime - aTime
+        }),
+        ordersById
+      )
     : []
   const offers = allOffers.filter((o: any) => !o.archived)
   const archivedOffers = allOffers.filter((o: any) => o.archived)

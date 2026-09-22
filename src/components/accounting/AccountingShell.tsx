@@ -22,6 +22,8 @@ interface ShellTab {
   permission: PermissionId
   /** Lives outside /accounting (the Finance documents desk). */
   portalRoot?: boolean
+  /** Only where the company buys through Procurement — the contractor portal. */
+  contractorOnly?: boolean
 }
 
 /**
@@ -56,6 +58,8 @@ const TAB_GROUPS: Array<{ labelKey: string; tabs: ShellTab[] }> = [
       { segment: "guarantees", labelKey: "fin_nav_guarantees", permission: "invoices.manage", portalRoot: true },
       // Finance's counterpart to Sales: transfer notices, holds, credit notes.
       { segment: "sales-desk", labelKey: "fin_nav_sales_desk", permission: "invoices.manage" },
+      // Finance approves the purchase orders Procurement prepares (22 Sep review).
+      { segment: "procurement-desk", labelKey: "fin_nav_procurement_desk", permission: "po.approve", contractorOnly: true },
     ],
   },
   {
@@ -124,7 +128,10 @@ export function AccountingShell({
     .filter((href) => pathname === href || (href !== base && pathname.startsWith(`${href}/`)))
     .sort((a, b) => b.length - a.length)[0]
 
-  const groups = TAB_GROUPS.map((g) => ({ ...g, tabs: g.tabs.filter((tab) => can(tab.permission)) })).filter((g) => g.tabs.length > 0)
+  const groups = TAB_GROUPS.map((g) => ({
+    ...g,
+    tabs: g.tabs.filter((tab) => can(tab.permission) && (!tab.contractorOnly || portal === "contractor")),
+  })).filter((g) => g.tabs.length > 0)
   // The rail shows the groups; the active group's pages sit under it as pills.
   // The old six-row box of every page at once was taller than some screens'
   // content — Manufacturing's one-row rail is the pattern the customer asked for.

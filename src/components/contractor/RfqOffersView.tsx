@@ -593,6 +593,10 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       // offer is out — the status literals stay exactly what every reader compares.
       if (storedAwardReason) updateData.awardReason = storedAwardReason
       if (decision === "مرفوض" && extras?.exclusion) updateData.exclusion = extras.exclusion
+      // 22 Sep review: the award is Procurement's decision and goes to Finance
+      // as a purchase order. The supplier is told nothing until Finance has
+      // approved that order and it has been sent — see `awardDisclosed`.
+      if (decision === "مقبول") updateData.awaitingOrderApproval = true
 
       if (decision === "مقبول") {
         const batch = writeBatch(firestore)
@@ -612,43 +616,19 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       return
     }
 
-    // Step 2: Auto-create chat when accepting (guest offers have no account to chat with)
-    if (decision === "مقبول" && offer && !offer.isGuestOffer) {
-      try {
-        const chatRef = doc(firestore, "chats", offerId)
-        const snap = await getDoc(chatRef)
-        if (!snap.exists()) {
-          await setDoc(chatRef, {
-            offerId: offerId,
-            rfqId: rfqId,
-            rfqTitle: offer.rfqTitle || offer.title || "",
-            contractorId: user.uid,
-            contractorOrgId: profile?.organizationId || user.uid,
-            supplierId: offer.supplierId,
-            supplierOrgId: offer.organizationId || offer.supplierId,
-            createdAt: new Date().toISOString()
-          })
-        }
-      } catch (error: any) {
-        // The award is already written; a chat that failed to open must not
-        // keep the supplier from hearing of it (impl-b §8.4). `openChat`
-        // creates the thread lazily the next time anyone opens it.
-        console.error("❌ setDoc chat failed:", error?.code, error?.message)
-        toast({ title: t("offers_toast_chat_alert"), description: t("offers_toast_chat_alert_desc"), variant: "destructive" })
-      }
-    }
+    // No chat is opened at an award: a thread appearing would tell the
+    // supplier before Finance approves (22 Sep review). `openChat` creates it
+    // the first time anyone opens the conversation.
 
-    // Step 3: Write notification to supplier's subcollection (skip guests — no user doc)
-    if (offer?.supplierId && !offer.isGuestOffer) {
+    // Step 3: Write notification to supplier's subcollection (skip guests — no user doc).
+    // Not for an award: the supplier hears of it when its purchase order is
+    // sent (`po_sent`), after Finance has approved it.
+    if (offer?.supplierId && !offer.isGuestOffer && decision !== "مقبول") {
       try {
         let notifType = "offer_rejected"
         let notifTitle = t("offers_notif_rejected_title")
         let notifMessage = t("offers_notif_rejected_msg", { title: offer.rfqTitle || "" })
-        if (decision === "مقبول") {
-          notifType = "offer_accepted"
-          notifTitle = t("offers_notif_accepted_title")
-          notifMessage = t("offers_notif_accepted_msg", { title: offer.rfqTitle || "" })
-        } else if (decision === "مطلوب تخفيض") {
+        if (decision === "مطلوب تخفيض") {
           notifType = "price_reduction"
           notifTitle = t("offers_notif_reduction_title")
           let baseMsg = t("offers_notif_reduction_msg", { title: offer.rfqTitle || "" })
@@ -656,7 +636,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
           if (note) baseMsg += `\n${t("offers_notif_reduction_note", { note })}`
           notifMessage = baseMsg
         }
-        const i18nKey = notifType === "offer_accepted" ? "pn_offer_accepted" : notifType === "price_reduction" ? "pn_price_reduction" : "pn_offer_rejected"
+        const i18nKey = notifType === "price_reduction" ? "pn_price_reduction" : "pn_offer_rejected"
         await addDoc(collection(firestore, "users", offer.supplierId, "notifications"), {
           userId: offer.supplierId,
           organizationId: offer.organizationId || offer.supplierId,
@@ -679,11 +659,14 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
       }
     }
 
-    // Step 4: Guests get the same news by WhatsApp/email instead of an inbox
-    queueGuestNotify(offer, eventForDecision(decision, Boolean(offer?.isGuestOffer)), {
-      note,
-      targetPrice: requestedPrice,
-    })
+    // Step 4: Guests get the same news by WhatsApp/email instead of an inbox —
+    // again not for an award, which reaches a guest when its order is sent.
+    if (decision !== "مقبول") {
+      queueGuestNotify(offer, eventForDecision(decision, Boolean(offer?.isGuestOffer)), {
+        note,
+        targetPrice: requestedPrice,
+      })
+    }
 
     // Step 5 (PRD 3.0): the purchase order over the award. The award stands
     // whatever happens here — a failed order is raised later from the card.

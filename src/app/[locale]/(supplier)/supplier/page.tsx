@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import { useTranslations, useLocale } from 'next-intl'
 import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
@@ -36,6 +36,8 @@ import { SubmitOfferDialog } from "@/components/supplier/SubmitOfferDialog"
 import { Link } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { useActiveCompanyName } from "@/hooks/useActiveCompanyName"
+import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
+import { asSupplierSees } from "@/lib/procurement/supplier"
 import { collection, query, where, addDoc, doc, orderBy } from "firebase/firestore"
 import { useRouter } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
@@ -112,7 +114,10 @@ export default function SupplierDashboard() {
   }, [firestore, selectedRfq?.id])
 
   const { data: rfqs } = useCollection(rfqsQuery)
-  const { data: offers } = useCollection(offersQuery)
+  const { data: offersRaw } = useCollection(offersQuery)
+  // Awards still waiting for Finance count as under review, not accepted.
+  const { ordersById } = useSupplierOrdersById(userData?.organizationId || user?.uid)
+  const offers = useMemo(() => (offersRaw ? asSupplierSees(offersRaw as any[], ordersById) : offersRaw), [offersRaw, ordersById])
   const { data: inquiries, isLoading: inquiriesLoading } = useCollection(inquiriesQuery)
 
   const submitQuestion = async () => {

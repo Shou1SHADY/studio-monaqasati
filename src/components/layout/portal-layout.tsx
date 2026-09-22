@@ -32,6 +32,8 @@ import { resolveActiveContractorComponent, resolveActiveSupplierComponent } from
 import { notificationCopy, notificationHref } from "@/lib/mfg-events"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
+import { asSupplierSees } from "@/lib/procurement/supplier"
 import { useActiveCompanyName, type OrgMembership } from "@/hooks/useActiveCompanyName"
 import { isSecondaryOrg, identityDocRef } from "@/lib/org-identity"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
@@ -246,7 +248,13 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
     )
   }, [firestore, user, isUserLoading, isContractor, profile?.organizationId])
 
-  const { data: supplierOffers } = useCollection(supplierOffersQuery)
+  const { data: supplierOffersRaw } = useCollection(supplierOffersQuery)
+  // The bell must not ring for an award Finance has not approved yet.
+  const { ordersById: supplierOrdersById } = useSupplierOrdersById(isSupplier ? profile?.organizationId || user?.uid : null)
+  const supplierOffers = React.useMemo(
+    () => (supplierOffersRaw ? asSupplierSees(supplierOffersRaw as any[], supplierOrdersById) : supplierOffersRaw),
+    [supplierOffersRaw, supplierOrdersById]
+  )
   const { data: supplierRfqs } = useCollection(supplierMatchingRfqsQuery)
   const { data: contractorRfqs } = useCollection(contractorRfqsQuery)
 

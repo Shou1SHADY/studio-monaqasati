@@ -12,6 +12,8 @@ import { useCollection, useFirestore, useStorage, useUser, useMemoFirebase, useD
 import { collection, query, where, doc, addDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 import { useToast } from "@/hooks/use-toast"
+import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
+import { asSupplierSees } from "@/lib/procurement/supplier"
 import {
   Loader2,
   ShieldCheck,
@@ -384,7 +386,10 @@ export default function SupplierGuaranteesPage() {
   }, [firestore, user, isUserLoading, profile])
   const { data: offers, isLoading } = useCollection(offersQuery)
 
-  const acceptedOffers = ((offers || []) as any[]).filter(
+  // A guarantee answers an award the supplier has been told of — not one
+  // still waiting for Finance to approve its purchase order.
+  const { ordersById } = useSupplierOrdersById((profile as any)?.organizationId || user?.uid)
+  const acceptedOffers = asSupplierSees((offers || []) as any[], ordersById).filter(
     (o) => o.status === "مقبول" || o.status === "تم التسليم"
   )
 

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto"
 import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
-import { resolveGuestOfferToken, notifyContractor } from "@/lib/guest-offer"
+import { guestVisibleStatus, resolveGuestOfferToken, notifyContractor } from "@/lib/guest-offer"
 import {
   isGuestActionAllowed,
   isGuestOfferAction,
@@ -93,7 +93,7 @@ export async function POST(
     if (
       !isGuestActionAllowed(
         action,
-        { status: offer.status as string, sampleStatus: offer.sampleStatus as string },
+        { status: await guestVisibleStatus(db, offer), sampleStatus: offer.sampleStatus as string },
         hasDeliveryNotice
       )
     ) {

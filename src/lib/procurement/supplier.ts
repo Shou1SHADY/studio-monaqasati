@@ -39,6 +39,63 @@ export function visibleSupplierOrders(orders: PurchaseOrder[]): PurchaseOrder[] 
     .sort((a, b) => (b.sentAt || b.createdAt || "").localeCompare(a.sentAt || a.createdAt || ""))
 }
 
+// ---------------------------------------------------------------------------
+// The award, as the supplier may know it (22 Sep review)
+// ---------------------------------------------------------------------------
+
+/** The status Procurement's award writes. */
+export const AWARDED = "مقبول"
+/** What a supplier reads while the award is still internal. */
+export const UNDER_REVIEW = "قيد المراجعة"
+
+export interface AwardFacts {
+  status?: string | null
+  poId?: string | null
+  /** Written with the award since 22 Sep: the award is internal until its
+   * purchase order is approved by Finance and sent. */
+  awaitingOrderApproval?: boolean | null
+}
+
+/**
+ * Whether the supplier has been told of this award.
+ *
+ * Procurement's award is a decision inside the buying company; the supplier
+ * learns of it only when Finance has approved the purchase order and it has
+ * been SENT — Finance may still refuse, and a supplier who had already been
+ * told "accepted" would be committing stock against money nobody approved.
+ * So an award that carries a purchase order is disclosed exactly when that
+ * order is the supplier's to see; one still waiting for its order is not.
+ * An award from before the purchase-order era (neither field) was told at the
+ * time, and stays told.
+ */
+export function awardDisclosed(offer: AwardFacts, ordersById: ReadonlyMap<string, PurchaseOrder>): boolean {
+  if (offer.poId) {
+    const po = ordersById.get(offer.poId)
+    return po ? supplierSegmentOf(po) != null : false
+  }
+  return !offer.awaitingOrderApproval
+}
+
+/**
+ * The offer's status as the supplier's screens should read it. Every supplier
+ * surface — badges, counts, the guarantee form, the delivery button, the bell —
+ * goes through this, so none of them can announce an award Finance has not
+ * approved.
+ */
+export function supplierOfferStatus<T extends AwardFacts>(offer: T, ordersById: ReadonlyMap<string, PurchaseOrder>): string {
+  const status = offer.status || ""
+  if (status === AWARDED && !awardDisclosed(offer, ordersById)) return UNDER_REVIEW
+  return status
+}
+
+/** An offer list with each status replaced by what the supplier may see. */
+export function asSupplierSees<T extends AwardFacts>(offers: T[], ordersById: ReadonlyMap<string, PurchaseOrder>): T[] {
+  return offers.map((o) => {
+    const shown = supplierOfferStatus(o, ordersById)
+    return shown === o.status ? o : { ...o, status: shown }
+  })
+}
+
 export function inSupplierSegment(po: PurchaseOrder, segment: SupplierSegment): boolean {
   const s = supplierSegmentOf(po)
   if (s == null) return false

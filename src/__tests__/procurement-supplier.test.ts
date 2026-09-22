@@ -8,6 +8,11 @@
  */
 
 import {
+  AWARDED,
+  UNDER_REVIEW,
+  asSupplierSees,
+  awardDisclosed,
+  supplierOfferStatus,
   buildDeliveryNotice,
   buildDeliveryNoticeNotification,
   defaultNoticeLines,
@@ -296,5 +301,60 @@ describe("legacy offers — B1: items from the RFQ", () => {
     ])
     expect(legacyItemsFromRfq(null)).toEqual([])
     expect(legacyItemsFromRfq([{ name: "X", quantity: "abc" }])).toEqual([{ name: "X", quantity: 0, unitOfMeasure: "" }])
+  })
+})
+
+/**
+ * The 22 Sep review: Procurement's award goes to Finance as a purchase order,
+ * and the supplier is told nothing until Finance has approved it and it has
+ * been sent. In the demo the supplier saw "accepted" the moment Procurement
+ * pressed Accept — before Finance, who might have no money for it, had seen
+ * anything. Every supplier screen reads the award through these.
+ */
+describe("the award, as the supplier may know it", () => {
+  const orders = (...list: PurchaseOrder[]) => new Map(list.map((o) => [o.id, o]))
+  const award = { status: AWARDED, poId: "po1", awaitingOrderApproval: true }
+
+  it("is hidden while its order waits for Finance, or is approved but unsent", () => {
+    for (const status of ["awaiting_approval", "approved"] as PoStoredStatus[]) {
+      expect(awardDisclosed(award, orders(po({ status, sentAt: null })))).toBe(false)
+      expect(supplierOfferStatus(award, orders(po({ status, sentAt: null })))).toBe(UNDER_REVIEW)
+    }
+  })
+
+  it("is told the moment the order is sent, and stays told", () => {
+    expect(supplierOfferStatus(award, orders(po({ status: "sent", sentAt: "2026-09-22T09:00:00Z" })))).toBe(AWARDED)
+    expect(supplierOfferStatus(award, orders(po({ status: "accepted", sentAt: "2026-09-22T09:00:00Z" })))).toBe(AWARDED)
+  })
+
+  it("stays hidden when Finance cancels the order before it is ever sent", () => {
+    expect(awardDisclosed(award, orders(po({ status: "cancelled", sentAt: null, log: [] })))).toBe(false)
+  })
+
+  it("stays hidden while the order has not been raised, or has not loaded", () => {
+    expect(awardDisclosed({ status: AWARDED, awaitingOrderApproval: true }, orders())).toBe(false)
+    expect(awardDisclosed(award, orders())).toBe(false)
+  })
+
+  it("leaves an award from before purchase orders exactly as it was", () => {
+    expect(supplierOfferStatus({ status: AWARDED }, orders())).toBe(AWARDED)
+  })
+
+  it("never touches a status that is not an award", () => {
+    for (const status of ["مرفوض", "مطلوب تخفيض", "قيد المراجعة", "تم التسليم"]) {
+      expect(supplierOfferStatus({ status, poId: "po1", awaitingOrderApproval: true }, orders())).toBe(status)
+    }
+  })
+
+  it("rewrites a list without disturbing anything else on each offer", () => {
+    const offers = [
+      { id: "a", status: AWARDED, poId: "po1", awaitingOrderApproval: true, price: 900 },
+      { id: "b", status: "مرفوض", price: 1200 },
+    ]
+    const seen = asSupplierSees(offers, orders(po({ status: "awaiting_approval", sentAt: null })))
+    expect(seen.map((o) => o.status)).toEqual([UNDER_REVIEW, "مرفوض"])
+    expect(seen[0].price).toBe(900)
+    expect(seen[1]).toBe(offers[1])
+    expect(offers[0].status).toBe(AWARDED)
   })
 })

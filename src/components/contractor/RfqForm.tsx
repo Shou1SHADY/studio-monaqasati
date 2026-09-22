@@ -39,7 +39,7 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
 import { displayPoNumber } from "@/lib/procurement/format"
-import { collection, doc, getDoc, setDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
+import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
@@ -793,34 +793,15 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           deliveryLocation: formData.city,
           deliveryBatches: [{ location: formData.city, deliveryDate: formData.deadline, price, quantity: "" }],
           status: "مقبول",
+          // Internal until Finance approves its purchase order and it is
+          // sent: no chat and no notice now (22 Sep review, `awardDisclosed`).
+          awaitingOrderApproval: true,
           decidedByUserId: user.uid,
           decidedByUserName: profile?.name || user.email || "",
           decidedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         })
         directOffer = { id: offerRef.id, price, supplierId: supplierUserId, organizationId: directSupplierOrgId, supplierName }
-        await setDoc(doc(firestore, "chats", offerRef.id), {
-          offerId: offerRef.id,
-          rfqId,
-          rfqTitle,
-          contractorId: user.uid,
-          contractorOrgId,
-          supplierId: supplierUserId,
-          supplierOrgId: directSupplierOrgId,
-          createdAt: new Date().toISOString(),
-        })
-        await addDoc(collection(firestore, "users", supplierUserId, "notifications"), {
-          userId: supplierUserId,
-          organizationId: directSupplierOrgId,
-          type: "direct_award",
-          title: t("direct_award_notif_title"),
-          message: t("direct_award_notif_msg", { title: rfqTitle, price: Number(directPrice).toLocaleString() }),
-          offerId: offerRef.id,
-          rfqId,
-          rfqTitle,
-          createdAt: new Date().toISOString(),
-          read: false,
-        })
       } catch (err) {
         console.error("Direct award post-create failed:", err)
         toast({ title: t("newrfq_direct_partial_error"), variant: "destructive" })
