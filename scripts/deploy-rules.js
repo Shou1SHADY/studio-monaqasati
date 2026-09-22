@@ -88,6 +88,13 @@ async function token() {
     return { id: rel.rulesetName.split("/").pop(), updated: rel.updateTime, content: rs.source.files[0].content }
   }
 
+  // A ruleset is the same ruleset whatever its line endings: this working copy
+  // keeps CRLF and git stores LF, so a raw byte comparison said the live rules
+  // "match NO commit" every time and cried wolf about somebody deploying
+  // uncommitted rules. Compare what Firestore actually reads.
+  const lf = (text) => text.split("\r\n").join("\n")
+  const same = (a, b) => lf(a) === lf(b)
+
   if (checkOnly) {
     const l = await live()
     // Which commit, if any, the live rules came from: the file's history,
@@ -95,7 +102,7 @@ async function token() {
     // not have; no match means someone deployed rules that were never
     // committed — compare before overwriting.
     let from = null
-    if (l.content !== source) {
+    if (!same(l.content, source)) {
       try {
         // Double quotes and no pipe: cmd.exe leaves single quotes in place and
         // splits the command at a "|", which turned this whole lookup into a
@@ -104,7 +111,7 @@ async function token() {
         const commits = execSync('git log --format="%h %ad %s" --date=short -- firestore.rules', { maxBuffer: 1 << 24 }).toString().trim().split("\n")
         for (const line of commits) {
           const h = line.split(" ")[0]
-          if (execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString() === l.content) {
+          if (same(execSync(`git show ${h}:firestore.rules`, { maxBuffer: 1 << 26 }).toString(), l.content)) {
             from = line
             break
           }
@@ -113,7 +120,7 @@ async function token() {
         /* not a git checkout */
       }
     }
-    const verdict = l.content === source
+    const verdict = same(l.content, source)
       ? "matches the file (nothing to deploy)"
       : from
         ? `is the file as committed in ${from} — deploying loses nothing`
@@ -148,7 +155,7 @@ async function token() {
   }
 
   const l = await live()
-  console.log(`${target.toUpperCase()} live ruleset: ${l.id} | updated: ${l.updated} | matches git: ${l.content === source}`)
+  console.log(`${target.toUpperCase()} live ruleset: ${l.id} | updated: ${l.updated} | matches the file: ${same(l.content, source)}`)
 })().catch((e) => {
   console.error(e.message)
   process.exit(1)
