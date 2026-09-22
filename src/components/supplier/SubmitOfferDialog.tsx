@@ -33,7 +33,7 @@ import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompan
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
-import { collection, addDoc, doc, getDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
+import { collection, addDoc, doc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 
@@ -313,7 +313,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
         offerData.offerPdfUrl = offerPdfUrl;
       }
 
-      await addDoc(collection(firestore, "offers"), offerData);
+      const offerRef = await addDoc(collection(firestore, "offers"), offerData);
 
       // Notify contractor of new offer
       try {
@@ -332,33 +332,20 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
             read: false
           });
 
-          // 2. Queue SMS/WhatsApp via Twilio Extension
-          const contractorDoc = await getDoc(doc(firestore, "users", selectedRfq.contractorId));
-          const contractorData = contractorDoc.data();
-          if (contractorData) {
-            const phone = contractorData.phone || contractorData.whatsapp || contractorData.mobile;
-            if (phone) {
-              // Ensure phone starts with + for Twilio
-              let formattedPhone = phone.replace(/\D/g, "");
-              if (formattedPhone.startsWith("0")) formattedPhone = "966" + formattedPhone.slice(1);
-              if (!formattedPhone.startsWith("+")) formattedPhone = "+" + formattedPhone;
-
-              try {
-                const smsRes = await fetch("/api/sms", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    to: formattedPhone,
-                    body: `مدماك تيك: وصلك عرض سعر جديد بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}. قم بتسجيل الدخول للمراجعة.`
-                  })
-                });
-                if (!smsRes.ok) {
-                  console.error("SMS API returned error:", smsRes.status);
-                }
-              } catch (smsError) {
-                console.error("Failed to call SMS API:", smsError);
-              }
+          // 2. A text to the contractor. The server picks the number and
+          // writes the message from the offer itself; it sends once per offer.
+          try {
+            const idToken = await user?.getIdToken().catch(() => null)
+            if (idToken) {
+              const smsRes = await fetch("/api/sms", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+                body: JSON.stringify({ kind: "new_offer", offerId: offerRef.id }),
+              })
+              if (!smsRes.ok) console.error("SMS API returned error:", smsRes.status)
             }
+          } catch (smsError) {
+            console.error("Failed to call SMS API:", smsError)
           }
         }
       } catch (err) {

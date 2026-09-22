@@ -15,7 +15,7 @@ import {
   fetchSignInMethodsForEmail,
   User,
 } from "firebase/auth"
-import { doc, getDoc, setDoc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore"
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -106,24 +106,27 @@ export default function LoginPage() {
     }
   }
 
-  const sendTwoFactorCode = useCallback(async (uid: string, phone: string) => {
-    if (!firestore) return false
-    const code = Math.floor(100000 + Math.random() * 900000).toString()
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+  // The code is made and sent by the server, to the number on the account —
+  // this page never chooses the recipient or writes the code itself.
+  const sendTwoFactorCode = useCallback(async () => {
+    const idToken = await auth?.currentUser?.getIdToken().catch(() => null)
+    if (!idToken) return false
     try {
-      await setDoc(doc(firestore, "users", uid, "2fa", "current"), { code, expiresAt })
-      const messageBody = t("sms_body", { code })
       const smsRes = await fetch("/api/sms", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: phone.startsWith("+") ? phone : `+966${phone.replace(/^0/, "")}`,
-          body: messageBody,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ kind: "login_code", locale: locale === "en" ? "en" : "ar" }),
       })
-      if (!smsRes.ok) {
-        console.error("Twilio SMS send failed, displaying OTP for fallback.")
-        toast({ title: t("test_env_code"), description: t("test_env_desc", { code }) })
+      const payload = (await smsRes.json().catch(() => null)) as { data?: { sent?: boolean; testCode?: string } } | null
+      if (smsRes.status === 429) {
+        // A code was sent within the last minute; it is still valid.
+        toast({ title: t("code_sent"), description: t("code_sent_desc") })
+        return true
+      }
+      if (!smsRes.ok) return false
+      if (payload?.data?.testCode) {
+        // UAT only: there is no SMS gateway there, so the tester is shown the code.
+        toast({ title: t("test_env_code"), description: t("test_env_desc", { code: payload.data.testCode }) })
         return true
       }
       toast({ title: t("code_sent"), description: t("code_sent_desc") })
@@ -132,7 +135,7 @@ export default function LoginPage() {
       console.error("Error triggering 2FA:", error)
       return false
     }
-  }, [firestore, t, toast])
+  }, [auth, locale, t, toast])
 
   // Shared post-auth handler — runs after any successful Firebase Auth sign-in.
   // Checks the Firestore profile, handles 2FA, and redirects to the dashboard.
@@ -174,7 +177,7 @@ export default function LoginPage() {
 
     if (userData.twoFactorEnabled && userData.phone) {
       setTempUserData({ uid: user.uid, role, name: userData.name || t("dear_user"), phone: userData.phone })
-      const sent = await sendTwoFactorCode(user.uid, userData.phone)
+      const sent = await sendTwoFactorCode()
       if (sent) { setShowTwoFactor(true); setIsLoading(false); return }
     }
 
@@ -203,12 +206,20 @@ export default function LoginPage() {
     if (!firestore || !tempUserData) return
     setTwoFactorLoading(true)
     try {
-      const otpDoc = await getDoc(doc(firestore, "users", tempUserData.uid, "2fa", "current"))
-      if (!otpDoc.exists()) throw new Error(t("err_code_not_found"))
-      const otpData = otpDoc.data()
-      if (new Date() > new Date(otpData.expiresAt)) throw new Error(t("err_code_expired"))
-      if (otpData.code !== twoFactorCode) throw new Error(t("err_code_invalid"))
-      await deleteDoc(doc(firestore, "users", tempUserData.uid, "2fa", "current"))
+      // Checked on the server: the code is not readable from this browser.
+      const idToken = await auth?.currentUser?.getIdToken().catch(() => null)
+      if (!idToken) throw new Error(t("err_2fa_process"))
+      const res = await fetch("/api/auth/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ code: twoFactorCode.trim() }),
+      })
+      if (!res.ok) {
+        const failure = (await res.json().catch(() => null)) as { code?: string } | null
+        if (failure?.code === "NOT_FOUND") throw new Error(t("err_code_not_found"))
+        if (failure?.code === "EXPIRED" || failure?.code === "EXHAUSTED") throw new Error(t("err_code_expired"))
+        throw new Error(t("err_code_invalid"))
+      }
       sessionStorage.setItem(`2fa_verified_${tempUserData.uid}`, "true")
       toast({ title: t("success_login"), description: t("welcome_user", { name: tempUserData.name }) })
       if (tempUserData.role === "Admin") router.push("/admin")
@@ -340,7 +351,7 @@ export default function LoginPage() {
 
               <div className="flex flex-col gap-2 pt-4">
                 <Button type="button" variant="ghost" className="w-full h-11 text-sm font-semibold text-primary hover:bg-primary/5 transition-all"
-                  onClick={() => tempUserData && sendTwoFactorCode(tempUserData.uid, tempUserData.phone)}>
+                  onClick={() => tempUserData && sendTwoFactorCode()}>
                   {t("resend_code")}
                 </Button>
                 <Button type="button" variant="outline" className="w-full h-11 text-sm font-bold border-border hover:bg-muted transition-all"

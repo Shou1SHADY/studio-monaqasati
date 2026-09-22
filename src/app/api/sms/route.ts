@@ -1,26 +1,111 @@
-import { NextResponse } from "next/server";
-import { sendSms, isSmsConfigured } from "@/lib/sms";
+import { NextResponse } from "next/server"
+import { randomInt } from "node:crypto"
+import { z } from "zod"
+import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
+import { isSmsConfigured, normalizePhoneE164, sendSms } from "@/lib/sms"
+import { OTP_RESEND_MS } from "@/lib/otp"
+import arMessages from "../../../../messages/ar.json"
+import enMessages from "../../../../messages/en.json"
+
+// The only way this app sends a text, and it no longer takes free text.
+//
+// It used to accept any `to` and any `body` from anyone — harmless while
+// Twilio was unconfigured, and an open relay on the account the day it was:
+// anyone on the internet could text any number, at the company's expense,
+// from the company's sender. Now the caller must be signed in, the message is
+// one of two the SERVER writes, and the recipient is looked up here, never
+// taken from the request. A caller can choose which of their own texts to
+// trigger; they can no longer choose who receives it or what it says.
+
+const body = z.discriminatedUnion("kind", [
+  // The second sign-in step: a code to the caller's own number on file.
+  z.object({ kind: z.literal("login_code"), locale: z.enum(["ar", "en"]).default("ar") }),
+  // A supplier's new offer: tell the contractor who asked for it, once.
+  z.object({ kind: z.literal("new_offer"), offerId: z.string().min(1).max(128) }),
+])
+
+const fail = (message: string, code: string, status: number) =>
+  NextResponse.json({ error: true, message, code }, { status })
+
+const loginText = (locale: "ar" | "en", code: string) =>
+  (locale === "en" ? enMessages : arMessages).Auth.Login.sms_body.replace("{code}", code)
+
+// UAT has no Twilio: the code is handed back so a tester can still sign in.
+// Never in production — there a missing SMS means no code, as before.
+const isUat = () =>
+  process.env.NEXT_PUBLIC_APP_ENV === "uat" || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "mdmaktech-uat"
 
 export async function POST(req: Request) {
+  const header = req.headers.get("authorization") || ""
+  const idToken = header.startsWith("Bearer ") ? header.slice(7) : null
+  if (!idToken) return fail("Sign in first", "UNAUTHENTICATED", 401)
+
+  let uid: string
   try {
-    const { to, body } = await req.json();
+    uid = (await getAdminAuth().verifyIdToken(idToken)).uid
+  } catch {
+    return fail("Sign in first", "UNAUTHENTICATED", 401)
+  }
 
-    if (!to || !body) {
-      return NextResponse.json({ error: "Missing 'to' or 'body'" }, { status: 400 });
+  const parsed = body.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) return fail("Unknown message", "BAD_REQUEST", 400)
+
+  const db = getAdminFirestore()
+
+  try {
+    if (parsed.data.kind === "login_code") {
+      const user = (await db.collection("users").doc(uid).get()).data() as
+        | { twoFactorEnabled?: boolean; phone?: string }
+        | undefined
+      const phone = normalizePhoneE164(user?.phone)
+      if (!user?.twoFactorEnabled || !phone) return fail("Two-step sign-in is not set up", "NO_2FA", 409)
+
+      const ref = db.collection("users").doc(uid).collection("2fa").doc("current")
+      const previous = (await ref.get()).data() as { issuedAt?: number } | undefined
+      if (previous?.issuedAt && Date.now() - previous.issuedAt < OTP_RESEND_MS) {
+        return fail("Wait a minute before asking for another code", "TOO_SOON", 429)
+      }
+
+      const code = String(randomInt(0, 1_000_000)).padStart(6, "0")
+      await ref.set({ code, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(), issuedAt: Date.now() })
+
+      if (!isSmsConfigured()) {
+        return NextResponse.json({ success: true, data: { sent: false, testCode: isUat() ? code : undefined } })
+      }
+      const result = await sendSms({ to: phone, body: loginText(parsed.data.locale, code) })
+      if (!result.sent) return fail("The code could not be sent", result.error || "SMS_FAILED", 502)
+      return NextResponse.json({ success: true, data: { sent: true } })
     }
 
-    if (!isSmsConfigured()) {
-      return NextResponse.json({ success: true, skipped: true, message: "SMS skipped — Twilio credentials not configured" }, { status: 200 });
-    }
+    // new_offer
+    const offerRef = db.collection("offers").doc(parsed.data.offerId)
+    const offer = (await offerRef.get()).data() as
+      | { supplierId?: string; rfqId?: string; price?: string | number; smsNotifiedAt?: string }
+      | undefined
+    if (!offer) return fail("Offer not found", "NOT_FOUND", 404)
+    if (offer.supplierId !== uid) return fail("Not your offer", "FORBIDDEN", 403)
+    if (offer.smsNotifiedAt) return NextResponse.json({ success: true, data: { sent: false, already: true } })
 
-    const result = await sendSms({ to, body });
-    if (!result.sent) {
-      return NextResponse.json({ error: result.error || "Failed to send SMS" }, { status: 502 });
-    }
+    const rfq = offer.rfqId ? ((await db.collection("rfqs").doc(offer.rfqId).get()).data() as
+      | { contractorId?: string; title?: string }
+      | undefined) : undefined
+    const contractor = rfq?.contractorId
+      ? ((await db.collection("users").doc(rfq.contractorId).get()).data() as
+          | { phone?: string; whatsapp?: string; mobile?: string }
+          | undefined)
+      : undefined
+    const phone = normalizePhoneE164(contractor?.phone || contractor?.whatsapp || contractor?.mobile)
 
-    return NextResponse.json({ success: true });
+    // Marked before sending: a double tap must not become two texts.
+    await offerRef.update({ smsNotifiedAt: new Date().toISOString() })
+    if (!phone || !isSmsConfigured()) return NextResponse.json({ success: true, data: { sent: false } })
+
+    const price = Number(offer.price) || 0
+    const text = `مدماك تيك: وصلك عرض سعر جديد بمبلغ ${price.toLocaleString("ar-SA")} ر.س على طلب عروض الأسعار: ${rfq?.title || ""}. قم بتسجيل الدخول للمراجعة.`
+    const result = await sendSms({ to: phone, body: text })
+    return NextResponse.json({ success: true, data: { sent: result.sent } })
   } catch (error) {
-    console.error("Internal SMS API Error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("SMS route error:", error)
+    return fail("Internal server error", "INTERNAL", 500)
   }
 }
