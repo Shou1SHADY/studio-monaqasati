@@ -29,6 +29,39 @@ export interface DeskDelivery extends ReceiptFact {
   noNotice?: boolean
   regularisation?: "expense" | null
   createdAt?: unknown
+  /** Procurement forwarded it to the person receiving on site (22 Sep review). */
+  forwardedTo?: ForwardedTo | null
+  /** What that person counted and signed for, verified by a code to their phone. */
+  receiverReport?: ReceiverReportFact | null
+}
+
+export interface ForwardedTo {
+  linkId: string
+  name: string
+  userId: string | null
+  phoneMasked: string
+  byName: string
+  at: string
+}
+
+/** Written by the server when the receiver signs (src/lib/receipt-links.ts). */
+export interface ReceiverReportFact {
+  linkId: string
+  receiverName: string
+  receiverUserId: string | null
+  phoneMasked: string
+  lines: Array<{ poLineId: string; name: string; unit: string; counted: number; rejected: number; rejectReason: string | null; note: string | null }>
+  note: string | null
+  signatureData: string | null
+  signedAt: string
+  verifiedBy: "sms_code"
+}
+
+/** Where a forwarded delivery stands on the desk. */
+export function forwardState(d: Pick<DeskDelivery, "forwardedTo" | "receiverReport">): "none" | "forwarded" | "signed" {
+  if (d.receiverReport) return "signed"
+  if (d.forwardedTo) return "forwarded"
+  return "none"
 }
 
 const num = (n: unknown) => (Number.isFinite(Number(n)) ? Number(n) : 0)

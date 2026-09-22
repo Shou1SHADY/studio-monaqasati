@@ -13,7 +13,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { AlertTriangle, ClipboardCheck, Download, ExternalLink, Loader2, PackageCheck, PlusCircle, Search, Truck } from "lucide-react"
+import { AlertTriangle, ClipboardCheck, Download, ExternalLink, Forward, Loader2, PackageCheck, PenLine, PlusCircle, Search, Truck } from "lucide-react"
+import { ForwardReceiptDialog } from "@/components/procurement/ForwardReceiptDialog"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
@@ -36,6 +37,7 @@ import { lineToArrive } from "@/lib/procurement/po"
 import {
   RECEIPT_SEGMENTS,
   incomingRowMatches,
+  forwardState,
   incomingRows,
   receiptCsv,
   receiptCsvFilename,
@@ -87,6 +89,7 @@ export default function GoodsReceivedPage() {
   const [manualOpen, setManualOpen] = useState(false)
   const [receiveTarget, setReceiveTarget] = useState<{ delivery: DeskDelivery | null; po: PurchaseOrder | null } | null>(null)
   const [regulariseTarget, setRegulariseTarget] = useState<DeskDelivery | null>(null)
+  const [forwardTarget, setForwardTarget] = useState<DeskDelivery | null>(null)
 
   const warehousesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const projectsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
@@ -271,7 +274,7 @@ export default function GoodsReceivedPage() {
             <Loader2 className="animate-spin text-muted-foreground" size={40} aria-hidden="true" />
           </div>
         ) : tab === "incoming" ? (
-          <IncomingList rows={incoming} locale={locale} canReceive={canReceive} onReceive={(d, po) => setReceiveTarget({ delivery: d, po })} onOpen={(id) => setQuery({ delivery: id })} projectName={projectName} />
+          <IncomingList rows={incoming} locale={locale} canReceive={canReceive} onReceive={(d, po) => setReceiveTarget({ delivery: d, po })} onForward={setForwardTarget} onOpen={(id) => setQuery({ delivery: id })} projectName={projectName} />
         ) : (
           <ReceiptList rows={tab === "log" ? log : nopo} locale={locale} onOpen={(id) => setQuery({ delivery: id })} warehouseName={warehouseName} projectName={projectName} nopo={tab === "nopo"} />
         )}
@@ -292,6 +295,15 @@ export default function GoodsReceivedPage() {
           />
         )}
 
+        {forwardTarget && (
+          <ForwardReceiptDialog
+            open={Boolean(forwardTarget)}
+            onOpenChange={(o) => !o && setForwardTarget(null)}
+            deliveryId={forwardTarget.id}
+            supplierName={forwardTarget.supplierName || ""}
+            orgId={orgId}
+          />
+        )}
         {receiveTarget && (
           <ReceiveDeliveryDialog
             open
@@ -349,7 +361,7 @@ export default function GoodsReceivedPage() {
 // On the way
 // ---------------------------------------------------------------------------
 
-function IncomingList({ rows, locale, canReceive, onReceive, onOpen, projectName }: { rows: IncomingRow[]; locale: string; canReceive: boolean; onReceive: (d: DeskDelivery | null, po: PurchaseOrder | null) => void; onOpen: (id: string) => void; projectName: (id: string | null | undefined) => string | null }) {
+function IncomingList({ rows, locale, canReceive, onReceive, onForward, onOpen, projectName }: { rows: IncomingRow[]; locale: string; canReceive: boolean; onReceive: (d: DeskDelivery | null, po: PurchaseOrder | null) => void; onForward: (d: DeskDelivery) => void; onOpen: (id: string) => void; projectName: (id: string | null | undefined) => string | null }) {
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   if (!rows.length) return <Empty text={t("empty.incoming")} />
@@ -387,6 +399,18 @@ function IncomingList({ rows, locale, canReceive, onReceive, onOpen, projectName
                   {r.delivery.vehiclePlate && <span dir="ltr">· {r.delivery.vehiclePlate}</span>}
                 </p>
               )}
+              {r.kind === "notice" && forwardState(r.delivery) === "forwarded" && (
+                <p className="flex items-center gap-1.5 text-[11px] text-module">
+                  <Forward size={11} aria-hidden="true" />
+                  <span dir="auto">{t("forward.forwardedTo", { name: r.delivery.forwardedTo!.name, phone: r.delivery.forwardedTo!.phoneMasked })}</span>
+                </p>
+              )}
+              {r.kind === "notice" && forwardState(r.delivery) === "signed" && (
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-success">
+                  <PenLine size={11} aria-hidden="true" />
+                  <span dir="auto">{t("forward.signedBy", { name: r.delivery.receiverReport!.receiverName })}</span>
+                </p>
+              )}
               {r.kind === "due" && (
                 <p className="flex items-center gap-1.5 text-[11px] text-amber-800">
                   <AlertTriangle size={11} aria-hidden="true" />
@@ -411,6 +435,12 @@ function IncomingList({ rows, locale, canReceive, onReceive, onOpen, projectName
                       <ExternalLink size={12} aria-hidden="true" />
                       {t("incoming.openOrder")}
                     </Link>
+                  </Button>
+                )}
+                {canReceive && r.kind === "notice" && forwardState(r.delivery) !== "signed" && (
+                  <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => onForward(r.delivery)}>
+                    <Forward size={12} aria-hidden="true" />
+                    {forwardState(r.delivery) === "forwarded" ? t("forward.again") : t("forward.button")}
                   </Button>
                 )}
                 {canReceive && (

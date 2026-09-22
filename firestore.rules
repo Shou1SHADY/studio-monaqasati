@@ -452,6 +452,13 @@ service cloud.firestore {
     // only through the server routes that verify it (Admin SDK).
     // One-time codes (src/lib/otp.ts). Server-only: the code's hash, its
     // expiry and its attempt count are never a browser's business.
+    // Receipt links (src/lib/receipt-links.ts, 22 Sep review): the token IS
+    // the key to a delivery's receiving form, so only the server reads or
+    // writes them — as with rfqShareLinks and guestOfferLinks.
+    match /receiptLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     match /otpChallenges/{challengeId} {
       allow read, write: if false;
     }

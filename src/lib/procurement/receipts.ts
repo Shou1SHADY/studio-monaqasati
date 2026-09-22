@@ -16,6 +16,40 @@ export { acceptedOf }
 const num = (n: number | null | undefined) => (Number.isFinite(Number(n)) ? Number(n) : 0)
 
 // ---------------------------------------------------------------------------
+// Lines — what the gate counts against
+// ---------------------------------------------------------------------------
+
+/** A quantity as a person or an old document may have written it. */
+const looseNum = (v: unknown): number => {
+  const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[,\s]/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+
+/** Where a delivery's lines come from: the notice's own lines, or a legacy
+ * notice's items. */
+export interface ReceiptLineSource {
+  lines?: DeliveryLine[] | null
+  items?: Array<{ name?: string | null; quantity?: number | string | null; unit?: string | null; unitOfMeasure?: string | null }> | null
+}
+
+/** A legacy delivery's items as lines, counted in full (today's "confirm all"). */
+export function legacyLinesOf(delivery: Pick<ReceiptLineSource, "items">): DeliveryLine[] {
+  return (delivery.items || [])
+    .map((it, i) => ({ poLineId: `i${i + 1}`, name: (it.name || "").trim(), unit: (it.unitOfMeasure || it.unit || "").trim(), noticeQuantity: Math.max(0, looseNum(it.quantity)) }))
+    .filter((l) => l.name && l.noticeQuantity > 0)
+    .map((l) => ({ ...l, counted: l.noticeQuantity }))
+}
+
+/** The lines the gate's form starts from: the notice's own lines; on an order
+ * whose notice named none, the order's open lines with no notice figure to
+ * compare against (the screen says "no notice to compare"). */
+export function linesForReceipt(delivery: ReceiptLineSource, po: PurchaseOrder | null): DeliveryLine[] {
+  if (delivery.lines && delivery.lines.length) return delivery.lines.map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit, noticeQuantity: looseNum(l.noticeQuantity) }))
+  if (po) return po.lines.filter((l) => lineToArrive(l) > 0).map((l) => ({ poLineId: l.id, name: l.name, unit: l.unit, noticeQuantity: 0 }))
+  return legacyLinesOf(delivery).map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit, noticeQuantity: l.noticeQuantity }))
+}
+
+// ---------------------------------------------------------------------------
 // Validation — codes, never sentences
 // ---------------------------------------------------------------------------
 

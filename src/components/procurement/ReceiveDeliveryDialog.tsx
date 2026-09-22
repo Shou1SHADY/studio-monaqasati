@@ -152,19 +152,35 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
 
   useEffect(() => {
     if (!open) return
+    // A receiver who signed on the forwarded link (22 Sep review) has already
+    // counted: their count, rejects, note and signature open here, for
+    // Procurement to review and book. Every field stays editable.
+    const report = delivery?.receiverReport || null
+    const signed = new Map((report?.lines || []).map((l) => [l.poLineId, l]))
     reset({
-      receiverName: actor.name,
+      receiverName: report?.receiverName || actor.name,
       deliveryDate: new Date().toISOString().slice(0, 10),
       driverName: delivery?.deliveryPersonName || "",
       vehiclePlate: delivery?.vehiclePlate || "",
       paperNoteNumber: delivery?.paperNoteNumber || "",
-      note: "",
+      note: report?.note || "",
       landedWarehouseId: defaultWarehouseId || "",
       checklist: [],
-      lines: base.map((l) => ({ poLineId: l.poLineId, counted: "", rejected: "", rejectReason: "", rejectNote: "", held: "", holdReason: "" })),
+      lines: base.map((l) => {
+        const s = signed.get(l.poLineId)
+        return {
+          poLineId: l.poLineId,
+          counted: s ? String(s.counted) : "",
+          rejected: s && s.rejected > 0 ? String(s.rejected) : "",
+          rejectReason: s?.rejectReason || "",
+          rejectNote: s?.note || "",
+          held: "",
+          holdReason: "",
+        }
+      }),
     })
-    setSignature(null)
-    setOpenReject({})
+    setSignature(report?.signatureData || null)
+    setOpenReject(Object.fromEntries((report?.lines || []).filter((l) => l.rejected > 0).map((l) => [l.poLineId, true])))
     setOpenHold({})
   }, [open, base, actor.name, delivery, defaultWarehouseId, reset])
 

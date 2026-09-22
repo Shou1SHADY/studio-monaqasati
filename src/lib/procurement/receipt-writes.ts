@@ -25,8 +25,8 @@ import { orderRef as workOrderRef } from "../manufacturing-view"
 import { emitMfgEvent, mfgLinks } from "../mfg-events"
 import { receiveDelivery, type ReceiveDeliveryItem } from "../warehouse-transfer"
 import { drawProcDocNumber } from "./numbering"
-import { lineToArrive, round2 } from "./po"
-import { acceptedOf, receiptErrors, receiptLineErrors, receiptNetValue, type ReceiptError } from "./receipts"
+import { round2 } from "./po"
+import { acceptedOf, legacyLinesOf, linesForReceipt, receiptErrors, receiptLineErrors, receiptNetValue, type ReceiptError } from "./receipts"
 import { PURCHASE_ORDERS, type DeliveryLine, type ProcActor, type ProcurementPolicies, type PurchaseOrder, type ReceiptCheck } from "./types"
 import { applyReceipt, emitReceiptRecorded, ProcWriteError, type WriteOpts } from "./writes"
 
@@ -95,22 +95,9 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
-/** A legacy delivery's items as lines, counted in full (today's "confirm all"). */
-export function legacyLinesOf(delivery: Pick<ReceiptDeliveryLike, "items">): DeliveryLine[] {
-  return (delivery.items || [])
-    .map((it, i) => ({ poLineId: `i${i + 1}`, name: (it.name || "").trim(), unit: (it.unitOfMeasure || it.unit || "").trim(), noticeQuantity: Math.max(0, num(it.quantity)) }))
-    .filter((l) => l.name && l.noticeQuantity > 0)
-    .map((l) => ({ ...l, counted: l.noticeQuantity }))
-}
-
-/** The lines the gate's form starts from: the notice's own lines; on an order
- * whose notice named none, the order's open lines with no notice figure to
- * compare against (the screen says "no notice to compare"). */
-export function linesForReceipt(delivery: Pick<ReceiptDeliveryLike, "lines" | "items">, po: PurchaseOrder | null): DeliveryLine[] {
-  if (delivery.lines && delivery.lines.length) return delivery.lines.map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit, noticeQuantity: num(l.noticeQuantity) }))
-  if (po) return po.lines.filter((l) => lineToArrive(l) > 0).map((l) => ({ poLineId: l.id, name: l.name, unit: l.unit, noticeQuantity: 0 }))
-  return legacyLinesOf(delivery).map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit, noticeQuantity: l.noticeQuantity }))
-}
+// Pure, so they live in ./receipts — the receiver's link page builds its lines
+// on the server with exactly the ids this form counts against.
+export { legacyLinesOf, linesForReceipt } from "./receipts"
 
 /** Lines the gate filled in (a blank line is skipped — a partial receipt of a
  * multi-line shipment is allowed), with `accepted` computed and the rest normalised. */
