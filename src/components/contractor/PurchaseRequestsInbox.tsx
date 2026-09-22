@@ -46,8 +46,8 @@ interface Row {
 }
 
 const STATE_TONE: Record<PurchaseRequestRecord["state"], string> = {
-  sent: "bg-warning/10 text-warning",
-  ordered: "bg-cta/10 text-cta",
+  sent: "bg-module/10 text-module",
+  ordered: "bg-module/10 text-module",
   arrived: "bg-success/10 text-success",
   declined: "bg-muted text-muted-foreground",
 }
@@ -177,7 +177,7 @@ export function PurchaseRequestsInbox() {
   }
 
   return (
-    <div className="space-y-5" dir={isRtl ? "rtl" : "ltr"}>
+    <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
       <ProcurementHeader icon={Inbox} title={t("pri_title")} description={t("pri_desc")} />
 
       <div className="flex flex-wrap items-center gap-2">
@@ -199,7 +199,7 @@ export function PurchaseRequestsInbox() {
               onClick={() => { setSearch(""); setState(s) }}
               className={cn(
                 "rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                state === s && !searching ? "border-module bg-module text-module-foreground" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                state === s && !searching ? "border-module bg-module text-module-foreground" : "border-border bg-card text-muted-foreground hover:border-module/40"
               )}
             >
               {t(`pri_state_${s}`)} <span className="ms-1 opacity-70">{counts[s]}</span>
@@ -211,7 +211,7 @@ export function PurchaseRequestsInbox() {
             onClick={() => setOnlyOverdue((v) => !v)}
             className={cn(
               "rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              onlyOverdue ? "border-destructive bg-destructive text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+              onlyOverdue ? "border-destructive bg-destructive text-destructive-foreground" : "border-border bg-card text-muted-foreground hover:border-module/40"
             )}
           >
             {t("pri_overdue_only")} <span className="ms-1 opacity-70">{rows.filter(overdue).length}</span>
@@ -219,7 +219,7 @@ export function PurchaseRequestsInbox() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border bg-white">
+      <div className="overflow-hidden rounded-xl border bg-card">
         {isLoading ? (
           <div className="flex items-center justify-center p-16">
             <Loader2 className="animate-spin text-muted-foreground" size={28} />
@@ -233,14 +233,14 @@ export function PurchaseRequestsInbox() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
+              <thead className="bg-muted/50 text-xs font-bold text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2.5 text-start">{t("pri_col_item")}</th>
-                  <th className="px-4 py-2.5 text-start">{t("pri_col_order")}</th>
-                  <th className="px-4 py-2.5 text-start">{t("pri_col_need_by")}</th>
-                  <th className="px-4 py-2.5 text-end">{t("pri_col_on_hand")}</th>
-                  <th className="px-4 py-2.5 text-start">{t("pri_col_state")}</th>
-                  <th className="px-4 py-2.5 text-end">{t("pri_col_actions")}</th>
+                  <th className="px-3 py-2 text-start">{t("pri_col_item")}</th>
+                  <th className="px-3 py-2 text-start">{t("pri_col_order")}</th>
+                  <th className="px-3 py-2 text-start">{t("pri_col_need_by")}</th>
+                  <th className="px-3 py-2 text-end">{t("pri_col_on_hand")}</th>
+                  <th className="px-3 py-2 text-start">{t("pri_col_state")}</th>
+                  <th className="px-3 py-2 text-end">{t("pri_col_actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,7 +251,7 @@ export function PurchaseRequestsInbox() {
                   const rfq = r.rfqId ? rfqById.get(r.rfqId) : undefined
                   return (
                     <tr key={`${o.id}-${r.id}`} className={cn("border-t align-top", late && "bg-destructive/[0.03]")}>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <p className="font-bold" dir="auto">{r.itemName}</p>
                         <p className="text-xs text-muted-foreground" dir="ltr">
                           {fmtQty(r.quantity)} {r.unit}
@@ -260,14 +260,14 @@ export function PurchaseRequestsInbox() {
                         {r.note && <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">{r.note}</p>}
                         <p className="mt-0.5 text-[11px] text-muted-foreground">{t("mfy_pr_requested", { name: r.by, date: formatCrmDate(r.at, locale) })}</p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <Link href={`/contractor/${mfgLinks.order(o.id)}`} className="font-mono text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded" dir="ltr">
                           {orderRef(o)}
                         </Link>
                         <p className="text-xs" dir="auto">{row.productName}</p>
                         <p className="text-[11px] text-muted-foreground" dir="auto">{sourceText(o)}</p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         {r.needBy ? (
                           <Badge className={cn("gap-1 border-none text-[11px]", late ? "bg-destructive/10 text-destructive" : "bg-muted text-foreground")}>
                             {late && <AlertTriangle size={11} aria-hidden="true" />}
@@ -280,10 +280,10 @@ export function PurchaseRequestsInbox() {
                       <td className="px-4 py-3 text-end tabular-nums" dir="ltr">
                         {stock.loading ? <span className="text-xs text-muted-foreground">…</span> : onHand == null ? <span className="text-xs text-muted-foreground">{t("pri_not_in_stock")}</span> : `${fmtQty(onHand)} ${r.unit}`}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <Badge className={cn("border-none text-[11px]", STATE_TONE[r.state])}>{t(`pri_state_badge_${r.state}`)}</Badge>
                         {r.state === "ordered" && r.rfqId && (
-                          <Link href={`/contractor/rfqs/${r.rfqId}`} className="mt-1 flex items-center gap-1 text-[11px] font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                          <Link href={`/contractor/rfqs/${r.rfqId}`} className="mt-1 flex items-center gap-1 text-[11px] font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
                             {rfq?.rfqNumber || r.rfqNumber || t("pri_open_rfq")}
                             <ExternalLink size={10} className="rtl-flip" aria-hidden="true" />
                           </Link>
@@ -291,7 +291,7 @@ export function PurchaseRequestsInbox() {
                         {r.state === "arrived" && <p className="mt-1 text-[11px] text-muted-foreground">{r.arrivedBy || ""} {r.arrivedAt ? formatCrmDate(r.arrivedAt, locale) : ""}</p>}
                         {r.state === "declined" && r.declinedReason && <p className="mt-1 text-[11px] text-muted-foreground" dir="auto">{r.declinedReason}</p>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2.5">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           {r.state === "sent" && canStartRfq && (
                             <Button asChild size="sm" className="h-8 gap-1.5 text-xs">

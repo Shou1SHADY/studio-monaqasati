@@ -188,7 +188,7 @@ export function MfgPurchaseRequestsPanel({
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           {t("mfy_pr_desc")}{" "}
-          <Link href="/contractor/rfqs/requests" className="font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+          <Link href="/contractor/rfqs/requests" className="font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
             {t("pri_open_inbox")} →
           </Link>
         </p>
@@ -220,7 +220,7 @@ export function MfgPurchaseRequestsPanel({
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-700">
+                    <p className="text-xs text-foreground">
                       <span className="font-mono text-muted-foreground" dir="ltr">{orderRef(o)}</span>
                       <span className="mx-1.5">·</span>
                       <span dir="auto">{o.productName || productById.get(o.productId || "")?.name || ""}</span>
@@ -276,7 +276,7 @@ export function MfgPurchaseRequestsPanel({
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-bold text-foreground" dir="ltr">{n.lot}</span>
-                        {n.itemName && <span className="text-xs text-slate-700" dir="auto">{n.itemName}</span>}
+                        {n.itemName && <span className="text-xs text-foreground" dir="auto">{n.itemName}</span>}
                         <Badge className="border-none bg-destructive/10 text-[10px] text-destructive">{t(`mfg4_defect_${n.defect}`)}</Badge>
                         {n.quarantinedAt && <Badge className="border-none bg-muted text-[10px] text-muted-foreground">{t("mfy_claim_quarantined")}</Badge>}
                       </div>
@@ -306,7 +306,7 @@ export function MfgPurchaseRequestsPanel({
 
             {supplierScrap.length > 0 && (
               <div className="overflow-hidden rounded-xl border">
-                <p className="border-b bg-muted/30 px-4 py-2 text-xs font-bold text-slate-700">{t("mfy_claim_scrap")}</p>
+                <p className="border-b bg-muted/30 px-4 py-2 text-xs font-bold text-foreground">{t("mfy_claim_scrap")}</p>
                 <ul className="divide-y">
                   {supplierScrap.map(({ order: o, scrap: s }: { order: WorkOrderV2; scrap: WorkOrderScrap }) => (
                     <li key={`${o.id}-${s.id}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-xs">
@@ -347,7 +347,7 @@ export function MfgPurchaseRequestsPanel({
             </AlertDialogHeader>
           )}
           {pending?.kind === "arrived" && (
-            <ul className="space-y-1 text-xs text-slate-700">
+            <ul className="space-y-1 text-xs text-foreground">
               {pending.lotted && <li className="font-semibold text-warning">{t("mfy_pr_arrived_lotted")}</li>}
               <li className="text-muted-foreground">{t("mfy_pr_arrived_stock")}</li>
             </ul>

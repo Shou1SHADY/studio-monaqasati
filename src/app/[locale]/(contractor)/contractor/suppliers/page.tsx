@@ -26,7 +26,9 @@ import {
   XCircle,
   Calendar,
   UserPlus,
-  Users
+  Users,
+  LayoutGrid,
+  Rows3
 } from "lucide-react"
 import {
   Popover,
@@ -59,7 +61,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
@@ -80,6 +82,8 @@ function fmtDate(val: unknown, locale: string) {
   })
 }
  
+const VIEW_MODE_KEY = "contractor_suppliers_view_mode"
+
 export default function SuppliersDirectory() {
   const t = useTranslations("Portal.Contractor")
   const locale = useLocale()
@@ -97,6 +101,27 @@ export default function SuppliersDirectory() {
   const [inviteCompanyName, setInviteCompanyName] = useState("")
   const [isSendingInvite, setIsSendingInvite] = useState(false)
   const [removeTarget, setRemoveTarget] = useState<{ id: string; supplierName?: string } | null>(null)
+  // 22 Sep review: the platform's suppliers and the company's own are two
+  // different questions; and a guide of many suppliers wants a table.
+  const [scope, setScope] = useState<"mine" | "platform">("mine")
+  const [viewMode, setViewModeState] = useState<"grid" | "table">("grid")
+  // Read after mount: the server renders the grid, and the first client render
+  // must match it.
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(VIEW_MODE_KEY) === "table") setViewModeState("table")
+    } catch {
+      /* private browsing */
+    }
+  }, [])
+  const setViewMode = (m: "grid" | "table") => {
+    setViewModeState(m)
+    try {
+      window.localStorage.setItem(VIEW_MODE_KEY, m)
+    } catch {
+      /* private browsing */
+    }
+  }
   const [isRemoving, setIsRemoving] = useState(false)
   const userDocRef = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null
@@ -391,12 +416,17 @@ export default function SuppliersDirectory() {
     setFilterSpecialization("all")
   }
 
-  const preferredSuppliers = displaySuppliers.filter((s: any) => s.isFavorite)
-  const otherSuppliers = displaySuppliers.filter((s: any) => !s.isFavorite)
+  // "My suppliers": the ones this company works with — connected, or marked
+  // preferred (which includes any it has awarded). "Platform": everyone.
+  const isMine = (s: any) => Boolean(s.isConnected || s.isFavorite)
+  const mineCount = displaySuppliers.filter(isMine).length
+  const scopedSuppliers = scope === "mine" ? displaySuppliers.filter(isMine) : displaySuppliers
+  const preferredSuppliers = scopedSuppliers.filter((s: any) => s.isFavorite)
+  const otherSuppliers = scopedSuppliers.filter((s: any) => !s.isFavorite)
 
   return (
     <PortalLayout>
-      <div className="space-y-8">
+      <div className="space-y-6">
         <ProcurementHeader
           icon={Users}
           title={t("suppliers_page_title")}
@@ -502,6 +532,30 @@ export default function SuppliersDirectory() {
                 </div>
               </PopoverContent>
             </Popover>
+            <div className="flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_scope_label")}>
+              {(["mine", "platform"] as const).map((sc) => (
+                <button
+                  key={sc}
+                  type="button"
+                  aria-pressed={scope === sc}
+                  onClick={() => setScope(sc)}
+                  className={cn(
+                    "min-h-9 rounded-md px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    scope === sc ? "bg-module text-module-foreground" : "text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  {sc === "mine" ? t("suppliers_scope_mine", { count: mineCount }) : t("suppliers_scope_platform", { count: displaySuppliers.length })}
+                </button>
+              ))}
+            </div>
+            <div className="ms-auto flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_view_label")}>
+              <button type="button" aria-pressed={viewMode === "grid"} aria-label={t("suppliers_view_grid")} onClick={() => setViewMode("grid")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "grid" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
+                <LayoutGrid size={16} aria-hidden="true" />
+              </button>
+              <button type="button" aria-pressed={viewMode === "table"} aria-label={t("suppliers_view_table")} onClick={() => setViewMode("table")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "table" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
+                <Rows3 size={16} aria-hidden="true" />
+                </button>
+            </div>
         </div>
 
         {isLoading ? (
@@ -509,7 +563,7 @@ export default function SuppliersDirectory() {
             <Loader2 className="animate-spin mb-4" size={32} />
             <p>{t("suppliers_loading")}</p>
           </div>
-        ) : displaySuppliers.length === 0 ? (
+        ) : scopedSuppliers.length === 0 ? (
           <div className="text-center p-20 bg-slate-50 rounded-xl border border-dashed text-muted-foreground">
             {searchQuery ? (
               <>
@@ -529,6 +583,14 @@ export default function SuppliersDirectory() {
               </>
             )}
           </div>
+        ) : viewMode === "table" ? (
+          <SupplierTable
+            suppliers={[...preferredSuppliers, ...otherSuppliers]}
+            locale={locale}
+            t={t}
+            onOpen={setSelectedSupplier}
+            onToggleFavorite={toggleFavorite}
+          />
         ) : (
           <div className="space-y-0">
             {preferredSuppliers.length > 0 && (
@@ -540,20 +602,20 @@ export default function SuppliersDirectory() {
                 </div>
               </div>
             )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {[...preferredSuppliers, ...(preferredSuppliers.length > 0 && otherSuppliers.length > 0 ? [{ id: "__divider__", isDivider: true }] : []), ...otherSuppliers].map((supplier: any) =>
               supplier.isDivider ? (
-                <div key="__divider__" className="col-span-full flex items-center gap-3 py-4 text-sm font-semibold text-muted-foreground">
+                <div key="__divider__" className="col-span-full flex items-center gap-3 py-2 text-sm font-semibold text-muted-foreground">
                   <div className="flex-1 border-t" />
                   <span>{t("suppliers_all_section")}</span>
                   <div className="flex-1 border-t" />
                 </div>
               ) : (
               <Card key={supplier.id} className={`hover:shadow-md transition-shadow overflow-hidden group flex flex-col ${supplier.isFavorite ? 'border-amber-200 bg-amber-50/10' : 'border-slate-100'}`}>
-                <CardContent className="p-6 flex-1 space-y-4">
+                <CardContent className="p-4 flex-1 space-y-3">
                   <div className="flex items-start justify-between">
-                    <div className="h-14 w-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                      <Briefcase size={28} />
+                    <div className="h-11 w-11 rounded-xl bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-module/10 group-hover:text-module transition-colors">
+                      <Briefcase size={22} aria-hidden="true" />
                     </div>
                     <div className={cn("flex flex-col gap-1", locale === 'ar' ? 'items-end' : 'items-start')}>
                       <div className="flex items-center gap-1.5">
@@ -579,7 +641,7 @@ export default function SuppliersDirectory() {
                       </div>
 
                       {supplier.certificates?.length > 0 && (
-                        <Badge className="bg-blue-50 text-blue-600 border-none px-2 py-0.5 h-6">
+                        <Badge className="bg-module/10 text-module border-none px-2 py-0.5 h-6">
                           <ShieldCheck size={14} className="me-1" aria-hidden="true" />
                           {t("suppliers_cert_count", { count: supplier.certificates.length })}
                         </Badge>
@@ -599,7 +661,7 @@ export default function SuppliersDirectory() {
                   </div>
                   
                   <div className="space-y-1">
-                    <h3 className="font-bold text-lg text-slate-800">{supplier.name}</h3>
+                    <h3 className="font-bold text-base text-foreground">{supplier.name}</h3>
                     <div className="flex items-center gap-1 mt-1">
                       {supplier.rating > 0 ? (
                         <>
@@ -648,7 +710,7 @@ export default function SuppliersDirectory() {
                   {supplier.certificates?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pt-2">
                       {supplier.certificates.slice(0, 3).map((cert: any) => (
-                        <Badge key={cert.id} className="bg-green-50 text-green-700 border-green-100 text-[10px] px-2 font-normal gap-1">
+                        <Badge key={cert.id} className="bg-success/10 text-success border-none text-[10px] px-2 font-normal gap-1">
                           <ShieldCheck size={10} />
                           {cert.name}
                         </Badge>
@@ -677,7 +739,7 @@ export default function SuppliersDirectory() {
                 <CardFooter className="p-0 border-t">
                   <Button 
                     variant="ghost" 
-                    className="w-full h-12 rounded-none hover:bg-primary hover:text-white transition-colors gap-2"
+                    className="w-full h-10 rounded-none hover:bg-module hover:text-module-foreground transition-colors gap-2"
                     onClick={() => setSelectedSupplier(supplier)}
                   >
                     {t("suppliers_view_profile")}
@@ -958,3 +1020,90 @@ export default function SuppliersDirectory() {
     </PortalLayout>
   )
 }
+
+/** The same suppliers as the cards, one row each — for scanning many. */
+function SupplierTable({
+  suppliers,
+  locale,
+  t,
+  onOpen,
+  onToggleFavorite,
+}: {
+  suppliers: any[]
+  locale: string
+  t: ReturnType<typeof useTranslations>
+  onOpen: (supplier: any) => void
+  onToggleFavorite: (e: React.MouseEvent, supplier: any) => void
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border">
+      <table className="w-full min-w-[720px] text-sm">
+        <thead className="bg-muted/50 text-xs text-muted-foreground">
+          <tr>
+            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_name")}</th>
+            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_city")}</th>
+            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_specs")}</th>
+            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_rating")}</th>
+            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_status")}</th>
+            <th scope="col" className="px-3 py-2"><span className="sr-only">{t("suppliers_view_profile")}</span></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {suppliers.map((s) => (
+            <tr key={s.id} className="hover:bg-muted/40">
+              <td className="px-3 py-2.5 align-top">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => onToggleFavorite(e, s)}
+                    aria-label={s.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
+                    aria-pressed={Boolean(s.isExplicitFavorite)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Heart size={15} className={s.isExplicitFavorite ? "fill-amber-500 text-amber-500" : ""} aria-hidden="true" />
+                  </button>
+                  <span className="font-semibold text-foreground" dir="auto">{s.name}</span>
+                </div>
+              </td>
+              <td className="px-3 py-2.5 align-top text-muted-foreground">{displayCity(s.city, locale)}</td>
+              <td className="px-3 py-2.5 align-top">
+                <div className="flex flex-wrap gap-1">
+                  {(s.specializations || []).slice(0, 2).map((spec: string) => (
+                    <Badge key={spec} variant="secondary" className="bg-muted px-2 text-[10px] font-normal text-muted-foreground">
+                      {displayCategory(spec, locale)}
+                    </Badge>
+                  ))}
+                  {(s.specializations || []).length > 2 && <span className="text-[10px] text-muted-foreground">+{s.specializations.length - 2}</span>}
+                </div>
+              </td>
+              <td className="px-3 py-2.5 align-top tabular-nums">
+                {s.rating > 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Star size={12} className="fill-amber-400 text-amber-400" aria-hidden="true" />
+                    {s.rating}
+                    <span className="text-[10px] text-muted-foreground">({s.reviewsCount || 0})</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              <td className="px-3 py-2.5 align-top">
+                {s.isConnected ? (
+                  <Badge className="border-none bg-success/10 text-[10px] text-success">{t("suppliers_status_connected")}</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">{t("suppliers_not_connected_badge")}</Badge>
+                )}
+              </td>
+              <td className="px-3 py-2.5 text-end align-top">
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-module hover:bg-module/10" onClick={() => onOpen(s)}>
+                  {t("suppliers_view_profile")}
+                </Button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
