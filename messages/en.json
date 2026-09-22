@@ -7716,6 +7716,8 @@
       "pn_price_reduction_title": "The contractor asked for a lower price",
       "pn_price_reduction": "RFQ: {rfq} — target price SAR {price}. {note}",
       "proc_nav_label": "Procurement pages",
+      "pn_offer_withdrawn_title": "The supplier withdrew their offer",
+      "pn_offer_withdrawn": "The supplier withdrew their offer on the RFQ: {rfq}",
       "pn_po_awaiting_approval_title": "A purchase order awaits your approval",
       "pn_po_awaiting_approval": "{actor} prepared purchase order {number} for {supplier}, {amount} (excl. VAT) — {rfq}. Review it and approve or return it.",
       "pn_po_approved_title": "Purchase order {number} approved",

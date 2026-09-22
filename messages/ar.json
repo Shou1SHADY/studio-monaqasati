@@ -7716,6 +7716,8 @@
       "pn_price_reduction_title": "طلب المقاول تخفيض السعر",
       "pn_price_reduction": "طلب عروض الأسعار: {rfq} — السعر المستهدف {price} ر.س. {note}",
       "proc_nav_label": "صفحات المشتريات",
+      "pn_offer_withdrawn_title": "سحب المورد عرضه",
+      "pn_offer_withdrawn": "سحب المورد عرضه على طلب عروض الأسعار: {rfq}",
       "pn_po_awaiting_approval_title": "أمر شراء بانتظار اعتمادك",
       "pn_po_awaiting_approval": "أعدّ {actor} أمر الشراء {number} للمورد {supplier} بقيمة {amount} (بدون الضريبة) — {rfq}. راجعه واعتمده أو أعده.",
       "pn_po_approved_title": "اعتُمد أمر الشراء {number}",

@@ -12,8 +12,16 @@ env:
     secret: GROQ_API_KEY
   - variable: OPENROUTER_API_KEY
     secret: OPENROUTER_API_KEY
-  - variable: GEMINI_API_KEY
+  # One Gemini secret, exposed under the two names the code actually reads:
+  # Genkit on the server wants GOOGLE_GENAI_API_KEY; the RFQ form's "AI
+  # enabled" switch checks NEXT_PUBLIC_GEMINI_API_KEY at build time. Nothing
+  # reads a bare GEMINI_API_KEY.
+  - variable: GOOGLE_GENAI_API_KEY
     secret: GEMINI_API_KEY
+    availability: [RUNTIME]
+  - variable: NEXT_PUBLIC_GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+    availability: [BUILD, RUNTIME]
   - variable: UPSTASH_REDIS_REST_URL
     secret: UPSTASH_REDIS_REST_URL
   - variable: UPSTASH_REDIS_REST_TOKEN

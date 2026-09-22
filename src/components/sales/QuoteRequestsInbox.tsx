@@ -98,6 +98,8 @@ export function QuoteRequestsInbox({
             number: declining.requestNumber,
             reason: t(`sales_rq_reason_${reason}`),
           }),
+          // "@key" params are keys themselves: the reason reads in the reader's language too.
+          i18n: { title: "sales_rq_notif_declined_title", message: "sales_rq_notif_declined_msg", params: { number: declining.requestNumber, reason: `@sales_rq_reason_${reason}` } },
         },
       })
       toast({ title: t("sales_rq_declined_toast") })

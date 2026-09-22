@@ -86,6 +86,7 @@ export function RequestQuoteDialog({
         notification: {
           title: t("crm_rq_notif_title"),
           message: t("crm_rq_notif_msg", { contact: contact.name || "—", count: parsed.length }),
+          i18n: { title: "crm_rq_notif_title", message: "crm_rq_notif_msg", params: { contact: contact.name || "—", count: parsed.length } },
         },
       })
       toast({ title: t("crm_rq_sent_toast") })

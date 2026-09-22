@@ -271,7 +271,15 @@ export interface QuoteRequest {
 // Notification plumbing
 // ---------------------------------------------------------------------------
 
-type NotificationCopy = { title: string; message: string }
+/** The text in the sender's language (push, the mobile app's fallback) and,
+ * optionally, the keys it came from — each reader's screen renders those in
+ * the READER's language (`notificationCopy` on the web, `notificationText` on
+ * the phone). */
+type NotificationCopy = {
+  title: string
+  message: string
+  i18n?: { title: string; message: string; params: Record<string, string | number | null> }
+}
 
 function queueNotifications(
   firestore: Firestore,
@@ -377,6 +385,7 @@ export async function reportTransfer(
     organizationId: input.quotation.organizationId,
     title: input.notification.title,
     message: input.notification.message,
+    ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
     quotationId: input.quotation.id,
     quotationNumber: input.quotation.quotationNumber,
     contactName: input.quotation.contactName ?? null,
@@ -453,6 +462,7 @@ export async function answerTransferNotice(
     organizationId: input.notice.organizationId,
     title: input.notification.title,
     message: input.notification.message,
+    ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
     quotationId: input.notice.quotationId,
     quotationNumber: input.notice.quotationNumber,
     noticeNumber: input.notice.noticeNumber,
@@ -618,6 +628,7 @@ export async function createQuoteRequest(
     organizationId: input.organizationId,
     title: input.notification.title,
     message: input.notification.message,
+    ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
     quoteRequestId: ref.id,
     contactName: input.contact.name ?? null,
     createdAt: requestedAt,
@@ -657,6 +668,7 @@ export async function declineQuoteRequest(
       organizationId: input.request.organizationId,
       title: input.notification.title,
       message: input.notification.message,
+      ...(input.notification.i18n ? { i18n: input.notification.i18n } : {}),
       quoteRequestId: input.request.id,
       requestNumber: input.request.requestNumber,
       reason: input.reason,
