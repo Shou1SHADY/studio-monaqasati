@@ -10252,6 +10252,7 @@
       "err_has_receipts": "Something arrived on this order — it cannot be cancelled whole; cancel the remainder per line or close it short",
       "err_supplier_missing": "Pick the supplier this agreement is with",
       "err_no_lines": "Add at least one material with its agreed price",
+      "err_bad_receiver": "A receiver needs a name, what they are called, and a mobile the code can reach",
       "deliveryWindow": {
         "morning": "Morning",
         "afternoon": "Afternoon",
@@ -10340,11 +10341,11 @@
         },
         "notice_incoming": {
           "title": "{hasDate, select, 0 {Delivery notice from {supplier} — no date} other {Delivery notice from {supplier} — arrives {inDays, plural, =0 {today} one {tomorrow} other {in # days}}}}",
-          "sub": "{number} · {lines}"
+          "sub": "{number} · {lines}{notForwarded, select, 1 { — nobody has been told to receive it yet} other {}}"
         },
         "notice_overdue": {
           "title": "No receipt recorded for what {supplier} announced",
-          "sub": "{number} · was due {date} ({daysAgo, plural, one {yesterday} other {# days ago}}) — ask the receiver first, then the supplier"
+          "sub": "{number} · was due {date} ({daysAgo, plural, one {yesterday} other {# days ago}}){notForwarded, select, 1 { — and nobody was ever told to receive it} other { — ask the receiver first, then the supplier}}"
         },
         "notice_late_date": {
           "title": "{supplier} announced delivery {days, plural, one {# day} other {# days}} after its date",
@@ -11291,6 +11292,49 @@
         "generic": "It was not saved. Try again"
       }
     },
+    "ProcReceivers": {
+      "title": "Who receives goods",
+      "subtitle": "The people who sign for a delivery, and the places they receive at",
+      "intro": "A delivery is forwarded to one of these. Someone with no account is normal — they receive through a link and a code texted to their mobile.",
+      "add": "Add a receiver",
+      "edit": "Edit",
+      "retire": "Retire",
+      "restore": "Bring back",
+      "retired": "Retired",
+      "anyPlace": "Any place",
+      "emptyTitle": "Nobody is listed yet",
+      "emptyDesc": "Add the store keeper and each site's receiver, and forwarding a delivery becomes one tap.",
+      "module": {
+        "inventory": "Inventory",
+        "projects": "Projects"
+      },
+      "dialog": {
+        "addTitle": "Add a receiver",
+        "editTitle": "Edit this receiver",
+        "desc": "The name that appears on the receipt, and the mobile the code is sent to.",
+        "name": "Name",
+        "title": "What they are called",
+        "titlePlaceholder": "Central store keeper · Al-Narjes site engineer",
+        "phone": "Mobile",
+        "module": "Their module",
+        "places": "Places they receive at",
+        "placesPicked": "Offered first for these places.",
+        "placesNone": "No place picked, so they can stand in anywhere.",
+        "cancel": "Cancel",
+        "save": "Save"
+      },
+      "err": {
+        "bad_receiver": "A receiver needs a name, what they are called, and a mobile the code can reach",
+        "no_permission": "This action is not your permission",
+        "generic": "It was not saved. Try again"
+      },
+      "forward": {
+        "fromRegister": "From the register",
+        "atThisPlace": "At this place",
+        "elsewhere": "Can stand in",
+        "noRegister": "Nobody is in the register yet — settings is where it is kept."
+      }
+    },
     "ProcSettings": {
       "page": {
         "title": "Settings & boundaries",
@@ -11349,6 +11393,10 @@
         "splitWindowDays": {
           "label": "Order-splitting window",
           "desc": "Days over which direct orders to one supplier are added up against the direct-order cap"
+        },
+        "forwardWindowDays": {
+          "label": "Forwarding window before a delivery",
+          "desc": "Days before the delivery date at which a notice still sitting with Procurement becomes a task to forward"
         },
         "sealOffersUntilDeadline": {
           "label": "Seal offer prices until the deadline",

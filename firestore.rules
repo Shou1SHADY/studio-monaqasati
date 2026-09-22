@@ -983,6 +983,33 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // The receiver register (PRD 3.0 §4 `RCVR`) — who receives goods and at which
+    // warehouses. Read by any member (the forward dialog and the receiving desk
+    // both list it); kept by whoever prepares or approves an order, so a store
+    // keeper cannot add himself to another site. Never deleted: a delivery
+    // forwarded to somebody names them, so retiring is `active: false`.
+    match /procurementReceivers/{receiverId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.get('name', '') is string
+        && request.resource.data.get('name', '').size() > 1
+        && request.resource.data.get('phone', '') is string
+        && request.resource.data.get('phone', '').size() > 0
+        && request.resource.data.get('module', '') in ['inventory', 'projects']
+        && request.resource.data.warehouseIds is list
+        && request.resource.data.get('active', false) == true
+        && request.resource.data.get('createdById', '') == request.auth.uid;
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.get('createdById', '') == resource.data.get('createdById', '')
+        && request.resource.data.get('module', '') in ['inventory', 'projects']
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['name', 'title', 'module', 'phone', 'userId', 'warehouseIds', 'active', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
     // Price agreements (PRD 3.0 §4 `AGR`) — a price we already negotiated, so an
     // order may be placed on it without going back to the market. Read by any
     // member (it prices what they are sourcing); written by whoever may award or

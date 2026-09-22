@@ -302,6 +302,7 @@ export default function GoodsReceivedPage() {
             deliveryId={forwardTarget.id}
             supplierName={forwardTarget.supplierName || ""}
             orgId={orgId}
+            projectId={forwardTarget.projectId || null}
           />
         )}
         {receiveTarget && (

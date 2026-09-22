@@ -13,11 +13,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useUser } from "@/firebase"
+import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
+import { useProcReceivers } from "@/hooks/useProcReceivers"
+import { receiversForPlace } from "@/lib/procurement/receivers"
 import { cn } from "@/lib/utils"
+import { doc } from "firebase/firestore"
 
-type Mode = "user" | "person"
+// The register first: a delivery goes to a PERSON AT A PLACE, and the register
+// knows both. The other two modes stay for whoever is not in it yet.
+type Mode = "register" | "user" | "person"
 
 export function ForwardReceiptDialog({
   open,
@@ -25,17 +30,33 @@ export function ForwardReceiptDialog({
   deliveryId,
   supplierName,
   orgId,
+  projectId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   deliveryId: string
   supplierName: string
   orgId: string
+  /** The order's project, when it has one: its warehouse is where this would land. */
+  projectId?: string | null
 }) {
   const t = useTranslations("Portal.ProcReceipts")
+  const tRcv = useTranslations("Portal.ProcReceivers")
   const { user } = useUser()
+  const firestore = useFirestore()
   const { orgMembers } = useOrgMembers(orgId)
-  const [mode, setMode] = useState<Mode>("user")
+  const { receivers } = useProcReceivers(orgId)
+
+  // Where this delivery would land, so the register can offer the people named
+  // for that place first: the project's own warehouse, else the central one —
+  // the same order `resolveLandingWarehouse` uses when the receipt is recorded.
+  const projectRef = useMemoFirebase(() => (firestore && projectId ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
+  const { data: project } = useDoc<{ warehouseId?: string | null }>(projectRef)
+  const placeWarehouseId = (projectId ? project?.warehouseId : null) || (orgId ? `central_${orgId}` : null)
+  const choices = receiversForPlace(receivers, placeWarehouseId)
+
+  const [mode, setMode] = useState<Mode>("register")
+  const [receiverId, setReceiverId] = useState("")
   const [userId, setUserId] = useState("")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
@@ -46,13 +67,20 @@ export function ForwardReceiptDialog({
 
   const member = orgMembers.find((m) => m.id === userId)
   const memberPhone = (member?.phone as string | undefined) || ""
-  const ready = mode === "user" ? Boolean(userId) && (Boolean(memberPhone) || phone.trim().length >= 5) : name.trim().length >= 2 && phone.trim().length >= 5
+  const chosen = choices.find((c) => c.id === receiverId)
+  const ready =
+    mode === "register"
+      ? Boolean(chosen)
+      : mode === "user"
+        ? Boolean(userId) && (Boolean(memberPhone) || phone.trim().length >= 5)
+        : name.trim().length >= 2 && phone.trim().length >= 5
 
   const close = (o: boolean) => {
     if (!o) {
       setResult(null)
       setError(null)
       setCopied(false)
+      setReceiverId("")
     }
     onOpenChange(o)
   }
@@ -63,7 +91,16 @@ export function ForwardReceiptDialog({
     setError(null)
     try {
       const idToken = await user.getIdToken()
-      const receiver = mode === "user" ? { kind: "user", userId, ...(phone.trim() ? { phone: phone.trim() } : {}) } : { kind: "person", name: name.trim(), phone: phone.trim() }
+      // A register entry with an account forwards as that member; one without is
+      // a name and a mobile, which is what the link and its code are for.
+      const receiver =
+        mode === "register" && chosen
+          ? chosen.userId
+            ? { kind: "user", userId: chosen.userId, phone: chosen.phone }
+            : { kind: "person", name: chosen.name, phone: chosen.phone }
+          : mode === "user"
+            ? { kind: "user", userId, ...(phone.trim() ? { phone: phone.trim() } : {}) }
+            : { kind: "person", name: name.trim(), phone: phone.trim() }
       const res = await fetch("/api/receipt-links", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
@@ -123,8 +160,8 @@ export function ForwardReceiptDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-1 rounded-lg border p-1" role="group" aria-label={t("forward.title")}>
-              {(["user", "person"] as const).map((m) => (
+            <div className="grid grid-cols-3 gap-1 rounded-lg border p-1" role="group" aria-label={t("forward.title")}>
+              {(["register", "user", "person"] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
@@ -135,12 +172,42 @@ export function ForwardReceiptDialog({
                     mode === m ? "bg-module text-module-foreground" : "text-muted-foreground hover:bg-muted"
                   )}
                 >
-                  {m === "user" ? t("forward.toMember") : t("forward.toPerson")}
+                  {m === "register" ? tRcv("forward.fromRegister") : m === "user" ? t("forward.toMember") : t("forward.toPerson")}
                 </button>
               ))}
             </div>
 
-            {mode === "user" ? (
+            {mode === "register" ? (
+              choices.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{tRcv("forward.noRegister")}</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {choices.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        aria-pressed={receiverId === c.id}
+                        onClick={() => setReceiverId(c.id)}
+                        className={cn(
+                          "w-full rounded-lg border p-2.5 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          receiverId === c.id ? "border-module bg-module/5" : "border-border hover:bg-muted"
+                        )}
+                      >
+                        <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                          <b className="text-sm" dir="auto">{c.name}</b>
+                          <span className="text-xs tabular-nums text-muted-foreground" dir="ltr">{c.phone}</span>
+                        </span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground" dir="auto">
+                          {c.title}
+                          {" · "}
+                          {c.atThisPlace ? tRcv("forward.atThisPlace") : tRcv("forward.elsewhere")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : mode === "user" ? (
               <div className="space-y-3">
                 <div className="space-y-1">
                   <Label htmlFor="fw-member" className="text-xs">{t("forward.member")}</Label>

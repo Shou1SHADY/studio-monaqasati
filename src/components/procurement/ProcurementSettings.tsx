@@ -13,17 +13,19 @@ import { useTranslations } from "next-intl"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { doc, serverTimestamp, setDoc } from "firebase/firestore"
-import { Ban, BookOpen, Check, Eye, Loader2, Lock, Save, Settings2, Shield, Users } from "lucide-react"
+import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
+import { Ban, BookOpen, Check, Eye, Loader2, Lock, PackageCheck, Save, Settings2, Shield, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Link } from "@/i18n/routing"
-import { useFirestore, useUser } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { ReceiverRegister } from "@/components/procurement/ReceiverRegister"
+import { useProcReceivers } from "@/hooks/useProcReceivers"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { DEFAULT_POLICIES, PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
@@ -42,6 +44,7 @@ const FIELDS: Array<{ key: NumericKey; unit: "sar" | "percent" | "count" | "days
   { key: "awardCycleDays", unit: "days" },
   { key: "supplierAcceptanceDays", unit: "days" },
   { key: "splitWindowDays", unit: "days" },
+  { key: "forwardWindowDays", unit: "days" },
 ]
 
 const nonNegative = z.coerce.number().min(0)
@@ -55,6 +58,7 @@ const schema = z.object({
   awardCycleDays: z.coerce.number().int().min(0),
   supplierAcceptanceDays: z.coerce.number().int().min(0),
   splitWindowDays: z.coerce.number().int().min(0),
+  forwardWindowDays: z.coerce.number().int().min(0),
   sealOffersUntilDeadline: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
@@ -76,12 +80,19 @@ const BOUNDARY_LISTS: Array<{ id: "owns" | "reads" | "never"; icon: ElementType;
 
 export function ProcurementSettings() {
   const t = useTranslations("Portal.ProcSettings")
+  const tRcv = useTranslations("Portal.ProcReceivers")
   const tShared = useTranslations("Portal.Shared")
   const firestore = useFirestore()
   const { user } = useUser()
   const { toast } = useToast()
   const { actor, orgId, policies, loading } = useProcurementWorld()
   const mayEdit = actor.isOwner || actor.canApprove
+  // The receiver register (§4 `RCVR`) lives here because it is a standing setting,
+  // not a per-delivery decision. Signing for goods is not enough to keep it.
+  const { receivers } = useProcReceivers(orgId)
+  const warehousesQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "warehouses"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
+  const { data: warehouseDocs } = useCollection<{ name?: string }>(warehousesQuery)
+  const mayEditReceivers = actor.isOwner || actor.canPrepare || actor.canApprove
   const [saving, setSaving] = useState(false)
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
@@ -241,6 +252,17 @@ export function ProcurementSettings() {
               <p className="border-t px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground" dir="auto">
                 {t("roles.prices")}
               </p>
+            </Section>
+
+            {/* ── Who receives goods, and where (§4 `RCVR`) ── */}
+            <Section title={tRcv("title")} subtitle={tRcv("subtitle")} icon={PackageCheck}>
+              <ReceiverRegister
+                receivers={receivers}
+                warehouses={(warehouseDocs || []).map((w) => ({ id: w.id, name: w.name || w.id }))}
+                actor={actor}
+                orgId={orgId}
+                mayEdit={mayEditReceivers}
+              />
             </Section>
 
             {/* ── Boundaries — what we own, read, and never do ── */}

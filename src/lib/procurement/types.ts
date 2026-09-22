@@ -244,6 +244,11 @@ export interface DeliveryPoFields {
   receiverSignatureData?: string | null
   /** The receiver's free note ("two wet cartons set aside"). */
   receiptNote?: string | null
+  /** Set when the notice was forwarded to somebody (`receiptLinks`), and when
+   * that somebody signed. The receiving desk reads the whole records; Today asks
+   * only whether anyone has been told to receive this yet. */
+  forwardedTo?: unknown
+  receiverReport?: unknown
 }
 
 /** What the pure layer needs to know about a delivery. */
@@ -281,6 +286,9 @@ export interface ProcurementPolicies {
   /** Hide offer prices until the RFQ's deadline. OFF by default here: the
    * running product shows prices as they arrive and contractors award early. */
   sealOffersUntilDeadline: boolean
+  /** How many days before a delivery a notice still sitting with Procurement
+   * becomes somebody's task to forward (§5.2-3b). */
+  forwardWindowDays: number
 }
 
 export const DEFAULT_POLICIES: ProcurementPolicies = {
@@ -294,6 +302,7 @@ export const DEFAULT_POLICIES: ProcurementPolicies = {
   supplierAcceptanceDays: 2,
   splitWindowDays: 30,
   sealOffersUntilDeadline: false,
+  forwardWindowDays: 1,
 }
 
 /** What an approval needs to know about the supplier — read from the

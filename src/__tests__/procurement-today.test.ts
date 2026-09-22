@@ -381,6 +381,46 @@ describe("SS4 `AGR` · an agreement about to end", () => {
   })
 })
 
+describe("§5.2-3b · a notice nobody has been told to receive", () => {
+  const pending = (over: Partial<ReceiptFact> = {}) => receipt({ id: "n1", status: "pending_confirmation", confirmedAt: null, deliveryDate: "2026-09-23", ...over })
+  const noticeTask = (w: ProcWorld) => todayTasks(w, MANAGER, NOW).find((t) => t.kind === "notice_incoming" || t.kind === "notice_overdue")
+
+  it("says so, and turns amber inside the forwarding window", () => {
+    const t = noticeTask(world({ receipts: [pending()] }))
+    expect(t).toMatchObject({ kind: "notice_incoming", severity: "amber", priority: 1 })
+    expect(t?.subParams.notForwarded).toBe(1)
+  })
+
+  it("goes quiet once somebody has been told", () => {
+    const t = noticeTask(world({ receipts: [pending({ forwardedTo: { name: "ماجد" } })] }))
+    expect(t).toMatchObject({ kind: "notice_incoming", severity: "blue", priority: 2 })
+    expect(t?.subParams.notForwarded).toBe(0)
+  })
+
+  it("counts a receiver who already signed as told", () => {
+    const t = noticeTask(world({ receipts: [pending({ receiverReport: { signedAt: "2026-09-22T06:00:00Z" } })] }))
+    expect(t?.subParams.notForwarded).toBe(0)
+  })
+
+  it("stays blue while the delivery is still days away", () => {
+    const t = noticeTask(world({ receipts: [pending({ deliveryDate: "2026-09-30" })] }))
+    expect(t).toMatchObject({ severity: "blue", priority: 2 })
+    // Still worth saying, just not yet worth a colour.
+    expect(t?.subParams.notForwarded).toBe(1)
+  })
+
+  it("carries it on the overdue row too — nobody was ever told", () => {
+    const t = noticeTask(world({ receipts: [pending({ deliveryDate: "2026-09-18" })] }))
+    expect(t).toMatchObject({ kind: "notice_overdue", severity: "red" })
+    expect(t?.subParams.notForwarded).toBe(1)
+  })
+
+  it("honours a wider window from the policy", () => {
+    const w = { ...world({ receipts: [pending({ deliveryDate: "2026-09-27" })] }), policies: { ...DEFAULT_POLICIES, forwardWindowDays: 7 } }
+    expect(noticeTask(w)).toMatchObject({ severity: "amber" })
+  })
+})
+
 describe("TODAY_KEYS — every key the queue and the tiles emit is declared", () => {
   it("emitted keys ⊆ TODAY_KEYS", () => {
     const w = world({

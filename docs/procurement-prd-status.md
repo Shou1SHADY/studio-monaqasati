@@ -49,10 +49,9 @@ order fields; a delivery without them confirms as it always did.
   supplier master fields (payment terms, type)** — the supplier facts an approval
   needs (VAT, verified, CR expiry) are read from the supplier's own platform profile.
   (Price agreements and price history are now built — see below.)
-- **Sealed offers, one reduction round to all, manual (staff-keyed) offers, delegate
-  approver, forwarding a notice by link + code, auto-forward, offline receiving** — not
-  built; sealing is a policy field already (`sealOffersUntilDeadline`, default off) so the
-  UI can honour it later without a schema change.
+- **One reduction round to all, manual (staff-keyed) offers, delegate approver,
+  offline receiving** — not built. (Forwarding by link + code shipped 22 Sep;
+  sealed offers and the receiver register are built — see below.)
 - **Guest awards** (PRD 6.1-4 says register first): the shipped guest flow stays — a guest's
   order is created with `supplierOrgId: "guest"`, is never blocked on supplier facts, and the
   send form carries no portal link for them.
@@ -107,12 +106,36 @@ Not built with them, on purpose: the automatic ROUTE (agreement ⇒ direct ⇒ w
 same route; and the award warning "this offer is N % above our last price" is next —
 it only applies to an offer that priced per line, which some do and some do not.
 
+## Receivers and the forwarding window (§4 `RCVR`, §5.2-3, 23 Sep)
+
+| PRD | Built |
+|---|---|
+| §4 `RCVR` | `procurementReceivers/{id}` — a name, what they are called, a mobile, their module, and the warehouses they receive at; an empty place list means they can stand in anywhere. Kept in Procurement settings by whoever prepares or approves an order, so a store keeper cannot add himself to another site. Never deleted, only retired: a delivery forwarded to somebody names them |
+| §5.2-3/4 forwarding | The forward dialog now opens on the REGISTER, and offers the people named for this delivery's place first — the project's own warehouse, else the central one, the same order `resolveLandingWarehouse` uses at receipt. An entry with an account forwards as that member; one without is a name and a mobile, which is exactly what the link and its code are for. "Any member" and "someone with no account" remain for whoever is not in the register yet |
+| §6.4 | `forwardWindowDays` (1 day, the PRD's reference) — with a consumer, not a dead switch |
+| §5.2-3b | A pending notice now SAYS whether anyone has been told to receive it, and turns amber inside the forwarding window; the overdue row says "and nobody was ever told". One row per notice, not two |
+
+Not built, and why: **auto-forward**. The PRD forwards by itself once the window
+lapses. Nothing in this product runs on a schedule — no job, no cron, no queue —
+so an automatic forward would be a function nobody calls. The notice colouring
+above is the honest half of it; the flagged `auto_forward` exception waits for the
+same scheduler. Receiving centrally without forwarding at all stays perfectly
+valid, which is why none of this blocks anything.
+
+Still absent from §6.4, each for the same reason — no consumer yet, and a switch
+that does nothing is worse than a missing one: the buyer self-issue limit (it also
+relaxes "nobody approves their own order" and needs the rules to re-derive the
+order's value), the inventory/workshop reply window (needs need lines), delivery-
+notice routing, the no-separate-receiver toggle, and the price-variance threshold
+(there is no variance document yet).
+
 ## Go-live checklist (owner)
 1. `node scripts/deploy-rules.js <env> --check`, then deploy the rules (the app writes
    `purchaseOrders`/`procurementSettings` only after that).
 2. `node scripts/migrate-po-permissions.js <env>` (dry run), then `--apply`, so existing
    groups holding `offers.accept` / `rfq.manage` gain `po.approve` / `po.expedite`.
 3. Deploy `firestore.indexes.json` (three `purchaseOrders` composites).
-4. Deploy the rules again for `priceAgreements` and `priceHistory` (23 Sep) — the
-   agreements screen writes nothing until they are live. Both queries are a single
-   `organizationId ==`, so they need no composite index.
+4. Deploy the rules again for `priceAgreements`, `priceHistory` and
+   `procurementReceivers` (23 Sep) — those screens write nothing until they are
+   live. All three queries are a single `organizationId ==`, so none needs a
+   composite index.

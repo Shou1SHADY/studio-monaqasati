@@ -79,6 +79,8 @@ export type ProcWriteErrorCode =
   // A price agreement (agreement-writes.ts).
   | "supplier_missing"
   | "no_lines"
+  // The receiver register (receiver-writes.ts).
+  | "bad_receiver"
 
 export class ProcWriteError extends Error {
   constructor(

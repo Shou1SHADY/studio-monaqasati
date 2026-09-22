@@ -40,6 +40,7 @@ import {
   type RefusalCode,
 } from "./po"
 import { agreementDaysLeft, agreementState, type PriceAgreement } from "./prices"
+import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
@@ -343,14 +344,22 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
     const number = r.poNumber || po?.docNumber || ""
     const lines = (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
     const action = actor.canReceive ? "actions.receive" : "actions.open"
+    // §5.2-3b: a notice nobody has forwarded is a delivery whose receiver does
+    // not know it is coming. The PRD auto-forwards once the window lapses;
+    // nothing here runs on a schedule, so instead the notice says so and turns
+    // amber inside the window. Receiving it centrally is a perfectly good answer
+    // — which is why this colours a row and never blocks one.
+    const told = Boolean(r.forwardedTo) || Boolean(r.receiverReport)
+    const chase = !told && forwardUrgency(d, w.policies.forwardWindowDays) !== "none"
+    const notForwarded = told ? 0 : 1
     if (d != null && d < 0) {
-      add({ id: `notice_overdue:${r.id}`, kind: "notice_overdue", priority: 1, severity: "red", sortDays: d, titleKey: "task.notice_overdue.title", titleParams: { supplier }, subKey: "task.notice_overdue.sub", subParams: { number, date: dayOf(r.deliveryDate), daysAgo: -d }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
+      add({ id: `notice_overdue:${r.id}`, kind: "notice_overdue", priority: 1, severity: "red", sortDays: d, titleKey: "task.notice_overdue.title", titleParams: { supplier }, subKey: "task.notice_overdue.sub", subParams: { number, date: dayOf(r.deliveryDate), daysAgo: -d, notForwarded }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
     } else if (promised != null && d != null && d > promised) {
       // T9b · the supplier announces a date after his own promise — the delay is known before it happens.
       const behind = d - promised
       add({ id: `notice_late_date:${r.id}`, kind: "notice_late_date", priority: 1, severity: "amber", sortDays: d, titleKey: "task.notice_late_date.title", titleParams: { supplier, days: behind }, subKey: "task.notice_late_date.sub", subParams: { number, date: dayOf(r.deliveryDate), promised: po?.promisedDate || "" }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
     } else {
-      add({ id: `notice:${r.id}`, kind: "notice_incoming", priority: d != null && d === 0 ? 1 : 2, severity: d != null && d === 0 ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_incoming.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1 }, subKey: "task.notice_incoming.sub", subParams: { number, lines }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
+      add({ id: `notice:${r.id}`, kind: "notice_incoming", priority: d != null && (d === 0 || chase) ? 1 : 2, severity: d != null && (d === 0 || chase) ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_incoming.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1 }, subKey: "task.notice_incoming.sub", subParams: { number, lines, notForwarded }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
     }
   }
 

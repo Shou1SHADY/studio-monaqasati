@@ -17,10 +17,11 @@ const NUMERIC: NumericPolicy[] = [
   "awardCycleDays",
   "supplierAcceptanceDays",
   "splitWindowDays",
+  "forwardWindowDays",
 ]
 
 /** Whole-number policies — a window of 2.5 days or 2.5 offers means nothing. */
-const INTEGER: ReadonlySet<NumericPolicy> = new Set<NumericPolicy>(["minOffers", "rfqWindowDays", "awardCycleDays", "supplierAcceptanceDays", "splitWindowDays"])
+const INTEGER: ReadonlySet<NumericPolicy> = new Set<NumericPolicy>(["minOffers", "rfqWindowDays", "awardCycleDays", "supplierAcceptanceDays", "splitWindowDays", "forwardWindowDays"])
 
 function sanitise(key: NumericPolicy, raw: unknown): number {
   const n = typeof raw === "string" ? Number(raw.replace(/,/g, "")) : Number(raw)
