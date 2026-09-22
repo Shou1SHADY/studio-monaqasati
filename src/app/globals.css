@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* The official Saudi Riyal symbol, U+20C1. Installed fonts do not draw it yet,
-   so a one-gfixlyph font does (scripts/build-riyal-font.js). `unicode-range` keeps
+   so a one-glyph font does (scripts/build-riyal-font.js). `unicode-range` keeps
    it to that single character. One face is declared for every weight and for
    italic so the browser never fakes a bold or a slant — SAMA's rules forbid
    distorting the sign. `block` rather than `swap`: a missing-glyph box must
