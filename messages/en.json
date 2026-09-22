@@ -8647,6 +8647,8 @@
       "suppliers_scope_label": "Which suppliers",
       "suppliers_scope_mine": "Our suppliers ({count})",
       "suppliers_scope_platform": "All on the platform ({count})",
+      "suppliers_scope_agreements": "Price agreements ({count})",
+      "suppliers_scope_history": "Price history",
       "suppliers_view_label": "How to show them",
       "suppliers_view_grid": "Show as cards",
       "suppliers_view_table": "Show as a table",
@@ -10248,6 +10250,8 @@
       "err_cannot_rate": "The supplier is rated once the story is whole: a received or closed order, at least one receipt, and not rated before",
       "err_already_cancelled": "The order is already cancelled",
       "err_has_receipts": "Something arrived on this order — it cannot be cancelled whole; cancel the remainder per line or close it short",
+      "err_supplier_missing": "Pick the supplier this agreement is with",
+      "err_no_lines": "Add at least one material with its agreed price",
       "deliveryWindow": {
         "morning": "Morning",
         "afternoon": "Afternoon",
@@ -10293,7 +10297,8 @@
         "openDraft": "Open draft",
         "openRfq": "Open RFQ",
         "seeArrived": "See what arrived",
-        "openReceipt": "Open receipt"
+        "openReceipt": "Open receipt",
+        "openAgreement": "Open the agreement"
       },
       "task": {
         "approve": {
@@ -10368,6 +10373,10 @@
         "rfq_closing_thin": {
           "title": "“{title}” closes {inDays, plural, =0 {today} one {tomorrow} other {in # days}} with {count, plural, =0 {no offers} one {# offer} other {# offers}}",
           "sub": "Share the guest link with off-platform suppliers or extend the deadline"
+        },
+        "agreement_expiring": {
+          "title": "{supplier}'s price agreement ends {inDays, plural, =0 {today} one {tomorrow} other {in # days}}",
+          "sub": "{number} · after that its {materials, plural, one {# material goes} other {# materials go}} back to the market"
         }
       },
       "wait": {
@@ -11210,6 +11219,76 @@
         "self_received": "Self-received",
         "no_notice": "Arrived with no notice",
         "cash_expense": "Cash expense"
+      }
+    },
+    "ProcPrices": {
+      "state": {
+        "live": "Live",
+        "expiring": "Ending soon",
+        "upcoming": "Starts later",
+        "expired": "Ended"
+      },
+      "endReason": "Why is this agreement ending now?",
+      "end": {
+        "title": "End {number}",
+        "desc": "Its materials go back to the RFQ cycle from today. The orders already placed on it are untouched."
+      },
+      "agreements": {
+        "intro": "A price already negotiated: order on it without going back to the market. When one ends, its materials go back to the RFQ cycle by themselves.",
+        "new": "New agreement",
+        "emptyTitle": "No price agreements yet",
+        "emptyDesc": "Sign one with a supplier you buy from often, and its prices become the default for those materials.",
+        "colNumber": "Number",
+        "colSupplier": "Supplier",
+        "colItems": "Materials and prices",
+        "colUntil": "Runs until",
+        "colActions": "",
+        "renew": "Renew",
+        "end": "End it",
+        "lastElsewhere": "Last paid elsewhere: {price} · {supplier}"
+      },
+      "history": {
+        "intro": "Every price we committed to when an order was approved — what it was, who from, and when. The sharpest rise is first.",
+        "emptyTitle": "No prices recorded yet",
+        "emptyDesc": "A price enters the history when a purchase order is approved. Approve one and it appears here.",
+        "colMaterial": "Material",
+        "colSeries": "Recent prices",
+        "colLast": "Last price",
+        "colChange": "Change",
+        "points": "{count, plural, one {# price} other {# prices}}",
+        "seriesLabel": "From {from} to {to}"
+      },
+      "dialog": {
+        "newTitle": "New price agreement",
+        "newDesc": "The supplier, how long it runs, and the agreed price of each material.",
+        "renewTitle": "Renew {number}",
+        "renewDesc": "A later end date, and the prices as they were re-negotiated. The supplier and the materials stay as they are — the orders placed on this agreement name them.",
+        "supplier": "Supplier",
+        "pickSupplier": "Pick a supplier",
+        "from": "Runs from",
+        "until": "Runs until",
+        "lines": "Materials and agreed prices",
+        "material": "Material",
+        "unit": "Unit",
+        "price": "Price",
+        "addLine": "Add a material",
+        "removeLine": "Remove this material",
+        "renewPricesHint": "Leave a price as it is to keep it.",
+        "note": "Note",
+        "notePlaceholder": "What the price includes — delivery, pumping, offloading",
+        "cancel": "Cancel",
+        "sign": "Sign the agreement",
+        "renew": "Renew"
+      },
+      "err": {
+        "date_invalid": "Check the dates: it must start before it ends, and not end in the past",
+        "supplier_missing": "Pick the supplier this agreement is with",
+        "no_lines": "Add at least one material with its agreed price",
+        "no_permission": "This action is not your permission",
+        "order_missing": "The agreement was not found",
+        "wrong_state": "It has already ended",
+        "reason_required": "Write the reason",
+        "generic": "It was not saved. Try again"
       }
     },
     "ProcSettings": {

@@ -7,12 +7,13 @@
 
 import { displayDocNumber } from "../sales-numbering"
 
-export type ProcDocType = "PO" | "GR"
+export type ProcDocType = "PO" | "GR" | "AG"
 
 /** The stored two-letter code and its Arabic prefix. */
 export const PROC_DOC_PREFIXES: Record<ProcDocType, { latin: string; arabic: string }> = {
   PO: { latin: "PO", arabic: "ط.ش" },
   GR: { latin: "GR", arabic: "ا.س" },
+  AG: { latin: "AG", arabic: "اتف" },
 }
 
 /** `PO-2026/014` → `ط.ش-2026/014` in Arabic, untouched otherwise. Anything that
@@ -23,6 +24,11 @@ export function displayPoNumber(number: string | null | undefined, locale: strin
 
 /** `GR-2026/031` → `ا.س-2026/031` in Arabic. */
 export function displayReceiptNumber(number: string | null | undefined, locale: string): string {
+  return displayDocNumber(number, locale)
+}
+
+/** `AG-2026/003` → `اتف-2026/003` in Arabic. */
+export function displayAgreementNumber(number: string | null | undefined, locale: string): string {
   return displayDocNumber(number, locale)
 }
 

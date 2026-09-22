@@ -39,6 +39,7 @@ import {
   type OfferLike,
   type RefusalCode,
 } from "./po"
+import { agreementDaysLeft, agreementState, type PriceAgreement } from "./prices"
 import { priceDrift } from "./reports"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
 
@@ -90,6 +91,8 @@ export interface ProcWorld {
   mfgPurchaseRequests?: MfgPurchaseRequestFact[]
   policies: ProcurementPolicies
   supplierFacts: Record<string, SupplierFacts>
+  /** Price agreements, when the screen loads them (§4 `AGR`). */
+  agreements?: PriceAgreement[]
 }
 
 export const OFFER_PENDING = new Set(["قيد المراجعة", "مطلوب تخفيض"])
@@ -121,6 +124,7 @@ export type TaskKind =
   | "rfq_award" // T4a
   | "rfq_no_offers" // T4b
   | "rfq_closing_thin" // T4c
+  | "agreement_expiring" // §4 `AGR` — renew it, or its materials go back to the market
 
 export type TaskAction = "review" | "view" | "send" | "open" | "updateDate" | "decide" | "receive" | "rate" | "compare" | "openDraft" | "openRfq" | "seeArrived" | "openReceipt"
 
@@ -148,6 +152,8 @@ export interface Task {
 }
 
 export const ORDER_HREF = (id: string) => `/contractor/rfqs/orders?po=${id}`
+/** The Suppliers tab, on its agreements segment. */
+export const AGREEMENTS_HREF = "/contractor/suppliers?segment=agreements"
 export const RECEIPT_HREF = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}`
 export const RFQ_HREF = (id: string) => `/contractor/rfqs/${id}/offers`
 export const DRAFTS_HREF = "/contractor/rfqs"
@@ -170,6 +176,7 @@ const GROUP_OF: Record<TaskKind, TaskGroup> = {
   rfq_award: "rfq",
   rfq_no_offers: "rfq",
   rfq_closing_thin: "rfq",
+  agreement_expiring: "rfq",
 }
 
 const SEVERITY_RANK: Record<TaskSeverity, number> = { red: 0, amber: 1, blue: 2 }
@@ -392,6 +399,30 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
         // T4c · closing soon with thin competition.
         add({ id: `rfq_closing_thin:${r.id}`, kind: "rfq_closing_thin", priority: 2, severity: "blue", sortDays: deadline, titleKey: "task.rfq_closing_thin.title", titleParams: { title, inDays: deadline, count }, subKey: "task.rfq_closing_thin.sub", subParams: {}, amount: null, href: RFQ_HREF(r.id), actionKey: "actions.openRfq" })
       }
+    }
+  }
+
+  // An agreement about to end (§4 `AGR`). Informational, and only for whoever
+  // could renew it: when it lapses its materials go back to the market by
+  // themselves, which is correct but expensive if nobody meant it.
+  if (actor.isOwner || actor.canPrepare || actor.canApprove) {
+    for (const a of w.agreements || []) {
+      if (agreementState(a, today) !== "expiring") continue
+      const left = agreementDaysLeft(a, today)
+      add({
+        id: `agreement_expiring:${a.id}`,
+        kind: "agreement_expiring",
+        priority: 3,
+        severity: "blue",
+        sortDays: left,
+        titleKey: "task.agreement_expiring.title",
+        titleParams: { supplier: a.supplierName, inDays: left },
+        subKey: "task.agreement_expiring.sub",
+        subParams: { number: a.docNumber, materials: (a.lines || []).length },
+        amount: null,
+        href: AGREEMENTS_HREF,
+        actionKey: "actions.openAgreement",
+      })
     }
   }
 

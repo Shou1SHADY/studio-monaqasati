@@ -625,12 +625,12 @@ describe("emitProcEvent — who hears", () => {
     // PRD 3.0 SS5.3: the key is what stops a retry from telling somebody twice.
     // An order is sent once, so the second emit addresses the same document; a
     // reminder is a new act every time and must still arrive.
-    const sent = { kind: "po_sent", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" } as const
+    const sent: Parameters<typeof emitProcEvent>[2] = { kind: "po_sent", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" }
     await emitProcEvent(db, { uid: "buyer", name: "Badr" }, sent)
     await emitProcEvent(db, { uid: "buyer", name: "Badr" }, sent)
     expect(inbox("fin").filter((n) => n.type === "po_sent")).toHaveLength(1)
 
-    const nudge = { kind: "po_reminder", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" } as const
+    const nudge: Parameters<typeof emitProcEvent>[2] = { kind: "po_reminder", organizationId: ORG, to: [{ users: ["fin"] }], poId: "po1" }
     await emitProcEvent(db, { uid: "buyer", name: "Badr" }, nudge)
     await emitProcEvent(db, { uid: "buyer", name: "Badr" }, nudge)
     expect(inbox("fin").filter((n) => n.type === "po_reminder")).toHaveLength(2)

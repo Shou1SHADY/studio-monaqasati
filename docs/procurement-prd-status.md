@@ -45,10 +45,10 @@ order fields; a delivery without them confirms as it always did.
   Manufacturing's requests reach the inbox as before; project requests still do not, and
   there are no price agreements or price history to route on. The last-order-day maths is in
   `po.ts` (`lastOrderDay`, `dayParts`) for when need dates exist.
-- **Price agreements, price history, the platform directory as a separate segment,
-  join invitations by WhatsApp, supplier master fields (payment terms, type)** — the
-  suppliers page is unchanged; the supplier facts an approval needs (VAT, verified, CR
-  expiry) are read from the supplier's own platform profile.
+- **The platform directory as a separate segment, join invitations by WhatsApp,
+  supplier master fields (payment terms, type)** — the supplier facts an approval
+  needs (VAT, verified, CR expiry) are read from the supplier's own platform profile.
+  (Price agreements and price history are now built — see below.)
 - **Sealed offers, one reduction round to all, manual (staff-keyed) offers, delegate
   approver, forwarding a notice by link + code, auto-forward, offline receiving** — not
   built; sealing is a policy field already (`sealOffersUntilDeadline`, default off) so the
@@ -80,9 +80,39 @@ relaxes "nobody approves their own order" and needs `firestore.rules` to read
 `procurementSettings` and re-derive the order's value, so it belongs in its own
 considered change rather than beside three repairs.
 
+## Price agreements and price history (§4 `AGR` / `PH`, 23 Sep)
+Both were blocked on having the reference prototype; with it in hand they are built.
+
+| PRD | Built |
+|---|---|
+| §4 `AGR` | `priceAgreements/{id}` — a supplier, a window, a price per material, a note, a log. `AG-yyyy/NNN` (اتف) drawn in the same transaction that writes it, from the same yearly counters as the order. Three acts: sign, renew (a later end date and re-negotiated prices; the supplier and the materials are frozen because the orders placed on it name them), end early with a reason. The rules freeze the number, the supplier, the org and the start date, and let a renewal touch only `until`/`lines`/`note`/`endedAt`/`log` |
+| §4 `PH` | `priceHistory/{id}` — every price we committed to, with its supplier and day. Written **at approval**, not at creation: a prepared order is a proposal, and a price nobody approved is not a price we paid. The row id is `{poId}__{lineId}`, so a retried approval overwrites its own point instead of adding a second one. Append-only by rule; a lump-sum line records nothing, because a total over a quantity is an invented unit price |
+| §7.2 Suppliers | The tab now has the PRD's four segments — our suppliers · the platform · price agreements · price history — and `?segment=` opens one directly. Agreements list expiring-first, each material beside **what we last paid elsewhere** (two numbers, no verdict: the agreement is worth renewing only while it beats the market). Price history is one row per material, sharpest rise first, with a bar series, the last price, and a change badge that turns amber above 0 % and red above 3 % |
+| §7.2 Today | An agreement inside 14 days of its end reaches the queue (blue, informational) for whoever could renew it — not the expediter, not the store. When it lapses its materials go back to the market by themselves, which is right, but expensive if nobody meant it |
+
+Deviations from the prototype, both deliberate:
+- It never read an agreement's **start date**, so one signed for next quarter priced
+  an order today. Ours is not live before it starts.
+- With two live agreements over one material it took whichever came first in its
+  array. Ours takes the **cheapest**, then the one running longest, then the number —
+  so the same question always gets the same answer.
+
+Also fixed: the drift report keyed a material on `name|unit` lower-cased, which split
+one material in two the first time somebody typed "حديد ١٢مم" where the last order said
+"حديد 12مم" — and the drift against the last price silently vanished. It now uses the
+same Arabic-folded key as the history.
+
+Not built with them, on purpose: the automatic ROUTE (agreement ⇒ direct ⇒ workshop
+⇒ RFQ) needs need lines, which do not exist yet; ordering ON an agreement needs that
+same route; and the award warning "this offer is N % above our last price" is next —
+it only applies to an offer that priced per line, which some do and some do not.
+
 ## Go-live checklist (owner)
 1. `node scripts/deploy-rules.js <env> --check`, then deploy the rules (the app writes
    `purchaseOrders`/`procurementSettings` only after that).
 2. `node scripts/migrate-po-permissions.js <env>` (dry run), then `--apply`, so existing
    groups holding `offers.accept` / `rfq.manage` gain `po.approve` / `po.expedite`.
 3. Deploy `firestore.indexes.json` (three `purchaseOrders` composites).
+4. Deploy the rules again for `priceAgreements` and `priceHistory` (23 Sep) — the
+   agreements screen writes nothing until they are live. Both queries are a single
+   `organizationId ==`, so they need no composite index.

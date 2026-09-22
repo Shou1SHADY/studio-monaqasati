@@ -9,10 +9,11 @@
 // the approver — those come from `./po` on every read. What is stored is what
 // somebody decided, with their name and the time.
 
-import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
+import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
 import { emitProcEvent, procLinks, sarText } from "./events"
 import { drawProcDocNumber } from "./numbering"
+import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
 import {
   acceptedValue,
   applyReceiptToLines,
@@ -75,6 +76,9 @@ export type ProcWriteErrorCode =
   | "cannot_rate"
   | "already_cancelled"
   | "has_receipts"
+  // A price agreement (agreement-writes.ts).
+  | "supplier_missing"
+  | "no_lines"
 
 export class ProcWriteError extends Error {
   constructor(
@@ -414,8 +418,29 @@ export async function approvePurchaseOrder(
       })
     )
   }
-  await Promise.all(events)
+  await Promise.all([...events, recordApprovedPrices(firestore, po, at)])
   return po
+}
+
+/**
+ * The approved prices enter the price history (PRD §4 `PH`).
+ *
+ * At approval, because that is when a price becomes one we committed to — a
+ * prepared order is still a proposal. Best-effort like every other post-commit
+ * effect: the order is approved either way, and a row that failed to write
+ * costs a future comparison, not a transition.
+ *
+ * Each row's id is the order's own line, so a retried approval overwrites its
+ * row instead of adding a second point to the material's series.
+ */
+async function recordApprovedPrices(firestore: Firestore, po: PurchaseOrder, at: string): Promise<void> {
+  const rows = historyRowsForApproval(po, at)
+  if (!rows.length) return
+  await Promise.all(
+    rows.map(({ id, ...row }) =>
+      setDoc(doc(firestore, PRICE_HISTORY, id), row).catch((err) => console.warn("price history not recorded:", (err as { code?: string })?.code || err))
+    )
+  )
 }
 
 /** Return to the preparer with a reason: the order stays awaiting approval

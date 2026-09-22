@@ -62,12 +62,17 @@ import {
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
 import { collection, query, where, doc, addDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore"
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
 import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
 import { stripIdentityFields } from "@/lib/identity-fields"
 import { displayCategory, displayCity } from "@/lib/constants"
+import { useProcActor } from "@/hooks/useProcActor"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
+import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
+import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -103,7 +108,15 @@ export default function SuppliersDirectory() {
   const [removeTarget, setRemoveTarget] = useState<{ id: string; supplierName?: string } | null>(null)
   // 22 Sep review: the platform's suppliers and the company's own are two
   // different questions; and a guide of many suppliers wants a table.
-  const [scope, setScope] = useState<"mine" | "platform">("mine")
+  // PRD 3.0 SS7.2: the Suppliers tab has four segments. The first two scope the
+  // directory; the last two are Procurement's own price records. `?segment=` opens
+  // one directly — the Today queue's renewal reminder links straight to the
+  // agreements, and a reminder that lands on the wrong segment is not a link.
+  const searchParams = useSearchParams()
+  const [scope, setScope] = useState<"mine" | "platform" | "agreements" | "history">(() => {
+    const asked = searchParams?.get("segment")
+    return asked === "agreements" || asked === "history" || asked === "platform" ? asked : "mine"
+  })
   const [viewMode, setViewModeState] = useState<"grid" | "table">("grid")
   // Read after mount: the server renders the grid, and the first client render
   // must match it.
@@ -131,6 +144,15 @@ export default function SuppliersDirectory() {
 
   const { can } = usePermissions()
   const canManageSuppliers = can("suppliers.manage")
+
+  // Procurement's own price records (PRD SS4 `AGR` / `PH`). Signing or renewing an
+  // agreement commits the company to a price, so it asks the hand that awards or
+  // approves an order, not the one that keeps the supplier list.
+  const { actor, orgId: procOrgId } = useProcActor()
+  const { agreements, history, ready: pricesReady } = useProcurementPrices(procOrgId)
+  const mayEditAgreements = actor.isOwner || actor.canPrepare || actor.canApprove
+  /** The two segments that list suppliers; the other two are price records. */
+  const directory = scope === "mine" || scope === "platform"
 
   const suppliersQuery = useMemoFirebase(() => {
     if (!firestore) return null
@@ -444,6 +466,7 @@ export default function SuppliersDirectory() {
           }
         />
         <div className="flex flex-wrap items-center gap-2">
+            {directory && (<>
             <div className="relative w-full sm:w-72">
               <Search className="absolute top-1/2 -translate-y-1/2 start-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input 
@@ -532,8 +555,9 @@ export default function SuppliersDirectory() {
                 </div>
               </PopoverContent>
             </Popover>
-            <div className="flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_scope_label")}>
-              {(["mine", "platform"] as const).map((sc) => (
+            </>)}
+            <div className="flex flex-wrap rounded-lg border p-0.5" role="group" aria-label={t("suppliers_scope_label")}>
+              {(["mine", "platform", "agreements", "history"] as const).map((sc) => (
                 <button
                   key={sc}
                   type="button"
@@ -544,10 +568,17 @@ export default function SuppliersDirectory() {
                     scope === sc ? "bg-module text-module-foreground" : "text-muted-foreground hover:bg-muted"
                   )}
                 >
-                  {sc === "mine" ? t("suppliers_scope_mine", { count: mineCount }) : t("suppliers_scope_platform", { count: displaySuppliers.length })}
+                  {sc === "mine"
+                    ? t("suppliers_scope_mine", { count: mineCount })
+                    : sc === "platform"
+                      ? t("suppliers_scope_platform", { count: displaySuppliers.length })
+                      : sc === "agreements"
+                        ? t("suppliers_scope_agreements", { count: agreements.length })
+                        : t("suppliers_scope_history")}
                 </button>
               ))}
             </div>
+            {directory && (
             <div className="ms-auto flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_view_label")}>
               <button type="button" aria-pressed={viewMode === "grid"} aria-label={t("suppliers_view_grid")} onClick={() => setViewMode("grid")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "grid" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
                 <LayoutGrid size={16} aria-hidden="true" />
@@ -556,9 +587,30 @@ export default function SuppliersDirectory() {
                 <Rows3 size={16} aria-hidden="true" />
                 </button>
             </div>
+            )}
         </div>
 
-        {isLoading ? (
+        {scope === "agreements" || scope === "history" ? (
+          !pricesReady ? (
+            <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
+              <Loader2 className="animate-spin mb-4" size={32} />
+              <p>{t("suppliers_loading")}</p>
+            </div>
+          ) : scope === "agreements" ? (
+            <PriceAgreementsView
+              agreements={agreements}
+              history={history}
+              actor={actor}
+              orgId={procOrgId}
+              locale={locale}
+              suppliers={displaySuppliers.filter(isMine).map((sup: any) => ({ id: sup.organizationId || sup.id, name: sup.companyName || sup.name || "" }))}
+              mayEdit={mayEditAgreements}
+              fmtDate={fmtDate}
+            />
+          ) : (
+            <PriceHistoryView history={history} locale={locale} fmtDate={fmtDate} />
+          )
+        ) : isLoading ? (
           <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
             <Loader2 className="animate-spin mb-4" size={32} />
             <p>{t("suppliers_loading")}</p>

@@ -92,9 +92,11 @@ const ARABIC_PREFIX: Record<string, string> = {
   MR: "طت",
   WO: "أت",
   RQ: "ط.ع",
-  // Procurement (PRD 3.0 §15.1): the purchase order and the goods receipt.
+  // Procurement (PRD 3.0 §15.1): the purchase order, the goods receipt and
+  // the price agreement.
   PO: "ط.ش",
   GR: "ا.س",
+  AG: "اتف",
 }
 
 /** "QT-2026/070" reads "ع.س-2026/070" in Arabic. Anything that is not one of

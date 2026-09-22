@@ -983,6 +983,63 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Price agreements (PRD 3.0 §4 `AGR`) — a price we already negotiated, so an
+    // order may be placed on it without going back to the market. Read by any
+    // member (it prices what they are sourcing); written by whoever may award or
+    // approve an order, because it commits the company to a price.
+    match /priceAgreements/{agreementId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.get('preparedById', '') == request.auth.uid
+        && request.resource.data.get('docNumber', '') is string
+        && request.resource.data.get('docNumber', '').size() > 0
+        && request.resource.data.get('supplierOrgId', '') is string
+        && request.resource.data.get('supplierOrgId', '').size() > 0
+        && request.resource.data.get('from', '') is string
+        && request.resource.data.get('until', '') is string
+        && request.resource.data.get('until', '') >= request.resource.data.get('from', '')
+        && request.resource.data.lines is list
+        && request.resource.data.lines.size() > 0;
+      // Renewing moves the end date and the prices; the supplier, the number and
+      // the org it belongs to are what the history points at, so they are frozen.
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.docNumber == resource.data.docNumber
+        && request.resource.data.supplierOrgId == resource.data.supplierOrgId
+        && request.resource.data.get('from', '') == resource.data.get('from', '')
+        && request.resource.data.get('until', '') >= resource.data.get('from', '')
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['until', 'lines', 'note', 'endedAt', 'log', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // Price history (PRD 3.0 §4 `PH`) — every price we committed to, with its
+    // supplier and day. An append-only ledger: it is what a price argument is
+    // settled with, so a row is never edited and never removed. Written by the
+    // approval itself at a deterministic id (`{poId}__{lineId}`), which is why a
+    // create may land on a document that already exists.
+    match /priceHistory/{entryId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.get('materialKey', '') is string
+        && request.resource.data.get('materialKey', '').size() > 0
+        && request.resource.data.get('price', 0) is number
+        && request.resource.data.get('price', 0) > 0
+        && request.resource.data.get('day', '') is string
+        && request.resource.data.get('kind', '') in ['po', 'variance'];
+      // A retried approval rewrites its own row; nothing else may move, and the
+      // material, the supplier and the day it happened never change.
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.materialKey == resource.data.materialKey
+        && request.resource.data.get('poId', '') == resource.data.get('poId', '')
+        && request.resource.data.get('day', '') == resource.data.get('day', '')
+        && request.resource.data.get('supplierOrgId', '') == resource.data.get('supplierOrgId', '');
+      allow delete: if isAdmin();
+    }
+
     // Mdmak internal procurement records — admin-only (hides internal cost/commission from contractors)
     match /mdmakProcurement/{procurementId} {
       allow read, write: if isAdmin();

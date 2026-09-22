@@ -11,6 +11,7 @@
 // "unknown" and the total leaves it out.
 
 import { acceptedValue, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
+import { materialKey } from "./prices"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { PurchaseOrder } from "./types"
 
@@ -27,7 +28,10 @@ export function committedOrders(w: ProcWorld, period?: Period | null): PurchaseO
   return w.orders.filter((po) => po.status !== "awaiting_approval" && po.status !== "cancelled" && inPeriod(dayOf(po.createdAt), period))
 }
 
-const nameKey = (name: string, unit: string) => `${(name || "").trim().toLowerCase()}|${(unit || "").trim().toLowerCase()}`
+// The same folded key the price history uses: lower-casing and trimming alone
+// split one material in two the first time somebody typed "حديد ١٢مم" where the
+// last order said "حديد 12مم", and the drift against the last price vanished.
+const nameKey = (name: string, unit: string) => materialKey(name, unit)
 
 // ---------------------------------------------------------------------------
 // 1 · Spend by project

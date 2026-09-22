@@ -8,6 +8,7 @@
 
 import { TODAY_KEYS, todayKpis, todayTasks, todayWaits, type OfferFact, type ProcWorld, type RfqFact } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
+import { AGREEMENT_EXPIRY_WINDOW_DAYS, type PriceAgreement } from "@/lib/procurement/prices"
 
 const NOW = new Date("2026-09-22T08:00:00Z")
 
@@ -321,6 +322,62 @@ describe("KPIs — three per role", () => {
       ["late", 1, "count"],
       ["sent_not_accepted", 1, "count"],
     ])
+  })
+})
+
+describe("SS4 `AGR` · an agreement about to end", () => {
+  const agreement = (over: Partial<PriceAgreement> = {}): PriceAgreement =>
+    ({
+      id: "a1",
+      organizationId: "org",
+      docNumber: "AG-2026/003",
+      supplierOrgId: "sup1",
+      supplierName: "الراجحي",
+      from: "2026-01-01",
+      until: "2026-09-28",
+      lines: [{ name: "حديد 12مم", unit: "طن", price: 2780 }],
+      preparedById: "mgr",
+      preparedByName: "Manager",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      ...over,
+    }) as PriceAgreement
+
+  const day = (n: number) => {
+    const d = new Date("2026-09-22T00:00:00Z")
+    d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().slice(0, 10)
+  }
+
+  it("reaches the queue inside the renewal window, with the number and what it covers", () => {
+    const t = todayTasks(world({ agreements: [agreement()] }), MANAGER, NOW)
+    const task = t.find((x) => x.kind === "agreement_expiring")
+    expect(task).toMatchObject({
+      severity: "blue",
+      priority: 3,
+      sortDays: 6,
+      titleParams: { supplier: "الراجحي", inDays: 6 },
+      subParams: { number: "AG-2026/003", materials: 1 },
+      amount: null,
+    })
+    expect(task?.href).toContain("segment=agreements")
+  })
+
+  it("stays quiet while it is not near its end, and once it is over", () => {
+    expect(kinds(world({ agreements: [agreement({ until: day(AGREEMENT_EXPIRY_WINDOW_DAYS + 1) })] }), MANAGER)).not.toContain("agreement_expiring")
+    expect(kinds(world({ agreements: [agreement({ until: day(-1) })] }), MANAGER)).not.toContain("agreement_expiring")
+  })
+
+  it("is shown to whoever could renew it, and to nobody else", () => {
+    const w = world({ agreements: [agreement()] })
+    expect(kinds(w, OWNER)).toContain("agreement_expiring")
+    expect(kinds(w, BUYER)).toContain("agreement_expiring")
+    // The expediter chases dates and the store receives; neither signs a price.
+    expect(kinds(w, EXPEDITER)).not.toContain("agreement_expiring")
+    expect(kinds(w, RECEIVER)).not.toContain("agreement_expiring")
+  })
+
+  it("says nothing when the screen loaded no agreements at all", () => {
+    expect(kinds(world({}), MANAGER)).not.toContain("agreement_expiring")
   })
 })
 
