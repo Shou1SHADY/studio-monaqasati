@@ -12,6 +12,8 @@ import {
   PRICING_MODES,
   canPriceByLine,
   guestOfferPrice,
+  offerRates,
+  ratesAboveLastPaid,
   offerPricingFields,
   priceOffer,
   pricedProducts,
@@ -226,5 +228,77 @@ describe("what a public endpoint stores when a guest quotes", () => {
   it("takes the posted total for an RFQ that cannot be priced by line, whatever it says", () => {
     const unpriceable = rfq({ products: [{ name: "x", quantity: 0, unitOfMeasure: "u" }] })
     expect(guestOfferPrice(unpriceable, [{ rfqProductIndex: 0, unitPrice: 5 }], 900)).toMatchObject({ ok: true, total: 900, lines: null })
+  })
+})
+
+describe("the rates an offer implies", () => {
+  it("uses the quoted rates when the supplier gave them", () => {
+    const rates = offerRates(rfq(), { price: "29320", lines: [{ rfqProductIndex: 0, unitPrice: 2780 }, { rfqProductIndex: 1, unitPrice: 15.2 }] })
+    expect(rates.map((r) => ({ name: r.name, unitPrice: r.unitPrice, quoted: r.quoted }))).toEqual([
+      { name: "حديد 12مم", unitPrice: 2780, quoted: true },
+      { name: "أسمنت", unitPrice: 15.2, quoted: true },
+    ])
+  })
+
+  it("divides a total out for a single-material RFQ", () => {
+    const one = rfq({ products: [{ name: "حديد 12مم", quantity: "10", unitOfMeasure: "طن" }] })
+    expect(offerRates(one, { price: "27800" })).toEqual([
+      { rfqProductIndex: 0, name: "حديد 12مم", unit: "طن", quantity: 10, unitPrice: 2780, quoted: false },
+    ])
+  })
+
+  it("prefers a multi-shipment total over the plain price when dividing", () => {
+    const one = rfq({ products: [{ name: "x", quantity: "2", unitOfMeasure: "u" }] })
+    expect(offerRates(one, { price: "1", totalBatchesPrice: 100 })[0].unitPrice).toBe(50)
+  })
+
+  it("says nothing for a total over several materials — that would be invention", () => {
+    expect(offerRates(rfq(), { price: "29320" })).toEqual([])
+  })
+
+  it("says nothing with no quantity, no total, or no products", () => {
+    expect(offerRates(rfq({ products: [{ name: "x", quantity: 0, unitOfMeasure: "u" }] }), { price: "100" })).toEqual([])
+    expect(offerRates(rfq({ products: [{ name: "x", quantity: 5, unitOfMeasure: "u" }] }), { price: "0" })).toEqual([])
+    expect(offerRates(rfq({ products: [] }), { price: "100" })).toEqual([])
+  })
+
+  it("ignores a rate for a product the RFQ never listed", () => {
+    expect(offerRates(rfq(), { price: "1", lines: [{ rfqProductIndex: 9, unitPrice: 5 }] })).toEqual([])
+  })
+})
+
+describe("which of those sit above what we last paid", () => {
+  const rates = offerRates(rfq(), { lines: [{ rfqProductIndex: 0, unitPrice: 2900 }, { rfqProductIndex: 1, unitPrice: 15.2 }] })
+  const last = (steel: number | null, cement: number | null) => (name: string) => {
+    if (name === "حديد 12مم") return steel == null ? null : { price: steel, supplierName: "Al Rajhi" }
+    if (name === "أسمنت") return cement == null ? null : { price: cement, supplierName: "Yamama" }
+    return null
+  }
+
+  it("names the ones past the threshold, worst first, with who we paid", () => {
+    const above = ratesAboveLastPaid(rates, last(2780, 14))
+    expect(above.map((a) => ({ name: a.name, percent: a.percent, lastPaid: a.lastPaid, lastSupplier: a.lastSupplier }))).toEqual([
+      { name: "أسمنت", percent: 8.57, lastPaid: 14, lastSupplier: "Yamama" },
+      { name: "حديد 12مم", percent: 4.32, lastPaid: 2780, lastSupplier: "Al Rajhi" },
+    ])
+  })
+
+  it("stays quiet about a rise inside the threshold, and about a fall", () => {
+    expect(ratesAboveLastPaid(rates, last(2850, 20))).toEqual([])
+  })
+
+  it("stays quiet about a material we have never bought", () => {
+    expect(ratesAboveLastPaid(rates, last(null, null))).toEqual([])
+  })
+
+  it("stays quiet when the last price was nothing — no percentage over zero", () => {
+    expect(ratesAboveLastPaid(rates, last(0, 0))).toEqual([])
+  })
+
+  it("compares a divided rate too, which is the point of dividing it", () => {
+    const one = rfq({ products: [{ name: "حديد 12مم", quantity: "10", unitOfMeasure: "طن" }] })
+    const above = ratesAboveLastPaid(offerRates(one, { price: "29000" }), last(2780, null))
+    expect(above).toHaveLength(1)
+    expect(above[0]).toMatchObject({ quoted: false, unitPrice: 2900, percent: 4.32 })
   })
 })

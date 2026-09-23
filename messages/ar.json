@@ -9584,6 +9584,8 @@
       "offers_award_reason_text_required": "اكتب السبب في ٨ أحرف على الأقل",
       "offers_award_reason_hint": "يظهر السبب لمن يعتمد أمر الشراء ويبقى في سجله",
       "offers_award_short_competition": "منافسة ناقصة: {count, plural, =0 {لا عروض} one {عرض واحد فقط} two {عرضان فقط} few {# عروض فقط} many {# عرضاً فقط} other {# عرض فقط}} على شراء فوق حدّ {threshold} — ستظهر لمن يعتمد الأمر (تنبيه لا يمنع).",
+      "offers_award_above_last": "{name} أعلى بـ {percent}% من آخر سعر اشترينا به — {offered} / {unit} مقابل {last}",
+      "offers_award_above_last_derived": "محسوب من إجمالي هذا العرض، لأنه يسعّر مادة واحدة",
       "offers_award_no_official_quote": "لم يرفع المورد عرض سعر رسمياً بختم شركته — المسجَّل عندنا سعر للمقارنة. اطلبه قبل إصدار الأمر (تنبيه لا يمنع).",
       "offers_award_order_will_wait": "الترسية تتم الآن، لكن أمر الشراء سينتظر حتى:",
       "offers_award_order_created": "أُعدّ أمر الشراء {number} — بانتظار الاعتماد",

@@ -9584,6 +9584,8 @@
       "offers_award_reason_text_required": "Write the reason in at least 8 characters",
       "offers_award_reason_hint": "The approver of the purchase order sees the reason; it stays in the order's record",
       "offers_award_short_competition": "Short competition: {count, plural, =0 {no offers} one {only # offer} other {only # offers}} on a purchase above the {threshold} threshold — the approver will see it (a note, not a stop).",
+      "offers_award_above_last": "{name} is {percent}% above what we last paid — {offered} / {unit} against {last}",
+      "offers_award_above_last_derived": "Worked out from this offer's total, since it prices one material",
       "offers_award_no_official_quote": "The supplier attached no stamped official quote — what we hold is a price for comparison. Ask for it before the order is issued (a note, not a stop).",
       "offers_award_order_will_wait": "The award goes through now, but the purchase order will wait until:",
       "offers_award_order_created": "Order {number} created — awaiting approval",

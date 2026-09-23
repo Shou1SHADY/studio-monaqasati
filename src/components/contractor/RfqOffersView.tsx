@@ -30,6 +30,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToastAction } from "@/components/ui/toast"
 import { useProcActor } from "@/hooks/useProcActor"
 import { resolvePolicies } from "@/lib/procurement/policies"
+import { offerRates, ratesAboveLastPaid } from "@/lib/procurement/offer-pricing"
+import { lastPaid } from "@/lib/procurement/prices"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type SupplierFacts } from "@/lib/procurement/types"
 import { AWARD_REASON_CODES, lowestOffer, offerPrice, poStatus } from "@/lib/procurement/po"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
@@ -263,6 +266,13 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     const orgIdOfSupplier = awardSupplierOrgId(confirmDecisionTarget.offer)
     return reviewAward(confirmDecisionTarget.offer, (offers || []) as any[], policies, orgIdOfSupplier ? supplierFacts[orgIdOfSupplier] || null : null, new Date())
   }, [confirmDecisionTarget, offers, policies, supplierFacts])
+  const { history: priceHistory } = useProcurementPrices(procOrgId)
+  const aboveLast = useMemo(() => {
+    if (!awardReview || !rfq) return []
+    const rates = offerRates(rfq as Parameters<typeof offerRates>[0], confirmDecisionTarget?.offer || {})
+    return ratesAboveLastPaid(rates, (name, unit) => lastPaid(priceHistory, name, unit))
+  }, [awardReview, confirmDecisionTarget, rfq, priceHistory])
+
   const awardReason = awardReview?.needsReason ? parseAwardReason(awardReasonCode, awardReasonText) : null
   const awardReasonMissing = Boolean(awardReview?.needsReason) && !awardReason
 
@@ -1937,6 +1947,27 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                   )}
                   <p className="text-[11px] text-muted-foreground">{t("offers_award_reason_hint")}</p>
                 </div>
+              )}
+
+              {aboveLast.length > 0 && (
+                <ul className="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                  {aboveLast.map((row) => (
+                    <li key={row.rfqProductIndex} className="flex items-start gap-1.5">
+                      <TrendingUp size={12} className="shrink-0 mt-0.5" />
+                      <span>
+                        {t("offers_award_above_last", {
+                          name: row.name,
+                          percent: row.percent,
+                          offered: formatCurrency(row.unitPrice, locale),
+                          last: formatCurrency(row.lastPaid, locale),
+                          unit: row.unit,
+                        })}
+                        {row.lastSupplier && <span className="opacity-80">{` \u00b7 ${row.lastSupplier}`}</span>}
+                        {!row.quoted && <span className="block text-[11px] opacity-80">{t("offers_award_above_last_derived")}</span>}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
 
               {(awardReview.shortCompetition || awardReview.noOfficialQuote || awardReview.guest) && (

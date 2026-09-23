@@ -23,6 +23,8 @@
 //   to multiply by cannot produce a total, and a total that is not the sum of
 //   its parts is the "number that lies" of §6.2.
 
+import { aboveLastPaid } from "./prices"
+
 const round2 = (n: number) => Math.round(n * 100) / 100
 
 /** Quantities and prices reach us as typed strings — "1,200", " 40 ", "٤٠". */
@@ -152,4 +154,76 @@ export function guestOfferPrice(
   const pricing = priceOffer(pricedProducts(rfq), rates)
   if (!pricing.complete) return { ok: false, code: "LINE_PRICES_INCOMPLETE" }
   return { ok: true, total: pricing.total, price: String(pricing.total), lines: pricing.lines }
+}
+
+// ---------------------------------------------------------------------------
+// The rates an offer implies — for comparing, not for storing
+// ---------------------------------------------------------------------------
+
+export interface OfferRate extends PricedProduct {
+  unitPrice: number
+  /** True when the rate was quoted; false when it was divided out of a total. */
+  quoted: boolean
+}
+
+/**
+ * What each material costs under this offer.
+ *
+ * Quoted rates when the supplier gave them. Otherwise, for an RFQ with a SINGLE
+ * material, the total divided by its quantity — the only rate consistent with
+ * that quote, and exact arithmetic rather than an estimate.
+ *
+ * That divided rate is deliberately good enough to COMPARE and not good enough
+ * to STORE: `poValue` sums quantity × unitPrice, so an uneven division (100 over
+ * 3) would leave an order whose value differs from the price actually accepted
+ * by a halala. A warning does not have to reconcile with the ledger; an order
+ * does. So `buildPoLines` still keeps a lump sum lump.
+ */
+export function offerRates(rfq: PricedRfq | null | undefined, offer: { price?: unknown; totalBatchesPrice?: unknown; lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null }): OfferRate[] {
+  const products = pricedProducts(rfq)
+  const quoted = new Map<number, number>()
+  for (const l of offer.lines || []) {
+    const i = Number(l.rfqProductIndex)
+    const rate = round2(toAmount(l.unitPrice))
+    if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
+  }
+  if (quoted.size) {
+    return products.filter((p) => quoted.has(p.rfqProductIndex)).map((p) => ({ ...p, unitPrice: quoted.get(p.rfqProductIndex) as number, quoted: true }))
+  }
+  const total = toAmount(offer.totalBatchesPrice) > 0 ? toAmount(offer.totalBatchesPrice) : toAmount(offer.price)
+  const only = products.length === 1 ? products[0] : null
+  if (!only || only.quantity <= 0 || total <= 0) return []
+  return [{ ...only, unitPrice: round2(total / only.quantity), quoted: false }]
+}
+
+export interface RateComparison extends OfferRate {
+  /** What we last committed to for this material. */
+  lastPaid: number
+  lastSupplier: string
+  /** How far above that this offer sits, in percent. */
+  percent: number
+}
+
+/**
+ * The materials this offer prices above what we last paid for them, worst first.
+ *
+ * Only what is worth saying out loud: a rise inside the threshold is noise, and
+ * a material we have never bought has nothing to compare with. Not a block —
+ * steel and copper move, and §9 calls this a thing that "deserves to be seen".
+ */
+export function ratesAboveLastPaid(
+  rates: OfferRate[],
+  lastPaidOf: (name: string, unit: string) => { price: number; supplierName?: string | null } | null
+): RateComparison[] {
+  const out: RateComparison[] = []
+  for (const rate of rates) {
+    const last = lastPaidOf(rate.name, rate.unit)
+    if (!last) continue
+    // One threshold and one piece of arithmetic, both `aboveLastPaid`'s: null
+    // means either nothing to compare with or a rise not worth mentioning.
+    const percent = aboveLastPaid(rate.unitPrice, last.price)
+    if (percent == null) continue
+    out.push({ ...rate, lastPaid: last.price, lastSupplier: (last.supplierName || "").trim(), percent })
+  }
+  return out.sort((a, b) => b.percent - a.percent)
 }

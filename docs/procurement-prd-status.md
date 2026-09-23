@@ -127,8 +127,20 @@ endpoint that believed one would let a guest name any total beside its rates.
 Found on the way: the supplier DASHBOARD's offer dialog was handed an RFQ projection with
 no `shipmentMode`, so a multi-shipment RFQ quoted from there was priced as a single total.
 
-Next, and now unblocked: the award warning "this offer is N % above what we last paid",
-per-line award and lowest-per-line.
+### The award warning (§6.2, §9)
+Built on the above: the award dialog now names any material this offer prices more than
+3 % above what we last paid, worst first, with the figure and who we paid it to. Advisory
+and never a block — §9's own footnote says a positive is not always a mistake but
+"deserves to be seen".
+
+It reads a rate two ways. A quoted rate when the supplier gave one. Otherwise, for an RFQ
+with a SINGLE material, the total divided by its quantity — exact arithmetic, and the row
+says so. That divided rate is deliberately good enough to compare and not good enough to
+store: `poValue` sums quantity × unitPrice, so an uneven division (100 over 3) would leave
+an order whose value differs from the price actually accepted by a halala. A warning does
+not have to reconcile with the ledger; an order does.
+
+Next: per-line award and lowest-price-per-line.
 
 ## Receivers and the forwarding window (§4 `RCVR`, §5.2-3, 23 Sep)
 
