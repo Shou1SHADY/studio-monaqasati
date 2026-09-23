@@ -30,12 +30,18 @@ require("dotenv").config({ path: target === "uat" ? ".env.uat" : ".env.local" })
 const source = fs.readFileSync("firestore.rules", "utf8")
 const base = "https://firebaserules.googleapis.com/v1"
 
-function hasGcloud() {
+// Ask gcloud for the token rather than probing for the binary: `command -v` is a
+// POSIX shell builtin and node spawns cmd.exe on Windows, so the probe always
+// failed there and UAT silently demanded a `.env.uat` that nobody had — the
+// "install gcloud" in the error below was being printed to a machine that had it.
+function gcloudToken() {
   try {
-    execSync("command -v gcloud", { stdio: "ignore" })
-    return true
+    const token = execSync("gcloud auth print-access-token", { stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim()
+    return token.length > 40 ? token : null
   } catch {
-    return false
+    return null
   }
 }
 
@@ -57,12 +63,15 @@ async function serviceAccountToken() {
 let quotaHeader = false
 
 async function token() {
-  if (target === "uat" && hasGcloud()) {
-    quotaHeader = true
-    return execSync("gcloud auth print-access-token").toString().trim()
+  if (target === "uat") {
+    const signedIn = gcloudToken()
+    if (signedIn) {
+      quotaHeader = true
+      return signedIn
+    }
   }
   if (!process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PRIVATE_KEY) {
-    console.error(`no credentials: ${target === "uat" ? "install gcloud (gcloud auth login) or provide .env.uat" : ".env.local"} with FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY`)
+    console.error(`no credentials: ${target === "uat" ? "run `gcloud auth login`, or provide .env.uat" : ".env.local"} with FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY`)
     process.exit(1)
   }
   return serviceAccountToken()
