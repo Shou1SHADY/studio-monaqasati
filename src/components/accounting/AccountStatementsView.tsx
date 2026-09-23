@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { FileSpreadsheet, Printer, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { accountStatementExportDoc } from "@/lib/accounting/export-docs"
 import { useUser } from "@/firebase"
 import { useAccounting } from "@/hooks/useAccounting"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -125,6 +126,23 @@ ${rows}
         </Button>
       }
       toolbar={<AccountingToolbar data={data} />}
+      exportDoc={() =>
+        statement && !data.isLoading
+          ? accountStatementExportDoc(
+              {
+                title: `${t("acc_stmt_doc_title")} — ${subject}`,
+                subtitle: `${periodLabel(data.period, locale)} · ${periodRangeText(data.period)}`,
+                locale,
+                organizationId: data.organizationId,
+                period: { from: data.period.from, to: data.period.to },
+                fileName: `${t("acc_stmt_doc_title")}_${subject}_${data.period.from}_${data.period.to}`,
+              },
+              statement,
+              data.entries,
+              t
+            )
+          : null
+      }
     >
       <div className="flex flex-wrap items-center gap-2">
         <div role="radiogroup" aria-label={t("acc_stmt_mode")} className="flex items-center gap-0.5 rounded-lg border bg-muted/30 p-0.5">
@@ -147,42 +165,56 @@ ${rows}
 
         {mode === "party" ? (
           <>
-            <Select value={party || undefined} onValueChange={setParty} disabled={parties.length === 0}>
-              <SelectTrigger className="h-9 w-72 text-xs" aria-label={t("acc_je_party")}>
-                <SelectValue placeholder={t("acc_stmt_pick_party")} />
-              </SelectTrigger>
-              <SelectContent>
-                {parties.map((p) => (
-                  <SelectItem key={p.key} value={p.key} className="text-xs">
-                    {p.name || p.key}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={scope} onValueChange={(v) => setScope(v as Scope)}>
-              <SelectTrigger className="h-9 w-56 text-xs" aria-label={t("acc_stmt_scope")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs">{t("acc_stmt_scope_all")}</SelectItem>
-                <SelectItem value="customer" className="text-xs">{t("acc_stmt_scope_customer")}</SelectItem>
-                <SelectItem value="supplier" className="text-xs">{t("acc_stmt_scope_supplier")}</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="w-full sm:w-72">
+              <SearchableSelect
+                size="sm"
+                className="h-9"
+                ariaLabel={t("acc_je_party")}
+                value={party}
+                onChange={setParty}
+                disabled={parties.length === 0}
+                options={parties.map((p) => ({ value: p.key, label: p.name || p.key }))}
+                placeholder={t("acc_stmt_pick_party")}
+                searchPlaceholder={t("acc_search_options")}
+                noResultsText={t("acc_no_options")}
+              />
+            </div>
+            <div className="w-56">
+              <SearchableSelect
+                size="sm"
+                className="h-9"
+                ariaLabel={t("acc_stmt_scope")}
+                value={scope}
+                onChange={(v) => setScope(v as Scope)}
+                options={[
+                  { value: "all", label: t("acc_stmt_scope_all") },
+                  { value: "customer", label: t("acc_stmt_scope_customer") },
+                  { value: "supplier", label: t("acc_stmt_scope_supplier") },
+                ]}
+                placeholder={t("acc_stmt_scope")}
+                searchPlaceholder={t("acc_search_options")}
+                noResultsText={t("acc_no_options")}
+              />
+            </div>
           </>
         ) : (
-          <Select value={account} onValueChange={setAccount}>
-            <SelectTrigger className="h-9 w-80 text-xs" aria-label={t("acc_account_name")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {accountOptions.map((a) => (
-                <SelectItem key={a.code} value={a.code} className={cn("text-xs", !a.postable && "font-bold")}>
-                  {a.code} — {locale === "ar" ? a.nameAr : a.nameEn}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="w-full sm:w-80">
+            <SearchableSelect
+              size="sm"
+              className="h-9"
+              ariaLabel={t("acc_account_name")}
+              value={account}
+              onChange={setAccount}
+              options={accountOptions.map((a) => ({
+                value: a.code,
+                label: `${a.code} — ${locale === "ar" ? a.nameAr : a.nameEn}`,
+                keywords: locale === "ar" ? a.nameEn : a.nameAr,
+              }))}
+              placeholder={t("acc_je_pick_account")}
+              searchPlaceholder={t("acc_coa_search")}
+              noResultsText={t("acc_je_no_account_match")}
+            />
+          </div>
         )}
       </div>
 

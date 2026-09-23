@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { CalendarRange, Eye, Loader2, Lock, Power, Save, Settings2 } from "lucide-react"
+import { CalendarRange, Eye, Layers, Loader2, Lock, Power, Save, Settings2, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -46,17 +47,14 @@ export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
 
   const [draft, setDraft] = useState<AccountingSettings>(data.settings)
   const [saving, setSaving] = useState(false)
-  const settingsKey = `${data.settings.enabled}-${data.settings.fiscalYearStartMonth}-${data.settings.displayScale}`
+  const settingsKey = JSON.stringify(data.settings)
   useEffect(() => {
     setDraft(data.settings)
     // Reset the form only when the stored settings actually change (the
     // settings object is re-created on every snapshot).
   }, [settingsKey])
 
-  const dirty =
-    draft.enabled !== data.settings.enabled ||
-    draft.fiscalYearStartMonth !== data.settings.fiscalYearStartMonth ||
-    draft.displayScale !== data.settings.displayScale
+  const dirty = JSON.stringify(draft) !== JSON.stringify(data.settings)
 
   const today = isoToday()
   const previewYear = fiscalYearOf(today, draft.fiscalYearStartMonth)
@@ -145,22 +143,54 @@ export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
           </div>
         </AccountingSection>
 
+        <AccountingSection title={t("acc_settings_reports_title")} icon={Layers}>
+          <div className="flex items-start justify-between gap-4 p-5">
+            <div className="min-w-0">
+              <Label htmlFor="acc-project-reports" className="text-sm font-bold">{t("acc_settings_project_reports")}</Label>
+              <p className="mt-1 text-xs text-muted-foreground">{t("acc_settings_project_reports_hint")}</p>
+            </div>
+            <Switch id="acc-project-reports" checked={draft.projectReports} onCheckedChange={(v) => setDraft((d) => ({ ...d, projectReports: v }))} disabled={!canEdit} />
+          </div>
+        </AccountingSection>
+
+        <AccountingSection title={t("acc_settings_projection_title")} icon={TrendingUp}>
+          <div className="grid grid-cols-2 gap-4 p-5">
+            {(["customerTermDays", "supplierTermDays"] as const).map((k) => (
+              <div key={k} className="space-y-1.5">
+                <Label htmlFor={`acc-${k}`} className="text-sm font-bold">{t(k === "customerTermDays" ? "acc_settings_customer_days" : "acc_settings_supplier_days")}</Label>
+                <Input
+                  id={`acc-${k}`}
+                  dir="ltr"
+                  inputMode="numeric"
+                  value={String(draft[k])}
+                  disabled={!canEdit}
+                  onChange={(e) => {
+                    const n = Number(e.target.value.replace(/[^\d]/g, "") || 0)
+                    setDraft((d) => ({ ...d, [k]: Math.min(365, n) }))
+                  }}
+                  className="text-end tabular-nums"
+                />
+              </div>
+            ))}
+            <p className="col-span-2 text-[11px] text-muted-foreground">{t("acc_settings_projection_hint")}</p>
+          </div>
+        </AccountingSection>
+
         <AccountingSection title={t("acc_settings_fiscal_title")} icon={CalendarRange} className="lg:col-span-2">
           <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[18rem_1fr]">
             <div className="space-y-2">
               <Label htmlFor="acc-fy-start" className="text-sm font-bold">{t("acc_settings_fy_start")}</Label>
-              <Select
+              <SearchableSelect
+                id="acc-fy-start"
+                size="md"
                 value={String(draft.fiscalYearStartMonth)}
-                onValueChange={(v) => setDraft((d) => ({ ...d, fiscalYearStartMonth: Number(v) }))}
+                onChange={(v) => setDraft((d) => ({ ...d, fiscalYearStartMonth: Number(v) }))}
                 disabled={!canEdit}
-              >
-                <SelectTrigger id="acc-fy-start"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {months.map((name, i) => (
-                    <SelectItem key={i} value={String(i + 1)}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={months.map((name, i) => ({ value: String(i + 1), label: name }))}
+                placeholder={t("acc_settings_fy_start")}
+                searchPlaceholder={t("acc_search_options")}
+                noResultsText={t("acc_no_options")}
+              />
               <p className="text-[11px] text-muted-foreground">{t("acc_settings_fy_start_hint")}</p>
             </div>
             <div>

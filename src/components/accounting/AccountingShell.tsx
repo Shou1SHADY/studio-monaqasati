@@ -10,6 +10,8 @@ import { setAccountingPrefs, useAccountingPrefs, useMoneyScale } from "@/hooks/u
 import { formatMoney, formatMoneyCompact, type MoneyScale } from "@/lib/accounting/display"
 import type { PermissionId } from "@/lib/permissions"
 import type { CrmPortal } from "@/components/crm/CrmShell"
+import type { ExportDoc } from "@/lib/accounting/export"
+import { ExportMenu } from "./ExportMenu"
 
 export function accountingBasePath(portal: CrmPortal): string {
   return `/${portal}/accounting`
@@ -88,7 +90,11 @@ const TAB_GROUPS: Array<{ labelKey: string; tabs: ShellTab[] }> = [
   },
   {
     labelKey: "acc_nav_group_tax",
-    tabs: [{ segment: "vat", labelKey: "acc_nav_vat", permission: "accounting.view" }],
+    tabs: [
+      { segment: "vat", labelKey: "acc_nav_vat", permission: "accounting.view" },
+      { segment: "wht", labelKey: "acc_nav_wht", permission: "accounting.view" },
+      { segment: "zakat", labelKey: "acc_nav_zakat", permission: "accounting.view" },
+    ],
   },
   {
     labelKey: "acc_nav_group_settings",
@@ -103,6 +109,8 @@ export function AccountingShell({
   icon: Icon = Calculator,
   action,
   toolbar,
+  exportDoc,
+  exportXbrl = true,
   children,
 }: {
   portal: CrmPortal
@@ -112,6 +120,11 @@ export function AccountingShell({
   action?: ReactNode
   /** Period, scale and filter controls — a full-width row under the tabs. */
   toolbar?: ReactNode
+  /** Builds what the screen shows for "Export to" (Excel, PDF, XBRL). Absent:
+   * the screen has nothing to export. Null while the books are loading. */
+  exportDoc?: () => ExportDoc | null
+  /** False where the screen's export has no XBRL form (trial balance, chart of accounts). */
+  exportXbrl?: boolean
   children: ReactNode
 }) {
   const t = useTranslations("Portal.Shared")
@@ -149,7 +162,12 @@ export function AccountingShell({
             <p className="text-sm text-muted-foreground mt-1">{description}</p>
           </div>
         </div>
-        {action && <div className="shrink-0 flex flex-wrap items-center gap-2">{action}</div>}
+        {(action || exportDoc) && (
+          <div className="shrink-0 flex flex-wrap items-center gap-2">
+            {action}
+            {exportDoc && <ExportMenu build={exportDoc} hasXbrl={exportXbrl} />}
+          </div>
+        )}
       </div>
 
       <nav aria-label={t("acc_page_title")} className="space-y-2">

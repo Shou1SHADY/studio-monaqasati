@@ -204,8 +204,25 @@ describe("display scale", () => {
       enabled: true,
       fiscalYearStartMonth: 4,
       displayScale: "millions",
+      projectReports: false,
+      customerTermDays: 30,
+      supplierTermDays: 30,
+      whtRates: {},
     })
-    expect(normalizeAccountingSettings(null)).toEqual({ enabled: false, fiscalYearStartMonth: 1, displayScale: "units" })
+    expect(normalizeAccountingSettings(null)).toEqual({
+      enabled: false,
+      fiscalYearStartMonth: 1,
+      displayScale: "units",
+      projectReports: false,
+      customerTermDays: 30,
+      supplierTermDays: 30,
+      whtRates: {},
+    })
+    // Bad values fall back rather than reaching a report.
+    const odd = normalizeAccountingSettings({ customerTermDays: -4, supplierTermDays: 45, whtRates: { rent: 0.05, bad: 7 } } as never)
+    expect(odd.customerTermDays).toBe(30)
+    expect(odd.supplierTermDays).toBe(45)
+    expect(odd.whtRates).toEqual({ rent: 0.05 })
   })
 })
 

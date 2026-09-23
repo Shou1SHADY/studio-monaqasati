@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { accountName } from "@/lib/accounting/accounts"
 import { toIsoTimestamp } from "@/lib/accounting/analytics"
-import type { JournalEntry } from "@/lib/accounting/journal"
+import { isManualEntry, type JournalEntry } from "@/lib/accounting/journal"
 import { sourceDocumentPath } from "@/lib/accounting/source-links"
 import { Money, accountingBasePath } from "./AccountingShell"
 import { SOURCE_LABEL_KEY } from "./AccountingParts"
@@ -48,7 +48,11 @@ export function JournalEntryBadges({ entry }: { entry: JournalEntry }) {
           {t(srcKey)}
         </Badge>
       )}
-      {entry.kind === "manual" && <Badge className="bg-cta/10 text-cta border-none text-[10px]">{t("acc_journal_kind_manual")}</Badge>}
+      {isManualEntry(entry) ? (
+        <Badge className="bg-cta/10 text-cta border-none text-[10px]">{t("acc_journal_kind_manual")}</Badge>
+      ) : (
+        <Badge className="bg-muted text-muted-foreground border-none text-[10px]">{t("acc_journal_kind_auto")}</Badge>
+      )}
       {entry.status === "draft" && <Badge className="bg-warning/10 text-warning border-none text-[10px]">{t("acc_status_draft")}</Badge>}
       {entry.reversedByEntryId && <Badge className="bg-muted text-muted-foreground border-none text-[10px]">{t("acc_entry_badge_reversed")}</Badge>}
       {entry.reversesEntryId && <Badge className="bg-destructive/10 text-destructive border-none text-[10px]">{t("acc_entry_badge_reversal")}</Badge>}
@@ -181,7 +185,7 @@ export function JournalEntrySheet({
       <SheetContent side={isRtl ? "left" : "right"} className="w-full sm:max-w-2xl overflow-y-auto" dir={isRtl ? "rtl" : "ltr"}>
         {entry && (
           <>
-            <SheetHeader className="text-start space-y-1.5">
+            <SheetHeader className="text-start space-y-1.5 pe-8">
               <SheetTitle className="text-lg font-black text-primary leading-relaxed">
                 <span className="tabular-nums text-muted-foreground me-2" dir="ltr">
                   #{entry.entryNumber}

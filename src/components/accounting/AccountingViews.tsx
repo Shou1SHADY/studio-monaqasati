@@ -35,7 +35,6 @@ import { Link } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
@@ -49,14 +48,17 @@ import { StatementTreeTable } from "./StatementTreeTable"
 import { AccountBreakdownSheet, accountNode } from "./AccountBreakdownSheet"
 import { useAccounting, type AccountingData } from "@/hooks/useAccounting"
 import { CHART_OF_ACCOUNTS, accountName, naturalSign, ACC } from "@/lib/accounting/accounts"
-import { accountLedger, integrityChecks, nodeNatural, trialBalance } from "@/lib/accounting/balances"
+import { accountLedger, integrityChecks, nodeNatural, periodWindows, trialBalance } from "@/lib/accounting/balances"
 import { balanceSheet, cashFlowStatement, equityStatement } from "@/lib/accounting/statements"
 import { balanceSheetTree, cashFlowTree, incomeStatementTree, type TreeNode } from "@/lib/accounting/statement-tree"
-import { ACCOUNTING_PERIODS, ClosedPeriodError, periodOf, type JournalEntry } from "@/lib/accounting/journal"
+import { ACCOUNTING_PERIODS, ClosedPeriodError, isManualEntry, periodOf, type JournalEntry } from "@/lib/accounting/journal"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { deleteDraftEntry, postDraftEntry, reverseJournalEntry } from "@/lib/accounting/manual-entry"
 import { isoToday } from "@/lib/accounting/periods"
 
 import { EmptyBooks, Kpi, LoadingBooks } from "./AccountingParts"
+import type { ExportDoc } from "@/lib/accounting/export"
+import { balanceFacts, cashFlowFacts, incomeFacts, journalExportDoc, ledgerExportDoc, statementExportDoc, trialBalanceExportDoc } from "@/lib/accounting/export-docs"
 import { JournalEntryBadges, JournalEntryFacts, JournalEntryLines, JournalEntrySheet } from "./JournalEntrySheet"
 
 export { AccountingDashboard } from "./FinanceDashboard"
@@ -79,6 +81,8 @@ function StatementPage({
   icon,
   action,
   render,
+  exportDoc,
+  exportXbrl,
 }: {
   portal: CrmPortal
   titleKey: string
@@ -86,6 +90,9 @@ function StatementPage({
   icon: typeof TrendingUp
   action?: ReactNode
   render: (data: AccountingData, locale: string) => ReactNode
+  /** The screen's "Export to" document, from the same data it renders. */
+  exportDoc?: (data: AccountingData, base: ExportBase) => ExportDoc
+  exportXbrl?: boolean
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
@@ -98,10 +105,44 @@ function StatementPage({
       icon={icon}
       action={action}
       toolbar={<AccountingToolbar data={data} />}
+      exportDoc={exportDoc && (() => (data.isLoading ? null : exportDoc(data, exportBase(data, locale, t(titleKey)))))}
+      exportXbrl={exportXbrl}
     >
       {data.isLoading ? <LoadingBooks /> : data.entries.length === 0 ? <EmptyBooks /> : render(data, locale)}
     </AccountingShell>
   )
+}
+
+const ACCOUNT_TYPE_KEY: Record<string, string> = {
+  "1": "acc_type_assets",
+  "2": "acc_type_liabilities",
+  "3": "acc_type_equity",
+  "4": "acc_type_revenue",
+  "5": "acc_type_expenses",
+}
+
+/** Every postable account as a searchable option — number and name, grouped by type. */
+export function accountOptions(locale: string, t: (key: string) => string, only?: (code: string) => boolean) {
+  return CHART_OF_ACCOUNTS.filter((a) => a.postable && (!only || only(a.code))).map((a) => ({
+    value: a.code,
+    label: `${a.code} — ${locale === "ar" ? a.nameAr : a.nameEn}`,
+    keywords: locale === "ar" ? a.nameEn : a.nameAr,
+    group: t(ACCOUNT_TYPE_KEY[a.type]),
+  }))
+}
+
+type ExportBase = { title: string; subtitle: string; locale: string; organizationId: string; period: { from: string; to: string }; fileName: string }
+
+/** What every export of a period screen starts from: its title, the period, the org. */
+export function exportBase(data: AccountingData, locale: string, title: string): ExportBase {
+  return {
+    title,
+    subtitle: periodTitle(data, locale),
+    locale,
+    organizationId: data.organizationId,
+    period: { from: data.period.from, to: data.period.to },
+    fileName: `${title}_${data.period.from}_${data.period.to}`,
+  }
 }
 
 function periodTitle(data: AccountingData, locale: string): string {
@@ -144,6 +185,7 @@ export function IncomeStatementView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_income"
       descKey="acc_income_desc"
       icon={TrendingUp}
+      exportDoc={(data, base) => statementExportDoc(base, incomeStatementTree(data.windows.movement).nodes, incomeFacts(data.windows.movement), t)}
       render={(data, locale) => {
         const { nodes, statement } = incomeStatementTree(data.windows.movement)
         const revenue = statement.totals.revenue || 0
@@ -194,6 +236,7 @@ export function BalanceSheetView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_balance"
       descKey="acc_balance_desc"
       icon={Scale}
+      exportDoc={(data, base) => statementExportDoc(base, balanceSheetTree(data.windows.closing).nodes, balanceFacts(data.windows.closing), t)}
       render={(data, locale) => {
         const { nodes, statement: bs } = balanceSheetTree(data.windows.closing)
         return (
@@ -237,6 +280,7 @@ export function CashFlowView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_cashflow"
       descKey="acc_cashflow_desc"
       icon={Banknote}
+      exportDoc={(data, base) => statementExportDoc(base, cashFlowTree(data.windows).nodes, cashFlowFacts(data.windows), t)}
       render={(data, locale) => {
         const { nodes, statement: cf } = cashFlowTree(data.windows)
         return (
@@ -275,6 +319,35 @@ export function EquityView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_equity"
       descKey="acc_equity_desc"
       icon={PieChart}
+      exportDoc={(data, base) => {
+        const eq = equityStatement(data.windows)
+        return {
+          ...base,
+          sections: [
+            {
+              columns: [
+                { header: t("acc_equity_movement"), kind: "text" },
+                { header: t("acc_equity_capital"), kind: "money" },
+                { header: t("acc_equity_retained"), kind: "money" },
+                { header: t("acc_total"), kind: "money" },
+              ],
+              rows: eq.rows.map((r, i) => ({
+                cells: [base.locale === "ar" ? r.labelAr : r.labelEn, r.capital, r.retained, r.total],
+                emphasis: i === eq.rows.length - 1 ? ("total" as const) : undefined,
+              })),
+            },
+          ],
+          xbrl: {
+            kind: "ifrs",
+            facts: [
+              { concept: "ifrs-full:IssuedCapital", value: eq.rows[eq.rows.length - 1].capital, context: "instant" },
+              { concept: "ifrs-full:RetainedEarnings", value: eq.rows[eq.rows.length - 1].retained, context: "instant" },
+              { concept: "ifrs-full:Equity", value: eq.rows[0].total, context: "opening" },
+              { concept: "ifrs-full:Equity", value: eq.closingTotal, context: "instant" },
+            ],
+          },
+        }
+      }}
       render={(data, locale) => {
         const eq = equityStatement(data.windows)
         return (
@@ -335,6 +408,30 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
       description={t("acc_coa_desc")}
       icon={ListTree}
       toolbar={<AccountingToolbar data={data} showProject={false} />}
+      exportXbrl={false}
+      exportDoc={() => {
+        if (data.isLoading) return null
+        const base = exportBase(data, locale, t("acc_nav_coa"))
+        return {
+          ...base,
+          fileName: `${base.title}_${data.period.to}`,
+          sections: [
+            {
+              columns: [
+                { header: t("acc_account_code"), kind: "text" },
+                { header: t("acc_account_name"), kind: "text" },
+                { header: t("acc_account_nature"), kind: "text" },
+                { header: t("acc_closing_balance"), kind: "money" },
+              ],
+              rows: rows.map((a) => ({
+                cells: [a.code, locale === "ar" ? a.nameAr : a.nameEn, a.nature === "D" ? t("acc_debit") : t("acc_credit"), nodeNatural(data.windows.closing, a.code)],
+                level: a.level - 1,
+                emphasis: a.level <= 2 ? ("header" as const) : undefined,
+              })),
+            },
+          ],
+        }
+      }}
     >
       <AccountingSection
         title={t("acc_coa_title")}
@@ -408,6 +505,8 @@ export function TrialBalanceView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_trial_balance"
       descKey="acc_tb_desc"
       icon={Scale}
+      exportDoc={(data, base) => trialBalanceExportDoc(base, trialBalance(data.windows), t)}
+      exportXbrl={false}
       render={(data, locale) => {
         const tb = trialBalance(data.windows)
         return (
@@ -505,7 +604,7 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
     () =>
       data.entries
         .filter((e) => e.date >= data.period.from && e.date <= data.period.to)
-        .filter((e) => kind === "all" || (kind === "manual" ? e.kind === "manual" : e.kind !== "manual"))
+        .filter((e) => kind === "all" || (kind === "manual") === isManualEntry(e))
         .filter((e) => status === "all" || e.status === status)
         .filter(
           (e) =>
@@ -518,6 +617,13 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
         .sort((a, b) => (a.date === b.date ? b.entryNumber - a.entryNumber : a.date < b.date ? 1 : -1)),
     [data.entries, data.period, kind, status, q]
   )
+  // How many of each kind the period holds — so "Manual (0)" says plainly that
+  // nobody has posted a voucher yet, instead of an empty list that looks broken.
+  const kindCounts = useMemo(() => {
+    const period = data.entries.filter((e) => e.date >= data.period.from && e.date <= data.period.to)
+    const manual = period.filter(isManualEntry).length
+    return { all: period.length, manual, auto: period.length - manual }
+  }, [data.entries, data.period])
   const totals = inPeriod.filter((e) => e.status === "posted").reduce((s, e) => s + e.totalDebit, 0)
   // A year of entries is thousands of rows; the page shows them a page at a time.
   const PAGE = 25
@@ -555,38 +661,57 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
         )
       }
       toolbar={<AccountingToolbar data={data} />}
+      exportDoc={() => (data.isLoading ? null : journalExportDoc(exportBase(data, locale, t("acc_nav_journal")), [...inPeriod].reverse(), t))}
     >
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-48 sm:max-w-72">
           <Search size={14} className="absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground pointer-events-none" aria-hidden="true" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("acc_journal_search")} aria-label={t("acc_journal_search")} className="h-9 ps-9 text-xs" />
         </div>
-        <Select value={kind} onValueChange={(v) => setKind(v as KindFilter)}>
-          <SelectTrigger className="h-9 w-40 text-xs" aria-label={t("acc_journal_kind")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">{t("acc_journal_kind_all")}</SelectItem>
-            <SelectItem value="auto" className="text-xs">{t("acc_journal_kind_auto")}</SelectItem>
-            <SelectItem value="manual" className="text-xs">{t("acc_journal_kind_manual")}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={status} onValueChange={(v) => setStatus(v as StatusFilter)}>
-          <SelectTrigger className="h-9 w-36 text-xs" aria-label={t("acc_status")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">{t("acc_journal_status_all")}</SelectItem>
-            <SelectItem value="posted" className="text-xs">{t("acc_status_posted")}</SelectItem>
-            <SelectItem value="draft" className="text-xs">{t("acc_status_draft")}</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="w-44">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_journal_kind")}
+            value={kind}
+            onChange={(v) => setKind(v as KindFilter)}
+            options={[
+              { value: "all", label: `${t("acc_journal_kind_all")} (${kindCounts.all})` },
+              { value: "auto", label: `${t("acc_journal_kind_auto")} (${kindCounts.auto})` },
+              { value: "manual", label: `${t("acc_journal_kind_manual")} (${kindCounts.manual})` },
+            ]}
+            placeholder={t("acc_journal_kind")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
+        <div className="w-40">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_status")}
+            value={status}
+            onChange={(v) => setStatus(v as StatusFilter)}
+            options={[
+              { value: "all", label: t("acc_journal_status_all") },
+              { value: "posted", label: t("acc_status_posted") },
+              { value: "draft", label: t("acc_status_draft") },
+            ]}
+            placeholder={t("acc_status")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
       </div>
 
       {data.isLoading ? (
         <LoadingBooks />
       ) : inPeriod.length === 0 ? (
-        <EmptyBooks />
+        data.entries.length > 0 && (kind !== "all" || status !== "all" || q) ? (
+          <JournalFilteredEmpty kind={kind} canPost={canPost} portal={portal} onClear={() => { setKind("all"); setStatus("all"); setSearch("") }} />
+        ) : (
+          <EmptyBooks />
+        )
       ) : (
         <AccountingSection
           title={t("acc_journal_entries", { count: inPeriod.length })}
@@ -644,6 +769,34 @@ export function JournalView({ portal }: { portal: CrmPortal }) {
         showJournalLink={false}
       />
     </AccountingShell>
+  )
+}
+
+/**
+ * The journal is empty only under the reader's filters — say which, and how to
+ * get entries back. With "Manual" chosen this is the finance review's case:
+ * automatic entries exist, nobody has posted a voucher yet, and the generic
+ * "no entries" message made it look as if manual entries had vanished.
+ */
+function JournalFilteredEmpty({ kind, canPost, portal, onClear }: { kind: KindFilter; canPost: boolean; portal: CrmPortal; onClear: () => void }) {
+  const t = useTranslations("Portal.Shared")
+  return (
+    <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
+      <BookOpen size={32} className="mx-auto mb-3 opacity-20" aria-hidden="true" />
+      <p className="text-sm font-semibold text-foreground">{t(kind === "manual" ? "acc_journal_empty_manual_title" : "acc_journal_empty_filtered_title")}</p>
+      <p className="mx-auto mt-1 max-w-lg text-xs">{t(kind === "manual" ? "acc_journal_empty_manual_desc" : "acc_journal_empty_filtered_desc")}</p>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        <Button variant="outline" size="sm" onClick={onClear}>{t("acc_journal_clear_filters")}</Button>
+        {kind === "manual" && canPost && (
+          <Button asChild size="sm" className="gap-1.5">
+            <Link href={`${accountingBasePath(portal)}/journal/new`}>
+              <FilePlus2 size={14} aria-hidden="true" />
+              {t("acc_nav_new_entry")}
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -864,20 +1017,33 @@ export function LedgerView({ portal }: { portal: CrmPortal }) {
       description={t("acc_ledger_desc")}
       icon={FileText}
       toolbar={<AccountingToolbar data={data} />}
+      exportDoc={() =>
+        data.isLoading
+          ? null
+          : ledgerExportDoc(
+              exportBase(data, locale, t("acc_nav_ledger")),
+              account,
+              nat(ledger.openingBalance),
+              ledger.rows.map((r) => ({ ...r, balance: nat(r.balance) })),
+              data.entries,
+              t
+            )
+      }
     >
       <div className="flex items-center gap-2">
-        <Select value={account} onValueChange={setAccount}>
-          <SelectTrigger className="h-9 w-80 text-xs" aria-label={t("acc_account_name")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CHART_OF_ACCOUNTS.filter((a) => a.postable).map((a) => (
-              <SelectItem key={a.code} value={a.code} className="text-xs">
-                {a.code} — {locale === "ar" ? a.nameAr : a.nameEn}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="w-full sm:w-80">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_account_name")}
+            value={account}
+            onChange={setAccount}
+            options={accountOptions(locale, t)}
+            placeholder={t("acc_je_pick_account")}
+            searchPlaceholder={t("acc_coa_search")}
+            noResultsText={t("acc_je_no_account_match")}
+          />
+        </div>
       </div>
 
       <AccountingSection title={`${account} — ${accountName(account, locale)}`} icon={FileText} action={<ScaleCaption scale={data.scale} />}>
@@ -1148,6 +1314,30 @@ export function PeriodsView({ portal }: { portal: CrmPortal }) {
   )
 }
 
+/** Each month of the period: taxable sales, output VAT, input VAT, net — the
+ * figures a VAT return is prepared from. A VAT settlement clears both accounts
+ * and is not itself VAT charged or claimed, so it is left out; a credit note
+ * still reduces output VAT, as it does on the return. */
+function vatMonths(data: AccountingData) {
+  const entries = data.entries.filter((e) => e.sourceType !== "vat_settlement")
+  const out: Array<{ month: string; sales: number; output: number; input: number; net: number }> = []
+  let cursor = data.period.from.slice(0, 7)
+  const last = data.period.to.slice(0, 7)
+  while (cursor <= last) {
+    const y = Number(cursor.slice(0, 4))
+    const m = Number(cursor.slice(5, 7))
+    const monthEnd = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+    const from = `${cursor}-01` < data.period.from ? data.period.from : `${cursor}-01`
+    const to = monthEnd > data.period.to ? data.period.to : monthEnd
+    const mv = periodWindows(entries, from, to, data.filter).movement
+    const output = nodeNatural(mv, ACC.vatOutput)
+    const input = nodeNatural(mv, ACC.vatInput)
+    out.push({ month: cursor, sales: nodeNatural(mv, "4"), output, input, net: Math.round((output - input) * 100) / 100 })
+    cursor = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`
+  }
+  return out
+}
+
 export function VatView({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
   return (
@@ -1156,6 +1346,38 @@ export function VatView({ portal }: { portal: CrmPortal }) {
       titleKey="acc_nav_vat"
       descKey="acc_vat_desc"
       icon={Percent}
+      exportDoc={(data, base) => {
+        const months = vatMonths(data)
+        const sum = (k: "sales" | "output" | "input" | "net") => Math.round(months.reduce((s, m) => s + m[k], 0) * 100) / 100
+        return {
+          ...base,
+          sections: [
+            {
+              title: t("acc_vat_monthly"),
+              columns: [
+                { header: t("acc_wht_month"), kind: "text" },
+                { header: t("acc_vat_sales_base"), kind: "money" },
+                { header: t("acc_vat_output"), kind: "money" },
+                { header: t("acc_vat_input"), kind: "money" },
+                { header: t("acc_vat_net"), kind: "money" },
+              ],
+              rows: [
+                ...months.map((m) => ({ cells: [m.month, m.sales, m.output, m.input, m.net] })),
+                { cells: [t("acc_total"), sum("sales"), sum("output"), sum("input"), sum("net")], emphasis: "total" as const },
+              ],
+            },
+          ],
+          xbrl: {
+            kind: "ext",
+            facts: [
+              { concept: "mdmak:VatTaxableSales", value: sum("sales"), context: "duration" },
+              { concept: "mdmak:VatOutput", value: sum("output"), context: "duration" },
+              { concept: "mdmak:VatInput", value: sum("input"), context: "duration" },
+              { concept: "mdmak:VatNetDue", value: sum("net"), context: "duration" },
+            ],
+          },
+        }
+      }}
       render={(data) => <VatBody data={data} t={t} />}
     />
   )
@@ -1163,8 +1385,10 @@ export function VatView({ portal }: { portal: CrmPortal }) {
 
 function VatBody({ data, t }: { data: AccountingData; t: ReturnType<typeof useTranslations> }) {
   const { compact } = useMoneyFormat()
-  const output = nodeNatural(data.windows.movement, ACC.vatOutput)
-  const input = nodeNatural(data.windows.movement, ACC.vatInput)
+  const months = useMemo(() => vatMonths(data), [data])
+  // From the monthly figures, so a settlement inside the period does not zero them.
+  const output = Math.round(months.reduce((s, m) => s + m.output, 0) * 100) / 100
+  const input = Math.round(months.reduce((s, m) => s + m.input, 0) * 100) / 100
   const net = Math.round((output - input) * 100) / 100
   return (
     <div className="space-y-4">
@@ -1178,6 +1402,32 @@ function VatBody({ data, t }: { data: AccountingData; t: ReturnType<typeof useTr
           hint={t("acc_vat_net_hint")}
         />
       </div>
+      <AccountingSection title={t("acc_vat_monthly")} icon={Percent} action={<ScaleCaption scale={data.scale} />}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2.5 text-start">{t("acc_wht_month")}</th>
+                <th className="px-4 py-2.5 text-end">{t("acc_vat_sales_base")}</th>
+                <th className="px-4 py-2.5 text-end">{t("acc_vat_output")}</th>
+                <th className="px-4 py-2.5 text-end">{t("acc_vat_input")}</th>
+                <th className="px-4 py-2.5 text-end">{t("acc_vat_net")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {months.map((m) => (
+                <tr key={m.month} className="border-t">
+                  <td className="px-4 py-2 tabular-nums" dir="ltr">{m.month}</td>
+                  <td className="px-4 py-2 text-end"><Money value={m.sales} /></td>
+                  <td className="px-4 py-2 text-end"><Money value={m.output} /></td>
+                  <td className="px-4 py-2 text-end"><Money value={m.input} /></td>
+                  <td className="px-4 py-2 text-end font-bold"><Money value={m.net} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </AccountingSection>
       <AccountingSection title={t("acc_vat_title")} icon={Percent}>
         <div className="p-5 text-sm text-muted-foreground">{t("acc_vat_explainer")}</div>
       </AccountingSection>

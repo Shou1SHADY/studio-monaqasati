@@ -23,6 +23,7 @@ import {
   type JournalEntry,
   type JournalLine,
   type SourceType,
+  type WhtLineInfo,
 } from "./journal"
 import { loadPeriods, nextNumber } from "./post"
 import { COST_CENTERS } from "./posting-rules"
@@ -38,6 +39,8 @@ export interface ManualLineInput {
   costCenter?: string | null
   party?: string | null
   partyName?: string | null
+  /** The withholding-tax component's line carries what it withheld. */
+  wht?: WhtLineInfo | null
 }
 
 export type LineIssue = "no_account" | "not_postable" | "both_sides" | "no_amount"
@@ -96,6 +99,7 @@ export function validateManualEntry(input: { date: string; description: string; 
         costCenter: line.costCenter || null,
         party: line.party || null,
         partyName: line.partyName?.trim() || null,
+        ...(line.wht ? { wht: line.wht } : {}),
       })
     }
   })
@@ -128,7 +132,10 @@ export interface ManualEntryWrite {
   reference?: string | null
   lines: ManualLineInput[]
   status: Extract<EntryStatus, "draft" | "posted">
-  sourceType?: Extract<SourceType, "manual_voucher" | "settlement">
+  /** The accountant's own postings: vouchers, settlements, and the tax screens'
+   * decisions (zakat provision and payment, WHT remittance). All are `manual` —
+   * a person decided them, and the rules require `accounting.post` for that. */
+  sourceType?: Extract<SourceType, "manual_voucher" | "settlement" | "zakat_provision" | "zakat_payment" | "wht_remittance">
   /** Lines without their own cost centre fall here. General administration by default. */
   costCenter?: string
 }

@@ -15,6 +15,18 @@ export interface AccountingSettings {
   fiscalYearStartMonth: number
   /** The org's default presentation; each reader may override it for themselves. */
   displayScale: MoneyScale
+  /** Statements filtered by project. Off in the standard product (finance review,
+   * 23 Sep 2026): per-project, per-branch and per-region financials are a
+   * customisation switched on for the client who asks for them. Lines still
+   * carry their project, so job costing in Projects is unaffected. */
+  projectReports: boolean
+  /** Days after booking a client is expected to pay, and the company to pay a
+   * supplier — the cash projection's timing when a line carries no due date. */
+  customerTermDays: number
+  supplierTermDays: number
+  /** Withholding-tax rate overrides by payment type id (fractions, 0.05 = 5 %).
+   * Absent types read the platform table in withholding.ts. */
+  whtRates: Record<string, number>
 }
 
 export interface AccountingSettingsDoc extends AccountingSettings {
@@ -29,6 +41,26 @@ export const DEFAULT_ACCOUNTING_SETTINGS: AccountingSettings = {
   enabled: false,
   fiscalYearStartMonth: 1,
   displayScale: "units",
+  projectReports: false,
+  customerTermDays: 30,
+  supplierTermDays: 30,
+  whtRates: {},
+}
+
+/** A whole number of days, 0–365; anything else falls back. */
+function termDays(value: unknown, fallback: number): number {
+  const n = Number(value)
+  return Number.isFinite(n) && n >= 0 && n <= 365 ? Math.round(n) : fallback
+}
+
+function rates(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object") return {}
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const n = Number(v)
+    if (Number.isFinite(n) && n >= 0 && n <= 1) out[k] = n
+  }
+  return out
 }
 
 export function normalizeAccountingSettings(raw: Partial<AccountingSettings> | null | undefined): AccountingSettings {
@@ -36,6 +68,10 @@ export function normalizeAccountingSettings(raw: Partial<AccountingSettings> | n
     enabled: raw?.enabled === true,
     fiscalYearStartMonth: normalizeStartMonth(raw?.fiscalYearStartMonth ?? DEFAULT_ACCOUNTING_SETTINGS.fiscalYearStartMonth),
     displayScale: isMoneyScale(raw?.displayScale) ? raw.displayScale : DEFAULT_ACCOUNTING_SETTINGS.displayScale,
+    projectReports: raw?.projectReports === true,
+    customerTermDays: termDays(raw?.customerTermDays, DEFAULT_ACCOUNTING_SETTINGS.customerTermDays),
+    supplierTermDays: termDays(raw?.supplierTermDays, DEFAULT_ACCOUNTING_SETTINGS.supplierTermDays),
+    whtRates: rates(raw?.whtRates),
   }
 }
 

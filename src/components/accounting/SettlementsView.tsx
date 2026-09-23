@@ -7,7 +7,7 @@ import { useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -346,14 +346,16 @@ function SettlementDialog({
             {def.usesCash && (
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="settle-cash">{t("acc_settle_cash_account")}</Label>
-                <Select value={cashAccount} onValueChange={setCashAccount}>
-                  <SelectTrigger id="settle-cash"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CASH_ACCOUNTS.map((c) => (
-                      <SelectItem key={c} value={c}>{c} — {accountName(c, locale)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="settle-cash"
+                  size="md"
+                  value={cashAccount}
+                  onChange={setCashAccount}
+                  options={CASH_ACCOUNTS.map((c) => ({ value: c, label: `${c} — ${accountName(c, locale)}` }))}
+                  placeholder={t("acc_settle_cash_account")}
+                  searchPlaceholder={t("acc_search_options")}
+                  noResultsText={t("acc_no_options")}
+                />
               </div>
             )}
             <div className="space-y-1.5">

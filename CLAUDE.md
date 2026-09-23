@@ -128,6 +128,9 @@ docs/                   # sales-prd-status.md, procurement-prd-status.md, custom
 | `src/lib/sales-today.ts` / `sales-reports.ts` + `src/hooks/useSalesWorld.ts` | Today's KPIs, flow strip and decision queue, and the three report families — pure, over one scoped "world"; sales count on SIGNED delivery; cost only for the owner / `sales.approve` |
 | `src/lib/riyal.ts` + `public/fonts/saudi-riyal.otf` | The official Saudi Riyal symbol, **U+20C1** — a one-glyph font (`scripts/build-riyal-font.js`, registered in globals.css with `unicode-range`) so it works inside strings. `sarLtr`/`sarRtl`/`withSarSign` put it LEFT of the figure in both scripts (SAMA's rule). Never U+FDFC ﷼ (a test guards it); never in CSV, e-mail, push text or the self-written print windows — no font there |
 | `src/lib/search-text.ts` | `matchesSearch`/`foldSearchText` — every-word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, ٠-٩) matching; use it for any search box. A search must look across state filters, not inside the active chip |
+| `src/components/contractor/SearchableSelect.tsx` | The dropdown with a search box (groups, `ariaLabel`, `className` for toolbar sizing). Every Accounting dropdown uses it — the finance team asked for type-to-filter everywhere |
+| `src/lib/accounting/withholding.ts` / `zakat.ts` / `cash-projection.ts` (finance review 23 Sep 2026, see docs/finance-review-2026-09-23.md) | WHT rate table + register (a WHT line carries `wht {type, rate, base}` on its 210302 credit); the zakat base (system components + the accountant's overrides/adjustments in `accounting_zakat/{orgId}__{fy}`, floor = adjusted profit) — its provision/payment and WHT remittances are `manual` entries (`zakat_provision`/`zakat_payment`/`wht_remittance`); the dashboard's 13-week/6-month projection from open balances |
+| `src/lib/accounting/export.ts` + `export-docs.ts` + `ExportMenu` | "Export to" Excel/PDF/XBRL: a screen passes `exportDoc` to `AccountingShell`; XBRL is IFRS facts (statements), XBRL GL (journal/ledger/account statement) or the platform `mdmak:` namespace (tax/zakat). Always exact riyals |
 | `src/lib/accounting/source-links.ts` + `src/components/accounting/JournalEntrySheet.tsx` | The document behind a journal entry (`sourceType`+`sourceId` → screen) and the side panel every ledger / statement / breakdown row opens |
 | `src/lib/manufacturing-mindmap.ts` + `ManufacturingMindMap.tsx` | The optional mind-map view (Workshop → view: Mind map): `buildMindMapFromViews` over PRD 1.2 order views; the legacy builder stays for old orders |
 | `src/components/contractor/PurchaseRequestsInbox.tsx` | Procurement's desk for Manufacturing's shortfalls (`/contractor/rfqs/requests`) — answers requests (start RFQ → `ordered`, arrived, declined with a reason), never raises one |
@@ -206,7 +209,11 @@ project MATERIAL ISSUES at snapshotted cost; not automated: VAT settlement, expe
 guarantee margins) ·
 `accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`;
 `fiscalYearStartMonth` 1–12 defines Q1/H1/FY on every screen, `displayScale`
-units|thousands|millions is the default presentation) ·
+units|thousands|millions is the default presentation; `projectReports` — statements
+by project, OFF by default, a per-client customisation; `customerTermDays`/
+`supplierTermDays` time the cash projection; `whtRates` overrides the WHT table) ·
+`accounting_zakat` (`{orgId}__{fy}` — the zakat working paper: overrides,
+adjustments, Hijri/Gregorian rate; never the ledger) ·
 `invoices` · `rfqShareLinks` · `guestOfferLinks`
 (server-only) · `purchaseOrders` (Procurement PRD 3.0 — the order laid OVER an
 accepted offer: awarding still writes the offer `مقبول` + RFQ `Awarded` exactly as

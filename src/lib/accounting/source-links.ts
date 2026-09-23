@@ -66,6 +66,11 @@ export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sou
       return "accounting/settlements"
     case "vat_settlement":
       return "accounting/vat"
+    case "zakat_provision":
+    case "zakat_payment":
+      return "accounting/zakat"
+    case "wht_remittance":
+      return "accounting/wht"
     default:
       return null
   }

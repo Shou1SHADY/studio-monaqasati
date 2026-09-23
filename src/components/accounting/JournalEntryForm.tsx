@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CheckCircle2, ChevronsUpDown, FilePlus2, Loader2, Lock, Plus, Save, Send, Trash2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ChevronsUpDown, FilePlus2, Loader2, Lock, Percent, Plus, Save, Send, Trash2 } from "lucide-react"
 import { useRouter } from "@/i18n/routing"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
@@ -20,6 +21,8 @@ import { ClosedPeriodError, isPeriodClosed, periodOf } from "@/lib/accounting/jo
 import { saveManualEntry, validateManualEntry, type EntryIssue, type LineIssue, type ManualLineInput } from "@/lib/accounting/manual-entry"
 import { DEFAULT_COST_CENTERS } from "@/lib/accounting/posting-rules"
 import { isoToday } from "@/lib/accounting/periods"
+import { WHT_TYPES, computeWht, whtLine, whtRate, whtTypeName } from "@/lib/accounting/withholding"
+import { matchesSearch } from "@/lib/search-text"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingSection, AccountingShell, Money, accountingBasePath } from "./AccountingShell"
 
@@ -53,11 +56,8 @@ export function AccountPicker({
   const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const q = query.trim().toLowerCase()
   const allowed = new Set(accounts)
-  const matches = POSTABLE_ACCOUNTS.filter(
-    (a) => allowed.has(a.code) && (!q || a.code.startsWith(q) || a.nameAr.includes(query.trim()) || a.nameEn.toLowerCase().includes(q))
-  )
+  const matches = POSTABLE_ACCOUNTS.filter((a) => allowed.has(a.code) && matchesSearch(query, [a.code, a.nameAr, a.nameEn]))
   const groups = ["1", "2", "3", "4", "5"].map((type) => ({ type, items: matches.filter((a) => a.type === type) })).filter((g) => g.items.length > 0)
 
   return (
@@ -154,9 +154,17 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
   const [rows, setRows] = useState<Row[]>([newRow(), newRow()])
   const [saving, setSaving] = useState<"draft" | "posted" | null>(null)
   const [showIssues, setShowIssues] = useState(false)
+  // Withholding tax (finance review, 23 Sep 2026): a payment to a non-resident
+  // withholds tax at the payment type's rate; the component adds the credit to
+  // 210302 and the entry's other lines carry the gross cost and the net paid.
+  const [whtOn, setWhtOn] = useState(false)
+  const [whtType, setWhtType] = useState("technical_services")
+  const [whtRatePct, setWhtRatePct] = useState<string | null>(null)
+  const [whtBaseInput, setWhtBaseInput] = useState<string | null>(null)
+  const [whtParty, setWhtParty] = useState("")
 
   const projectName = data.projects.find((p) => p.id === project)?.name ?? null
-  const lines: ManualLineInput[] = rows.map((r) => ({
+  const userLines: ManualLineInput[] = rows.map((r) => ({
     account: r.account,
     debit: r.debit,
     credit: r.credit,
@@ -166,6 +174,25 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
     projectName,
     costCenter,
   }))
+  // The base defaults to the expense debits — the gross cost of the service —
+  // until the accountant types their own.
+  const expenseDebits = Math.round(rows.filter((r) => r.account.startsWith("5")).reduce((sum, r) => sum + (Number(r.debit) || 0), 0) * 100) / 100
+  const whtBase = whtBaseInput !== null ? Number(whtBaseInput) || 0 : expenseDebits
+  const whtRateValue = whtRatePct !== null ? (Number(whtRatePct) || 0) / 100 : whtRate(whtType, data.settings.whtRates)
+  const whtAmount = whtOn ? computeWht(whtBase, whtRateValue) : 0
+  const whtInvalid = whtOn && whtAmount <= 0
+  const lines: ManualLineInput[] =
+    whtOn && whtAmount > 0
+      ? [
+          ...userLines,
+          {
+            ...whtLine({ type: whtType, rate: whtRateValue, base: whtBase, partyName: whtParty, note: `${whtTypeName(whtType, "ar")} — ${Math.round(whtRateValue * 10000) / 100}%` }),
+            project: project || null,
+            projectName,
+            costCenter,
+          },
+        ]
+      : userLines
   const validation = validateManualEntry({ date, description, lines })
   const closed = useMemo(() => isPeriodClosed(data.periods, date), [data.periods, date])
   const balanced = Math.round(validation.totalDebit * 100) === Math.round(validation.totalCredit * 100) && validation.totalDebit > 0
@@ -186,7 +213,7 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
   const save = async (status: "draft" | "posted") => {
     if (!firestore || saving) return
     setShowIssues(true)
-    if (!validation.ok || closed) return
+    if (!validation.ok || closed || whtInvalid) return
     setSaving(status)
     try {
       const res = await saveManualEntry(firestore, {
@@ -245,26 +272,29 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="je-cc">{t("acc_je_cost_center")}</Label>
-                <Select value={costCenter} onValueChange={setCostCenter}>
-                  <SelectTrigger id="je-cc"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {DEFAULT_COST_CENTERS.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>{c.code} — {locale === "ar" ? c.nameAr : c.nameEn}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="je-cc"
+                  size="md"
+                  value={costCenter}
+                  onChange={setCostCenter}
+                  options={DEFAULT_COST_CENTERS.map((c) => ({ value: c.code, label: `${c.code} — ${locale === "ar" ? c.nameAr : c.nameEn}` }))}
+                  placeholder={t("acc_je_cost_center")}
+                  searchPlaceholder={t("acc_search_options")}
+                  noResultsText={t("acc_no_options")}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="je-project">{t("acc_filter_project")}</Label>
-                <Select value={project || "__none__"} onValueChange={(v) => setProject(v === "__none__" ? "" : v)}>
-                  <SelectTrigger id="je-project"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">{t("acc_je_no_project")}</SelectItem>
-                    {data.projects.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  id="je-project"
+                  size="md"
+                  value={project || "__none__"}
+                  onChange={(v) => setProject(v === "__none__" ? "" : v)}
+                  options={[{ value: "__none__", label: t("acc_je_no_project") }, ...data.projects.map((p) => ({ value: p.id, label: p.name }))]}
+                  placeholder={t("acc_filter_project")}
+                  searchPlaceholder={t("acc_search_options")}
+                  noResultsText={t("acc_no_options")}
+                />
               </div>
               <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
                 <Label htmlFor="je-desc">{t("acc_description")} *</Label>
@@ -278,6 +308,75 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
                 />
               </div>
             </div>
+          </AccountingSection>
+
+          <AccountingSection
+            title={t("acc_je_wht_title")}
+            icon={Percent}
+            action={
+              <div className="flex items-center gap-2">
+                <Label htmlFor="je-wht-on" className="text-xs font-semibold">{t("acc_je_wht_toggle")}</Label>
+                <Switch id="je-wht-on" checked={whtOn} onCheckedChange={setWhtOn} />
+              </div>
+            }
+          >
+            {whtOn ? (
+              <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5">
+                <div className="space-y-1.5 lg:col-span-2">
+                  <Label htmlFor="je-wht-type">{t("acc_wht_type")} *</Label>
+                  <SearchableSelect
+                    id="je-wht-type"
+                    size="md"
+                    value={whtType}
+                    onChange={(v) => { setWhtType(v); setWhtRatePct(null) }}
+                    options={WHT_TYPES.map((w) => ({
+                      value: w.id,
+                      label: `${whtTypeName(w.id, locale)} — ${Math.round(whtRate(w.id, data.settings.whtRates) * 10000) / 100}%`,
+                    }))}
+                    placeholder={t("acc_wht_type")}
+                    searchPlaceholder={t("acc_search_options")}
+                    noResultsText={t("acc_no_options")}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="je-wht-rate">{t("acc_wht_rate_pct")}</Label>
+                  <Input
+                    id="je-wht-rate"
+                    dir="ltr"
+                    inputMode="decimal"
+                    value={whtRatePct ?? String(Math.round(whtRateValue * 10000) / 100)}
+                    onChange={(e) => setWhtRatePct(sanitizeDecimalInput(e.target.value))}
+                    className="text-end tabular-nums"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="je-wht-base">{t("acc_wht_base")} *</Label>
+                  <Input
+                    id="je-wht-base"
+                    dir="ltr"
+                    inputMode="decimal"
+                    value={whtBaseInput ?? (expenseDebits ? String(expenseDebits) : "")}
+                    onChange={(e) => setWhtBaseInput(sanitizeDecimalInput(e.target.value))}
+                    className={cn("text-end tabular-nums", showIssues && whtInvalid && "border-destructive")}
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t("acc_je_wht_base_hint")}</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="je-wht-party">{t("acc_wht_supplier")}</Label>
+                  <Input id="je-wht-party" value={whtParty} onChange={(e) => setWhtParty(e.target.value)} />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3 text-xs sm:col-span-2 lg:col-span-5">
+                  <span className="text-muted-foreground">{t("acc_je_wht_explain", { account: "210302" })}</span>
+                  <span className="flex items-center gap-2 font-bold">
+                    {t("acc_wht_amount")} <Money value={whtAmount} scale="units" />
+                    <span className="font-normal text-muted-foreground">· {t("acc_je_wht_net")}</span> <Money value={Math.max(0, whtBase - whtAmount)} scale="units" />
+                  </span>
+                </div>
+                {showIssues && whtInvalid && <p className="text-[11px] text-destructive sm:col-span-2 lg:col-span-5">{t("acc_je_wht_issue")}</p>}
+              </div>
+            ) : (
+              <p className="px-5 py-3 text-xs text-muted-foreground">{t("acc_je_wht_off_hint")}</p>
+            )}
           </AccountingSection>
 
           <AccountingSection title={t("acc_je_lines_section")} icon={FilePlus2}>
@@ -357,6 +456,23 @@ export function NewJournalEntryView({ portal }: { portal: CrmPortal }) {
                       </tr>
                     )
                   })}
+                  {whtOn && whtAmount > 0 && (
+                    <tr className="border-t bg-cta/5 align-top">
+                      <td className="px-3 py-2 pt-4 text-xs tabular-nums text-muted-foreground">{rows.length + 1}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex h-9 items-center gap-1.5 rounded-md border bg-white px-2.5 text-xs">
+                          <span className="font-mono tabular-nums text-muted-foreground" dir="ltr">210302</span>
+                          <span className="truncate">{accountName("210302", locale)}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-cta">{t("acc_je_wht_line_auto")}</p>
+                      </td>
+                      <td className="px-3 py-2 pt-4 text-xs text-muted-foreground">{whtTypeName(whtType, locale)} — {Math.round(whtRateValue * 10000) / 100}%</td>
+                      <td className="px-3 py-2 pt-4 text-xs">{whtParty}</td>
+                      <td className="px-3 py-2" />
+                      <td className="px-3 py-2 pt-4 text-end text-xs tabular-nums"><Money value={whtAmount} scale="units" /></td>
+                      <td className="px-3 py-2" />
+                    </tr>
+                  )}
                 </tbody>
                 <tfoot>
                   <tr className="border-t bg-muted/30 font-black">

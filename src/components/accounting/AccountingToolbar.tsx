@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { cn } from "@/lib/utils"
 import type { AccountingData } from "@/hooks/useAccounting"
 import { MONEY_SCALES } from "@/lib/accounting/display"
@@ -84,44 +84,45 @@ export function AccountingToolbar({
       {showPeriod && (
         <>
           {!isCustom && (
-            <Select value={String(data.fiscalYear)} onValueChange={(v) => data.setFiscalYear(Number(v))}>
-              <SelectTrigger className="h-9 w-36 text-xs" aria-label={t("acc_fiscal_year")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {data.fiscalYears.map((fy) => (
-                  <SelectItem key={fy} value={String(fy)} className="text-xs">
-                    {t("acc_fiscal_year_short", { year: fiscalYearLabel(fy, startMonth) })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="w-36">
+              <SearchableSelect
+                size="sm"
+                className="h-9"
+                ariaLabel={t("acc_fiscal_year")}
+                value={String(data.fiscalYear)}
+                onChange={(v) => data.setFiscalYear(Number(v))}
+                options={data.fiscalYears.map((fy) => ({
+                  value: String(fy),
+                  label: t("acc_fiscal_year_short", { year: fiscalYearLabel(fy, startMonth) }),
+                }))}
+                placeholder={t("acc_fiscal_year")}
+                searchPlaceholder={t("acc_search_options")}
+                noResultsText={t("acc_no_options")}
+              />
+            </div>
           )}
 
-          <Select value={data.period.key} onValueChange={onPeriodChange}>
-            <SelectTrigger className="h-9 w-64 text-xs" aria-label={t("acc_period")}>
-              <SelectValue>{isCustom ? t("acc_period_custom") : periodLabel(data.period, locale)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {groups.map((g, gi) => (
-                <SelectGroup key={g.labelKey}>
-                  {gi > 0 && <SelectSeparator />}
-                  <SelectLabel className="text-[10px] text-muted-foreground">{t(g.labelKey)}</SelectLabel>
-                  {data.periodOptions
+          <div className="w-64">
+            <SearchableSelect
+              size="sm"
+              className="h-9"
+              ariaLabel={t("acc_period")}
+              value={data.period.key}
+              onChange={onPeriodChange}
+              displayLabel={isCustom ? t("acc_period_custom") : periodLabel(data.period, locale)}
+              options={[
+                ...groups.flatMap((g) =>
+                  data.periodOptions
                     .filter((p) => g.kinds.includes(p.kind))
-                    .map((p) => (
-                      <SelectItem key={p.key} value={p.key} className="text-xs">
-                        {periodLabel(p, locale)}
-                      </SelectItem>
-                    ))}
-                </SelectGroup>
-              ))}
-              <SelectSeparator />
-              <SelectItem value={CUSTOM_KEY} className="text-xs font-semibold">
-                {t("acc_period_custom_pick")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+                    .map((p) => ({ value: p.key, label: periodLabel(p, locale), group: t(g.labelKey) }))
+                ),
+                { value: CUSTOM_KEY, label: t("acc_period_custom_pick"), group: t("acc_period_custom") },
+              ]}
+              placeholder={t("acc_period")}
+              searchPlaceholder={t("acc_search_options")}
+              noResultsText={t("acc_no_options")}
+            />
+          </div>
 
           <Popover open={rangeOpen} onOpenChange={setRangeOpen}>
             <PopoverTrigger asChild>
@@ -165,25 +166,25 @@ export function AccountingToolbar({
         </>
       )}
 
-      {showProject && data.projects.length > 0 && (
-        <Select
-          value={data.filter.project || "__all__"}
-          onValueChange={(v) => data.setFilter({ ...data.filter, project: v === "__all__" ? null : v })}
-        >
-          <SelectTrigger className="h-9 w-52 text-xs" aria-label={t("acc_filter_project")}>
-            <SelectValue placeholder={t("acc_filter_project")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__" className="text-xs">
-              {t("acc_filter_all_projects")}
-            </SelectItem>
-            {data.projects.map((p) => (
-              <SelectItem key={p.id} value={p.id} className="text-xs">
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Financials by project are a per-client customisation (finance review,
+          23 Sep 2026) — the filter appears only where Settings switched it on. */}
+      {showProject && data.settings.projectReports && data.projects.length > 0 && (
+        <div className="w-52">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_filter_project")}
+            value={data.filter.project || "__all__"}
+            onChange={(v) => data.setFilter({ ...data.filter, project: v === "__all__" ? null : v })}
+            options={[
+              { value: "__all__", label: t("acc_filter_all_projects") },
+              ...data.projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+            placeholder={t("acc_filter_project")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
       )}
 
       {showScale && (

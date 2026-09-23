@@ -135,7 +135,13 @@ export function useAccounting(): AccountingData {
       ),
     [prefs.periodKey, prefs.customFrom, prefs.customTo, fiscalYear, startMonth, today]
   )
-  const [filter, setFilter] = useState<LedgerFilter>({})
+  const [rawFilter, setFilter] = useState<LedgerFilter>({})
+  // Per-project financials are a customisation: with the switch off, no stale
+  // project choice may keep narrowing the books.
+  const filter = useMemo<LedgerFilter>(
+    () => (settings.projectReports ? rawFilter : { ...rawFilter, project: null }),
+    [rawFilter, settings.projectReports]
+  )
 
   const windows = useMemo(
     () => periodWindows(entries, period.from, period.to, filter),

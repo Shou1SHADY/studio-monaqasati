@@ -1,15 +1,20 @@
 "use client"
 
-import { useState, useRef, useEffect, useLayoutEffect, useId } from "react"
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useId } from "react"
 import { createPortal } from "react-dom"
 import { useLocale } from "next-intl"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { matchesSearch } from "@/lib/search-text"
 import { Search, ChevronDown, Check } from "lucide-react"
 
 export interface SearchableSelectOption {
   value: string
   label: string
+  /** Options sharing a group print under one heading, in the order given. */
+  group?: string
+  /** Extra text the search matches but the list does not print (an account number, a code). */
+  keywords?: string
 }
 
 export interface SearchableSelectProps {
@@ -23,6 +28,13 @@ export interface SearchableSelectProps {
   error?: boolean
   /** "sm" fits inline in compact toolbars/headers (e.g. a table row); "md" matches h-10 filter-bar controls. Default is form-field sized. */
   size?: "default" | "sm" | "md"
+  /** Names the control when no visible <label> points at it. */
+  ariaLabel?: string
+  id?: string
+  /** Width/height overrides for the trigger (e.g. "h-9 w-52" in a toolbar). */
+  className?: string
+  /** What the closed trigger prints, when it should differ from the option's label. */
+  displayLabel?: string
 }
 
 const POPUP_GAP = 4
@@ -36,7 +48,7 @@ interface PopupCoords {
   bottom?: number
 }
 
-export function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error, size = "default" }: SearchableSelectProps) {
+export function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, noResultsText, disabled, error, size = "default", ariaLabel, id, className, displayLabel }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
@@ -111,10 +123,10 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
     }
   }, [open])
 
-  const filtered = options.filter(opt =>
-    !search.trim() || opt.label.toLowerCase().includes(search.toLowerCase().trim())
-  )
-  const selectedLabel = options.find(o => o.value === value)?.label
+  // Every word, Arabic-folded (أ/ا, ة/ه, ى/ي, diacritics, Arabic digits) — the
+  // same matching as every other search box in the app.
+  const filtered = options.filter(opt => matchesSearch(search, [opt.label, opt.keywords, opt.group]))
+  const selectedLabel = displayLabel ?? options.find(o => o.value === value)?.label
 
   // Keep the highlighted option in range as the filtered list shrinks/grows with each keystroke.
   useEffect(() => {
@@ -123,7 +135,8 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
 
   // Keep the keyboard-highlighted option scrolled into view as the user arrows past the visible edge.
   useEffect(() => {
-    const el = listRef.current?.children[activeIndex] as HTMLElement | undefined
+    // By index attribute, not child position: group headings sit between options.
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-option-index="${activeIndex}"]`)
     el?.scrollIntoView({ block: "nearest" })
   }, [activeIndex])
 
@@ -156,8 +169,10 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
     <>
       <button
         ref={triggerRef}
+        id={id}
         type="button"
         disabled={disabled}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => { if (!disabled) { setOpen(p => !p); setSearch("") } }}
@@ -173,7 +188,8 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
                 ? "border-primary/60 ring-1 ring-primary/20"
                 : value
                   ? "border-slate-200 text-slate-800 hover:border-primary/60"
-                  : "border-slate-200 text-slate-400 hover:border-primary/60"
+                  : "border-slate-200 text-slate-400 hover:border-primary/60",
+          className
         )}
       >
         <span className={cn("truncate", size === "sm" ? "text-xs" : "text-sm")}>{selectedLabel || placeholder}</span>
@@ -218,10 +234,15 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
             {filtered.map((opt, idx) => {
               const isSelected = opt.value === value
               const isActive = idx === activeIndex
+              const heading = opt.group && opt.group !== filtered[idx - 1]?.group ? opt.group : null
               return (
+                <Fragment key={opt.value}>
+                {heading && (
+                  <p role="presentation" className="bg-slate-50 px-4 pt-2 pb-1 text-[11px] font-bold text-slate-500">{heading}</p>
+                )}
                 <button
-                  key={opt.value}
                   id={`${listboxId}-${opt.value}`}
+                  data-option-index={idx}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
@@ -241,6 +262,7 @@ export function SearchableSelect({ value, onChange, options, placeholder, search
                   </div>
                   <span className={cn("min-w-0 flex-1 break-words", isSelected ? "font-bold text-primary" : "text-slate-700")}>{opt.label}</span>
                 </button>
+                </Fragment>
               )
             })}
             {filtered.length === 0 && (

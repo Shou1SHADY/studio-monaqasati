@@ -1509,6 +1509,22 @@ service cloud.firestore {
         && hasOrgPermission('accounting.close');
     }
 
+    // The zakat working paper — one per org and fiscal year (id `{orgId}__{fy}`):
+    // the accountant's overrides and adjustments to the system's zakat base. It
+    // never touches the ledger; the provision booked from it is a journal entry.
+    match /accounting_zakat/{zakatId} {
+      // A year nobody has adjusted yet has no document — reading it must answer
+      // "missing", not "denied", or the screen cannot tell the two apart.
+      allow get: if isSignedIn() && (resource == null || isAdmin() || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create, update: if isSignedIn()
+        && isOrgMember(request.resource.data.organizationId)
+        && hasOrgPermission('accounting.post')
+        && zakatId == request.resource.data.organizationId + '__' + string(request.resource.data.fiscalYear)
+        && (resource == null || resource.data.organizationId == request.resource.data.organizationId);
+      allow delete: if false;
+    }
+
     // CRM company profile — classification grades and annual capacity. The doc
     // id IS the organizationId, so a member can only ever reach their own org's
     // profile and a concurrent first save cannot create a duplicate.

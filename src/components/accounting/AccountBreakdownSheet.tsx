@@ -71,7 +71,7 @@ export function AccountBreakdownSheet({
       <SheetContent side={isRtl ? "left" : "right"} className="w-full sm:max-w-3xl overflow-y-auto" dir={isRtl ? "rtl" : "ltr"}>
         {node && breakdown && (
           <>
-            <SheetHeader className="text-start space-y-1.5">
+            <SheetHeader className="text-start space-y-1.5 pe-8">
               <SheetTitle className="text-lg font-black text-primary">{locale === "ar" ? node.labelAr : node.labelEn}</SheetTitle>
               <SheetDescription className="text-xs">
                 {periodLabel(data.period, locale)} · <span dir="ltr">{periodRangeText(data.period)}</span> · {t(basisKey)}

@@ -51,6 +51,7 @@ import { AccountBreakdownSheet } from "./AccountBreakdownSheet"
 import { CashConversionCycleCard } from "./LockedCashView"
 import { accountNode } from "./AccountBreakdownSheet"
 import { CHART_INK, CHART_SERIES } from "./chart-palette"
+import { CashProjectionCard } from "./CashProjectionCard"
 
 /**
  * The Finance & Accounting dashboard: the company's position for the selected
@@ -296,6 +297,9 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
         </div>
       </AccountingSection>
 
+      {/* Where cash is heading — the finance review's projected cash (23 Sep 2026). */}
+      <CashProjectionCard data={data} />
+
       <AccountingSection
         collapsible
         id="locked"
@@ -418,6 +422,8 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
         </div>
       </AccountingSection>
 
+      {/* Per-project results are part of the per-project financials switch. */}
+      {data.settings.projectReports && (
       <AccountingSection collapsible id="projects" defaultOpen={false} title={t("acc_dash_projects_title")} icon={Briefcase} summary={String(projects.length)} action={<ScaleCaption scale={data.scale} />}>
           {projects.length === 0 ? (
             <p className="p-6 text-center text-xs text-muted-foreground">{t("acc_dash_no_projects")}</p>
@@ -459,6 +465,7 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
             </div>
           )}
       </AccountingSection>
+      )}
       <AccountBreakdownSheet node={selected} data={data} portal={portal} onClose={() => setSelected(null)} />
     </div>
   )

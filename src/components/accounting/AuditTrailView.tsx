@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { useAccounting } from "@/hooks/useAccounting"
 import { cn } from "@/lib/utils"
 import { auditTrail, type AuditEvent, type AuditEventType, type AuditFlag } from "@/lib/accounting/analytics"
@@ -138,33 +138,45 @@ export function AuditTrailView({ portal }: { portal: CrmPortal }) {
           <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("acc_journal_search")} aria-label={t("acc_journal_search")} className="h-9 ps-9 text-xs" />
         </div>
-        <Select value={user} onValueChange={setUser}>
-          <SelectTrigger className="h-9 w-44 text-xs" aria-label={t("acc_audit_col_user")}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">{t("acc_audit_all_users")}</SelectItem>
-            {users.map((u) => (
-              <SelectItem key={u} value={u} className="text-xs">{u}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={type} onValueChange={(v) => setType(v as AuditEventType | "all")}>
-          <SelectTrigger className="h-9 w-44 text-xs" aria-label={t("acc_audit_col_event")}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">{t("acc_audit_all_events")}</SelectItem>
-            {EVENT_TYPES.map((et) => (
-              <SelectItem key={et} value={et} className="text-xs">{t(`acc_audit_event_${et}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={flag} onValueChange={(v) => setFlag(v as AuditFlag | "all")}>
-          <SelectTrigger className="h-9 w-48 text-xs" aria-label={t("acc_audit_col_flags")}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all" className="text-xs">{t("acc_audit_all_flags")}</SelectItem>
-            {FLAGS.map((f) => (
-              <SelectItem key={f} value={f} className="text-xs">{t(`acc_audit_flag_${f}`)}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="w-44">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_audit_col_user")}
+            value={user}
+            onChange={setUser}
+            options={[{ value: "all", label: t("acc_audit_all_users") }, ...users.map((u) => ({ value: u, label: u }))]}
+            placeholder={t("acc_audit_col_user")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
+        <div className="w-44">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_audit_col_event")}
+            value={type}
+            onChange={(v) => setType(v as AuditEventType | "all")}
+            options={[{ value: "all", label: t("acc_audit_all_events") }, ...EVENT_TYPES.map((et) => ({ value: et, label: t(`acc_audit_event_${et}`) }))]}
+            placeholder={t("acc_audit_col_event")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
+        <div className="w-48">
+          <SearchableSelect
+            size="sm"
+            className="h-9"
+            ariaLabel={t("acc_audit_col_flags")}
+            value={flag}
+            onChange={(v) => setFlag(v as AuditFlag | "all")}
+            options={[{ value: "all", label: t("acc_audit_all_flags") }, ...FLAGS.map((f) => ({ value: f, label: t(`acc_audit_flag_${f}`) }))]}
+            placeholder={t("acc_audit_col_flags")}
+            searchPlaceholder={t("acc_search_options")}
+            noResultsText={t("acc_no_options")}
+          />
+        </div>
         <div className="space-y-0.5">
           <Label htmlFor="audit-from" className="text-[10px] text-muted-foreground">{t("acc_audit_recorded_from")}</Label>
           <Input id="audit-from" type="date" dir="ltr" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40 text-xs" />

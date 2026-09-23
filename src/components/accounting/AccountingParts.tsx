@@ -88,6 +88,8 @@ export const SOURCE_LABEL_KEY: Record<string, string> = {
   retention_release: "acc_src_retention_release",
   vat_settlement: "acc_src_vat_settlement",
   zakat_provision: "acc_src_zakat_provision",
+  zakat_payment: "acc_src_zakat_payment",
+  wht_remittance: "acc_src_wht_remittance",
   wip_revenue: "acc_src_wip_revenue",
   manual_voucher: "acc_src_manual_voucher",
   settlement: "acc_src_settlement",

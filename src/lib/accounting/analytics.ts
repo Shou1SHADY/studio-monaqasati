@@ -339,17 +339,24 @@ export interface AgingReport {
   rows: AgingRow[]
 }
 
+export interface OpenItem {
+  date: string
+  /** Positive: still owed. Negative: an overpayment carried forward. */
+  amount: number
+}
+
 /**
- * Aging by counterparty, first-in-first-out: each charge opens an item dated
- * when it was booked, each settlement closes the oldest open items first. What
- * is left open is aged from its own date to `asOf`. `side` is the side that
- * opens an item — debit for receivables, credit for payables.
+ * Each counterparty's open items on a set of accounts, first-in-first-out:
+ * each charge opens an item dated when it was booked, each settlement closes
+ * the oldest open items first. `side` is the side that opens an item — debit
+ * for receivables, credit for payables. Aging and the cash projection both
+ * read this.
  */
-export function agingReport(
+export function openItemsByParty(
   entries: JournalEntry[],
   opts: { accounts: string[]; side: "debit" | "credit"; asOf: string; filter?: LedgerFilter }
-): AgingReport {
-  const byParty = new Map<string, { name: string; open: Array<{ date: string; amount: number }> }>()
+): Map<string, { name: string; open: OpenItem[] }> {
+  const byParty = new Map<string, { name: string; open: OpenItem[] }>()
   const sorted = posted(entries)
     .filter((e) => e.date <= opts.asOf)
     .sort((a, b) => (a.date === b.date ? a.entryNumber - b.entryNumber : a.date < b.date ? -1 : 1))
@@ -378,6 +385,18 @@ export function agingReport(
       byParty.set(key, party)
     }
   }
+  return byParty
+}
+
+/**
+ * Aging by counterparty over `openItemsByParty`: what is left open is aged from
+ * its own date to `asOf`.
+ */
+export function agingReport(
+  entries: JournalEntry[],
+  opts: { accounts: string[]; side: "debit" | "credit"; asOf: string; filter?: LedgerFilter }
+): AgingReport {
+  const byParty = openItemsByParty(entries, opts)
   const totals: [number, number, number, number] = [0, 0, 0, 0]
   const rows: AgingRow[] = []
   for (const [key, party] of byParty) {
