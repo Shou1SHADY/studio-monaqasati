@@ -65,6 +65,7 @@ export async function GET(
           paymentTerms: rfq.paymentTerms || null,
           requiresWarranty: Boolean(rfq.requiresWarranty),
           shipmentMode: rfq.shipmentMode || null,
+          pricingMode: rfq.pricingMode || null,
           locationCoords: rfq.locationCoords || null,
           status: rfq.status,
         },

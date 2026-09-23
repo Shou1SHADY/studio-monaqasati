@@ -37,10 +37,12 @@ import {
   Clock,
   AlertCircle,
   Languages,
+  ListOrdered,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
+import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
 
 type SharedRfq = {
   id: string
@@ -64,6 +66,9 @@ type SharedRfq = {
   paymentTerms: string | null
   requiresWarranty: boolean
   locationCoords: { lat: number; lng: number } | null
+  /** "line" when the buyer asked for a rate per material (PRD §4). */
+  pricingMode?: string | null
+  shipmentMode?: string | null
   status: string
 }
 
@@ -110,6 +115,9 @@ export function PublicRfqContent() {
   const [offerUrlCopied, setOfferUrlCopied] = useState(false)
   const [executionDurationUnit, setExecutionDurationUnit] = useState("أيام")
   const [pdfFile, setPdfFile] = useState<File | null>(null)
+  // A rate per material, when the buyer asked to be quoted that way; the total
+  // is their sum. Keyed by the product's index in the RFQ, its identity.
+  const [lineRates, setLineRates] = useState<Record<number, string>>({})
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
   const {
@@ -177,13 +185,26 @@ export function PublicRfqContent() {
   }
 
   const onSubmit = async (values: OfferFormValues) => {
+    if (byLine && !linePricing.complete) {
+      toast({ title: t("invalid_price"), description: t("line_prices_incomplete"), variant: "destructive" })
+      return
+    }
     try {
       const form = new FormData()
       form.set("companyName", values.companyName)
       form.set("contactName", values.contactName)
       form.set("email", values.email)
       form.set("phone", values.phone)
-      form.set("price", String(values.price))
+      // In line mode the rates ARE the quote; the server recomputes the total
+      // from them and ignores whatever `price` says, so both are sent and only
+      // one is trusted.
+      if (byLine) {
+        const fields = offerPricingFields(linePricing)
+        form.set("lines", JSON.stringify(fields.lines))
+        form.set("price", fields.price)
+      } else {
+        form.set("price", String(values.price))
+      }
       if (values.deliveryLocation) form.set("deliveryLocation", values.deliveryLocation)
       if (values.deliveryDate) form.set("deliveryDate", values.deliveryDate)
       if (values.executionDuration) {
@@ -218,6 +239,11 @@ export function PublicRfqContent() {
   }
 
   const rfq = lookup?.rfq
+
+  const byLine = pricingModeOf(rfq) === "line"
+  const lineProducts = byLine ? pricedProducts(rfq) : []
+  const linePricing = priceOffer(lineProducts, lineRates)
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 font-body" dir={isRTL ? "rtl" : "ltr"}>
@@ -620,6 +646,55 @@ export function PublicRfqContent() {
                       </div>
                     </div>
 
+                    {byLine && (
+                      /* Quoted per material (PRD §4): a rate each, and the total
+                         below is their sum. What gives the order a unit price. */
+                      <div className="space-y-2 p-4 rounded-2xl border border-primary/10 bg-white/60">
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <ListOrdered size={12} className="text-primary" />
+                          {t("line_prices_title")}
+                        </p>
+                        <div className="rounded-xl border divide-y overflow-hidden bg-white">
+                          {lineProducts.map((prod) => {
+                            const rate = lineRates[prod.rfqProductIndex] ?? ""
+                            const subtotal = (Number(rate) || 0) * prod.quantity
+                            return (
+                              <div key={prod.rfqProductIndex} className="flex flex-wrap items-center gap-2 p-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
+                                  <p className="text-[11px] text-muted-foreground" dir="auto">{`${prod.quantity} ${prod.unit}`}</p>
+                                </div>
+                                <div className="relative w-32">
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    min="0"
+                                    step="any"
+                                    dir="ltr"
+                                    aria-label={`${t("price_label")} — ${prod.name}`}
+                                    value={rate}
+                                    onChange={(e) => setLineRates({ ...lineRates, [prod.rfqProductIndex]: e.target.value })}
+                                    className="w-full h-10 ps-3 pe-10 rounded-lg border-2 border-input bg-white text-sm font-bold text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                                    placeholder="0"
+                                  />
+                                  <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">{t("sar")}</span>
+                                </div>
+                                <span className="w-24 text-end text-xs font-bold tabular-nums text-muted-foreground" dir="ltr">
+                                  {subtotal > 0 ? Math.round(subtotal * 100) / 100 : "\u2014"}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        {!linePricing.complete && (
+                          <p className="text-[11px] text-amber-700 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
+                            <AlertCircle size={11} className="shrink-0" />
+                            {t("line_prices_incomplete")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Price + execution — mirrors the portal offer dialog hero stats */}
                     <div className="grid grid-cols-1 gap-3 p-4 rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 via-primary/3 to-transparent">
                       <div className="flex flex-col gap-2">
@@ -633,6 +708,8 @@ export function PublicRfqContent() {
                             type="number"
                             id="price"
                             {...register("price")}
+                            readOnly={byLine}
+                            value={byLine ? (linePricing.total > 0 ? String(linePricing.total) : "") : undefined}
                             className={cn(
                               "w-full h-12 px-4 ps-4 pe-12 rounded-xl border-2 border-input bg-white text-xl font-black text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary",
                               errors.price && "border-destructive"
@@ -644,7 +721,11 @@ export function PublicRfqContent() {
                           />
                           <span className="absolute end-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">{t("sar")}</span>
                         </div>
-                        {errors.price && <p className="text-xs text-destructive">{t("invalid_price")}</p>}
+                        {byLine ? (
+                          <p className="text-[11px] text-muted-foreground">{t("line_price_auto_note")}</p>
+                        ) : (
+                          errors.price && <p className="text-xs text-destructive">{t("invalid_price")}</p>
+                        )}
                       </div>
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider">

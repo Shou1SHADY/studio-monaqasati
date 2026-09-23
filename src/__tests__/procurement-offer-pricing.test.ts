@@ -11,6 +11,7 @@
 import {
   PRICING_MODES,
   canPriceByLine,
+  guestOfferPrice,
   offerPricingFields,
   priceOffer,
   pricedProducts,
@@ -192,5 +193,38 @@ describe("what the order then gets — the point of the whole thing", () => {
   it("leaves a total-priced offer exactly as it was", () => {
     const lines = buildPoLines(rfq({ pricingMode: "total" }), { price: "29,320" })
     expect(lines.map((l) => l.unitPrice)).toEqual([null, null])
+  })
+})
+
+describe("what a public endpoint stores when a guest quotes", () => {
+  // The RFQ share route posts rates AND a total. Only one of them may be believed.
+  it("ignores the posted total in line mode and computes its own", () => {
+    const q = guestOfferPrice(rfq(), [
+      { rfqProductIndex: 0, unitPrice: 2780 },
+      { rfqProductIndex: 1, unitPrice: 15.2 },
+    ], 1)
+    expect(q).toMatchObject({ ok: true, total: 29320, price: "29320" })
+    expect(q.ok && q.lines).toEqual([
+      { rfqProductIndex: 0, unitPrice: 2780 },
+      { rfqProductIndex: 1, unitPrice: 15.2 },
+    ])
+  })
+
+  it("refuses a quote that priced only some of the materials", () => {
+    expect(guestOfferPrice(rfq(), [{ rfqProductIndex: 0, unitPrice: 2780 }], 99999)).toEqual({ ok: false, code: "LINE_PRICES_INCOMPLETE" })
+  })
+
+  it("refuses rates for products the RFQ never listed", () => {
+    // An index nobody asked about prices nothing, so the real lines stay unpriced.
+    expect(guestOfferPrice(rfq(), [{ rfqProductIndex: 7, unitPrice: 5 }], 5)).toEqual({ ok: false, code: "LINE_PRICES_INCOMPLETE" })
+  })
+
+  it("takes the posted total when the RFQ asked for one, and stores no lines", () => {
+    expect(guestOfferPrice(rfq({ pricingMode: "total" }), [], 12500)).toEqual({ ok: true, total: 12500, price: "12500", lines: null })
+  })
+
+  it("takes the posted total for an RFQ that cannot be priced by line, whatever it says", () => {
+    const unpriceable = rfq({ products: [{ name: "x", quantity: 0, unitOfMeasure: "u" }] })
+    expect(guestOfferPrice(unpriceable, [{ rfqProductIndex: 0, unitPrice: 5 }], 900)).toMatchObject({ ok: true, total: 900, lines: null })
   })
 })

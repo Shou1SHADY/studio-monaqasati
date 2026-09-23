@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
+import { guestOfferPrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
@@ -15,6 +16,13 @@ import { normalizeGuestChannel } from "@/utils/guest-offer-workflow"
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 const MAX_OFFERS_PER_LINK = 100
+
+/** Per-material rates, when the RFQ asked to be quoted that way (PRD §4). They
+ * arrive as one JSON field because the rest of the form is flat strings; the
+ * TOTAL is computed from them below and a posted total is ignored. */
+const linesSchema = z
+  .array(z.object({ rfqProductIndex: z.coerce.number().int().min(0).max(999), unitPrice: z.coerce.number().positive().finite() }))
+  .max(200)
 
 const fieldsSchema = z.object({
   companyName: z.string().trim().min(2).max(200),
@@ -87,6 +95,20 @@ export async function POST(
       const v = form.get(key)
       if (typeof v === "string") raw[key] = v
     }
+    const ratesField = form.get("lines")
+    let postedRates: Array<{ rfqProductIndex: number; unitPrice: number }> = []
+    if (typeof ratesField === "string" && ratesField.trim()) {
+      let decoded: unknown = null
+      try {
+        decoded = JSON.parse(ratesField)
+      } catch {
+        return errorResponse("Invalid form submission", "INVALID_INPUT", 400)
+      }
+      const parsedRates = linesSchema.safeParse(decoded)
+      if (!parsedRates.success) return errorResponse("Please review the prices you entered", "INVALID_INPUT", 400)
+      postedRates = parsedRates.data
+    }
+
     const parsed = fieldsSchema.safeParse(raw)
     if (!parsed.success) {
       return errorResponse("Please review the submitted fields", "INVALID_INPUT", 400)
@@ -136,7 +158,15 @@ export async function POST(
       : Number(rfq.quantity) || 0
 
     const nowIso = new Date().toISOString()
-    const priceStr = String(data.price)
+
+    // A line-priced RFQ is quoted per material and its total is OURS to compute
+    // (`guestOfferPrice`): an endpoint that believed a posted figure would let a
+    // guest name any total it liked beside its rates.
+    const quoted = guestOfferPrice(rfq as PricedRfq, postedRates, data.price)
+    if (!quoted.ok) {
+      return errorResponse("Give a price for every material on this request", quoted.code, 400)
+    }
+    const { total, price: priceStr, lines: pricedLines } = quoted
     const offerData: Record<string, unknown> = {
       supplierId: "guest",
       organizationId: "guest",
@@ -151,6 +181,7 @@ export async function POST(
       contractorId: rfq.contractorId || null,
       contractorOrgId: rfq.organizationId || rfq.contractorId || null,
       price: priceStr,
+      ...(pricedLines ? { lines: pricedLines } : {}),
       deliveryLocation: data.deliveryLocation || "",
       deliveryBatches: [
         {
@@ -209,7 +240,7 @@ export async function POST(
       const { subject, html } = buildGuestOfferReceiptEmail({
         companyName: data.companyName,
         rfqTitle: (rfq.title as string) || "",
-        price: data.price,
+        price: total,
         offerUrl,
       })
       await sendEmail({ to: data.email, subject, html }).catch((err) =>
@@ -240,7 +271,7 @@ export async function POST(
           organizationId: rfq.organizationId || rfq.contractorId,
           type: "new_offer",
           title: "عرض سعر جديد عبر رابط المشاركة",
-          message: `قدم المورد ${data.companyName} عرضاً بمبلغ ${data.price.toLocaleString("ar-SA")} ر.س عبر رابط المشاركة على طلب عروض الأسعار: ${rfq.title || ""}`,
+          message: `قدم المورد ${data.companyName} عرضاً بمبلغ ${total.toLocaleString("ar-SA")} ر.س عبر رابط المشاركة على طلب عروض الأسعار: ${rfq.title || ""}`,
           offerId: offerRef.id,
           rfqId,
           createdAt: nowIso,

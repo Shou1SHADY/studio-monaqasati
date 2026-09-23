@@ -132,3 +132,24 @@ export function priceOffer(products: PricedProduct[], rates: Record<number, stri
 export function offerPricingFields(pricing: OfferPricing): { lines: OfferLinePrice[]; price: string } {
   return { lines: pricing.lines, price: String(pricing.total) }
 }
+
+/**
+ * What a PUBLIC endpoint stores when a guest quotes (the RFQ share route).
+ *
+ * The caller posts rates and a total. In line mode the total is ours to compute
+ * and theirs to ignore: an endpoint that believed a posted figure would let a
+ * guest name any total it liked beside its rates. In total mode there are no
+ * rates to work from, so the posted figure is the quote, validated as before.
+ */
+export function guestOfferPrice(
+  rfq: PricedRfq | null | undefined,
+  postedRates: OfferLinePrice[],
+  postedTotal: number
+): { ok: true; total: number; price: string; lines: OfferLinePrice[] | null } | { ok: false; code: "LINE_PRICES_INCOMPLETE" } {
+  if (pricingModeOf(rfq) !== "line") return { ok: true, total: postedTotal, price: String(postedTotal), lines: null }
+  const rates: Record<number, number> = {}
+  for (const l of postedRates) rates[l.rfqProductIndex] = l.unitPrice
+  const pricing = priceOffer(pricedProducts(rfq), rates)
+  if (!pricing.complete) return { ok: false, code: "LINE_PRICES_INCOMPLETE" }
+  return { ok: true, total: pricing.total, price: String(pricing.total), lines: pricing.lines }
+}

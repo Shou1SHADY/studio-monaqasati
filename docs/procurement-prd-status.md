@@ -102,9 +102,33 @@ one material in two the first time somebody typed "حديد ١٢مم" where the 
 same Arabic-folded key as the history.
 
 Not built with them, on purpose: the automatic ROUTE (agreement ⇒ direct ⇒ workshop
-⇒ RFQ) needs need lines, which do not exist yet; ordering ON an agreement needs that
-same route; and the award warning "this offer is N % above our last price" is next —
-it only applies to an offer that priced per line, which some do and some do not.
+⇒ RFQ) needs need lines, which do not exist yet, and ordering ON an agreement needs
+that same route.
+
+## Per-line prices (§4 "pricing mode", 23 Sep) — the keystone the two above were missing
+`buildPoLines` had always read `offer.lines[]`, and nothing had ever written them, so
+every line of every RFQ-born order carried `unitPrice: null`. That is why the price-drift
+report had always been blank for those orders and why the price history above would have
+stayed empty except for regularised receipts. One missing field, five dead features.
+
+An RFQ now says how it wants to be quoted. In line mode the supplier gives a rate per
+material and the total is DERIVED into the same `price` field every reader already uses,
+so nothing downstream had to change. The rate is rounded to halalas BEFORE multiplying,
+so an order's total is always exactly the sum of its own stored lines. Line mode is
+refused on a multi-shipment RFQ (its total is already derived from the batches) and on one
+whose materials have no quantities; the choice is re-checked on read, so an RFQ edited down
+later falls back to a total. Total stays the default. A partial quote is refused, because
+`buildPoLines` keeps no unit price unless every line has one.
+
+Both sides ask for it: the supplier portal and the guest share link. The guest's total is
+computed on the server (`guestOfferPrice`) and a posted figure is ignored — a public
+endpoint that believed one would let a guest name any total beside its rates.
+
+Found on the way: the supplier DASHBOARD's offer dialog was handed an RFQ projection with
+no `shipmentMode`, so a multi-shipment RFQ quoted from there was priced as a single total.
+
+Next, and now unblocked: the award warning "this offer is N % above what we last paid",
+per-line award and lowest-per-line.
 
 ## Receivers and the forwarding window (§4 `RCVR`, §5.2-3, 23 Sep)
 
