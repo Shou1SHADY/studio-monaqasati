@@ -1,4 +1,4 @@
-import { sendDirectMessage, sendWhatsApp, isWhatsAppConfigured } from "@/lib/sms"
+import { sendDirectMessage, sendWhatsApp, isSmsConfigured, isWhatsAppConfigured } from "@/lib/sms"
 
 const ENV_KEYS = [
   "TWILIO_ACCOUNT_SID",
@@ -123,5 +123,40 @@ describe("sendDirectMessage", () => {
     const result = await sendDirectMessage({ to: "+201002500663", body: "x" })
     expect(result.sent).toBe(false)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("isSmsConfigured — only real credentials count as a gateway", () => {
+  test("well-formed credentials are configured", () => {
+    configureTwilio()
+    expect(isSmsConfigured()).toBe(true)
+  })
+
+  test("UAT's placeholder SID is not — so the on-screen test code is used instead of a doomed send", () => {
+    configureTwilio()
+    process.env.TWILIO_ACCOUNT_SID = "TWILIO_ACCOUNT_SID_PLACEHOLDER_VALUE"
+    expect(isSmsConfigured()).toBe(false)
+  })
+
+  test("the documented example SID is not", () => {
+    configureTwilio()
+    process.env.TWILIO_ACCOUNT_SID = "AC" + "x".repeat(32)
+    expect(isSmsConfigured()).toBe(false)
+  })
+
+  test("a sender that is not an E.164 number is not", () => {
+    configureTwilio()
+    process.env.TWILIO_PHONE_NUMBER = "placeholder"
+    expect(isSmsConfigured()).toBe(false)
+  })
+
+  test("a short or example auth token is not", () => {
+    configureTwilio()
+    process.env.TWILIO_AUTH_TOKEN = "your_auth_token_here"
+    expect(isSmsConfigured()).toBe(false)
+  })
+
+  test("nothing set is not", () => {
+    expect(isSmsConfigured()).toBe(false)
   })
 })

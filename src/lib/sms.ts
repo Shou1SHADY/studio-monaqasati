@@ -6,17 +6,24 @@ type SendSmsInput = {
   body: string
 }
 
+// A secret that exists only so a build can mount it is not a gateway: UAT's
+// TWILIO_ACCOUNT_SID was a 36-character placeholder, which passed the old
+// "not the ACxxx example" test, so every code went to Twilio, failed, and the
+// on-screen test code UAT relies on was never reached. Only the real shapes count.
+const ACCOUNT_SID = /^AC[0-9a-fA-F]{32}$/
+const E164 = /^\+[1-9]\d{6,14}$/
+
 export function isSmsConfigured(): boolean {
-  const accountSid = process.env.TWILIO_ACCOUNT_SID
-  const authToken = process.env.TWILIO_AUTH_TOKEN
-  const fromPhone = process.env.TWILIO_PHONE_NUMBER
-  return Boolean(
-    accountSid &&
-      authToken &&
-      fromPhone &&
-      !accountSid.startsWith("ACxxx") &&
-      authToken !== "your_auth_token_here" &&
-      !fromPhone.startsWith("+15551")
+  const accountSid = process.env.TWILIO_ACCOUNT_SID || ""
+  const authToken = process.env.TWILIO_AUTH_TOKEN || ""
+  const fromPhone = process.env.TWILIO_PHONE_NUMBER || ""
+  return (
+    ACCOUNT_SID.test(accountSid) &&
+    !/^ACx+/i.test(accountSid) &&
+    authToken.length >= 32 &&
+    authToken !== "your_auth_token_here" &&
+    E164.test(fromPhone) &&
+    !fromPhone.startsWith("+15551")
   )
 }
 
