@@ -92,6 +92,9 @@ export function PriceHistoryView({
                         {tr.last}
                       </b>
                       <span className="block text-[11px] text-muted-foreground">{`/ ${tr.unit}`}</span>
+                      <span className="block text-[11px] text-muted-foreground">
+                        {`${tr.points[tr.points.length - 1].supplierName || "—"} · ${fmtDate(tr.points[tr.points.length - 1].day, locale)}`}
+                      </span>
                     </td>
                     <td className="p-3">
                       {change == null ? (

@@ -195,7 +195,7 @@ export function ProcurementSettings() {
                     <FormItem className="flex items-start justify-between gap-4 px-4 py-3">
                       <div className="min-w-0">
                         <FormLabel className="text-sm font-bold text-foreground">{t("policy.sealOffersUntilDeadline.label")}</FormLabel>
-                        <FormDescription className="text-[11px] leading-relaxed">{t("policy.sealOffersUntilDeadline.desc")}</FormDescription>
+                        <FormDescription className="text-[11px] leading-relaxed">{t(field.value ? "policy.sealOffersUntilDeadline.descOn" : "policy.sealOffersUntilDeadline.desc")}</FormDescription>
                       </div>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t("policy.sealOffersUntilDeadline.label")} />
