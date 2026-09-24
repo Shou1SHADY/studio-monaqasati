@@ -179,9 +179,17 @@ export function figure(n: number | null | undefined): string {
   return (Number.isFinite(Number(n)) ? Number(n) : 0).toLocaleString("en-US", { maximumFractionDigits: 2 })
 }
 
+/** An amount: whole riyals bare ("36,200"), otherwise both halala digits
+ * ("2,392.50", never "2,392.5"). Quantities keep `figure`. */
+export function moneyFigure(n: number | null | undefined): string {
+  const v = Number.isFinite(Number(n)) ? Number(n) : 0
+  const whole = Math.round(v * 100) % 100 === 0
+  return v.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })
+}
+
 /** "12,500 ر.س" / "SAR 12,500" — plain text for print, messages and CSV (no glyph). */
 export function sarPlain(n: number | null | undefined, locale: string): string {
-  return locale === "ar" ? `${figure(n)} ر.س` : `SAR ${figure(n)}`
+  return locale === "ar" ? `${moneyFigure(n)} ر.س` : `SAR ${moneyFigure(n)}`
 }
 
 export function quantityText(q: number, unit: string): string {

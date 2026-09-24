@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 import { poLate, poStatus } from "@/lib/procurement/po"
 import type { PoLine, PoStatus, PurchaseOrder } from "@/lib/procurement/types"
 import { sarLtr } from "@/lib/riyal"
-import { figure, honestDate, lineParts, percentOf, quantityText, type HonestDate } from "./PoModel"
+import { figure, honestDate, lineParts, moneyFigure, percentOf, quantityText, type HonestDate } from "./PoModel"
 
 const PILL: Record<PoStatus, string> = {
   awaiting_approval: "bg-warning/10 text-warning",
@@ -50,7 +50,7 @@ export function Money({ value, className, masked }: { value: number | null | und
   if (masked) return <span className={cn("text-muted-foreground", className)}>—</span>
   return (
     <span dir="ltr" className={cn("tabular-nums", className)}>
-      {sarLtr(figure(value))}
+      {sarLtr(moneyFigure(value))}
     </span>
   )
 }
