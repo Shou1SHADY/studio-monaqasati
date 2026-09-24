@@ -7716,6 +7716,8 @@
       "crm_open_sales": "Open Sales",
       "pn_new_offer_title": "New offer",
       "pn_new_offer": "{supplier} submitted an offer of SAR {price} (excl. VAT) on the RFQ: {rfq}",
+      "pn_new_offer_sealed": "{supplier} submitted an offer on the RFQ: {rfq} — the price stays sealed until the deadline",
+      "pn_new_offer_plain": "{supplier} submitted an offer on the RFQ: {rfq}",
       "pn_delivery_notice_title": "New delivery notice",
       "pn_delivery_notice": "The supplier sent a delivery notice for the RFQ: {rfq} — confirm receipt when it arrives.",
       "pn_receipt_forwarded_title": "📦 A receipt forwarded to you",
@@ -8675,6 +8677,7 @@
       "newrfq_edit_desc": "Modify the existing RFQ details and re-publish.",
       "newrfq_val_title_required": "Please enter an RFQ title",
       "newrfq_val_product_required": "Please enter at least one product with quantity and unit",
+      "newrfq_val_product_incomplete": "Complete every product you started — category, quantity and unit — or remove it",
       "newrfq_val_city_required": "Please select a city",
       "newrfq_val_deadline_required": "Please select an offer deadline",
       "newrfq_incomplete_data": "Incomplete Data",
@@ -8724,6 +8727,7 @@
       "offers_proposed_price": "Proposed Price:",
       "offers_delivery_frequency": "Delivery Frequency:",
       "offers_batches": "Shipment Schedule:",
+      "offers_line_prices": "Price per material",
       "offers_batch_no": "Shipment {number}",
       "offers_total_batches_price": "Total shipment prices:",
       "offers_attached_file": "Quotation Attachment",
@@ -8790,6 +8794,7 @@
       "offers_status_reduction": "Price Reduction Requested 📉",
       "offers_toast_accepted_title": "✅ Award sent to Finance",
       "offers_toast_accepted_desc": "The purchase order is waiting for Finance's approval. The supplier is told only once it is approved and sent.",
+      "offers_award_internal": "The supplier has not been told yet — the order reaches them once Finance approves it and it is sent, and contact opens then.",
       "offers_toast_rejected_title": "❌ Offer Rejected",
       "offers_toast_rejected_desc": "Offer has been rejected and the supplier will be notified.",
       "offers_toast_reduction_title": "📉 Reduction Requested",
@@ -10745,10 +10750,10 @@
         "commitment": "Committed on the PO — incl. VAT",
         "commitment_hint_approved": "Reached Finance on approval {date} as an uninvoiced commitment — the first leg of the three-way match",
         "commitment_hint_pending": "Not approved yet — nothing reaches Finance before approval",
-        "accepted": "Accepted on the receipts",
+        "accepted": "Accepted on the receipts — excl. VAT",
         "accepted_hint": "The ceiling of what the supplier may invoice today — rejects and held goods are outside it",
         "accepted_unknown": "Unknown until delivery is complete — a lump-sum order with no unit prices",
-        "open": "Still open on the commitment",
+        "open": "Still open on the order — excl. VAT",
         "open_lump_hint": "Lump-sum order: open in full until it is complete",
         "footer": "Not shown here: the supplier's invoice, his ledger or the payments — those are Finance's. We send the order and the decision, and read back what concerns our PO."
       },
@@ -11463,6 +11468,7 @@
         "price": "Price",
         "addLine": "Add a material",
         "removeLine": "Remove this material",
+        "noHistoryForName": "No past purchase under this name and unit — pick one from the list so it can be compared with what we last paid",
         "renewPricesHint": "Leave a price as it is to keep it.",
         "note": "Note",
         "notePlaceholder": "What the price includes — delivery, pumping, offloading",
@@ -11589,7 +11595,8 @@
         },
         "sealOffersUntilDeadline": {
           "label": "Seal offer prices until the deadline",
-          "desc": "Off by default: prices show as they arrive and the award may come before the deadline"
+          "desc": "Off by default: prices show as they arrive and the award may come before the deadline",
+          "descOn": "On: prices stay hidden from everyone until the deadline, and no award comes before it"
         }
       },
       "roles": {
