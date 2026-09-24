@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useTranslations, useLocale } from 'next-intl'
 import { cn } from "@/lib/utils"
@@ -35,6 +35,7 @@ import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type SupplierFacts } from "@/lib/procurement/types"
 import { AWARD_REASON_CODES, lowestOffer, offerPrice, poStatus } from "@/lib/procurement/po"
+import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber } from "@/lib/procurement/format"
@@ -1189,7 +1190,33 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                             </div>
                           )}
 
-                          {offer.deliveryBatches && offer.deliveryBatches.length > 0 && (
+                          {/* The rates the RFQ asked for, before the decision — until now they
+                              first appeared on the approved order. offerRates sets aside rates
+                              that no longer add up to the offer (a total revised on its own). */}
+                          {(() => {
+                            const rates = offerRates(rfq as Parameters<typeof offerRates>[0], offer).filter((r) => r.quoted)
+                            if (!rates.length) return null
+                            return (
+                              <div className="mt-3 pt-3 border-t border-slate-200">
+                                <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_line_prices")}</p>
+                                <div className="rounded border border-slate-100 bg-white divide-y text-sm">
+                                  {rates.map((r) => (
+                                    <div key={r.rfqProductIndex} className="flex items-center justify-between gap-2 p-2">
+                                      <span className="min-w-0 truncate font-medium" dir="auto">{r.name}</span>
+                                      <span className="shrink-0 tabular-nums text-slate-600" dir="ltr">
+                                        {tShared("offer_line_qty", { qty: r.quantity, unit: r.unit })} × {r.unitPrice.toLocaleString("en-US")}
+                                        <span className="ms-2 font-bold text-success">{Math.round(r.quantity * r.unitPrice * 100) / 100} {t("offers_currency_sar")}</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          {/* A schedule only when there is one: a single-shipment offer carries
+                              one synthetic batch whose "quantity" summed tons and sheets. */}
+                          {offer.deliveryBatches && (offer.deliveryBatches.length > 1 || (rfq as { shipmentMode?: string } | null)?.shipmentMode === "multiple") && (
                             <div className="mt-3 pt-3 border-t border-slate-200">
                               <p className="text-xs font-bold text-slate-600 mb-2">{t("offers_batches")}</p>
                               <div className="space-y-2">
@@ -1402,25 +1429,42 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 </Link>
                               </>
                             )}
-                            <Button
-                              onClick={() => openChat(offer)}
-                              disabled={openingChat === offer.id}
-                              className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
-                              size="sm"
-                            >
-                              {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-                              {t("offers_open_chat")}
-                            </Button>
-                            <SupplierWhatsAppButton supplierId={offer.supplierId} guestPhone={offer.isGuestOffer ? offer.guestContact?.phone : undefined} />
-                            <Button
-                              onClick={() => handleMarkAsCompleted(offer.id)}
-                              disabled={processingId === offer.id}
-                              className="w-full bg-blue-600 hover:bg-blue-700 gap-2 rounded-full transition-all text-xs"
-                              size="sm"
-                            >
-                              {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                              {t("offers_confirm_completion")}
-                            </Button>
+                            {/* Contact follows disclosure: while the award is internal (Finance
+                                has not approved, or the order is not sent) the supplier has been
+                                told nothing — a chat or WhatsApp now would tell him. */}
+                            <AwardDisclosure offer={offer}>
+                              {(disclosed) =>
+                                disclosed ? (
+                                  <>
+                                    <Button
+                                      onClick={() => openChat(offer)}
+                                      disabled={openingChat === offer.id}
+                                      className="w-full bg-primary hover:bg-primary/90 gap-2 rounded-full transition-all hover:shadow-lg text-xs"
+                                      size="sm"
+                                    >
+                                      {openingChat === offer.id ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+                                      {t("offers_open_chat")}
+                                    </Button>
+                                    <SupplierWhatsAppButton supplierId={offer.supplierId} guestPhone={offer.isGuestOffer ? offer.guestContact?.phone : undefined} />
+                                    {/* With an order, completion is the order's (receipts, close); the
+                                        old button would set a second, parallel "delivered". */}
+                                    {!offer.poId && (
+                                      <Button
+                                        onClick={() => handleMarkAsCompleted(offer.id)}
+                                        disabled={processingId === offer.id}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 gap-2 rounded-full transition-all text-xs"
+                                        size="sm"
+                                      >
+                                        {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                                        {t("offers_confirm_completion")}
+                                      </Button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="w-full text-[11px] leading-relaxed text-slate-600">{t("offers_award_internal")}</p>
+                                )
+                              }
+                            </AwardDisclosure>
                           </div>
                         )}
 
@@ -2436,6 +2480,17 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
       </CardContent>
     </Card>
   )
+}
+
+/** Whether the supplier has been told of this award, read live off its order —
+ * the same rule every supplier screen uses (`awardDisclosed`). */
+function AwardDisclosure({ offer, children }: { offer: { poId?: string | null; status?: string | null; awaitingOrderApproval?: boolean | null }; children: (disclosed: boolean) => ReactNode }) {
+  const firestore = useFirestore()
+  const ref = useMemoFirebase(() => (firestore && offer.poId ? doc(firestore, PURCHASE_ORDERS, offer.poId) : null), [firestore, offer.poId])
+  const { data: po } = useDoc(ref)
+  const orders = new Map<string, PurchaseOrder>()
+  if (offer.poId && po) orders.set(offer.poId, { ...(po as PurchaseOrder), id: offer.poId })
+  return <>{children(awardDisclosed(offer, orders))}</>
 }
 
 /** The order laid over an accepted offer: its number and its derived state,
