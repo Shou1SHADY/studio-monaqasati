@@ -29,7 +29,7 @@ export default function ChatRedirectPage() {
 
   useEffect(() => {
     if (isUserLoading || profileLoading) return
-    if (!user) { router.replace("/login"); return }
+    if (!user || user.isAnonymous) { router.replace("/login"); return }
     if (profile?.role === "Supplier") {
       router.replace(`/supplier/chat/${chatId}`)
     } else {

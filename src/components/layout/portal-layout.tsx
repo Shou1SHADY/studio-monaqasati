@@ -129,7 +129,9 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
   
   React.useEffect(() => {
     if (!isUserLoading) {
-      if (!user && pathname !== "/admin/seed") {
+      // An anonymous session (the guest RFQ/offer pages sign one in) is not an
+      // account: without this it opened an empty portal instead of the login.
+      if ((!user || user.isAnonymous) && pathname !== "/admin/seed") {
         router.push("/login")
         return
       }
