@@ -15,6 +15,7 @@
 // notification never undoes the decision it reports.
 
 import { collection, doc, setDoc, type Firestore } from "firebase/firestore"
+import { displayDocNumber } from "../sales-numbering"
 import { loadTeam, notificationCopy, resolveRecipients, type EventParams, type RecipientSpec, type Translator } from "../mfg-events"
 
 export type ProcEventKind =
@@ -184,7 +185,9 @@ export function renderProcCopy(kind: ProcEventKind, params: EventParams, copy?: 
     }
   }
   const ar = PROC_EVENT_COPY_AR[kind]
-  return { title: substitute(ar.title, params).trim(), message: substitute(ar.message, params).replace(/\s+/g, " ").trim() }
+  // Arabic text shows Arabic document prefixes, as every screen does.
+  const shown = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? displayDocNumber(v, "ar") : v])) as EventParams
+  return { title: substitute(ar.title, shown).trim(), message: substitute(ar.message, shown).replace(/\s+/g, " ").trim() }
 }
 
 /** "12,500 ر.س" / "SAR 12,500" — for notification text only (no glyph). */

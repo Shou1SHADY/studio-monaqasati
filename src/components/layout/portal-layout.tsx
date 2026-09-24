@@ -807,7 +807,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-bold text-foreground truncate">
-                              {notif.i18n ? notificationCopy(notif, tShared).title : isSupplier
+                              {notif.i18n ? notificationCopy(notif, tShared, locale).title : isSupplier
                                 ? isNewRfq ? t("notification_new_rfq")
                                   : isSampleReceived ? t("notification_sample_received")
                                   : isSampleRequest ? t("notification_sample_requested")
@@ -829,7 +829,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                             </p>
                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
                                {notif.i18n
-                                 ? notificationCopy(notif, tShared).message
+                                 ? notificationCopy(notif, tShared, locale).message
                                  : isNewRfq
                                  ? t("notification_rfq_in_category", { category: notif.category })
                                  : isInvitation

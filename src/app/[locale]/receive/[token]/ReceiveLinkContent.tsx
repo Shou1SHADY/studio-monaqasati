@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
+import { displayPoNumber } from "@/lib/procurement/format"
 import { CheckCircle2, Loader2, PackageCheck, ShieldCheck, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -212,7 +213,7 @@ export function ReceiveLinkContent() {
         </p>
         <h1 className="text-xl font-black leading-relaxed text-foreground">{data.supplierName || t("supplier_unknown")}</h1>
         <p className="text-sm text-muted-foreground">
-          {data.poNumber ? <span dir="ltr">{data.poNumber}</span> : null}
+          {data.poNumber ? <span dir="ltr">{displayPoNumber(data.poNumber, locale)}</span> : null}
           {data.poNumber && data.rfqTitle ? " · " : ""}
           {data.rfqTitle}
         </p>

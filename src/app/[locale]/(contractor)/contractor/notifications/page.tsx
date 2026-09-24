@@ -364,7 +364,7 @@ export default function ContractorNotificationsPage() {
                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                          <p className="font-bold text-slate-900">
                            {notif.i18n
-                             ? notificationCopy(notif, tShared).title
+                             ? notificationCopy(notif, tShared, locale).title
                              : isSampleSent
                              ? tSupplier("sample_sent_notif_title")
                              : isNewChatMessage
@@ -378,7 +378,7 @@ export default function ContractorNotificationsPage() {
                        </div>
                        <p className="text-sm text-slate-500 mt-1">
                          {notif.i18n
-                           ? notificationCopy(notif, tShared).message
+                           ? notificationCopy(notif, tShared, locale).message
                            : isSampleSent && notif.rfqId
                            ? tSupplier("sample_sent_notif_msg", { title: notif.rfqTitle || "RFQ" })
                            : isNewChatMessage

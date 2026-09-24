@@ -16,6 +16,7 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, where, type Firestore } from "firebase/firestore"
 import { ALL_PERMISSION, type PermissionId, type TeamGroup } from "./permissions"
 import { isQcStation, normalizeMfgSettings, type DeptCapacityFields, type MfgSettings } from "./manufacturing-engine"
+import { displayDocNumber } from "./sales-numbering"
 
 export type MfgEventKind =
   // Requests & cost statements (T1–T3, REQ-08)
@@ -322,14 +323,19 @@ export async function emitDownPaymentConfirmed(
 // Reading
 // ---------------------------------------------------------------------------
 
-/** The notification in the reader's language when it carries keys; else its stored text. */
-export function notificationCopy(n: { title?: string; message?: string; i18n?: { title?: string; message?: string; params?: EventParams } | null }, t: Translator): { title: string; message: string } {
+/**
+ * The notification in the reader's language when it carries keys; else its
+ * stored text. With the reader's `locale`, a document number reads as every
+ * screen shows it — "ط.ش-2026/001" in Arabic, never the stored "PO-2026/001".
+ */
+export function notificationCopy(n: { title?: string; message?: string; i18n?: { title?: string; message?: string; params?: EventParams } | null }, t: Translator, locale?: string): { title: string; message: string } {
   const i = n.i18n
   if (i?.title && t.has(i.title)) {
     const params: Record<string, string | number> = {}
     for (const [k, v] of Object.entries(i.params || {})) {
       if (v == null) params[k] = ""
       else if (typeof v === "string" && v.startsWith("@") && t.has(v.slice(1))) params[k] = t(v.slice(1))
+      else if (typeof v === "string" && locale) params[k] = displayDocNumber(v, locale)
       else params[k] = v
     }
     const title = t(i.title, params)

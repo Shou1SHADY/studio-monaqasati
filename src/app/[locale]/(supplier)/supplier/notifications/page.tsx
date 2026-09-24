@@ -263,7 +263,7 @@ export default function SupplierNotificationsPage() {
 
   const getMessage = (offer: any) => {
     if (offer.i18n) {
-      const copy = notificationCopy(offer, tShared)
+      const copy = notificationCopy(offer, tShared, locale)
       return { title: copy.title, desc: copy.message }
     }
     const type = offer.type;
