@@ -176,6 +176,17 @@ describe("ending one early", () => {
     expect(a.log?.[1]).toMatchObject({ action: "ended", byId: "fin", params: { reason: "المورد رفع السعر" } })
   })
 
+  it("cancels one that has not started — it must not switch itself on (UAT, 23 Sep)", async () => {
+    const { id } = await createPriceAgreement(db, buyer, { ...input, from: "2026-10-15", until: "2027-03-31" }, { now: NOW })
+    const a = await endPriceAgreement(db, buyer, id, "الصفقة لم تتم", { now: NOW })
+    expect(a.endedAt).toBe(NOW.toISOString())
+  })
+
+  it("has nothing to end once its date has passed", async () => {
+    const { id } = await createPriceAgreement(db, buyer, { ...input, from: "2026-09-01", until: "2026-09-30" }, { now: NOW })
+    await expect(endPriceAgreement(db, buyer, id, "late", { now: new Date("2026-10-05T09:00:00Z") })).rejects.toMatchObject({ code: "wrong_state" })
+  })
+
   it("needs a reason, and cannot end twice", async () => {
     const { id } = await createPriceAgreement(db, buyer, input, { now: NOW })
     await expect(endPriceAgreement(db, buyer, id, "  ", { now: NOW })).rejects.toMatchObject({ code: "reason_required" })

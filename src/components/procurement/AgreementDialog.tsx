@@ -8,7 +8,7 @@
 // materials are what the orders already placed on it point at, so they are shown
 // and not editable.
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { Loader2, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -41,6 +41,7 @@ export function AgreementDialog({
   /** Signing when absent; renewing the one given. */
   agreement,
   suppliers,
+  knownMaterials = [],
   onDone,
 }: {
   open: boolean
@@ -50,12 +51,18 @@ export function AgreementDialog({
   locale: string
   agreement?: PriceAgreement | null
   suppliers: Array<{ id: string; name: string }>
+  /** Materials price history already knows, by the names orders gave them. An
+   * agreement is compared with what we last paid only when its material is
+   * named the same way — typed free, "حديد تسليح ١٢مم" never met the history's
+   * "حديد تسليح" (UAT, 23 Sep). */
+  knownMaterials?: Array<{ name: string; unit: string }>
   onDone?: () => void
 }) {
   const t = useTranslations("Portal.ProcPrices")
   const firestore = useFirestore()
   const { user } = useUser()
   const renewing = Boolean(agreement)
+  const knownKeys = useMemo(() => new Set(knownMaterials.map((k) => materialKey(k.name, k.unit))), [knownMaterials])
 
   const [supplierOrgId, setSupplierOrgId] = useState("")
   const [from, setFrom] = useState(today())
@@ -159,6 +166,15 @@ export function AgreementDialog({
 
           <div className="space-y-2">
             <Label>{t("dialog.lines")}</Label>
+            {knownMaterials.length > 0 && (
+              <datalist id="agr-known-materials">
+                {knownMaterials.map((k) => (
+                  <option key={materialKey(k.name, k.unit)} value={k.name}>
+                    {k.unit}
+                  </option>
+                ))}
+              </datalist>
+            )}
             {rows.map((r, i) => (
               <div key={i} className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
@@ -167,8 +183,16 @@ export function AgreementDialog({
                     placeholder={t("dialog.material")}
                     value={r.name}
                     disabled={renewing}
-                    onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
+                    list={knownMaterials.length ? "agr-known-materials" : undefined}
+                    onChange={(e) => {
+                      const name = e.target.value
+                      const known = knownMaterials.find((k) => k.name === name)
+                      setRows(rows.map((x, j) => (j === i ? { ...x, name, unit: x.unit.trim() || !known ? x.unit : known.unit } : x)))
+                    }}
                   />
+                  {!renewing && knownMaterials.length > 0 && r.name.trim() && r.unit.trim() && !knownKeys.has(materialKey(r.name, r.unit)) && (
+                    <p className="text-[11px] leading-snug text-amber-700">{t("dialog.noHistoryForName")}</p>
+                  )}
                 </div>
                 <div className="w-24 space-y-1">
                   <Input

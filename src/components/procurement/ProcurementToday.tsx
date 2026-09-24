@@ -14,6 +14,7 @@ import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, C
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader, type ProcurementKpi } from "@/components/contractor/ProcurementHeader"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { RECEIPT_HREF, TASK_GROUPS, todayKpis, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { arrivingThisWeek, toProcWorld } from "@/lib/procurement/shell"
@@ -76,7 +77,10 @@ export function ProcurementToday() {
   const [now] = useState(() => new Date())
 
   const { orders, deliveries, rfqs, offers, policies, supplierFacts } = loaded
-  const world = useMemo(() => toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), [orders, deliveries, rfqs, offers, policies, supplierFacts])
+  // The "agreement about to end" task reads w.agreements, which nothing fed:
+  // the world hook does not load them, so the reminder never appeared.
+  const { agreements } = useProcurementPrices(loaded.orgId)
+  const world = useMemo(() => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements }), [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements])
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const kpis = useMemo(() => todayKpis(world, actor, now), [world, actor, now])

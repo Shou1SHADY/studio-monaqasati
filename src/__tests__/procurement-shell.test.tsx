@@ -30,6 +30,7 @@ import {
 } from "@/lib/procurement/shell"
 import type { PermissionId } from "@/lib/permissions"
 import type { ProcurementWorld } from "@/hooks/useProcurementWorld"
+import type { PriceAgreement } from "@/lib/procurement/prices"
 
 // ---------------------------------------------------------------------------
 // next-intl stand-in: the real message files (plus any fragment overlay),
@@ -147,6 +148,9 @@ jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isLoading:
 
 let mockWorld: ProcurementWorld
 jest.mock("@/hooks/useProcurementWorld", () => ({ useProcurementWorld: () => mockWorld }))
+
+let mockAgreements: PriceAgreement[] = []
+jest.mock("@/hooks/useProcurementPrices", () => ({ useProcurementPrices: () => ({ agreements: mockAgreements, history: [], ready: true }) }))
 
 import { ProcurementToday } from "@/components/procurement/ProcurementToday"
 
@@ -329,8 +333,33 @@ const busyWorld = (): Partial<ProcurementWorld> => ({
 })
 
 describe("SHELL-06 · Today renders over a fake world", () => {
+  // Today reads the real clock and the fixtures are dated around NOW: without
+  // this, the suite broke on 24 Sep when a "sent today" order aged past the
+  // supplier's acceptance window. Only Date is faked; React's timers are not.
+  beforeAll(() => {
+    jest.useFakeTimers({ doNotFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "setImmediate", "clearImmediate", "nextTick", "queueMicrotask", "requestAnimationFrame", "cancelAnimationFrame", "performance"] })
+    jest.setSystemTime(NOW)
+  })
+  afterAll(() => {
+    jest.useRealTimers()
+  })
+
   beforeEach(() => {
     mockCan = () => true
+    mockAgreements = []
+  })
+
+  it("lists an agreement about to end — Today never received agreements before (UAT, 23 Sep)", () => {
+    mockLocale = "en"
+    mockWorld = loaded()
+    const inDays = (n: number) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10)
+    mockAgreements = [
+      { id: "ag1", organizationId: "org", docNumber: "AG-2026/001", supplierOrgId: "s1", supplierName: "Quality Factory", from: inDays(-20), until: inDays(10), lines: [{ name: "Rebar", unit: "t", price: 2800 }], preparedById: "u", preparedByName: "U", createdAt: inDays(-20) } as PriceAgreement,
+    ]
+    const { container } = render(<ProcurementToday />)
+    expect(container.textContent).toContain("Quality Factory")
+    expect(container.textContent).toContain("in 10 days")
+    expect(container.textContent).not.toMatch(/MISSING/)
   })
 
   it.each(["en", "ar"] as const)("%s · no key or placeholder is missing; the panels show what the world holds", (locale) => {

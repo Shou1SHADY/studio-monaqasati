@@ -13,7 +13,7 @@
 import { doc, collection, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { ProcWriteError } from "./writes"
 import { drawProcDocNumber } from "./numbering"
-import { PRICE_AGREEMENTS, agreementIsLive, materialKey, type AgreementLine, type AgreementLogEntry, type PriceAgreement } from "./prices"
+import { PRICE_AGREEMENTS, agreementState, materialKey, type AgreementLine, type AgreementLogEntry, type PriceAgreement } from "./prices"
 import { dayOf, todayOf } from "./po"
 import type { ProcActor } from "./types"
 
@@ -179,7 +179,10 @@ export async function endPriceAgreement(
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new ProcWriteError("order_missing")
     const current = { ...(snap.data() as Omit<PriceAgreement, "id">), id: snap.id } as PriceAgreement
-    if (!agreementIsLive(current, todayOf(now))) throw new ProcWriteError("wrong_state")
+    // Ending cancels an agreement not yet started, too: one signed for next
+    // quarter that falls through must not switch itself on. Only one already
+    // over (by date or by hand) has nothing left to end.
+    if (agreementState(current, todayOf(now)) === "expired") throw new ProcWriteError("wrong_state")
     const log = [...(current.log || []), logEntry(actor, "ended", at, { reason: text })]
     tx.update(ref, { endedAt: at, log, updatedAt: serverTimestamp() })
     return { ...current, endedAt: at, log }

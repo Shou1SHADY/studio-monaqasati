@@ -23,6 +23,7 @@ import { useFirestore } from "@/firebase"
 import { displayAgreementNumber } from "@/lib/procurement/format"
 import { agreementRows, lastPaid, type AgreementState, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
 import { endPriceAgreement } from "@/lib/procurement/agreement-writes"
+import { ProcWriteError } from "@/lib/procurement/writes"
 import { AgreementDialog } from "./AgreementDialog"
 import type { ProcActor } from "@/lib/procurement/types"
 
@@ -62,6 +63,12 @@ export function PriceAgreementsView({
 
   const today = new Date().toISOString().slice(0, 10)
   const rows = useMemo(() => agreementRows(agreements, today), [agreements, today])
+  // One entry per material history knows, in the words its orders used.
+  const knownMaterials = useMemo(() => {
+    const seen = new Map<string, { name: string; unit: string }>()
+    for (const h of history) if (!seen.has(h.materialKey)) seen.set(h.materialKey, { name: h.name, unit: h.unit })
+    return Array.from(seen.values())
+  }, [history])
 
   const endIt = async () => {
     if (!firestore || !endTarget || !endReason.trim()) return
@@ -71,8 +78,9 @@ export function PriceAgreementsView({
       await endPriceAgreement(firestore, actor, endTarget.id, endReason)
       setEndTarget(null)
       setEndReason("")
-    } catch {
-      setEndError(t("err.generic"))
+    } catch (err) {
+      // The real reason, not "try again": a retry never fixes a refusal.
+      setEndError(err instanceof ProcWriteError && t.has(`err.${err.code}`) ? t(`err.${err.code}`) : t("err.generic"))
     } finally {
       setEnding(false)
     }
@@ -201,6 +209,7 @@ export function PriceAgreementsView({
         locale={locale}
         agreement={dialogFor}
         suppliers={suppliers}
+        knownMaterials={knownMaterials}
       />
     </div>
   )
