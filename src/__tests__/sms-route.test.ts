@@ -12,6 +12,8 @@ type Doc = Record<string, unknown>
 const store = new Map<string, Doc>()
 const sent: Array<{ to: string; body: string }> = []
 let smsConfigured = true
+let verifyConfigured = false
+const verifications: Array<{ to: string; locale: string }> = []
 
 function docRef(path: string) {
   return {
@@ -41,6 +43,11 @@ jest.mock("@/lib/sms", () => {
   return {
     ...actual,
     isSmsConfigured: () => smsConfigured,
+    isVerifyConfigured: () => verifyConfigured,
+    startVerification: async (to: string, locale: string) => {
+      verifications.push({ to, locale })
+      return { sent: true, verificationSid: "VE" + "a".repeat(32) }
+    },
     sendSms: async (msg: { to: string; body: string }) => {
       sent.push(msg)
       return { sent: true }
@@ -63,6 +70,8 @@ beforeEach(() => {
   store.clear()
   sent.length = 0
   smsConfigured = true
+  verifyConfigured = false
+  verifications.length = 0
   store.set("users/contractor1", { phone: "0501234567" })
   store.set("users/supplier1", { twoFactorEnabled: true, phone: "0559876543" })
   store.set("rfqs/rfq1", { contractorId: "contractor1", title: "حديد تسليح" })
@@ -165,5 +174,19 @@ describe("the sign-in code", () => {
     const res = await call({ kind: "login_code" }, "supplier1")
     expect(res.status).toBe(429)
     expect(sent).toHaveLength(1)
+  })
+
+  it("goes through Twilio Verify when it is set up — no code of ours is made or stored", async () => {
+    verifyConfigured = true
+    const res = await call({ kind: "login_code", locale: "en" }, "supplier1")
+    expect(res.status).toBe(200)
+    expect(verifications).toEqual([{ to: "+966559876543", locale: "en" }])
+    expect(sent).toHaveLength(0)
+    const stored = store.get("users/supplier1/2fa/current") as { code?: string; verificationSid?: string }
+    expect(stored.code).toBeUndefined()
+    expect(stored.verificationSid).toBe("VE" + "a".repeat(32))
+    const again = await call({ kind: "login_code" }, "supplier1")
+    expect(again.status).toBe(429)
+    expect(verifications).toHaveLength(1)
   })
 })

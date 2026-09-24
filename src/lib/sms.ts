@@ -28,23 +28,36 @@ function smsSender(): { MessagingServiceSid: string } | { From: string } | null 
   return null
 }
 
-export function isSmsConfigured(): boolean {
+const VERIFY_SERVICE_SID = /^VA[0-9a-fA-F]{32}$/
+const VERIFICATION_SID = /^VE[0-9a-fA-F]{32}$/
+
+function twilioCredentials(): boolean {
   const accountSid = process.env.TWILIO_ACCOUNT_SID || ""
   const authToken = process.env.TWILIO_AUTH_TOKEN || ""
-  return (
-    ACCOUNT_SID.test(accountSid) &&
-    !/^ACx+/i.test(accountSid) &&
-    authToken.length >= 32 &&
-    authToken !== "your_auth_token_here" &&
-    smsSender() != null
-  )
+  return ACCOUNT_SID.test(accountSid) && !/^ACx+/i.test(accountSid) && authToken.length >= 32 && authToken !== "your_auth_token_here"
 }
 
-async function twilioSend(params: Record<string, string>): Promise<{ sent: boolean; error?: string }> {
+export function isSmsConfigured(): boolean {
+  return twilioCredentials() && smsSender() != null
+}
+
+/** One-time codes through Twilio Verify: Twilio makes the code, delivers it
+ * through its own registered senders (no Saudi sender-ID wait — Twilio's
+ * guidance for OTP) and checks it. Needs no sender of ours. */
+export function isVerifyConfigured(): boolean {
+  return twilioCredentials() && VERIFY_SERVICE_SID.test(process.env.TWILIO_VERIFY_SERVICE_SID || "")
+}
+
+/** Whether a one-time code can reach a phone by any route. */
+export function canSendCodes(): boolean {
+  return isVerifyConfigured() || isSmsConfigured()
+}
+
+async function twilioPost(url: string, params: Record<string, string>): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; status: number; error: string }> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID!
   const authToken = process.env.TWILIO_AUTH_TOKEN!
   try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -52,18 +65,47 @@ async function twilioSend(params: Record<string, string>): Promise<{ sent: boole
       },
       body: new URLSearchParams(params),
     })
-
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
     if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { code?: number; message?: string }
       console.error("Twilio API error:", res.status, data)
-      return { sent: false, error: `TWILIO_${data.code || res.status}` }
+      return { ok: false, status: res.status, error: `TWILIO_${(data.code as number | undefined) || res.status}` }
     }
-
-    return { sent: true }
+    return { ok: true, data }
   } catch (err) {
     console.error("Failed to reach Twilio:", err)
-    return { sent: false, error: "SMS_NETWORK_ERROR" }
+    return { ok: false, status: 0, error: "SMS_NETWORK_ERROR" }
   }
+}
+
+async function twilioSend(params: Record<string, string>): Promise<{ sent: boolean; error?: string }> {
+  const r = await twilioPost(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, params)
+  return r.ok ? { sent: true } : { sent: false, error: r.error }
+}
+
+const verifyUrl = (path: string) => `https://verify.twilio.com/v2/Services/${process.env.TWILIO_VERIFY_SERVICE_SID}/${path}`
+
+/** Send a code through Verify. The verification's SID is what a later check
+ * names, so a code answers only the request that asked for it. */
+export async function startVerification(to: string, locale: "ar" | "en"): Promise<{ sent: true; verificationSid: string } | { sent: false; error: string }> {
+  if (!isVerifyConfigured()) return { sent: false, error: "VERIFY_NOT_CONFIGURED" }
+  const r = await twilioPost(verifyUrl("Verifications"), { To: to, Channel: "sms", Locale: locale })
+  if (!r.ok) return { sent: false, error: r.error }
+  const sid = String(r.data.sid || "")
+  return VERIFICATION_SID.test(sid) ? { sent: true, verificationSid: sid } : { sent: false, error: "VERIFY_BAD_RESPONSE" }
+}
+
+export type RemoteCheck = "approved" | "wrong" | "expired" | "error"
+
+/** Twilio's verdict on a guess. A verification that is gone (expired,
+ * approved already, too many guesses) answers 404 — "expired" here. */
+export async function checkVerification(verificationSid: string, code: string): Promise<RemoteCheck> {
+  if (!isVerifyConfigured()) return "error"
+  const r = await twilioPost(verifyUrl("VerificationCheck"), { VerificationSid: verificationSid, Code: code })
+  if (!r.ok) return r.status === 404 ? "expired" : "error"
+  const status = String(r.data.status || "")
+  if (status === "approved") return "approved"
+  if (status === "pending") return "wrong"
+  return "expired"
 }
 
 export async function sendSms({ to, body }: SendSmsInput): Promise<{ sent: boolean; error?: string }> {

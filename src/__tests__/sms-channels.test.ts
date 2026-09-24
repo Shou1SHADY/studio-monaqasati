@@ -1,10 +1,11 @@
-import { sendDirectMessage, sendSms, sendWhatsApp, isSmsConfigured, isWhatsAppConfigured } from "@/lib/sms"
+import { checkVerification, sendDirectMessage, sendSms, sendWhatsApp, isSmsConfigured, isVerifyConfigured, isWhatsAppConfigured, startVerification } from "@/lib/sms"
 
 const ENV_KEYS = [
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
   "TWILIO_MESSAGING_SERVICE_SID",
+  "TWILIO_VERIFY_SERVICE_SID",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_PHONE_NUMBER_ID",
   "WHATSAPP_TEMPLATE_NAME",
@@ -187,5 +188,52 @@ describe("isSmsConfigured — only real credentials count as a gateway", () => {
 
   test("nothing set is not", () => {
     expect(isSmsConfigured()).toBe(false)
+  })
+})
+
+describe("Twilio Verify — one-time codes without a sender of our own", () => {
+  const SERVICE = "VA" + "c".repeat(32)
+  const VE = "VE" + "d".repeat(32)
+
+  test("needs real credentials and a VA service id — no sender required", () => {
+    configureTwilio()
+    process.env.TWILIO_PHONE_NUMBER = ""
+    expect(isVerifyConfigured()).toBe(false)
+    process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE
+    expect(isVerifyConfigured()).toBe(true)
+    expect(isSmsConfigured()).toBe(false)
+    process.env.TWILIO_VERIFY_SERVICE_SID = "placeholder"
+    expect(isVerifyConfigured()).toBe(false)
+  })
+
+  test("starts a verification by SMS in the reader's language and keeps its id", async () => {
+    configureTwilio()
+    process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sid: VE, status: "pending" }) })
+    await expect(startVerification("+966500000000", "ar")).resolves.toEqual({ sent: true, verificationSid: VE })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(`https://verify.twilio.com/v2/Services/${SERVICE}/Verifications`)
+    const sent = new URLSearchParams(String(init.body))
+    expect(sent.get("To")).toBe("+966500000000")
+    expect(sent.get("Channel")).toBe("sms")
+    expect(sent.get("Locale")).toBe("ar")
+  })
+
+  test("checks a guess against that verification and reads Twilio's answer", async () => {
+    configureTwilio()
+    process.env.TWILIO_VERIFY_SERVICE_SID = SERVICE
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: "approved" }) })
+    await expect(checkVerification(VE, "123456")).resolves.toBe("approved")
+    const sent = new URLSearchParams(String(fetchMock.mock.calls[0][1].body))
+    expect(fetchMock.mock.calls[0][0]).toBe(`https://verify.twilio.com/v2/Services/${SERVICE}/VerificationCheck`)
+    expect(sent.get("VerificationSid")).toBe(VE)
+    expect(sent.get("Code")).toBe("123456")
+
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ status: "pending" }) })
+    await expect(checkVerification(VE, "000000")).resolves.toBe("wrong")
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, json: async () => ({ code: 20404 }) })
+    await expect(checkVerification(VE, "123456")).resolves.toBe("expired")
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({}) })
+    await expect(checkVerification(VE, "123456")).resolves.toBe("error")
   })
 })

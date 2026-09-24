@@ -218,6 +218,7 @@ export default function LoginPage() {
         const failure = (await res.json().catch(() => null)) as { code?: string } | null
         if (failure?.code === "NOT_FOUND") throw new Error(t("err_code_not_found"))
         if (failure?.code === "EXPIRED" || failure?.code === "EXHAUSTED") throw new Error(t("err_code_expired"))
+        if (failure?.code === "UNCHECKED") throw new Error(t("err_2fa_process"))
         throw new Error(t("err_code_invalid"))
       }
       sessionStorage.setItem(`2fa_verified_${tempUserData.uid}`, "true")

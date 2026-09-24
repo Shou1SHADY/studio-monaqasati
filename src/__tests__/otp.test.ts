@@ -74,6 +74,23 @@ describe("judging a guess", () => {
   })
 })
 
+describe("a challenge whose code Twilio Verify made", () => {
+  const remote = (over: Partial<OtpChallenge> = {}) => challenge({ codeHash: "", verificationSid: "VE" + "b".repeat(32), ...over })
+
+  it("is handed to Twilio only after our own rules pass", () => {
+    expect(judge(remote(), SUBJECT, ID, "123456", NOW)).toBe("remote")
+    expect(judge(remote({ consumedAt: NOW }), SUBJECT, ID, "123456", NOW)).toBe("consumed")
+    expect(judge(remote({ attempts: OTP_MAX_ATTEMPTS }), SUBJECT, ID, "123456", NOW)).toBe("exhausted")
+    expect(judge(remote(), SUBJECT, ID, "123456", NOW + OTP_TTL_MS + 1)).toBe("expired")
+    expect(judge(remote(), { purpose: "receipt_sign", subjectId: "other" }, ID, "123456", NOW)).toBe("mismatch")
+    expect(judge(remote(), SUBJECT, ID, "12ab56", NOW)).toBe("wrong")
+  })
+
+  it("is never approved by an empty stored hash", () => {
+    expect(judge(remote({ verificationSid: null }), SUBJECT, ID, "123456", NOW)).toBe("wrong")
+  })
+})
+
 describe("resending", () => {
   it("allows the first code, then one a minute", () => {
     expect(mayResend(null, NOW)).toBe(true)

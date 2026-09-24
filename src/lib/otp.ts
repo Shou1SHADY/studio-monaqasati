@@ -10,6 +10,7 @@
 
 import { createHash, randomInt, timingSafeEqual } from "node:crypto"
 import type { Firestore } from "firebase-admin/firestore"
+import { checkVerification, type RemoteCheck } from "./sms"
 
 export const OTP_CHALLENGES = "otpChallenges"
 
@@ -29,13 +30,16 @@ export interface OtpChallenge {
   /** E.164, the number the code was sent to. */
   phone: string
   codeHash: string
+  /** Set when Twilio Verify made and sent the code: the check is Twilio's,
+   * against this verification, and `codeHash` is empty. */
+  verificationSid?: string | null
   createdAt: number
   expiresAt: number
   attempts: number
   consumedAt: number | null
 }
 
-export type OtpVerdict = "ok" | "wrong" | "expired" | "exhausted" | "consumed" | "missing" | "mismatch"
+export type OtpVerdict = "ok" | "wrong" | "expired" | "exhausted" | "consumed" | "missing" | "mismatch" | "unavailable"
 
 export function generateCode(): string {
   return String(randomInt(0, 10 ** OTP_DIGITS)).padStart(OTP_DIGITS, "0")
@@ -66,19 +70,58 @@ export function judge(
   challengeId: string,
   code: string,
   now: number
-): OtpVerdict {
+): OtpVerdict | "remote" {
   if (!challenge) return "missing"
   if (challenge.purpose !== expected.purpose || challenge.subjectId !== expected.subjectId) return "mismatch"
   if (challenge.consumedAt) return "consumed"
   if (challenge.attempts >= OTP_MAX_ATTEMPTS) return "exhausted"
   if (now > challenge.expiresAt) return "expired"
   if (!/^\d+$/.test(code) || code.length !== OTP_DIGITS) return "wrong"
+  if (challenge.verificationSid) return "remote"
   return sameHash(hashCode(challengeId, code), challenge.codeHash) ? "ok" : "wrong"
 }
 
 /** Whether a new code may be sent for this subject, given the last one's time. */
 export function mayResend(lastCreatedAt: number | null, now: number): boolean {
   return lastCreatedAt === null || now - lastCreatedAt >= OTP_RESEND_MS
+}
+
+async function resendAllowed(db: Firestore, input: { purpose: OtpPurpose; subjectId: string }, now: number): Promise<boolean> {
+  const recent = await db.collection(OTP_CHALLENGES).where("subjectId", "==", input.subjectId).get()
+  const last = recent.docs
+    .map((d) => d.data() as OtpChallenge)
+    .filter((c) => c.purpose === input.purpose)
+    .reduce<number | null>((max, c) => (max === null || c.createdAt > max ? c.createdAt : max), null)
+  return mayResend(last, now)
+}
+
+/**
+ * Issue a challenge whose code Twilio Verify makes and sends. The same resend
+ * window, expiry, guess count and one-use rule apply; only the code is Twilio's.
+ */
+export async function issueRemoteOtp(
+  db: Firestore,
+  input: { purpose: OtpPurpose; subjectId: string; phone: string },
+  start: () => Promise<{ sent: true; verificationSid: string } | { sent: false; error: string }>,
+  now = Date.now()
+): Promise<{ challengeId: string } | { error: "TOO_SOON" | string }> {
+  if (!(await resendAllowed(db, input, now))) return { error: "TOO_SOON" }
+  const started = await start()
+  if (!started.sent) return { error: started.error }
+  const ref = db.collection(OTP_CHALLENGES).doc()
+  const challenge: OtpChallenge = {
+    purpose: input.purpose,
+    subjectId: input.subjectId,
+    phone: input.phone,
+    codeHash: "",
+    verificationSid: started.verificationSid,
+    createdAt: now,
+    expiresAt: now + OTP_TTL_MS,
+    attempts: 0,
+    consumedAt: null,
+  }
+  await ref.set(challenge)
+  return { challengeId: ref.id }
 }
 
 /**
@@ -94,12 +137,7 @@ export async function issueOtp(
   // One equality filter and the newest found in memory: a subject only ever
   // has a handful of challenges, and a composite index would be one more thing
   // to deploy before this works.
-  const recent = await db.collection(OTP_CHALLENGES).where("subjectId", "==", input.subjectId).get()
-  const last = recent.docs
-    .map((d) => d.data() as OtpChallenge)
-    .filter((c) => c.purpose === input.purpose)
-    .reduce<number | null>((max, c) => (max === null || c.createdAt > max ? c.createdAt : max), null)
-  if (!mayResend(last, now)) return null
+  if (!(await resendAllowed(db, input, now))) return null
 
   const ref = db.collection(OTP_CHALLENGES).doc()
   const code = generateCode()
@@ -130,13 +168,33 @@ export async function verifyOtp(
   now = Date.now()
 ): Promise<OtpVerdict> {
   const ref = db.collection(OTP_CHALLENGES).doc(challengeId)
-  return db.runTransaction(async (tx) => {
+  const first = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
     const challenge = snap.exists ? (snap.data() as OtpChallenge) : null
     const verdict = judge(challenge, expected, challengeId, code, now)
     if (verdict === "ok") tx.update(ref, { consumedAt: now })
     else if (verdict === "wrong") tx.update(ref, { attempts: (challenge?.attempts ?? 0) + 1 })
-    return verdict
+    return { verdict, verificationSid: challenge?.verificationSid ?? null }
+  })
+  if (first.verdict !== "remote") return first.verdict
+  // Twilio is asked outside the transaction (a network call must not be
+  // retried with it); the outcome is then recorded against a fresh read.
+  const remote: RemoteCheck = await checkVerification(first.verificationSid as string, code)
+  if (remote === "error") return "unavailable"
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref)
+    const challenge = snap.exists ? (snap.data() as OtpChallenge) : null
+    if (!challenge) return "missing" as const
+    if (challenge.consumedAt) return "consumed" as const
+    if (remote === "approved") {
+      tx.update(ref, { consumedAt: now })
+      return "ok" as const
+    }
+    if (remote === "wrong") {
+      tx.update(ref, { attempts: challenge.attempts + 1 })
+      return "wrong" as const
+    }
+    return "expired" as const
   })
 }
 

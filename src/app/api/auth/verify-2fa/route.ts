@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { timingSafeEqual } from "node:crypto"
 import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
+import { checkVerification } from "@/lib/sms"
 
 // The second sign-in step, checked where the code cannot be read.
 //
@@ -34,9 +35,36 @@ export async function POST(req: Request) {
   const db = getAdminFirestore()
   const ref = db.collection("users").doc(uid).collection("2fa").doc("current")
 
+  type Stored = { code?: string; verificationSid?: string; expiresAt?: string; attempts?: number } | undefined
+  const current = (await ref.get()).data() as Stored
+  if (current?.verificationSid) {
+    // Twilio Verify made and sent this code, so Twilio checks it; the guess
+    // count, expiry and one-use rule stay ours.
+    if ((current.attempts ?? 0) >= MAX_ATTEMPTS) {
+      await ref.delete()
+      return fail("The code has expired — ask for a new one", "EXHAUSTED", 410)
+    }
+    if (!current.expiresAt || new Date() > new Date(current.expiresAt)) {
+      await ref.delete()
+      return fail("The code has expired — ask for a new one", "EXPIRED", 410)
+    }
+    const remote = await checkVerification(current.verificationSid, parsed.data.code)
+    if (remote === "error") return fail("The code could not be checked — try again", "UNCHECKED", 503)
+    if (remote === "approved") {
+      await ref.delete()
+      return NextResponse.json({ success: true, data: { verified: true } })
+    }
+    if (remote === "expired") {
+      await ref.delete()
+      return fail("The code has expired — ask for a new one", "EXPIRED", 410)
+    }
+    await ref.update({ attempts: (current.attempts ?? 0) + 1 })
+    return fail("Wrong code", "WRONG", 400)
+  }
+
   const verdict = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref)
-    const stored = snap.data() as { code?: string; expiresAt?: string; attempts?: number } | undefined
+    const stored = snap.data() as Stored
     if (!stored?.code) return "missing" as const
     if ((stored.attempts ?? 0) >= MAX_ATTEMPTS) {
       tx.delete(ref)

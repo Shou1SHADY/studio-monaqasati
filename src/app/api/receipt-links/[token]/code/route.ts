@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
-import { issueOtp } from "@/lib/otp"
-import { isSmsConfigured, sendSms } from "@/lib/sms"
+import { issueOtp, issueRemoteOtp } from "@/lib/otp"
+import { isSmsConfigured, isVerifyConfigured, sendSms, startVerification } from "@/lib/sms"
 import { maskPhone, resolveReceiptLink } from "@/lib/receipt-links"
 
 // Send the signing code to the receiver's mobile — the number Procurement set
@@ -22,6 +22,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!resolved.ok) return fail("This link is invalid, used, or has expired", resolved.code, resolved.status)
 
     const { linkId, link } = resolved
+    if (isVerifyConfigured()) {
+      const remote = await issueRemoteOtp(db, { purpose: "receipt_sign", subjectId: linkId, phone: link.receiver.phone }, () => startVerification(link.receiver.phone, locale))
+      if ("error" in remote) {
+        return remote.error === "TOO_SOON"
+          ? fail("A code was sent less than a minute ago", "TOO_SOON", 429)
+          : fail("The code could not be sent", remote.error, 502)
+      }
+      return NextResponse.json({ success: true, data: { challengeId: remote.challengeId, phoneMasked: maskPhone(link.receiver.phone), sent: true } })
+    }
+
     const issued = await issueOtp(db, { purpose: "receipt_sign", subjectId: linkId, phone: link.receiver.phone })
     if (!issued) return fail("A code was sent less than a minute ago", "TOO_SOON", 429)
 

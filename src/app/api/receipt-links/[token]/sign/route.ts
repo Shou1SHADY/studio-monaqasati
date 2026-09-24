@@ -36,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
     const verdict = await verifyOtp(db, parsed.data.challengeId, { purpose: "receipt_sign", subjectId: linkId }, parsed.data.code)
     if (verdict === "wrong") return fail("Wrong code", "WRONG_CODE", 400)
+    if (verdict === "unavailable") return fail("The code could not be checked — try again", "CODE_UNCHECKED", 503)
     if (verdict !== "ok") return fail("The code has expired — ask for a new one", "CODE_EXPIRED", 410)
 
     const signedAt = new Date().toISOString()

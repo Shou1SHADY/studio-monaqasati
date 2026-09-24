@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { randomInt } from "node:crypto"
 import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
-import { isSmsConfigured, normalizePhoneE164, sendSms } from "@/lib/sms"
+import { isSmsConfigured, isVerifyConfigured, normalizePhoneE164, sendSms, startVerification } from "@/lib/sms"
 import { OTP_RESEND_MS } from "@/lib/otp"
 import { offersSealed } from "@/lib/procurement/award"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
@@ -68,6 +68,13 @@ export async function POST(req: Request) {
       const previous = (await ref.get()).data() as { issuedAt?: number } | undefined
       if (previous?.issuedAt && Date.now() - previous.issuedAt < OTP_RESEND_MS) {
         return fail("Wait a minute before asking for another code", "TOO_SOON", 429)
+      }
+
+      if (isVerifyConfigured()) {
+        const started = await startVerification(phone, parsed.data.locale)
+        if (!started.sent) return fail("The code could not be sent", started.error, 502)
+        await ref.set({ verificationSid: started.verificationSid, expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(), issuedAt: Date.now() })
+        return NextResponse.json({ success: true, data: { sent: true } })
       }
 
       const code = String(randomInt(0, 1_000_000)).padStart(6, "0")
