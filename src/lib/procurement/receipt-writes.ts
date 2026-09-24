@@ -386,6 +386,7 @@ export async function recordReceipt(firestore: Firestore, actor: ProcActor, inpu
       receiverUserId: actor.uid,
       confirmedAt: serverTimestamp(),
       confirmedByUserId: actor.uid,
+      confirmedByName: actor.name,
       checklist: input.checklist || [],
       vehiclePlate: input.vehiclePlate?.trim() || null,
       paperNoteNumber: input.paperNoteNumber?.trim() || null,
@@ -494,6 +495,7 @@ export async function createArrivalWithoutNotice(firestore: Firestore, actor: Pr
       receiverUserId: actor.uid,
       confirmedAt: serverTimestamp(),
       confirmedByUserId: actor.uid,
+      confirmedByName: actor.name,
       createdAt: serverTimestamp(),
       checklist: input.checklist || [],
       vehiclePlate: input.vehiclePlate?.trim() || null,
@@ -598,6 +600,7 @@ export async function createManualReceipt(firestore: Firestore, actor: ProcActor
       contractorSignatureData: input.contractorSignatureData || null,
       status: "confirmed",
       confirmedByUserId: actor.uid,
+      confirmedByName: actor.name,
       confirmedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
       source: "manual",
@@ -621,5 +624,5 @@ export async function createManualReceipt(firestore: Firestore, actor: ProcActor
 export async function markReceiptAsExpense(firestore: Firestore, actor: ProcActor, deliveryId: string): Promise<void> {
   // A `deliveries` update needs `deliveries.confirm` under the rules — the same door as recording.
   if (!actor.isOwner && !actor.canReceive) throw new ProcWriteError("no_permission")
-  await updateDoc(doc(firestore, DELIVERIES, deliveryId), { regularisation: "expense", regularisedAt: new Date().toISOString(), regularisedById: actor.uid })
+  await updateDoc(doc(firestore, DELIVERIES, deliveryId), { regularisation: "expense", regularisedAt: new Date().toISOString(), regularisedById: actor.uid, regularisedByName: actor.name })
 }

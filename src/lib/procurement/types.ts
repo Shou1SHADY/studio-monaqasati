@@ -259,6 +259,10 @@ export interface ReceiptFact extends DeliveryPoFields {
   /** ISO date or `YYYY-MM-DD`. */
   deliveryDate?: string | null
   confirmedAt?: string | null
+  /** Who recorded it — the exceptions report names them. Absent on receipts
+   * written before 24 Sep. */
+  confirmedByName?: string | null
+  regularisedByName?: string | null
   source?: "manual" | null
   offerId?: string | null
   rfqId?: string | null

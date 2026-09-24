@@ -203,6 +203,20 @@ describe("6 · exceptions — by name, not violations", () => {
     expect(rows.find((r) => r.kind === "non_lowest")?.params).toEqual({ reasonCode: "delivery_time", reason: "" })
     expect(rows.find((r) => r.kind === "self_received")?.byName).toBe("Sara")
   })
+
+  it("names who recorded a no-order receipt and who sent it as a cash expense (UAT: both read '—')", () => {
+    const w = world({
+      receipts: [
+        receipt({ id: "cash", source: "manual", poId: null, confirmedAt: "2026-09-09T08:00:00Z", confirmedByName: "Omar", regularisation: "expense", regularisedByName: "Lina" }),
+        receipt({ id: "before", source: "manual", poId: null, confirmedAt: "2026-09-10T08:00:00Z" }),
+      ],
+    })
+    const rows = exceptions(w, PERIOD)
+    expect(rows.find((r) => r.kind === "no_po" && r.receiptId === "cash")?.byName).toBe("Omar")
+    expect(rows.find((r) => r.kind === "cash_expense")?.byName).toBe("Lina")
+    // Written before the name was stored: still listed, just unnamed.
+    expect(rows.find((r) => r.kind === "no_po" && r.receiptId === "before")?.byName).toBe("")
+  })
 })
 
 describe("7 · open commitments by due date", () => {

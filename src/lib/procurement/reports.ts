@@ -337,7 +337,7 @@ export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[]
     const day = receiptDay(r)
     if (!inPeriod(day, period)) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
-    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, supplierName: r.supplierName || po?.supplierName || "", byName: "", approvedByName: "", day, href: receiptHref(r.id) }
+    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, supplierName: r.supplierName || po?.supplierName || "", byName: r.confirmedByName || "", approvedByName: "", day, href: receiptHref(r.id) }
     if (r.source === "manual" && !r.poId && !r.offerId) out.push({ ...base, kind: "no_po", params: {} })
     else if (r.source === "manual" && r.poId) out.push({ ...base, kind: "manual_receipt", params: {} })
     if (r.selfReceived) out.push({ ...base, kind: "self_received", params: {}, byName: po?.preparedByName || "" })
@@ -345,7 +345,7 @@ export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[]
     // a truck that arrived with nothing announcing it, and a no-order receipt
     // sent to Finance as an expense instead of being regularised by an order.
     if (r.noNotice) out.push({ ...base, kind: "no_notice", params: {} })
-    if (r.regularisation === "expense") out.push({ ...base, kind: "cash_expense", params: {} })
+    if (r.regularisation === "expense") out.push({ ...base, kind: "cash_expense", params: {}, byName: r.regularisedByName || r.confirmedByName || "" })
   }
 
   return out.sort((a, b) => b.day.localeCompare(a.day) || a.docNumber.localeCompare(b.docNumber))
