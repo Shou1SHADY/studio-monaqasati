@@ -86,6 +86,8 @@ export async function GET(
           offerPdfUrl: offer.offerPdfUrl || null,
           guestReplyNote: offer.guestReplyNote || null,
           priceHistory: Array.isArray(offer.priceHistory) ? offer.priceHistory : [],
+          // Their own rates, so a per-material quote is revised per material.
+          lines: Array.isArray(offer.lines) ? offer.lines : [],
           createdAt: offer.createdAt || null,
         },
         rfq: rfq

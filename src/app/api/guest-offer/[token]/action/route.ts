@@ -4,6 +4,7 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { guestVisibleStatus, resolveGuestOfferToken, notifyContractor } from "@/lib/guest-offer"
+import { pricedProducts, revisePrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import {
   isGuestActionAllowed,
   isGuestOfferAction,
@@ -22,6 +23,21 @@ const MAX_PDF_BYTES = 10 * 1024 * 1024
 const revisePriceSchema = z.object({
   price: z.coerce.number().positive().finite(),
   note: z.string().trim().max(1000).optional().or(z.literal("")),
+  // A per-material offer is revised per material: {"0": 2929, "1": 175}.
+  rates: z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return undefined
+      try {
+        const parsed = JSON.parse(v) as unknown
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error()
+        return parsed as Record<number, string | number>
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rates must be an object" })
+        return z.NEVER
+      }
+    }),
 })
 
 const sampleSentSchema = z.object({
@@ -109,9 +125,16 @@ export async function POST(
 
     // --- Revised price after a reduction request ---
     if (action === "revise_price") {
-      const parsed = revisePriceSchema.safeParse(formValues(form, ["price", "note"]))
+      const parsed = revisePriceSchema.safeParse(formValues(form, ["price", "note", "rates"]))
       if (!parsed.success) return errorResponse("Please enter a valid price", "INVALID_INPUT", 400)
-      const { price, note } = parsed.data
+      const { note } = parsed.data
+      // The same rule as the portal: rates and total move together, and a
+      // posted total never overrides what the rates add up to.
+      const revision = revisePrice(offer as Parameters<typeof revisePrice>[0], pricedProducts(rfq as PricedRfq | null), { total: parsed.data.price, rates: parsed.data.rates })
+      if (!revision.ok) {
+        return errorResponse(revision.code === "LINE_PRICES_INCOMPLETE" ? "Give a price for every material" : "Please enter a valid price", revision.code, 400)
+      }
+      const price = revision.total
 
       const previousPrice = String(offer.price ?? "")
       let offerPdfUrl: string | null = null
@@ -127,7 +150,7 @@ export async function POST(
       }
 
       const update: Record<string, unknown> = {
-        price: String(price),
+        ...revision.fields,
         // Back into the contractor's queue, exactly like a registered
         // supplier's price update.
         status: OFFER_STATUS.pending,

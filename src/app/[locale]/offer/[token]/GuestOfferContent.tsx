@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCity } from "@/lib/constants"
 import { OFFER_STATUS, SAMPLE_STATUS } from "@/utils/guest-offer-workflow"
+import { priceOffer, pricedProducts } from "@/lib/procurement/offer-pricing"
 
 type GuestOfferData = {
   offer: {
@@ -55,6 +56,8 @@ type GuestOfferData = {
     offerPdfUrl: string | null
     guestReplyNote: string | null
     priceHistory: Array<{ price: string; replacedAt: string; by: string }>
+    /** Their own rates when the RFQ asked for a price per material. */
+    lines?: Array<{ rfqProductIndex: number; unitPrice: number }>
     createdAt: string | null
   }
   rfq: {
@@ -104,6 +107,7 @@ export function GuestOfferContent() {
   const params = useParams()
   const token = params.token as string
   const t = useTranslations("GuestOffer")
+  const ts = useTranslations("Portal.Shared")
   const locale = useLocale()
   const isRTL = locale === "ar"
   const { toast } = useToast()
@@ -114,6 +118,7 @@ export function GuestOfferContent() {
   const [doneAction, setDoneAction] = useState<string | null>(null)
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
+  const [rates, setRates] = useState<Record<number, string>>({})
 
   const priceForm = useForm<PriceFormValues>({ resolver: zodResolver(priceSchema), defaultValues: { note: "" } })
   const sampleForm = useForm<SampleFormValues>({ resolver: zodResolver(sampleSchema), defaultValues: { note: "" } })
@@ -130,7 +135,9 @@ export function GuestOfferContent() {
         setErrorCode(json.code || "NOT_FOUND")
         return
       }
-      setData(json.data as GuestOfferData)
+      const loaded = json.data as GuestOfferData
+      setData(loaded)
+      setRates(Object.fromEntries((loaded.offer.lines || []).map((l) => [l.rfqProductIndex, String(l.unitPrice ?? "")])))
       setErrorCode(null)
     } catch {
       setErrorCode("NETWORK")
@@ -194,6 +201,20 @@ export function GuestOfferContent() {
 
   const onRevisePrice = (values: PriceFormValues) =>
     submitAction("revise_price", { price: String(values.price), note: values.note || "" }, pdfFile)
+
+  // Quoted per material, so revised per material: the rates travel and the total
+  // is their sum — the server recomputes it and ignores a posted figure.
+  const lineProducts = data && (data.offer.lines || []).length ? pricedProducts(data.rfq) : []
+  const byLine = lineProducts.length > 0
+  const linePricing = byLine ? priceOffer(lineProducts, rates) : null
+  const onRevisePriceByLine = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!linePricing?.complete) {
+      toast({ title: t("error_title"), description: ts("offer_line_prices_incomplete"), variant: "destructive" })
+      return
+    }
+    void submitAction("revise_price", { price: String(linePricing.total), rates: JSON.stringify(rates), note: priceForm.getValues("note") || "" }, pdfFile)
+  }
 
   const onSampleSent = (values: SampleFormValues) =>
     submitAction("sample_sent", { note: values.note || "" })
@@ -441,8 +462,37 @@ export function GuestOfferContent() {
                     </div>
                   )}
 
-                  <form onSubmit={priceForm.handleSubmit(onRevisePrice)} className="space-y-4">
-                    <div className="space-y-1.5">
+                  <form onSubmit={byLine ? onRevisePriceByLine : priceForm.handleSubmit(onRevisePrice)} className="space-y-4">
+                    {byLine && linePricing ? (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-bold text-slate-700">{ts("offer_line_prices_title")}</Label>
+                        <div className="rounded-xl border border-slate-200 divide-y bg-white">
+                          {lineProducts.map((prod) => (
+                            <div key={prod.rfqProductIndex} className="flex items-center gap-2 p-2.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
+                                <p className="text-[11px] text-muted-foreground">{ts("offer_line_qty", { qty: prod.quantity, unit: prod.unit })}</p>
+                              </div>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                dir="ltr"
+                                className="h-10 w-28 rounded-lg border-slate-200"
+                                aria-label={ts("offer_line_rate_for", { name: prod.name })}
+                                value={rates[prod.rfqProductIndex] ?? ""}
+                                onChange={(e) => setRates({ ...rates, [prod.rfqProductIndex]: e.target.value })}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between rounded-xl bg-slate-50 p-2.5 text-sm">
+                          <span className="text-muted-foreground">{ts("offer_line_price_auto_note")}</span>
+                          <span className="font-bold tabular-nums" dir="ltr">{linePricing.total} {t("sar")}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className={cn("space-y-1.5", byLine && "hidden")}>
                       <Label htmlFor="revised-price" className="text-sm font-bold text-slate-700">
                         {t("new_price_label")} <span className="text-destructive">*</span>
                       </Label>

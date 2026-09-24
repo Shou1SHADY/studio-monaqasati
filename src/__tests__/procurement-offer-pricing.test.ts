@@ -18,6 +18,8 @@ import {
   priceOffer,
   pricedProducts,
   pricingModeOf,
+  quotedRatesReconcile,
+  revisePrice,
   toAmount,
 } from "@/lib/procurement/offer-pricing"
 import { buildPoLines } from "@/lib/procurement/writes"
@@ -300,5 +302,88 @@ describe("which of those sit above what we last paid", () => {
     const above = ratesAboveLastPaid(offerRates(one, { price: "29000" }), last(2780, null))
     expect(above).toHaveLength(1)
     expect(above[0]).toMatchObject({ quoted: false, unitPrice: 2900, percent: 4.32 })
+  })
+})
+
+describe("rates that no longer add up — a total revised on its own (UAT run, 23 Sep)", () => {
+  // The supplier's "update price" wrote a new total and left every rate: a
+  // 5-ton offer at 3,190 cut to 14,645 still said 3,190 a ton, and the order
+  // built from it asked Finance to approve 15,950.
+  const steel = rfq({ products: [{ name: "حديد تسليح", quantity: 5, unitOfMeasure: "طن" }] })
+  const cut = { price: "14645", lines: [{ rfqProductIndex: 0, unitPrice: 3190 }] }
+
+  it("knows a matching set from a stale one", () => {
+    const products = pricedProducts(rfq())
+    const lines = [{ rfqProductIndex: 0, unitPrice: 2780 }, { rfqProductIndex: 1, unitPrice: 15.2 }]
+    expect(quotedRatesReconcile(products, { price: "29320", lines })).toBe(true)
+    expect(quotedRatesReconcile(products, { price: "27000", lines })).toBe(false)
+  })
+
+  it("forgives rounding of a halala per line", () => {
+    const products = pricedProducts(rfq())
+    const lines = [{ rfqProductIndex: 0, unitPrice: 2780 }, { rfqProductIndex: 1, unitPrice: 15.2 }]
+    expect(quotedRatesReconcile(products, { price: "29320.02", lines })).toBe(true)
+  })
+
+  it("does not judge a partial set, an empty one, or an offer with no total", () => {
+    const products = pricedProducts(rfq())
+    expect(quotedRatesReconcile(products, { price: "1", lines: [{ rfqProductIndex: 0, unitPrice: 2780 }] })).toBe(true)
+    expect(quotedRatesReconcile(products, { price: "1" })).toBe(true)
+    expect(quotedRatesReconcile(products, { lines: [{ rfqProductIndex: 0, unitPrice: 1 }, { rfqProductIndex: 1, unitPrice: 1 }] })).toBe(true)
+  })
+
+  it("keeps the order lump-sum at the real total instead of the pre-reduction rates", () => {
+    expect(buildPoLines(steel, cut).map((l) => l.unitPrice)).toEqual([null])
+  })
+
+  it("compares the rate the total now implies — 2,929, not the stale 3,190", () => {
+    expect(offerRates(steel, cut)).toEqual([{ rfqProductIndex: 0, name: "حديد تسليح", unit: "طن", quantity: 5, unitPrice: 2929, quoted: false }])
+  })
+
+  it("says nothing for stale rates over several materials — the split is unknown", () => {
+    const lines = [{ rfqProductIndex: 0, unitPrice: 2780 }, { rfqProductIndex: 1, unitPrice: 15.2 }]
+    expect(offerRates(rfq(), { price: "27000", lines })).toEqual([])
+  })
+
+  it("still carries rates that do add up after a proper per-line revision", () => {
+    expect(buildPoLines(steel, { price: "14645", lines: [{ rfqProductIndex: 0, unitPrice: 2929 }] }).map((l) => l.unitPrice)).toEqual([2929])
+  })
+})
+
+describe("revising a price — every field it touches, agreeing", () => {
+  const steel = pricedProducts(rfq({ products: [{ name: "حديد تسليح", quantity: 5, unitOfMeasure: "طن" }] }))
+  const perLine = { price: "15950", lines: [{ rfqProductIndex: 0, unitPrice: 3190 }], deliveryBatches: [{ quantity: "5", price: "15950", location: "" }] }
+
+  it("revises a per-material offer by its rates — the UAT reduction, done right", () => {
+    const r = revisePrice(perLine, steel, { rates: { 0: "2929" } })
+    expect(r).toEqual({ ok: true, total: 14645, fields: { price: "14645", lines: [{ rfqProductIndex: 0, unitPrice: 2929 }], deliveryBatches: [{ quantity: "5", price: "14645", location: "" }] } })
+    // …and what it writes reconciles, so the order will carry 2,929.
+    if (r.ok) expect(quotedRatesReconcile(steel, { ...perLine, ...r.fields })).toBe(true)
+  })
+
+  it("refuses a per-material revision with a material left unpriced", () => {
+    expect(revisePrice({ price: "29320", lines: [{ rfqProductIndex: 0, unitPrice: 2780 }, { rfqProductIndex: 1, unitPrice: 15.2 }] }, pricedProducts(rfq()), { rates: { 0: "2700" } })).toEqual({ ok: false, code: "LINE_PRICES_INCOMPLETE" })
+  })
+
+  it("drops rates it cannot restate rather than keep them beside a new total", () => {
+    const r = revisePrice(perLine, null, { total: "14645" })
+    expect(r.ok && r.fields.lines).toEqual([])
+    expect(r.ok && r.fields.price).toBe("14645")
+  })
+
+  it("leaves a lump-sum offer's lines alone and writes only the total", () => {
+    expect(revisePrice({ price: "8700" }, null, { total: 8200 })).toEqual({ ok: true, total: 8200, fields: { price: "8200" } })
+  })
+
+  it("scales a shipment schedule to the new total, the last batch taking the rounding", () => {
+    const multi = { price: "9000", totalBatchesPrice: 9000, deliveryBatches: [{ price: "3000" }, { price: "3000" }, { price: "3000" }] }
+    const r = revisePrice(multi, null, { total: "8000" })
+    expect(r.ok && r.fields.deliveryBatches?.map((b) => b.price)).toEqual(["2666.67", "2666.67", "2666.66"])
+    expect(r.ok && r.fields.totalBatchesPrice).toBe(8000)
+  })
+
+  it("refuses a missing or non-positive total", () => {
+    expect(revisePrice({ price: "100" }, null, { total: "" })).toEqual({ ok: false, code: "INVALID_PRICE" })
+    expect(revisePrice({ price: "100" }, null, { total: -5 })).toEqual({ ok: false, code: "INVALID_PRICE" })
   })
 })

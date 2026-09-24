@@ -156,6 +156,104 @@ export function guestOfferPrice(
   return { ok: true, total: pricing.total, price: String(pricing.total), lines: pricing.lines }
 }
 
+type RatedOffer = { price?: unknown; totalBatchesPrice?: unknown; lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null }
+
+/**
+ * Whether an offer's quoted rates still add up to the total it now stands at.
+ *
+ * They stop doing so when the price is revised as a total alone: the supplier's
+ * "update price" once wrote `price` and left every rate as it was, so a
+ * 15,950 offer cut to 14,645 still said 3,190 a ton — and the order built from
+ * it put 15,950 in front of Finance. Rates that no longer reconcile describe an
+ * offer nobody is making any more; they are neither stored nor compared.
+ *
+ * Only a COMPLETE set is judged — a partial one is kept lump-sum elsewhere.
+ * The tolerance is a halala per line, for rounding.
+ */
+export function quotedRatesReconcile(products: PricedProduct[], offer: RatedOffer): boolean {
+  if (!products.length) return true
+  const quoted = new Map<number, number>()
+  for (const l of offer.lines || []) {
+    const i = Number(l.rfqProductIndex)
+    const rate = toAmount(l.unitPrice)
+    if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
+  }
+  if (!products.every((p) => quoted.has(p.rfqProductIndex))) return true
+  const total = toAmount(offer.totalBatchesPrice) > 0 ? toAmount(offer.totalBatchesPrice) : toAmount(offer.price)
+  if (total <= 0) return true
+  const sum = products.reduce((s, p) => s + (quoted.get(p.rfqProductIndex) as number) * p.quantity, 0)
+  return Math.abs(round2(sum) - round2(total)) <= 0.01 * products.length + 1e-9
+}
+
+// ---------------------------------------------------------------------------
+// Revising a price (a reduction asked for, or the supplier's own change)
+// ---------------------------------------------------------------------------
+
+export interface RevisableOffer extends RatedOffer {
+  deliveryBatches?: Array<Record<string, unknown> & { price?: unknown }> | null
+}
+
+export interface PriceRevisionFields {
+  price: string
+  /** Replaced rates; `[]` drops rates that can no longer be restated. */
+  lines?: OfferLinePrice[]
+  totalBatchesPrice?: number
+  deliveryBatches?: Array<Record<string, unknown>>
+}
+
+export type PriceRevision = { ok: true; total: number; fields: PriceRevisionFields } | { ok: false; code: "LINE_PRICES_INCOMPLETE" | "INVALID_PRICE" }
+
+/**
+ * Every field a price revision writes, so that no two of them disagree.
+ *
+ * The flow used to write `price` alone. A per-material offer kept its old rates
+ * (and the order built from it asked Finance for the pre-reduction figure), and
+ * a multi-shipment offer kept `totalBatchesPrice`, which every reader prefers
+ * over `price` — so its reduction was ignored outright.
+ *
+ * - Priced per material, with the RFQ's products at hand: new rates, the total
+ *   their sum — exactly as when the offer was first made. All or none.
+ * - Priced per material without the products (they could not be read): the new
+ *   total stands and the rates are dropped, so the offer is honestly lump-sum
+ *   rather than carrying rates for a price nobody is quoting.
+ * - Shipments: each batch scaled to the new total, the last absorbing rounding,
+ *   so the schedule still adds up; `totalBatchesPrice` follows.
+ */
+export function revisePrice(
+  offer: RevisableOffer,
+  products: PricedProduct[] | null,
+  input: { total?: string | number | null; rates?: Record<number, string | number | null | undefined> }
+): PriceRevision {
+  const quoted = (offer.lines || []).length > 0
+  const fields: PriceRevisionFields = { price: "" }
+  let total: number
+  if (quoted && products && products.length) {
+    const pricing = priceOffer(products, input.rates || {})
+    if (!pricing.complete) return { ok: false, code: "LINE_PRICES_INCOMPLETE" }
+    total = pricing.total
+    fields.lines = pricing.lines
+  } else {
+    total = round2(toAmount(input.total))
+    if (total <= 0) return { ok: false, code: "INVALID_PRICE" }
+    if (quoted) fields.lines = []
+  }
+  fields.price = String(total)
+
+  const batches = offer.deliveryBatches || []
+  if (batches.length) {
+    const before = batches.reduce((s, b) => s + toAmount(b.price), 0)
+    let assigned = 0
+    fields.deliveryBatches = batches.map((b, i) => {
+      const last = i === batches.length - 1
+      const share = last ? round2(total - assigned) : round2(before > 0 ? (toAmount(b.price) * total) / before : total / batches.length)
+      assigned = round2(assigned + share)
+      return { ...b, price: String(share) }
+    })
+  }
+  if (offer.totalBatchesPrice != null && String(offer.totalBatchesPrice) !== "") fields.totalBatchesPrice = total
+  return { ok: true, total, fields }
+}
+
 // ---------------------------------------------------------------------------
 // The rates an offer implies — for comparing, not for storing
 // ---------------------------------------------------------------------------
@@ -179,13 +277,17 @@ export interface OfferRate extends PricedProduct {
  * by a halala. A warning does not have to reconcile with the ledger; an order
  * does. So `buildPoLines` still keeps a lump sum lump.
  */
-export function offerRates(rfq: PricedRfq | null | undefined, offer: { price?: unknown; totalBatchesPrice?: unknown; lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null }): OfferRate[] {
+export function offerRates(rfq: PricedRfq | null | undefined, offer: RatedOffer): OfferRate[] {
   const products = pricedProducts(rfq)
   const quoted = new Map<number, number>()
-  for (const l of offer.lines || []) {
-    const i = Number(l.rfqProductIndex)
-    const rate = round2(toAmount(l.unitPrice))
-    if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
+  // Stale rates (a total revised without them) are set aside: the total is the
+  // offer, and for a single material it still yields the one true rate below.
+  if (quotedRatesReconcile(products, offer)) {
+    for (const l of offer.lines || []) {
+      const i = Number(l.rfqProductIndex)
+      const rate = round2(toAmount(l.unitPrice))
+      if (Number.isInteger(i) && i >= 0 && rate > 0) quoted.set(i, rate)
+    }
   }
   if (quoted.size) {
     return products.filter((p) => quoted.has(p.rfqProductIndex)).map((p) => ({ ...p, unitPrice: quoted.get(p.rfqProductIndex) as number, quoted: true }))

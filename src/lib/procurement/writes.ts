@@ -14,6 +14,7 @@ import type { Translator } from "../mfg-events"
 import { emitProcEvent, procLinks, sarText } from "./events"
 import { drawProcDocNumber } from "./numbering"
 import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
+import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
 import {
   acceptedValue,
   applyReceiptToLines,
@@ -221,7 +222,10 @@ export function buildPoLines(rfq: Pick<RfqLike, "products" | "title">, offer: Pi
     const p = l.unitPrice == null || l.unitPrice === "" ? null : num(l.unitPrice)
     if (l.rfqProductIndex != null && p != null && p >= 0) priced.set(l.rfqProductIndex, p)
   }
-  const every = products.every((_, i) => priced.has(i))
+  // Rates that no longer add up to the offer (a total revised on its own) stay
+  // off the order: it keeps the offer's real total lump-sum instead of putting
+  // the pre-reduction figure in front of Finance and into price history.
+  const every = products.every((_, i) => priced.has(i)) && quotedRatesReconcile(pricedProducts(rfq), offer)
   return products.map((p, i) => ({
     id: `l${i + 1}`,
     name: (p.name || "").trim(),

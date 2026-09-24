@@ -136,7 +136,8 @@ describe("buildPoLines — the RFQ's products become lines", () => {
   })
 
   it("sets unit prices only when the offer priced EVERY line", () => {
-    const priced = buildPoLines(rfq, { ...offer, lines: [{ rfqProductIndex: 0, unitPrice: 2800 }, { rfqProductIndex: 1, unitPrice: "2900" }] })
+    // 10 × 2,800 + 5 × 2,900 = 42,500: rates that add up to the price, or they are stale.
+    const priced = buildPoLines(rfq, { ...offer, price: "42,500", lines: [{ rfqProductIndex: 0, unitPrice: 2800 }, { rfqProductIndex: 1, unitPrice: "2900" }] })
     expect(priced.map((l) => l.unitPrice)).toEqual([2800, 2900])
     const half = buildPoLines(rfq, { ...offer, lines: [{ rfqProductIndex: 0, unitPrice: 2800 }] })
     expect(half.map((l) => l.unitPrice)).toEqual([null, null])
@@ -220,7 +221,8 @@ describe("createPurchaseOrderFromAward", () => {
     expect(inbox("buyer")).toEqual([])
     expect(inbox("gate")).toEqual([])
     const n = inbox("fin")[0]
-    expect(n.message).toContain("PO-2026/001")
+    // Arabic text shows the Arabic prefix, as every screen does; the stored number stays Latin.
+    expect(n.message).toContain("ط.ش-2026/001")
     expect(n.message).toContain("42,000 ر.س")
     expect(n.message).not.toContain("⃁")
     expect(n.link).toBe(`/contractor/rfqs/orders?po=${r.id}`)
@@ -607,8 +609,8 @@ describe("emitProcEvent — who hears", () => {
       userId: "fin",
       organizationId: ORG,
       type: "po_returned",
-      title: "أُعيد أمر الشراء PO-2026/001",
-      message: "أعاد Badr أمر الشراء PO-2026/001 دون اعتماد: x. عدّله وأعد رفعه.",
+      title: "أُعيد أمر الشراء ط.ش-2026/001",
+      message: "أعاد Badr أمر الشراء ط.ش-2026/001 دون اعتماد: x. عدّله وأعد رفعه.",
       i18n: { title: "pn_po_returned_title", message: "pn_po_returned", params: { actor: "Badr", number: "PO-2026/001", reason: "x" } },
       link: "/contractor/rfqs/orders?po=po1",
       poId: "po1",

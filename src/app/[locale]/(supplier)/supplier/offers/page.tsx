@@ -36,11 +36,13 @@ import { useRouter } from "@/i18n/routing"
 import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
+import { priceOffer, pricedProducts, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
 import { asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 
 export default function SupplierOffersPage() {
   const t = useTranslations("Portal.Supplier")
+  const ts = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
@@ -58,6 +60,10 @@ export default function SupplierOffersPage() {
   const [updatePriceOffer, setUpdatePriceOffer] = useState<any | null>(null)
   const [newPrice, setNewPrice] = useState("")
   const [isUpdatingPrice, setIsUpdatingPrice] = useState(false)
+  // A per-material offer is revised by its rates, as it was first quoted; null =
+  // a lump-sum offer (or products that could not be read), revised by its total.
+  const [updateProducts, setUpdateProducts] = useState<PricedProduct[] | null>(null)
+  const [newRates, setNewRates] = useState<Record<number, string>>({})
   const [confirmSampleOffer, setConfirmSampleOffer] = useState<any | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
@@ -288,12 +294,34 @@ export default function SupplierOffersPage() {
     }
   }
 
+  const openUpdatePrice = async (offer: any) => {
+    setUpdatePriceOffer(offer)
+    setNewPrice(offer.price || "")
+    setUpdateProducts(null)
+    setNewRates({})
+    if (!firestore || !offer.rfqId || !(offer.lines || []).length) return
+    try {
+      const snap = await getDoc(doc(firestore, "rfqs", offer.rfqId))
+      const products = pricedProducts(snap.exists() ? (snap.data() as Parameters<typeof pricedProducts>[0]) : null)
+      if (!products.length) return
+      setUpdateProducts(products)
+      setNewRates(Object.fromEntries((offer.lines as Array<{ rfqProductIndex: number; unitPrice: number }>).map((l) => [l.rfqProductIndex, String(l.unitPrice ?? "")])))
+    } catch {
+      /* products unreadable: revised by total, and revisePrice drops the stale rates */
+    }
+  }
+
+  const updatePricing = updateProducts ? priceOffer(updateProducts, newRates) : null
+  const revision = updatePriceOffer ? revisePrice(updatePriceOffer, updateProducts, { total: newPrice, rates: newRates }) : null
+  const revisedTotal = revision?.ok ? revision.total : null
+
   const handleUpdatePrice = async () => {
-    if (!firestore || !updatePriceOffer || !newPrice) return;
+    if (!firestore || !updatePriceOffer || !revision?.ok) return;
+    const newPrice = revision.fields.price
     setIsUpdatingPrice(true);
     try {
       await updateDoc(doc(firestore, "offers", updatePriceOffer.id), {
-        price: newPrice,
+        ...revision.fields,
         status: "قيد المراجعة",
         updatedAt: new Date().toISOString()
       });
@@ -318,6 +346,8 @@ export default function SupplierOffersPage() {
       toast({ title: t("price_updated"), description: t("price_updated_desc") });
       setUpdatePriceOffer(null);
       setNewPrice("");
+      setUpdateProducts(null);
+      setNewRates({});
     } catch {
       toast({ title: t("error_title"), description: t("price_update_failed"), variant: "destructive" });
     } finally {
@@ -550,7 +580,7 @@ export default function SupplierOffersPage() {
                               variant="outline"
                               size="sm"
                               className="h-8 px-3 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-800 transition-colors cursor-pointer font-bold text-xs gap-1.5"
-                              onClick={() => { setUpdatePriceOffer(offer); setNewPrice(offer.price || ""); }}
+                              onClick={() => { void openUpdatePrice(offer) }}
                             >
                               <ArrowDown size={13} />
                               {t("update_price_btn")}
@@ -754,7 +784,7 @@ export default function SupplierOffersPage() {
       </Dialog>
       {/* Update Price Dialog */}
       <Dialog open={!!updatePriceOffer} onOpenChange={(open) => !open && setUpdatePriceOffer(null)}>
-        <DialogContent className={cn("sm:max-w-md", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
+        <DialogContent className={cn("sm:max-w-md max-h-[90vh] overflow-y-auto", locale === 'ar' ? 'text-right' : 'text-left')} dir={locale === 'ar' ? 'rtl' : 'ltr'}>
           <DialogHeader className={cn(locale === 'ar' ? 'text-right sm:text-right' : 'text-left sm:text-left')}>
             <DialogTitle>{t("update_price_title")}</DialogTitle>
             <DialogDescription>
@@ -784,20 +814,51 @@ export default function SupplierOffersPage() {
                 </div>
               </div>
             )}
-            <div className="space-y-2">
-              <Label>{t("new_price_label")}</Label>
-              <Input 
-                type="number" 
-                value={newPrice} 
-                onChange={(e) => setNewPrice(e.target.value)} 
-                placeholder={t("new_price_placeholder")}
-                autoFocus
-              />
-            </div>
+            {updateProducts && updatePricing ? (
+              <div className="space-y-2">
+                <Label>{ts("offer_line_prices_title")}</Label>
+                <div className="rounded-lg border divide-y">
+                  {updateProducts.map((prod) => (
+                    <div key={prod.rfqProductIndex} className="flex items-center gap-2 p-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold" dir="auto">{prod.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{ts("offer_line_qty", { qty: prod.quantity, unit: prod.unit })}</p>
+                      </div>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        dir="ltr"
+                        className="w-28"
+                        aria-label={ts("offer_line_rate_for", { name: prod.name })}
+                        value={newRates[prod.rfqProductIndex] ?? ""}
+                        onChange={(e) => setNewRates({ ...newRates, [prod.rfqProductIndex]: e.target.value })}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between rounded-md bg-slate-50 p-2.5 text-sm">
+                  <span className="text-muted-foreground">{ts("offer_line_price_auto_note")}</span>
+                  <span className="font-bold tabular-nums" dir="ltr">{updatePricing.total} {t("sar")}</span>
+                </div>
+                {!updatePricing.complete && <p className="text-[11px] text-amber-700">{ts("offer_line_prices_incomplete")}</p>}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{t("new_price_label")}</Label>
+                <Input
+                  type="number"
+                  value={newPrice}
+                  onChange={(e) => setNewPrice(e.target.value)}
+                  placeholder={t("new_price_placeholder")}
+                  autoFocus
+                />
+              </div>
+            )}
           </div>
           <DialogFooter className={cn("flex flex-row gap-2 mt-4", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
             <Button variant="outline" onClick={() => setUpdatePriceOffer(null)} disabled={isUpdatingPrice}>{t("cancel")}</Button>
-            <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || !newPrice || newPrice === updatePriceOffer?.price}>
+            <Button onClick={handleUpdatePrice} disabled={isUpdatingPrice || revisedTotal == null || String(revisedTotal) === String(updatePriceOffer?.price)}>
               {isUpdatingPrice ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
               {t("confirm_new_price")}
             </Button>
