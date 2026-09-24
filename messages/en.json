@@ -8796,6 +8796,7 @@
       "offers_toast_accepted_title": "✅ Award sent to Finance",
       "offers_toast_accepted_desc": "The purchase order is waiting for Finance's approval. The supplier is told only once it is approved and sent.",
       "offers_award_internal": "The supplier has not been told yet — the order reaches them once Finance approves it and it is sent, and contact opens then.",
+      "offers_award_withdrawn": "The order was cancelled before it reached the supplier — they were never told of the award, and there is no contact on this RFQ.",
       "offers_toast_rejected_title": "❌ Offer Rejected",
       "offers_toast_rejected_desc": "Offer has been rejected and the supplier will be notified.",
       "offers_toast_reduction_title": "📉 Reduction Requested",

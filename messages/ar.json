@@ -8795,6 +8795,7 @@
       "offers_toast_accepted_title": "✅ أُرسلت الترسية للمالية",
       "offers_toast_accepted_desc": "أمر الشراء بانتظار اعتماد المالية. لن يُبلَّغ المورد إلا بعد الاعتماد وإرسال الأمر.",
       "offers_award_internal": "لم يُبلَّغ المورد بعد — يصله الأمر بعد اعتماد المالية وإرساله، وعندها يُفتح التواصل معه.",
+      "offers_award_withdrawn": "أُلغي الأمر قبل أن يصل إلى المورد — لم يُبلَّغ بالترسية، ولا تواصل معه على هذا الطلب.",
       "offers_toast_rejected_title": "❌ تم رفض العرض",
       "offers_toast_rejected_desc": "تم رفض العرض وسيتم إشعار المورد.",
       "offers_toast_reduction_title": "📉 تم طلب التخفيض",

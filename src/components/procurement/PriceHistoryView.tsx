@@ -97,7 +97,7 @@ export function PriceHistoryView({
                       </span>
                     </td>
                     <td className="p-3">
-                      {change == null ? (
+                      {change == null || tr.points.length < 2 ? (
                         <span className="text-muted-foreground">—</span>
                       ) : (
                         <Badge

@@ -80,7 +80,7 @@ function fmtDate(val: unknown, locale: string) {
     val && typeof val === "object" && "toDate" in val && typeof (val as { toDate: () => Date }).toDate === "function"
       ? (val as { toDate: () => Date }).toDate()
       : new Date(val as string | number)
-  return d.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US", {
+  return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",

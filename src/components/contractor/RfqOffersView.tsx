@@ -1205,7 +1205,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                       <span className="min-w-0 truncate font-medium" dir="auto">{r.name}</span>
                                       <span className="shrink-0 tabular-nums text-slate-600" dir="ltr">
                                         {tShared("offer_line_qty", { qty: r.quantity, unit: r.unit })} × {r.unitPrice.toLocaleString("en-US")}
-                                        <span className="ms-2 font-bold text-success">{Math.round(r.quantity * r.unitPrice * 100) / 100} {t("offers_currency_sar")}</span>
+                                        <span className="ms-2 font-bold text-success">{(Math.round(r.quantity * r.unitPrice * 100) / 100).toLocaleString("en-US")} {t("offers_currency_sar")}</span>
                                       </span>
                                     </div>
                                   ))}
@@ -1433,7 +1433,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                 has not approved, or the order is not sent) the supplier has been
                                 told nothing — a chat or WhatsApp now would tell him. */}
                             <AwardDisclosure offer={offer}>
-                              {(disclosed) =>
+                              {(disclosed, withdrawn) =>
                                 disclosed ? (
                                   <>
                                     <Button
@@ -1461,7 +1461,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
                                     )}
                                   </>
                                 ) : (
-                                  <p className="w-full text-[11px] leading-relaxed text-slate-600">{t("offers_award_internal")}</p>
+                                  <p className="w-full text-[11px] leading-relaxed text-slate-600">{t(withdrawn ? "offers_award_withdrawn" : "offers_award_internal")}</p>
                                 )
                               }
                             </AwardDisclosure>
@@ -2484,13 +2484,13 @@ function InquiriesSection({ rfqId, rfqTitle, profile }: { rfqId: string; rfqTitl
 
 /** Whether the supplier has been told of this award, read live off its order —
  * the same rule every supplier screen uses (`awardDisclosed`). */
-function AwardDisclosure({ offer, children }: { offer: { poId?: string | null; status?: string | null; awaitingOrderApproval?: boolean | null }; children: (disclosed: boolean) => ReactNode }) {
+function AwardDisclosure({ offer, children }: { offer: { poId?: string | null; status?: string | null; awaitingOrderApproval?: boolean | null }; children: (disclosed: boolean, withdrawn: boolean) => ReactNode }) {
   const firestore = useFirestore()
   const ref = useMemoFirebase(() => (firestore && offer.poId ? doc(firestore, PURCHASE_ORDERS, offer.poId) : null), [firestore, offer.poId])
   const { data: po } = useDoc(ref)
   const orders = new Map<string, PurchaseOrder>()
   if (offer.poId && po) orders.set(offer.poId, { ...(po as PurchaseOrder), id: offer.poId })
-  return <>{children(awardDisclosed(offer, orders))}</>
+  return <>{children(awardDisclosed(offer, orders), (po as PurchaseOrder | null)?.status === "cancelled")}</>
 }
 
 /** The order laid over an accepted offer: its number and its derived state,
