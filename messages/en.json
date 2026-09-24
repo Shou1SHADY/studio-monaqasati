@@ -1074,6 +1074,8 @@
       "offer_undefined": "Undefined RFQ",
       "rejected_status": "Rejected",
       "closed_unawarded_status": "Closed — not awarded",
+      "closed_unawarded_notif": "RFQ closed — not awarded",
+      "closed_unawarded_notif_desc": "The RFQ \"{title}\" closed without an award to you. Thank you for quoting.",
       "price_reduction_requested": "Price Reduction Requested",
       "offer_tender": "RFQ",
       "optional": "Optional",

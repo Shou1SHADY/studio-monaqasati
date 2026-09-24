@@ -11,7 +11,7 @@ import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
-import { asSupplierSees } from "@/lib/procurement/supplier"
+import { CLOSED_UNAWARDED, asSupplierSees } from "@/lib/procurement/supplier"
 import { awaitsSupplier } from "@/lib/supplier-notifications"
 import { Link, useRouter } from "@/i18n/routing"
 
@@ -289,6 +289,7 @@ export default function SupplierNotificationsPage() {
     if (type === "price_reduction" || status === "مطلوب تخفيض") return { title: t("price_reduction"), desc: offer.message || t("price_reduction_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "sample_requested" || sampleStatus === "مطلوبة") return { title: t("sample_required"), desc: offer.message || t("sample_required_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (sampleStatus === "تم الاستلام") return { title: t("sample_received"), desc: t("sample_received_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
+    if (status === CLOSED_UNAWARDED) return { title: t("closed_unawarded_notif"), desc: t("closed_unawarded_notif_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     
     return { title: t("pending_review_notif"), desc: t("pending_review_notif_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
   }

@@ -1071,6 +1071,8 @@
       "offer_undefined": "طلب عروض أسعار غير محدد",
       "rejected_status": "مرفوض",
       "closed_unawarded_status": "أُغلق دون ترسية",
+      "closed_unawarded_notif": "أُغلق الطلب دون ترسية",
+      "closed_unawarded_notif_desc": "أُغلق طلب عروض الأسعار \"{title}\" دون ترسية عليك. شكراً لمشاركتك.",
       "price_reduction_requested": "مطلوب تخفيض",
       "offer_tender": "طلب عروض الأسعار",
       "optional": "اختياري",
