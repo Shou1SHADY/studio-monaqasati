@@ -1,6 +1,7 @@
 import type {NextConfig} from 'next';
 
 import createNextIntlPlugin from 'next-intl/plugin';
+import { withSentryConfig } from '@sentry/nextjs/config';
  
 const withNextIntl = createNextIntlPlugin(
   './src/i18n/request.ts'
@@ -114,4 +115,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+// Source maps reach Sentry only when a build has SENTRY_AUTH_TOKEN (Vercel /
+// App Hosting); without it the build is unchanged and stack traces stay minified.
+export default withSentryConfig(withNextIntl(nextConfig), {
+  org: 'mdmak',
+  project: 'studio-monaqasati',
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN },
+  widenClientFileUpload: true,
+  silent: !process.env.CI,
+  telemetry: false,
+});
