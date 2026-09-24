@@ -1,9 +1,10 @@
-import { sendDirectMessage, sendWhatsApp, isSmsConfigured, isWhatsAppConfigured } from "@/lib/sms"
+import { sendDirectMessage, sendSms, sendWhatsApp, isSmsConfigured, isWhatsAppConfigured } from "@/lib/sms"
 
 const ENV_KEYS = [
   "TWILIO_ACCOUNT_SID",
   "TWILIO_AUTH_TOKEN",
   "TWILIO_PHONE_NUMBER",
+  "TWILIO_MESSAGING_SERVICE_SID",
   "WHATSAPP_ACCESS_TOKEN",
   "WHATSAPP_PHONE_NUMBER_ID",
   "WHATSAPP_TEMPLATE_NAME",
@@ -144,10 +145,38 @@ describe("isSmsConfigured — only real credentials count as a gateway", () => {
     expect(isSmsConfigured()).toBe(false)
   })
 
-  test("a sender that is not an E.164 number is not", () => {
+  test("a sender that is neither an E.164 number nor a sender ID is not", () => {
     configureTwilio()
-    process.env.TWILIO_PHONE_NUMBER = "placeholder"
+    process.env.TWILIO_PHONE_NUMBER = "twilio_phone_placeholder"
     expect(isSmsConfigured()).toBe(false)
+    process.env.TWILIO_PHONE_NUMBER = "+123"
+    expect(isSmsConfigured()).toBe(false)
+  })
+
+  test("a registered alphanumeric sender ID is configured and sends as From — Saudi carriers drop US numbers", async () => {
+    configureTwilio()
+    process.env.TWILIO_PHONE_NUMBER = "MDMAK"
+    expect(isSmsConfigured()).toBe(true)
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+    await sendSms({ to: "+966500000000", body: "x" })
+    const sent = new URLSearchParams(String(fetchMock.mock.calls[0][1].body))
+    expect(sent.get("From")).toBe("MDMAK")
+  })
+
+  test("a Messaging Service wins over the sender and needs no From", async () => {
+    configureTwilio()
+    process.env.TWILIO_PHONE_NUMBER = ""
+    process.env.TWILIO_MESSAGING_SERVICE_SID = "MG" + "a".repeat(32)
+    try {
+      expect(isSmsConfigured()).toBe(true)
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({}) })
+      await sendSms({ to: "+966500000000", body: "x" })
+      const sent = new URLSearchParams(String(fetchMock.mock.calls[0][1].body))
+      expect(sent.get("MessagingServiceSid")).toBe("MG" + "a".repeat(32))
+      expect(sent.get("From")).toBeNull()
+    } finally {
+      delete process.env.TWILIO_MESSAGING_SERVICE_SID
+    }
   })
 
   test("a short or example auth token is not", () => {

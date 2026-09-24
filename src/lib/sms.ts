@@ -12,18 +12,31 @@ type SendSmsInput = {
 // on-screen test code UAT relies on was never reached. Only the real shapes count.
 const ACCOUNT_SID = /^AC[0-9a-fA-F]{32}$/
 const E164 = /^\+[1-9]\d{6,14}$/
+// Saudi carriers take SMS only from a registered alphanumeric sender ID
+// (1–11 letters/digits, at least one letter) — a US number is dropped — or
+// through a Messaging Service holding that sender.
+const ALPHA_SENDER = /^(?=.*[A-Za-z])[A-Za-z0-9 ]{1,11}$/
+const MESSAGING_SERVICE_SID = /^MG[0-9a-fA-F]{32}$/
+
+/** Where a message is sent from: a Messaging Service wins over a sender. */
+function smsSender(): { MessagingServiceSid: string } | { From: string } | null {
+  const service = process.env.TWILIO_MESSAGING_SERVICE_SID || ""
+  if (MESSAGING_SERVICE_SID.test(service)) return { MessagingServiceSid: service }
+  const from = (process.env.TWILIO_PHONE_NUMBER || "").trim()
+  if (E164.test(from) && !from.startsWith("+15551")) return { From: from }
+  if (ALPHA_SENDER.test(from)) return { From: from }
+  return null
+}
 
 export function isSmsConfigured(): boolean {
   const accountSid = process.env.TWILIO_ACCOUNT_SID || ""
   const authToken = process.env.TWILIO_AUTH_TOKEN || ""
-  const fromPhone = process.env.TWILIO_PHONE_NUMBER || ""
   return (
     ACCOUNT_SID.test(accountSid) &&
     !/^ACx+/i.test(accountSid) &&
     authToken.length >= 32 &&
     authToken !== "your_auth_token_here" &&
-    E164.test(fromPhone) &&
-    !fromPhone.startsWith("+15551")
+    smsSender() != null
   )
 }
 
@@ -58,7 +71,7 @@ export async function sendSms({ to, body }: SendSmsInput): Promise<{ sent: boole
     console.warn("Twilio credentials not configured — SMS skipped.")
     return { sent: false, error: "SMS_NOT_CONFIGURED" }
   }
-  return twilioSend({ To: to, From: process.env.TWILIO_PHONE_NUMBER!, Body: body })
+  return twilioSend({ To: to, ...smsSender()!, Body: body })
 }
 
 // WhatsApp via Meta's Cloud API (graph.facebook.com) — direct, no Twilio.
