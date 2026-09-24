@@ -41,6 +41,7 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 import { createPurchaseOrderFromAward } from "@/lib/procurement/writes"
 import { toAmount, type PricingMode } from "@/lib/procurement/offer-pricing"
+import { incompleteProducts, productComplete } from "@/lib/rfq-products"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { collection, doc, getDoc, updateDoc, query, where, arrayUnion, addDoc } from "firebase/firestore"
 import { upsertCatalogItems } from "@/lib/catalog-utils"
@@ -433,14 +434,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       errors.push({ field: "title", message: t("newrfq_val_title_required") })
     }
 
-    const validProducts = products.filter(p =>
-      p.quantity.trim() &&
-      p.unit.trim() &&
-      p.category &&
-      (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
-    )
-    if (validProducts.length === 0) {
+    if (!products.some(productComplete)) {
       errors.push({ field: "products", message: t("newrfq_val_product_required") })
+    } else if (incompleteProducts(products).length) {
+      errors.push({ field: "products", message: t("newrfq_val_product_incomplete") })
     }
 
     return errors
@@ -569,12 +566,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       return
     }
 
-    const validProducts = products.filter(p =>
-      p.quantity.trim() &&
-      p.unit.trim() &&
-      p.category &&
-      (p.subCategory === "أخرى" ? p.otherSubCategory?.trim() : p.subCategory)
-    )
+    const validProducts = products.filter(productComplete)
 
     if (visibilityMode === "direct" && !isEditing) {
       if (status === "Draft") {
