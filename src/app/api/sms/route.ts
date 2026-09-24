@@ -4,6 +4,10 @@ import { z } from "zod"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { isSmsConfigured, normalizePhoneE164, sendSms } from "@/lib/sms"
 import { OTP_RESEND_MS } from "@/lib/otp"
+import { offersSealed } from "@/lib/procurement/award"
+import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import type { ProcurementPolicies } from "@/lib/procurement/types"
 import arMessages from "../../../../messages/ar.json"
 import enMessages from "../../../../messages/en.json"
 
@@ -80,14 +84,14 @@ export async function POST(req: Request) {
     // new_offer
     const offerRef = db.collection("offers").doc(parsed.data.offerId)
     const offer = (await offerRef.get()).data() as
-      | { supplierId?: string; rfqId?: string; price?: string | number; smsNotifiedAt?: string }
+      | { supplierId?: string; rfqId?: string; price?: string | number; smsNotifiedAt?: string; companyName?: string; supplierName?: string }
       | undefined
     if (!offer) return fail("Offer not found", "NOT_FOUND", 404)
     if (offer.supplierId !== uid) return fail("Not your offer", "FORBIDDEN", 403)
     if (offer.smsNotifiedAt) return NextResponse.json({ success: true, data: { sent: false, already: true } })
 
     const rfq = offer.rfqId ? ((await db.collection("rfqs").doc(offer.rfqId).get()).data() as
-      | { contractorId?: string; title?: string }
+      | { contractorId?: string; organizationId?: string; title?: string; deadline?: string; status?: string }
       | undefined) : undefined
     const contractor = rfq?.contractorId
       ? ((await db.collection("users").doc(rfq.contractorId).get()).data() as
@@ -96,13 +100,39 @@ export async function POST(req: Request) {
       : undefined
     const phone = normalizePhoneE164(contractor?.phone || contractor?.whatsapp || contractor?.mobile)
 
-    // Marked before sending: a double tap must not become two texts.
-    await offerRef.update({ smsNotifiedAt: new Date().toISOString() })
-    if (!phone || !isSmsConfigured()) return NextResponse.json({ success: true, data: { sent: false } })
+    // A sealed round names no amount — not in the bell, the push or the text.
+    // Only the server can tell: the policy is the contractor's, unreadable to
+    // the supplier whose client used to write this notification itself.
+    const orgId = rfq?.organizationId || rfq?.contractorId || null
+    const settings = orgId ? (await db.collection("procurementSettings").doc(orgId).get()).data() : undefined
+    const sealed = offersSealed(rfq, resolvePolicies(settings as Partial<ProcurementPolicies> | undefined), new Date())
+    const notice = newOfferNotice({ supplier: offer.companyName || offer.supplierName || "", rfqTitle: rfq?.title || "", price: Number(offer.price) || 0, sealed })
 
-    const price = Number(offer.price) || 0
-    const text = `مدماك تيك: وصلك عرض سعر جديد بمبلغ ${price.toLocaleString("ar-SA")} ر.س على طلب عروض الأسعار: ${rfq?.title || ""}. قم بتسجيل الدخول للمراجعة.`
-    const result = await sendSms({ to: phone, body: text })
+    // Marked before sending: a double tap must not become two texts.
+    const nowIso = new Date().toISOString()
+    await offerRef.update({ smsNotifiedAt: nowIso })
+    if (rfq?.contractorId) {
+      await db
+        .collection("users")
+        .doc(rfq.contractorId)
+        .collection("notifications")
+        .doc(newOfferNoticeId(parsed.data.offerId))
+        .set({
+          userId: rfq.contractorId,
+          organizationId: orgId,
+          type: "new_offer",
+          i18n: notice.i18n,
+          title: notice.title,
+          message: notice.message,
+          offerId: parsed.data.offerId,
+          rfqId: offer.rfqId || null,
+          createdAt: nowIso,
+          read: false,
+        })
+    }
+    if (!phone || !isSmsConfigured()) return NextResponse.json({ success: true, data: { sent: false, notified: Boolean(rfq?.contractorId) } })
+
+    const result = await sendSms({ to: phone, body: notice.smsText })
     return NextResponse.json({ success: true, data: { sent: result.sent } })
   } catch (error) {
     console.error("SMS route error:", error)

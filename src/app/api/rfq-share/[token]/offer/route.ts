@@ -8,6 +8,10 @@ import { resolveShareToken, isRfqDeadlinePassed } from "@/lib/rfq-share"
 import { createGuestOfferLink } from "@/lib/guest-offer"
 import { sendEmail, buildGuestOfferReceiptEmail } from "@/lib/email"
 import { normalizeGuestChannel } from "@/utils/guest-offer-workflow"
+import { offersSealed } from "@/lib/procurement/award"
+import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import type { ProcurementPolicies } from "@/lib/procurement/types"
 
 // Public endpoint: a guest supplier (no account) submits a price offer on an
 // RFQ through a valid share link. The offer lands in the same `offers`
@@ -262,16 +266,23 @@ export async function POST(
       .catch((err) => console.error("Failed to bump offersCount:", err))
 
     if (rfq.contractorId) {
+      // A sealed round names no amount, from a guest as from anyone.
+      const orgId = (rfq.organizationId as string) || (rfq.contractorId as string)
+      const settings = (await db.collection("procurementSettings").doc(orgId).get().catch(() => null))?.data()
+      const sealed = offersSealed(rfq as Parameters<typeof offersSealed>[0], resolvePolicies(settings as Partial<ProcurementPolicies> | undefined), new Date())
+      const notice = newOfferNotice({ supplier: data.companyName, rfqTitle: (rfq.title as string) || "", price: total, sealed })
       await db
         .collection("users")
         .doc(rfq.contractorId as string)
         .collection("notifications")
-        .add({
+        .doc(newOfferNoticeId(offerRef.id))
+        .set({
           userId: rfq.contractorId,
-          organizationId: rfq.organizationId || rfq.contractorId,
+          organizationId: orgId,
           type: "new_offer",
-          title: "عرض سعر جديد عبر رابط المشاركة",
-          message: `قدم المورد ${data.companyName} عرضاً بمبلغ ${total.toLocaleString("ar-SA")} ر.س عبر رابط المشاركة على طلب عروض الأسعار: ${rfq.title || ""}`,
+          i18n: notice.i18n,
+          title: notice.title,
+          message: notice.message,
           offerId: offerRef.id,
           rfqId,
           createdAt: nowIso,

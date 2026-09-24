@@ -105,6 +105,39 @@ describe("a new offer", () => {
   })
 })
 
+describe("the contractor's notification — written here, where the seal is known", () => {
+  const notice = () => store.get("users/contractor1/notifications/new_offer__offer1") as { i18n: { message: string; params: Record<string, string> }; message: string } | undefined
+
+  it("names the amount in an open round", async () => {
+    await call({ kind: "new_offer", offerId: "offer1" }, "supplier1")
+    expect(notice()?.i18n).toMatchObject({ message: "pn_new_offer", params: { price: "12,000" } })
+    expect(sent[0].body).toContain("١٢٬٠٠٠")
+  })
+
+  it("names no amount in a sealed round — not in the bell, not in the text (UAT, 23 Sep)", async () => {
+    store.set("rfqs/rfq1", { contractorId: "contractor1", organizationId: "contractor1", title: "حديد تسليح", deadline: "2099-01-01" })
+    store.set("procurementSettings/contractor1", { sealOffersUntilDeadline: true })
+    await call({ kind: "new_offer", offerId: "offer1" }, "supplier1")
+    expect(notice()?.i18n.message).toBe("pn_new_offer_sealed")
+    expect(JSON.stringify(notice())).not.toMatch(/12000|12,000|١٢٬٠٠٠/)
+    expect(sent[0].body).not.toMatch(/12000|12,000|١٢٬٠٠٠/)
+  })
+
+  it("an awarded RFQ is no longer sealed", async () => {
+    store.set("rfqs/rfq1", { contractorId: "contractor1", title: "حديد تسليح", deadline: "2099-01-01", status: "Awarded" })
+    store.set("procurementSettings/contractor1", { sealOffersUntilDeadline: true })
+    await call({ kind: "new_offer", offerId: "offer1" }, "supplier1")
+    expect(notice()?.i18n.message).toBe("pn_new_offer")
+  })
+
+  it("still notifies when there is no SMS gateway", async () => {
+    smsConfigured = false
+    await call({ kind: "new_offer", offerId: "offer1" }, "supplier1")
+    expect(notice()).toBeDefined()
+    expect(sent).toHaveLength(0)
+  })
+})
+
 describe("the sign-in code", () => {
   it("goes to the caller's own number on file", async () => {
     const res = await call({ kind: "login_code" }, "supplier1")

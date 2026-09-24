@@ -34,10 +34,11 @@ import { useActiveCompanyName, useCompanyNameFor } from "@/hooks/useActiveCompan
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useTranslations, useLocale } from 'next-intl'
 import { useFirestore, useUser, useDoc, useMemoFirebase, useStorage, useCollection } from "@/firebase"
-import { collection, addDoc, doc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, updateDoc, increment, serverTimestamp } from "firebase/firestore"
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"
 import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
+import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
 
 interface DeliveryBatch {
   id: string
@@ -344,37 +345,44 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
 
       const offerRef = await addDoc(collection(firestore, "offers"), offerData);
 
-      // Notify contractor of new offer
+      // Tell the contractor. The SERVER writes the notification and the text:
+      // only it can read the contractor's policy, and a sealed round must name
+      // no amount (the client used to write "عرضاً بمبلغ …" into the bell of a
+      // buyer the seal was meant to keep from seeing it). One per offer.
       try {
         if (selectedRfq.contractorId) {
-          // 1. In-app notification
-          await addDoc(collection(firestore, "users", selectedRfq.contractorId, "notifications"), {
-            userId: selectedRfq.contractorId,
-            organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
-            type: "new_offer",
-            i18n: { title: "pn_new_offer_title", message: "pn_new_offer", params: { supplier: activeCompanyName || "", price: Number(offerPrice).toLocaleString("en-US"), rfq: selectedRfq.title || "" } },
-            title: "عرض سعر جديد",
-            message: `قدم المورد ${activeCompanyName || 'مورد'} عرضاً بمبلغ ${Number(offerPrice).toLocaleString('ar-SA')} ر.س على طلب عروض الأسعار: ${selectedRfq.title}`,
-            offerId: null,
-            rfqId: selectedRfq.id,
-            createdAt: new Date().toISOString(),
-            read: false
-          });
-
-          // 2. A text to the contractor. The server picks the number and
-          // writes the message from the offer itself; it sends once per offer.
+          let told = false
           try {
             const idToken = await user?.getIdToken().catch(() => null)
             if (idToken) {
-              const smsRes = await fetch("/api/sms", {
+              const res = await fetch("/api/sms", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
                 body: JSON.stringify({ kind: "new_offer", offerId: offerRef.id }),
               })
-              if (!smsRes.ok) console.error("SMS API returned error:", smsRes.status)
+              told = res.ok
+              if (!res.ok) console.error("Offer notice API returned error:", res.status)
             }
-          } catch (smsError) {
-            console.error("Failed to call SMS API:", smsError)
+          } catch (noticeError) {
+            console.error("Failed to call the offer notice API:", noticeError)
+          }
+          // The server could not be reached: still tell the contractor, with no
+          // amount and no claim about a seal. Same id, so a later server run
+          // overwrites this rather than adding a second.
+          if (!told) {
+            const notice = newOfferNotice({ supplier: activeCompanyName || "", rfqTitle: selectedRfq.title || "", price: null, sealed: false })
+            await setDoc(doc(firestore, "users", selectedRfq.contractorId, "notifications", newOfferNoticeId(offerRef.id)), {
+              userId: selectedRfq.contractorId,
+              organizationId: selectedRfq.organizationId || selectedRfq.contractorId,
+              type: "new_offer",
+              i18n: notice.i18n,
+              title: notice.title,
+              message: notice.message,
+              offerId: offerRef.id,
+              rfqId: selectedRfq.id,
+              createdAt: new Date().toISOString(),
+              read: false,
+            })
           }
         }
       } catch (err) {
