@@ -15,7 +15,7 @@
 // (`delivery` with neither order nor lines).
 
 import { useEffect, useMemo, useState } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { useLocale, useTranslations } from "next-intl"
@@ -184,7 +184,10 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
     setOpenHold({})
   }, [open, base, actor.name, delivery, defaultWarehouseId, reset])
 
-  const rows = watch("lines")
+  // useWatch, not watch: watch("lines") hands back the same array RHF mutates in
+  // place, so a memo keyed on it never recomputed — the count stayed "nothing
+  // counted" and the receipt could not be saved. useWatch clones on each change.
+  const rows = useWatch({ control: form.control, name: "lines" })
   const checklist = watch("checklist")
   const domainLines = useMemo(() => formLinesToDomain(rows || [], base), [rows, base])
   const errors = useMemo(() => (legacy ? [] : validateReceiptLines(po, domainLines, policies)), [legacy, po, domainLines, policies])
@@ -350,7 +353,9 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
                           <p className="truncate text-sm font-bold" dir="auto">{l.name}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {l.unit}
-                            {poLine && <> · {t("receive.openOnOrder", { qty: lineToArrive(poLine), unit: l.unit })}</>}
+                            {/* Held back like the notice: where the notice matches the order —
+                                the usual case — "10 t left" IS the number the blind count hides. */}
+                            {poLine && counted != null && <> · {t("receive.openOnOrder", { qty: lineToArrive(poLine), unit: l.unit })}</>}
                           </p>
                         </div>
                       </div>
