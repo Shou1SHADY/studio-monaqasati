@@ -24,9 +24,6 @@
     ],
     "deny": [
       "Bash(rm -rf *)",
-      "Bash(curl *)",
-      "Bash(wget *)",
-      "Bash(firebase deploy*)",
       "Bash(git push --force*)",
       "Read(.env*)"
     ]
