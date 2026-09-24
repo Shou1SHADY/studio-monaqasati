@@ -328,6 +328,16 @@ export async function emitDownPaymentConfirmed(
  * stored text. With the reader's `locale`, a document number reads as every
  * screen shows it — "ط.ش-2026/001" in Arabic, never the stored "PO-2026/001".
  */
+/** A string param as a reader sees it: document numbers with their Arabic
+ * prefix, a `YYYY-MM-DD` day as a written date ("28 سبتمبر 2026", not the ISO). */
+export function displayParam(v: string, locale: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const d = new Date(`${v}T00:00:00`)
+    if (!Number.isNaN(d.getTime())) return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { day: "numeric", month: "long", year: "numeric" })
+  }
+  return displayDocNumber(v, locale)
+}
+
 export function notificationCopy(n: { title?: string; message?: string; i18n?: { title?: string; message?: string; params?: EventParams } | null }, t: Translator, locale?: string): { title: string; message: string } {
   const i = n.i18n
   if (i?.title && t.has(i.title)) {
@@ -335,7 +345,7 @@ export function notificationCopy(n: { title?: string; message?: string; i18n?: {
     for (const [k, v] of Object.entries(i.params || {})) {
       if (v == null) params[k] = ""
       else if (typeof v === "string" && v.startsWith("@") && t.has(v.slice(1))) params[k] = t(v.slice(1))
-      else if (typeof v === "string" && locale) params[k] = displayDocNumber(v, locale)
+      else if (typeof v === "string" && locale) params[k] = displayParam(v, locale)
       else params[k] = v
     }
     const title = t(i.title, params)

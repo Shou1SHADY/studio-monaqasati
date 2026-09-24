@@ -1089,7 +1089,7 @@ function DeliveryNoticeDialog({
                         <Label htmlFor={`notice-q-${l.id}`} className="sr-only">
                           {l.name}
                         </Label>
-                        <Input id={`notice-q-${l.id}`} type="number" inputMode="decimal" step="any" min={0} max={l.toArrive} dir="ltr" className="w-28 text-end tabular-nums" {...register(`lines.${i}.quantity` as const, { valueAsNumber: true })} disabled={formState.isSubmitting} />
+                        <Input id={`notice-q-${l.id}`} type="number" inputMode="decimal" step="any" min={0} dir="ltr" className="w-28 text-end tabular-nums" {...register(`lines.${i}.quantity` as const, { valueAsNumber: true })} disabled={formState.isSubmitting} />
                         <span className="text-xs text-muted-foreground">{l.unit}</span>
                       </div>
                     </div>

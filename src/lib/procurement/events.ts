@@ -15,8 +15,7 @@
 // notification never undoes the decision it reports.
 
 import { collection, doc, setDoc, type Firestore } from "firebase/firestore"
-import { displayDocNumber } from "../sales-numbering"
-import { loadTeam, notificationCopy, resolveRecipients, type EventParams, type RecipientSpec, type Translator } from "../mfg-events"
+import { displayParam, loadTeam, notificationCopy, resolveRecipients, type EventParams, type RecipientSpec, type Translator } from "../mfg-events"
 
 export type ProcEventKind =
   | "po_awaiting_approval" // → approvers (po.approve holders, or the owner when routed to him)
@@ -186,7 +185,7 @@ export function renderProcCopy(kind: ProcEventKind, params: EventParams, copy?: 
   }
   const ar = PROC_EVENT_COPY_AR[kind]
   // Arabic text shows Arabic document prefixes, as every screen does.
-  const shown = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? displayDocNumber(v, "ar") : v])) as EventParams
+  const shown = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "string" ? displayParam(v, "ar") : v])) as EventParams
   return { title: substitute(ar.title, shown).trim(), message: substitute(ar.message, shown).replace(/\s+/g, " ").trim() }
 }
 

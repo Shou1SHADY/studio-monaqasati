@@ -10,6 +10,7 @@ import { Bell, MessageSquare, TrendingUp, CheckCircle2, Clock, Loader2, Eye } fr
 import { useCollection, useFirestore, useUser, useMemoFirebase, useDoc } from "@/firebase"
 import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
+import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 import { Link, useRouter } from "@/i18n/routing"
 
 export default function ContractorNotificationsPage() {
@@ -72,6 +73,14 @@ export default function ContractorNotificationsPage() {
   }, [firestore, user, isUserLoading, profile?.organizationId])
 
   const { data: offers, isLoading: offersLoading } = useCollection(offersQuery)
+
+  // An award whose order was cancelled before it was sent is not "accepted" any more.
+  const ordersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, PURCHASE_ORDERS), where("organizationId", "==", profile?.organizationId || user.uid))
+  }, [firestore, user, isUserLoading, profile?.organizationId])
+  const { data: orders } = useCollection(ordersQuery)
+  const cancelledOrders = React.useMemo(() => new Set((orders || []).filter((o: any) => o.status === "cancelled").map((o: any) => o.id as string)), [orders])
 
   // Query user's notifications from subcollection (for invitations, etc)
   const userNotificationsQuery = useMemoFirebase(() => {
@@ -292,6 +301,7 @@ export default function ContractorNotificationsPage() {
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1">
                           <p className="font-bold text-slate-900">
                             {offer.status === "قيد المراجعة" ? t("notif_new_offer") :
+                             offer.status === "مقبول" && offer.poId && cancelledOrders.has(offer.poId) ? t("notif_award_withdrawn") :
                              offer.status === "مقبول" ? t("notif_accepted_offer") : t("notif_rejected_offer")}
                           </p>
                           <span className="text-[11px] text-muted-foreground flex items-center gap-1" suppressHydrationWarning>
@@ -300,7 +310,7 @@ export default function ContractorNotificationsPage() {
                           </span>
                         </div>
                         <p className="text-sm text-slate-500 mt-1">
-                          {t("notif_amount", { price: offer.price })}
+                          {t("notif_amount", { price: (Number(String(offer.price ?? "").replace(/,/g, "")) || 0).toLocaleString("en-US") })}
                           {relatedRfq ? ` ${t("notif_for_tender", { title: relatedRfq.title })}` : ""}
                         </p>
                       </div>

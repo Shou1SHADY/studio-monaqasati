@@ -9003,6 +9003,7 @@
       "notif_new_offer": "New Quotation 🔔",
       "notif_accepted_offer": "Accepted Quotation ✅",
       "notif_rejected_offer": "Rejected Quotation ❌",
+      "notif_award_withdrawn": "Order cancelled before it was sent",
       "notif_amount": "An offer of {price} SAR was submitted",
       "notif_for_tender": "for RFQ \"{title}\"",
       "notif_review": "Review Offer",

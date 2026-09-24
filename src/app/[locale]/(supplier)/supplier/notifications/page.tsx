@@ -284,14 +284,14 @@ export default function SupplierNotificationsPage() {
     if (type === "supplier_invite_received") return { title: sanitizeTitle(offer.title) || t("supplier_invite_received_title"), desc: offer.message || t("supplier_invite_received_desc") };
     if (type === "supplier_connected") return { title: sanitizeTitle(offer.title) || t("supplier_connected_title"), desc: offer.message || t("supplier_connected_desc") };
     if (type === "sample_sent") return { title: "📦 تم إرسال العينة من المورد", desc: sanitizeTitle(offer.message) || `تم إرسال العينة لطلب عروض الأسعار: ${offer.rfqTitle || ""}. يرجى تأكيد الاستلام.` };
-    if (type === "offer_accepted" || status === "مقبول") return { title: t("accepted_offer"), desc: offer.message || t("accepted_offer_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
+    if (type === "offer_accepted" || status === "مقبول") return { title: t("accepted_offer"), desc: offer.message || t("accepted_offer_desc", { price: (Number(String(offer.price ?? "").replace(/,/g, "")) || 0).toLocaleString("en-US"), title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "offer_rejected" || status === "مرفوض") return { title: t("rejected_offer"), desc: offer.message || t("rejected_offer_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "price_reduction" || status === "مطلوب تخفيض") return { title: t("price_reduction"), desc: offer.message || t("price_reduction_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (type === "sample_requested" || sampleStatus === "مطلوبة") return { title: t("sample_required"), desc: offer.message || t("sample_required_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (sampleStatus === "تم الاستلام") return { title: t("sample_received"), desc: t("sample_received_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     if (status === CLOSED_UNAWARDED) return { title: t("closed_unawarded_notif"), desc: t("closed_unawarded_notif_desc", { title: offer.rfqTitle || t("offer_undefined") }) };
     
-    return { title: t("pending_review_notif"), desc: t("pending_review_notif_desc", { price: offer.price, title: offer.rfqTitle || t("offer_undefined") }) };
+    return { title: t("pending_review_notif"), desc: t("pending_review_notif_desc", { price: (Number(String(offer.price ?? "").replace(/,/g, "")) || 0).toLocaleString("en-US"), title: offer.rfqTitle || t("offer_undefined") }) };
   }
 
   const unreadCount = (notifications?.filter((n: any) => 

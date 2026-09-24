@@ -33,3 +33,14 @@ describe("renderProcCopy — the Arabic text stored for push and the phone", () 
     expect(copy.title).not.toContain("PO-2026/001")
   })
 })
+
+describe("displayParam — a day reads as a written date", () => {
+  it("formats YYYY-MM-DD in both languages and leaves other strings to the document-number rule", () => {
+    const { displayParam } = jest.requireActual<typeof import("@/lib/mfg-events")>("@/lib/mfg-events")
+    expect(displayParam("2026-09-28", "en")).toBe("September 28, 2026")
+    expect(displayParam("2026-09-28", "ar")).toContain("2026")
+    expect(displayParam("2026-09-28", "ar")).not.toContain("2026-09-28")
+    expect(displayParam("PO-2026/003", "ar")).toBe("ط.ش-2026/003")
+    expect(displayParam("Al-Hadid", "ar")).toBe("Al-Hadid")
+  })
+})

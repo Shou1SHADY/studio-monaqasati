@@ -841,7 +841,7 @@ export function PortalLayout({ children }: { children: React.ReactNode }) {
                                      : isInquiryReply
                                        ? (notif.description || notif.message || "")
                                        : notif.price
-                                         ? t("notification_offer_detail", { price: notif.price, title: notif.rfqTitle || "" })
+                                         ? t("notification_offer_detail", { price: (Number(String(notif.price ?? "").replace(/,/g, "")) || 0).toLocaleString("en-US"), title: notif.rfqTitle || "" })
                                          : (notif.message || notif.description || "")
                                }
                              </p>

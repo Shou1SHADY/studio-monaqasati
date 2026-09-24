@@ -9003,6 +9003,7 @@
       "notif_new_offer": "عرض سعر جديد 🔔",
       "notif_accepted_offer": "عرض سعر مقبول ✅",
       "notif_rejected_offer": "عرض سعر مرفوض ❌",
+      "notif_award_withdrawn": "أُلغي أمر الشراء قبل إرساله",
       "notif_amount": "تم تقديم عرض بمبلغ {price} ر.س",
       "notif_for_tender": "لطلب عروض الأسعار \"{title}\"",
       "notif_review": "مراجعة العرض",
