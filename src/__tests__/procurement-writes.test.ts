@@ -376,8 +376,20 @@ describe("dispatch and the supplier's answer", () => {
     expect(po(id).promisedDate).toBe("2026-10-12")
     expect(last(po(id).log)).toMatchObject({ action: "date_updated", note: "تأخر الشحن", params: { from: "2026-10-05", date: "2026-10-12" } })
     expect(inbox("gate").map((n) => n.type)).toContain("po_date_updated")
-    await remindSupplier(db, buyer, id)
+    await remindSupplier(db, buyer, id, { now: new Date(Date.now() + 25 * 3_600_000) })
     expect(told("sup-user", "po_reminder")).toMatchObject({ i18n: { params: { ask: "@pn_po_reminder_ask_deliver" } } })
+  })
+
+  it("one reminder a day: a second press within 24 hours is refused and reaches nobody", async () => {
+    const id = await approvedOrder()
+    await sendPurchaseOrder(db, buyer, id, "portal")
+    const at = new Date("2026-10-01T09:00:00Z")
+    await remindSupplier(db, buyer, id, { now: at })
+    const sent = inbox("sup-user").filter((n) => n.type === "po_reminder").length
+    await expect(remindSupplier(db, buyer, id, { now: new Date("2026-10-02T08:59:00Z") })).rejects.toMatchObject({ code: "reminded_recently" })
+    expect(inbox("sup-user").filter((n) => n.type === "po_reminder")).toHaveLength(sent)
+    await remindSupplier(db, buyer, id, { now: new Date("2026-10-02T09:00:00Z") })
+    expect(po(id).log.filter((e) => e.action === "reminded")).toHaveLength(2)
   })
 })
 

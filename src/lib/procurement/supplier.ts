@@ -47,6 +47,9 @@ export function visibleSupplierOrders(orders: PurchaseOrder[]): PurchaseOrder[] 
 export const AWARDED = "مقبول"
 /** What a supplier reads while the award is still internal. */
 export const UNDER_REVIEW = "قيد المراجعة"
+/** What a supplier reads when the award was withdrawn before its order ever
+ * reached him — derived, never stored. "Under review" would have waited forever. */
+export const CLOSED_UNAWARDED = "مغلق"
 
 export interface AwardFacts {
   status?: string | null
@@ -84,7 +87,10 @@ export function awardDisclosed(offer: AwardFacts, ordersById: ReadonlyMap<string
  */
 export function supplierOfferStatus<T extends AwardFacts>(offer: T, ordersById: ReadonlyMap<string, PurchaseOrder>): string {
   const status = offer.status || ""
-  if (status === AWARDED && !awardDisclosed(offer, ordersById)) return UNDER_REVIEW
+  if (status === AWARDED && !awardDisclosed(offer, ordersById)) {
+    const po = offer.poId ? ordersById.get(offer.poId) : undefined
+    return po?.status === "cancelled" ? CLOSED_UNAWARDED : UNDER_REVIEW
+  }
   return status
 }
 

@@ -10,6 +10,7 @@
 import {
   AWARDED,
   UNDER_REVIEW,
+  CLOSED_UNAWARDED,
   asSupplierSees,
   awardDisclosed,
   supplierOfferStatus,
@@ -327,8 +328,9 @@ describe("the award, as the supplier may know it", () => {
     expect(supplierOfferStatus(award, orders(po({ status: "accepted", sentAt: "2026-09-22T09:00:00Z" })))).toBe(AWARDED)
   })
 
-  it("stays hidden when Finance cancels the order before it is ever sent", () => {
+  it("stays hidden when Finance cancels the order before it is ever sent — and reads closed, not under review forever", () => {
     expect(awardDisclosed(award, orders(po({ status: "cancelled", sentAt: null, log: [] })))).toBe(false)
+    expect(supplierOfferStatus(award, orders(po({ status: "cancelled", sentAt: null, log: [] })))).toBe(CLOSED_UNAWARDED)
   })
 
   it("stays hidden while the order has not been raised, or has not loaded", () => {

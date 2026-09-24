@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
-import { approvalRefusal, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf } from "@/lib/procurement/po"
+import { approvalRefusal, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil } from "@/lib/procurement/po"
 import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
 import {
@@ -143,6 +143,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const firestore = useFirestore()
   const { toast } = useToast()
   const fmt = useDateText()
+  const remindUntil = po ? reminderCooldownUntil(po, now) : null
   const { actor, policies } = world
   const { profile } = useResolvedProfile(actor.uid || null)
   const [dialog, setDialog] = useState<DialogState>(null)
@@ -317,9 +318,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 </Button>
               )}
               {f && expediter && (
-                <Button variant="outline" disabled={busy != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
-                  {t("next.remind")}
-                </Button>
+                <>
+                  <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
+                    {t("next.remind")}
+                  </Button>
+                  {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
+                </>
               )}
               {cancelLink}
             </div>
@@ -344,9 +348,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                 </Button>
               )}
               {f && expediter && canUpdateDate(po) && (
-                <Button variant="outline" disabled={busy != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
-                  {t("next.remind")}
-                </Button>
+                <>
+                  <Button variant="outline" disabled={busy != null || remindUntil != null} onClick={() => run("remind", () => remindSupplier(f, actor, po.id, opts), po.supplierUserId ? "toast.reminded_portal" : "toast.reminded_offline")}>
+                    {t("next.remind")}
+                  </Button>
+                  {remindUntil && <span className="text-[11px] text-muted-foreground">{t("next.remind_after", { time: remindUntil.toLocaleString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) })}</span>}
+                </>
               )}
               {f && canCloseShort(po, actor) && (
                 <Button variant="ghost" disabled={busy != null} onClick={() => setDialog({ kind: "close_short" })}>

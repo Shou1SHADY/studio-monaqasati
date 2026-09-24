@@ -12,6 +12,7 @@ import { collection, query, where, orderBy, doc, updateDoc } from "firebase/fire
 import { useToast } from "@/hooks/use-toast"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 import { asSupplierSees } from "@/lib/procurement/supplier"
+import { awaitsSupplier } from "@/lib/supplier-notifications"
 import { Link, useRouter } from "@/i18n/routing"
 
 export default function SupplierNotificationsPage() {
@@ -68,6 +69,7 @@ export default function SupplierNotificationsPage() {
   // An award still waiting for Finance is not news yet (`awardDisclosed`).
   const { ordersById } = useSupplierOrdersById(profile?.organizationId || user?.uid)
   const offers = React.useMemo(() => (offersRaw ? asSupplierSees(offersRaw as any[], ordersById) : offersRaw), [offersRaw, ordersById])
+  const offersById = React.useMemo(() => new Map((offers || []).map((o: any) => [o.id as string, o])), [offers])
 
 
   const supplierOrgId = (profile as any)?.organizationId || user?.uid
@@ -412,7 +414,8 @@ export default function SupplierNotificationsPage() {
               const unread = isUnread(notif)
               const isPending = notif.status === "قيد المراجعة" && notif.type !== "price_reduction" && notif.type !== "offer_accepted" && notif.type !== "offer_rejected"
               const isInquiryReply = notif.type === "inquiry_reply"
-              const isActionRequired = notif.type === "price_reduction" || notif.status === "مطلوب تخفيض" || notif.type === "sample_requested" || notif.sampleStatus === "مطلوبة"
+              const asks = awaitsSupplier(notif, notif.offerId ? offersById.get(notif.offerId) : null)
+              const isActionRequired = asks.reduction || asks.sample
 
               return (
                 <Card
@@ -510,7 +513,7 @@ export default function SupplierNotificationsPage() {
                     {unread && (notif.type === "sample_requested" || notif.sampleStatus === "مطلوبة") && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-blue-500 shrink-0 animate-pulse" />
                     )}
-                    {unread && (notif.type === "price_reduction" || notif.status === "مطلوب تخفيض") && (
+                    {unread && asks.reduction && (
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 h-3 w-3 rounded-full bg-amber-500 shrink-0 animate-pulse" />
                     )}
                     {unread && (notif.type === "offer_accepted" || notif.status === "مقبول") && (

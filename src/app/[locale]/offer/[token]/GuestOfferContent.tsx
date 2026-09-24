@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCity } from "@/lib/constants"
 import { OFFER_STATUS, SAMPLE_STATUS } from "@/utils/guest-offer-workflow"
+import { CLOSED_UNAWARDED } from "@/lib/procurement/supplier"
 import { priceOffer, pricedProducts } from "@/lib/procurement/offer-pricing"
 
 type GuestOfferData = {
@@ -243,6 +244,8 @@ export function GuestOfferContent() {
         return t("status_reduction")
       case OFFER_STATUS.delivered:
         return t("status_delivered")
+      case CLOSED_UNAWARDED:
+        return t("status_closed_unawarded")
       default:
         return status
     }

@@ -285,6 +285,18 @@ export const canRecordAcceptance = (po: PurchaseOrder): boolean => po.status ===
 /** A new promise from the supplier, while goods are still owed. */
 export const canUpdateDate = (po: PurchaseOrder): boolean => po.status === "accepted" && po.lines.some((l) => lineOutstanding(l) > 0)
 
+/** One reminder a day: a button pressed five times in a minute reached the
+ * supplier five times (UAT, 23 Sep). */
+export const REMINDER_COOLDOWN_HOURS = 24
+
+/** When the next reminder may go, or null when it may go now. */
+export function reminderCooldownUntil(po: Pick<PurchaseOrder, "log">, now: Date): Date | null {
+  const last = [...(po.log || [])].reverse().find((e) => e.action === "reminded")
+  if (!last) return null
+  const until = new Date(new Date(last.at).getTime() + REMINDER_COOLDOWN_HOURS * 3_600_000)
+  return until > now ? until : null
+}
+
 /** "The rest will not arrive" — only what is still outstanding can be cancelled. */
 export const canCancelRemainder = (po: PurchaseOrder): boolean => po.status === "accepted" && po.lines.some((l) => lineOutstanding(l) > 0)
 
@@ -380,9 +392,13 @@ export interface RfqInviteFacts {
 
 /** One supplier's score over his orders. An order counts once he accepted it;
  * it is late when its last receipt came after the promise, when nothing came
- * and the promise passed, or when it is late right now. */
+ * and the promise passed, or when it is late right now. On-time judges only
+ * orders that have a verdict — something arrived, or the promise has passed:
+ * one merely not yet due read "100% on time" for a supplier who had delivered
+ * nothing (UAT, 23 Sep). */
 export function supplierScore(orders: PurchaseOrder[], receipts: ReceiptFact[], now: Date, rfqInvites?: RfqInviteFacts | null): SupplierScore {
   let n = 0
+  let judged = 0
   let late = 0
   let rejected = 0
   let counted = 0
@@ -393,6 +409,7 @@ export function supplierScore(orders: PurchaseOrder[], receipts: ReceiptFact[], 
     const promise = po.promisedDate ? daysFromNow(po.promisedDate, now) : null
     const isLate = facts.lastReceiptDay != null ? facts.lateByDays > 0 : promise != null && promise < 0 ? true : poLate(po, now)
     if (isLate) late++
+    if (isLate || facts.lastReceiptDay != null || po.lines.some((l) => num(l.accepted) + num(l.rejected) > 0)) judged++
     for (const l of po.lines) {
       rejected += num(l.rejected)
       counted += num(l.accepted) + num(l.rejected)
@@ -401,7 +418,7 @@ export function supplierScore(orders: PurchaseOrder[], receipts: ReceiptFact[], 
   const invited = rfqInvites?.invited || 0
   return {
     orders: n,
-    onTimePercent: n ? Math.round(((n - late) / n) * 100) : null,
+    onTimePercent: judged ? Math.round(((judged - late) / judged) * 100) : null,
     rejectPercent: counted > 0 ? round2((rejected / counted) * 100) : null,
     responsePercent: invited > 0 ? Math.round(((rfqInvites?.responded || 0) / invited) * 100) : null,
   }

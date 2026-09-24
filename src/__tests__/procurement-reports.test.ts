@@ -78,7 +78,7 @@ describe("2 · spend by supplier — concentration above 30 %", () => {
     const w = world({
       orders: [
         po({ id: "a", lines: [line({ quantity: 10, accepted: 10 })], promisedDate: "2026-09-19" }), // 28,000, late (receipt 20th)
-        po({ id: "b", supplierOrgId: "sup2", supplierName: "Beta", lines: [line({ quantity: 5 })] }), // 14,000
+        po({ id: "b", supplierOrgId: "sup2", supplierName: "Beta", lines: [line({ quantity: 5 })] }), // 14,000, nothing arrived and not due → no verdict
         po({ id: "c", supplierOrgId: "sup3", supplierName: "Gamma", lines: [line({ quantity: 5 })], supplierAcceptedAt: null, status: "approved" }), // 14,000
       ],
       receipts: [receipt({ poId: "a", confirmedAt: "2026-09-20T08:00:00Z" })],
@@ -86,7 +86,7 @@ describe("2 · spend by supplier — concentration above 30 %", () => {
     const r = spendBySupplier(w, PERIOD, NOW)
     expect(r.rows.map((x) => [x.supplierName, x.value, x.sharePercent, x.onTimePercent, x.concentrated])).toEqual([
       ["Al-Hadid", 28000, 50, 0, true],
-      ["Beta", 14000, 25, 100, false],
+      ["Beta", 14000, 25, null, false],
       ["Gamma", 14000, 25, null, false],
     ])
     expect(r.totals.value).toBe(56000)
@@ -118,10 +118,11 @@ describe("3 · delivery performance", () => {
       ["d", null, "on_time_so_far"],
       ["e", null, "pending"],
     ])
-    // Al-Hadid: a and c late of four → 50 %; days late over the judged (3, 0, 3) → 2; rejects 5 of 200 counted.
+    // Al-Hadid: a and c late of the three with a verdict (d is not due and nothing came) → 33 %;
+    // days late over the judged (3, 0, 3) → 2; rejects 5 of 200 counted. Beta has no verdict yet.
     expect(r.suppliers).toEqual([
-      { supplierKey: "sup1", supplierName: "Al-Hadid", orders: 4, onTimePercent: 50, avgDaysLate: 2, rejectPercent: 2.5 },
-      { supplierKey: "s2", supplierName: "Beta", orders: 1, onTimePercent: 100, avgDaysLate: null, rejectPercent: null },
+      { supplierKey: "sup1", supplierName: "Al-Hadid", orders: 4, onTimePercent: 33, avgDaysLate: 2, rejectPercent: 2.5 },
+      { supplierKey: "s2", supplierName: "Beta", orders: 1, onTimePercent: null, avgDaysLate: null, rejectPercent: null },
     ])
   })
 })

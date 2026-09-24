@@ -37,7 +37,7 @@ import { Link } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { priceOffer, pricedProducts, revisePrice, type PricedProduct } from "@/lib/procurement/offer-pricing"
-import { asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
+import { CLOSED_UNAWARDED, asSupplierSees, legacyItemsFromRfq, type RfqProductLike } from "@/lib/procurement/supplier"
 import { useSupplierOrdersById } from "@/hooks/useSupplierOrdersById"
 
 export default function SupplierOffersPage() {
@@ -244,6 +244,12 @@ export default function SupplierOffersPage() {
         return (
           <Badge className="bg-blue-50 text-blue-600 border-blue-100 gap-1">
             <CheckCircle2 size={12} />{t("delivered_status")}
+          </Badge>
+        )
+      case CLOSED_UNAWARDED:
+        return (
+          <Badge className="bg-slate-100 text-slate-600 border-none gap-1">
+            <XCircle size={12} />{t("closed_unawarded_status")}
           </Badge>
         )
       default:

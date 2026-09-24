@@ -146,7 +146,7 @@ describe("T5h/T5i/T10 · confirm before the date · rejected at the gate · rate
     const due = po({ id: "due", promisedDate: "2026-09-23" })
     const t = todayTasks(world({ orders: [...history, due], receipts }), MANAGER, NOW).filter((x) => x.kind === "confirm_before_date")
     expect(t).toHaveLength(1)
-    expect(t[0]).toMatchObject({ severity: "blue", titleParams: { inDays: 1 }, subParams: { percent: 50 }, amount: null }) // 2 late of 4 accepted (the due one counts, on time so far)
+    expect(t[0]).toMatchObject({ severity: "blue", titleParams: { inDays: 1 }, subParams: { percent: 33 }, amount: null }) // 2 late of the 3 with a verdict (the due one is not judged yet)
     // With no record at all: no task (null is not "poor").
     expect(kinds(world({ orders: [due] }), MANAGER)).toEqual([])
     // An expediter is not asked to confirm ahead.

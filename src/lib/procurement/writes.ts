@@ -25,6 +25,7 @@ import {
   canRecordAcceptance,
   canSend,
   canUpdateDate,
+  reminderCooldownUntil,
   closeIsShort,
   isShortCompetition,
   lineToArrive,
@@ -77,6 +78,7 @@ export type ProcWriteErrorCode =
   | "cannot_rate"
   | "already_cancelled"
   | "has_receipts"
+  | "reminded_recently"
   // A price agreement (agreement-writes.ts).
   | "supplier_missing"
   | "no_lines"
@@ -620,6 +622,8 @@ export async function remindSupplier(firestore: Firestore, actor: ProcActor, poI
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
     if (po.status !== "sent" && !canUpdateDate(po)) throw new ProcWriteError("wrong_state")
+    const until = reminderCooldownUntil(po, opts.now ?? new Date())
+    if (until) throw new ProcWriteError("reminded_recently")
     return { patch: {}, log: entry(actor, "reminded", at, { params: { about: po.status === "sent" ? "acceptance" : "delivery" } }) }
   })
   if (po.supplierUserId) {

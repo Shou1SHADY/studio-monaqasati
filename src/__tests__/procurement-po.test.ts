@@ -301,6 +301,12 @@ describe("supplierScore — null is 'no record', never 0 or 100", () => {
     expect(supplierScore([po({ supplierAcceptedAt: null, status: "sent" })], [], NOW)).toEqual({ orders: 0, onTimePercent: null, rejectPercent: null, responsePercent: null })
   })
 
+  it("an accepted order not yet due, with nothing arrived, has no verdict — not '100% on time' (UAT, 23 Sep)", () => {
+    const s = supplierScore([po({ id: "x", promisedDate: "2026-09-30", lines: [line()] })], [], NOW)
+    expect(s.orders).toBe(1)
+    expect(s.onTimePercent).toBeNull()
+  })
+
   it("late by last receipt, by a passed promise with nothing received, or right now; rejects over accepted+rejected", () => {
     const a = po({ id: "a", promisedDate: "2026-09-15", lines: [line({ accepted: 100 })] }) // last receipt 18th → late
     const b = po({ id: "b", promisedDate: "2026-09-30", lines: [line({ accepted: 96, rejected: 4 })] }) // on time so far
