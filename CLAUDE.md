@@ -9,7 +9,7 @@
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js **15.5.9** (App Router, Turbopack) |
+| Framework | Next.js **15.5.26** (App Router, Turbopack) |
 | Language | TypeScript 5 |
 | Styling | Tailwind CSS 3 + tailwindcss-animate |
 | Components | shadcn/ui (Radix UI primitives) |
@@ -57,7 +57,7 @@ npm run validate:full    # Full validation
 ```
 
 > ⚠️ `next-dev-loop` and `next-cache-components-optimizer` skills require Next.js **16.3+** and Turbopack.
-> Currently on 15.5.9 — those skills will refuse. Upgrade when ready: `npx next upgrade`
+> Currently on 15.5.26 — those skills will refuse. Upgrade when ready: `npx next upgrade`
 
 ## Directory Map
 
@@ -573,7 +573,7 @@ This is the standing workflow. It applies to every request unless the owner says
 | **Figma**, **Gmail** | Connected | Send email only when the owner asks (his address: marcokhouzam@gmail.com) |
 
 **Security & performance tooling**
-- **Baseline today:** `npm audit --omit=dev`. On 25 Sep 2026 it reported 2 critical and 16 high. The top one is `next` 15.5.9, fixed in **15.5.26** (a patch release). Most of the rest come through Genkit and OpenTelemetry. Tracked in Jira.
+- **Baseline today:** `npm audit --omit=dev`. On 25 Sep 2026 it reported 2 critical and 16 high. The top one, `next` 15.5.9, was upgraded to **15.5.26** the same day (bc2d016). What remains is 1 critical (`websocket-driver`, transitive) and the highs, mostly through Genkit and OpenTelemetry. Tracked in DEV-22.
 - **SonarQube** (code quality + security): official `SonarSource/sonarqube-mcp-server`; the Claude Code quickstart is in the Sonar docs. Needs a SonarQube Cloud or Server token.
 - **Black Duck SCA** (dependency risk / SBOM): official `blackducksoftware/sca-mcp` (pip `blackduck-sca-mcp`). Needs a Black Duck instance URL and an API token (enterprise license). Use a read-only token, because a write token lets the assistant change remediation status.
 - **Snyk** (free-tier alternative): the Snyk CLI ≥ 1.1298 includes an MCP server (`snyk mcp`). Needs a Snyk account.
