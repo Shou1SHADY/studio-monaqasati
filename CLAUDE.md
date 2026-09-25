@@ -140,6 +140,8 @@ docs/                   # sales-prd-status.md, procurement-prd-status.md, custom
 | `src/components/contractor/ProcurementHeader.tsx` | The head of every Procurement page: module tile, title, actions, and the tab rail (RFQs · purchase requests · suppliers · goods received), permission-gated like the sidebar |
 | `scripts/check-i18n-links.mjs` | Every translation key used in `src/` must exist in both message files under its namespace; every portal link must hit a route. Run before committing |
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
+| `src/lib/sms.ts` + `src/lib/otp.ts` | SMS through Twilio. `isSmsConfigured` needs a real AC… SID, the token, and a sender: an E.164 number, a registered alpha sender ID such as `MdmakTech`, or `TWILIO_MESSAGING_SERVICE_SID`. One-time codes (login, receipt sign-off) go through **Twilio Verify** when `TWILIO_VERIFY_SERVICE_SID` is set; our resend/guess/expiry/one-use rules still apply. UAT without Twilio shows the code on screen |
+| `src/lib/sentry-options.ts` + `src/instrumentation*.ts` + `src/app/global-error.tsx` | Sentry (org `mdmak`, EU, project `studio-monaqasati`). Deployed builds only, tagged production/uat. NO user info, cookies, headers, bodies or query strings; guest-link tokens (`/receive`, `/offer`, `/rfq` + their APIs) are masked. Keep it that way when adding options |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
 
@@ -524,3 +526,56 @@ the live rules came from, or says they match no commit — in which case someone
 deployed uncommitted rules and they must be compared before being overwritten.
 (A service-account token must NOT send `x-goog-user-project`; only a gcloud
 user token needs that header — the script handles it.)
+
+## How we work — every session (read before acting)
+
+This is the standing workflow. It applies to every request unless the owner says otherwise.
+
+**1. Start**
+- Read memory (`MEMORY.md`). For status questions, check the open Jira issues (see Connectors).
+- `git fetch origin` and check `HEAD..origin/main` before touching anything. Other sessions push here.
+
+**2. Change**
+- Follow the rules above (RTL/i18n, `cn()`, no `any`, zod at boundaries, rules for new collections).
+- Every user-visible string goes in both `messages/ar.json` and `messages/en.json`.
+- Every fix gets a test that fails without it. A bug seen in the UI is re-checked in the UI, on UAT when possible.
+- Some files are mirrored verbatim into the mobile app (`~/Downloads/_Projects/mdmak-mob/artifacts/mobile`; the list is in `scripts/check-mirrors.mjs` there): procurement `types.ts`/`po.ts`/`supplier.ts`/`receipts.ts`, `mfg-events.ts`, `sales-numbering.ts`, accounting, and others. After changing one, re-copy it whole into mobile and run `node scripts/check-mirrors.mjs <webDir>`. After reviewing any REVIEW items, run it again with `--update-lock`. Then run mobile `npx tsc --noEmit` and `npx jest`.
+
+**3. Check before committing** (all must pass)
+- `npx tsc --noEmit`. The only accepted errors are the existing ones in `src/__tests__/lib-seo.test.ts` and `src/ai/generate.ts`.
+- `npx jest` (full suite).
+- `node scripts/check-i18n-links.mjs`: 0 missing keys, 0 one-language keys, 0 dead links.
+- `npx eslint <changed files>`: no new warnings.
+- The pre-commit hook also runs the production build (several minutes per commit), so batch commits sensibly.
+
+**4. Commit and push**
+- Commit in logical chunks, with the attribution trailer the session asks for.
+- **Every push needs the owner's explicit yes, every time.** After pushing `main`, run `git checkout uat && git merge main && git push origin uat` so uat never falls behind, then go back to `main`. The mobile repo is pushed separately and needs its own yes.
+- Never commit the owner's local `.claude/settings.json` edits unless asked. It is shared team config.
+- After a push to `uat`, confirm the App Hosting build reaches READY (build list API in "When UAT looks stale").
+
+**5. Track**
+- Jira DEV: open an issue for each finding or piece of work, and close it with the commit hash once pushed.
+
+**6. Testing on UAT**
+- Claude never types passwords or submits sign-in forms. The owner signs in (the Claude browser pane for one role, Chrome for the other). Test accounts are in `..\uat-seed-accounts-*.txt`; never print or commit them.
+- Irreversible test actions (saving a receipt, accepting an order, sending a notice) need the owner's OK first.
+- When a memo depends on a React Hook Form array, use `useWatch`, not `watch()`. `watch` returns an array it mutates in place, so the memo never recomputes.
+
+## Connectors & external services
+
+| Service | What / where | Notes |
+|---|---|---|
+| **Jira** (Atlassian connector) | https://marcokhouzam.atlassian.net, project **DEV** (service desk), cloudId `f31eee5b-9ca0-495e-9a94-582c48d8c899` | Task: transition 61 "Mark as done". Bug / New Feature: 2 Assign → 3 Start work → 9 Resolved. Labels: `shipped`, `uat-YYYY-MM-DD`. Confluence on this site returned "temporarily unavailable" (24 Sep 2026) |
+| **Sentry** (connector) | https://mdmak.sentry.io, org `mdmak` (region `https://de.sentry.io`), project `studio-monaqasati` | Uptime monitors: prod 2289683, UAT 2289684 (every 5 min, alert after 3 failures). Readable stack traces need `SENTRY_AUTH_TOKEN` in Vercel (DEV-21) |
+| **Twilio** (docs connector) | Searches and reads Twilio's docs only; it cannot send messages or change the account | KSA: the alpha sender ID `MdmakTech` needs NOC registration (DEV-1). Codes via Verify (DEV-2). Env vars: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_VERIFY_SERVICE_SID` |
+| **Vercel** | Production site. Env vars live in its dashboard (a teammate's account) | Not connected yet. Claude cannot see production deploys or logs until it is |
+| **Figma**, **Gmail** | Connected | Send email only when the owner asks (his address: marcokhouzam@gmail.com) |
+
+**Security & performance tooling**
+- **Baseline today:** `npm audit --omit=dev`. On 25 Sep 2026 it reported 2 critical and 16 high. The top one is `next` 15.5.9, fixed in **15.5.26** (a patch release). Most of the rest come through Genkit and OpenTelemetry. Tracked in Jira.
+- **SonarQube** (code quality + security): official `SonarSource/sonarqube-mcp-server`; the Claude Code quickstart is in the Sonar docs. Needs a SonarQube Cloud or Server token.
+- **Black Duck SCA** (dependency risk / SBOM): official `blackducksoftware/sca-mcp` (pip `blackduck-sca-mcp`). Needs a Black Duck instance URL and an API token (enterprise license). Use a read-only token, because a write token lets the assistant change remediation status.
+- **Snyk** (free-tier alternative): the Snyk CLI ≥ 1.1298 includes an MCP server (`snyk mcp`). Needs a Snyk account.
+- **Performance:** Grafana `grafana/mcp-k6` for load tests (needs the k6 binary). Sentry performance tracing (10% of requests) is already on. Lighthouse runs without a connector (`npx lighthouse <url>`).
+- **Adding a tool:** `claude mcp add …` in an interactive terminal, with the token supplied by the owner. Claude never pastes tokens into forms.
