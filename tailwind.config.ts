@@ -67,6 +67,11 @@ export default {
           DEFAULT: '#7C3AED',
           foreground: '#FFFFFF',
         },
+        // Project Management's identity (PM 1.0 prototype, --pm #1F5AA8).
+        pm: {
+          DEFAULT: '#1F5AA8',
+          foreground: '#FFFFFF',
+        },
         // The ACTIVE module's own colour. `--module` is set by data-accent on the
         // portal frame (globals.css), so `bg-module/10 text-module` inside any
         // screen is that module's colour without per-screen wiring. `on-dark`

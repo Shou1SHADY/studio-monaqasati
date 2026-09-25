@@ -53,6 +53,8 @@
     --indigo-foreground: 0 0% 100%;
     --violet: 262 83% 58%;
     --violet-foreground: 0 0% 100%;
+    --pm: 214 69% 39%;
+    --pm-foreground: 0 0% 100%;
     /* The active module's colour — see `module` in tailwind.config.ts. Defaults
        to the brand navy; the portal frame sets data-accent from the module
        registry (portal-components.ts) and the rules below pick the colour. */
@@ -74,6 +76,7 @@
   [data-accent="destructive"] { --module: var(--destructive); --module-foreground: var(--destructive-foreground); --module-on-dark: var(--destructive); }
   [data-accent="indigo"] { --module: var(--indigo); --module-foreground: var(--indigo-foreground); --module-on-dark: var(--indigo); }
   [data-accent="violet"] { --module: var(--violet); --module-foreground: var(--violet-foreground); --module-on-dark: var(--violet); }
+  [data-accent="pm"] { --module: var(--pm); --module-foreground: var(--pm-foreground); --module-on-dark: var(--pm); }
 
   .dark {
     --background: 222 47% 11%;
