@@ -7,7 +7,6 @@ import {
   getDocs,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -24,12 +23,10 @@ import {
   opportunityBestValue,
   stageHistory,
   type ActivityType,
-  type CrmContact,
   type CrmOpportunity,
   type HandoverStatus,
   type ProjectHandover,
 } from "@/lib/crm"
-import { defaultEnabledSections } from "@/lib/project-sections"
 
 /** Firestore caps a batch at 500 writes. */
 const BATCH_LIMIT = 500
@@ -139,157 +136,6 @@ export async function renameContactReferences(
 // ---------------------------------------------------------------------------
 // Handover — the CRM's last step
 // ---------------------------------------------------------------------------
-
-export interface HandoverInput {
-  opportunity: CrmOpportunity
-  contact?: CrmContact | null
-  orgId: string
-  /** The signed-in member's uid — becomes the project's `contractorId`, the
-   * same field the manual "new project" wizard writes. */
-  userId: string
-  contractNumber: string
-  durationMonths: number | null
-  advancePercent: number | null
-  retentionPercent: number | null
-  /** The project manager being asked to take the project. Required: a
-   * handover nobody is asked to accept is a project nobody knows about. */
-  projectManagerId: string
-  projectManagerName?: string | null
-  /** The PM's default permission group, copied onto the project assignment. */
-  projectManagerGroupId?: string | null
-  /** Who is handing over — where a rejection gets reported back to. */
-  requestedByName?: string | null
-  notes?: string | null
-  /** Title for the auto-created kickoff meeting. Localised by the caller. */
-  kickoffTitle?: string
-  /** Notification copy for the PM. Localised by the caller. */
-  notification?: { title: string; message: string }
-}
-
-/**
- * Turn a won opportunity into a real project.
- *
- * The project doc is written with exactly the shape `projects/new` produces —
- * same field names, same `enabledSections` defaults, same empty `rfqIds` —
- * so a generated project is indistinguishable from a hand-created one
- * everywhere downstream (the projects list, the BOQ tab, tenders, warehouses).
- *
- * The project is created BEFORE the opportunity is stamped: if the second
- * write fails, the org has a real project and a deal that can be handed over
- * again, which is recoverable. The reverse order would strand a deal marked
- * "handed over" with nothing on the other side.
- */
-export async function createProjectFromOpportunity(
-  firestore: Firestore,
-  input: HandoverInput
-): Promise<string> {
-  const { opportunity, contact, orgId, userId } = input
-
-  const budget = opportunityBestValue(opportunity)
-
-  const handover: ProjectHandover = {
-    status: "pending",
-    pmId: input.projectManagerId,
-    pmName: input.projectManagerName?.trim() || null,
-    requestedByUserId: userId,
-    requestedByName: input.requestedByName?.trim() || null,
-    requestedAt: new Date().toISOString(),
-    respondedAt: null,
-    rejectReason: null,
-    opportunityId: opportunity.id,
-  }
-
-  const projectRef = await addDoc(collection(firestore, "projects"), {
-    organizationId: orgId || userId,
-    contractorId: userId,
-    name: opportunity.title,
-    description: input.notes?.trim() || opportunity.notes || null,
-    location: contact?.city || null,
-    region: null,
-    budget: budget > 0 ? budget : null,
-    // A handed-over deal is signed but not started — "approved, waiting start"
-    // is the status a project manager expects to find it in.
-    status: "approved_waiting_start",
-    projectType: null,
-    clientName: opportunity.contactName || contact?.name || null,
-    clientType: contact?.entityType || null,
-    blueprintUrl: null,
-    enabledSections: Array.from(defaultEnabledSections()),
-    rfqIds: [],
-    // Provenance, so a project can always be traced back to the deal that won it.
-    sourceOpportunityId: opportunity.id,
-    contractNumber: input.contractNumber.trim() || null,
-    durationMonths: input.durationMonths ?? null,
-    advancePercent: input.advancePercent ?? null,
-    retentionPercent: input.retentionPercent ?? null,
-    projectManagerId: input.projectManagerId,
-    projectManagerName: input.projectManagerName?.trim() || null,
-    handover,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-
-  // The PM becomes a member of the project with the same group they hold
-  // org-wide, so the project shows up in their list and the permission rules
-  // treat them exactly as a manually assigned member would be.
-  await setDoc(
-    doc(firestore, "projects", projectRef.id, "members", input.projectManagerId),
-    {
-      userId: input.projectManagerId,
-      groupId: input.projectManagerGroupId ?? null,
-      organizationId: orgId || userId,
-      addedBy: userId,
-      viaHandover: true,
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  )
-
-  await updateDoc(doc(firestore, CRM_OPPORTUNITIES, opportunity.id), {
-    state: "handed_over",
-    stage: "won",
-    stageHistory: [...(opportunity.stageHistory ?? []), historyEntry("handed_over", input.requestedByName ?? null)],
-    projectId: projectRef.id,
-    contractNumber: input.contractNumber.trim() || null,
-    durationMonths: input.durationMonths ?? null,
-    advancePercent: input.advancePercent ?? null,
-    retentionPercent: input.retentionPercent ?? null,
-    projectManagerId: input.projectManagerId,
-    projectManagerName: input.projectManagerName?.trim() || null,
-    handoverStatus: "pending",
-    handoverRejectReason: null,
-    handedOverAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  })
-
-  // Tell the PM. Without this the project exists and nobody who has to run
-  // it knows — which is the gap the whole accept/reject step exists to close.
-  if (input.notification) {
-    await notifyUser(firestore, input.projectManagerId, {
-      ...input.notification,
-      type: "project_handover",
-      organizationId: orgId || userId,
-      projectId: projectRef.id,
-      opportunityId: opportunity.id,
-    })
-  }
-
-  // A handed-over project that nobody kicks off is how a signed contract sits
-  // untouched for three weeks. Best-effort — the handover already succeeded.
-  await createFollowUp(firestore, {
-    orgId,
-    contactId: opportunity.contactId,
-    contactName: opportunity.contactName,
-    opportunityId: opportunity.id,
-    opportunityTitle: opportunity.title,
-    type: "meeting",
-    title: input.kickoffTitle ?? `${opportunity.title} — ${input.contractNumber}`,
-    dueInDays: 7,
-    ownerName: input.projectManagerName ?? null,
-  })
-
-  return projectRef.id
-}
 
 /**
  * In-app notification for one user. Same shape the invitation and offer

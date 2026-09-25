@@ -445,6 +445,8 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             requiredPermission: "projects.view",
             children: [
               { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "projects.edit" },
+              // PM 1.0 (HO-01): handover files from CRM, addressed to a manager.
+              { titleKey: "contractor_pm_inbox", href: "/contractor/projects/inbox", icon: Inbox },
             ],
           },
         ],

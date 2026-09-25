@@ -637,7 +637,8 @@
       "contractor_proc_today": "اليوم",
       "contractor_purchase_orders": "أوامر الشراء",
       "contractor_proc_reports": "التقارير",
-      "contractor_proc_settings": "الإعدادات والحدود"
+      "contractor_proc_settings": "الإعدادات والحدود",
+      "contractor_pm_inbox": "مشاريع جديدة"
     },
     "Layout": {
       "app_switcher_label": "تبديل المكون",
@@ -2510,15 +2511,15 @@
       "crm_opp_stage_readonly_hint": "تتقدم المرحلة باستكمال شروطها من صفحة الفرصة",
       "crm_close_no_permission": "تسجيل الفوز أو الخسارة أو التسليم يتطلب صلاحية إغلاق الصفقات",
       "crm_handover_pm_required": "اختر مدير المشروع الذي سيتسلّم المشروع",
-      "crm_handover_pm_hint": "سيصله إشعار ويقبل المشروع أو يرفضه",
-      "crm_handover_effect_pm": "يصل إشعار لمدير المشروع لقبول التسليم أو رفضه",
+      "crm_handover_pm_hint": "يقبله أو يرجعه أو يحوّله من «مشاريع جديدة»",
+      "crm_handover_effect_pm": "يقبله المدير، أو يرجعه للاستيفاء، أو يحوّله لمدير آخر",
       "crm_handover_status_pending": "بانتظار قبول مدير المشروع",
       "crm_handover_status_accepted": "قبِله مدير المشروع",
       "crm_handover_status_rejected": "رفضه مدير المشروع",
       "crm_handover_project_status": "حالة المشروع",
       "crm_handover_rejected_banner": "رفض {pm} تسلّم المشروع — يمكن تسليمه لمدير آخر",
-      "crm_handover_notif_title": "مشروع جديد بانتظار قبولك",
-      "crm_handover_notif_message": "سلّمك {by} مشروع «{project}». افتح المشروع لقبوله أو رفضه.",
+      "crm_handover_notif_title": "ملف تسليم بانتظارك",
+      "crm_handover_notif_message": "أرسل إليك {by} ملف تسليم «{project}». افتح «مشاريع جديدة» لقبوله أو إرجاعه أو تحويله.",
       "crm_history_handover_accepted": "قبِل مدير المشروع التسليم",
       "crm_history_handover_rejected": "رفض مدير المشروع التسليم",
       "crm_opp_estimated_value": "القيمة التقديرية (ر.س)",
@@ -2595,25 +2596,25 @@
       "crm_hold_revisit": "موعد إعادة النظر",
       "crm_hold_revisit_hint": "تعود الفرصة إلى المرحلة التي توقفت عندها",
       "crm_handover_title": "التسليم إلى إدارة المشاريع",
-      "crm_handover_desc": "حوّل الفرصة المُرساة إلى مشروع — آخر خطوة في إدارة العلاقات",
-      "crm_handover_btn": "أنشئ المشروع",
+      "crm_handover_desc": "أرسل الفرصة المُرساة لمدير مشروع كملف تسليم — بقبوله يُنشأ المشروع",
+      "crm_handover_btn": "أرسل ملف التسليم",
       "crm_handover_prompt": "هذه الفرصة مُرساة. سلّمها لإنشاء المشروع.",
       "crm_handover_project_name": "اسم المشروع",
       "crm_handover_client": "العميل",
       "crm_handover_contract_value": "قيمة العقد",
       "crm_handover_contract_number": "رقم العقد",
       "crm_handover_contract_required": "أدخل رقم العقد",
-      "crm_handover_duration": "مدة التنفيذ (شهر)",
+      "crm_handover_duration": "مدة التنفيذ (يوماً)",
       "crm_handover_pm": "مدير المشروع المستلِم",
       "crm_handover_advance": "دفعة مقدمة %",
       "crm_handover_retention": "محتجز %",
       "crm_handover_notes": "ملاحظات التسليم",
       "crm_handover_notes_placeholder": "ما يحتاج فريق المشروع معرفته من اليوم الأول",
-      "crm_handover_effect_project": "يُنشأ مشروع بقيمة الترسية",
-      "crm_handover_effect_sections": "يبدأ بأقسام المشروع الافتراضية مفعّلة",
+      "crm_handover_effect_project": "لا يُنشأ مشروع الآن — يصل ملف تسليم إلى «مشاريع جديدة» لدى المدير",
+      "crm_handover_effect_sections": "عند القبول يُولد المشروع برقمه وأقسامه حسب نوعه وجدول كمياته",
       "crm_handover_effect_closed": "تُقفل الفرصة كمحوّلة لمشروع ويبقى سجلّها",
-      "crm_handover_done": "سُلّمت — أُنشئ المشروع",
-      "crm_handover_error": "تعذّر إنشاء المشروع",
+      "crm_handover_done": "أُرسل ملف التسليم لمدير المشروع",
+      "crm_handover_error": "تعذّر إرسال ملف التسليم",
       "crm_handover_open_project": "افتح المشروع",
       "crm_handover_months": "{months} شهراً",
       "crm_offer_versions": "نسخ العرض",
@@ -7966,7 +7967,19 @@
       "acc_settings_projection_title": "التدفق النقدي المتوقع",
       "acc_settings_customer_days": "مدة تحصيل العملاء (يوم)",
       "acc_settings_supplier_days": "مدة السداد للموردين (يوم)",
-      "acc_settings_projection_hint": "متى يُتوقع تحصيل الفاتورة أو سدادها بعد قيدها، في لوحة المالية."
+      "acc_settings_projection_hint": "متى يُتوقع تحصيل الفاتورة أو سدادها بعد قيدها، في لوحة المالية.",
+      "pm_kind_bld": "مبانٍ",
+      "pm_kind_infra": "بنية تحتية",
+      "pm_kind_road": "طرق",
+      "pm_kind_ind": "صناعي",
+      "pm_kind_mep": "كهروميكانيكال",
+      "pm_kind_mnt": "صيانة وتشغيل",
+      "pm_kind_own": "مشروع داخلي (تطوير ذاتي)",
+      "pm_crumb_projects": "المشاريع",
+      "crm_handover_kind": "نوع المشروع",
+      "crm_handover_signed_on": "تاريخ توقيع العقد",
+      "crm_handover_signed_hint": "بدونه لا يستطيع المدير قبول الملف",
+      "crm_handover_start_on": "يبدأ العقد في"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -11662,6 +11675,196 @@
           "item4": "لا نعتمد أمراً أعددناه",
           "item5": "لا نُظهر سعراً لمَن لا يملك رؤيته",
           "item6": "لا نراسل المورد إلا بإرسال الأمر والتذكير"
+        }
+      }
+    },
+    "PM": {
+      "cancel": "إلغاء",
+      "back": "رجوع",
+      "next": "التالي",
+      "cannot_save": "لا يُحفظ بعد",
+      "cannot_accept": "لا يُقبل بحالته",
+      "cannot_start": "لا يبدأ بعد",
+      "not_fixed": "غير مثبّتة",
+      "not_signed": "لم يُوقّع بعد",
+      "days": "{count, plural, zero {# يوم} one {يوم واحد} two {يومان} few {# أيام} many {# يوماً} other {# يوم}}",
+      "error": {
+        "save": "تعذّر الحفظ — حاول مجدداً",
+        "missing": "لم يعد ملف التسليم موجوداً",
+        "not_yours": "ملف التسليم موجَّه لمدير آخر",
+        "not_waiting": "سبقت الإجابة عن ملف التسليم",
+        "blocked": "لا يُقبل قبل تثبيت القيمة والمدة وتاريخ التوقيع",
+        "invalid": "بعض القيم غير صحيحة"
+      },
+      "field": {
+        "client": "العميل",
+        "contract_number": "رقم العقد",
+        "value": "قيمة الترسية (قبل الضريبة)",
+        "duration": "المدة التعاقدية",
+        "signed_on": "توقيع العقد",
+        "start_on": "يبدأ العقد",
+        "advance_retention": "دفعة مقدمة · محتجز",
+        "kind": "نوع المشروع",
+        "location": "الموقع",
+        "assigned_to": "مسند إلى",
+        "note": "ملاحظة التسليم"
+      },
+      "accept_block": {
+        "no_value": "قيمة العقد غير مثبّتة",
+        "no_duration": "المدة التعاقدية غير مثبّتة",
+        "not_signed": "لا تاريخ توقيع للعقد",
+        "not_waiting": "سبقت الإجابة عنه"
+      },
+      "start_block": {
+        "unsaved": "احفظ الشروط أولاً",
+        "not_plan": "بدأ المشروع فعلاً",
+        "no_manager": "لا مدير للمشروع",
+        "no_boq": "لا بنود في جدول الكميات",
+        "terms_invalid": "شروط العقد غير صحيحة"
+      },
+      "lifecycle": {
+        "plan": "لم يبدأ",
+        "live": "قيد التنفيذ",
+        "hold": "متوقف",
+        "done": "مُسلَّم",
+        "closed": "مغلق"
+      },
+      "missing": {
+        "boq": "جدول كميات مسعّر",
+        "dwg": "المخططات المعتمدة للتنفيذ",
+        "ctr": "العقد الموقّع من الطرفين",
+        "pay": "شروط الدفع والمحتجز والدفعة المقدمة",
+        "site": "تاريخ تسليم الموقع",
+        "spec": "المواصفات الفنية وملاحقها"
+      },
+      "notif": {
+        "reassigned_title": "وصلك ملف تسليم محوَّل",
+        "reassigned_message": "حوّل إليك {by} ملف تسليم «{project}». افتح «مشاريع جديدة» للإجابة عنه.",
+        "returned_title": "أُرجع ملف تسليم للاستيفاء",
+        "returned_message": "أُرجع «{project}» بـ{count, plural, one {نقص واحد} two {نقصين} few {# نواقص} many {# نقصاً} other {# نقص}}. استوفِه وأرسله مجدداً.",
+        "accepted_title": "قُبل التسليم — أُنشئ المشروع",
+        "accepted_message": "قبِل {by} «{project}» وأُنشئ المشروع."
+      },
+      "reassign": {
+        "title": "أعِد التوجيه لمدير آخر",
+        "desc": "يبقى في «مشاريع جديدة» للمدير الجديد، ولا يعود إلى علاقات العملاء.",
+        "to": "المدير الجديد",
+        "pick": "اختر مديراً",
+        "reason": "السبب",
+        "other_text": "اذكر السبب",
+        "submit": "حوِّله",
+        "done": "حُوِّل إلى {name}",
+        "block": {
+          "same_manager": "اختر مديراً آخر",
+          "reason_text": "اذكر السبب"
+        },
+        "reasons": {
+          "load": "حِملي الحالي مرتفع",
+          "spec": "خارج تخصصي الفني",
+          "geo": "خارج نطاقي الجغرافي",
+          "clash": "يتعارض مع بدء مشروع قائم لدي",
+          "other": "سبب آخر — يُذكر"
+        }
+      },
+      "return": {
+        "title": "أرجِعه للاستيفاء",
+        "desc": "يعود إلى علاقات العملاء بقائمة النواقص، ولا يُنشأ مشروع.",
+        "what": "ما الناقص",
+        "note": "ملاحظة (اختياري)",
+        "submit": "أرجِعه",
+        "done": "أُرجع إلى علاقات العملاء بـ{count, plural, one {نقص واحد} two {نقصين} few {# نواقص} many {# نقصاً} other {# نقص}}"
+      },
+      "inbox": {
+        "title": "مشاريع جديدة",
+        "desc": "ملفات التسليم من علاقات العملاء — اقبل الملف ليُنشأ مشروعه، أو أرجِعه، أو حوِّله",
+        "kpis": "أرقام التسليم",
+        "kpi_mine": "بانتظارك",
+        "kpi_rush": "يبدأ العقد خلال 3 أسابيع",
+        "kpi_incomplete": "ملف ناقص",
+        "empty_title": "لا ملف تسليم بانتظارك",
+        "empty_desc": "حين تسلّمك علاقات العملاء فرصة مُرساة، تصل هنا.",
+        "pending_for": "معلّق منذ {count, plural, zero {# يوم} one {يوم واحد} two {يومان} few {# أيام} many {# يوماً} other {# يوم}}",
+        "accept": "اقبل وأنشئ المشروع",
+        "reassign": "حوِّله لمدير آخر",
+        "return": "أرجِعه للاستيفاء",
+        "not_yours": "موجَّه إلى {name} — وحده يجيب عنه"
+      },
+      "wizard": {
+        "title": "قبول ملف التسليم",
+        "steps_label": "الخطوات",
+        "step_project": "المشروع والعقد",
+        "step_sections": "الأقسام",
+        "step_boq": "جدول الكميات والمراجعة",
+        "read_only_note": "بيانات العقد من علاقات العملاء تُقرأ هنا ولا تُعدَّل. وما ينقصها من شروط يُستكمل في المشروع قبل البدء.",
+        "self_dev_note": "تطوير ذاتي داخلي: لا أحد يدفع، فالمستخلصات والتحصيل مطفأة.",
+        "sections_note": "أقسام مقترحة لنوع «{kind}». أطفئ ما لا يحتاجه هذا العقد.",
+        "core": "أساسي",
+        "boq_title": "جدول الكميات",
+        "boq_note": "استورد جدول الكميات المسعّر (Excel). البنود تُستورد ولا تُعاد كتابتها، والبند غير المسعّر لا يُضيف شيئاً حتى يُسعَّر.",
+        "boq_upload": "اختر ملف جدول الكميات",
+        "boq_loaded": "{count, plural, one {بند واحد} two {بندان} few {# بنود} many {# بنداً} other {# بند}} جاهزة للاستيراد",
+        "boq_later": "أو اقبل الآن واستورد الجدول من المشروع لاحقاً — والقياس ينتظره.",
+        "boq_parse_error": "تعذّرت قراءة الملف",
+        "boq_partial": "أُنشئ المشروع لكن لم يُستورد الجدول — استورده من المشروع",
+        "effect_project": "يُنشأ المشروع «لم يبدأ» برقمه الخاص",
+        "effect_manager": "تُسنَد مديراً له",
+        "effect_terms": "تُستكمل شروط العقد في المشروع، ثم تُجمَّد عند البدء",
+        "effect_advance": "تصل المالية شرطَ الدفعة المقدمة مرة واحدة",
+        "effect_crm": "ترى علاقات العملاء التسليم مقبولاً",
+        "submit": "اقبل وأنشئ المشروع",
+        "done": "قُبل — أُنشئ المشروع {number}"
+      },
+      "terms": {
+        "title": "شروط العقد",
+        "saved": "حُفظت الشروط",
+        "already_started": "بدأ المشروع — لا تتغيّر الشروط إلا بملحق",
+        "started": "بدأ العمل — جُمِّد العقد الأصلي",
+        "planned_end": "النهاية المخططة",
+        "plan_note": "استكمل العقد الأصلي قبل البدء: ما حمله التسليم وما نقصه. ويُجمَّد عند بدء العمل.",
+        "frozen_title": "العقد الأصلي مجمَّد",
+        "frozen_note": "جُمِّد عند البدء في {date}. وأي تغيير بعده ملحق فوقه — لا تعديل عليه.",
+        "original_kept": "الأصل كما وُقّع: دفعة مقدمة {advance} · محتجز {retention}",
+        "save": "احفظ الشروط",
+        "start": "ابدأ العمل",
+        "damages": "غرامة التأخير",
+        "damages_rate": "النسبة الأسبوعية (% من العقد)",
+        "damages_cap": "السقف (% من العقد)",
+        "payer": "مَن يدفع لك",
+        "basis": "أساس التسعير",
+        "advance": "الدفعة المقدمة %",
+        "advanceRecovery": "استرداد الدفعة",
+        "retention": "المحتجز %",
+        "retentionCap": "سقف المحتجز (% من العقد)",
+        "retentionRelease": "إفراج المحتجز",
+        "paymentDays": "مهلة السداد (يوم)",
+        "consultantDays": "مهلة الاستشاري (يوم)",
+        "claimNoticeDays": "مهلة الإشعار بالمطالبة (يوم)",
+        "defectsDays": "فترة الضمان (يوم)",
+        "problem": {
+          "advance_range": "الدفعة المقدمة بين 0 و100%",
+          "retention_range": "المحتجز بين 0 و100%",
+          "cap_range": "سقف المحتجز بين 0 و100%",
+          "days_range": "المهل أيام صحيحة من 0 إلى 3650",
+          "damages_range": "الغرامة تحتاج نسبة أسبوعية وسقفاً أكبر من صفر"
+        },
+        "opt": {
+          "payer": {
+            "owner": "مالك المشروع",
+            "main": "مقاول رئيسي (نحن من الباطن)",
+            "none": "لا أحد — تطوير ذاتي"
+          },
+          "basis": {
+            "rem": "إعادة حصر",
+            "lump": "مقطوع"
+          },
+          "advanceRecovery": {
+            "pro": "نسبياً من كل مستخلص",
+            "once": "دفعة واحدة عند حدّ إنجاز"
+          },
+          "retentionRelease": {
+            "half": "نصفه عند الاستلام الابتدائي والباقي بعد النهائي",
+            "full": "كامله بعد الاستلام النهائي"
+          }
         }
       }
     }

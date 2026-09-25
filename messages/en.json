@@ -637,7 +637,8 @@
       "contractor_proc_today": "Today",
       "contractor_purchase_orders": "Purchase orders",
       "contractor_proc_reports": "Reports",
-      "contractor_proc_settings": "Settings & boundaries"
+      "contractor_proc_settings": "Settings & boundaries",
+      "contractor_pm_inbox": "New projects"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -2509,15 +2510,15 @@
       "crm_opp_stage_readonly_hint": "The stage advances by clearing its checklist on the deal page",
       "crm_close_no_permission": "Recording a win, a loss or a handover needs the close-deals permission",
       "crm_handover_pm_required": "Pick the project manager who will take this project",
-      "crm_handover_pm_hint": "They are notified and accept or reject the project",
-      "crm_handover_effect_pm": "The project manager is notified to accept or reject the handover",
+      "crm_handover_pm_hint": "They accept, return or pass it on from New projects",
+      "crm_handover_effect_pm": "The manager accepts it, returns it for completion, or passes it to another manager",
       "crm_handover_status_pending": "Waiting for PM to accept",
       "crm_handover_status_accepted": "Accepted by PM",
       "crm_handover_status_rejected": "Rejected by PM",
       "crm_handover_project_status": "Project status",
       "crm_handover_rejected_banner": "{pm} declined the project — hand it to another manager",
-      "crm_handover_notif_title": "New project waiting for your acceptance",
-      "crm_handover_notif_message": "{by} handed you the project \"{project}\". Open it to accept or reject.",
+      "crm_handover_notif_title": "A handover file is waiting for you",
+      "crm_handover_notif_message": "{by} sent you the handover of “{project}”. Open New projects to accept, return or pass it on.",
       "crm_history_handover_accepted": "PM accepted the handover",
       "crm_history_handover_rejected": "PM rejected the handover",
       "crm_opp_estimated_value": "Estimated value (SAR)",
@@ -2594,25 +2595,25 @@
       "crm_hold_revisit": "Revisit on",
       "crm_hold_revisit_hint": "The deal resumes at the stage it stopped at",
       "crm_handover_title": "Hand over to Projects",
-      "crm_handover_desc": "Turn this awarded deal into a project — the CRM's last step",
-      "crm_handover_btn": "Generate project",
+      "crm_handover_desc": "Send this awarded deal to a project manager as a handover file — they accept it to create the project",
+      "crm_handover_btn": "Send the handover file",
       "crm_handover_prompt": "This deal is awarded. Hand it over to create the project.",
       "crm_handover_project_name": "Project name",
       "crm_handover_client": "Client",
       "crm_handover_contract_value": "Contract value",
       "crm_handover_contract_number": "Contract number",
       "crm_handover_contract_required": "Enter a contract number",
-      "crm_handover_duration": "Duration (months)",
+      "crm_handover_duration": "Duration (days)",
       "crm_handover_pm": "Receiving project manager",
       "crm_handover_advance": "Advance %",
       "crm_handover_retention": "Retention %",
       "crm_handover_notes": "Handover notes",
       "crm_handover_notes_placeholder": "Anything the project team needs to know on day one",
-      "crm_handover_effect_project": "A project is created at the awarded value",
-      "crm_handover_effect_sections": "It opens with the default project sections enabled",
+      "crm_handover_effect_project": "No project is created yet — a handover file lands in the manager's New projects",
+      "crm_handover_effect_sections": "On acceptance the project is born with its number, its sections by type and its BOQ",
       "crm_handover_effect_closed": "The deal closes as handed over; its history is kept",
-      "crm_handover_done": "Handed over — project created",
-      "crm_handover_error": "Could not create the project",
+      "crm_handover_done": "Handover file sent to the project manager",
+      "crm_handover_error": "Could not send the handover file",
       "crm_handover_open_project": "Open project",
       "crm_handover_months": "{months} months",
       "crm_offer_versions": "Offer versions",
@@ -7966,7 +7967,19 @@
       "acc_settings_projection_title": "Cash projection",
       "acc_settings_customer_days": "Client payment term (days)",
       "acc_settings_supplier_days": "Supplier payment term (days)",
-      "acc_settings_projection_hint": "When an invoice is expected to be collected or paid after it is booked, on the finance dashboard."
+      "acc_settings_projection_hint": "When an invoice is expected to be collected or paid after it is booked, on the finance dashboard.",
+      "pm_kind_bld": "Buildings",
+      "pm_kind_infra": "Infrastructure",
+      "pm_kind_road": "Roads",
+      "pm_kind_ind": "Industrial",
+      "pm_kind_mep": "MEP",
+      "pm_kind_mnt": "O&M",
+      "pm_kind_own": "Internal / self-development",
+      "pm_crumb_projects": "Projects",
+      "crm_handover_kind": "Project type",
+      "crm_handover_signed_on": "Contract signed on",
+      "crm_handover_signed_hint": "Without it the manager cannot accept the file",
+      "crm_handover_start_on": "Contract starts on"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -11662,6 +11675,196 @@
           "item4": "Approve an order we prepared",
           "item5": "Show a price to someone who may not see it",
           "item6": "Message the supplier beyond dispatch and reminders"
+        }
+      }
+    },
+    "PM": {
+      "cancel": "Cancel",
+      "back": "Back",
+      "next": "Next",
+      "cannot_save": "Cannot be saved yet",
+      "cannot_accept": "Cannot be accepted as it stands",
+      "cannot_start": "Cannot start yet",
+      "not_fixed": "Not fixed",
+      "not_signed": "Not signed yet",
+      "days": "{count, plural, =1 {# day} other {# days}}",
+      "error": {
+        "save": "Could not save — try again",
+        "missing": "This handover no longer exists",
+        "not_yours": "This handover is addressed to another manager",
+        "not_waiting": "This handover was already answered",
+        "blocked": "It cannot be accepted until its value, duration and signature are fixed",
+        "invalid": "Some values are not valid"
+      },
+      "field": {
+        "client": "Client",
+        "contract_number": "Contract number",
+        "value": "Awarded value (excl. VAT)",
+        "duration": "Contract duration",
+        "signed_on": "Contract signed",
+        "start_on": "Contract starts",
+        "advance_retention": "Advance · retention",
+        "kind": "Project type",
+        "location": "Location",
+        "assigned_to": "Assigned to",
+        "note": "Handover note"
+      },
+      "accept_block": {
+        "no_value": "The contract value is not fixed",
+        "no_duration": "The contract duration is not fixed",
+        "not_signed": "There is no contract signature date",
+        "not_waiting": "It was already answered"
+      },
+      "start_block": {
+        "unsaved": "Save the terms first",
+        "not_plan": "The project has already started",
+        "no_manager": "The project has no manager",
+        "no_boq": "The project has no BOQ items",
+        "terms_invalid": "The contract terms are not valid"
+      },
+      "lifecycle": {
+        "plan": "Not started",
+        "live": "Live",
+        "hold": "On hold",
+        "done": "Handed over",
+        "closed": "Closed"
+      },
+      "missing": {
+        "boq": "Priced bill of quantities",
+        "dwg": "Approved-for-construction drawings",
+        "ctr": "Contract signed by both parties",
+        "pay": "Payment, retention and advance terms",
+        "site": "Site handover date",
+        "spec": "Technical specification and annexes"
+      },
+      "notif": {
+        "reassigned_title": "A handover was passed to you",
+        "reassigned_message": "{by} passed you the handover of “{project}”. Open New projects to answer it.",
+        "returned_title": "A handover was returned for completion",
+        "returned_message": "“{project}” was returned with {count, plural, one {# missing item} other {# missing items}}. Complete it and send it again.",
+        "accepted_title": "Handover accepted — the project is created",
+        "accepted_message": "{by} accepted “{project}”; the project now exists."
+      },
+      "reassign": {
+        "title": "Pass to another manager",
+        "desc": "It stays in New projects for the new manager; CRM is not asked again.",
+        "to": "New manager",
+        "pick": "Pick a manager",
+        "reason": "Why",
+        "other_text": "State the reason",
+        "submit": "Pass it on",
+        "done": "Passed to {name}",
+        "block": {
+          "same_manager": "Pick a different manager",
+          "reason_text": "State the reason"
+        },
+        "reasons": {
+          "load": "My current load is too high",
+          "spec": "Outside my technical specialism",
+          "geo": "Outside my geographic area",
+          "clash": "Clashes with a project I am starting",
+          "other": "Other — stated"
+        }
+      },
+      "return": {
+        "title": "Return for completion",
+        "desc": "It goes back to CRM listing what is missing; no project is created.",
+        "what": "What is missing",
+        "note": "Note (optional)",
+        "submit": "Return it",
+        "done": "Returned to CRM with {count, plural, one {# missing item} other {# missing items}}"
+      },
+      "inbox": {
+        "title": "New projects",
+        "desc": "Handover files from CRM — accept one to create its project, return it, or pass it on",
+        "kpis": "Handover figures",
+        "kpi_mine": "Awaiting you",
+        "kpi_rush": "Contract starts within 3 weeks",
+        "kpi_incomplete": "Incomplete file",
+        "empty_title": "No handover is waiting",
+        "empty_desc": "When CRM hands over a won deal to you, it arrives here.",
+        "pending_for": "Pending {count, plural, =1 {# day} other {# days}}",
+        "accept": "Accept & create the project",
+        "reassign": "Pass to another manager",
+        "return": "Return for completion",
+        "not_yours": "Addressed to {name} — only they can answer it"
+      },
+      "wizard": {
+        "title": "Accept the handover",
+        "steps_label": "Steps",
+        "step_project": "Project & contract",
+        "step_sections": "Sections",
+        "step_boq": "BOQ & review",
+        "read_only_note": "The contract data comes from CRM and is read here, not edited. Terms it lacks are completed in the project before start.",
+        "self_dev_note": "Internal self-development: nobody pays, so certificates and collection stay off.",
+        "sections_note": "Sections preset for {kind}. Switch off any this contract does not need.",
+        "core": "core",
+        "boq_title": "Bill of quantities",
+        "boq_note": "Import the priced BOQ (Excel). Items are imported, never re-keyed; an unpriced item adds nothing until priced.",
+        "boq_upload": "Choose the BOQ file",
+        "boq_loaded": "{count, plural, one {# item} other {# items}} ready to import",
+        "boq_later": "Or accept now and import the BOQ from the project later — measurement waits for it.",
+        "boq_parse_error": "The file could not be read",
+        "boq_partial": "The project was created, but the BOQ did not import — import it from the project",
+        "effect_project": "The project is created “not started”, with its own number",
+        "effect_manager": "You are seated as its project manager",
+        "effect_terms": "The contract terms are completed in the project, then frozen at start",
+        "effect_advance": "Finance receives the advance-payment term, once",
+        "effect_crm": "CRM sees the handover accepted",
+        "submit": "Accept & create the project",
+        "done": "Accepted — project {number} created"
+      },
+      "terms": {
+        "title": "Contract terms",
+        "saved": "Terms saved",
+        "already_started": "The project has started — terms change only by addendum",
+        "started": "Work started — the original contract is frozen",
+        "planned_end": "Planned end",
+        "plan_note": "Complete the original contract before start: what the handover carried and what it lacked. It freezes when work starts.",
+        "frozen_title": "The original contract is frozen",
+        "frozen_note": "Frozen at start on {date}. Any change from now on is an addendum on top of it — never an edit.",
+        "original_kept": "Original as signed: advance {advance} · retention {retention}",
+        "save": "Save terms",
+        "start": "Start work",
+        "damages": "Delay damages",
+        "damages_rate": "Weekly rate (% of contract)",
+        "damages_cap": "Cap (% of contract)",
+        "payer": "Who pays you",
+        "basis": "Pricing basis",
+        "advance": "Advance payment %",
+        "advanceRecovery": "Advance recovery",
+        "retention": "Retention %",
+        "retentionCap": "Retention cap (% of contract)",
+        "retentionRelease": "Retention release",
+        "paymentDays": "Payment period (days)",
+        "consultantDays": "Consultant period (days)",
+        "claimNoticeDays": "Claim notice period (days)",
+        "defectsDays": "Defects liability (days)",
+        "problem": {
+          "advance_range": "The advance is between 0 and 100%",
+          "retention_range": "Retention is between 0 and 100%",
+          "cap_range": "The retention cap is between 0 and 100%",
+          "days_range": "Periods are whole days, 0 to 3,650",
+          "damages_range": "Delay damages need a weekly rate and a cap above 0"
+        },
+        "opt": {
+          "payer": {
+            "owner": "Project client",
+            "main": "Main contractor (we are the subcontractor)",
+            "none": "Nobody — self-development"
+          },
+          "basis": {
+            "rem": "Re-measurement",
+            "lump": "Lump sum"
+          },
+          "advanceRecovery": {
+            "pro": "Pro-rata from every certificate",
+            "once": "One deduction at a progress threshold"
+          },
+          "retentionRelease": {
+            "half": "Half at provisional, the rest after final",
+            "full": "All of it after final acceptance"
+          }
         }
       }
     }

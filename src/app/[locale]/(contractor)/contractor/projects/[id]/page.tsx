@@ -8,6 +8,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
 import type { ProjectHandover } from "@/lib/crm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -281,7 +282,7 @@ export default function ProjectDetailPage() {
   // parent doc and surface a spurious permission-denied on the way out.
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
-  const { can } = usePermissions(isDeleting ? undefined : projectId)
+  const { can, isOrgOwner } = usePermissions(isDeleting ? undefined : projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
@@ -721,6 +722,9 @@ export default function ProjectDetailPage() {
     enabledSections?: string[]
     /** Present when the project came from a won CRM deal. */
     handover?: ProjectHandover | null
+    /** PM 1.0: present on a project born from a handover file. */
+    pm?: PmProjectBlock | null
+    projectManagerId?: string | null
   } | null
 
   const enabledSectionIds = ((typedProject?.enabledSections?.length
@@ -2086,6 +2090,14 @@ export default function ProjectDetailPage() {
         {/* ── TAB: INFO ── */}
         {activeTab === "info" && (
           <div className="space-y-4">
+          {typedProject.pm && (
+            <ProjectTermsPanel
+              projectId={projectId}
+              project={typedProject}
+              boqItems={boqItems.length}
+              canEdit={isOrgOwner || typedProject.projectManagerId === user?.uid}
+            />
+          )}
           <Card className="border-primary/15">
             <CardContent className="p-6" dir={isRtl ? "rtl" : "ltr"}>
               {isEditing ? (

@@ -8,11 +8,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useFirestore, useUser } from "@/firebase"
-import { useRouter } from "@/i18n/routing"
 import { useToast } from "@/hooks/use-toast"
 import { CrmFormDialog, RequiredMark, type CrmFormStep } from "@/components/crm/CrmFormDialog"
 import type { TeamMember } from "@/hooks/useCrmData"
-import { createProjectFromOpportunity, suggestContractNumber } from "@/lib/crm-writes"
+import { suggestContractNumber } from "@/lib/crm-writes"
+import { PROJECT_KINDS, type ProjectKind } from "@/lib/pm/handover"
+import { sendHandoverFile } from "@/lib/pm/handover-writes"
 import {
   formatSar,
   opportunityBestValue,
@@ -21,13 +22,12 @@ import {
 } from "@/lib/crm"
 
 /**
- * Hand a won deal over to Projects — the CRM's last step, and the one the
- * whole module builds towards.
+ * Hand a won deal over to Projects — the CRM's last step.
  *
- * This writes a real `projects` document with the same shape the manual
- * wizard produces, so nothing downstream can tell the difference, and stamps
- * the opportunity with the new project's id. It is one-way on purpose: once a
- * project exists, unwinding it is a Projects decision, not a CRM one.
+ * PM 1.0 (HO-01, conflict 3): this sends a handover FILE to the manager it
+ * names; it creates no project. The manager accepts it in "New projects" (the
+ * project is born then), returns it for completion, or passes it on. Duration
+ * is in days, the one unit both modules use (conflict 9).
  */
 export function CrmHandoverDialog({
   open,
@@ -37,7 +37,6 @@ export function CrmHandoverDialog({
   orgId,
   teamMembers,
   handedOverCount,
-  projectsBasePath,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -47,20 +46,22 @@ export function CrmHandoverDialog({
   teamMembers: TeamMember[]
   /** Deals already handed over — used only to suggest the next contract number. */
   handedOverCount: number
-  /** Where to send the user once the project exists, e.g. `/contractor/projects`. */
-  projectsBasePath: string
+  /** Kept for callers; the project no longer exists at this step. */
+  projectsBasePath?: string
 }) {
   const t = useTranslations("Portal.Shared")
   const locale = useLocale()
 
   const firestore = useFirestore()
   const { user } = useUser()
-  const router = useRouter()
   const { toast } = useToast()
 
   const [isSaving, setIsSaving] = useState(false)
   const [contractNumber, setContractNumber] = useState("")
-  const [durationMonths, setDurationMonths] = useState("12")
+  const [durationDays, setDurationDays] = useState("365")
+  const [signedOn, setSignedOn] = useState("")
+  const [startOn, setStartOn] = useState("")
+  const [kind, setKind] = useState<ProjectKind>("bld")
   const [advancePercent, setAdvancePercent] = useState("10")
   const [retentionPercent, setRetentionPercent] = useState("5")
   const [projectManagerId, setProjectManagerId] = useState("")
@@ -69,7 +70,10 @@ export function CrmHandoverDialog({
   useEffect(() => {
     if (!open) return
     setContractNumber(opportunity.contractNumber || suggestContractNumber(handedOverCount))
-    setDurationMonths(opportunity.durationMonths != null ? String(opportunity.durationMonths) : "12")
+    setDurationDays(opportunity.durationMonths != null ? String(opportunity.durationMonths * 30) : "365")
+    setSignedOn("")
+    setStartOn("")
+    setKind("bld")
     setAdvancePercent(opportunity.advancePercent != null ? String(opportunity.advancePercent) : "10")
     setRetentionPercent(opportunity.retentionPercent != null ? String(opportunity.retentionPercent) : "5")
     setProjectManagerId("")
@@ -95,21 +99,23 @@ export function CrmHandoverDialog({
 
     setIsSaving(true)
     try {
-      const projectId = await createProjectFromOpportunity(firestore, {
+      await sendHandoverFile(firestore, {
+        organizationId: orgId,
+        actor: { uid: user.uid, name: requester?.name ?? user.displayName ?? null },
         opportunity,
-        contact,
-        orgId,
-        userId: user.uid,
+        clientType: contact?.entityType ?? null,
+        location: contact?.city ?? null,
         contractNumber,
-        durationMonths: parseInt(durationMonths, 10) || null,
-        advancePercent: parseFloat(advancePercent) || null,
-        retentionPercent: parseFloat(retentionPercent) || null,
-        projectManagerId: pm.id,
-        projectManagerName: pm.name,
-        projectManagerGroupId: pm.defaultGroupId ?? null,
-        requestedByName: requester?.name ?? user.displayName ?? null,
-        notes: notes.trim() || null,
-        kickoffTitle: t("crm_handover_kickoff_title", { project: opportunity.title }),
+        value: contractValue,
+        durationDays: parseInt(durationDays, 10) || 0,
+        signedOn: signedOn || null,
+        startOn: startOn || null,
+        advance: (parseFloat(advancePercent) || 0) / 100 || null,
+        retention: (parseFloat(retentionPercent) || 0) / 100 || null,
+        kind,
+        note: notes.trim() || null,
+        to: pm.id,
+        toName: pm.name,
         notification: {
           title: t("crm_handover_notif_title"),
           message: t("crm_handover_notif_message", {
@@ -120,7 +126,6 @@ export function CrmHandoverDialog({
       })
       toast({ title: t("crm_handover_done") })
       onOpenChange(false)
-      router.push(`${projectsBasePath}/${projectId}`)
     } catch (err) {
       console.error(err)
       toast({ title: t("crm_handover_error"), variant: "destructive" })
@@ -162,7 +167,27 @@ export function CrmHandoverDialog({
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ho-duration">{t("crm_handover_duration")}</Label>
-                <Input id="ho-duration" type="number" min="1" inputMode="numeric" value={durationMonths} onChange={(e) => setDurationMonths(e.target.value)} dir="ltr" disabled={isSaving} />
+                <Input id="ho-duration" type="number" min="1" inputMode="numeric" value={durationDays} onChange={(e) => setDurationDays(e.target.value)} dir="ltr" disabled={isSaving} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ho-kind">{t("crm_handover_kind")}</Label>
+                <Select value={kind} onValueChange={(v) => setKind(v as ProjectKind)} disabled={isSaving}>
+                  <SelectTrigger id="ho-kind"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_KINDS.map((k) => (
+                      <SelectItem key={k} value={k}>{t(`pm_kind_${k}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ho-signed">{t("crm_handover_signed_on")}</Label>
+                <Input id="ho-signed" type="date" value={signedOn} onChange={(e) => setSignedOn(e.target.value)} dir="ltr" disabled={isSaving} />
+                <p className="text-[11px] text-muted-foreground">{t("crm_handover_signed_hint")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ho-start">{t("crm_handover_start_on")}</Label>
+                <Input id="ho-start" type="date" value={startOn} onChange={(e) => setStartOn(e.target.value)} dir="ltr" disabled={isSaving} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="ho-pm">{t("crm_handover_pm")} <RequiredMark /></Label>

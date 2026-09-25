@@ -68,6 +68,24 @@ service cloud.firestore {
             : groupGrants(memberDefaultGroupId(), perm));
     }
 
+    // PM 1.0: the manager a handover FILE is addressed to creates the project on
+    // acceptance — the file must be waiting, in this org, and name them.
+    function acceptsPmHandover() {
+      let hid = request.resource.data.get('pmHandoverId', '');
+      return hid is string && hid.size() > 0
+        && exists(/databases/$(database)/documents/pmHandovers/$(hid))
+        && get(/databases/$(database)/documents/pmHandovers/$(hid)).data.to == request.auth.uid
+        && get(/databases/$(database)/documents/pmHandovers/$(hid)).data.status == 'wait'
+        && get(/databases/$(database)/documents/pmHandovers/$(hid)).data.organizationId == getOrganizationId()
+        && request.resource.data.get('projectManagerId', '') == request.auth.uid;
+    }
+
+    // The project manager of a PM 1.0 project (one born from a handover file).
+    function isPmProjectManager(projectId) {
+      let p = get(/databases/$(database)/documents/projects/$(projectId)).data;
+      return p.get('projectManagerId', '') == request.auth.uid && p.get('pmHandoverId', '') != '';
+    }
+
     // Permission for an RFQ: project-linked RFQs use the project assignment,
     // standalone RFQs fall back to the member's default group.
     function hasRfqPermission(rfqData, perm) {
@@ -548,7 +566,8 @@ service cloud.firestore {
         && (hasOrgPermission('projects.edit')
             || (hasOrgPermission('crm.close')
                 && ('sourceOpportunityId' in request.resource.data)
-                && request.resource.data.sourceOpportunityId is string));
+                && request.resource.data.sourceOpportunityId is string)
+            || acceptsPmHandover());
       // Editing needs projects.edit; publishing flows also update the project
       // doc (linked rfqIds), so projects.publish qualifies too. The project
       // manager named in a pending handover may answer it — and touch nothing
@@ -559,7 +578,12 @@ service cloud.firestore {
                 || hasProjectPermission(projectId, 'projects.publish')
                 || (('handover' in resource.data)
                     && resource.data.handover.pmId == request.auth.uid
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['handover', 'updatedAt']))));
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['handover', 'updatedAt']))
+                // PM 1.0: the project manager completes the terms before start and starts
+                // the project — the `pm` block and the status, nothing else.
+                || (resource.data.get('projectManagerId', '') == request.auth.uid
+                    && ('pm' in resource.data)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && hasProjectPermission(projectId, 'projects.delete'));
@@ -574,7 +598,8 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
-          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish')
+              || isPmProjectManager(projectId));
 
         // A fully drawn (locked) line accepts only the draw bookkeeping: an RFQ
         // being deleted hands its quantity back (`draws`/`drawnQuantity`
@@ -615,6 +640,13 @@ service cloud.firestore {
           && ('sourceOpportunityId' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && request.resource.data.viaHandover == true
           && request.resource.data.userId == memberId;
+        // PM 1.0: the manager who accepted the handover seats themself as its PM.
+        allow create: if isSignedIn()
+          && memberId == request.auth.uid
+          && request.resource.data.userId == memberId
+          && request.resource.data.viaHandover == true
+          && request.resource.data.get('pmRole', '') == 'pm'
+          && isPmProjectManager(projectId);
       }
 
       // BOQ groups (sections) — plain org-scoped CRUD, same org as the project.
@@ -626,7 +658,8 @@ service cloud.firestore {
 
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
-          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'));
+          && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish')
+              || isPmProjectManager(projectId));
       }
 
       // Site measurement ledger (حصر الكميات المنفذة) — one entry per quantity
@@ -1695,6 +1728,40 @@ service cloud.firestore {
     // Document sequences (ORD-07) — one doc per org, type and year
     // (`{orgId}__{type}__{year}`). Read and bumped inside the transaction that
     // writes the numbered document; it only ever moves forward.
+    // PM 1.0 — the handover FILE from CRM (PRD HO-01…04). CRM (crm.close) sends it;
+    // only the manager it is addressed to answers it: accept · return · reassign.
+    match /pmHandovers/{handoverId} {
+      allow get: if isSignedIn() && (resource == null || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.organizationId == getOrganizationId()
+        && hasOrgPermission('crm.close')
+        && request.resource.data.status == 'wait'
+        && request.resource.data.requestedBy == request.auth.uid;
+      allow update: if isSignedIn()
+        && isOrgMember(resource.data.organizationId)
+        && resource.data.status == 'wait'
+        && (resource.data.to == request.auth.uid || isOrgOwner())
+        && request.resource.data.status in ['wait', 'acc', 'ret']
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'to', 'toName', 'reassigns', 'returned', 'projectId', 'acceptedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // PM 1.0 — what projects tell Finance (prj:ADV/IPC/SC/BUD/HND/AMD). The id IS the
+    // idempotency key, so a second send is refused rather than posted twice; the
+    // outbox is append-only.
+    match /pmEvents/{eventId} {
+      allow get: if isSignedIn() && (resource == null || isOrgMember(resource.data.organizationId));
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.organizationId == getOrganizationId()
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.key is string
+        && request.resource.data.key.replace('/', '_') == eventId;
+      allow update, delete: if false;
+    }
+
     match /mfgCounters/{counterId} {
       allow get: if isSignedIn() && isOrgMember(counterId.split('__')[0]);
       allow create: if isSignedIn() && isOrgMember(counterId.split('__')[0])
