@@ -142,6 +142,8 @@ docs/                   # sales-prd-status.md, procurement-prd-status.md, custom
 | `src/lib/app-env.ts` / `feature-flags.ts` | Environment detection (prod vs UAT) and feature flags |
 | `src/lib/sms.ts` + `src/lib/otp.ts` | SMS through Twilio. `isSmsConfigured` needs a real AC… SID, the token, and a sender: an E.164 number, a registered alpha sender ID such as `MdmakTech`, or `TWILIO_MESSAGING_SERVICE_SID`. One-time codes (login, receipt sign-off) go through **Twilio Verify** when `TWILIO_VERIFY_SERVICE_SID` is set; our resend/guess/expiry/one-use rules still apply. UAT without Twilio shows the code on screen |
 | `src/lib/sentry-options.ts` + `src/instrumentation*.ts` + `src/app/global-error.tsx` | Sentry (org `mdmak`, EU, project `studio-monaqasati`). Deployed builds only, tagged production/uat. NO user info, cookies, headers, bodies or query strings; guest-link tokens (`/receive`, `/offer`, `/rfq` + their APIs) are masked. Keep it that way when adding options |
+| `src/lib/pm/access.ts` (PM 1.0 PRD §3–§4, package `Delivery-PM-1.0`) | Project Management permissions: 14 duties, 6 project roles, effective = system ceiling ∩ role template − removed (assignment NARROWS, never grants), archived = read-only for everyone, `PM_GUARD` action→duty table checked before every handler (and to be mirrored in rules/server), plus the in-handler rules (never approve your own certificate, PM appointment is the owner's). Tests: `pm-access.test.ts` encodes the PRD's action matrix |
+| `src/components/module-ui/` | Shared module UI from the PM 1.0 prototype on our tokens: `ModuleHeader` (crumbs · status · 3 KPIs · tabs with counts), `SegmentedNav`, `StatusPill`, `Panel`, `EmptyState`, `Callout` (block/warn/info), `DecisionRow`, `KeyValueRow`, `DrawerSection`, `WizardSteps`, `BlockingReasons`, `SourceBadge` (colour from the registry). All text comes in as props |
 | `src/components/StructuredData.tsx` | JSON-LD structured data injected in root layout |
 | `src/app/[locale]/content.tsx` | Landing page heavy content (~48KB) — **avoid SSR blocking here** |
 
@@ -386,6 +388,7 @@ allowed — the app sends a Bearer ID token.
 - `secondary` (#334155) — slate, secondary text
 - `muted` / `muted-foreground` — subtle backgrounds/text
 - `destructive` — errors
+- `pm` (#1F5AA8) — Project Management's module colour (PM 1.0); like `indigo` (Sales) and `violet` (HR), each module has its own
 
 **Typography:**
 - Arabic (RTL): `Noto_Sans_Arabic` via `--font-body`
