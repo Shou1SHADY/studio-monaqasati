@@ -643,7 +643,13 @@ service cloud.firestore {
                     && (pmDuty(projectId, 'approve') || (pmCeilingHas('money') && pmCeilingHas('all')))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt'])))
             // An archived PM project accepts no change from anyone but an admin (RL-04, INV-21).
-            && !pmArchivedData(resource.data));
+            && !pmArchivedData(resource.data)
+            // Once frozen at start, the original — and the terms it was frozen from — never
+            // change again: every later change is an addendum on top (TRM-02, INV-22).
+            && (!('pm' in resource.data)
+                || resource.data.pm.get('original', null) == null
+                || (request.resource.data.get('pm', {}).get('original', null) == resource.data.pm.original
+                    && request.resource.data.get('pm', {}).get('terms', null) == resource.data.pm.get('terms', null))));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && hasProjectPermission(projectId, 'projects.delete'));
@@ -733,6 +739,43 @@ service cloud.firestore {
           && request.resource.data.viaHandover == true
           && request.resource.data.get('pmRole', '') == 'pm'
           && isPmProjectManager(projectId);
+      }
+
+      // PM 1.0 contract addenda (AMD-01…10) — `pmAddenda/{NN}`, numbered by the
+      // project's `pm.addendaCount`. Seen by money or approve holders only, never a
+      // site engineer (AMD-10). Drafted by prep | approve on a started, unarchived
+      // project; signed by approve; withdrawn by its drafter or approve. A draft is
+      // the only state that moves, and it moves once: signed or void. Never deleted.
+      match /pmAddenda/{addendumId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && (pmCeilingHas('money') || pmDuty(projectId, 'approve'));
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.get('pm', {}).get('lifecycle', 'plan') in ['live', 'hold', 'done']
+          && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
+          && request.resource.data.status == 'draft'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.changes is list && request.resource.data.changes.size() > 0;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && resource.data.status == 'draft'
+          && ((request.resource.data.status == 'signed'
+                && pmDuty(projectId, 'approve')
+                && request.resource.data.signedBy == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'signedOn', 'signedSeq', 'signedBy', 'signedByName', 'signatory', 'updatedAt']))
+              || (request.resource.data.status == 'void'
+                && (pmDuty(projectId, 'approve')
+                    || (resource.data.by == request.auth.uid && pmDuty(projectId, 'prep')))
+                && request.resource.data.voidBy == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'voidOn', 'voidBy', 'voidByName', 'voidReason', 'voidText', 'updatedAt'])));
+
+        allow delete: if isAdmin();
       }
 
       // BOQ groups (sections) — plain org-scoped CRUD, same org as the project.

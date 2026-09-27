@@ -3,7 +3,7 @@
 // document id: resending never creates a second posting. Finance reads and
 // posts; the module never writes the ledger itself (S-02). Pure: no I/O.
 
-import type { ContractTerms } from "./terms"
+import type { ContractTerms, TermChange } from "./terms"
 
 export const PM_EVENTS = "pmEvents"
 
@@ -18,6 +18,8 @@ export interface PmEvent {
   /** SAR. For ADV: the advance itself (contract × rate). */
   amount: number
   params: Record<string, string | number>
+  /** AMD: the financial terms that changed, from → to. */
+  changes?: TermChange[]
   by: string
   at: string
 }

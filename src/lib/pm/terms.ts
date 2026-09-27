@@ -80,11 +80,12 @@ export function termProblems(t: ContractTerms): TermProblem[] {
 /** "Nobody pays" (self-development) switches certificates and collection off (TRM-01). */
 export const hasClientSide = (t: Pick<ContractTerms, "payer">) => t.payer !== "none"
 
-const same = (a: unknown, b: unknown): boolean => {
+/** Two term values are the same — numbers to 1e-9, objects field by field. */
+export const sameTermValue = (a: unknown, b: unknown): boolean => {
   if (typeof a === "number" && typeof b === "number") return Math.abs(a - b) < 1e-9
   if (a && b && typeof a === "object" && typeof b === "object") {
     const keys = new Set([...Object.keys(a), ...Object.keys(b)])
-    return [...keys].every((k) => same((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+    return [...keys].every((k) => sameTermValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
   }
   return a === b
 }
@@ -98,7 +99,7 @@ export interface TermChange<K extends TermKey = TermKey> {
 
 /** The terms that differ between two versions — what an addendum would record. */
 export function termChanges(before: ContractTerms, after: ContractTerms): TermChange[] {
-  return (Object.keys(before) as TermKey[]).filter((k) => !same(before[k], after[k])).map((k) => ({ key: k, from: before[k], to: after[k] }) as TermChange)
+  return (Object.keys(before) as TermKey[]).filter((k) => !sameTermValue(before[k], after[k])).map((k) => ({ key: k, from: before[k], to: after[k] }) as TermChange)
 }
 
 /** The contract in force = the original + signed addenda in signing order (§8).
