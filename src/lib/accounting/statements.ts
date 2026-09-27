@@ -328,7 +328,7 @@ export function equityStatement(windows: PeriodWindows): { rows: EquityStatement
 }
 
 // ---------------------------------------------------------------------------
-// Where money is locked (أين المال محبوس)
+// Cash Conversion Cycle page — formerly "Where money is locked" (أين المال محبوس)
 //
 // An executive read of the balance sheet: real assets that cannot be spent
 // today, each with the reason it is held and the screen that releases it.
