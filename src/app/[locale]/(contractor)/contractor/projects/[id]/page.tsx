@@ -162,7 +162,8 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel } from "lucide-react"
+import { ClaimsPanel } from "@/components/pm/ClaimsPanel"
 import { NcrPanel } from "@/components/pm/NcrPanel"
 import { VariationsPanel } from "@/components/pm/VariationsPanel"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
@@ -1972,6 +1973,7 @@ export default function ProjectDetailPage() {
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
           { key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> },
+          { key: "pmClaims" as ActiveTab, label: tPm("claim.tab"), icon: <Gavel size={15} /> },
           { key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> },
         ]
       : []),
@@ -3124,6 +3126,19 @@ export default function ProjectDetailPage() {
           </div>
         )}
         {activeTab === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} baseValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} />}
+        {activeTab === "pmClaims" && typedProject.pm?.terms && (
+          <ClaimsPanel
+            projectId={projectId}
+            lifecycle={lifecycleOf(typedProject)}
+            original={typedProject.pm.original ?? typedProject.pm.terms}
+            startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
+            durationDays={typedProject.pm.durationDays ?? 0}
+            baseValue={typedProject.budget ?? 0}
+            items={pmItems}
+            access={pmAccess}
+            actor={pmActor}
+          />
+        )}
         {activeTab === "pmClose" && typedProject.pm?.terms && (
           <div className="space-y-4">
             <HandoverPanel

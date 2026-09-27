@@ -661,6 +661,12 @@ service cloud.firestore {
                     && pmDuty(projectId, 'qa')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
                     && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount', 'ncrCount']))
+                // …whoever drafts claims numbers them — `pm.claimCount`; a grant with
+                // days draws the next programme revision (`pm.programmeRev`, approve).
+                || (('pm' in resource.data)
+                    && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['claimCount']))
                 // …whoever logs variations numbers them — `pm.voCount`.
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'vo')
@@ -990,6 +996,40 @@ service cloud.firestore {
                 && (request.resource.data.status == 'appr'
                     || (request.resource.data.decision.reason is string && request.resource.data.decision.reason.size() > 0))
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decision', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 claims and extensions of time (CLM-01…03) — `pmClaims/{NN}`.
+      // Drafted and noticed by prep | approve; submitted and answered by approve;
+      // a response is one of three, with its days (0 when rejected or cost only).
+      match /pmClaims/{claimId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
+          && request.resource.data.status == 'draft'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.cause is string && request.resource.data.cause.size() > 0;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (((pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
+                && resource.data.status == 'draft' && request.resource.data.status == 'notice'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'noticeOn', 'updatedAt']))
+              || (pmDuty(projectId, 'approve')
+                && resource.data.status == 'notice' && request.resource.data.status == 'sub'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'submittedOn', 'updatedAt']))
+              || (pmDuty(projectId, 'approve')
+                && resource.data.status == 'sub' && request.resource.data.status in ['appr', 'part', 'rej']
+                && request.resource.data.response.by == request.auth.uid
+                && request.resource.data.response.days is int && request.resource.data.response.days >= 0
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'response', 'revision', 'updatedAt'])));
 
         allow delete: if isAdmin();
       }
