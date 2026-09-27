@@ -1649,6 +1649,22 @@ service cloud.firestore {
     // Employee records — scoped to an organization
     // list uses isSignedIn() (no resource.data on collection queries); the app's
     // where(organizationId==) clause enforces isolation at query time.
+    // HR 1.0 workplaces (AS-01) — project sites, workshop, warehouse, fleet,
+    // showroom, department, head office. Read by every member (people, attendance
+    // and cost all point at them); kept by the HR manager; deactivated, never deleted.
+    match /hrSites/{siteId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hrManager()
+        && request.resource.data.type in ['project', 'workshop', 'warehouse', 'fleet', 'showroom', 'department', 'hq']
+        && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() > 0;
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hrManager()
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.type in ['project', 'workshop', 'warehouse', 'fleet', 'showroom', 'department', 'hq'];
+      allow delete: if isAdmin();
+    }
+
     match /employees/{employeeId} {
       allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow list: if isSignedIn();

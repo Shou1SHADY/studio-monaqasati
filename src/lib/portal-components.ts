@@ -71,6 +71,7 @@ import {
   FileSpreadsheet,
   ArrowLeftRight,
   Settings2,
+  MapPin,
   BarChart3,
   Sunrise,
 } from "lucide-react"
@@ -85,6 +86,9 @@ const MFG_DESK_ROLES: PermissionId[] = ["manufacturing.manage", "manufacturing.c
 const PROC_ANY_ROLE: PermissionId[] = ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"]
 /** The orders list: whoever sees prices, plus the expediter (dates and quantities only). */
 const PROC_ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.approve", "po.expedite"]
+
+/** The five HR roles' permissions (HR 1.0, src/lib/hr/access.ts). */
+const HR_ROLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.supervisor", "hr.management"]
 
 export interface NavItem {
   titleKey: string
@@ -309,7 +313,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "hr",
     labelKey: "component_hr",
     descKey: "component_hr_desc",
-    homeHref: "/contractor/employees",
+    homeHref: "/contractor/hr",
     icon: Briefcase,
     accentToken: "violet",
     displayOrder: 6,
@@ -317,7 +321,11 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_hr",
         items: [
+          // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
+          { titleKey: "hr_nav_today", href: "/contractor/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
           { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          { titleKey: "hr_nav_sites", href: "/contractor/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
+          { titleKey: "hr_nav_settings", href: "/contractor/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
         ],
       },
     ],
@@ -597,7 +605,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     id: "hr",
     labelKey: "component_hr",
     descKey: "component_hr_desc",
-    homeHref: "/supplier/employees",
+    homeHref: "/supplier/hr",
     icon: Briefcase,
     accentToken: "violet",
     displayOrder: 6,
@@ -605,7 +613,11 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_hr",
         items: [
+          // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
+          { titleKey: "hr_nav_today", href: "/supplier/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
           { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          { titleKey: "hr_nav_sites", href: "/supplier/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
+          { titleKey: "hr_nav_settings", href: "/supplier/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
         ],
       },
     ],

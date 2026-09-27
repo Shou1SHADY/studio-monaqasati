@@ -548,6 +548,9 @@
       "component_finance": "Finance & Accounting",
       "component_finance_desc": "Invoices, guarantees, financial statements and the journal — every money movement in the system lands here",
       "component_hr": "HR",
+      "hr_nav_today": "HR — Today",
+      "hr_nav_sites": "Workplaces",
+      "hr_nav_settings": "HR settings",
       "component_hr_desc": "Employees and salaries",
       "component_crm": "CRM",
       "component_crm_desc": "Customer relationships — coming in careful, incremental steps",
@@ -12735,6 +12738,181 @@
           "already": "This project is already under PM 1.0",
           "owner_only": "Only the company owner brings a project in",
           "invalid": "Choose a project manager and a duration in whole days"
+        }
+      }
+    },
+    "HR": {
+      "module": "Human resources",
+      "kpis_label": "HR figures",
+      "tabs_label": "HR tabs",
+      "cancel": "Cancel",
+      "save": "Save",
+      "search": "Search",
+      "no_results": "Nothing matches",
+      "cannot_save": "Cannot be saved yet",
+      "no_access_title": "Not part of your role",
+      "no_access_desc": "Your HR role does not open this tab.",
+      "no_record_desc": "You have no HR role and no employee record yet — the HR manager adds you.",
+      "tab": {
+        "today": "Today",
+        "people": "People",
+        "sites": "Workplaces",
+        "attendance": "Attendance",
+        "payroll": "Payroll",
+        "hiring": "Hiring",
+        "platforms": "Platforms",
+        "perf": "Performance & training",
+        "reports": "Reports",
+        "settings": "Settings",
+        "me": "My file"
+      },
+      "tab_desc": {
+        "today": "What needs you today, and where the company stands",
+        "people": "Every employee on one card",
+        "sites": "Every place people work — cost follows the assignment",
+        "attendance": "Sources, exceptions and closing",
+        "payroll": "Computed from closed attendance and the contract",
+        "hiring": "Openings, candidates and onboarding",
+        "platforms": "Government platform tasks and reconciliation",
+        "perf": "Reviews, raises and training",
+        "reports": "Computed from the live record",
+        "settings": "Features, policies and the establishment file",
+        "me": "Your own file"
+      },
+      "err": {
+        "save": "Could not save — try again",
+        "no_role": "Your HR role does not allow this",
+        "not_your_site": "This workplace is not one you supervise",
+        "own_request": "Nobody approves his own request",
+        "blocked": "Some values are missing or wrong"
+      },
+      "site_type": {
+        "project": "Project site",
+        "workshop": "Workshop",
+        "warehouse": "Warehouse",
+        "fleet": "Fleet",
+        "showroom": "Showroom",
+        "department": "Department",
+        "hq": "Head office"
+      },
+      "cost_kind": {
+        "direct": "Direct labour on the project",
+        "workshop": "Workshop labour (absorbed by Manufacturing)",
+        "distribution": "Sales & distribution salaries",
+        "admin": "Administrative salaries"
+      },
+      "sites": {
+        "title": "Workplaces",
+        "add": "Add a workplace",
+        "edit": "Edit the workplace",
+        "activate": "Reactivate",
+        "deactivate": "Deactivate",
+        "inactive": "Inactive",
+        "saved": "Workplace saved",
+        "empty": "No workplace yet",
+        "empty_desc": "Add the company's sites, workshop, warehouse and offices — every employee sits in one, and his cost follows him there.",
+        "line": "{cost} · supervisor: {supervisor} · {count, plural, =0 {nobody} one {# person} other {# people}}",
+        "no_supervisor": "none",
+        "ends": "ends {date}",
+        "unassigned": "Unassigned",
+        "unassigned_line": "{count, plural, =0 {Nobody} one {# person} other {# people}} with no workplace — a cost with no output, shown on its own row.",
+        "dialog_desc": "Its type decides which labour cost follows the people there.",
+        "name": "Name",
+        "type": "Type",
+        "cost_note": "Cost: {cost}",
+        "end": "End date (optional)",
+        "project": "Project",
+        "pick_project": "Pick the project",
+        "supervisor": "Supervisor",
+        "pick_supervisor": "Pick a team member",
+        "supervisor_note": "He records its attendance and closes its month; give him the \"workplace supervisor\" role in Team.",
+        "block": {
+          "no_name": "Name the workplace",
+          "project_needed": "A project site names its project",
+          "bad_end": "The end date is not a date"
+        }
+      },
+      "business_type": {
+        "contractor": "Contractor",
+        "supplier": "Supplier / factory",
+        "developer": "Real-estate developer"
+      },
+      "feature": {
+        "hire": "Hiring",
+        "perf": "Performance reviews",
+        "train": "Training & safety certificates",
+        "punch": "Punches & geofence",
+        "gov": "Platform tasks & reconciliation",
+        "mudad": "Pre-Mudad compliance check"
+      },
+      "feature_desc": {
+        "hire": "Openings, candidates, offers, recruitment batches",
+        "perf": "Review cycles, calibration and raises",
+        "train": "Dated certificates by trade, sessions from the gaps",
+        "punch": "Device or app punches, geofence, overtime approval",
+        "gov": "Qiwa, Muqeem, GOSI task lists and import reconciliation",
+        "mudad": "Warnings before the wage file: basic vs Qiwa, net below 90%, held lines"
+      },
+      "settings": {
+        "saved": "Settings saved",
+        "unsaved": "Unsaved changes",
+        "establishment": "The establishment",
+        "business_type": "Business type",
+        "pick_type": "Pick the business type",
+        "type_note": "The first choice sets the default features once; after that the switches are yours.",
+        "est": {
+          "name": "Company name (as on the letterhead)",
+          "cr": "Commercial registration",
+          "mol": "Establishment number (MHRSD)",
+          "gosi": "GOSI establishment number"
+        },
+        "features": "Optional features",
+        "features_note": "The core is always on. Switching a feature off hides its tab, decisions and sections — its data is kept.",
+        "later_release": "screens arrive in a later release",
+        "policies": "Company policies",
+        "statutory": "Statutory — read-only",
+        "statutory_note": "These come from the Labour Law and GOSI, not from a company choice; every calculation reads them from one table."
+      },
+      "policy": {
+        "housingShare": "Housing allowance (% of basic)",
+        "transportShare": "Transport allowance (% of basic)",
+        "payDay": "Pay day (day of the month)",
+        "renewWindowDays": "Renewal window (days before expiry)",
+        "advanceMaxMonths": "HR advance limit (months' wage) — above goes to Finance",
+        "closeMissing": "Closing a month with an unrecorded day",
+        "block": "Block",
+        "warn": "Warn and allow"
+      },
+      "law": {
+        "overtime": "Overtime hour (art. 107)",
+        "overtime_v": "(wage + {share} of basic) ÷ {div} · warning above {cap} h a month",
+        "gosi_old": "GOSI — Saudi (employee / employer)",
+        "gosi_new": "GOSI — Saudi joined after 3 Jul 2024",
+        "gosi_non": "GOSI — non-Saudi (employer)",
+        "leave": "Annual leave",
+        "leave_v": "{base} days a year, {after} after five years",
+        "sick": "Sick leave per service year (art. 117)",
+        "sick_v": "{full} full · {q} at 75% · {u} unpaid",
+        "probation": "Probation (art. 53)",
+        "probation_v": "{days} days, to {max} with written consent",
+        "eos": "End of service (arts. 84–85)",
+        "eos_v": "½ month × first 5 years, then a month a year; resignation 0 · ⅓ · ⅔ · full",
+        "advance": "Advance instalment (art. 92)",
+        "advance_v": "{share} of the wage a month",
+        "penalty": "Penalties",
+        "penalty_v": "at most {cap} days' wage a month · objection within {days} days"
+      },
+      "today": {
+        "soon": "Your decisions appear here as HR is set up.",
+        "build_title": "Moving in — the build path",
+        "build_note": "{done} of {total} done, computed from the record.",
+        "step": {
+          "establishment": "The establishment file — name and commercial registration",
+          "type": "The business type — it sets the default features",
+          "policies": "Company policies saved",
+          "sites": "At least one workplace",
+          "supervisors": "Every site, workshop and warehouse has a supervisor",
+          "employees": "Employees on the record — imported or added"
         }
       }
     }
