@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, HandCoins, History, Inbox, Link2, Loader2, Plane, Wallet } from "lucide-react"
+import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Inbox, Link2, Loader2, Plane, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
@@ -37,6 +37,7 @@ import { HrWriteError } from "@/lib/hr/write-guard"
 import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrRequestList } from "./HrRequestList"
+import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
 import type { HrPortal } from "./HrShell"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
@@ -57,6 +58,9 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
   const { requests: allRequests } = useHrRequests(access)
   const requests = useMemo(() => allRequests.filter((r) => r.employeeId === employeeId), [allRequests, employeeId])
+  const allViolations = useHrViolations(access)
+  const violations = useMemo(() => allViolations.filter((v) => v.employeeId === employeeId), [allViolations, employeeId])
+  const [recording, setRecording] = useState(false)
 
   const logQ = useMemoFirebase(() => (firestore ? query(collection(firestore, HR_EMPLOYEES, employeeId, HR_LOG), orderBy("at", "desc")) : null), [firestore, employeeId])
   const { data: logData } = useCollection(logQ)
@@ -258,6 +262,23 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       )}
 
       {seg === "log" && (
+        <Panel
+          title={t("vio.title")}
+          icon={Gavel}
+          count={violations.length}
+          actions={
+            access.allowed("violation.record", { site: emp.siteId }) && (emp.siteId || access.allowed("violation.record")) && emp.status !== "left" ? (
+              <Button size="sm" variant="outline" onClick={() => setRecording(true)}>
+                {t("vio.record")}
+              </Button>
+            ) : null
+          }
+        >
+          <HrViolationList access={access} actor={actor} violations={violations} all={violations} pay={pay} showEmployee={false} empty={t("vio.none")} />
+        </Panel>
+      )}
+
+      {seg === "log" && (
         <Panel title={t("file.log_title")} icon={History} count={log.length}>
           {log.length === 0 ? (
             <p className="py-4 text-sm text-muted-foreground">{t("file.log_empty")}</p>
@@ -276,6 +297,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
         </Panel>
       )}
 
+      {recording && <RecordViolationDialog access={access} actor={actor} employeeId={employeeId} onClose={() => setRecording(false)} />}
       {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} existing={requests} />}
 
       {action && (
@@ -297,6 +319,7 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
     } else if (k === "on" || k === "consent") out[k] = hrDate(String(v), locale)
     else if (k === "doc") out[k] = t(`doc.${v}` as "doc.iqama")
     else if (k === "trade") out[k] = t(`trade.${v}` as "trade.mason")
+    else if (k === "code") out[k] = t(`violation.${v}` as "violation.late15")
     else if (k === "site") out[k] = siteName(String(v)) ?? t("sites.unassigned")
     else if (k === "fee") out[k] = hrMoney(Number(v))
     else out[k] = String(v)

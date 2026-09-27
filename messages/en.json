@@ -13250,7 +13250,13 @@
         "leave_cancelled": "Leave {no} cancelled",
         "advance_cancelled": "Advance {no} cancelled",
         "iban_fixed": "IBAN corrected by payroll",
-        "iban_approved": "Corrected IBAN approved"
+        "iban_approved": "Corrected IBAN approved",
+        "violation_recorded": "Violation recorded — {code}, {on}",
+        "penalty_applied": "Penalty applied — {code}, step {step}",
+        "penalty_dismissed": "Violation dismissed — {code}, {on}",
+        "penalty_objected": "Objection filed — {code}, {on}",
+        "objection_upheld": "Objection decided: penalty upheld — {code}",
+        "objection_cancelled": "Objection decided: penalty cancelled — {code}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13580,6 +13586,73 @@
           "no_reason": "Give the reason",
           "iban_not_ready": "The IBAN is not approved yet",
           "outstanding": "An advance is still outstanding"
+        }
+      },
+      "vio": {
+        "title": "Violations and penalties",
+        "none": "No violations",
+        "waiting": "Violations to decide",
+        "record": "Record a violation",
+        "record_desc": "The HR manager decides after a hearing; the step follows the work regulation.",
+        "code": "Violation",
+        "on": "Day it happened",
+        "note": "Note",
+        "state": {
+          "recorded": "Recorded",
+          "applied": "Applied",
+          "dismissed": "Dismissed",
+          "objected": "Objected",
+          "upheld": "Upheld",
+          "cancelled": "Cancelled"
+        },
+        "source": {
+          "sheet": "from the sheet",
+          "manual": "recorded by hand"
+        },
+        "step": "step {n}",
+        "step_label": "Step (applied same-kind penalties in 180 days)",
+        "kind": {
+          "warning": "Written warning",
+          "fraction": "Part of a day's wage",
+          "days": "Days' wage",
+          "termination": "Dismissal (art. 80) — through end of service"
+        },
+        "penalty": "Penalty",
+        "amount": "Amount before the monthly cap",
+        "cap_note": "The payroll deducts at most five days' wage a month — reduced, never carried. The employee may object within 15 days; that suspends it.",
+        "cannot_apply": "Cannot be applied yet",
+        "hearing_on": "Hearing date",
+        "hearing_note": "Hearing summary",
+        "apply": "Apply",
+        "dismiss": "Dismiss",
+        "uphold": "Uphold",
+        "cancel_penalty": "Cancel the penalty",
+        "object_text": "Why you object",
+        "objection_text": "Objection: “{text}”",
+        "act": {
+          "decide": "Decide",
+          "objection": "Decide the objection",
+          "object": "Object"
+        },
+        "done": {
+          "recorded": "Violation recorded",
+          "applied": "Penalty applied — the employee is told",
+          "dismissed": "Dismissed",
+          "objected": "Objection sent — the penalty waits",
+          "upheld": "Upheld",
+          "cancelled": "Cancelled — it will not count again"
+        },
+        "block": {
+          "no_hearing": "The hearing date is required",
+          "hearing_before": "The hearing cannot be before the violation",
+          "hearing_future": "The hearing has not happened yet",
+          "decided": "Already decided",
+          "no_wage": "No wage on record to compute the amount",
+          "no_reason": "Give the reason",
+          "no_text": "Write why you object",
+          "objection_late": "The 15 days to object have passed",
+          "future": "A day that has not come",
+          "exists": "This violation is already recorded for that day"
         }
       }
     }

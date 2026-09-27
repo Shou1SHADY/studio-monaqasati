@@ -36,7 +36,7 @@ import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
 import { mayApprovePayroll } from "@/lib/hr/access"
 import type { WorkplaceMonth } from "@/lib/hr/attendance"
-import { HR_ATTENDANCE, HR_PAYROLLS } from "@/lib/hr/collections"
+import { HR_ATTENDANCE, HR_PAYROLLS, HR_VIOLATIONS } from "@/lib/hr/collections"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
 import {
   computePayroll,
@@ -55,6 +55,7 @@ import {
 } from "@/lib/hr/payroll"
 import { approvePayroll, preparePayroll, prepareSupplementary } from "@/lib/hr/payroll-writes"
 import { UNASSIGNED_SITE } from "@/lib/hr/sites"
+import type { HrViolation } from "@/lib/hr/violations"
 import { addDays } from "@/lib/hr/statutory"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import { cn } from "@/lib/utils"
@@ -93,6 +94,8 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const { requests } = useHrRequests(access)
   const attQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_ATTENDANCE), where("organizationId", "==", orgId), where("month", "==", month)) : null), [firestore, orgId, month])
   const { data: attData } = useCollection(attQ)
+  const vioQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_VIOLATIONS), where("organizationId", "==", orgId), where("deductMonth", "==", month)) : null), [firestore, orgId, month])
+  const { data: vioData } = useCollection(vioQ)
   const attendance = (attData ?? []) as unknown as WorkplaceMonth[]
   const mainRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, HR_PAYROLLS, payrollId(orgId, month)) : null), [firestore, orgId, month])
   const { data: mainData } = useDoc(mainRef)
@@ -105,8 +108,9 @@ export function HrPayrollView({ access, portal }: { access: HrAccess; portal: Hr
   const { data: prevData } = useDoc(prevRef)
 
   const live = useMemo(
-    () => computePayroll({ month, employees, pays, sites, attendance, requests, previous: (prevData as unknown as Payroll | null)?.lines ?? null }),
-    [month, employees, pays, sites, attendance, requests, prevData]
+    () =>
+      computePayroll({ month, employees, pays, sites, attendance, requests, previous: (prevData as unknown as Payroll | null)?.lines ?? null, violations: (vioData ?? []) as unknown as HrViolation[] }),
+    [month, employees, pays, sites, attendance, requests, prevData, vioData]
   )
   const { blocks, unclosed } = payrollBlocks({ month, today, sites, employees, attendance, missingPay: live.missingPay, state: saved?.state ?? null })
   const frozen = saved && saved.state !== "prepared"

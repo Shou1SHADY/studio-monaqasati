@@ -8,11 +8,12 @@
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { CheckCircle2, Circle, Inbox, Route } from "lucide-react"
+import { CheckCircle2, Circle, Gavel, Inbox, Route } from "lucide-react"
 import { Panel } from "@/components/module-ui/Panel"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { usePermissions } from "@/hooks/usePermissions"
 import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES, HR_SITES } from "@/lib/hr/collections"
 import { todayDay } from "@/lib/hr/format"
@@ -20,6 +21,7 @@ import { requestActions } from "@/lib/hr/requests"
 import { isOffice, type HrSite } from "@/lib/hr/sites"
 import { cn } from "@/lib/utils"
 import { HrRequestList } from "./HrRequestList"
+import { HrViolationList, useHrViolations, violationWaits } from "./HrViolationList"
 import { hrHref, type HrPortal } from "./HrShell"
 
 type Step = { key: string; done: boolean; href: string }
@@ -51,10 +53,23 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   const today = todayDay()
   const waiting = useMemo(() => requests.filter((r) => requestActions(access.ctx, r, { today, financeAllowed: false }).some((a) => a !== "cancel")), [requests, access.ctx, today])
 
+  const { user } = useUser()
+  const { profile } = usePermissions()
+  const actor = { uid: user?.uid ?? "", name: (profile?.name as string) || null }
+  const violations = useHrViolations(access)
+  const vWaiting = useMemo(() => violations.filter((v) => violationWaits(access, v)), [violations, access])
+
   const decisions = (
-    <Panel title={t("today.waiting")} icon={Inbox} count={waiting.length || undefined}>
-      <HrRequestList access={access} requests={waiting} portal={portal} empty={t("today.nothing_waiting")} />
-    </Panel>
+    <div className="space-y-6">
+      <Panel title={t("today.waiting")} icon={Inbox} count={waiting.length || undefined}>
+        <HrRequestList access={access} requests={waiting} portal={portal} empty={t("today.nothing_waiting")} />
+      </Panel>
+      {vWaiting.length > 0 && (
+        <Panel title={t("vio.waiting")} icon={Gavel} count={vWaiting.length}>
+          <HrViolationList access={access} actor={actor} violations={vWaiting} all={violations} empty="" />
+        </Panel>
+      )}
+    </div>
   )
 
   if (!access.allowed("settings.manage")) return decisions

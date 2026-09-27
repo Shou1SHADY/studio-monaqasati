@@ -1815,6 +1815,47 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Violations and penalties (PN-01…04): recorded by the site's supervisor
+    // (his sheet) or the HR manager, at a fixed id; decided by the HR manager
+    // after a hearing — never his own; objected by the employee himself;
+    // the objection decided by the HR manager. A penalty carries money: pay
+    // roles and the employee read it; a supervisor reads his site's (his sheet
+    // must know a violation is already recorded), and anyone on HR staff may
+    // learn that an id does NOT exist.
+    match /hrViolations/{violationId} {
+      allow get: if isSignedIn() && (isAdmin()
+        || (resource == null && hrStaff())
+        || (resource != null && isOrgMember(resource.data.organizationId)
+            && (hrSeesPay() || resource.data.get('employeeUserId', '') == request.auth.uid
+                || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId)))));
+      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && violationId == request.resource.data.organizationId + '__' + request.resource.data.employeeId + '__' + request.resource.data.on + '__' + request.resource.data.code
+        && request.resource.data.state == 'recorded'
+        && request.resource.data.recorded.by == request.auth.uid
+        && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
+        && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
+        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.employeeId == resource.data.employeeId
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.on == resource.data.on
+        && (
+          (resource.data.state == 'recorded' && request.resource.data.state in ['applied', 'dismissed']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'hearing', 'step', 'stepKind', 'amount', 'deductMonth', 'notifiedOn', 'decision', 'updatedAt'])
+            && (request.resource.data.state != 'applied' || request.resource.data.get('hearing', null) != null)
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          || (resource.data.state == 'applied' && request.resource.data.state == 'objected'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'objection', 'updatedAt'])
+            && resource.data.get('employeeUserId', '') == request.auth.uid)
+          || (resource.data.state == 'objected' && request.resource.data.state in ['upheld', 'cancelled']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'deductMonth', 'objectionDecision', 'updatedAt'])
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+        );
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit

@@ -10,8 +10,9 @@ import { addMonths, assumesPresence, EMPTY_MONTH, employeeMonth, type EmployeeMo
 import type { EmployeePay, HrEmployee } from "./employee"
 import { monthlyEosAccrual } from "./eos"
 import { leaveDays, sickSplit, type Holiday } from "./leave"
-import { gosiBase, overtimeOverCap, payLine, type PayLine } from "./pay"
+import { gosiBase, overtimeOverCap, payLine, wageOf, type PayLine } from "./pay"
 import type { HrRequest } from "./requests"
+import { monthPenalties, type HrViolation } from "./violations"
 import { costKindOf, UNASSIGNED_SITE, type CostKind, type HrSite } from "./sites"
 import { addDays, monthRange, r2, serviceYears, STATUTORY } from "./statutory"
 
@@ -153,6 +154,8 @@ export interface ComputeInput {
   /** Last month's lines — the sick days used in the service year carry over. */
   previous?: PayrollLine[] | null
   holidays?: Holiday[]
+  /** Penalties applied or upheld for this month — capped here at five days' wage (PN-03); an objected one waits. */
+  violations?: HrViolation[]
 }
 
 function heldOf(pay: EmployeePay): PayrollLine["heldReason"] {
@@ -195,6 +198,7 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
       month,
       attendance: { absent, overtimeHours: att.overtimeHours, sickThreeQuarters: split.threeQuarters, sickUnpaid: split.unpaid + split.beyond, unpaid: leave.unpaid.length },
       advance: pay.advance ?? null,
+      penalties: monthPenalties(input.violations ?? [], e.id, month, wageOf(pay)).total,
     })
     const site = input.sites.find((s) => s.id === e.siteId)
     const costKind: CostKind = e.siteId && site ? costKindOf(site.type) : "admin"

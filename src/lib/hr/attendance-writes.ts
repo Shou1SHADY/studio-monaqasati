@@ -19,10 +19,13 @@ import {
   type Declaration,
   type WorkplaceMonth,
 } from "./attendance"
-import { HR_ATTENDANCE } from "./collections"
+import { HR_ATTENDANCE, HR_EMPLOYEES, HR_VIOLATIONS } from "./collections"
+import type { HrEmployee } from "./employee"
 import type { HrActor } from "./employee-writes"
 import type { Holiday } from "./leave"
 import type { SiteType } from "./sites"
+import { violationId } from "./violations"
+import { violationRecord } from "./violation-writes"
 import { assertHr, HrWriteError } from "./write-guard"
 
 const localToday = () => {
@@ -62,6 +65,15 @@ export async function recordDay(
     const wm = snap.exists() ? (snap.data() as WorkplaceMonth) : null
     const blocks = sheetBlocks({ day, today, closed: Boolean(wm?.closed), listed: input.listed, ex, mayRecordViolation: hrAllowed(ctx, "violation.record", { site: site.id }) })
     if (blocks.length) throw new HrWriteError("blocked", blocks)
+    // A violation on the sheet becomes its record for the HR manager (WF-09) — once, at a fixed id.
+    const newViolations: Array<{ ref: ReturnType<typeof doc>; emp: HrEmployee; code: NonNullable<AttendanceException["violation"]> }> = []
+    for (const [employeeId, e] of Object.entries(ex)) {
+      if (!e.violation) continue
+      const ref = doc(firestore, HR_VIOLATIONS, violationId(orgId, employeeId, day, e.violation))
+      if ((await tx.get(ref)).exists()) continue
+      const es = await tx.get(doc(firestore, HR_EMPLOYEES, employeeId))
+      if (es.exists()) newViolations.push({ ref, emp: { id: es.id, ...(es.data() as Omit<HrEmployee, "id">) }, code: e.violation })
+    }
     const sheet: DaySheet = {
       by: actor.uid,
       byName: actor.name,
@@ -72,6 +84,7 @@ export async function recordDay(
     }
     if (!wm) tx.set(ref, { ...base(orgId, site, month), days: { [day]: sheet }, updatedAt: serverTimestamp() })
     else tx.update(ref, { [`days.${day}`]: sheet, updatedAt: serverTimestamp() })
+    for (const v of newViolations) tx.set(v.ref, { ...violationRecord(orgId, v.emp, v.code, day, actor, "sheet"), updatedAt: serverTimestamp() })
   })
 }
 
