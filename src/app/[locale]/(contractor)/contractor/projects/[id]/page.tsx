@@ -12,6 +12,7 @@ import { CertificatesPanel } from "@/components/pm/CertificatesPanel"
 import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
+import { PunchPanel } from "@/components/pm/PunchPanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
 import type { ProjectHandover } from "@/lib/crm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -157,7 +158,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo } from "lucide-react"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 
@@ -1963,6 +1964,7 @@ export default function ProjectDetailPage() {
       ? [
           { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
+          { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
         ]
       : []),
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
@@ -3101,6 +3103,7 @@ export default function ProjectDetailPage() {
             onItemsChanged={() => void loadBoqItems()}
           />
         )}
+        {activeTab === "pmPunch" && typedProject.pm && <PunchPanel projectId={projectId} access={pmAccess} actor={pmActor} />}
         {activeTab === "pmWir" && typedProject.pm && (
           <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
         )}

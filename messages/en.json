@@ -12210,6 +12210,55 @@
           "over_gross": "The consultant cannot certify more than was submitted",
           "cut_reason": "State why the consultant deducted"
         }
+      },
+      "punch": {
+        "title": "Punch list",
+        "new": "Raise a punch item",
+        "new_desc": "What is wrong, exactly where, and who raised it — the same party confirms it closed.",
+        "what": "What is wrong",
+        "location": "Exact location",
+        "severity": "Severity",
+        "raised_by": "Raised by",
+        "source_text": "State who raised it",
+        "submit": "Raise",
+        "raised": "Punch item {no} raised — no final acceptance until it is fixed and confirmed",
+        "fixed": "Fix recorded on {no} — it closes when {party} confirms",
+        "closed": "{no} closed — {count, plural, =0 {the punch list is complete} one {# item left before acceptance} other {# items left before acceptance}}",
+        "blocks_final": "{count, plural, one {# open item blocks} other {# open items block}} final acceptance — a fixed item counts until its confirmation is recorded.",
+        "empty": "No punch item",
+        "empty_desc": "Items the consultant, the client or our own walk-through raise before handover land here.",
+        "no": "Item {no}",
+        "line": "{location} · raised by {party} on {date}",
+        "fix_line": "Fixed {date} by {who} {note}",
+        "conf_line": "Confirmation recorded {date} by {who}",
+        "record_fix": "Record the fix",
+        "record_conf": "Record {party}'s confirmation",
+        "fix_desc": "It becomes “fixed — awaiting confirmation”; only {party}'s confirmation closes it.",
+        "fix_note": "What was done (optional)",
+        "sev": {
+          "a": "Critical",
+          "b": "Normal"
+        },
+        "source": {
+          "cons": "The consultant",
+          "own": "The client",
+          "qs": "The QS office",
+          "int": "Internal walk-through",
+          "ho": "The handover walk",
+          "oth": "Other — stated"
+        },
+        "status": {
+          "open": "Open",
+          "fix": "Fixed — awaiting {party}",
+          "done": "Closed"
+        },
+        "block": {
+          "archived": "The project is archived",
+          "no_what": "Say what is wrong",
+          "no_location": "State the exact location",
+          "source_text": "Pick who raised it, and state it if other",
+          "wrong_state": "This item has moved on — refresh"
+        }
       }
     }
   },

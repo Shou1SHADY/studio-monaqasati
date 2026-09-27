@@ -654,7 +654,7 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'qa')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount']))
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount']))
                 // …and so may whoever the guard allows on the pm block: the terms need
                 // money + (all | approve), everything else on it needs approve.
                 || (('pm' in resource.data)
@@ -921,6 +921,32 @@ service cloud.firestore {
                 && (pmDuty(projectId, 'approve') || (resource.data.prep == request.auth.uid && pmDuty(projectId, 'prep')))
                 && request.resource.data.diff(resource.data).affectedKeys()
                      .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 punch list (PN-01…03) — `pmPunch/{NN}`. Quality (`qa`) raises it with an
+      // exact location, records the fix, then records the raising party's confirmation:
+      // open → fix → done, one step at a time. Never deleted.
+      match /pmPunch/{punchId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'qa')
+          && request.resource.data.status == 'open'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.location is string && request.resource.data.location.size() > 0
+          && request.resource.data.seq is int;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'qa')
+          && ((resource.data.status == 'open' && request.resource.data.status == 'fix'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'fix', 'updatedAt']))
+              || (resource.data.status == 'fix' && request.resource.data.status == 'done'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'conf', 'updatedAt'])));
 
         allow delete: if isAdmin();
       }
