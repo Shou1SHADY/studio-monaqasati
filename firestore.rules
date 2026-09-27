@@ -1766,6 +1766,49 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Payroll (PY-02…05): prepared by payroll or the HR manager and recomputed
+    // until approved; approved by the HR manager who did not prepare it (the
+    // org owner excepted, flagged); then Finance marks it posted and paid.
+    // Carries every wage: pay roles and Finance only.
+    match /hrPayrolls/{payrollId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && payrollId == request.resource.data.organizationId + '__' + request.resource.data.key
+        && request.resource.data.state == 'prepared'
+        && request.resource.data.prepared.by == request.auth.uid
+        && (hrManager() || hrRole('hr.payroll'));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.key == resource.data.key
+        && (
+          (resource.data.state == 'prepared' && request.resource.data.state == 'prepared'
+            && request.resource.data.prepared.by == request.auth.uid
+            && (hrManager() || hrRole('hr.payroll')))
+          || (resource.data.state == 'prepared' && request.resource.data.state == 'approved'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'approved', 'ownFlagged', 'updatedAt'])
+            && hrManager() && (resource.data.prepared.by != request.auth.uid || isOrgOwner()))
+          || (resource.data.state in ['approved', 'posted'] && request.resource.data.state in ['posted', 'paid']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'updatedAt'])
+            && hrFinance())
+        );
+      allow delete: if false;
+    }
+
+    // The outbox to Finance (§7.2): one document per event key, written once by
+    // the approving HR manager; Finance only marks it posted / paid.
+    match /hrEvents/{eventId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && eventId == request.resource.data.organizationId + '__' + request.resource.data.key
+        && request.resource.data.state == 'sent'
+        && hrManager();
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hrFinance()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'entryId', 'updatedAt'])
+        && request.resource.data.state in ['posted', 'paid'];
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit

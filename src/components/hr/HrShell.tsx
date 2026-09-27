@@ -17,7 +17,7 @@ import type { HrTab } from "@/lib/hr/access"
 export type HrPortal = "contractor" | "supplier"
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "settings"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "settings"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,

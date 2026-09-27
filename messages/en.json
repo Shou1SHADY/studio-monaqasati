@@ -551,6 +551,7 @@
       "hr_nav_today": "HR — Today",
       "hr_nav_people": "People",
       "hr_nav_sites": "Workplaces",
+      "hr_nav_payroll": "Payroll",
       "hr_nav_settings": "HR settings",
       "component_hr_desc": "Employees and salaries",
       "component_crm": "CRM",
@@ -13427,6 +13428,79 @@
           "over_limit": "Above the HR limit — decided in Finance after HR's view.",
           "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
         }
+      },
+      "payroll": {
+        "state": {
+          "none": "Not prepared",
+          "prepared": "Prepared",
+          "approved": "Approved — with Finance",
+          "posted": "Posted",
+          "paid": "Paid"
+        },
+        "prepared_by": "Prepared by {name} · {at}",
+        "approved_by": "approved by {name} · {at}",
+        "cannot_prepare": "Cannot be prepared yet",
+        "block": {
+          "not_over": "The month has not ended",
+          "unclosed": "A workplace is not closed",
+          "unclosed_list": "Not closed yet: {sites}",
+          "no_pay": "Someone has no wage on record",
+          "no_pay_list": "No wage on record: {names} — the HR manager enters it; nobody is left out silently",
+          "approved": "Already approved — a closed month never reopens; late items go to the supplementary",
+          "sent": "Its events were already sent to Finance",
+          "main_not_approved": "Approve the month's payroll first",
+          "no_lines": "Nothing for the supplementary"
+        },
+        "stale": "The record changed since it was prepared — recompute before approving.",
+        "prepare": "Compute and prepare",
+        "recompute": "Recompute",
+        "prepared_ok": "Payroll prepared — the HR manager approves it",
+        "approve": "Approve",
+        "approved_ok": "Approved — sent to Finance",
+        "not_preparer": "You prepared it — another HR manager approves.",
+        "mudad": "Mudad wage file",
+        "gosi": "GOSI statement",
+        "k": {
+          "people": "People",
+          "gross": "Gross",
+          "deductions": "Deductions",
+          "gosi": "GOSI (both)",
+          "advances": "Advances",
+          "net": "Net",
+          "held": "Held ({n})"
+        },
+        "lines": "Lines",
+        "filter": "Show",
+        "f": {
+          "all": "All lines",
+          "exceptions": "Exceptions",
+          "held": "Held"
+        },
+        "col": {
+          "no": "No.",
+          "name": "Name",
+          "site": "Workplace",
+          "days": "Days",
+          "absent": "Absent",
+          "ot": "OT h",
+          "gross": "Gross",
+          "deductions": "Deductions",
+          "net": "Net",
+          "notes": "Check"
+        },
+        "w": {
+          "net_negative": "Net below zero",
+          "over_half": "Over half deducted",
+          "net_below_90": "Net under 90%",
+          "ot_over_cap": "Over 60 OT h",
+          "held": "Held — IBAN",
+          "declared": "Declared days"
+        },
+        "no_lines": "No lines",
+        "sup_title": "Supplementary {key}",
+        "sup_desc": "Late items only — retro pay differences for this closed month. The month's payroll is not reopened.",
+        "confirm_title": "Approve payroll {key}?",
+        "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary."
       }
     }
   },
