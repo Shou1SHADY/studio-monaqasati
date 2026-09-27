@@ -61,6 +61,7 @@ export type SourceType =
   | "hr_pay_payment"
   | "hr_pay_return"
   | "hr_advance"
+  | "hr_settlement"
   | "expense"
   | "depreciation"
   | "guarantee_margin"

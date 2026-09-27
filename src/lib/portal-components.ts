@@ -237,6 +237,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           // it was received; signing for it is gated inside the page.
           { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/contractor/warehouses/manufacturing", icon: Factory },
+          { titleKey: "inventory_custody", href: "/contractor/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
       },
     ],
@@ -533,6 +534,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "inventory_waste", href: "/supplier/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_delivery_notes", href: "/supplier/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/supplier/warehouses/manufacturing", icon: Factory },
+          { titleKey: "inventory_custody", href: "/supplier/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
       },
     ],

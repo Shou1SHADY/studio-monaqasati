@@ -48,6 +48,8 @@ export interface HrEmployee {
   contract: { type: "open" | "fixed"; end?: string | null }
   probation: Probation
   status: EmployeeStatus
+  /** Set when the exit starts (EX-01): payroll stops the month it falls in — the settlement pays that month (EX-05). */
+  lastDay?: string | null
   docs: DocDates
   /** Annual leave days taken since joining (opening balance adjusts accrual). */
   leaveTaken: number

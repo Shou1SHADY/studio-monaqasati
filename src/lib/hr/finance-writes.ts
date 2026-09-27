@@ -7,9 +7,10 @@
 
 import { doc, getDoc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore"
 import { postToLedger } from "../accounting/post"
-import { postHrAdvance, postHrEos, postHrPay, postHrPayPayment, postHrPayReturn, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
-import { HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS } from "./collections"
+import { postHrAdvance, postHrEos, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
+import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay } from "./employee"
+import type { HrSettlement } from "./exit-writes"
 import { payrollId, payrollTotals, type Payroll } from "./payroll"
 import { eventId } from "./payroll-writes"
 import type { HrRequest } from "./requests"
@@ -131,5 +132,40 @@ export async function payAdvance(firestore: Firestore, a: FinanceActor, orgId: s
   const batch = writeBatch(firestore)
   await book(firestore, a, orgId, postHrAdvance({ requestId: r.id, requestNo: r.no, date: books.date, amount: r.advance.amount, bankAccount: books.bankAccount }), books, batch)
   batch.update(doc(firestore, HR_REQUESTS, r.id), { payout: { ...stamp(a), date: books.date }, updatedAt: serverTimestamp() })
+  await batch.commit()
+}
+
+/** Pay the final settlement (hr:FS → fin:PRPAID): the exit closes. */
+export async function paySettlement(firestore: Firestore, a: FinanceActor, orgId: string, st: HrSettlement, books: Books): Promise<void> {
+  need(a)
+  if (st.state !== "approved") throw new HrWriteError("blocked", ["stale"])
+  if (a.employeeId && a.employeeId === st.employeeId) throw new HrWriteError("own_request")
+  const batch = writeBatch(firestore)
+  const entryId = await book(
+    firestore,
+    a,
+    orgId,
+    postHrSettlement({
+      settlementId: st.id,
+      no: st.no,
+      date: books.date,
+      costKind: st.costKind,
+      siteId: st.siteId,
+      projectId: st.projectId,
+      gratuity: st.gratuity,
+      leaveCash: st.leaveCash,
+      wages: r2(st.lastPay + st.noticePay + st.art77 + st.ticket),
+      advance: st.advance,
+      custody: st.custody,
+      net: st.net,
+      bankAccount: books.bankAccount,
+    }),
+    books,
+    batch
+  )
+  const by = { ...stamp(a), date: books.date }
+  batch.update(doc(firestore, HR_SETTLEMENTS, st.id), { state: "paid", paid: by, entryId: entryId ?? null, updatedAt: serverTimestamp() })
+  batch.update(doc(firestore, HR_EXITS, st.id), { state: "paid", paid: by, updatedAt: serverTimestamp() })
+  batch.update(doc(firestore, HR_EVENTS, eventId(orgId, `hr:FS:${st.no}`)), { state: "paid", paid: by, entryId: entryId ?? null, updatedAt: serverTimestamp() })
   await batch.commit()
 }

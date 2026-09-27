@@ -1856,6 +1856,58 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // End of service (EX-01…06). The exit carries no money: HR staff, the
+    // employee, Inventory (it clears the custody) and Finance read it. Started by
+    // the HR manager — never his own; custody cleared by Inventory only; the
+    // platform tasks by government relations or the HR manager; paid by Finance.
+    match /hrExits/{exitId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrStaff() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid
+            || hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && exitId == request.resource.data.organizationId + '__' + request.resource.data.employeeId
+        && request.resource.data.state == 'leaving'
+        && request.resource.data.custody.state == 'requested'
+        && request.resource.data.started.by == request.auth.uid
+        && hrManager()
+        && (request.resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner());
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.employeeId == resource.data.employeeId
+        && (
+          (resource.data.custody.state == 'requested' && request.resource.data.custody.state == 'cleared'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['custody', 'updatedAt'])
+            && (hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive')))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tasks', 'updatedAt'])
+            && (hrManager() || hrRole('hr.gov')))
+          || (resource.data.state == 'leaving' && request.resource.data.state == 'settled'
+            && resource.data.custody.state == 'cleared'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'settled', 'updatedAt'])
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          || (resource.data.state == 'settled' && request.resource.data.state == 'paid'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'paid', 'updatedAt'])
+            && hrFinance())
+        );
+      allow delete: if false;
+    }
+
+    // The settlement (EX-02, EX-04) — money: pay roles, Finance and the employee.
+    match /hrSettlements/{settlementId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'approved'
+        && request.resource.data.approved.by == request.auth.uid
+        && hrManager()
+        && (request.resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner())
+        && exists(/databases/$(database)/documents/hrExits/$(settlementId))
+        && get(/databases/$(database)/documents/hrExits/$(settlementId)).data.custody.state == 'cleared';
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.state == 'approved' && request.resource.data.state == 'paid'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'paid', 'entryId', 'updatedAt'])
+        && hrFinance();
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit

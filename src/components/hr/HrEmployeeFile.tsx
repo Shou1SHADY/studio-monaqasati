@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Inbox, Link2, Loader2, Plane, Wallet } from "lucide-react"
+import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, Gavel, HandCoins, History, Inbox, Link2, Loader2, LogOut, Plane, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
@@ -36,6 +36,7 @@ import { tradeOf } from "@/lib/hr/trades"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
+import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
 import { HrRequestList } from "./HrRequestList"
 import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
@@ -61,6 +62,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const allViolations = useHrViolations(access)
   const violations = useMemo(() => allViolations.filter((v) => v.employeeId === employeeId), [allViolations, employeeId])
   const [recording, setRecording] = useState(false)
+  const [exiting, setExiting] = useState(false)
 
   const logQ = useMemoFirebase(() => (firestore ? query(collection(firestore, HR_EMPLOYEES, employeeId, HR_LOG), orderBy("at", "desc")) : null), [firestore, employeeId])
   const { data: logData } = useCollection(logQ)
@@ -154,6 +156,12 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
               )}
             </>
           )}
+          {access.allowed("exit.manage") && (emp.status === "active" || emp.status === "expected" || emp.status === "leave") && (access.ctx.owner || access.ctx.employeeId !== emp.id) && (
+            <Button size="sm" variant="outline" onClick={() => setExiting(true)}>
+              <LogOut size={14} className="me-1.5" aria-hidden="true" />
+              {t("exit.start")}
+            </Button>
+          )}
           {acts
             .filter((a) => a.show)
             .map((a) => (
@@ -166,6 +174,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       </div>
 
       {!facts.legal && <Callout tone="block">{t("file.iqama_expired")}</Callout>}
+
+      <HrExitPanel access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tile(t("file.tile.service"), t("file.years", { n: facts.service.toFixed(1) }), t("file.since", { date: hrDate(emp.join, locale) }))}
@@ -297,6 +307,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
         </Panel>
       )}
 
+      {exiting && <StartExitDialog access={access} actor={actor} emp={emp as HrEmployee} onClose={() => setExiting(false)} />}
       {recording && <RecordViolationDialog access={access} actor={actor} employeeId={employeeId} onClose={() => setRecording(false)} />}
       {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} existing={requests} />}
 
@@ -316,7 +327,8 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
     else if (k === "from" || k === "to") {
       if (l.kind === "moved") out[k] = siteName(String(v)) ?? t("sites.unassigned")
       else out[k] = hrDate(String(v), locale)
-    } else if (k === "on" || k === "consent") out[k] = hrDate(String(v), locale)
+    } else if (k === "on" || k === "consent" || k === "lastDay") out[k] = hrDate(String(v), locale)
+    else if (k === "reason" && (l.kind === "exit_started")) out[k] = t(`exit.reasons.${v}` as "exit.reasons.resignation")
     else if (k === "doc") out[k] = t(`doc.${v}` as "doc.iqama")
     else if (k === "trade") out[k] = t(`trade.${v}` as "trade.mason")
     else if (k === "code") out[k] = t(`violation.${v}` as "violation.late15")

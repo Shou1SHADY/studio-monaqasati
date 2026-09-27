@@ -795,6 +795,48 @@ export function postHrAdvance(e: { requestId: string; requestNo: string; date: s
   }
 }
 
+export interface HrSettlementPosting {
+  settlementId: string
+  /** The employee's number — never the name: every member reads the journal. */
+  no: number
+  date: string
+  costKind: HrCostKind
+  siteId: string | null
+  projectId: string | null
+  gratuity: number
+  leaveCash: number
+  /** Last partial month + notice pay + art. 77 compensation + ticket — this month's cost. */
+  wages: number
+  advance: number
+  custody: number
+  net: number
+  bankAccount?: string
+}
+
+/** hr:FS paid (fin:PRPAID) — Dr the EOS provision (gratuity) and the leave provision
+ * (leave in cash), the wages by centre · Cr the outstanding advance, the custody
+ * shortfall recovered, and the bank. A provision short of the gratuity shows as its
+ * balance going negative — the accountant tops it up; nothing here guesses. */
+export function postHrSettlement(e: HrSettlementPosting): PostingResult {
+  const lines: Line[] = [
+    { account: ACC.endOfServiceProvision, debit: e.gratuity, note: "مكافأة نهاية الخدمة" },
+    { account: ACC.leaveProvision, debit: e.leaveCash, note: "رصيد الإجازات نقداً" },
+    ...hrCostLines([{ costKind: e.costKind, siteId: e.siteId, projectId: e.projectId, amount: e.wages }], "أجر الشهر الأخير والإشعار"),
+    { account: ACC.employeeAdvances, credit: e.advance, note: "سلفة مستردة" },
+    { account: ACC.sundryIncome, credit: e.custody, note: "عهدة ناقصة مستردة" },
+    { account: e.bankAccount || ACC.bankMain, credit: e.net },
+  ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)
+  return {
+    sourceType: "hr_settlement",
+    sourceId: e.settlementId,
+    date: e.date,
+    description: `مخالصة نهاية خدمة — موظف ${String(e.no).padStart(4, "0")}`,
+    costCenter: COST_CENTERS.admin,
+    lines,
+    empty: round2(e.gratuity + e.leaveCash + e.wages) === 0,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 10. Operating expense
 // ---------------------------------------------------------------------------

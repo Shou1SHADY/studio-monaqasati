@@ -113,10 +113,12 @@ export function payrollBlocks(input: { month: string; today: string; sites: HrSi
 // Who is on it (PY-10) and each line (PY-01)
 // ---------------------------------------------------------------------------
 
-/** On the month's payroll: joined by its end, not left, and — if imported — from the import month on. */
-export function onPayroll(e: Pick<HrEmployee, "join" | "status" | "since">, month: string): boolean {
+/** On the month's payroll: joined by its end, not left, and — if imported — from the import month on.
+ * The month of the last day is the settlement's, not the payroll's (EX-05). */
+export function onPayroll(e: Pick<HrEmployee, "join" | "status" | "since" | "lastDay">, month: string): boolean {
   if (e.status === "left") return false
   if (!e.join || e.join > monthRange(month).end) return false
+  if (e.lastDay && e.lastDay.slice(0, 7) <= month) return false
   if (e.since && e.since.slice(0, 7) > month) return false
   return true
 }

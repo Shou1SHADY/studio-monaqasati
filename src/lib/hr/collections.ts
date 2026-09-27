@@ -15,3 +15,5 @@ export const HR_PAYROLLS = "hrPayrolls"
 /** HR → Finance outbox; the doc id is the idempotency key. */
 export const HR_EVENTS = "hrEvents"
 export const HR_VIOLATIONS = "hrViolations"
+export const HR_EXITS = "hrExits"
+export const HR_SETTLEMENTS = "hrSettlements"

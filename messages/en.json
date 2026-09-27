@@ -634,6 +634,7 @@
       "mfw_nav_products": "Products",
       "mfw_nav_settings": "Settings",
       "inventory_mfg_desk": "Manufacturing desk",
+      "inventory_custody": "Custody clearance",
       "sales_nav_reports": "Reports",
       "sales_nav_settings": "Settings & boundary",
       "fin_nav_sales_desk": "Sales desk",
@@ -13256,7 +13257,9 @@
         "penalty_dismissed": "Violation dismissed — {code}, {on}",
         "penalty_objected": "Objection filed — {code}, {on}",
         "objection_upheld": "Objection decided: penalty upheld — {code}",
-        "objection_cancelled": "Objection decided: penalty cancelled — {code}"
+        "objection_cancelled": "Objection decided: penalty cancelled — {code}",
+        "exit_started": "End of service started — {reason}, last day {lastDay}",
+        "settlement_approved": "Settlement approved — last day {lastDay}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13586,7 +13589,11 @@
           "no_reason": "Give the reason",
           "iban_not_ready": "The IBAN is not approved yet",
           "outstanding": "An advance is still outstanding"
-        }
+        },
+        "settlements": "Final settlements",
+        "settlements_empty": "No settlement waiting",
+        "settlement_line": "Net {net} · last day {last}",
+        "settlement_paid_ok": "Settlement paid — the exit is closed"
       },
       "vio": {
         "title": "Violations and penalties",
@@ -13653,6 +13660,89 @@
           "objection_late": "The 15 days to object have passed",
           "future": "A day that has not come",
           "exists": "This violation is already recorded for that day"
+        }
+      },
+      "custody": {
+        "title": "Custody clearance",
+        "desc": "HR asks when someone leaves; only your answer unlocks the settlement.",
+        "no_permission": "Clearing custody needs a warehouse permission.",
+        "waiting": "Waiting for clearance",
+        "none": "Nobody is waiting",
+        "line": "Last day {last} · asked {asked}",
+        "clear": "Clear the custody",
+        "confirm": "Cleared",
+        "shortfall": "Value of anything missing",
+        "shortfall_note": "Deducted from the settlement. Leave empty if everything came back.",
+        "cleared_ok": "Cleared — HR can settle",
+        "done": "Recently cleared",
+        "short": "missing {amount}"
+      },
+      "exit": {
+        "title": "End of service",
+        "start": "End service",
+        "reason": "Reason",
+        "pick_reason": "Choose the reason",
+        "reasons": {
+          "resignation": "Resignation",
+          "termination_notice": "Termination with notice",
+          "termination_pay": "Termination with pay in lieu of notice",
+          "contract_end": "Contract end",
+          "probation": "During probation"
+        },
+        "notice_on": "Notice given on",
+        "last_day": "Last working day",
+        "art77": "Compensation under art. 77 is due (termination without a valid reason)",
+        "custody_note": "Inventory is asked to clear his custody; the settlement waits for its answer.",
+        "state": {
+          "leaving": "Leaving",
+          "settled": "Settled — with Finance",
+          "paid": "Paid — closed"
+        },
+        "custody_requested": "Custody: waiting for Inventory",
+        "custody_cleared": "Custody cleared",
+        "custody_by": "Cleared by",
+        "shortfall": "Custody missing",
+        "settlement": "Settlement",
+        "settlement_preview": "Settlement as it stands today",
+        "s": {
+          "gratuity": "End-of-service award ({years} years)",
+          "leave": "Leave balance in cash ({days} days)",
+          "last": "Last month ({days} days)",
+          "notice": "Pay in lieu of notice (art. 75)",
+          "art77": "Compensation (art. 77)",
+          "ticket": "Ticket",
+          "advance": "Outstanding advance",
+          "custody": "Custody missing",
+          "net": "Net due"
+        },
+        "ticket": "Ticket owed by the contract",
+        "fixed_months": "Months left on the contract",
+        "approve": "Approve the settlement",
+        "approved": "Settlement approved — sent to Finance",
+        "started": "End of service started — Inventory is asked",
+        "tasks": "After the exit",
+        "task": {
+          "gosi": "Excluded from GOSI",
+          "insurance": "Removed from medical insurance",
+          "finalExit": "Final exit issued"
+        },
+        "task_saved": "Saved",
+        "certificate": "Service certificate",
+        "cert_title": "Service certificate",
+        "cert_body": "We certify that {name}, ID {id}, worked with us as {trade} from {join} to {last}.",
+        "cert_close": "{gender, select, f {This certificate is issued at her request} other {This certificate is issued at his request}}, without any liability on the company.",
+        "block": {
+          "no_reason": "Choose the reason",
+          "no_last_day": "The last day is required",
+          "last_before_join": "The last day is before the joining date",
+          "left": "An exit is already under way",
+          "probation_over": "Probation is over — choose another reason",
+          "contract_open": "An open-ended contract has no end — choose another reason",
+          "custody": "Waiting for Inventory to clear the custody",
+          "stale": "This has already moved on",
+          "no_wage": "No wage on record",
+          "sent": "Already sent to Finance",
+          "bad_amount": "Enter a valid amount"
         }
       }
     }

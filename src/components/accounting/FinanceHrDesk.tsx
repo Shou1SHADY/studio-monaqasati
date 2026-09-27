@@ -9,7 +9,7 @@
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { Banknote, BookCheck, HandCoins, Loader2, Lock, RotateCcw, Users } from "lucide-react"
+import { Banknote, BookCheck, HandCoins, Loader2, Lock, LogOut, RotateCcw, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -25,10 +25,11 @@ import { useHrAccess } from "@/hooks/useHrAccess"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import { accountName, POSTABLE_ACCOUNTS } from "@/lib/accounting/accounts"
-import { HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS } from "@/lib/hr/collections"
+import { HR_EVENTS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SETTLEMENTS } from "@/lib/hr/collections"
 import type { EmployeePay } from "@/lib/hr/employee"
 import { empNo, hrDate, hrMoney, todayDay } from "@/lib/hr/format"
-import { markReturned, payAdvance, payHeldLine, postHrEvent, recordPayrollPaid, transferAmount, type FinanceActor, type HrEvent } from "@/lib/hr/finance-writes"
+import type { HrSettlement } from "@/lib/hr/exit-writes"
+import { markReturned, payAdvance, payHeldLine, paySettlement, postHrEvent, recordPayrollPaid, transferAmount, type FinanceActor, type HrEvent } from "@/lib/hr/finance-writes"
 import type { Payroll } from "@/lib/hr/payroll"
 import { financeDecideAdvance } from "@/lib/hr/request-writes"
 import { requestNoDisplay, type HrRequest } from "@/lib/hr/requests"
@@ -43,6 +44,7 @@ type Pending =
   | { kind: "held"; p: PayrollDoc; employeeId: string; name: string; net: number }
   | { kind: "advance"; r: HrRequest }
   | { kind: "decide"; r: HrRequest }
+  | { kind: "settlement"; st: HrSettlement }
 
 const BANKS = POSTABLE_ACCOUNTS.filter((a) => a.code.startsWith("1101")).map((a) => a.code)
 
@@ -67,6 +69,9 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
   const evQ = useMemoFirebase(() => orgQ(HR_EVENTS), [firestore, orgId, allowed])
   const prQ = useMemoFirebase(() => orgQ(HR_PAYROLLS), [firestore, orgId, allowed])
   const avQ = useMemoFirebase(() => orgQ(HR_REQUESTS, where("kind", "==", "advance")), [firestore, orgId, allowed])
+  const fsQ = useMemoFirebase(() => orgQ(HR_SETTLEMENTS, where("state", "==", "approved")), [firestore, orgId, allowed])
+  const { data: fsData } = useCollection(fsQ)
+  const settlements = (fsData ?? []) as unknown as HrSettlement[]
   const setRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, "accounting_settings", orgId) : null), [firestore, orgId])
   const { data: evData, isLoading } = useCollection(evQ)
   const { data: prData } = useCollection(prQ)
@@ -74,7 +79,8 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
   const { data: accSettings } = useDoc(setRef)
   const accountingOn = (accSettings as { enabled?: boolean } | null)?.enabled === true
 
-  const events = ((evData ?? []) as unknown as HrEvent[]).filter((e) => e.state === "sent").sort((a, b) => a.key.localeCompare(b.key))
+  // A settlement (hr:FS) is paid from its own section below, not posted here.
+  const events = ((evData ?? []) as unknown as HrEvent[]).filter((e) => e.state === "sent" && (e.kind === "PAY" || e.kind === "EOS")).sort((a, b) => a.key.localeCompare(b.key))
   const payrolls = ((prData ?? []) as unknown as PayrollDoc[]).sort((a, b) => b.key.localeCompare(a.key))
   const toPay = payrolls.filter((p) => p.state === "posted" || (p.state === "approved" && !accountingOn))
   const paid = payrolls.filter((p) => p.state === "paid").slice(0, 3)
@@ -114,6 +120,7 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
     else if (pending.kind === "return") void run(() => markReturned(firestore, actor, orgId, pending.p, who, note, books), "fhd.returned_ok")
     else if (pending.kind === "held") void run(() => payHeldLine(firestore, actor, orgId, pending.p, pending.employeeId, books), "fhd.paid_ok")
     else if (pending.kind === "advance") void run(() => payAdvance(firestore, actor, orgId, pending.r, books), "fhd.advance_paid_ok")
+    else if (pending.kind === "settlement") void run(() => paySettlement(firestore, actor, orgId, pending.st, books), "fhd.settlement_paid_ok")
   }
   const decide = (verdict: "approve" | "decline") => {
     if (!firestore || pending?.kind !== "decide") return
@@ -207,6 +214,25 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Panel>
 
+          <Panel title={t("fhd.settlements")} icon={LogOut} count={settlements.length || undefined}>
+            {settlements.length === 0 ? (
+              empty(t("fhd.settlements_empty"))
+            ) : (
+              <ul className="divide-y rounded-xl border">
+                {settlements.map((st) =>
+                  row(
+                    st.id,
+                    `${empNo(st.no)} · ${t(`exit.reasons.${st.reason}`)}`,
+                    t("fhd.settlement_line", { net: hrMoney(st.net), last: hrDate(st.lastDay, locale) }),
+                    <Button size="sm" disabled={busy || st.employeeId === access.ctx.employeeId} onClick={() => open({ kind: "settlement", st })}>
+                      {t("fhd.pay_out")}
+                    </Button>
+                  )
+                )}
+              </ul>
+            )}
+          </Panel>
+
           <Panel title={t("fhd.advances")} icon={HandCoins} count={toDecide.length + toPayOut.length || undefined}>
             {toDecide.length + toPayOut.length === 0 ? (
               empty(t("fhd.advances_empty"))
@@ -247,6 +273,7 @@ export function FinanceHrDesk({ portal }: { portal: CrmPortal }) {
               {pending?.kind === "held" && `${pending.name} · ${hrMoney(pending.net)}`}
               {(pending?.kind === "advance" || pending?.kind === "decide") && `${requestNoDisplay(pending.r.no, locale)} · ${pending.r.employeeName} · ${hrMoney(pending.r.advance?.amount)}`}
               {pending?.kind === "return" && t("fhd.return_desc", { key: pending.p.key })}
+              {pending?.kind === "settlement" && `${empNo(pending.st.no)} · ${hrMoney(pending.st.net)}`}
             </DialogDescription>
           </DialogHeader>
           {pending?.kind === "return" && (
