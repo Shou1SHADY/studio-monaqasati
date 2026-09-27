@@ -156,7 +156,7 @@ export function guestOfferPrice(
   return { ok: true, total: pricing.total, price: String(pricing.total), lines: pricing.lines }
 }
 
-type RatedOffer = { price?: unknown; totalBatchesPrice?: unknown; lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null }
+export type RatedOffer = { price?: unknown; totalBatchesPrice?: unknown; lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null }
 
 /**
  * Whether an offer's quoted rates still add up to the total it now stands at.

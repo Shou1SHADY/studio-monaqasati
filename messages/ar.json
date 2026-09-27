@@ -9835,7 +9835,22 @@
       "action_po_attention": "افتح «اليوم» في المشتريات",
       "metric_po_late": "متأخر",
       "metric_po_not_accepted": "لم يُقبل",
-      "metric_po_not_sent": "لم يُرسل"
+      "metric_po_not_sent": "لم يُرسل",
+      "rfq_glance_desc": "{count, plural, =0 {لم يصل أي عرض بعد.} one {وصل عرض واحد — الأسعار جنباً إلى جنب.} two {وصل عرضان — الأسعار جنباً إلى جنب.} few {وصلت # عروض — الأسعار جنباً إلى جنب.} many {وصل # عرضاً — الأسعار جنباً إلى جنب.} other {وصل # عرض — الأسعار جنباً إلى جنب.}}",
+      "rfq_glance_sealed": "جولة مختومة: تبقى العروض ملك الموردين حتى الموعد النهائي ({date}). يظهر من قدّم — بلا مبلغ.",
+      "rfq_glance_no_prices": "دورك يرى من قدّم عرضاً وحالته — لا أسعاره.",
+      "rfq_glance_material": "المادة",
+      "rfq_glance_mdmak": "مدماك تك",
+      "rfq_glance_total_only": "إجمالي فقط",
+      "rfq_glance_total": "إجمالي العرض",
+      "rfq_glance_lowest": "الأقل",
+      "rfq_glance_duration": "التوريد / المدة",
+      "rfq_glance_note": "الأسعار هي أسعار الموردين لكل مادة؛ العرض الذي قدّم إجمالياً فقط لا يظهر له سعر وحدة — لا يُقسَّم الإجمالي على البنود. الأخضر أقل سعر ما زال في المنافسة، والعرض المرفوض مشطوب. الإجماليات دون ضريبة القيمة المضافة.",
+      "rfq_glance_open_full": "فتح صفحة العروض كاملة",
+      "rfq_glance_open": "العروض على {title}",
+      "rfq_glance_status_accepted": "مقبول",
+      "rfq_glance_status_rejected": "مرفوض",
+      "rfq_glance_status_review": "قيد المراجعة"
     },
     "Admin": {
       "Dashboard": {

@@ -9835,7 +9835,22 @@
       "action_po_attention": "Open Procurement's Today",
       "metric_po_late": "Late",
       "metric_po_not_accepted": "Not accepted",
-      "metric_po_not_sent": "Not sent"
+      "metric_po_not_sent": "Not sent",
+      "rfq_glance_desc": "{count, plural, =0 {No offer received yet.} one {# offer received — prices side by side.} other {# offers received — prices side by side.}}",
+      "rfq_glance_sealed": "Sealed round: offers stay the suppliers' own until the deadline ({date}). Who quoted is shown — no amount.",
+      "rfq_glance_no_prices": "Your role sees who quoted and where each offer stands — not its prices.",
+      "rfq_glance_material": "Material",
+      "rfq_glance_mdmak": "Mdmak Tech",
+      "rfq_glance_total_only": "Total only",
+      "rfq_glance_total": "Offer total",
+      "rfq_glance_lowest": "Lowest",
+      "rfq_glance_duration": "Delivery / duration",
+      "rfq_glance_note": "Rates are the suppliers' own per material; an offer that quoted only a total shows no rate — a total is never split across lines. Green marks the lowest price still in the running; a rejected offer is struck through. Totals exclude VAT.",
+      "rfq_glance_open_full": "Open the full offers page",
+      "rfq_glance_open": "Offers on {title}",
+      "rfq_glance_status_accepted": "Accepted",
+      "rfq_glance_status_rejected": "Rejected",
+      "rfq_glance_status_review": "Under review"
     },
     "Admin": {
       "Dashboard": {

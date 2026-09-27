@@ -37,6 +37,7 @@ import { Label } from "@/components/ui/label"
 import { FileText, Eye, Calendar, Search, Package, Loader2, Send, MapPin, X, File, MessageCircle, User, Pencil, Trash2, RotateCw, LayoutGrid, List, Share2 } from "lucide-react"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { MfgPurchaseRequestsPanel } from "@/components/contractor/MfgPurchaseRequestsPanel"
+import { RfqOffersSheet, type SheetRfq } from "@/components/contractor/RfqOffersSheet"
 import { Link } from "@/i18n/routing"
 import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
@@ -63,6 +64,8 @@ export default function ContractorRfqsPage() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [republishTarget, setRepublishTarget] = useState<any>(null)
   const [shareTarget, setShareTarget] = useState<any>(null)
+  // Offers at a glance: the RFQ whose offers are open side by side (customer review, 27 Sep 2026).
+  const [glanceRfq, setGlanceRfq] = useState<SheetRfq | null>(null)
   const [republishDeadline, setRepublishDeadline] = useState("")
   const [isRepublishing, setIsRepublishing] = useState(false)
   const [publishingDraftId, setPublishingDraftId] = useState<string | null>(null)
@@ -435,8 +438,11 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
     return <span className="text-[10px] font-semibold text-muted-foreground whitespace-nowrap">{t("rfq_days_left", { days })}</span>
   }
 
+  const glanceHref = glanceRfq ? (glanceRfq.projectId ? `/contractor/projects/${glanceRfq.projectId}/tenders/${glanceRfq.id}/offers` : `/contractor/rfqs/${glanceRfq.id}/offers`) : ""
+
   return (
     <PortalLayout>
+      <RfqOffersSheet rfq={glanceRfq} offersHref={glanceHref} open={glanceRfq !== null} onOpenChange={(o) => !o && setGlanceRfq(null)} />
       <div className="space-y-6">
         <ProcurementHeader
           icon={FileText}
@@ -734,7 +740,13 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                       </div>
 
                       <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                        {rfq.title}
+                        <button
+                          type="button"
+                          onClick={() => setGlanceRfq(rfq)}
+                          className="text-start rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {rfq.title}
+                        </button>
                       </h3>
 
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -757,9 +769,10 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                           }
                         </div>
                         {/* The offers count is the number the contractor came to check —
-                            it links straight to the offers page and goes green once bids exist. */}
-                        <Link
-                          href={offersHref}
+                            it opens every offer's prices side by side and goes green once bids exist. */}
+                        <button
+                          type="button"
+                          onClick={() => setGlanceRfq(rfq)}
                           className={cn(
                             "flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-md transition-colors",
                             "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -770,7 +783,7 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         >
                           <FileText size={13} />
                           {t("rfq_offers_count", { count: rfq.offersCount || 0 })}
-                        </Link>
+                        </button>
                       </div>
 
                       <div className="space-y-2 pt-3 border-t border-border/60 mt-4 mb-4">
@@ -924,13 +937,14 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </TableCell>
                         <TableCell className="font-mono text-xs text-muted-foreground" dir="ltr">{rfq.id.substring(0, 8)}</TableCell>
                         <TableCell className="max-w-[260px]">
-                          <Link
-                            href={offersHref}
+                          <button
+                            type="button"
+                            onClick={() => setGlanceRfq(rfq)}
                             title={rfq.title}
-                            className="block truncate font-bold text-foreground hover:text-primary transition-colors rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+                            className="block max-w-full truncate text-start font-bold text-foreground hover:text-primary transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             {rfq.title}
-                          </Link>
+                          </button>
                           {rfq.subCategory && (
                             <span className="block truncate text-[11px] text-muted-foreground">{displaySubcategory(rfq.subCategory, locale)}</span>
                           )}
@@ -945,15 +959,19 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
                         </TableCell>
                         <TableCell>{getStatusBadge(rfq)}</TableCell>
                         <TableCell className="text-center">
-                          <span
+                          <button
+                            type="button"
+                            onClick={() => setGlanceRfq(rfq)}
+                            aria-label={t("rfq_glance_open", { title: rfq.title })}
                             className={cn(
                               "inline-flex items-center justify-center min-w-7 h-6 px-1.5 rounded-md text-xs font-bold tabular-nums",
-                              (rfq.offersCount || 0) > 0 ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+                              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              (rfq.offersCount || 0) > 0 ? "bg-success/10 text-success hover:bg-success/20" : "bg-muted text-muted-foreground hover:bg-muted/70"
                             )}
                             dir="ltr"
                           >
                             {rfq.offersCount || 0}
-                          </span>
+                          </button>
                         </TableCell>
                         <TableCell className="text-end">
                           <div className="flex items-center justify-end gap-1">
