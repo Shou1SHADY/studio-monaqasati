@@ -163,12 +163,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const opts: WriteOpts = { copy: tShared, locale, orgName: world.orgName }
 
   /** Runs a write; a refusal is shown as the sentence for its code. Resolves whether it succeeded. */
-  const run = async (key: string, fn: () => Promise<unknown>, successKey?: string): Promise<boolean> => {
+  const run = async (key: string, fn: () => Promise<unknown>, successKey?: string | ((result: unknown) => string)): Promise<boolean> => {
     if (!firestore) return false
     setBusy(key)
     try {
-      await fn()
-      if (successKey) toast({ title: t(successKey) })
+      const result = await fn()
+      if (successKey) toast({ title: t(typeof successKey === "function" ? successKey(result) : successKey) })
       return true
     } catch (err) {
       if (err instanceof ProcWriteError) toast({ title: tProc(`err_${err.code}`, err.params), variant: "destructive" })
@@ -262,7 +262,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                       run(
                         "approve",
                         () => approvePurchaseOrder(f, actor, po.id, { policies, blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts),
-                        "toast.approved"
+                        // Sent on the portal at approval (policy sendOnApproval) — or waiting to be sent.
+                        (out) => ((out as PurchaseOrder | undefined)?.status === "sent" ? "toast.approved_sent" : "toast.approved")
                       )
                     }
                   >

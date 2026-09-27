@@ -7778,7 +7778,9 @@
       "pn_po_awaiting_approval_title": "A purchase order awaits your approval",
       "pn_po_awaiting_approval": "{actor} prepared purchase order {number} for {supplier}, {amount} (excl. VAT) — {rfq}. Review it and approve or return it.",
       "pn_po_approved_title": "Purchase order {number} approved",
-      "pn_po_approved": "{actor} approved purchase order {number} for {supplier}, {amount} (excl. VAT). Finance carries it as a commitment; it goes back to the buyer to send.",
+      "pn_po_approved": "{actor} approved purchase order {number} for {supplier}, {amount} (excl. VAT). Finance carries it as a commitment.",
+      "pn_po_ready_to_send_title": "Send purchase order {number} to the supplier",
+      "pn_po_ready_to_send": "Purchase order {number} for {supplier} is approved and did not reach him through the portal — send it by WhatsApp or e-mail from the orders screen.",
       "pn_po_expected_arrival_title": "Expected delivery — {number}",
       "pn_po_expected_arrival": "Purchase order {number} from {supplier} was approved (lines: {lines}). Expect a delivery against it and record the receipt at the goods-received desk.",
       "pn_po_returned_title": "Purchase order {number} returned",
@@ -10976,7 +10978,8 @@
         "reject_decided": "Decision recorded",
         "closed": "Order closed",
         "cancelled": "Order cancelled",
-        "rated": "Rating saved to the supplier file"
+        "rated": "Rating saved to the supplier file",
+        "approved_sent": "Approved and sent — it is in the supplier's portal, awaiting his acceptance and date"
       },
       "print": {
         "po_title": "Purchase Order",
@@ -11656,6 +11659,11 @@
           "label": "Seal offer prices until the deadline",
           "desc": "Off by default: prices show as they arrive and the award may come before the deadline",
           "descOn": "On: prices stay hidden from everyone until the deadline, and no award comes before it"
+        },
+        "sendOnApproval": {
+          "label": "Send to the supplier on approval",
+          "desc": "Off: an approved order waits for Procurement to send it — whoever may send is told.",
+          "descOn": "On: the moment an order is approved it reaches a supplier registered on the portal, sent in the approver's name. A guest supplier (no portal) still gets it by WhatsApp or e-mail — whoever may send is told."
         }
       },
       "roles": {

@@ -314,6 +314,9 @@ Procurement (PRD 3.0): `offers.accept` prepares an order (award); `po.approve`
 approves/returns it up to `managerApprovalLimit` (seeded into `finance`), the owner
 above it; `po.expedite` (seeded into `supply_chain`, implied by offers.accept /
 po.approve / owner) sends it, records the supplier's acceptance and date, reminds;
+with the `sendOnApproval` policy (ON by default, Procurement settings) an order to a supplier REGISTERED on
+the portal is sent on approval in the approver's name (`po_sent` to his user and his company's owner);
+a guest's order (or the policy off) stays approved and `po_ready_to_send` tells the preparer and expediters;
 `deliveries.confirm` records the receipt (blind count — the counted quantity is never
 prefilled; a receipt is never edited afterwards); line decisions (cancel the remainder,
 reject decision, close short, cancel) need offers.accept / po.approve / owner.

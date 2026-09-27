@@ -293,6 +293,12 @@ export interface ProcurementPolicies {
   /** How many days before a delivery a notice still sitting with Procurement
    * becomes somebody's task to forward (§5.2-3b). */
   forwardWindowDays: number
+  /** Procurement → Finance → Supplier (customer review, 27 Sep 2026): once
+   * approved, an order to a supplier registered on the portal is sent to him
+   * there at once, in the approver's name — nobody has to remember to press
+   * "Send". A guest supplier has no portal: his order waits for WhatsApp or
+   * e-mail, and whoever may send it is told. ON by default. */
+  sendOnApproval: boolean
 }
 
 export const DEFAULT_POLICIES: ProcurementPolicies = {
@@ -307,6 +313,7 @@ export const DEFAULT_POLICIES: ProcurementPolicies = {
   splitWindowDays: 30,
   sealOffersUntilDeadline: false,
   forwardWindowDays: 1,
+  sendOnApproval: true,
 }
 
 /** What an approval needs to know about the supplier — read from the

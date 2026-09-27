@@ -22,7 +22,8 @@ export type ProcEventKind =
   | "po_approved" // → preparer + Finance: a commitment
   | "po_expected_arrival" // → receivers: expect a delivery (no amount)
   | "po_returned" // → preparer
-  | "po_sent" // → the registered supplier's user
+  | "po_ready_to_send" // → preparer + expediters: approved, not sent by the portal — send it
+  | "po_sent" // → the registered supplier's user and his company's owner
   | "po_supplier_accepted" // → preparer + expediters
   | "po_date_updated" // → preparer + receivers
   | "po_reminder" // → the supplier's user
@@ -38,6 +39,7 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_approved",
   "po_expected_arrival",
   "po_returned",
+  "po_ready_to_send",
   "po_sent",
   "po_supplier_accepted",
   "po_date_updated",
@@ -65,7 +67,8 @@ export interface ProcEvent {
   rfqId?: string | null
   offerId?: string | null
   /** The supplier's user, when registered: he reads the supplier portal, so his
-   * notification carries his org and the supplier-side link. */
+   * notification carries his org and the supplier-side link. His company's
+   * owner (whose uid IS `orgId`) reads it the same way. */
   supplier?: { userId: string | null | undefined; orgId: string | null | undefined } | null
   /** Overrides the default contractor-side link. */
   link?: string | null
@@ -101,7 +104,11 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
   },
   po_approved: {
     title: "اعتُمد أمر الشراء {number}",
-    message: "اعتمد {actor} أمر الشراء {number} للمورد {supplier} بقيمة {amount} (بدون الضريبة). صار التزاماً على المالية، ويعود إلى المشتري لإرساله.",
+    message: "اعتمد {actor} أمر الشراء {number} للمورد {supplier} بقيمة {amount} (بدون الضريبة). صار التزاماً على المالية.",
+  },
+  po_ready_to_send: {
+    title: "أرسل أمر الشراء {number} للمورد",
+    message: "اعتُمد أمر الشراء {number} للمورد {supplier}، ولم يصله عبر البوابة — أرسله له عبر واتساب أو البريد من شاشة الأوامر.",
   },
   po_expected_arrival: {
     title: "توريد متوقع — {number}",
@@ -219,7 +226,7 @@ export interface ProcNotificationDoc {
 
 export function buildProcNotification(e: ProcEvent, actor: { uid: string; name: string }, userId: string, nowIso: string): ProcNotificationDoc {
   const params: EventParams = { actor: actor.name, ...(e.params || {}) }
-  const forSupplier = Boolean(e.supplier?.userId) && userId === e.supplier?.userId
+  const forSupplier = Boolean(e.supplier?.userId) && (userId === e.supplier?.userId || userId === e.supplier?.orgId)
   const text = renderProcCopy(e.kind, params, e.copy)
   return {
     userId,
@@ -258,6 +265,7 @@ export function buildProcNotification(e: ProcEvent, actor: { uid: string; name: 
 const ONCE_PER_ORDER: ReadonlySet<ProcEventKind> = new Set<ProcEventKind>([
   "po_approved",
   "po_expected_arrival",
+  "po_ready_to_send",
   "po_sent",
   "po_supplier_accepted",
   "po_remainder_cancelled",

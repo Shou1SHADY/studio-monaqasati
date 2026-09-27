@@ -5,7 +5,7 @@
 
 import { DEFAULT_POLICIES, type ProcurementPolicies } from "./types"
 
-type NumericPolicy = Exclude<keyof ProcurementPolicies, "sealOffersUntilDeadline">
+type NumericPolicy = Exclude<keyof ProcurementPolicies, "sealOffersUntilDeadline" | "sendOnApproval">
 
 const NUMERIC: NumericPolicy[] = [
   "managerApprovalLimit",
@@ -37,5 +37,6 @@ export function resolvePolicies(raw: Partial<ProcurementPolicies> | null | undef
     if (raw[key] !== undefined && raw[key] !== null) out[key] = sanitise(key, raw[key])
   }
   if (typeof raw.sealOffersUntilDeadline === "boolean") out.sealOffersUntilDeadline = raw.sealOffersUntilDeadline
+  if (typeof raw.sendOnApproval === "boolean") out.sendOnApproval = raw.sendOnApproval
   return out
 }

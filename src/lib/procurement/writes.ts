@@ -427,6 +427,29 @@ export async function approvePurchaseOrder(
     )
   }
   await Promise.all([...events, recordApprovedPrices(firestore, po, at)])
+  if (po.basis === "retroactive") return po
+
+  // Procurement → Finance → Supplier: a registered supplier gets the order in
+  // his portal the moment it is approved, sent in the approver's name. When it
+  // cannot go that way (a guest, the policy off, or the send failed), whoever
+  // may send it is told to — the order never sits approved and forgotten.
+  if (input.policies.sendOnApproval && !po.isGuestSupplier && po.supplierUserId) {
+    try {
+      return await sendPurchaseOrder(firestore, actor, po.id, "portal", opts)
+    } catch (err) {
+      console.warn("order approved but not sent on the portal:", (err as { code?: string })?.code || err)
+    }
+  }
+  await emitProcEvent(firestore, actor, {
+    kind: "po_ready_to_send",
+    organizationId: po.organizationId,
+    to: [{ users: [po.preparedById] }, { permission: "po.expedite" }],
+    params: { number: po.docNumber, supplier: po.supplierName },
+    poId: po.id,
+    rfqId: po.rfqId,
+    offerId: po.offerId,
+    copy: opts.copy,
+  })
   return po
 }
 
@@ -512,10 +535,13 @@ export async function sendPurchaseOrder(firestore: Firestore, actor: ProcActor, 
     return { patch: { status: "sent", sentAt: at, sentById: actor.uid, sentByName: actor.name, sentChannel: channel }, log: entry(actor, "sent", at, { params: { channel } }) }
   })
   if (po.supplierUserId) {
+    // The supplier's user and his company's owner — the order may be handled by
+    // either, and the owner's uid is the supplier org id (never "guest" here).
+    const supplierSide = [...new Set([po.supplierUserId, po.supplierOrgId].filter((u): u is string => Boolean(u) && u !== "guest"))]
     await emitProcEvent(firestore, actor, {
       kind: "po_sent",
       organizationId: po.organizationId,
-      to: [{ users: [po.supplierUserId] }],
+      to: [{ users: supplierSide }],
       supplier: { userId: po.supplierUserId, orgId: po.supplierOrgId },
       params: { number: po.docNumber, company: opts.orgName || actor.name },
       poId: po.id,

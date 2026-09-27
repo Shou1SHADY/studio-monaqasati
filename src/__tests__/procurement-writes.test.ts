@@ -48,6 +48,10 @@ import {
 import { resolveRecipients, type TeamSnapshot } from "@/lib/mfg-events"
 import { doc, runTransaction } from "firebase/firestore"
 
+// These tests follow the order through the buyer's own "Send" — the policy that
+// sends on approval is switched off for them (it has its own tests below).
+const MANUAL_SEND = { ...DEFAULT_POLICIES, sendOnApproval: false }
+
 const db = fakeFirestore as unknown as Firestore
 const ROOT = path.join(__dirname, "..", "..")
 const NOW = new Date("2026-09-22T09:00:00Z")
@@ -260,16 +264,16 @@ describe("createPurchaseOrderFromAward", () => {
 describe("approval", () => {
   it("nobody approves their own order; a manager approves within the limit and tells preparer, Finance and the gate", async () => {
     const { id } = await awardedOrder()
-    await expect(approvePurchaseOrder(db, buyer, id, { policies: DEFAULT_POLICIES })).rejects.toMatchObject({ code: "no_permission" })
+    await expect(approvePurchaseOrder(db, buyer, id, { policies: MANUAL_SEND })).rejects.toMatchObject({ code: "no_permission" })
     await expect(approvePurchaseOrder(db, actorOf({ uid: "buyer", canApprove: true }), id, { policies: DEFAULT_POLICIES })).rejects.toMatchObject({ code: "own_order" })
     expect(po(id).status).toBe("awaiting_approval")
 
-    const out = await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES }, { now: NOW })
+    const out = await approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND }, { now: NOW })
     expect(out.status).toBe("approved")
     expect(po(id)).toMatchObject({ status: "approved", approvedById: "fin", approvedByName: "Noura", approvedAt: NOW.toISOString() })
     expect(po(id).log.map((l) => l.action)).toEqual(["created", "approved"])
     expect(po(id).log[1].params).toBeNull()
-    expect(inbox("buyer").map((n) => n.type)).toEqual(["po_approved"])
+    expect(inbox("buyer").map((n) => n.type)).toEqual(["po_approved", "po_ready_to_send"])
     expect(inbox("gate").map((n) => n.type)).toEqual(["po_expected_arrival"])
     // The receiver's message names lines, never money.
     expect(inbox("gate")[0].message).not.toMatch(/ر\.س|SAR/)
@@ -281,16 +285,16 @@ describe("approval", () => {
   it("the owner may approve their own order — flagged selfApproved in the log", async () => {
     seed("offers/of1", { ...offer, status: "مقبول" })
     const { id } = await createPurchaseOrderFromAward(db, owner, { rfq, offer, offers: [offer], policies: DEFAULT_POLICIES })
-    await approvePurchaseOrder(db, owner, id, { policies: DEFAULT_POLICIES })
+    await approvePurchaseOrder(db, owner, id, { policies: MANUAL_SEND })
     expect(po(id).log[1]).toMatchObject({ action: "approved", params: { selfApproved: 1 } })
   })
 
   it("above the limit a manager is refused; a blocking fact refuses everyone but writes nothing", async () => {
     seed("offers/of1", { ...offer, status: "مقبول" })
     const { id } = await createPurchaseOrderFromAward(db, buyer, { rfq, offer: { ...offer, price: "160000" }, offers: [offer], policies: DEFAULT_POLICIES })
-    await expect(approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES })).rejects.toMatchObject({ code: "above_limit" })
+    await expect(approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND })).rejects.toMatchObject({ code: "above_limit" })
     await expect(
-      approvePurchaseOrder(db, owner, id, { policies: DEFAULT_POLICIES, blocks: { supplier: { orgId: "sup-org", hasVatNumber: false, verified: true, crExpiry: null }, otherOrders: [] } })
+      approvePurchaseOrder(db, owner, id, { policies: MANUAL_SEND, blocks: { supplier: { orgId: "sup-org", hasVatNumber: false, verified: true, crExpiry: null }, otherOrders: [] } })
     ).rejects.toMatchObject({ code: "blocked", params: { codes: "supplier_no_vat" } })
     expect(po(id).status).toBe("awaiting_approval")
   })
@@ -310,12 +314,60 @@ describe("approval", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Procurement → Finance → Supplier: sent on approval (customer review, 27 Sep 2026)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("sent to the supplier on approval", () => {
+  it("is the default: approval puts the order in the registered supplier's portal, in the approver's name", async () => {
+    const { id } = await awardedOrder()
+    const out = await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES }, { now: NOW, orgName: "مقاولات النخبة" })
+    expect(out.status).toBe("sent")
+    expect(po(id)).toMatchObject({ status: "sent", approvedById: "fin", sentById: "fin", sentByName: "Noura", sentChannel: "portal" })
+    expect(po(id).log.map((l) => l.action)).toEqual(["created", "approved", "sent"])
+    // The supplier's user and his company's owner both read it on the supplier side.
+    for (const uid of ["sup-user", "sup-org"]) {
+      const n = inbox(uid).find((x) => x.type === "po_sent")
+      expect(n).toMatchObject({ organizationId: "sup-org", link: `/supplier/orders?po=${id}` })
+      expect(n?.message).toContain("مقاولات النخبة")
+    }
+    // Nobody is asked to send what already went.
+    expect(inbox("buyer").map((n) => n.type)).toEqual(["po_approved"])
+    expect(inbox("exp")).toEqual([])
+  })
+
+  it("a guest supplier has no portal: the order waits approved and whoever may send is told", async () => {
+    const guest: AwardOfferLike = { id: "of1", price: "42,000", supplierId: "guest", isGuestOffer: true, companyName: "مورد ضيف", guestContact: { name: "مورد ضيف" } }
+    seed("offers/of1", { ...guest, status: "مقبول" })
+    const { id } = await createPurchaseOrderFromAward(db, buyer, { rfq, offer: guest, offers: [guest], policies: DEFAULT_POLICIES, awardReason: { code: "quality", text: "أفضل جودة" } }, { now: NOW })
+    const out = await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES }, { now: NOW })
+    expect(out.status).toBe("approved")
+    expect(inbox("buyer").map((n) => n.type)).toEqual(["po_approved", "po_ready_to_send"])
+    expect(inbox("exp").map((n) => n.type)).toEqual(["po_ready_to_send"])
+  })
+
+  it("off: approval leaves the order for Procurement to send, and says so", async () => {
+    const { id } = await awardedOrder()
+    await approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND }, { now: NOW })
+    expect(po(id).status).toBe("approved")
+    expect(inbox("sup-user")).toEqual([])
+    expect(inbox("exp").map((n) => n.type)).toEqual(["po_ready_to_send"])
+  })
+
+  it("a retroactive order is neither sent nor queued to send — its goods already arrived", async () => {
+    const r = await retroactivePurchaseOrder(db, owner, { organizationId: ORG, rfqTitle: "شراء نقدي", supplierName: "مستودع الحي", lines: [{ name: "أسمنت", unit: "كيس", quantity: 40, unitPrice: 18 }], totalExVat: 720, reason: "حاجة عاجلة" }, { now: NOW })
+    const out = await approvePurchaseOrder(db, owner, r.id, { policies: DEFAULT_POLICIES }, { now: NOW })
+    expect(out.status).toBe("accepted")
+    for (const uid of ["buyer", "exp", ORG]) expect(inbox(uid).map((n) => n.type)).not.toContain("po_ready_to_send")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Dispatch, acceptance, date, reminder
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function approvedOrder() {
   const { id } = await awardedOrder()
-  await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES })
+  await approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND })
   return id
 }
 
@@ -323,7 +375,7 @@ describe("dispatch and the supplier's answer", () => {
   it("no dispatch before approval; sending records channel, time and sender and tells the registered supplier", async () => {
     const { id } = await awardedOrder()
     await expect(sendPurchaseOrder(db, buyer, id, "portal")).rejects.toMatchObject({ code: "wrong_state" })
-    await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES })
+    await approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND })
     await sendPurchaseOrder(db, buyer, id, "whatsapp", { now: NOW, orgName: "مقاولات النخبة" })
     expect(po(id)).toMatchObject({ status: "sent", sentAt: NOW.toISOString(), sentById: "buyer", sentByName: "Badr", sentChannel: "whatsapp" })
     expect(last(po(id).log)).toMatchObject({ action: "sent", params: { channel: "whatsapp" } })
@@ -337,7 +389,7 @@ describe("dispatch and the supplier's answer", () => {
   it("a guest supplier has nobody to notify", async () => {
     seed("offers/of1", { ...offer, status: "مقبول" })
     const { id } = await createPurchaseOrderFromAward(db, buyer, { rfq, offer: { ...offer, isGuestOffer: true, supplierId: "guest" }, offers: [offer], policies: DEFAULT_POLICIES })
-    await approvePurchaseOrder(db, approver, id, { policies: DEFAULT_POLICIES })
+    await approvePurchaseOrder(db, approver, id, { policies: MANUAL_SEND })
     await sendPurchaseOrder(db, buyer, id, "email")
     expect(po(id).status).toBe("sent")
     expect(listCollection("users/sup-user/notifications")).toHaveLength(0)
@@ -351,7 +403,7 @@ describe("dispatch and the supplier's answer", () => {
     expect(po(id)).toMatchObject({ status: "accepted", promisedDate: "2026-10-05", acceptanceRecordedBy: "buyer", supplierAcceptedAt: NOW.toISOString() })
     expect(poStatus(po(id))).toBe("in_delivery")
     expect(inbox("buyer").map((n) => n.type)).toContain("po_supplier_accepted")
-    expect(inbox("exp")).toEqual([]) // the actor
+    expect(inbox("exp").filter((n) => n.type !== "po_ready_to_send")).toEqual([]) // the actor (told only to send, at approval)
   })
 
   it("the supplier accepts in his portal — sent → accepted, by 'supplier', and only named users are told", async () => {
@@ -362,7 +414,7 @@ describe("dispatch and the supplier's answer", () => {
     expect(po(id)).toMatchObject({ status: "accepted", acceptanceRecordedBy: "supplier", promisedDate: "2026-10-05" })
     expect(last(po(id).log)).toMatchObject({ action: "supplier_accepted", byId: "sup-user", params: { date: "2026-10-05", recordedBy: "supplier" } })
     expect(inbox("buyer").map((n) => n.type)).toContain("po_supplier_accepted")
-    expect(inbox("exp")).toEqual([]) // no team load from the supplier's side
+    expect(inbox("exp").filter((n) => n.type !== "po_ready_to_send")).toEqual([]) // no team load from the supplier's side
   })
 
   it("a new date keeps the old one in the log and tells the gate; a reminder names what is asked", async () => {
@@ -565,12 +617,12 @@ describe("retroactive order", () => {
     expect(r2.deliveryLinked).toBe(false)
     expect(r2.docNumber).toBe("PO-2026/002")
     // Only the owner approves a retroactive order.
-    await expect(approvePurchaseOrder(db, approver, r.id, { policies: DEFAULT_POLICIES })).rejects.toMatchObject({ code: "owner_only" })
+    await expect(approvePurchaseOrder(db, approver, r.id, { policies: MANUAL_SEND })).rejects.toMatchObject({ code: "owner_only" })
   })
 
   it("is approved straight into accepted — nothing to send, nobody to wait for, no arrival to expect", async () => {
     const r = await retroactivePurchaseOrder(db, owner, { organizationId: ORG, rfqTitle: "شراء نقدي", supplierName: "مستودع الحي", lines: [{ name: "أسمنت", unit: "كيس", quantity: 40, unitPrice: 18 }], totalExVat: 720, reason: "حاجة عاجلة" }, { now: NOW })
-    const out = await approvePurchaseOrder(db, owner, r.id, { policies: DEFAULT_POLICIES }, { now: NOW })
+    const out = await approvePurchaseOrder(db, owner, r.id, { policies: MANUAL_SEND }, { now: NOW })
     expect(out.status).toBe("accepted")
     expect(po(r.id)).toMatchObject({ status: "accepted", approvedById: owner.uid, supplierAcceptedAt: NOW.toISOString(), acceptanceRecordedBy: "buyer" })
     expect(po(r.id).log.map((l) => l.action)).toEqual(["created", "approved"])

@@ -31,7 +31,7 @@ import { DEFAULT_POLICIES, PROCUREMENT_SETTINGS, type ProcurementPolicies } from
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
-type NumericKey = Exclude<keyof ProcurementPolicies, "sealOffersUntilDeadline">
+type NumericKey = Exclude<keyof ProcurementPolicies, "sealOffersUntilDeadline" | "sendOnApproval">
 
 /** Field order on the form — money first, then counts, then days. */
 const FIELDS: Array<{ key: NumericKey; unit: "sar" | "percent" | "count" | "days" }> = [
@@ -60,6 +60,7 @@ const schema = z.object({
   splitWindowDays: z.coerce.number().int().min(0),
   forwardWindowDays: z.coerce.number().int().min(0),
   sealOffersUntilDeadline: z.boolean(),
+  sendOnApproval: z.boolean(),
 })
 type FormValues = z.infer<typeof schema>
 
@@ -199,6 +200,21 @@ export function ProcurementSettings() {
                       </div>
                       <FormControl>
                         <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t("policy.sealOffersUntilDeadline.label")} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="sendOnApproval"
+                  render={({ field }) => (
+                    <FormItem className="flex items-start justify-between gap-4 px-4 py-3">
+                      <div className="min-w-0">
+                        <FormLabel className="text-sm font-bold text-foreground">{t("policy.sendOnApproval.label")}</FormLabel>
+                        <FormDescription className="text-[11px] leading-relaxed">{t(field.value ? "policy.sendOnApproval.descOn" : "policy.sendOnApproval.desc")}</FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t("policy.sendOnApproval.label")} />
                       </FormControl>
                     </FormItem>
                   )}
