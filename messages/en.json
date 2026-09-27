@@ -638,7 +638,8 @@
       "contractor_purchase_orders": "Purchase orders",
       "contractor_proc_reports": "Reports",
       "contractor_proc_settings": "Settings & boundaries",
-      "contractor_pm_inbox": "New projects"
+      "contractor_pm_inbox": "New projects",
+      "contractor_pm_today": "Projects today"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -12560,6 +12561,89 @@
           "already_approved": "This item's sample is already approved",
           "not_with_consultant": "Only a sample with the consultant is answered",
           "no_choice": "Choose the consultant's reply"
+        }
+      },
+      "dec": {
+        "today": "Today",
+        "title": "Decisions",
+        "open": "Open",
+        "open_project": "Open project",
+        "none": "Nothing needs a decision",
+        "none_desc": "Decisions appear here when the data raises them — and disappear when their cause is solved.",
+        "portfolio_title": "Projects today",
+        "portfolio_desc": "Every open project's decisions, computed from its data — reddest first.",
+        "kpi_projects": "Projects you see",
+        "kpi_red": "Red decisions",
+        "kpi_amber": "Amber decisions",
+        "no_projects": "No open PM 1.0 project",
+        "no_projects_desc": "A project joins when a handover file is accepted in New projects.",
+        "no_pm": {
+          "title": "No project manager",
+          "detail": "Only the owner approves here until one is appointed."
+        },
+        "plan_overdue": {
+          "title": "The contract start date has passed",
+          "detail": "Work has not started — start it, or the first approved measurement will."
+        },
+        "sheets_waiting": {
+          "title": "{count, plural, one {# measurement sheet awaits} other {# measurement sheets await}} approval",
+          "detail": "Nothing moves until they are approved or sent back."
+        },
+        "unpriced_executed": {
+          "title": "Work executed on {count, plural, one {# unpriced item} other {# unpriced items}}",
+          "detail": "It adds nothing to the contract or a certificate until priced — closing means giving it up."
+        },
+        "wir_failed": {
+          "title": "{count, plural, one {# item} other {# items}} failed inspection",
+          "detail": "They cannot be measured until a re-inspection passes."
+        },
+        "sample_missing": {
+          "title": "{count, plural, one {# item has} other {# items have}} no approved sample",
+          "detail": "No sample is not consent."
+        },
+        "vo_work": {
+          "title": "Work on {count, plural, one {# variation} other {# variations}} before approval",
+          "detail": "Executed before a written approval — a risk to decide."
+        },
+        "vo_waiting": {
+          "title": "{count, plural, one {# variation is} other {# variations are}} with the client",
+          "detail": "Priced and submitted, awaiting the written answer."
+        },
+        "claim_notice_late": {
+          "title": "{count, plural, one {# claim is} other {# claims are}} past the notice deadline",
+          "detail": "A draft past the contract's notice period may lose the right to claim."
+        },
+        "claim_waiting": {
+          "title": "{count, plural, one {# claim awaits} other {# claims await}} the client's response",
+          "detail": "Record the response when it comes — days granted extend the programme."
+        },
+        "addendum_unsigned": {
+          "title": "{count, plural, one {# addendum awaits} other {# addenda await}} signature",
+          "detail": "A draft changes nothing: work continues under the contract in force."
+        },
+        "cert_internal": {
+          "title": "{count, plural, one {# certificate awaits} other {# certificates await}} internal approval",
+          "detail": "Approved by someone other than its preparer, then submitted."
+        },
+        "cert_consultant": {
+          "title": "{count, plural, one {# certificate is} other {# certificates are}} with the consultant",
+          "detail": "Awaiting certification."
+        },
+        "collection_overdue": {
+          "title": "{count, plural, one {# certificate is} other {# certificates are}} past due and not collected",
+          "detail": "Collection is Finance's; the lateness is ours to chase."
+        },
+        "damages": {
+          "title": "Expected delay damages — {count} days behind",
+          "detail": "On the effective duration, capped by the contract."
+        },
+        "provisional_ready": {
+          "title": "Ready for provisional handover",
+          "detail": "Progress has reached 99%."
+        },
+        "final_ready": {
+          "title": "No punch item left before final acceptance",
+          "detail": "Record it once the defects period ends."
         }
       }
     }

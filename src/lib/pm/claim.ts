@@ -91,7 +91,7 @@ export function respondBlocks(input: { archived: boolean; status: ClaimStatus; k
 }
 
 /** Approved extension days — approved and partly approved claims. */
-export const grantedDays = (claims: Pick<PmClaim, "status" | "response">[]) =>
+export const grantedDays = (claims: Array<Pick<PmClaim, "status"> & { response?: { days: number } | null }>) =>
   claims.filter((c) => c.status === "appr" || c.status === "part").reduce((a, c) => a + (c.response?.days ?? 0), 0)
 
 /** The programme's revision: 0 is the baseline; each grant with days issues the next. */

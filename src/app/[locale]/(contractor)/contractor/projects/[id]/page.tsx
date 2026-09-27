@@ -162,7 +162,9 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel, Gauge } from "lucide-react"
+import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
+import type { PmDecisionProject } from "@/hooks/usePmDecisions"
 import { SamplesPanel } from "@/components/pm/SamplesPanel"
 import { ClaimsPanel } from "@/components/pm/ClaimsPanel"
 import { NcrPanel } from "@/components/pm/NcrPanel"
@@ -1977,6 +1979,7 @@ export default function ProjectDetailPage() {
     // PM 1.0: measurement goes through sheets the PM approves (WF-04).
     ...(typedProject.pm
       ? [
+          { key: "pmToday" as ActiveTab, label: tPm("dec.today"), icon: <Gauge size={15} /> },
           { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
@@ -3114,6 +3117,10 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {activeTab === "pmToday" && typedProject.pm && (
+          <PmTodayPanel projectId={projectId} project={typedProject as PmDecisionProject} access={pmAccess} onOpen={(tab) => handleTabChange(tab)} />
         )}
 
         {/* ── TABS: MEASUREMENT · INSPECTIONS (PM 1.0) ── */}
