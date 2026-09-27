@@ -1,18 +1,16 @@
 "use client"
 
-// Contract › Terms (PRD TRM-01/02, AMD-10). Before start the original contract
-// is completed here — what the handover carried and what it lacked. "Start
-// work" freezes it as signed; after that the terms are read-only here and any
-// change is an addendum on top of the original (a later release).
+// Contract › Terms & amendments (PRD TRM-01/02, AMD-01…10). Before start the
+// original contract is completed here — what the handover carried and what it
+// lacked. "Start work" freezes it as signed; after that the terms are never
+// edited here again: the contract in force is the original + signed addenda,
+// and any change is an addendum on top (ContractInForce). Shown only to holders
+// of money or approve — never to the site engineer (AMD-10).
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Loader2, Lock, Play, ScrollText } from "lucide-react"
+import { Loader2, Play, ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -22,20 +20,14 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
+import type { AddendumActor } from "@/lib/pm/addendum-writes"
 import { displayDocNumber } from "@/lib/sales-numbering"
-import { pmDate, pmPct } from "@/lib/pm/format"
+import { pmDate } from "@/lib/pm/format"
 import { lifecycleOf, plannedEnd, startBlocks, type PmLifecycle } from "@/lib/pm/lifecycle"
 import { PmProjectError, savePlanTerms, startProject } from "@/lib/pm/project-writes"
-import {
-  ADVANCE_RECOVERY,
-  defaultTerms,
-  PAYERS,
-  PRICING_BASES,
-  RETENTION_RELEASE,
-  termProblems,
-  termsEditable,
-  type ContractTerms,
-} from "@/lib/pm/terms"
+import { defaultTerms, termProblems, termsEditable, type ContractTerms } from "@/lib/pm/terms"
+import { ContractInForce } from "./ContractInForce"
+import { TermsFields } from "./TermsFields"
 
 const LIFECYCLE_TONE: Record<PmLifecycle, PillTone> = { plan: "info", live: "ok", hold: "warn", done: "module", closed: "mute" }
 
@@ -47,21 +39,23 @@ export interface PmProjectBlock {
   startOn?: string | null
   durationDays?: number
   startedAt?: string | null
+  addendaCount?: number
+  signedCount?: number
+  retentionHeld?: number
 }
-
-const toPct = (f: number) => String(Math.round(f * 10000) / 100)
-const fromPct = (s: string) => (s.trim() === "" ? NaN : Number(s) / 100)
 
 export function ProjectTermsPanel({
   projectId,
   project,
   boqItems,
   access,
+  actor,
 }: {
   projectId: string
-  project: { pm?: PmProjectBlock | null; status?: string | null; projectManagerId?: string | null }
+  project: { pm?: PmProjectBlock | null; status?: string | null; projectManagerId?: string | null; budget?: number | null }
   boqItems: number
   access: PmAccess
+  actor: AddendumActor
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -82,8 +76,6 @@ export function ProjectTermsPanel({
   const dirty = JSON.stringify(draft) !== JSON.stringify(stored)
   const starts = startBlocks({ lifecycle, hasManager: Boolean(project.projectManagerId), boqItems, termProblems: termProblems(stored).length })
   const end = useMemo(() => (pm.startOn && pm.durationDays ? plannedEnd(pm.startOn, pm.durationDays) : null), [pm.startOn, pm.durationDays])
-
-  const set = <K extends keyof ContractTerms>(k: K, v: ContractTerms[K]) => setDraft((d) => ({ ...d, [k]: v }))
 
   const save = async () => {
     if (!firestore || problems.length) return
@@ -113,39 +105,9 @@ export function ProjectTermsPanel({
     }
   }
 
-  const pctField = (id: string, key: "advance" | "retention" | "retentionCap") => (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{t(`terms.${key}`)}</Label>
-      <Input id={id} type="number" min="0" max="100" step="any" inputMode="decimal" dir="ltr" value={Number.isNaN(draft[key]) ? "" : toPct(draft[key])} onChange={(e) => set(key, fromPct(e.target.value))} disabled={!editable || busy !== null} />
-    </div>
-  )
-  const dayField = (id: string, key: "paymentDays" | "consultantDays" | "claimNoticeDays" | "defectsDays") => (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{t(`terms.${key}`)}</Label>
-      <Input id={id} type="number" min="0" step="1" inputMode="numeric" dir="ltr" value={Number.isNaN(draft[key]) ? "" : String(draft[key])} onChange={(e) => set(key, e.target.value === "" ? NaN : Number(e.target.value))} disabled={!editable || busy !== null} />
-    </div>
-  )
-  const choice = <K extends "payer" | "basis" | "advanceRecovery" | "retentionRelease">(id: string, key: K, options: readonly ContractTerms[K][]) => (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{t(`terms.${key as string}` as "terms.save")}</Label>
-      <Select value={draft[key] as string} onValueChange={(v) => set(key, v as ContractTerms[K])} disabled={!editable || busy !== null}>
-        <SelectTrigger id={id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o as string} value={o as string}>
-              {t(`terms.opt.${key as string}.${o as string}` as "terms.save")}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-
   return (
     <Panel
-      title={t("terms.title")}
+      title={t(lifecycle === "plan" ? "terms.title" : "amend.title")}
       icon={ScrollText}
       actions={
         <>
@@ -164,70 +126,42 @@ export function ProjectTermsPanel({
         <KeyValueRow label={t("terms.planned_end")} value={pmDate(end, locale)} />
       </div>
 
-      {lifecycle === "plan" ? (
-        <Callout tone="info" className="mb-4">
-          {t("terms.plan_note")}
-        </Callout>
+      {lifecycle !== "plan" ? (
+        <ContractInForce
+          projectId={projectId}
+          original={pm.original ?? stored}
+          startedAt={pm.startedAt ?? null}
+          lifecycle={lifecycle}
+          contractValue={project.budget ?? 0}
+          retentionHeld={pm.retentionHeld ?? 0}
+          access={access}
+          actor={actor}
+        />
       ) : (
-        <Callout tone="warn" className="mb-4" title={t("terms.frozen_title")}>
-          {t("terms.frozen_note", { date: pmDate(pm.startedAt?.slice(0, 10), locale) })}
-        </Callout>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        {choice("t-payer", "payer", PAYERS)}
-        {choice("t-basis", "basis", PRICING_BASES)}
-        {pctField("t-adv", "advance")}
-        {choice("t-advr", "advanceRecovery", ADVANCE_RECOVERY)}
-        {pctField("t-ret", "retention")}
-        {pctField("t-cap", "retentionCap")}
-        {choice("t-rel", "retentionRelease", RETENTION_RELEASE)}
-        {dayField("t-pay", "paymentDays")}
-        {dayField("t-cons", "consultantDays")}
-        {dayField("t-claim", "claimNoticeDays")}
-        {dayField("t-dlp", "defectsDays")}
-        <div className="space-y-2 rounded-xl border p-3 sm:col-span-2">
-          <div className="flex min-h-11 items-center justify-between gap-3">
-            <Label htmlFor="t-dmg">{t("terms.damages")}</Label>
-            <Switch id="t-dmg" checked={draft.damages.on} onCheckedChange={(v) => set("damages", { ...draft.damages, on: v })} disabled={!editable || busy !== null} />
-          </div>
-          {draft.damages.on && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="t-dmg-rate">{t("terms.damages_rate")}</Label>
-                <Input id="t-dmg-rate" type="number" min="0" step="any" dir="ltr" value={toPct(draft.damages.weeklyRate)} onChange={(e) => set("damages", { ...draft.damages, weeklyRate: fromPct(e.target.value) })} disabled={!editable || busy !== null} />
+        <>
+          <Callout tone="info" className="mb-4">
+            {t("terms.plan_note")}
+          </Callout>
+          <TermsFields value={draft} onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))} disabled={!editable || busy !== null} />
+          {editable && (
+            <div className="mt-4 space-y-3">
+              <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => void save()} disabled={!dirty || problems.length > 0 || busy !== null}>
+                  {busy === "save" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
+                  {t("terms.save")}
+                </Button>
+                {canStart && (
+                  <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
+                    {busy === "start" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
+                    {t("terms.start")}
+                  </Button>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="t-dmg-cap">{t("terms.damages_cap")}</Label>
-                <Input id="t-dmg-cap" type="number" min="0" step="any" dir="ltr" value={toPct(draft.damages.cap)} onChange={(e) => set("damages", { ...draft.damages, cap: fromPct(e.target.value) })} disabled={!editable || busy !== null} />
-              </div>
+              {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
             </div>
           )}
-        </div>
-      </div>
-
-      {lifecycle !== "plan" && pm.original && (
-        <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock size={13} aria-hidden="true" />
-          {t("terms.original_kept", { advance: pmPct(pm.original.advance), retention: pmPct(pm.original.retention) })}
-        </p>
-      )}
-
-      {editable && (
-        <div className="mt-4 space-y-3">
-          <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => void save()} disabled={!dirty || problems.length > 0 || busy !== null}>
-              {busy === "save" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
-              {t("terms.save")}
-            </Button>
-            {canStart && <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
-              {busy === "start" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
-              {t("terms.start")}
-            </Button>}
-          </div>
-          {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
-        </div>
+        </>
       )}
     </Panel>
   )

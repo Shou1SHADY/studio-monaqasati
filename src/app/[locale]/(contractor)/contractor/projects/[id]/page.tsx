@@ -2094,12 +2094,13 @@ export default function ProjectDetailPage() {
         {/* ── TAB: INFO ── */}
         {activeTab === "info" && (
           <div className="space-y-4">
-          {typedProject.pm && (
+          {typedProject.pm && (pmAccess.has("money") || pmAccess.has("approve")) && (
             <ProjectTermsPanel
               projectId={projectId}
               project={typedProject}
               boqItems={boqItems.length}
               access={pmAccess}
+              actor={{ uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }}
             />
           )}
           <Card className="border-primary/15">

@@ -11871,7 +11871,9 @@
             "half": "Half at provisional, the rest after final",
             "full": "All of it after final acceptance"
           }
-        }
+        },
+        "damages_value": "{rate} a week, cap {cap}",
+        "damages_off": "None"
       },
       "refused": {
         "archived": "The project is archived — nothing on it changes, for anyone",
@@ -11957,6 +11959,83 @@
           "no_date": "Set the exit date",
           "future_date": "The exit date is today or earlier — never later"
         }
+      },
+      "amend": {
+        "title": "Terms & amendments",
+        "changed": "changes",
+        "becomes": "becomes",
+        "three_doors": "An addendum changes terms only. The contract value changes by an approved variation, the duration by an approved extension — never here.",
+        "draft_title": "Amend the contract",
+        "draft_desc": "Set the terms as they should read after this addendum. It waits for the client's signature; until then the contract in force does not move.",
+        "reason": "Reason",
+        "pick_reason": "Pick a reason",
+        "reason_text": "State the reason",
+        "note": "Note (optional)",
+        "save_draft": "Save — awaiting signature",
+        "drafted": "Addendum {no} saved — awaiting signature",
+        "reasons": {
+          "client": "Client's request",
+          "ours": "Our request",
+          "settle": "Settlement between the parties",
+          "other": "Other — stated"
+        },
+        "other_stated": "Other: {text}",
+        "block": {
+          "not_started": "The project has not started — complete the original directly",
+          "archived": "The project is archived",
+          "no_change": "Change at least one term",
+          "reason_text": "Pick a reason, and state it if other",
+          "invalid_terms": "Some values are out of range",
+          "cap_below_held": "The cap would be {cap}, below the {held} retention already held — releasing the difference is Finance's action",
+          "not_draft": "It is no longer awaiting signature",
+          "stale": "A term it changes was changed by another addendum since — withdraw it and redraft",
+          "no_date": "Set the signing date",
+          "before_draft": "The signing date cannot be before {date}",
+          "before_last": "The signing date cannot be before the last signed addendum ({date})",
+          "future": "The signing date cannot be in the future"
+        },
+        "withdraw_block": {
+          "not_draft": "It is no longer awaiting signature",
+          "no_reason": "Pick a reason",
+          "reason_text": "State the reason"
+        },
+        "sign_title": "Record the signature of addendum {no}",
+        "sign_desc": "It enters the contract in force for what is prepared from now on. Certificates prepared before keep their amounts.",
+        "stale_title": "Overtaken by another addendum",
+        "stale_line": "{term}: drafted on {drafted}, now {now}",
+        "finance_note": "It changes a financial term: Finance is told once, under this addendum's number.",
+        "signed_on": "Signed on",
+        "signatory": "Signed for the client by (optional)",
+        "sign": "Record signature",
+        "signed": "Addendum {no} signed — it is in force",
+        "withdraw_title": "Withdraw addendum {no}",
+        "withdraw_desc": "Nothing is deleted: it stays in the contract record as withdrawn before signing.",
+        "withdraw_reasons": {
+          "refused": "The client refused",
+          "replaced": "Replaced by another addendum",
+          "other": "Other — stated"
+        },
+        "withdraw": "Withdraw",
+        "withdrawn": "Addendum {no} withdrawn",
+        "awaiting": "Addendum {no} awaiting signature",
+        "drafted_by": "Drafted by {who} on {date} — {reason}",
+        "views": "Contract views",
+        "view_force": "In force",
+        "view_original": "Original as signed",
+        "view_record": "Contract record",
+        "new": "Amend the contract",
+        "mark": "Addendum {no} · originally {was}",
+        "original_note": "The contract as signed, frozen at start. It never changes.",
+        "record_empty": "No addendum yet",
+        "record_empty_desc": "Signed and withdrawn addenda appear here, newest first.",
+        "no": "Addendum {no}",
+        "status": {
+          "draft": "Awaiting signature",
+          "signed": "Signed",
+          "void": "Withdrawn before signing"
+        },
+        "signed_line": "Signed on {date} · recorded by {who} · for the client: {signatory}",
+        "void_line": "Withdrawn on {date} by {who} — {reason}"
       }
     }
   },
