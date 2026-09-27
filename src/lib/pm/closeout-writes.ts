@@ -15,7 +15,9 @@ import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { measuredItem } from "./measurement-writes"
 import { withFreshState } from "./project-writes"
+import { PM_NCRS, type PmNcr } from "./ncr"
 import { PM_PUNCH, type PunchItem } from "./punch"
+import { approvedValue, PM_VARIATIONS, type PmVariation } from "./variation"
 import { hasClientSide } from "./terms"
 
 export class PmCloseError extends Error {
@@ -37,10 +39,12 @@ const num = (v: unknown) => {
 
 /** Everything the gate needs from the project's collections, read now. */
 export async function readCloseFacts(firestore: Firestore, projectId: string) {
-  const [items, punch, certs] = await Promise.all([
+  const [items, punch, certs, ncrs, vos] = await Promise.all([
     getDocs(collection(firestore, "projects", projectId, "boqItems")),
     getDocs(collection(firestore, "projects", projectId, PM_PUNCH)),
     getDocs(collection(firestore, "projects", projectId, PM_CERTIFICATES)),
+    getDocs(collection(firestore, "projects", projectId, PM_NCRS)),
+    getDocs(collection(firestore, "projects", projectId, PM_VARIATIONS)),
   ])
   return {
     items: items.docs.map((d) => {
@@ -49,6 +53,8 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     }),
     punch: punch.docs.map((d) => d.data() as PunchItem),
     certificates: certs.docs.map((d) => d.data() as PmCertificate),
+    ncrs: ncrs.docs.map((d) => d.data() as PmNcr),
+    variations: vos.docs.map((d) => d.data() as PmVariation),
   }
 }
 
@@ -66,6 +72,8 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       hasClient: hasClientSide(terms),
       acceptances: block.acceptances ?? {},
       punch: facts.punch,
+      ncrs: facts.ncrs,
+      variations: facts.variations,
       items: facts.items,
       cutPool: block.cutPool ?? 0,
       certificates: facts.certificates,
@@ -76,7 +84,8 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
     const blocked = closeBlocks(closeoutRows(input))
     if (blocked.length) throw new PmCloseError("blocked", blocked.map((r) => r.key))
     const fin = archiveSnapshot({
-      contractValue: project.budget ?? 0,
+      // INV-01: the value in force is the handover value plus approved variations.
+      contractValue: (project.budget ?? 0) + approvedValue(facts.variations),
       items: facts.items,
       certificates: facts.certificates,
       retentionHeld: block.retentionHeld ?? 0,

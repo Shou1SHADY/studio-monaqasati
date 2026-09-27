@@ -25,7 +25,9 @@ import type { PmCertificate } from "@/lib/pm/certificate-writes"
 import { closeBlocks, closeoutRows, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
 import { closeAndArchive, PmCloseError, type CloseActor } from "@/lib/pm/closeout-writes"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
+import { PM_NCRS, type PmNcr } from "@/lib/pm/ncr"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
+import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 
 const MONEY_ROWS = new Set<CloseRow["key"]>(["unbilled", "in_progress", "overdue", "retention"])
@@ -60,6 +62,10 @@ export function CloseoutPanel({
   const { data: punch } = useCollection(punchQ)
   const certQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, projectId, money])
   const { data: certs } = useCollection(certQ)
+  const ncrQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_NCRS) : null), [firestore, projectId])
+  const { data: ncrs } = useCollection(ncrQ)
+  const voQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId])
+  const { data: vos } = useCollection(voQ)
 
   const rows = useMemo(
     () =>
@@ -67,6 +73,8 @@ export function CloseoutPanel({
         hasClient,
         acceptances: pm.acceptances ?? {},
         punch: (punch ?? []) as unknown as PunchItem[],
+        ncrs: (ncrs ?? []) as unknown as PmNcr[],
+        variations: (vos ?? []) as unknown as PmVariation[],
         items,
         cutPool: pm.cutPool ?? 0,
         certificates: (certs ?? []) as unknown as PmCertificate[],
@@ -74,7 +82,7 @@ export function CloseoutPanel({
         retentionReleased: pm.retentionReleased === true,
         today: todayDay(),
       }),
-    [hasClient, pm, punch, items, certs]
+    [hasClient, pm, punch, items, certs, ncrs, vos]
   )
   const blocked = closeBlocks(rows)
   // Without money the certificates are not read — their rows are not shown rather than shown wrong.

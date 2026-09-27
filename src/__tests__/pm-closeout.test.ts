@@ -68,7 +68,7 @@ describe("the one gate", () => {
   })
 
   it("nobody pays: no money rows", () => {
-    expect(closeoutRows({ ...base, hasClient: false }).map((r) => r.key)).toEqual(["punch", "prov", "final", "unpriced"])
+    expect(closeoutRows({ ...base, hasClient: false }).map((r) => r.key)).toEqual(["punch", "ncr", "prov", "final", "unpriced"])
   })
 
   it("the snapshot: value, earned, certified, durations and delay — no invented cost (CST-04)", () => {

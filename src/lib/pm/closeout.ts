@@ -3,15 +3,17 @@
 // — the closeout list plus the open money — and freeze the same final
 // snapshot, never recomputed; the project then leaves every live figure and
 // accepts no change from anyone. (The first door once skipped the money and
-// froze nothing.) Money and custody block; paperwork warns (S-08). Rows the
-// module cannot see yet — variations, the project store, subcontractors,
-// NCRs — join the list when those sections are built. Pure: no I/O.
+// froze nothing.) Money and custody block; paperwork warns (S-08). Open NCRs
+// and priced variations still undecided join the list; the project store and
+// subcontractors join when those sections are built. Pure: no I/O.
 
 import type { Acceptances } from "./acceptance"
 import type { CertificateStatus } from "./certificate"
+import { isOpenNcr, type NcrStatus } from "./ncr"
 import { isOpenPunch, type PunchStatus } from "./punch"
+import { pricedPending, type VoStatus } from "./variation"
 
-export type CloseRowKey = "punch" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention"
+export type CloseRowKey = "punch" | "ncr" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention" | "vo_pending"
 
 export interface CloseRow {
   key: CloseRowKey
@@ -24,6 +26,10 @@ export interface CloseInput {
   hasClient: boolean
   acceptances: Acceptances
   punch: Array<{ status: PunchStatus }>
+  /** Non-conformance reports — an open one blocks closing (NCR-01). */
+  ncrs?: Array<{ status: NcrStatus }>
+  /** Variations — a priced one still undecided is open money (ARC-01). */
+  variations?: Array<{ status: VoStatus; value: number }>
   items: Array<{ rate: number; executed: number; billed: number }>
   cutPool: number
   certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null }>
@@ -39,8 +45,10 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 export function closeoutRows(input: CloseInput): CloseRow[] {
   const open = input.punch.filter(isOpenPunch).length
   const unpricedExecuted = input.items.filter((i) => !(i.rate > 0) && i.executed > 0).length
+  const openNcr = (input.ncrs ?? []).filter(isOpenNcr).length
   const rows: CloseRow[] = [
     { key: "punch", ok: open === 0, n: open },
+    { key: "ncr", ok: openNcr === 0, n: openNcr },
     { key: "prov", ok: Boolean(input.acceptances.prov) },
     { key: "final", ok: Boolean(input.acceptances.final) },
     // Executed but unpriced: closing means giving it up — decided, not slipped past (CON-04).
@@ -60,6 +68,8 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
       { key: "overdue", ok: overdue <= 1, n: overdue },
       { key: "retention", ok: input.retentionHeld <= 1 || input.retentionReleased, n: input.retentionHeld }
     )
+    const pending = pricedPending(input.variations ?? [])
+    rows.push({ key: "vo_pending", ok: pending.length === 0, n: pending.length })
   }
   return rows
 }

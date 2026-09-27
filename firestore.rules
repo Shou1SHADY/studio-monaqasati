@@ -660,7 +660,12 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'qa')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount']))
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount', 'ncrCount']))
+                // …whoever logs variations numbers them — `pm.voCount`.
+                || (('pm' in resource.data)
+                    && pmDuty(projectId, 'vo')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['voCount']))
                 // …and so may whoever the guard allows on the pm block: the terms need
                 // money + (all | approve), everything else on it needs approve.
                 || (('pm' in resource.data)
@@ -953,6 +958,69 @@ service cloud.firestore {
       // PM 1.0 punch list (PN-01…03) — `pmPunch/{NN}`. Quality (`qa`) raises it with an
       // exact location, records the fix, then records the raising party's confirmation:
       // open → fix → done, one step at a time. Never deleted.
+      // PM 1.0 variation orders (VO-01…03) — `pmVariations/{NN}`. Logged by `vo`,
+      // priced while a draft, submitted only when priced; the decision is
+      // `approve`'s and a rejection states its reason. Logging is not approval.
+      match /pmVariations/{voId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'vo')
+          && request.resource.data.status == 'draft'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.value is number && request.resource.data.value >= 0;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && ((pmDuty(projectId, 'vo') && resource.data.status == 'draft'
+                && request.resource.data.status in ['draft', 'wait']
+                && (request.resource.data.status == 'draft' || request.resource.data.value > 0)
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['value', 'cost', 'instructionNo', 'executedPct', 'status', 'updatedAt']))
+              || (pmDuty(projectId, 'vo') && resource.data.status in ['wait', 'appr']
+                && request.resource.data.status == resource.data.status
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['executedPct', 'instructionNo', 'updatedAt']))
+              || (pmDuty(projectId, 'approve') && resource.data.status == 'wait'
+                && request.resource.data.status in ['appr', 'rej']
+                && request.resource.data.decision.by == request.auth.uid
+                && (request.resource.data.status == 'appr'
+                    || (request.resource.data.decision.reason is string && request.resource.data.decision.reason.size() > 0))
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decision', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 non-conformance (NCR-01) — `pmNcrs/{NN}`. Recorded by quality:
+      // open → corrective plan → closed on the consultant's acceptance.
+      match /pmNcrs/{ncrId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'qa')
+          && request.resource.data.status == 'open'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.root is string && request.resource.data.root.size() > 0
+          && request.resource.data.seq is int;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'qa')
+          && ((resource.data.status == 'open' && request.resource.data.status == 'plan'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'plan', 'updatedAt']))
+              || (resource.data.status == 'plan' && request.resource.data.status == 'done'
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'accepted', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
       match /pmPunch/{punchId} {
         allow read: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();

@@ -162,7 +162,9 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer } from "lucide-react"
+import { NcrPanel } from "@/components/pm/NcrPanel"
+import { VariationsPanel } from "@/components/pm/VariationsPanel"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 
@@ -1969,6 +1971,7 @@ export default function ProjectDetailPage() {
           { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
+          { key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> },
           { key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> },
         ]
       : []),
@@ -3114,7 +3117,13 @@ export default function ProjectDetailPage() {
             onItemsChanged={() => void loadBoqItems()}
           />
         )}
-        {activeTab === "pmPunch" && typedProject.pm && <PunchPanel projectId={projectId} access={pmAccess} actor={pmActor} />}
+        {activeTab === "pmPunch" && typedProject.pm && (
+          <div className="space-y-4">
+            <PunchPanel projectId={projectId} access={pmAccess} actor={pmActor} />
+            <NcrPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} />
+          </div>
+        )}
+        {activeTab === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} baseValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} />}
         {activeTab === "pmClose" && typedProject.pm?.terms && (
           <div className="space-y-4">
             <HandoverPanel

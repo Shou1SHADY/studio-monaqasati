@@ -12311,7 +12311,9 @@
           "unbilled": "No executed work left unbilled",
           "in_progress": "No certificate still in progress",
           "overdue": "No overdue collection",
-          "retention": "Retention released"
+          "retention": "Retention released",
+          "ncr": "No open non-conformance",
+          "vo_pending": "No priced variation left undecided"
         },
         "why": {
           "punch": "{count, plural, one {# item} other {# items}} still open",
@@ -12321,7 +12323,9 @@
           "unbilled": "{amount} executed and not billed — prepare the final certificate",
           "in_progress": "{count, plural, one {# certificate is} other {# certificates are}} awaiting approval or certification",
           "overdue": "{amount} past its due date and not collected",
-          "retention": "{amount} retention held and not yet released"
+          "retention": "{amount} retention held and not yet released",
+          "ncr": "{count, plural, one {# NCR is} other {# NCRs are}} still open",
+          "vo_pending": "{count, plural, one {# priced variation awaits} other {# priced variations await}} the client's decision"
         },
         "snap": {
           "contract": "Contract value",
@@ -12332,6 +12336,114 @@
           "actual_days": "Actual duration (start to final acceptance)",
           "delay": "Delay",
           "cost_note": "Cost and margin join the snapshot when the cost section is built — never an invented figure."
+        }
+      },
+      "vo": {
+        "title": "Variations",
+        "new": "Log a variation",
+        "new_desc": "Logged the day it is asked, with its source and instruction number. Logging is not approval — the contract value does not change until a written approval is recorded.",
+        "three_way": "Extra quantity is re-measurement · new scope or specification is a variation · extra material on the same quantity is waste, recovered from the subcontractor — never a variation.",
+        "what": "What is changing",
+        "source_label": "Asked by",
+        "source": {
+          "client": "The client",
+          "cons": "The consultant",
+          "site": "A site condition",
+          "oth": "Another party"
+        },
+        "source_text": "State who asked",
+        "instruction_label": "Instruction number",
+        "instruction": "instruction {no}",
+        "no_instruction": "No instruction",
+        "value": "Value (excl. VAT)",
+        "cost": "Estimated cost",
+        "pct": "Executed %",
+        "log": "Log",
+        "logged": "Variation logged — it changes nothing until approved",
+        "no": "Variation {no}",
+        "status": {
+          "draft": "Logged",
+          "wait": "With the client",
+          "appr": "Approved",
+          "rej": "Rejected"
+        },
+        "line": "{source} · {date} · executed {pct}%",
+        "money": "Value {value} · cost {cost}",
+        "approved_line": "Approved {date} by {who} · reference {ref}",
+        "rejected_line": "Rejected {date} by {who}: {reason}",
+        "update": "Update",
+        "update_desc": "The price is fixed once it goes to the client; the executed share and the instruction number stay current.",
+        "save": "Save",
+        "saved": "Saved",
+        "submit": "Submit to client",
+        "submitted": "Submitted to the client",
+        "approve": "Record approval",
+        "approve_desc": "The client's written approval (its reference is optional). The value enters the contract now.",
+        "approval_ref": "Approval reference (optional)",
+        "approved": "Variation {no} approved — the contract value moved",
+        "reject": "Record rejection",
+        "reject_desc": "The client's rejection and its reason. The variation stays on record.",
+        "reason": "Reason",
+        "rejected": "Variation {no} rejected",
+        "base_value": "Contract value at handover",
+        "approved_value": "Approved variations",
+        "live_value": "Contract value in force",
+        "work_before_approval": "{count, plural, one {# variation has} other {# variations have}} work executed before a written approval — a risk to decide.",
+        "empty": "No variation",
+        "empty_desc": "A change asked by the client, the consultant or a site condition is logged here the day it is asked.",
+        "block": {
+          "archived": "The project is archived",
+          "no_title": "Say what is changing",
+          "source_text": "State who asked for it",
+          "bad_value": "Value and cost are zero or more",
+          "bad_pct": "Executed is between 0 and 100%",
+          "wrong_state": "It is no longer at this step — refresh",
+          "unpriced": "Price it before submitting it",
+          "no_reason": "A rejection needs its reason",
+          "price_locked": "The price is fixed once submitted"
+        }
+      },
+      "ncr": {
+        "title": "Non-conformance",
+        "new": "Raise an NCR",
+        "new_desc": "Work that failed the specification: the item, how serious, the root cause and its cost. An open NCR blocks closing the project.",
+        "item": "Item",
+        "pick_item": "Choose the item",
+        "search_item": "Search by code or description",
+        "no_item": "No matching item",
+        "severity": "Severity",
+        "sev": {
+          "a": "Major",
+          "b": "Minor"
+        },
+        "cost": "Cost (SAR)",
+        "root": "Root cause",
+        "submit": "Raise",
+        "raised": "NCR raised — it blocks closing until accepted",
+        "no": "NCR {no}",
+        "status": {
+          "open": "Open",
+          "plan": "Corrective plan submitted",
+          "done": "Closed"
+        },
+        "line": "{root} · {date}",
+        "plan_line": "Plan: {text} ({who})",
+        "accepted_line": "Accepted by the consultant {date}, recorded by {who}",
+        "submit_plan": "Submit corrective plan",
+        "plan_desc": "The corrective action — the NCR closes when the consultant accepts it.",
+        "plan": "Corrective action",
+        "plan_saved": "Corrective plan submitted",
+        "record_acceptance": "Record consultant's acceptance",
+        "closed": "NCR {no} closed",
+        "empty": "No non-conformance",
+        "empty_desc": "Work that failed the specification is recorded here with its root cause and cost.",
+        "block": {
+          "archived": "The project is archived",
+          "no_item": "Choose the item",
+          "no_root": "State the root cause",
+          "bad_cost": "Cost is zero or more",
+          "wrong_state": "It is no longer at this step — refresh",
+          "no_plan": "State the corrective action"
         }
       }
     }
