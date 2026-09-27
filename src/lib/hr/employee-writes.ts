@@ -257,3 +257,34 @@ export async function linkUser(firestore: Firestore, ctx: HrContext, id: string,
     log(tx, firestore, id, emp.organizationId, actor, "user_linked", { user: userId })
   })
 }
+
+// ---------------------------------------------------------------------------
+// A returned transfer's IBAN (PY-03, RL-02): payroll fixes it, the HR manager
+// approves it — never the same hand; only then does Finance pay the line.
+// ---------------------------------------------------------------------------
+
+const IBAN = /^SA\d{22}$/
+
+export async function fixIban(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor, iban: string): Promise<void> {
+  assertHr(ctx, "iban.fix")
+  const clean = iban.replace(/\s+/g, "").toUpperCase()
+  if (!IBAN.test(clean)) throw new HrWriteError("blocked", ["bad_iban"])
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    tx.update(doc(firestore, HR_PAY, id), { iban: clean, ibanState: "fixed", ibanFixedBy: actor.uid, updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, "iban_fixed", {})
+  })
+}
+
+export async function approveIban(firestore: Firestore, ctx: HrContext, id: string, actor: HrActor): Promise<void> {
+  assertHr(ctx, "iban.approve")
+  await runTransaction(firestore, async (tx) => {
+    const { emp } = await readEmployee(tx, firestore, id)
+    const p = await tx.get(doc(firestore, HR_PAY, id))
+    const pay = p.exists() ? (p.data() as EmployeePay & { ibanFixedBy?: string }) : null
+    if (pay?.ibanState !== "fixed") throw new HrWriteError("blocked", ["stale"])
+    if (pay.ibanFixedBy === actor.uid && !ctx.owner) throw new HrWriteError("own_request")
+    tx.update(doc(firestore, HR_PAY, id), { ibanState: "ok", updatedAt: serverTimestamp() })
+    log(tx, firestore, id, emp.organizationId, actor, "iban_approved", {})
+  })
+}

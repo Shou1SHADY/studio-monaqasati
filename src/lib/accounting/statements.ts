@@ -131,6 +131,7 @@ const BS_SPEC: Record<string, SectionSpec> = {
     [ACC.prepaidExpenses, "مصروفات مدفوعة مقدماً", "Prepaid expenses"],
     [ACC.refundableDeposits, "تأمينات مستردة", "Refundable deposits"],
     [ACC.guaranteeCashMargin, "هامش نقدي مقابل خطابات الضمان", "Cash margin on guarantees"],
+    [ACC.employeeAdvances, "سلف الموظفين", "Employee advances"],
   ]],
   nonCurrentAssets: ["الأصول غير المتداولة", "Non-current assets", [
     ["1201", "الأصول الثابتة — بالتكلفة", "PPE — at cost"],
@@ -142,6 +143,9 @@ const BS_SPEC: Record<string, SectionSpec> = {
     [ACC.advancesFromClients, "دفعات مقدمة من العملاء", "Advances from clients"],
     [ACC.contractLiability, "فواتير تفوق الأعمال المنفذة", "Billings in excess of work"],
     [ACC.employeeAccruals, "مستحقات الموظفين", "Employee accruals"],
+    [ACC.gosiPayable, "التأمينات الاجتماعية المستحقة", "GOSI payable"],
+    [ACC.finesFund, "صندوق غرامات العمال", "Workers' fines fund"],
+    [ACC.leaveProvision, "مخصص الإجازات", "Leave provision"],
     ["2103", "التزامات ضريبية وزكوية", "Tax & zakat liabilities"],
   ]],
   nonCurrentLiabilities: ["الخصوم غير المتداولة", "Non-current liabilities", [

@@ -1758,8 +1758,13 @@ service cloud.firestore {
         && request.resource.data.organizationId == resource.data.organizationId
         && (hrManager()
             || (hrRole('hr.payroll')
-                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
-                && request.resource.data.ibanState == 'fixed')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'ibanFixedBy', 'updatedAt'])
+                && request.resource.data.ibanState == 'fixed'
+                && request.resource.data.get('ibanFixedBy', '') == request.auth.uid)
+            // Finance records a returned transfer (fin:RETURNED) — the IBAN goes back to payroll.
+            || (hrFinance()
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ibanState', 'updatedAt'])
+                && request.resource.data.ibanState == 'returned')
             // An approved advance: management (the HR manager's own) or Finance (above the limit).
             || ((hrRole('hr.management') || hrFinance())
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['advance', 'updatedAt'])));
@@ -1787,8 +1792,9 @@ service cloud.firestore {
           || (resource.data.state == 'prepared' && request.resource.data.state == 'approved'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'approved', 'ownFlagged', 'updatedAt'])
             && hrManager() && (resource.data.prepared.by != request.auth.uid || isOrgOwner()))
-          || (resource.data.state in ['approved', 'posted'] && request.resource.data.state in ['posted', 'paid']
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'updatedAt'])
+          || (resource.data.state in ['approved', 'posted', 'paid'] && request.resource.data.state in ['posted', 'paid']
+            && (resource.data.state != 'paid' || request.resource.data.state == 'paid')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'returned', 'paidHeld', 'updatedAt'])
             && hrFinance())
         );
       allow delete: if false;
@@ -1819,7 +1825,7 @@ service cloud.firestore {
         && (hrSeesPay()
             || (resource.data.kind == 'leave' && hrStaff())
             || resource.data.get('employeeUserId', '') == request.auth.uid
-            || (resource.data.get('financeHold', false) == true && hrFinance()))));
+            || (resource.data.kind == 'advance' && hrFinance()))));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
         && request.resource.data.kind in ['leave', 'advance']
         && request.resource.data.state == 'pending'
@@ -1851,6 +1857,10 @@ service cloud.firestore {
           // Finance decides what HR sent up
           || (resource.data.state == 'finance' && request.resource.data.state in ['approved', 'declined']
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'finance', 'updatedAt'])
+            && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          // Finance pays out an approved advance (fin:PRPAID)
+          || (resource.data.kind == 'advance' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payout', 'updatedAt'])
             && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
           // cancel before it starts
           || (request.resource.data.state == 'cancelled'

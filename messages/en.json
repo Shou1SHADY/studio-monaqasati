@@ -637,6 +637,7 @@
       "sales_nav_reports": "Reports",
       "sales_nav_settings": "Settings & boundary",
       "fin_nav_sales_desk": "Sales desk",
+      "fin_nav_hr_desk": "HR desk",
       "fin_nav_procurement_desk": "Purchase order approvals",
       "contractor_purchase_requests": "Incoming purchase requests",
       "contractor_proc_today": "Today",
@@ -7631,6 +7632,7 @@
       "pl_no_cost": "No standard cost",
       "mfy_cost_hidden": "Sales manager only",
       "fin_nav_sales_desk": "Sales desk",
+      "fin_nav_hr_desk": "HR desk",
       "fin_nav_procurement_desk": "Purchase order approvals",
       "fsd_title": "Finance's Sales desk",
       "fpd_title": "Purchase order approvals",
@@ -13246,7 +13248,9 @@
         "advance_declined": "Advance {no} declined",
         "advance_to_finance": "Advance {no} sent to Finance with HR's view",
         "leave_cancelled": "Leave {no} cancelled",
-        "advance_cancelled": "Advance {no} cancelled"
+        "advance_cancelled": "Advance {no} cancelled",
+        "iban_fixed": "IBAN corrected by payroll",
+        "iban_approved": "Corrected IBAN approved"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13501,6 +13505,82 @@
         "sup_desc": "Late items only — retro pay differences for this closed month. The month's payroll is not reopened.",
         "confirm_title": "Approve payroll {key}?",
         "confirm_desc": "The events go to Finance with fixed keys and cannot be sent twice. Advance instalments come off the balances. Anything late goes to the supplementary."
+      },
+      "iban": {
+        "returned": "The bank returned this salary transfer — payroll corrects the IBAN, the HR manager approves it, then Finance pays.",
+        "fixed": "Payroll corrected the IBAN — waiting for the HR manager's approval.",
+        "new": "Correct IBAN",
+        "fix": "Correct the IBAN",
+        "approve": "Approve the IBAN",
+        "fixed_ok": "IBAN corrected — the HR manager approves it",
+        "approved_ok": "IBAN approved — Finance can pay the line",
+        "block": {
+          "bad_iban": "A Saudi IBAN is SA and 22 digits",
+          "stale": "Nothing waiting for approval"
+        }
+      },
+      "fhd": {
+        "title": "HR desk",
+        "desc": "HR approves payroll and advances; Finance posts them and pays — here.",
+        "no_permission": "Posting and paying HR's payrolls needs invoices or posting rights.",
+        "accounting_off": "Accounting is off: payments are recorded without entries.",
+        "to_post": "Payroll events to post",
+        "to_post_empty": "No event waiting",
+        "event": {
+          "PAY": "Salaries · {amount}",
+          "EOS": "End-of-service and leave accruals · {amount}"
+        },
+        "post": "Post",
+        "posted_ok": "Posted",
+        "to_pay": "Payrolls to pay",
+        "to_pay_empty": "No payroll waiting for payment",
+        "transfer_line": "To transfer {amount} · {held} held lines stay payable",
+        "record_paid": "Record payment",
+        "paid_ok": "Payment recorded",
+        "held": "Held and returned lines",
+        "held_empty": "No line waiting",
+        "held_iban": "held — IBAN",
+        "returned_because": "returned: {reason}",
+        "iban_ready": "IBAN approved",
+        "iban_waiting": "IBAN with HR",
+        "pay_line": "Pay",
+        "mark_returned": "A transfer came back",
+        "return_desc": "Payroll {key}: the money is back in the bank and owed again; the IBAN goes to payroll.",
+        "who": "Whose transfer",
+        "return_reason": "Bank's reason",
+        "returned_ok": "Recorded — payroll corrects the IBAN",
+        "advances": "Advances",
+        "advances_empty": "No advance waiting",
+        "hr_view": "HR's view",
+        "decide": "Decide",
+        "payout_line": "{amount} · repaid over {months} months",
+        "pay_out": "Pay out",
+        "advance_paid_ok": "Advance paid out",
+        "decided_ok": "Approved — ready to pay out",
+        "declined_ok": "Declined",
+        "date": "Date",
+        "bank": "Bank account",
+        "dialog": {
+          "pay": "Record the salary transfer",
+          "return": "A transfer came back",
+          "held": "Pay a held line",
+          "advance": "Pay out the advance",
+          "decide": "Advance above the HR limit"
+        },
+        "confirm": {
+          "pay": "Record payment",
+          "return": "Record the return",
+          "held": "Pay",
+          "advance": "Pay out"
+        },
+        "failed": "Could not complete — check the period is open and try again",
+        "block": {
+          "stale": "This has already moved on",
+          "not_posted": "Post the payroll first",
+          "no_reason": "Give the reason",
+          "iban_not_ready": "The IBAN is not approved yet",
+          "outstanding": "An advance is still outstanding"
+        }
       }
     }
   },

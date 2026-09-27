@@ -11,6 +11,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { collection, orderBy, query } from "firebase/firestore"
 import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, HandCoins, History, Inbox, Link2, Loader2, Plane, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -21,16 +22,18 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useEmployeePay, useHrPeople } from "@/hooks/useHrPeople"
 import { useHrRequests } from "@/hooks/useHrRequests"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES } from "@/lib/hr/collections"
 import { docState, DOC_TYPES, legalOnSite } from "@/lib/hr/documents"
 import { displayName, onProbation, serviceDays, type HrEmployee } from "@/lib/hr/employee"
-import { HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
+import { approveIban, fixIban, HR_LOG, type HrActor, type LogEntry } from "@/lib/hr/employee-writes"
 import { empNo, hrDate, hrMoney, nearestDocument, todayDay } from "@/lib/hr/format"
 import { leaveBalance } from "@/lib/hr/leave"
 import { gosiRates, wageOf } from "@/lib/hr/pay"
 import { serviceYears } from "@/lib/hr/statutory"
 import { tradeOf } from "@/lib/hr/trades"
+import { HrWriteError } from "@/lib/hr/write-guard"
 import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrRequestList } from "./HrRequestList"
@@ -226,6 +229,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
               <KeyValueRow label={t("pay.wage")} value={hrMoney(wageOf(pay))} ltr strong />
               {gosi && <KeyValueRow label={t("file.gosi")} value={t("file.gosi_line", { emp: (gosi.employee * 100).toFixed(2), co: (gosi.employer * 100).toFixed(2) })} />}
               <KeyValueRow label={t("file.iban")} value={pay.iban || "—"} ltr />
+              <IbanActions access={access} employeeId={employeeId} actor={actor} state={pay.ibanState ?? null} fixedBy={(pay as { ibanFixedBy?: string }).ibanFixedBy ?? null} />
               {pay.advance && pay.advance.balance > 0 && <KeyValueRow label={t("file.advance")} value={hrMoney(pay.advance.balance)} ltr />}
               {(pay.retro ?? []).map((r, i) => (
                 <KeyValueRow key={i} label={t("file.retro", { month: r.month })} value={hrMoney(r.amount)} ltr />
@@ -299,3 +303,47 @@ function logParams(l: LogEntry, t: ReturnType<typeof useTranslations>, siteName:
   }
   return out
 }
+
+/** A returned transfer's IBAN (PY-03, RL-02): payroll fixes it, the HR manager approves it — never the same hand. */
+function IbanActions({ access, employeeId, actor, state, fixedBy }: { access: HrAccess; employeeId: string; actor: HrActor; state: string | null; fixedBy: string | null }) {
+  const t = useTranslations("Portal.HR")
+  const firestore = useFirestore()
+  const { toast } = useToast()
+  const [iban, setIban] = useState("")
+  const [busy, setBusy] = useState(false)
+  if (state !== "returned" && state !== "fixed") return null
+  const run = async (fn: () => Promise<void>, ok: string) => {
+    if (!firestore) return
+    setBusy(true)
+    try {
+      await fn()
+      toast({ title: t(ok) })
+      setIban("")
+    } catch (err) {
+      console.error(err)
+      toast({ title: t(err instanceof HrWriteError ? (err.blocks[0] ? `iban.block.${err.blocks[0]}` : `err.${err.code}`) : "err.save"), variant: "destructive" })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const mayApprove = state === "fixed" && access.allowed("iban.approve") && (fixedBy !== access.ctx.uid || access.ctx.owner)
+  return (
+    <div className="mt-3 space-y-2">
+      <Callout tone="warn">{t(state === "returned" ? "iban.returned" : "iban.fixed")}</Callout>
+      {state === "returned" && access.allowed("iban.fix") && (
+        <div className="flex flex-wrap gap-2">
+          <Input dir="ltr" aria-label={t("iban.new")} placeholder="SA00 0000 0000 0000 0000 0000" value={iban} onChange={(e) => setIban(e.target.value)} className="h-9 flex-1 basis-60" disabled={busy} />
+          <Button size="sm" disabled={busy || !iban.trim()} onClick={() => void run(() => fixIban(firestore!, access.ctx, employeeId, actor, iban), "iban.fixed_ok")}>
+            {t("iban.fix")}
+          </Button>
+        </div>
+      )}
+      {mayApprove && (
+        <Button size="sm" disabled={busy} onClick={() => void run(() => approveIban(firestore!, access.ctx, employeeId, actor), "iban.approved_ok")}>
+          {t("iban.approve")}
+        </Button>
+      )}
+    </div>
+  )
+}
+

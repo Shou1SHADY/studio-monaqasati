@@ -270,6 +270,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage", comingSoon: RECEIPTS_COMING_SOON },
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
+          { titleKey: "fin_nav_hr_desk", href: "/contractor/accounting/hr-desk", icon: Users, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
           { titleKey: "fin_nav_procurement_desk", href: "/contractor/accounting/procurement-desk", icon: ClipboardCheck, requiredPermission: "po.approve" },
         ],
       },
@@ -564,6 +565,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
           { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/supplier/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
+          { titleKey: "fin_nav_hr_desk", href: "/supplier/accounting/hr-desk", icon: Users, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
         ],
       },
       {
