@@ -37,6 +37,7 @@ import { HrWriteError } from "@/lib/hr/write-guard"
 import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
 import { HrExitPanel, StartExitDialog } from "./HrExitPanel"
+import { HrInjuryPanel } from "./HrInjuryPanel"
 import { HrRequestList } from "./HrRequestList"
 import { HrViolationList, RecordViolationDialog, useHrViolations } from "./HrViolationList"
 import { NewRequestDialog } from "./NewRequestDialog"
@@ -232,6 +233,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           })}
         </Panel>
       )}
+
+      {seg === "docs" && <HrInjuryPanel access={access} actor={actor} emp={emp as HrEmployee} />}
 
       {seg === "pay" && money && (
         <Panel title={t("file.seg.pay")}>

@@ -1925,6 +1925,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Work injuries (DC-07, WF-15): recorded by the site's supervisor or the HR
+    // manager; the GOSI report number by government relations or the HR manager.
+    match /hrInjuries/{injuryId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrStaff() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.recorded.by == request.auth.uid
+        && request.resource.data.get('report', null) == null
+        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.get('report', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['report', 'updatedAt'])
+        && (hrManager() || hrRole('hr.gov'));
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit

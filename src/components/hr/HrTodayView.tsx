@@ -5,18 +5,23 @@
 // is done and what is next; each step opens where it is done. The decision
 // groups (TD-02) join as the modules behind them are built.
 
-import { useMemo } from "react"
-import { useTranslations } from "next-intl"
+import { useMemo, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { CheckCircle2, Circle, Gavel, Inbox, Route } from "lucide-react"
+import { Ambulance, CalendarClock, CheckCircle2, Circle, CircleAlert, ClipboardCheck, FileWarning, Hourglass, Inbox, Landmark, Lock, OctagonAlert, Route, UserCheck, Wallet, type LucideIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { Panel } from "@/components/module-ui/Panel"
+import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { useHrRequests } from "@/hooks/useHrRequests"
+import { useHrToday } from "@/hooks/useHrToday"
 import { usePermissions } from "@/hooks/usePermissions"
 import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES, HR_SITES } from "@/lib/hr/collections"
-import { todayDay } from "@/lib/hr/format"
+import { hrDate, todayDay } from "@/lib/hr/format"
+import { todayItems, type TodayGroup, type TodayItem } from "@/lib/hr/today"
 import { requestActions } from "@/lib/hr/requests"
 import { isOffice, type HrSite } from "@/lib/hr/sites"
 import { cn } from "@/lib/utils"
@@ -28,6 +33,7 @@ type Step = { key: string; done: boolean; href: string }
 
 export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPortal }) {
   const t = useTranslations("Portal.HR")
+  const locale = useLocale()
   const firestore = useFirestore()
   const orgId = access.orgId
   const sitesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_SITES), where("organizationId", "==", orgId)) : null), [firestore, orgId])
@@ -59,16 +65,65 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
   const violations = useHrViolations(access)
   const vWaiting = useMemo(() => violations.filter((v) => violationWaits(access, v)), [violations, access])
 
+  const world = useHrToday(access, today)
+  const items = useMemo(
+    () => todayItems({ ctx: access.ctx, today, renewWindowDays: access.settings.policies.renewWindowDays, ...world }),
+    [access.ctx, today, access.settings.policies.renewWindowDays, world]
+  )
+  const [more, setMore] = useState<Record<string, boolean>>({})
+  const group = (g: Exclude<TodayGroup, "requests">) => items.filter((x) => x.group === g)
+  const shown = <T,>(key: string, list: T[]) => (more[key] ? list : list.slice(0, 3))
+  const moreButton = (key: string, n: number) =>
+    n > 3 && !more[key] ? (
+      <Button variant="ghost" size="sm" className="w-full" onClick={() => setMore((m) => ({ ...m, [key]: true }))}>
+        {t("today.show_more", { n: n - 3 })}
+      </Button>
+    ) : null
+  const row = (x: TodayItem) => (
+    <DecisionRow
+      key={x.key}
+      severity={x.severity}
+      icon={KIND_ICON[x.kind] ?? CircleAlert}
+      title={t(`today.k.${x.kind}`, itemParams(x, t, locale))}
+      detail={x.source ? <SourceBadge module={x.source} label={t(`today.src.${x.source}`)} /> : undefined}
+      action={
+        x.action && x.href ? (
+          <Button asChild size="sm" variant={x.severity === "red" ? "default" : "outline"}>
+            <Link href={`/${portal}/hr/${x.href}`}>{t(`today.a.${x.action}`)}</Link>
+          </Button>
+        ) : undefined
+      }
+    />
+  )
+  const panel = (g: Exclude<TodayGroup, "requests">, icon: typeof Inbox) => {
+    const list = group(g)
+    return (
+      <Panel key={g} title={t(`today.g.${g}`)} icon={icon} count={list.length || undefined} bodyClassName="p-0">
+        {list.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-muted-foreground">{t(`today.none.${g}`)}</p>
+        ) : (
+          <>
+            <ul className="divide-y">{shown(g, list).map(row)}</ul>
+            {moreButton(g, list.length)}
+          </>
+        )}
+      </Panel>
+    )
+  }
+
   const decisions = (
     <div className="space-y-6">
-      <Panel title={t("today.waiting")} icon={Inbox} count={waiting.length || undefined}>
-        <HrRequestList access={access} requests={waiting} portal={portal} empty={t("today.nothing_waiting")} />
+      {panel("blocking", OctagonAlert)}
+      {panel("other", Hourglass)}
+      <Panel title={t("today.g.requests")} icon={Inbox} count={waiting.length + vWaiting.length || undefined}>
+        <div className="space-y-3">
+          <HrRequestList access={access} requests={shown("req", waiting)} portal={portal} empty={t("today.nothing_waiting")} />
+          {moreButton("req", waiting.length)}
+          {vWaiting.length > 0 && <HrViolationList access={access} actor={actor} violations={shown("vio", vWaiting)} all={violations} empty="" />}
+          {moreButton("vio", vWaiting.length)}
+        </div>
       </Panel>
-      {vWaiting.length > 0 && (
-        <Panel title={t("vio.waiting")} icon={Gavel} count={vWaiting.length}>
-          <HrViolationList access={access} actor={actor} violations={vWaiting} all={violations} empty="" />
-        </Panel>
-      )}
+      {panel("due", CalendarClock)}
     </div>
   )
 
@@ -100,3 +155,33 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
     </div>
   )
 }
+
+const KIND_ICON: Record<string, LucideIcon> = {
+  iqama_on_site: FileWarning,
+  close_month: Lock,
+  injury_overdue: Ambulance,
+  injury_due: Ambulance,
+  iban_fix: Wallet,
+  iban_approve: Wallet,
+  payroll_prepare: Landmark,
+  payroll_approve: Landmark,
+  sheet_today: ClipboardCheck,
+  wait_custody: Hourglass,
+  wait_settlement: Hourglass,
+  wait_post: Hourglass,
+  wait_pay: Hourglass,
+  wait_advance: Hourglass,
+  doc_due: FileWarning,
+  iqama_clock: FileWarning,
+  probation_end: UserCheck,
+  contract_end: CalendarClock,
+}
+
+/** Dates in the reader's language; a document type by its name. */
+function itemParams(x: TodayItem, t: ReturnType<typeof useTranslations>, locale: string): Record<string, string | number> {
+  const out: Record<string, string | number> = { ...x.params }
+  for (const k of ["date", "due"]) if (typeof out[k] === "string") out[k] = hrDate(out[k] as string, locale)
+  if (typeof out.doc === "string") out.doc = t(`doc.${out.doc}` as "doc.iqama")
+  return out
+}
+

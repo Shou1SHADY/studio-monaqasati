@@ -12925,7 +12925,56 @@
           "employees": "Employees on the record — imported or added"
         },
         "waiting": "Waiting for you",
-        "nothing_waiting": "Nothing waits for your decision"
+        "nothing_waiting": "Nothing waits for your decision",
+        "show_more": "Show {n} more",
+        "g": {
+          "blocking": "Blocking now",
+          "other": "Waiting on another module",
+          "requests": "People's requests",
+          "due": "Due dates"
+        },
+        "none": {
+          "blocking": "Nothing is blocking",
+          "other": "Nothing waiting elsewhere",
+          "due": "Nothing due soon"
+        },
+        "src": {
+          "payments": "Finance",
+          "warehouses": "Inventory"
+        },
+        "k": {
+          "iqama_on_site": "{name} is on {site} with an expired iqama",
+          "close_month": "Close {month} at {site}",
+          "injury_overdue": "GOSI injury report overdue — {name} (due {due})",
+          "injury_due": "GOSI injury report due {due} — {name}",
+          "iban_fix": "Correct the returned IBAN — {name}",
+          "iban_approve": "Approve the corrected IBAN — {name}",
+          "payroll_prepare": "Prepare the payroll for {month}",
+          "payroll_approve": "Approve the payroll for {month}",
+          "sheet_today": "Today's sheet at {site}",
+          "wait_custody": "Custody clearance for {name}",
+          "wait_settlement": "Settlement payment for {name}",
+          "wait_post": "Payroll {key} to post",
+          "wait_pay": "Payroll {key} to pay",
+          "wait_advance": "Advance {no} for {name}",
+          "doc_due": "{doc} of {name} — {date}",
+          "iqama_clock": "Iqama for {name} due by {date} (90 days from arrival)",
+          "probation_end": "Probation of {name} ends {date}",
+          "contract_end": "Contract of {name} ends {date}"
+        },
+        "a": {
+          "move": "Move",
+          "close": "Close",
+          "report": "Report",
+          "fix_iban": "Correct",
+          "approve_iban": "Approve",
+          "prepare": "Prepare",
+          "approve": "Approve",
+          "record": "Record",
+          "renew": "Renew",
+          "decide": "Decide",
+          "open": "Open"
+        }
       },
       "back": "Back",
       "next": "Next",
@@ -13261,7 +13310,8 @@
         "objection_cancelled": "Objection decided: penalty cancelled — {code}",
         "exit_started": "End of service started — {reason}, last day {lastDay}",
         "settlement_approved": "Settlement approved — last day {lastDay}",
-        "data_updated": "Details updated by request {no} — {field}"
+        "data_updated": "Details updated by request {no} — {field}",
+        "injury_recorded": "Work injury recorded — {on}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13804,6 +13854,31 @@
           "advance": "Advance instalment",
           "net": "Net paid",
           "retro": "Retro pay difference"
+        }
+      },
+      "inj": {
+        "title": "Work injuries",
+        "none": "No injuries recorded",
+        "record": "Record an injury",
+        "record_desc": "GOSI must be told within three working days — it becomes a decision until the report is recorded.",
+        "on": "Day of the injury",
+        "description": "What happened",
+        "report": "Record the GOSI report",
+        "report_on": "Reported on",
+        "report_no": "GOSI report number",
+        "report_line": "reported {no} · {on}",
+        "state": {
+          "due": "Report due {due}",
+          "overdue": "Report overdue since {due}",
+          "reported": "Reported"
+        },
+        "recorded_ok": "Injury recorded",
+        "reported_ok": "Report recorded",
+        "block": {
+          "future": "A day that has not come",
+          "no_description": "Describe what happened",
+          "no_report": "The report number and date are required",
+          "stale": "Already reported"
         }
       }
     }

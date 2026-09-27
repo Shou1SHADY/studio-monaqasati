@@ -61,6 +61,8 @@ export const HR_GUARD = {
   "request.decide": { roles: ["manager"] },
   "pay.change": { roles: ["manager"] },
   "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  "injury.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  "injury.report": { roles: ["gov", "manager"] },
   "penalty.apply": { roles: ["manager"] },
   "exit.manage": { roles: ["manager"] },
   "documents.manage": { roles: ["manager", "gov"] },
