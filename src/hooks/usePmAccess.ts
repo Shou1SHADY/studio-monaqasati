@@ -40,18 +40,21 @@ export function pmArchived(project: { pm?: { lifecycle?: string | null } | null;
   return Boolean(project?.pm) && lifecycleOf(project ?? {}) === "closed"
 }
 
-export function usePmAccess(projectId: string | undefined, project: { pm?: { lifecycle?: string | null } | null; status?: string | null } | null | undefined): PmAccess {
+type PmProjectLike = { pm?: { lifecycle?: string | null } | null; status?: string | null; projectManagerId?: string | null }
+
+export function usePmAccess(projectId: string | undefined, project: PmProjectLike | null | undefined): PmAccess {
   const { user } = useUser()
   const { isOrgOwner, profile, groups, projectMember, isLoading } = usePermissions(projectId)
   const defaultGroupId = (profile?.defaultGroupId as string | undefined) ?? null
   const archived = pmArchived(project)
+  const managerless = Boolean(project?.pm) && !project?.projectManagerId
 
   return useMemo(() => {
     const group = groups.find((g) => g.id === defaultGroupId)
     const ceiling = pmCeiling({ owner: isOrgOwner, permissions: group?.permissions ?? [] })
     const seat = seatFromMember(projectMember, user?.uid)
     const live = seat && seatActive(seat, todayDay()) ? seat : null
-    const ctx: PmContext = { ceiling, seat: live, archived }
+    const ctx: PmContext = { ceiling, seat: live, archived, managerless }
     return {
       ctx,
       uid: user?.uid ?? null,
@@ -61,5 +64,5 @@ export function usePmAccess(projectId: string | undefined, project: { pm?: { lif
       refusal: (action) => pmRefusal(ctx, action),
       has: (key) => pmCan(ctx, key),
     }
-  }, [groups, defaultGroupId, isOrgOwner, projectMember, user?.uid, archived, isLoading])
+  }, [groups, defaultGroupId, isOrgOwner, projectMember, user?.uid, archived, managerless, isLoading])
 }

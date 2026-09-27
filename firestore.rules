@@ -121,9 +121,12 @@ service cloud.firestore {
       return data.get('pm', {}).get('lifecycle', '') == 'closed';
     }
 
+    // A PM project with no project manager: only the owner approves (TM-01, RL-07).
     function pmDuty(projectId, duty) {
       return !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
         && pmCeilingHas(duty)
+        && (duty != 'approve' || pmCeilingHas('admin')
+            || get(/databases/$(database)/documents/projects/$(projectId)).data.get('projectManagerId', '') != '')
         && (pmLiveSeat(projectId)
               ? (duty in pmTemplate(get(pmMemberPath(projectId)).data.pmRole)
                   && !(duty in get(pmMemberPath(projectId)).data.get('off', [])))
@@ -686,9 +689,35 @@ service cloud.firestore {
         allow read: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
 
-        allow create, update, delete: if isAdmin() || (isSignedIn()
+        allow create, update: if isAdmin() || (isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && hasOrgPermission('team.manage'));
+        // A seat on a PM 1.0 project is never deleted: an exit closes it and the
+        // person's records stay in their name (TM-01).
+        allow delete: if isAdmin() || (isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && !('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && hasOrgPermission('team.manage'));
+        // PM 1.0 (WF-24, RL-07): on a PM project the team is managed by `all`, or by
+        // `approve` on the project; a seat that is or becomes the project manager's is
+        // the owner's alone (`admin`). Nothing on an archived project.
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && (pmCeilingHas('all') || pmDuty(projectId, 'approve'))
+          && request.resource.data.userId == memberId
+          && request.resource.data.get('pmRole', '') in ['pm', 'site', 'qs', 'hse', 'supervisor', 'other']
+          && request.resource.data.get('to', null) == null
+          && (request.resource.data.pmRole != 'pm' || pmCeilingHas('admin'));
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && (pmCeilingHas('all') || pmDuty(projectId, 'approve'))
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.get('pmRole', '') in ['pm', 'site', 'qs', 'hse', 'supervisor', 'other']
+          && ((request.resource.data.pmRole != 'pm' && resource.data.get('pmRole', '') != 'pm') || pmCeilingHas('admin'));
         // A CRM handover seats the project manager on the project it just
         // created — one member, flagged as such, on a project that names its deal.
         allow create: if isSignedIn()

@@ -125,6 +125,9 @@ export interface PmContext {
   seat: PmSeat | null
   /** An archived project is read-only forever, for everyone (RL-04, INV-21). */
   archived: boolean
+  /** A live PM project with no project manager: until one is appointed, only the
+   * owner approves on it (TM-01, RL-07). */
+  managerless?: boolean
 }
 
 /** The duties this person holds on this project, or null when they are not on
@@ -143,6 +146,7 @@ export function pmCan(ctx: PmContext, key: PmKey): boolean {
   if (!ctx.ceiling.has(key)) return false
   if ((PM_SYSTEM_KEYS as readonly string[]).includes(key)) return true
   if (ctx.archived) return false
+  if (key === "approve" && ctx.managerless && !ctx.ceiling.has("admin")) return false
   const duties = effectiveDuties(ctx.ceiling, ctx.seat)
   if (duties === null) return ctx.ceiling.has("all")
   return duties.includes(key as PmDuty)

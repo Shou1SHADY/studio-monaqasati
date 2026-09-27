@@ -8,6 +8,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
 import type { ProjectHandover } from "@/lib/crm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -3054,7 +3055,11 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: TEAM ── */}
         {activeTab === "team" && (
-          <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
+          typedProject.pm ? (
+            <PmTeamPanel projectId={projectId} project={typedProject} access={pmAccess} />
+          ) : (
+            <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
+          )
         )}
 
         {activeTab === "purchaseRequests" && (

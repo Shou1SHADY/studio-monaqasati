@@ -19,9 +19,10 @@ export class PmProjectError extends Error {
 type PmBlock = { lifecycle?: string; terms?: ContractTerms; original?: ContractTerms | null; startedAt?: string | null } & Record<string, unknown>
 
 /** The caller's context re-read against the project's own state. */
-export const withFreshState = (ctx: PmContext, data: { pm?: unknown; status?: string | null }): PmContext => ({
+export const withFreshState = (ctx: PmContext, data: { pm?: unknown; status?: string | null; projectManagerId?: string | null }): PmContext => ({
   ...ctx,
   archived: Boolean(data.pm) && lifecycleOf(data as { pm?: { lifecycle?: string } }) === "closed",
+  managerless: Boolean(data.pm) && !data.projectManagerId,
 })
 
 export async function savePlanTerms(firestore: Firestore, ctx: PmContext, projectId: string, terms: ContractTerms): Promise<void> {
