@@ -164,6 +164,9 @@ import {
 } from "@/lib/project-sections"
 import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel, Gauge } from "lucide-react"
 import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
+import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
+import { AdoptProjectDialog } from "@/components/pm/AdoptProjectDialog"
+import { PmSectionsError, readSectionFacts, SECTION_OFF_REASONS, switchBlocks, switchSections, type SectionFacts, type SectionOffReason } from "@/lib/pm/sections-governance"
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
 import { SamplesPanel } from "@/components/pm/SamplesPanel"
 import { ClaimsPanel } from "@/components/pm/ClaimsPanel"
@@ -308,11 +311,15 @@ export default function ProjectDetailPage() {
   // parent doc and surface a spurious permission-denied on the way out.
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
-  const { can } = usePermissions(isDeleting ? undefined : projectId)
+  const { can, isOrgOwner } = usePermissions(isDeleting ? undefined : projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
   const [showManageSections, setShowManageSections] = useState(false)
+  const [secReason, setSecReason] = useState<SectionOffReason | null>(null)
+  const [secReasonText, setSecReasonText] = useState("")
+  const [secFacts, setSecFacts] = useState<SectionFacts | null>(null)
+  const [showAdopt, setShowAdopt] = useState(false)
   const [pendingSections, setPendingSections] = useState<Set<SectionId>>(new Set())
   const [isSavingSections, setIsSavingSections] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -2000,13 +2007,24 @@ export default function ProjectDetailPage() {
 
   const openManageSections = () => {
     setPendingSections(new Set(enabledSectionIds))
+    setSecReason(null)
+    setSecReasonText("")
+    setSecFacts(null)
     setShowManageSections(true)
+    // PM 1.0 (SEC-02): the blockers are read before the switch-off is confirmed.
+    if (firestore && typedProject?.pm) void readSectionFacts(firestore, projectId, typedProject.warehouseId).then(setSecFacts)
   }
 
   const handleSaveSections = async () => {
     if (!firestore) return
     setIsSavingSections(true)
     try {
+      if (typedProject?.pm) {
+        await switchSections(firestore, pmAccess.ctx, projectId, pmActor, { next: Array.from(pendingSections), reason: secReason, reasonText: secReasonText, facts: secFacts ?? { storeLines: 0, uncollected: 0 } })
+        toast({ title: t("proj_manage_sections_saved") })
+        setShowManageSections(false)
+        return
+      }
       await updateDoc(doc(firestore, "projects", projectId), {
         enabledSections: Array.from(pendingSections),
         updatedAt: serverTimestamp(),
@@ -2015,11 +2033,16 @@ export default function ProjectDetailPage() {
       setShowManageSections(false)
     } catch (err) {
       console.error(err)
-      toast({ title: t("generic_error_title"), variant: "destructive" })
+      toast({ title: err instanceof PmSectionsError && err.blocks[0] ? tPm(`sec.block.${err.blocks[0]}`) : t("generic_error_title"), variant: "destructive" })
     } finally {
       setIsSavingSections(false)
     }
   }
+  const secTurnedOff = enabledSectionIds.filter((id) => !pendingSections.has(id))
+  const secTurnedOn = Array.from(pendingSections).filter((id) => !enabledSectionIds.includes(id))
+  const secBlocks = typedProject?.pm
+    ? switchBlocks({ archived: pmAccess.ctx.archived, turnedOn: secTurnedOn, turnedOff: secTurnedOff, reason: secReason, reasonText: secReasonText, facts: secFacts ?? { storeLines: 0, uncollected: 0 } })
+    : []
 
   return (
     <PortalLayout>
@@ -2058,7 +2081,13 @@ export default function ProjectDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            {can("projects.edit") && (
+            {!typedProject.pm && isOrgOwner && (
+              <Button variant="outline" size="sm" onClick={() => setShowAdopt(true)} className="gap-1">
+                <FolderInput size={14} />
+                {tPm("adopt.button")}
+              </Button>
+            )}
+            {(typedProject.pm ? pmAccess.allowed("sections.manage") : can("projects.edit")) && (
               <Button variant="outline" size="sm" onClick={openManageSections} className="gap-1">
                 <Settings2 size={14} />
                 {t("proj_manage_sections_btn")}
@@ -3253,6 +3282,10 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Manage sections dialog */}
+      {!typedProject.pm && isOrgOwner && (
+        <AdoptProjectDialog open={showAdopt} onOpenChange={setShowAdopt} projectId={projectId} orgId={typedProject.organizationId || myOrgId} actor={pmActor} />
+      )}
+
       <Dialog open={showManageSections} onOpenChange={(open) => { if (!isSavingSections) setShowManageSections(open) }}>
         <DialogContent dir={isRtl ? "rtl" : "ltr"} className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -3265,11 +3298,41 @@ export default function ProjectDetailPage() {
             requiredHintLabel={t("proj_manage_sections_required_hint")}
             tShared={tShared}
           />
+          {typedProject?.pm && secTurnedOff.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-warning/30 bg-warning/5 p-3">
+              <p className="text-sm font-bold">{tPm("sec.off_title", { list: secTurnedOff.map((id) => tShared(sectionLabelKey(id))).join(isRtl ? "، " : ", ") })}</p>
+              <p className="text-xs text-muted-foreground">{tPm("sec.off_note")}</p>
+              <div className="space-y-1.5">
+                <Label htmlFor="sec-reason">{tPm("sec.reason_label")}</Label>
+                <Select value={secReason ?? ""} onValueChange={(v) => setSecReason(v as SectionOffReason)}>
+                  <SelectTrigger id="sec-reason">
+                    <SelectValue placeholder={tPm("sec.pick_reason")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SECTION_OFF_REASONS.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {tPm(`sec.reason.${r}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {secReason === "other" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="sec-reason-text">{tPm("sec.reason_text")}</Label>
+                  <Input id="sec-reason-text" value={secReasonText} onChange={(e) => setSecReasonText(e.target.value)} />
+                </div>
+              )}
+            </div>
+          )}
+          {typedProject?.pm && secBlocks.length > 0 && secBlocks[0] !== "no_change" && (
+            <BlockingReasons title={tPm("cannot_save")} reasons={secBlocks.filter((b) => b !== "no_change").map((b) => tPm(`sec.block.${b}`))} />
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowManageSections(false)} disabled={isSavingSections}>
               {t("cancel")}
             </Button>
-            <Button onClick={handleSaveSections} disabled={isSavingSections} className="gap-2">
+            <Button onClick={handleSaveSections} disabled={isSavingSections || (Boolean(typedProject?.pm) && secBlocks.length > 0)} className="gap-2">
               {isSavingSections ? <Loader2 size={15} className="animate-spin" /> : null}
               {t("proj_manage_sections_save")}
             </Button>

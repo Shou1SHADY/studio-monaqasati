@@ -681,7 +681,12 @@ service cloud.firestore {
                 // money + (all | approve), everything else on it needs approve.
                 || (('pm' in resource.data)
                     && (pmDuty(projectId, 'approve') || (pmCeilingHas('money') && pmCeilingHas('all')))
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt'])))
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))
+                // …and the sections, switched by approve and logged in pm.secLog (SEC-04).
+                || (('pm' in resource.data)
+                    && pmDuty(projectId, 'approve')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'enabledSections', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['secLog'])))
             // An archived PM project accepts no change from anyone but an admin (RL-04, INV-21).
             && !pmArchivedData(resource.data)
             // Once frozen at start, the original — and the terms it was frozen from — never

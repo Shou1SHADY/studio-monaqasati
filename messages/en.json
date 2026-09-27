@@ -12645,6 +12645,48 @@
           "title": "No punch item left before final acceptance",
           "detail": "Record it once the defects period ends."
         }
+      },
+      "sec": {
+        "off_title": "Switching off: {list}",
+        "off_note": "Nothing is deleted — switching back restores its data and decisions. Stock in the project store and an uncollected certificate block; open paperwork only warns. The switch is logged with who, when and why.",
+        "reason_label": "Why it is switched off",
+        "pick_reason": "Choose a reason",
+        "reason_text": "State the reason",
+        "reason": {
+          "not_in_contract": "Not in this contract",
+          "client_scope": "In the client's scope",
+          "subcontracted": "Given to a subcontractor",
+          "other": "Other"
+        },
+        "block": {
+          "archived": "The project is archived",
+          "core": "Core sections never switch off",
+          "no_reason": "Choose why it is switched off",
+          "reason_text": "State the reason",
+          "no_change": "Nothing changed",
+          "store_stock": "The project store still holds stock",
+          "uncollected": "A certified certificate is not collected yet"
+        }
+      },
+      "adopt": {
+        "button": "Bring into PM 1.0",
+        "title": "Bring this project into PM 1.0",
+        "desc": "It joins as it stands: its measured quantities count as approved executed, its claims as billed (with the retention and advance they took), and its status gives its stage. A live project's original contract is frozen now. Nothing is rewritten.",
+        "manager": "Project manager",
+        "pick_manager": "Choose the project manager",
+        "search": "Search by name",
+        "nobody": "No one found",
+        "start_on": "Contract start (optional)",
+        "duration": "Contract duration (days)",
+        "team_note": "The rest of the team is seated afterwards in Team, with project roles — a member seated before holds no duty until given one.",
+        "confirm": "Bring in",
+        "done": "Project {no} is now under PM 1.0",
+        "err": {
+          "missing": "This project no longer exists",
+          "already": "This project is already under PM 1.0",
+          "owner_only": "Only the company owner brings a project in",
+          "invalid": "Choose a project manager and a duration in whole days"
+        }
       }
     }
   },
