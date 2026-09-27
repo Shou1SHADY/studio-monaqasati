@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { Ban, BookOpen, Check, Eye, Loader2, Lock, PackageCheck, Save, Settings2, Shield, Users } from "lucide-react"
+import { Ban, BookOpen, Check, Eye, Loader2, Lock, PackageCheck, Save, Shield, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
@@ -133,7 +133,7 @@ export function ProcurementSettings() {
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader icon={Settings2} title={t("page.title")} description={t("page.subtitle")} />
+      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
 
       {loading ? (
         <div className="flex items-center justify-center p-16">

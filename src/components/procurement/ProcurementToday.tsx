@@ -10,12 +10,12 @@
 import type { ElementType, ReactNode } from "react"
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Sunrise, Truck } from "lucide-react"
+import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
-import { ProcurementHeader, type ProcurementKpi } from "@/components/contractor/ProcurementHeader"
+import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
-import { RECEIPT_HREF, TASK_GROUPS, todayKpis, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
+import { RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { arrivingThisWeek, toProcWorld } from "@/lib/procurement/shell"
 import { sarLtr } from "@/lib/riyal"
@@ -39,11 +39,6 @@ const MODULE_TAG: Record<Wait["module"], string> = {
 
 /** A figure with the sign, for a number isolated in `dir="ltr"`. */
 const money = (n: number) => sarLtr(Math.round(n).toLocaleString("en-US"))
-const compact = (n: number) => {
-  const abs = Math.abs(n)
-  const figure = abs >= 1_000_000 ? `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M` : abs >= 10_000 ? `${(n / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}K` : Math.round(n).toLocaleString("en-US")
-  return sarLtr(figure)
-}
 
 /** `YYYY-MM-DD` → a short day in the locale's script, Western digits in both. */
 function fmtDay(day: string | null | undefined, locale: string): string {
@@ -83,7 +78,6 @@ export function ProcurementToday() {
   const world = useMemo(() => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements }), [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements])
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
-  const kpis = useMemo(() => todayKpis(world, actor, now), [world, actor, now])
   const arriving = useMemo(() => arrivingThisWeek(world, now, RECEIPT_HREF), [world, now])
 
   const [group, setGroup] = useState<TaskGroup | "all">("all")
@@ -99,21 +93,12 @@ export function ProcurementToday() {
   const visibleWaits = allWaits ? waits : waits.slice(0, CLIP_WAITS)
   const visibleArriving = allArriving ? arriving : arriving.slice(0, CLIP_ARRIVING)
 
-  const headerKpis: ProcurementKpi[] = kpis.tiles.map((k) => ({
-    id: k.id,
-    label: t(k.labelKey),
-    value: k.unit === "money" ? compact(k.value) : k.value.toLocaleString("en-US"),
-    note: t(k.noteKey, k.noteParams),
-    tone: k.tone,
-    href: k.href,
-  }))
-
   const taskTitle = (task: Task) => t(task.titleKey, presentParams(task.titleParams, locale))
   const taskSub = (task: Task) => (task.subNs === "Procurement" ? tProc(task.subKey, presentParams(task.subParams, locale)) : t(task.subKey, presentParams(task.subParams, locale)))
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader icon={Sunrise} title={t("page.title")} description={t("page.subtitle")} kpis={loading ? undefined : headerKpis} />
+      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
 
       {loading ? (
         <div className="flex items-center justify-center p-16">

@@ -55,6 +55,9 @@
     --violet-foreground: 0 0% 100%;
     --pm: 214 69% 39%;
     --pm-foreground: 0 0% 100%;
+    /* Procurement's identity (Procurement PRD 3.0 prototype, --mod #0D9488). */
+    --teal: 175 84% 32%;
+    --teal-foreground: 0 0% 100%;
     /* The active module's colour — see `module` in tailwind.config.ts. Defaults
        to the brand navy; the portal frame sets data-accent from the module
        registry (portal-components.ts) and the rules below pick the colour. */
@@ -77,6 +80,7 @@
   [data-accent="indigo"] { --module: var(--indigo); --module-foreground: var(--indigo-foreground); --module-on-dark: var(--indigo); }
   [data-accent="violet"] { --module: var(--violet); --module-foreground: var(--violet-foreground); --module-on-dark: var(--violet); }
   [data-accent="pm"] { --module: var(--pm); --module-foreground: var(--pm-foreground); --module-on-dark: var(--pm); }
+  [data-accent="teal"] { --module: var(--teal); --module-foreground: var(--teal-foreground); --module-on-dark: var(--teal); }
 
   .dark {
     --background: 222 47% 11%;

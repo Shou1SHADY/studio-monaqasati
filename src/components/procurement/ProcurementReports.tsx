@@ -13,7 +13,7 @@ import type { ElementType, ReactNode } from "react"
 import { useCallback, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { AlertTriangle, BarChart3, Banknote, Clock, Download, FolderOpen, Loader2, Lock, TrendingUp, Truck, Users } from "lucide-react"
+import { AlertTriangle, Banknote, Clock, Download, FolderOpen, Loader2, Lock, TrendingUp, Truck, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -139,7 +139,6 @@ export function ProcurementReports() {
   return (
     <div className="space-y-6">
       <ProcurementHeader
-        icon={BarChart3}
         title={t("page.title")}
         description={t("page.subtitle")}
         action={

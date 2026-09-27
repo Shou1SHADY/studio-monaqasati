@@ -207,7 +207,6 @@ export default function GoodsReceivedPage() {
     <PortalLayout>
       <div className="space-y-5">
         <ProcurementHeader
-          icon={PackageCheck}
           title={t("title")}
           description={t("subtitle")}
           action={

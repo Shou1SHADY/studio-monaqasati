@@ -26,9 +26,8 @@ import {
   XCircle,
   Calendar,
   UserPlus,
-  Users,
   LayoutGrid,
-  Rows3
+  Rows3,
 } from "lucide-react"
 import {
   Popover,
@@ -450,7 +449,6 @@ export default function SuppliersDirectory() {
     <PortalLayout>
       <div className="space-y-6">
         <ProcurementHeader
-          icon={Users}
           title={t("suppliers_page_title")}
           description={t("suppliers_page_desc")}
           action={

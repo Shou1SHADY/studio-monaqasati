@@ -69,7 +69,7 @@ export default function PurchaseOrdersPage() {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        <ProcurementHeader icon={ClipboardList} title={t("title")} description={t("desc")} />
+        <ProcurementHeader title={t("title")} description={t("desc")} />
 
         <div className="relative">
           <Search size={16} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground start-3" aria-hidden="true" />

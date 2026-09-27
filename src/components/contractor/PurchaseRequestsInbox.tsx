@@ -12,7 +12,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { AlertTriangle, CheckCircle2, ExternalLink, Inbox, Loader2, PackageCheck, Search, ShoppingCart, Undo2, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, PackageCheck, Search, ShoppingCart, Undo2, X } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -178,7 +178,7 @@ export function PurchaseRequestsInbox() {
 
   return (
     <div className="space-y-6" dir={isRtl ? "rtl" : "ltr"}>
-      <ProcurementHeader icon={Inbox} title={t("pri_title")} description={t("pri_desc")} />
+      <ProcurementHeader title={t("pri_title")} description={t("pri_desc")} />
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:max-w-md">

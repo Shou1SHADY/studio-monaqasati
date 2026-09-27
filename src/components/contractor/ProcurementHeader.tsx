@@ -1,36 +1,24 @@
 "use client"
 
-// The head of every Procurement page: the module's icon tile, the page title
-// and its one or two actions, an optional strip of three numbers (Today only —
-// each a door to the list behind it), and a rail to move between
-// Procurement's pages.
+// The head of every Procurement page, as the reference prototype draws it: the
+// page title and its description, the viewer's authority and the page's one
+// action, the three numbers (each a door to the list behind it) on EVERY tab,
+// and the rail — each tab with the count of what waits on it.
 //
-// Procurement's pages used to share nothing but the sidebar — each had its own
-// title block and no way across. This is the pattern Manufacturing and Finance
-// use (one row of tabs, the active one in the module's colour), with the same
-// permission per tab as the module's sidebar entries in portal-components.ts.
 // The rail is the PRD's (§7.2): Today · RFQs · purchase requests · orders ·
 // goods received · suppliers · reports · settings. Which tabs a member sees
-// is decided in `src/lib/procurement/shell.ts`, so a test can read it.
+// is decided in `src/lib/procurement/shell.ts`, so a test can read it; the
+// numbers come from `useProcurementShell`, derived on every read.
 
 import type { ElementType, ReactNode } from "react"
 import { useTranslations } from "next-intl"
-import { BarChart3, ClipboardList, FileText, Inbox, PackageCheck, Settings2, Sunrise, Users } from "lucide-react"
+import { Lock } from "lucide-react"
 import { Link, usePathname } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
-import { activeProcTab, visibleProcTabs, type ProcTabId } from "@/lib/procurement/shell"
+import { useProcurementShell } from "@/hooks/useProcurementShell"
+import { activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
+import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
-
-const TAB_ICON: Record<ProcTabId, ElementType> = {
-  today: Sunrise,
-  rfqs: FileText,
-  requests: Inbox,
-  orders: ClipboardList,
-  receipts: PackageCheck,
-  suppliers: Users,
-  reports: BarChart3,
-  settings: Settings2,
-}
 
 export interface ProcurementKpi {
   id: string
@@ -50,64 +38,74 @@ const TONE_CHIP: Record<ProcurementKpi["tone"], string> = {
   neutral: "bg-muted text-muted-foreground",
 }
 
-export function ProcurementHeader({
-  icon: Icon,
-  title,
-  description,
-  action,
-  kpis,
-}: {
-  icon: ElementType
-  title: string
-  description: string
-  action?: ReactNode
-  /** Three numbers, each a link — rendered between the title and the rail. */
-  kpis?: ProcurementKpi[]
-}) {
+/** A figure with the sign, compacted the way the prototype's tiles show it. */
+const compact = (n: number) => {
+  const abs = Math.abs(n)
+  const figure = abs >= 1_000_000 ? `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M` : abs >= 10_000 ? `${(n / 1_000).toFixed(abs >= 100_000 ? 0 : 1)}K` : Math.round(n).toLocaleString("en-US")
+  return sarLtr(figure)
+}
+
+export function ProcurementHeader({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
   const tNav = useTranslations("Portal.Sidebar")
   const tShared = useTranslations("Portal.Shared")
+  const tToday = useTranslations("Portal.ProcToday")
   const pathname = usePathname()
   const { can } = usePermissions()
   const tabs = visibleProcTabs(can)
   const active = activeProcTab(tabs, pathname)
+  const shell = useProcurementShell()
+
+  const kpis: ProcurementKpi[] = (shell.kpis?.tiles ?? []).map((k) => ({
+    id: k.id,
+    label: tToday(k.labelKey),
+    value: k.unit === "money" ? compact(k.value) : k.value.toLocaleString("en-US"),
+    note: tToday(k.noteKey, k.noteParams),
+    tone: k.tone,
+    href: k.href,
+  }))
+  const authority =
+    shell.approvalLimit === "any"
+      ? tShared("proc_authority_any")
+      : typeof shell.approvalLimit === "number"
+        ? tShared("proc_authority_limit", { limit: sarLtr(shell.approvalLimit.toLocaleString("en-US")) })
+        : null
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-module/10 text-module">
-            <Icon size={22} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-black text-primary">{title}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-          </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-black text-foreground">{title}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
-        {action && <div className="flex shrink-0 flex-wrap items-center gap-2">{action}</div>}
+        {(authority || action) && (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {authority && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                <Lock size={12} aria-hidden="true" />
+                {authority}
+              </span>
+            )}
+            {action}
+          </div>
+        )}
       </div>
 
-      {kpis && kpis.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 sm:gap-3" aria-label={tShared("proc_kpis_label")}>
-          {kpis.map((kpi) => {
-            const KpiIcon = kpi.icon
-            return (
-              <li key={kpi.id} className="min-w-0">
-                <Link
-                  href={kpi.href}
-                  className="block h-full rounded-xl border bg-white p-3 transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
-                >
-                  <p className="flex items-center gap-1.5 text-[11px] font-semibold leading-snug text-muted-foreground sm:text-xs">
-                    {KpiIcon && <KpiIcon size={14} className="hidden shrink-0 text-module sm:block" aria-hidden="true" />}
-                    <span className="line-clamp-2">{kpi.label}</span>
-                  </p>
-                  <p className="mt-1.5 truncate text-lg font-black tabular-nums text-foreground sm:text-2xl" dir="ltr">
-                    {kpi.value}
-                  </p>
-                  <p className={cn("mt-1.5 inline-block max-w-full truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold sm:text-[11px]", TONE_CHIP[kpi.tone])}>{kpi.note}</p>
-                </Link>
-              </li>
-            )
-          })}
+      {kpis.length > 0 && (
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label={tShared("proc_kpis_label")}>
+          {kpis.map((kpi) => (
+            <li key={kpi.id} className="min-w-0">
+              <Link
+                href={kpi.href}
+                className="block h-full rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-5"
+              >
+                <p className="text-xs font-semibold text-muted-foreground">{kpi.label}</p>
+                <p className="mt-2 truncate text-2xl font-black tabular-nums text-foreground" dir="ltr">
+                  {kpi.value}
+                </p>
+                <p className={cn("mt-2 inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold", TONE_CHIP[kpi.tone])}>{kpi.note}</p>
+              </Link>
+            </li>
+          ))}
         </ul>
       )}
 
@@ -116,20 +114,22 @@ export function ProcurementHeader({
           <ul className="-mx-4 flex items-center gap-1 overflow-x-auto border-b px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
             {tabs.map((tab) => {
               const isActive = tab === active
-              const TabIcon = TAB_ICON[tab.id]
+              const count = shell.counts[tab.id]
               return (
                 <li key={tab.href} className="shrink-0">
                   <Link
                     href={tab.href}
                     aria-current={isActive ? "page" : undefined}
                     className={cn(
-                      "-mb-px flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-t border-b-2 px-3 py-2.5 text-sm font-bold transition-colors",
+                      "-mb-px flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isActive ? "border-module text-foreground" : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                      isActive ? "border-module text-module" : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <TabIcon size={15} className={cn("shrink-0", isActive && "text-module")} aria-hidden="true" />
                     {tNav(tab.labelKey)}
+                    {count !== undefined && count > 0 && (
+                      <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5", isActive ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{count}</span>
+                    )}
                   </Link>
                 </li>
               )

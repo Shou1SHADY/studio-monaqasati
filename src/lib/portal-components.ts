@@ -120,7 +120,7 @@ export type PortalComponentId =
 
 // One colour per module, carried through its tile, its sidebar, its shell and
 // its inner screens (the `module` colour token). No two modules share one.
-export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive" | "indigo" | "violet" | "pm"
+export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive" | "indigo" | "violet" | "pm" | "teal"
 
 // Tailwind can't resolve dynamically-built class strings, so every
 // accent-token combination used by a tile must appear as a literal here.
@@ -136,6 +136,7 @@ export const COMPONENT_ACCENT_CLASSES: Record<AccentToken, { tile: string; ring:
   indigo: { tile: "bg-indigo/10 text-indigo", ring: "ring-indigo" },
   violet: { tile: "bg-violet/10 text-violet", ring: "ring-violet" },
   pm: { tile: "bg-pm/10 text-pm", ring: "ring-pm" },
+  teal: { tile: "bg-teal/10 text-teal", ring: "ring-teal" },
 }
 
 export interface PortalComponentDef {
@@ -177,7 +178,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     // decision, for every Procurement role.
     homeHref: "/contractor/rfqs/today",
     icon: Handshake,
-    accentToken: "cta",
+    accentToken: "teal",
     displayOrder: 3,
     sections: [
       {
@@ -483,7 +484,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     descKey: "supplier_component_sales_desc",
     homeHref: "/supplier/rfqs",
     icon: Handshake,
-    accentToken: "cta",
+    accentToken: "teal",
     displayOrder: 3,
     sections: [
       {
