@@ -12773,6 +12773,59 @@
           "owner_only": "المالك وحده يضم المشروع",
           "invalid": "اختر مدير المشروع ومدة بالأيام الكاملة"
         }
+      },
+      "grp": {
+        "pulse": "النبض",
+        "contract": "العقد",
+        "exec": "التنفيذ",
+        "supply": "التوريد",
+        "money": "المال",
+        "file": "الملف",
+        "settings": "الإعدادات",
+        "terms": "الشروط والملاحق"
+      },
+      "pulse": {
+        "kpis": "المشروع في ثلاثة أرقام",
+        "kpi_progress": "الإنجاز",
+        "kpi_planned": "{behind, plural, =0 {المخطط {planned}% · في موعده} one {المخطط {planned}% · متأخر نقطة} two {المخطط {planned}% · متأخر نقطتين} few {المخطط {planned}% · متأخر # نقاط} many {المخطط {planned}% · متأخر # نقطة} other {المخطط {planned}% · متأخر # نقطة}}",
+        "kpi_not_started": "لم يبدأ",
+        "kpi_unbilled": "غير المفوتر",
+        "kpi_unbilled_note": "منفّذ ناقص مفوتر",
+        "kpi_cash": "الموقف النقدي",
+        "kpi_cash_note": "داخل {in} · خارج {out}",
+        "path_title": "مسار المال",
+        "path_desc": "ما قيمة العقد وما نفّذناه وفوترناه وحصّلناه — مقابل ما التزمنا به وما فُوتر علينا وما دفعناه.",
+        "path_contract": "قيمة العقد",
+        "path_executed": "منفّذ (قياس معتمد)",
+        "path_billed": "مفوتر (مستخلصات)",
+        "path_collected": "محصّل من مالك المشروع",
+        "path_committed": "ملتزم به (أوامر شراء)",
+        "path_invoiced": "مفوتر من الموردين",
+        "path_paid": "مدفوع",
+        "waiting_title": "معلّق عند غيرنا",
+        "waiting_desc": "الفعل عندهم والحالة تصل إلينا — بلا زر هنا.",
+        "waiting_none": "لا شيء معلّق عند وحدة أخرى.",
+        "from_procurement": "المشتريات",
+        "act_measure": "قياس",
+        "act_certificate": "أعدّ مستخلصاً"
+      },
+      "rail": {
+        "today": "اليوم",
+        "projects": "المشاريع",
+        "inbox": "مشاريع جديدة"
+      },
+      "list": {
+        "census": "{live} جارية · {hold} مؤجّلة · {done} مكتملة · {closed} في الأرشيف",
+        "chip_all": "الكل",
+        "kpi_shown": "المشاريع المعروضة",
+        "kpi_all": "بحسب التصفية",
+        "kpi_value": "إجمالي قيمة عقودها",
+        "kpi_value_note": "بقيم التسليم",
+        "kpi_live": "المشاريع الجارية",
+        "kpi_hold": "{count, plural, =0 {لا مؤجّل} one {مؤجّل واحد} two {مؤجّلان} few {# مؤجّلة} many {# مؤجّلاً} other {# مؤجّل}}",
+        "contract_value": "قيمة العقد",
+        "unbilled": "غير المفوتر",
+        "urgent": "{count, plural, one {قرار عاجل} two {قراران عاجلان} few {# قرارات عاجلة} many {# قراراً عاجلاً} other {# قرار عاجل}}"
       }
     }
   },

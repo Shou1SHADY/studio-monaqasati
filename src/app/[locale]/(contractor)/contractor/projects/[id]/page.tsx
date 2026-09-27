@@ -163,7 +163,13 @@ import {
   type SectionId,
 } from "@/lib/project-sections"
 import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel, Gauge } from "lucide-react"
-import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
+import { ProjectPulse } from "@/components/pm/ProjectPulse"
+import { ProjectKpis } from "@/components/pm/ProjectKpis"
+import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
+import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { groupOf, groupTabs, type ProjectGroup } from "@/lib/pm/project-tabs"
+import { Activity, ClipboardCheck, Coins, FileStack, HardHat, SlidersHorizontal, Truck, ScrollText } from "lucide-react"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { AdoptProjectDialog } from "@/components/pm/AdoptProjectDialog"
 import { PmSectionsError, readSectionFacts, SECTION_OFF_REASONS, switchBlocks, switchSections, type SectionFacts, type SectionOffReason } from "@/lib/pm/sections-governance"
@@ -293,6 +299,18 @@ const BoqTableRow = memo(
 
 type ActiveTab = string
 
+const LIFECYCLE_PILL: Record<string, PillTone> = { plan: "info", live: "ok", hold: "warn", done: "module", closed: "mute" }
+
+const GROUP_ICON: Record<ProjectGroup, typeof Activity> = {
+  pulse: Activity,
+  contract: ClipboardCheck,
+  exec: HardHat,
+  supply: Truck,
+  money: Coins,
+  file: FileStack,
+  settings: SlidersHorizontal,
+}
+
 export default function ProjectDetailPage() {
   const t = useTranslations("Portal.Contractor")
   const tShared = useTranslations("Portal.Shared")
@@ -315,6 +333,7 @@ export default function ProjectDetailPage() {
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
+  const [lastInGroup, setLastInGroup] = useState<Partial<Record<ProjectGroup, string>>>({})
   const [showManageSections, setShowManageSections] = useState(false)
   const [secReason, setSecReason] = useState<SectionOffReason | null>(null)
   const [secReasonText, setSecReasonText] = useState("")
@@ -863,6 +882,7 @@ export default function ProjectDetailPage() {
   }, [boqLoaded, fetchBoqItems])
 
   const handleTabChange = (tab: ActiveTab) => {
+    setLastInGroup((prev) => ({ ...prev, [groupOf(tab)]: tab }))
     setActiveTab(tab)
     if (tab === "boq") loadBoqItems()
   }
@@ -1986,7 +2006,8 @@ export default function ProjectDetailPage() {
     // PM 1.0: measurement goes through sheets the PM approves (WF-04).
     ...(typedProject.pm
       ? [
-          { key: "pmToday" as ActiveTab, label: tPm("dec.today"), icon: <Gauge size={15} /> },
+          { key: "pmToday" as ActiveTab, label: tPm("grp.pulse"), icon: <Gauge size={15} /> },
+          ...(pmAccess.has("money") || pmAccess.has("approve") ? [{ key: "pmTerms" as ActiveTab, label: tPm("grp.terms"), icon: <ScrollText size={15} /> }] : []),
           { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
@@ -2005,6 +2026,9 @@ export default function ProjectDetailPage() {
     })),
   ]
 
+  const tabGroups = groupTabs(tabs)
+  const activeGroup = groupOf(activeTab)
+  const activeGroupTabs = tabGroups.find((g) => g.group === activeGroup)?.tabs ?? []
   const openManageSections = () => {
     setPendingSections(new Set(enabledSectionIds))
     setSecReason(null)
@@ -2058,14 +2082,26 @@ export default function ProjectDetailPage() {
           />
         )}
 
-        {/* Header */}
+        {/* Header — the prototype's project head: the crumb, the name and its state, one line of facts. */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
+            <nav aria-label={t("proj_tabs_label")} className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Link href="/contractor/projects" className="font-semibold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                {tShared("pm_crumb_projects")}
+              </Link>
+              <span aria-hidden="true">›</span>
+              <span dir="ltr">{typedProject.pm?.no ? displayDocNumber(String(typedProject.pm.no), locale) : typedProject.name}</span>
+            </nav>
             <h1 className="text-2xl font-black text-foreground font-headline leading-snug truncate">
               {typedProject.name}
             </h1>
+            {(typedProject.clientName || typedProject.location) && (
+              <p className="mt-0.5 text-sm text-muted-foreground" dir="auto">
+                {[typedProject.pm?.no ? displayDocNumber(String(typedProject.pm.no), locale) : null, typedProject.clientName, typedProject.location].filter(Boolean).join(" · ")}
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              {typedProject.status && <StatusBadge status={typedProject.status} t={t} />}
+              {typedProject.pm ? <StatusPill tone={LIFECYCLE_PILL[lifecycleOf(typedProject)]}>{tPm(`lifecycle.${lifecycleOf(typedProject)}`)}</StatusPill> : typedProject.status && <StatusBadge status={typedProject.status} t={t} />}
               {typedProject.projectType && (
                 <Badge variant="outline" className="text-xs gap-1">
                   <Tag size={11} />
@@ -2080,7 +2116,19 @@ export default function ProjectDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0">
+            {typedProject.pm && pmAccess.allowed("measurement.write") && (
+              <Button variant="outline" size="sm" onClick={() => handleTabChange("pmMeasure")} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:bg-card hover:border-module/40">
+                <Ruler size={14} />
+                {tPm("pulse.act_measure")}
+              </Button>
+            )}
+            {typedProject.pm && pmAccess.allowed("certificate.prepare") && dynamicTabs.includes("ipc" as SectionId) && (
+              <Button size="sm" onClick={() => handleTabChange("ipc")} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+                <Receipt size={14} />
+                {tPm("pulse.act_certificate")}
+              </Button>
+            )}
             {!typedProject.pm && isOrgOwner && (
               <Button variant="outline" size="sm" onClick={() => setShowAdopt(true)} className="gap-1">
                 <FolderInput size={14} />
@@ -2132,52 +2180,55 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {/* Tab nav — a wrapping segmented control rather than an underlined strip.
-            The tab count is dynamic (five fixed plus however many sections are
-            enabled), so any single-row layout eventually overflows: it either broke
-            each Arabic label across two lines, or scrolled sideways with no obvious
-            sign there was more. Wrapping keeps every tab visible at every width and
-            needs no interaction to discover. */}
-        <div
-          role="tablist"
-          aria-label={t("proj_tabs_label")}
-          className="flex flex-wrap items-center gap-0.5 p-1 rounded-xl border bg-muted/40"
-        >
-          {tabs.map((tab) => (
-            <div key={tab.key} className="flex items-center">
-              <button
-                type="button"
-                role="tab"
-                onClick={() => handleTabChange(tab.key)}
-                aria-selected={activeTab === tab.key}
-                aria-current={activeTab === tab.key ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1.5 text-sm font-medium rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                  activeTab === tab.key
-                    ? "bg-background text-primary shadow-sm font-semibold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/60"
-                )}
-              >
-                <span className="shrink-0">{tab.icon}</span>
-                {tab.label}
-              </button>
-              {tab.key === "boq" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleTabChange("boq")
-                    addBoqRow()
-                  }}
-                  aria-label={t("proj_boq_add_row")}
-                  title={t("proj_boq_add_row")}
-                  className="h-6 w-6 ms-0.5 me-1 rounded-md flex items-center justify-center text-primary bg-primary/10 hover:bg-primary/20 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                >
-                  <Plus size={13} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+        {typedProject.pm && (
+          <ProjectKpis
+            projectId={projectId}
+            lifecycle={lifecycleOf(typedProject)}
+            startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
+            durationDays={typedProject.pm.durationDays ?? 0}
+            items={pmItems}
+            access={pmAccess}
+          />
+        )}
+
+        {/* The PM 1.0 prototype's rail: seven groups, each with its own screens (§5).
+            A screen is still addressed by its key, so every existing link keeps working. */}
+        <nav aria-label={t("proj_tabs_label")} className="space-y-3">
+          <ul className="-mx-4 flex items-center gap-1 overflow-x-auto border-b px-4 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+            {tabGroups.map((g) => {
+              const on = g.group === activeGroup
+              const GroupIcon = GROUP_ICON[g.group]
+              return (
+                <li key={g.group} className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const last = lastInGroup[g.group]
+                      handleTabChange(last && g.tabs.some((x) => x.key === last) ? last : g.tabs[0].key)
+                    }}
+                    aria-current={on ? "page" : undefined}
+                    className={cn(
+                      "-mb-px flex min-h-11 items-center gap-2 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      on ? "border-module text-module" : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <GroupIcon size={16} aria-hidden="true" />
+                    {tPm(`grp.${g.group}`)}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+          {activeGroupTabs.length > 1 && (
+            <SegmentedNav
+              ariaLabel={tPm(`grp.${activeGroup}`)}
+              active={activeTab}
+              onSelect={(key) => handleTabChange(key)}
+              segments={activeGroupTabs.map((x) => ({ id: x.key, label: x.label }))}
+            />
+          )}
+        </nav>
 
         {typedProject.pm && pmAccess.ctx.archived && (
           <Callout tone="info" className="mb-4" title={tPm("close.archived_title")}>
@@ -2186,9 +2237,7 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── TAB: INFO ── */}
-        {activeTab === "info" && (
-          <div className="space-y-4">
-          {typedProject.pm && (pmAccess.has("money") || pmAccess.has("approve")) && (
+        {activeTab === "pmTerms" && typedProject && typedProject.pm && (pmAccess.has("money") || pmAccess.has("approve")) && (
             <ProjectTermsPanel
               projectId={projectId}
               project={typedProject}
@@ -2196,7 +2245,9 @@ export default function ProjectDetailPage() {
               access={pmAccess}
               actor={{ uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }}
             />
-          )}
+        )}
+        {activeTab === "info" && (
+          <div className="space-y-4">
           <Card className="border-primary/15">
             <CardContent className="p-6" dir={isRtl ? "rtl" : "ltr"}>
               {isEditing ? (
@@ -3149,7 +3200,7 @@ export default function ProjectDetailPage() {
         )}
 
         {activeTab === "pmToday" && typedProject.pm && (
-          <PmTodayPanel projectId={projectId} project={typedProject as PmDecisionProject} access={pmAccess} onOpen={(tab) => handleTabChange(tab)} />
+          <ProjectPulse projectId={projectId} organizationId={typedProject.organizationId || myOrgId} project={typedProject as PmDecisionProject} items={pmItems} access={pmAccess} onOpen={(tab) => handleTabChange(tab)} />
         )}
 
         {/* ── TABS: MEASUREMENT · INSPECTIONS (PM 1.0) ── */}

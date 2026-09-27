@@ -17,6 +17,7 @@ import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebas
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmAccess } from "@/hooks/usePmAccess"
 import { usePmDecisions, type PmDecisionProject } from "@/hooks/usePmDecisions"
+import { usePmRail } from "@/hooks/usePmRail"
 import { Link, useRouter } from "@/i18n/routing"
 import { pmSeesProject } from "@/lib/pm/access"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
@@ -95,6 +96,7 @@ export function PmPortfolioToday() {
   )
   const shown = Object.values(counts).filter((c) => c.visible)
   const red = shown.reduce((a, c) => a + c.red, 0)
+  const rail = usePmRail(red + shown.reduce((a, c) => a + c.amber, 0))
   const amber = shown.reduce((a, c) => a + c.amber, 0)
 
   return (
@@ -110,6 +112,9 @@ export function PmPortfolioToday() {
           { id: "red", label: t("dec.kpi_red"), value: String(red), tone: red ? "bad" : "neutral", icon: AlertTriangle },
           { id: "amber", label: t("dec.kpi_amber"), value: String(amber), tone: amber ? "warn" : "neutral", icon: AlertTriangle },
         ]}
+        tabs={rail.tabs}
+        activeTab="today"
+        tabsLabel={t("dec.portfolio_title")}
       />
       {!isLoading && projects.length === 0 ? (
         <EmptyState icon={CalendarCheck2} title={t("dec.no_projects")} description={t("dec.no_projects_desc")} />

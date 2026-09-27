@@ -20,6 +20,7 @@ import { ReassignHandoverDialog } from "@/components/pm/ReassignHandoverDialog"
 import { ReturnHandoverDialog } from "@/components/pm/ReturnHandoverDialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
+import { usePmRail } from "@/hooks/usePmRail"
 import { usePermissions } from "@/hooks/usePermissions"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { acceptBlocks, handoverAge, handoverFlags, PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
@@ -36,6 +37,7 @@ export function HandoverInbox() {
   const orgId = (profile?.organizationId as string | undefined) || user?.uid
   const { orgMembers } = useOrgMembers(orgId)
   const [dialog, setDialog] = useState<Dialog>(null)
+  const rail = usePmRail()
 
   const waitingQuery = useMemoFirebase(() => {
     if (!firestore || !orgId) return null
@@ -71,6 +73,9 @@ export function HandoverInbox() {
           { id: "rush", label: t("inbox.kpi_rush"), value: String(rush), tone: rush ? "bad" : "neutral", icon: CalendarClock },
           { id: "incomplete", label: t("inbox.kpi_incomplete"), value: String(incomplete), tone: incomplete ? "bad" : "neutral", icon: FileWarning },
         ]}
+        tabs={rail.tabs}
+        activeTab="inbox"
+        tabsLabel={t("inbox.title")}
       />
 
       {!isLoading && files.length === 0 && <EmptyState icon={Inbox} title={t("inbox.empty_title")} description={t("inbox.empty_desc")} />}

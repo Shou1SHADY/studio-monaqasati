@@ -12773,6 +12773,59 @@
           "owner_only": "Only the company owner brings a project in",
           "invalid": "Choose a project manager and a duration in whole days"
         }
+      },
+      "grp": {
+        "pulse": "Pulse",
+        "contract": "Contract",
+        "exec": "Execution",
+        "supply": "Supply",
+        "money": "Money",
+        "file": "File",
+        "settings": "Settings",
+        "terms": "Terms & amendments"
+      },
+      "pulse": {
+        "kpis": "The project in three numbers",
+        "kpi_progress": "Progress",
+        "kpi_planned": "{behind, plural, =0 {Planned {planned}% · on plan} one {Planned {planned}% · # point behind} other {Planned {planned}% · # points behind}}",
+        "kpi_not_started": "Not started",
+        "kpi_unbilled": "Unbilled",
+        "kpi_unbilled_note": "Executed and not yet billed",
+        "kpi_cash": "Cash position",
+        "kpi_cash_note": "In {in} · out {out}",
+        "path_title": "Money path",
+        "path_desc": "What the contract is worth, what we executed, billed and collected — against what we committed, were invoiced and paid.",
+        "path_contract": "Contract value",
+        "path_executed": "Executed (approved)",
+        "path_billed": "Billed (certificates)",
+        "path_collected": "Collected from the client",
+        "path_committed": "Committed (orders)",
+        "path_invoiced": "Invoiced by suppliers",
+        "path_paid": "Paid",
+        "waiting_title": "Waiting on others",
+        "waiting_desc": "The action is theirs — the status reaches us here, with no button.",
+        "waiting_none": "Nothing is waiting on another module.",
+        "from_procurement": "Procurement",
+        "act_measure": "Measure",
+        "act_certificate": "Prepare a certificate"
+      },
+      "rail": {
+        "today": "Today",
+        "projects": "Projects",
+        "inbox": "New projects"
+      },
+      "list": {
+        "census": "{live} live · {hold} on hold · {done} handed over · {closed} archived",
+        "chip_all": "All",
+        "kpi_shown": "Projects shown",
+        "kpi_all": "By the filters above",
+        "kpi_value": "Total contract value",
+        "kpi_value_note": "Handover values",
+        "kpi_live": "Live projects",
+        "kpi_hold": "{count, plural, =0 {none on hold} one {# on hold} other {# on hold}}",
+        "contract_value": "Contract value",
+        "unbilled": "Unbilled",
+        "urgent": "{count, plural, one {# urgent decision} other {# urgent decisions}}"
       }
     }
   },
