@@ -34,7 +34,20 @@ export const PERMISSION_IDS = [
   // price (UI-level; holders of `offers.accept`/`po.approve` may expedite too).
   "po.approve",
   "po.expedite",
+  // HR 1.0 (PRD §3–4) — six roles, this module only. `employees.manage` is the HR
+  // manager (every tab, approves payroll, leave, advances; never his own —
+  // those go to management). `hr.gov` is government relations (documents,
+  // onboarding, platforms — never pay). `hr.payroll` prepares payroll and fixes
+  // returned IBANs — never approves. `hr.supervisor` is a workplace supervisor
+  // (his own sites: attendance, violations, endorsements — never pay).
+  // `hr.management` reads company-wide and decides the HR manager's own
+  // requests. The employee is not a permission: anyone linked to an employee
+  // record has "My file" (src/lib/hr/access.ts).
   "employees.manage",
+  "hr.gov",
+  "hr.payroll",
+  "hr.supervisor",
+  "hr.management",
   "invoices.manage",
   "warehouses.manage",
   "crm.manage",
@@ -101,7 +114,7 @@ export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId
   { key: "inventory", permissions: ["warehouses.manage", "warehouses.receive"] },
   { key: "finance", permissions: ["invoices.manage"] },
   { key: "accounting", permissions: ["accounting.view", "accounting.post", "accounting.close"] },
-  { key: "hr", permissions: ["employees.manage"] },
+  { key: "hr", permissions: ["employees.manage", "hr.gov", "hr.payroll", "hr.supervisor", "hr.management"] },
   { key: "crm", permissions: ["crm.manage", "crm.close"] },
   { key: "sales", permissions: ["sales.manage", "sales.approve"] },
   { key: "manufacturing", permissions: ["manufacturing.manage", "manufacturing.work", "manufacturing.qc", "manufacturing.cost", "manufacturing.view"] },

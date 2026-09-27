@@ -1,0 +1,162 @@
+// HR 1.0 — who may do what (PRD §3–4, RL-01…04). Six roles, this module only;
+// the line manager is a relation, not a role. One guard table maps each action
+// to the roles that may take it, checked before every write and mirrored in
+// firestore.rules. Pay is hidden from government relations and supervisors, on
+// the server (RL-03). Nobody approves his own request: the HR manager's own go
+// to management (RL-02, LV-05). Pure: no I/O.
+
+import type { HrFeature } from "./settings"
+
+export const HR_ROLES = ["manager", "gov", "payroll", "supervisor", "management"] as const
+export type HrRole = (typeof HR_ROLES)[number]
+
+/** The team-group permission that carries each role (src/lib/permissions.ts). */
+export const HR_ROLE_PERMISSION: Record<HrRole, string> = {
+  manager: "employees.manage",
+  gov: "hr.gov",
+  payroll: "hr.payroll",
+  supervisor: "hr.supervisor",
+  management: "hr.management",
+}
+
+/** A person's HR roles: the owner (or a '*' group) is HR manager and management. */
+export function hrRolesOf(input: { owner: boolean; permissions: readonly string[] }): Set<HrRole> {
+  if (input.owner || input.permissions.includes("*")) return new Set<HrRole>(["manager", "management"])
+  return new Set(HR_ROLES.filter((r) => input.permissions.includes(HR_ROLE_PERMISSION[r])))
+}
+
+export interface HrContext {
+  uid: string
+  owner: boolean
+  roles: ReadonlySet<HrRole>
+  /** The caller's own employee record, when linked — gives "My file". */
+  employeeId: string | null
+  /** Workplaces this person supervises (a supervisor acts on these only). */
+  sites: readonly string[]
+}
+
+// ---------------------------------------------------------------------------
+// The guard: action → roles (PRD §4 matrix). Site-scoped actions also need the
+// site to be one the supervisor holds — `hrAllowed(ctx, action, { site })`.
+// ---------------------------------------------------------------------------
+
+type Rule = { roles: readonly HrRole[]; siteScoped?: readonly HrRole[] }
+
+export const HR_GUARD = {
+  "pay.view": { roles: ["manager", "payroll", "management"] },
+  "employee.create": { roles: ["manager", "gov"] },
+  "employee.import": { roles: ["manager", "gov"] },
+  "employee.edit": { roles: ["manager", "gov"] },
+  "employee.assign": { roles: ["manager"] },
+  "assignment.correct": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  "manpower.answer": { roles: ["manager"] },
+  "attendance.record": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
+  "attendance.close": { roles: ["manager", "payroll", "supervisor"], siteScoped: ["supervisor"] },
+  "attendance.declare": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  "payroll.prepare": { roles: ["manager", "payroll"] },
+  "payroll.approve": { roles: ["manager"] },
+  "iban.fix": { roles: ["payroll"] },
+  "iban.approve": { roles: ["manager"] },
+  "leave.endorse": { roles: ["supervisor"], siteScoped: ["supervisor"] },
+  "request.decide": { roles: ["manager"] },
+  "pay.change": { roles: ["manager"] },
+  "violation.record": { roles: ["manager", "supervisor"], siteScoped: ["supervisor"] },
+  "penalty.apply": { roles: ["manager"] },
+  "exit.manage": { roles: ["manager"] },
+  "documents.manage": { roles: ["manager", "gov"] },
+  "platform.tasks": { roles: ["gov", "manager"] },
+  "settings.manage": { roles: ["manager"] },
+  "reports.view": { roles: ["manager", "gov", "payroll", "management"] },
+} as const satisfies Record<string, Rule>
+
+export type HrAction = keyof typeof HR_GUARD
+
+export type HrRefusal = "no_role" | "not_your_site" | "own_request"
+
+/** The check every HR write runs first. Null means allowed. */
+export function hrRefusal(ctx: HrContext, action: HrAction, scope: { site?: string | null } = {}): HrRefusal | null {
+  const rule: Rule = HR_GUARD[action]
+  const held = rule.roles.filter((r) => ctx.roles.has(r))
+  if (!held.length) return "no_role"
+  // A role that is not site-scoped for this action passes anywhere.
+  const unscoped = held.some((r) => !rule.siteScoped?.includes(r))
+  if (unscoped) return null
+  if (scope.site && !ctx.sites.includes(scope.site)) return "not_your_site"
+  return null
+}
+
+export const hrAllowed = (ctx: HrContext, action: HrAction, scope: { site?: string | null } = {}) => hrRefusal(ctx, action, scope) === null
+
+/** RL-03 — pay is seen by money roles, and by the employee on his own file. */
+export function seesPay(ctx: HrContext, employeeId?: string | null): boolean {
+  if (hrAllowed(ctx, "pay.view")) return true
+  return Boolean(employeeId && ctx.employeeId && employeeId === ctx.employeeId)
+}
+
+// ---------------------------------------------------------------------------
+// Tabs (RL-01, TD-01): Today first; each role sees its own; every staff user
+// with an employee record also has "My file" (ES-00).
+// ---------------------------------------------------------------------------
+
+export const HR_TABS = ["today", "people", "sites", "attendance", "payroll", "hiring", "platforms", "perf", "reports", "settings", "me"] as const
+export type HrTab = (typeof HR_TABS)[number]
+
+const ROLE_TABS: Record<HrRole, readonly HrTab[]> = {
+  manager: ["today", "people", "sites", "attendance", "payroll", "hiring", "platforms", "perf", "reports", "settings"],
+  gov: ["today", "people", "hiring", "platforms", "reports"],
+  payroll: ["today", "people", "sites", "attendance", "payroll", "reports"],
+  supervisor: ["today", "sites", "perf"],
+  management: ["today", "people", "sites", "attendance", "payroll", "hiring", "platforms", "perf", "reports"],
+}
+
+/** The tab a feature switch hides (ST-02: off = tab, decisions and sections disappear). */
+const TAB_FEATURE: Partial<Record<HrTab, (f: ReadonlySet<HrFeature>) => boolean>> = {
+  attendance: (f) => f.has("punch"),
+  hiring: (f) => f.has("hire"),
+  platforms: (f) => f.has("gov"),
+  perf: (f) => f.has("perf") || f.has("train"),
+}
+
+export function hrTabs(ctx: Pick<HrContext, "roles" | "employeeId">, features: ReadonlySet<HrFeature>): HrTab[] {
+  const set = new Set<HrTab>()
+  for (const r of ctx.roles) for (const t of ROLE_TABS[r]) set.add(t)
+  if (ctx.employeeId) set.add("me")
+  return HR_TABS.filter((t) => set.has(t) && (!TAB_FEATURE[t] || TAB_FEATURE[t]!(features)))
+}
+
+// ---------------------------------------------------------------------------
+// Rules that need the request's data (RL-02, LV-05)
+// ---------------------------------------------------------------------------
+
+/** Who decides a request: the HR manager — except on his own, which goes to
+ * management. The owner, who has nobody above, decides his own, flagged. */
+export function requestDecider(requester: { employeeId: string; isHrManager: boolean }): "manager" | "management" {
+  return requester.isHrManager ? "management" : "manager"
+}
+
+export type DecideRefusal = "own_request" | "no_role"
+
+export function mayDecideRequest(ctx: HrContext, requester: { employeeId: string; isHrManager: boolean }): DecideRefusal | null {
+  const own = Boolean(ctx.employeeId) && ctx.employeeId === requester.employeeId
+  if (own && !ctx.owner) return "own_request"
+  const who = requestDecider(requester)
+  return ctx.roles.has(who) || ctx.owner ? null : "no_role"
+}
+
+/** A supervisor endorses his workers' leave — never his own. */
+export function mayEndorse(ctx: HrContext, requester: { employeeId: string; site: string | null; lineManagerId?: string | null }): boolean {
+  if (ctx.employeeId && ctx.employeeId === requester.employeeId) return false
+  if (requester.lineManagerId && ctx.employeeId === requester.lineManagerId) return true
+  return ctx.roles.has("supervisor") && Boolean(requester.site) && ctx.sites.includes(requester.site as string)
+}
+
+/** The line manager (RL-04): explicit on the card, else the site's supervisor —
+ * never the person himself; null means management. */
+export function lineManagerOf(emp: { id: string; managerId?: string | null; siteId?: string | null }, siteSupervisor: (siteId: string) => string | null): string | null {
+  if (emp.managerId && emp.managerId !== emp.id) return emp.managerId
+  const sup = emp.siteId ? siteSupervisor(emp.siteId) : null
+  return sup && sup !== emp.id ? sup : null
+}
+
+/** RL-02 — whoever approves a payroll did not prepare it. */
+export const mayApprovePayroll = (ctx: HrContext, preparedBy: string) => hrAllowed(ctx, "payroll.approve") && ctx.uid !== preparedBy

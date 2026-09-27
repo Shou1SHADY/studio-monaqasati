@@ -139,6 +139,25 @@ service cloud.firestore {
               : pmCeilingHas('all'));
     }
 
+    // HR 1.0 (PRD §3–4, RL-01…03) — the caller's HR role comes from his DEFAULT
+    // group: `employees.manage` HR manager · `hr.gov` government relations ·
+    // `hr.payroll` payroll officer · `hr.supervisor` workplace supervisor ·
+    // `hr.management` management. The owner and a '*' group hold every role.
+    // Mirrors src/lib/hr/access.ts.
+    function hrRole(perm) {
+      return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
+    }
+    function hrManager() { return hrRole('employees.manage'); }
+    // RL-03: pay is seen by the HR manager, payroll and management — never by
+    // government relations or a supervisor (the employee reads his own, see employeePay).
+    function hrSeesPay() {
+      return hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management');
+    }
+    function hrStaff() {
+      return hrRole('employees.manage') || hrRole('hr.gov') || hrRole('hr.payroll')
+        || hrRole('hr.supervisor') || hrRole('hr.management');
+    }
+
     // The project manager of a PM 1.0 project (one born from a handover file).
     function isPmProjectManager(projectId) {
       let p = get(/databases/$(database)/documents/projects/$(projectId)).data;
@@ -1498,6 +1517,17 @@ service cloud.firestore {
 
     // Procurement policies (§6.4) — one document per org, read by every
     // member, set by the owner or an approver. Absent = the PRD's reference values.
+    // HR 1.0 settings (ST-01…06) — one document per org: features, policies,
+    // establishment. Read by every member (tabs follow the features); written by
+    // the HR manager.
+    match /hrSettings/{orgId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow create, update: if isSignedIn() && isOrgMember(orgId)
+        && request.resource.data.get('organizationId', orgId) == orgId
+        && hrManager();
+      allow delete: if isAdmin();
+    }
+
     match /procurementSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
       allow create, update: if isSignedIn() && isOrgMember(orgId)
