@@ -12081,6 +12081,68 @@
           "no_lines": "Enter a quantity for at least one item",
           "bad_qty": "Quantities are numbers above zero",
           "unknown_item": "An item is no longer in the BOQ"
+        },
+        "gate": {
+          "needs": "Requires a passed inspection — request one first",
+          "open": "Inspection awaiting its result — not measurable yet",
+          "failed": "Last inspection failed — re-inspect before measuring"
+        }
+      },
+      "unknown_state": "Unknown state",
+      "wir": {
+        "title": "Inspections",
+        "new": "Request an inspection",
+        "new_desc": "The item, where, who inspects and when. An item that requires inspection is measured only after a passed one.",
+        "item": "BOQ item",
+        "pick_item": "Pick the item",
+        "no_items": "No matching item",
+        "location": "Exact location",
+        "party_label": "Inspected by",
+        "party": {
+          "consultant": "The consultant",
+          "client": "The client",
+          "authority": "An authority",
+          "internal": "Internal (our QA)",
+          "other": "Other — stated"
+        },
+        "party_text": "State who inspects",
+        "on": "Inspection day",
+        "submit": "Request",
+        "requested": "Inspection {no} requested",
+        "record": "Record the result",
+        "record_title": "Result of inspection {no}",
+        "result": "Result",
+        "note": "Comments (optional)",
+        "recorded": "Result of inspection {no} recorded",
+        "failed_title": "Inspection {no} failed — its item cannot be measured",
+        "open_title": "Inspection {no}, attempt {n}, awaits its result",
+        "reinspect": "Re-inspect",
+        "reinspect_desc": "Books the next numbered attempt. The failed one stays in the history.",
+        "rebooked": "Inspection {no}: attempt {n} booked",
+        "required_btn": "Items requiring inspection ({count})",
+        "required_title": "Items requiring inspection",
+        "required_desc": "A ticked item cannot be measured until its last inspection passed (with or without comments).",
+        "required_save": "Save the list",
+        "required_saved": "List saved",
+        "empty": "No inspection yet",
+        "empty_desc": "{count, plural, =0 {No item requires inspection yet.} one {# item requires inspection before it is measured.} other {# items require inspection before they are measured.}}",
+        "no": "Inspection {no}",
+        "attempt": "Attempt {n} · {date} · {result} · recorded by {who}",
+        "status": {
+          "open": "Awaiting result",
+          "pass": "Passed",
+          "cond": "Passed with comments",
+          "fail": "Failed"
+        },
+        "block": {
+          "archived": "The project is archived",
+          "no_item": "Pick the item",
+          "no_location": "State the exact location",
+          "no_date": "Set the day",
+          "party_text": "Pick who inspects, and state it if other",
+          "no_choice": "Choose the result — passed, passed with comments, or failed",
+          "not_open": "This attempt already has its result",
+          "not_failed": "Only a failed inspection is re-inspected"
         }
       }
     }

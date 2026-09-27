@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
 import { todayDay } from "@/lib/pm/format"
+import { gateOf } from "@/lib/pm/inspection"
 import { overRemaining, remainingOf, sheetBlocks, sheetNo, type MeasuredItem } from "@/lib/pm/measurement"
 import { PmSheetError, writeSheet, type SheetActor } from "@/lib/pm/measurement-writes"
 import type { PricingBasis } from "@/lib/pm/terms"
@@ -132,6 +133,8 @@ export function WriteSheetDialog({
                 const v = qty[i.id] ?? ""
                 const n = v.trim() === "" ? 0 : Number(v)
                 const over = overRemaining(basis, i, n)
+                const gate = gateOf(i.gate ?? {})
+                const locked = gate !== "free" && gate !== "passed"
                 return (
                   <li key={i.id} className="flex flex-wrap items-center gap-3 px-3 py-2">
                     <div className="min-w-0 flex-1 basis-56">
@@ -146,6 +149,7 @@ export function WriteSheetDialog({
                         {money && i.rate <= 0 && <span className="ms-2 font-semibold text-warning">{t("meas.unpriced")}</span>}
                       </p>
                       {over > 0 && <p className="text-xs font-semibold text-destructive">{t("meas.over", { qty: fmt(over), unit: i.unit || "" })}</p>}
+                      {locked && <p className="text-xs font-semibold text-destructive">{t(`meas.gate.${gate}` as "meas.gate.needs")}</p>}
                     </div>
                     <Input
                       aria-label={t("meas.qty_for", { code: i.code })}
@@ -157,7 +161,7 @@ export function WriteSheetDialog({
                       value={v}
                       onChange={(e) => setQty((q) => ({ ...q, [i.id]: e.target.value }))}
                       className={cn("h-11 w-28", (over > 0 || n < 0) && "border-destructive")}
-                      disabled={busy}
+                      disabled={busy || locked}
                     />
                   </li>
                 )

@@ -642,6 +642,11 @@ service cloud.firestore {
                     && pmDuty(projectId, 'measure')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
                     && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['sheetCount']))
+                // …and whoever records inspections numbers theirs — `pm.wirCount`.
+                || (('pm' in resource.data)
+                    && pmDuty(projectId, 'qa')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount']))
                 // …and so may whoever the guard allows on the pm block: the terms need
                 // money + (all | approve), everything else on it needs approve.
                 || (('pm' in resource.data)
@@ -703,6 +708,17 @@ service cloud.firestore {
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && pmDuty(projectId, 'approve')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['executedQuantity', 'updatedAt']);
+        // …the line's last inspection result is written by quality (`qa`), one of the
+        // known states only (WIR-03); which lines require inspection is `approve`'s.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && ((pmDuty(projectId, 'qa')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmWir', 'updatedAt'])
+                && request.resource.data.pmWir in ['open', 'pass', 'cond', 'fail'])
+              || (pmDuty(projectId, 'approve')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmInspect', 'updatedAt'])
+                && request.resource.data.pmInspect is bool));
       }
 
       // Project team assignments — which org member works on this project and
@@ -819,6 +835,33 @@ service cloud.firestore {
           && request.resource.data.okBy == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys()
                .hasOnly(['status', 'lines', 'okBy', 'okByName', 'okAt', 'self', 'returnNote', 'updatedAt']);
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 inspection requests (WIR-01…03) — `pmInspections/{NN}`. Recorded by
+      // quality (`qa`); the status is one of four known states, never undefined —
+      // a result saved without a choice once crashed the whole screen. Never deleted.
+      match /pmInspections/{inspectionId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'qa')
+          && request.resource.data.status == 'open'
+          && request.resource.data.seq is int
+          && request.resource.data.location is string && request.resource.data.location.size() > 0
+          && request.resource.data.attempts is list && request.resource.data.attempts.size() == 1;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'qa')
+          && request.resource.data.status in ['open', 'pass', 'cond', 'fail']
+          && ((resource.data.status == 'open' && request.resource.data.status in ['pass', 'cond', 'fail'])
+              || (resource.data.status == 'fail' && request.resource.data.status == 'open'
+                  && request.resource.data.attempts.size() == resource.data.attempts.size() + 1))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'attempts', 'updatedAt']);
 
         allow delete: if isAdmin();
       }

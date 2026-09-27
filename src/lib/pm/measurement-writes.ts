@@ -7,6 +7,7 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, pmCan, type PmContext } from "./access"
+import type { GateFields } from "./inspection"
 import { lifecycleOf } from "./lifecycle"
 import { applySheet, PM_SHEETS, sheetBlocks, sheetNo, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
 import { goLive, withFreshState } from "./project-writes"
@@ -38,6 +39,7 @@ export const measuredItem = (id: string, data: Record<string, unknown>): Measure
   quantity: num(data.quantity),
   rate: num(data.unitPrice),
   executed: num(data.executedQuantity),
+  gate: { pmInspect: data.pmInspect === true, pmWir: (data.pmWir as GateFields["pmWir"]) ?? null },
 })
 
 async function readProject(tx: Transaction, firestore: Firestore, projectId: string) {
@@ -138,6 +140,9 @@ export async function approveSheet(firestore: Firestore, ctx: PmContext, project
     const sheet = snap.data() as PmSheet
     if (sheet.status !== "wait") throw new PmSheetError("not_waiting")
     const items = await readItems(tx, firestore, projectId, sheet.lines.map((l) => l.itemId))
+    // The gate again: an inspection may have failed since the sheet was written (MS-03).
+    const gate = sheetBlocks({ archived: false, lines: sheet.lines, items }).filter((b) => b === "not_measurable")
+    if (gate.length) throw new PmSheetError("blocked", gate)
     const { applied, wentLive } = approveInto(tx, firestore, projectId, project, items, sheet.lines)
     tx.update(sRef, { status: "ok", lines: applied.lines, okBy: actor.uid, okByName: actor.name, okAt: new Date().toISOString(), self: sheet.by === actor.uid, updatedAt: serverTimestamp() })
     if (wentLive) tx.update(ref, { pm: goLive(pm, "measurement"), status: "working", updatedAt: serverTimestamp() })

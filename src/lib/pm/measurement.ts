@@ -9,6 +9,7 @@
 // item is measured and moves, but adds no money until priced. The first
 // approved sheet moves the project from planning to live. Pure: no I/O.
 
+import { measurable, type GateFields } from "./inspection"
 import type { PricingBasis } from "./terms"
 
 /** `projects/{id}/pmSheets/{NN}` — numbered by the project's `pm.sheetCount`. */
@@ -54,6 +55,8 @@ export interface MeasuredItem {
   /** 0 = unpriced (CON-02). */
   rate: number
   executed: number
+  /** Inspection gate fields of the line (MS-03). */
+  gate?: GateFields
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
@@ -63,11 +66,12 @@ export const sheetNo = (seq: number) => String(seq).padStart(2, "0")
 /** Left to execute on an item. */
 export const remainingOf = (item: Pick<MeasuredItem, "quantity" | "executed">) => r2(Math.max(0, item.quantity - item.executed))
 
-export type SheetBlock = "archived" | "no_lines" | "bad_qty" | "unknown_item"
+export type SheetBlock = "archived" | "no_lines" | "bad_qty" | "unknown_item" | "not_measurable"
 
-/** What stops writing a sheet. Over-remaining on a lump sum is a warning here
- * (the cap applies at approval); a blocked item is refused by the gate (MS-03). */
-export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Pick<MeasuredItem, "id">[] }): SheetBlock[] {
+/** What stops writing — or approving — a sheet. Over-remaining on a lump sum is
+ * a warning here (the cap applies at approval). An item that requires
+ * inspection without a passed last attempt is refused (MS-03). */
+export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "itemId" | "qty">[]; items: Pick<MeasuredItem, "id" | "gate">[] }): SheetBlock[] {
   const out: SheetBlock[] = []
   if (input.archived) out.push("archived")
   const lines = input.lines.filter((l) => l.qty !== 0)
@@ -75,6 +79,8 @@ export function sheetBlocks(input: { archived: boolean; lines: Pick<SheetLine, "
   if (lines.some((l) => !Number.isFinite(l.qty) || l.qty < 0)) out.push("bad_qty")
   const known = new Set(input.items.map((i) => i.id))
   if (lines.some((l) => !known.has(l.itemId))) out.push("unknown_item")
+  const gated = new Set(input.items.filter((i) => i.gate && !measurable(i.gate)).map((i) => i.id))
+  if (lines.some((l) => gated.has(l.itemId))) out.push("not_measurable")
   return out
 }
 

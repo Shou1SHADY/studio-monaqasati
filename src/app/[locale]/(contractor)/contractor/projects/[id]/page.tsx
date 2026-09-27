@@ -8,6 +8,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
@@ -154,7 +155,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck } from "lucide-react"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 
@@ -209,6 +210,9 @@ type BoqItem = {
   draws?: BoqDraw[]
   /** Running total of site measurements (see lib/ipc.ts). */
   executedQuantity?: number
+  /** PM 1.0: the line requires an inspection before it is measured, and its last result (MS-03). */
+  pmInspect?: boolean
+  pmWir?: "open" | "pass" | "cond" | "fail" | null
 }
 
 type BoqGroupMeta = {
@@ -806,6 +810,8 @@ export default function ProjectDetailPage() {
         drawnQuantity: Number(data.drawnQuantity) || 0,
         draws: Array.isArray(data.draws) ? (data.draws as BoqDraw[]) : [],
         executedQuantity: Number(data.executedQuantity) || 0,
+        pmInspect: data.pmInspect === true,
+        pmWir: data.pmWir ?? null,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -1930,11 +1936,29 @@ export default function ProjectDetailPage() {
     )
   }
 
+  // PM 1.0 panels read the BOQ as the measurement rules do.
+  const pmItems = boqItems.map((i) => ({
+    id: i.id,
+    code: i.itemNo,
+    description: (isRtl ? i.descriptionAr || i.descriptionEn : i.descriptionEn || i.descriptionAr) || "",
+    unit: i.unit,
+    quantity: parseFloat(String(i.quantity).replace(/,/g, "")) || 0,
+    rate: parseFloat(String(i.unitPrice).replace(/,/g, "")) || 0,
+    executed: i.executedQuantity || 0,
+    gate: { pmInspect: i.pmInspect, pmWir: i.pmWir },
+  }))
+  const pmActor = { uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }
+
   const tabs: { key: ActiveTab; label: string; icon: React.ReactNode }[] = [
     { key: "info", label: t("proj_tab_info"), icon: <FolderOpen size={15} /> },
     { key: "boq", label: t("proj_tab_boq"), icon: <TableProperties size={15} /> },
     // PM 1.0: measurement goes through sheets the PM approves (WF-04).
-    ...(typedProject.pm ? [{ key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> }] : []),
+    ...(typedProject.pm
+      ? [
+          { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
+          { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
+        ]
+      : []),
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
     { key: "purchaseRequests", label: t("proj_tab_purchase_requests"), icon: <ClipboardList size={15} /> },
     { key: "team", label: t("proj_tab_team"), icon: <Users size={15} /> },
@@ -3060,24 +3084,19 @@ export default function ProjectDetailPage() {
           </Card>
         )}
 
-        {/* ── TAB: MEASUREMENT (PM 1.0) ── */}
+        {/* ── TABS: MEASUREMENT · INSPECTIONS (PM 1.0) ── */}
         {activeTab === "pmMeasure" && typedProject.pm && (
           <MeasurementPanel
             projectId={projectId}
             basis={typedProject.pm.terms?.basis ?? "rem"}
-            items={boqItems.map((i) => ({
-              id: i.id,
-              code: i.itemNo,
-              description: (isRtl ? i.descriptionAr || i.descriptionEn : i.descriptionEn || i.descriptionAr) || "",
-              unit: i.unit,
-              quantity: parseFloat(String(i.quantity).replace(/,/g, "")) || 0,
-              rate: parseFloat(String(i.unitPrice).replace(/,/g, "")) || 0,
-              executed: i.executedQuantity || 0,
-            }))}
+            items={pmItems}
             access={pmAccess}
-            actor={{ uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }}
+            actor={pmActor}
             onItemsChanged={() => void loadBoqItems()}
           />
+        )}
+        {activeTab === "pmWir" && typedProject.pm && (
+          <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
         )}
 
         {/* ── TAB: TEAM ── */}
