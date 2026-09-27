@@ -13311,7 +13311,8 @@
         "exit_started": "End of service started — {reason}, last day {lastDay}",
         "settlement_approved": "Settlement approved — last day {lastDay}",
         "data_updated": "Details updated by request {no} — {field}",
-        "injury_recorded": "Work injury recorded — {on}"
+        "injury_recorded": "Work injury recorded — {on}",
+        "imported": "Record imported — no. {no}, {trade}, {site}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13879,6 +13880,72 @@
           "no_description": "Describe what happened",
           "no_report": "The report number and date are required",
           "stale": "Already reported"
+        }
+      },
+      "imp": {
+        "open": "Import",
+        "title": "Import employees",
+        "desc": "Download the template, fill one row per employee, upload it. Nothing is saved before you review it; rejected rows are never saved.",
+        "template": "Download the template",
+        "choose": "Choose the CSV file",
+        "line": "Row",
+        "review": "Review",
+        "status": {
+          "clean": "{n} clean",
+          "notes": "{n} with notes",
+          "rejected": "{n} rejected"
+        },
+        "state": {
+          "clean": "Clean",
+          "notes": "Interpreted",
+          "rejected": "Rejected"
+        },
+        "since_note": "Imported staff enter payroll from this month; the leave balance and the outstanding advance are their opening balances.",
+        "create": "Create {n, plural, one {# employee} other {# employees}}",
+        "created": "{n, plural, =0 {No employee created} one {# employee created} other {# employees created}}",
+        "failed_line": "Row {line}: {reason}",
+        "close": "Close",
+        "col": {
+          "name_ar": "Name (Arabic)",
+          "name_en": "Name (English)",
+          "id_no": "ID / iqama no.",
+          "nationality": "Nationality",
+          "gender": "Gender",
+          "trade": "Trade",
+          "workplace": "Workplace",
+          "join_date": "Actual join date",
+          "basic": "Basic",
+          "iqama_expiry": "Iqama expiry",
+          "passport_expiry": "Passport expiry",
+          "insurance_expiry": "Insurance expiry",
+          "iban": "IBAN",
+          "leave_balance": "Leave balance today",
+          "advance_balance": "Outstanding advance"
+        },
+        "err": {
+          "no_name": "The Arabic name is missing",
+          "bad_nationality": "Nationality not recognised: {value}",
+          "bad_gender": "Gender not recognised: {value}",
+          "bad_trade": "Trade not recognised: {value}",
+          "saudi_only": "This trade is reserved for Saudis",
+          "bad_join": "Join date not a date: {value}",
+          "duplicate_id": "This ID number is already on the record or in the file",
+          "duplicate": "Already on the record (same name and join date)",
+          "bad_basic": "Basic not a number: {value}",
+          "bad_advance": "Advance not a number: {value}"
+        },
+        "note": {
+          "trade_interpreted": "Trade “{value}” read as {trade}",
+          "no_id": "No ID number — needed for the Mudad and GOSI files",
+          "bad_date_ignored": "{column} “{value}” is not a date — left blank",
+          "site_unknown": "Workplace “{value}” not found — placed unassigned",
+          "iqama_expired_unassigned": "Iqama expired — placed unassigned, not on a site",
+          "no_basic": "No basic — the HR manager enters it before payroll",
+          "bad_iban": "IBAN not valid — left blank; the transfer would bounce",
+          "no_iban": "No IBAN — the line will be held",
+          "bad_leave_ignored": "Leave balance “{value}” ignored",
+          "leave_capped": "Leave balance {value} is more than could accrue — capped at {cap}",
+          "advance_without_wage": "An advance without a wage is not recorded"
         }
       }
     }

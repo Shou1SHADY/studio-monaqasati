@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Search, UserPlus, Users } from "lucide-react"
+import { FileUp, Search, UserPlus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
@@ -23,6 +23,7 @@ import { UNASSIGNED_SITE } from "@/lib/hr/sites"
 import { matchesSearch } from "@/lib/search-text"
 import { cn } from "@/lib/utils"
 import type { HrPortal } from "./HrShell"
+import { HrImportDialog } from "./HrImportDialog"
 import { NewEmployeeDialog } from "./NewEmployeeDialog"
 
 export const DOC_TONE: Record<DocState, PillTone> = { missing: "mute", valid: "ok", d60: "info", d30: "warn", expired: "bad" }
@@ -39,6 +40,14 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
   const [site, setSite] = useState("__all__")
   const [status, setStatus] = useState<EmployeeStatus | "all">("active")
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const importButton = access.allowed("employee.import") ? (
+    <Button variant="outline" onClick={() => setImporting(true)}>
+      <FileUp size={15} className="me-1.5" aria-hidden="true" />
+      {t("imp.open")}
+    </Button>
+  ) : null
+  const importDialog = importing ? <HrImportDialog access={access} actorName={actorName} employees={employees} sites={sites} onClose={() => setImporting(false)} /> : null
 
   const rows = useMemo(
     () =>
@@ -66,13 +75,17 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
           description={t("people.empty_desc")}
           action={
             access.allowed("employee.create") ? (
-              <Button onClick={() => setAdding(true)}>
-                <UserPlus size={15} className="me-1.5" aria-hidden="true" />
-                {t("people.new")}
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button onClick={() => setAdding(true)}>
+                  <UserPlus size={15} className="me-1.5" aria-hidden="true" />
+                  {t("people.new")}
+                </Button>
+                {importButton}
+              </div>
             ) : undefined
           }
         />
+        {importDialog}
         {adding && <NewEmployeeDialog open onOpenChange={setAdding} access={access} actorName={actorName} sites={sites} portal={portal} />}
       </>
     )
@@ -98,6 +111,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
             noResultsText={t("no_results")}
           />
         </div>
+        {importButton}
         {access.allowed("employee.create") && (
           <Button onClick={() => setAdding(true)}>
             <UserPlus size={15} className="me-1.5" aria-hidden="true" />
@@ -169,6 +183,7 @@ export function HrPeopleView({ access, portal, actorName }: { access: HrAccess; 
         </table>
       </div>
       {adding && <NewEmployeeDialog open onOpenChange={setAdding} access={access} actorName={actorName} sites={sites} portal={portal} />}
+      {importDialog}
     </div>
   )
 }

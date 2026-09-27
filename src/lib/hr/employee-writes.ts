@@ -19,7 +19,7 @@ import {
   type HrEmployee,
   type NewEmployeeInput,
 } from "./employee"
-import { payFromBasic, retroDifference, wageOf } from "./pay"
+import { advanceInstalment, payFromBasic, retroDifference, wageOf } from "./pay"
 import { DEFAULT_HR_POLICIES, monthRange, type HrPolicies } from "./statutory"
 import { tradeOf } from "./trades"
 import { UNASSIGNED_SITE } from "./sites"
@@ -66,6 +66,11 @@ async function readEmployee(tx: Transaction, firestore: Firestore, id: string) {
 export interface CreateEmployeeInput extends NewEmployeeInput {
   iban?: string | null
   userId?: string | null
+  /** Moving in (IM-02, PY-10): the import month payroll starts from, the leave
+   * balance as an opening adjustment to accrual, the outstanding advance. */
+  since?: string | null
+  openingLeave?: number
+  advanceBalance?: number
 }
 
 export async function createEmployee(
@@ -112,14 +117,14 @@ export async function createEmployee(
       managerId: null,
       userId: input.userId ?? null,
       join: input.join,
-      since: null,
+      since: input.since ?? null,
       source: input.source,
       contract: { type: input.contractType, end: input.contractType === "fixed" ? input.contractEnd ?? null : null },
       probation: { end: probationEnd(input.join), consentOn: null, decision: null, decidedOn: null },
       status: input.join > day ? "expected" : "active",
       docs: input.docs,
       leaveTaken: 0,
-      openingLeave: 0,
+      openingLeave: input.openingLeave ?? 0,
       sick: null,
       hajjTaken: false,
     }
@@ -128,18 +133,19 @@ export async function createEmployee(
     // The old readers (delivery notes, lists) read `name`; pay never sits here.
     tx.set(ref, { ...emp, name: emp.names.ar, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
     if (withPay) {
+      const parts = payFromBasic(input.basic as number, opts.policies ?? DEFAULT_HR_POLICIES)
       const pay: EmployeePay = {
         employeeId: ref.id,
         organizationId: orgId,
-        ...payFromBasic(input.basic as number, opts.policies ?? DEFAULT_HR_POLICIES),
+        ...parts,
         iban: input.iban?.trim() || null,
         ibanState: input.iban ? "ok" : null,
-        advance: null,
+        advance: (input.advanceBalance ?? 0) > 0 ? { amount: input.advanceBalance!, balance: input.advanceBalance!, instalment: advanceInstalment(wageOf(parts)) } : null,
         retro: [],
       }
       tx.set(doc(firestore, HR_PAY, ref.id), { ...pay, updatedAt: serverTimestamp() })
     }
-    log(tx, firestore, ref.id, orgId, actor, "created", { no, site: emp.siteId, trade: emp.trade })
+    log(tx, firestore, ref.id, orgId, actor, input.since ? "imported" : "created", { no, site: emp.siteId, trade: emp.trade })
   })
   return { id: ref.id, no }
 }
