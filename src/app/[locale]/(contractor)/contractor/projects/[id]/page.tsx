@@ -163,6 +163,7 @@ import {
   type SectionId,
 } from "@/lib/project-sections"
 import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel } from "lucide-react"
+import { SamplesPanel } from "@/components/pm/SamplesPanel"
 import { ClaimsPanel } from "@/components/pm/ClaimsPanel"
 import { NcrPanel } from "@/components/pm/NcrPanel"
 import { VariationsPanel } from "@/components/pm/VariationsPanel"
@@ -223,6 +224,9 @@ type BoqItem = {
   /** PM 1.0: the line requires an inspection before it is measured, and its last result (MS-03). */
   pmInspect?: boolean
   pmWir?: "open" | "pass" | "cond" | "fail" | null
+  /** PM 1.0: the line requires a material sample, and the latest submittal's state (SUB-01). */
+  pmSample?: boolean
+  pmSub?: string | null
   /** PM 1.0: the quantity billed on certificates (IPC-01). */
   billedQuantity?: number
 }
@@ -824,6 +828,8 @@ export default function ProjectDetailPage() {
         executedQuantity: Number(data.executedQuantity) || 0,
         pmInspect: data.pmInspect === true,
         pmWir: data.pmWir ?? null,
+        pmSample: data.pmSample === true,
+        pmSub: data.pmSub ?? null,
         billedQuantity: Number(data.billedQuantity) || 0,
       }
     })
@@ -1960,6 +1966,8 @@ export default function ProjectDetailPage() {
     executed: i.executedQuantity || 0,
     billed: i.billedQuantity || 0,
     gate: { pmInspect: i.pmInspect, pmWir: i.pmWir },
+    pmSample: i.pmSample,
+    pmSub: i.pmSub,
   }))
   const pmActor = { uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }
 
@@ -3163,7 +3171,10 @@ export default function ProjectDetailPage() {
           </div>
         )}
         {activeTab === "pmWir" && typedProject.pm && (
-          <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
+          <div className="space-y-4">
+            <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
+            <SamplesPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
+          </div>
         )}
 
         {/* ── TAB: TEAM ── */}

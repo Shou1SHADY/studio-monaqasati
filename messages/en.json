@@ -12511,6 +12511,56 @@
           "days_required": "Granted days are required unless rejected",
           "bad_amount": "The amount granted is zero or more"
         }
+      },
+      "sample": {
+        "title": "Material samples",
+        "mark": "Items requiring a sample",
+        "mark_desc": "Tick the items whose contract requires a material sample. Such an item is approved only when the consultant approves its sample.",
+        "save_mark": "Save",
+        "marked": "{count, plural, =0 {No item requires a sample} one {# item requires a sample} other {# items require a sample}}",
+        "missing": "{count, plural, one {# item has} other {# items have}} no approved sample — no sample is not consent.",
+        "state": {
+          "free": "No sample required",
+          "approved": "Sample approved",
+          "with_consultant": "With the consultant",
+          "rejected": "Sample rejected",
+          "not_submitted": "Not submitted"
+        },
+        "submit": "Submit a sample",
+        "submit_desc": "The sample goes to the consultant. A rejected one is resubmitted as the next revision.",
+        "item": "Item",
+        "pick_item": "Choose the item",
+        "search_item": "Search by code or description",
+        "no_item": "No matching item",
+        "group_required": "Requires a sample",
+        "group_other": "Other items",
+        "supplier": "Supplier / material source",
+        "submitted": "Sample submitted to the consultant",
+        "no": "Sample {no}",
+        "rev": "Rev {n}",
+        "status": {
+          "sub": "With the consultant",
+          "appA": "Approved",
+          "appB": "Approved as noted",
+          "rej": "Rejected"
+        },
+        "line": "{supplier} · submitted {date} by {who}",
+        "record_reply": "Record the consultant's reply",
+        "reply_desc": "Approved · approved as noted · rejected — nothing is saved without a choice.",
+        "note": "Consultant's comments (optional)",
+        "save_reply": "Save reply",
+        "replied": "Reply recorded",
+        "empty": "No sample submitted",
+        "empty_desc": "Samples for the items whose contract requires one are submitted and answered here.",
+        "block": {
+          "archived": "The project is archived",
+          "no_item": "Choose the item",
+          "no_supplier": "Name the supplier or source",
+          "with_consultant": "A sample for this item is already with the consultant",
+          "already_approved": "This item's sample is already approved",
+          "not_with_consultant": "Only a sample with the consultant is answered",
+          "no_choice": "Choose the consultant's reply"
+        }
       }
     }
   },

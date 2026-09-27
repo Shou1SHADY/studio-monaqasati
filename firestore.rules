@@ -667,6 +667,11 @@ service cloud.firestore {
                     && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
                     && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['claimCount']))
+                // …whoever records samples numbers them — `pm.sampleCount`.
+                || (('pm' in resource.data)
+                    && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['sampleCount']))
                 // …whoever logs variations numbers them — `pm.voCount`.
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'vo')
@@ -758,7 +763,15 @@ service cloud.firestore {
                 && request.resource.data.pmWir in ['open', 'pass', 'cond', 'fail'])
               || (pmDuty(projectId, 'approve')
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmInspect', 'updatedAt'])
-                && request.resource.data.pmInspect is bool));
+                && request.resource.data.pmInspect is bool)
+              // …the latest sample state (SUB-01) by measure | approve; which lines
+              // require a sample is approve's.
+              || ((pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmSub', 'pmSubRev', 'updatedAt'])
+                && request.resource.data.pmSub in ['sub', 'appA', 'appB', 'rej'])
+              || (pmDuty(projectId, 'approve')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmSample', 'updatedAt'])
+                && request.resource.data.pmSample is bool));
       }
 
       // Project team assignments — which org member works on this project and
@@ -996,6 +1009,31 @@ service cloud.firestore {
                 && (request.resource.data.status == 'appr'
                     || (request.resource.data.decision.reason is string && request.resource.data.decision.reason.size() > 0))
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decision', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 material submittals (SUB-01…03) — `pmSubmittals/{NN}`. Submitted and
+      // answered by measure | approve; a reply is one of three, never undefined.
+      match /pmSubmittals/{submittalId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+          && request.resource.data.status == 'sub'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int && request.resource.data.rev is int;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+          && resource.data.status == 'sub'
+          && request.resource.data.status in ['appA', 'appB', 'rej']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reply', 'updatedAt']);
 
         allow delete: if isAdmin();
       }
