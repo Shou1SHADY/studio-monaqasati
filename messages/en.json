@@ -12918,7 +12918,9 @@
           "sites": "At least one workplace",
           "supervisors": "Every site, workshop and warehouse has a supervisor",
           "employees": "Employees on the record — imported or added"
-        }
+        },
+        "waiting": "Waiting for you",
+        "nothing_waiting": "Nothing waits for your decision"
       },
       "back": "Back",
       "next": "Next",
@@ -13122,7 +13124,7 @@
           "docs": "Documents",
           "pay": "Pay",
           "leave": "Leave",
-          "log": "Log"
+          "log": "Requests & log"
         },
         "category": "Category",
         "fixed_until": "Fixed term until {date}",
@@ -13155,7 +13157,8 @@
           "probation": "Probation",
           "renew": "Record renewal",
           "link": "Link user"
-        }
+        },
+        "log_title": "Log"
       },
       "move": {
         "to": "Move to",
@@ -13233,7 +13236,16 @@
         "probation_extend": "Probation extended to {to} (consent {consent})",
         "probation_end": "Ended during probation",
         "renewed": "{doc} renewed to {to}",
-        "user_linked": "Platform user link changed"
+        "user_linked": "Platform user link changed",
+        "leave_filed": "Leave request {no} filed",
+        "advance_filed": "Advance request {no} filed",
+        "leave_approved": "Leave {no} approved — {from} to {to}",
+        "leave_declined": "Leave {no} declined",
+        "advance_approved": "Advance {no} approved",
+        "advance_declined": "Advance {no} declined",
+        "advance_to_finance": "Advance {no} sent to Finance with HR's view",
+        "leave_cancelled": "Leave {no} cancelled",
+        "advance_cancelled": "Advance {no} cancelled"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13325,6 +13337,95 @@
           "not_missing": "A chosen day already has a record",
           "not_over": "The month has not ended",
           "missing": "{n, plural, one {# day has} other {# days have}} no record — record or declare them first"
+        }
+      },
+      "leave_type": {
+        "annual": "Annual",
+        "emergency": "Emergency",
+        "sick": "Sick",
+        "maternity": "Maternity",
+        "paternity": "Paternity",
+        "marriage": "Marriage",
+        "bereavement": "Bereavement",
+        "hajj": "Hajj",
+        "exam": "Exams",
+        "unpaid": "Unpaid"
+      },
+      "req": {
+        "title": "Requests",
+        "none": "No requests",
+        "new_leave": "New leave",
+        "new_advance": "New advance",
+        "kind": {
+          "leave": "Leave",
+          "advance": "Advance"
+        },
+        "leave_type": "Type",
+        "from": "From",
+        "to": "To",
+        "travel": "Travelling outside the Kingdom",
+        "days": "Days (holidays not counted)",
+        "balance_at_start": "Balance at the start",
+        "from_balance": "From the balance",
+        "unpaid_days": "Unpaid",
+        "sick_split": "Sick pay (art. 117)",
+        "sick_line": "{full} full · {q} at 75% · {zero} unpaid",
+        "excess_unpaid": "Take the {n} days above the balance as unpaid leave",
+        "note": "Note",
+        "amount": "Amount",
+        "reason": "Reason",
+        "instalment": "Monthly instalment (10% of the wage)",
+        "months": "Months to repay",
+        "advance_note": "Repaid from payroll at 10% of the wage a month. No second advance before this one is repaid.",
+        "send": "Send",
+        "cannot_send": "Cannot be sent",
+        "filed": "Request {no} sent",
+        "to_management": "To management",
+        "to_finance": "Above the HR limit — sent to Finance with your view",
+        "over_limit_note": "This advance is above the HR limit: your approval sends it to Finance with your view; Finance decides.",
+        "reason_required": "Reason (required)",
+        "state": {
+          "pending": "Pending",
+          "endorsed": "Endorsed",
+          "approved": "Approved",
+          "declined": "Declined",
+          "finance": "With Finance",
+          "cancelled": "Cancelled"
+        },
+        "act": {
+          "endorse": "Endorse",
+          "approve": "Approve",
+          "decline": "Decline",
+          "cancel": "Cancel request"
+        },
+        "done": {
+          "endorse": "Endorsed — the HR manager decides",
+          "approve": "Approved",
+          "decline": "Declined",
+          "cancel": "Cancelled"
+        },
+        "block": {
+          "bad_dates": "Choose the dates — the end on or after the start",
+          "too_long": "Longer than the law gives for this leave",
+          "above_balance": "Above the balance — shorten it or take the excess unpaid",
+          "overlap": "Overlaps another leave of this employee",
+          "female_only": "This leave is for women",
+          "min_years": "Needs two years of service",
+          "once_taken": "Hajj leave is given once in the service",
+          "bad_amount": "Enter the amount",
+          "no_reason": "Give the reason",
+          "no_wage": "No wage on the record yet",
+          "outstanding": "An advance is still outstanding — no second one before it is repaid",
+          "left": "The employee has left",
+          "stale": "This request has already moved on",
+          "travel_docs": "Not approvable for travel: the iqama or passport lapses before the return — renew first"
+        },
+        "warn": {
+          "travel_docs": "The iqama or passport lapses before the return — no travel before renewal; HR cannot approve it for travel.",
+          "sick_beyond": "Beyond 120 sick days in the service year — the HR manager decides.",
+          "excess_unpaid": "Part of this leave is unpaid — deducted in payroll.",
+          "over_limit": "Above the HR limit — decided in Finance after HR's view.",
+          "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
         }
       }
     }

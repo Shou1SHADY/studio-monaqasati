@@ -8,14 +8,18 @@
 import { useMemo } from "react"
 import { useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { CheckCircle2, Circle, Route } from "lucide-react"
+import { CheckCircle2, Circle, Inbox, Route } from "lucide-react"
 import { Panel } from "@/components/module-ui/Panel"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { useHrRequests } from "@/hooks/useHrRequests"
 import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES, HR_SITES } from "@/lib/hr/collections"
+import { todayDay } from "@/lib/hr/format"
+import { requestActions } from "@/lib/hr/requests"
 import { isOffice, type HrSite } from "@/lib/hr/sites"
 import { cn } from "@/lib/utils"
+import { HrRequestList } from "./HrRequestList"
 import { hrHref, type HrPortal } from "./HrShell"
 
 type Step = { key: string; done: boolean; href: string }
@@ -38,35 +42,46 @@ export function HrTodayView({ access, portal }: { access: HrAccess; portal: HrPo
       { key: "policies", done: access.settingsDocExists, href: hrHref(portal, "settings") },
       { key: "sites", done: live.length > 0, href: hrHref(portal, "sites") },
       { key: "supervisors", done: live.length > 0 && live.filter((s) => !isOffice(s.type)).every((s) => Boolean(s.supervisorUserId)), href: hrHref(portal, "sites") },
-      { key: "employees", done: (emps ?? []).length > 0, href: hrHref(portal, "sites") },
+      { key: "employees", done: (emps ?? []).length > 0, href: hrHref(portal, "people") },
     ]
   }, [sites, emps, access.settings, access.settingsDocExists, portal])
   const done = steps.filter((s) => s.done).length
+  // TD-02 — what waits for this viewer's hand (cancelling is not a decision).
+  const { requests } = useHrRequests(access)
+  const today = todayDay()
+  const waiting = useMemo(() => requests.filter((r) => requestActions(access.ctx, r, { today, financeAllowed: false }).some((a) => a !== "cancel")), [requests, access.ctx, today])
 
-  if (!access.allowed("settings.manage")) {
-    return <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">{t("today.soon")}</p>
-  }
+  const decisions = (
+    <Panel title={t("today.waiting")} icon={Inbox} count={waiting.length || undefined}>
+      <HrRequestList access={access} requests={waiting} portal={portal} empty={t("today.nothing_waiting")} />
+    </Panel>
+  )
+
+  if (!access.allowed("settings.manage")) return decisions
 
   return (
-    <Panel title={t("today.build_title")} icon={Route} count={steps.length - done || undefined}>
-      <p className="mb-3 text-xs text-muted-foreground">{t("today.build_note", { done, total: steps.length })}</p>
-      <ol className="space-y-1.5">
-        {steps.map((s, i) => (
-          <li key={s.key}>
-            <Link
-              href={s.href}
-              className={cn(
-                "flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2 text-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                s.done ? "border-success/20 bg-success/5" : "bg-card"
-              )}
-            >
-              {s.done ? <CheckCircle2 size={17} className="shrink-0 text-success" aria-hidden="true" /> : <Circle size={17} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
-              <span className="text-xs font-bold text-muted-foreground tabular-nums">{i + 1}</span>
-              <span className={cn("font-semibold", s.done && "text-muted-foreground")}>{t(`today.step.${s.key}`)}</span>
-            </Link>
-          </li>
-        ))}
-      </ol>
-    </Panel>
+    <div className="space-y-6">
+      {decisions}
+      <Panel title={t("today.build_title")} icon={Route} count={steps.length - done || undefined}>
+        <p className="mb-3 text-xs text-muted-foreground">{t("today.build_note", { done, total: steps.length })}</p>
+        <ol className="space-y-1.5">
+          {steps.map((s, i) => (
+            <li key={s.key}>
+              <Link
+                href={s.href}
+                className={cn(
+                  "flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2 text-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  s.done ? "border-success/20 bg-success/5" : "bg-card"
+                )}
+              >
+                {s.done ? <CheckCircle2 size={17} className="shrink-0 text-success" aria-hidden="true" /> : <Circle size={17} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+                <span className="text-xs font-bold text-muted-foreground tabular-nums">{i + 1}</span>
+                <span className={cn("font-semibold", s.done && "text-muted-foreground")}>{t(`today.step.${s.key}`)}</span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      </Panel>
+    </div>
   )
 }

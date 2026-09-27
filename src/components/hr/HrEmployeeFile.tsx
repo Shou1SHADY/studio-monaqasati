@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, orderBy, query } from "firebase/firestore"
-import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, History, Link2, Loader2, Wallet } from "lucide-react"
+import { ArrowRightLeft, BadgeCheck, CalendarClock, FileClock, HandCoins, History, Inbox, Link2, Loader2, Plane, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { EmptyState } from "@/components/module-ui/EmptyState"
@@ -19,6 +19,7 @@ import { SegmentedNav, type Segment } from "@/components/module-ui/SegmentedNav"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useEmployeePay, useHrPeople } from "@/hooks/useHrPeople"
+import { useHrRequests } from "@/hooks/useHrRequests"
 import type { HrAccess } from "@/hooks/useHrAccess"
 import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES } from "@/lib/hr/collections"
@@ -30,7 +31,10 @@ import { leaveBalance } from "@/lib/hr/leave"
 import { gosiRates, wageOf } from "@/lib/hr/pay"
 import { serviceYears } from "@/lib/hr/statutory"
 import { tradeOf } from "@/lib/hr/trades"
+import type { HrRequestKind } from "@/lib/hr/requests"
 import { EmployeeActionDialog, type EmployeeAction } from "./EmployeeActionDialogs"
+import { HrRequestList } from "./HrRequestList"
+import { NewRequestDialog } from "./NewRequestDialog"
 import type { HrPortal } from "./HrShell"
 import { DOC_TONE, STATUS_TONE } from "./HrPeopleView"
 
@@ -47,6 +51,9 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
   const { pay } = useEmployeePay(employeeId, money)
   const [seg, setSeg] = useState<Seg>("job")
   const [action, setAction] = useState<EmployeeAction | null>(null)
+  const [newReq, setNewReq] = useState<HrRequestKind | null>(null)
+  const { requests: allRequests } = useHrRequests(access)
+  const requests = useMemo(() => allRequests.filter((r) => r.employeeId === employeeId), [allRequests, employeeId])
 
   const logQ = useMemoFirebase(() => (firestore ? query(collection(firestore, HR_EMPLOYEES, employeeId, HR_LOG), orderBy("at", "desc")) : null), [firestore, employeeId])
   const { data: logData } = useCollection(logQ)
@@ -85,7 +92,7 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
     { id: "docs", label: t("file.seg.docs"), tone: facts.nearest && (facts.nearest.state === "expired" || facts.nearest.state === "d30") ? "bad" : undefined, count: facts.nearest && facts.nearest.state !== "valid" ? DOC_TYPES.filter((d) => emp.docs?.[d] && docState(emp.docs[d], today, access.settings.policies.renewWindowDays) !== "valid").length || undefined : undefined },
     ...(money ? [{ id: "pay", label: t("file.seg.pay") }] : []),
     { id: "leave", label: t("file.seg.leave") },
-    { id: "log", label: t("file.seg.log"), count: log.length || undefined, tone: "mute" as const },
+    { id: "log", label: t("file.seg.log"), count: requests.filter((r) => r.state === "pending" || r.state === "endorsed").length || undefined, tone: "warn" as const },
   ]
 
   const acts: { id: EmployeeAction; icon: typeof Wallet; show: boolean }[] = [
@@ -126,6 +133,20 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {access.ctx.roles.has("manager") && emp.status !== "left" && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => setNewReq("leave")}>
+                <Plane size={14} className="me-1.5" aria-hidden="true" />
+                {t("req.new_leave")}
+              </Button>
+              {money && (
+                <Button size="sm" variant="outline" onClick={() => setNewReq("advance")}>
+                  <HandCoins size={14} className="me-1.5" aria-hidden="true" />
+                  {t("req.new_advance")}
+                </Button>
+              )}
+            </>
+          )}
           {acts
             .filter((a) => a.show)
             .map((a) => (
@@ -227,7 +248,13 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
       )}
 
       {seg === "log" && (
-        <Panel title={t("file.seg.log")} icon={History} count={log.length}>
+        <Panel title={t("req.title")} icon={Inbox} count={requests.length}>
+          <HrRequestList access={access} requests={requests} showEmployee={false} empty={t("req.none")} />
+        </Panel>
+      )}
+
+      {seg === "log" && (
+        <Panel title={t("file.log_title")} icon={History} count={log.length}>
           {log.length === 0 ? (
             <p className="py-4 text-sm text-muted-foreground">{t("file.log_empty")}</p>
           ) : (
@@ -244,6 +271,8 @@ export function HrEmployeeFile({ access, portal, employeeId, actor }: { access: 
           )}
         </Panel>
       )}
+
+      {newReq && <NewRequestDialog kind={newReq} onClose={() => setNewReq(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} existing={requests} />}
 
       {action && (
         <EmployeeActionDialog action={action} onClose={() => setAction(null)} access={access} actor={actor} emp={emp as HrEmployee} pay={pay} sites={sites} />
