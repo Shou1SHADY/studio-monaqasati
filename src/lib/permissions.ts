@@ -9,6 +9,16 @@ export const PERMISSION_IDS = [
   "projects.edit",
   "projects.publish",
   "projects.delete",
+  // Project Management 1.0 (PRD §3): the company-level SYSTEM ROLE — a person's
+  // ceiling on every PM project, which a project assignment only narrows
+  // (src/lib/pm/access.ts). `pm.manage` is a project manager (money, create,
+  // approve; no daily report), `pm.cost` the QS & cost-control office (money,
+  // every project; prepares, never approves what it prepares), `pm.site` a site
+  // engineer (measure, daily, request, receive, inspect, safety — no prices).
+  // The owner and a '*' group hold the owner's ceiling.
+  "pm.manage",
+  "pm.cost",
+  "pm.site",
   "rfq.create",
   "rfq.manage",
   "offers.view",
@@ -86,7 +96,7 @@ export const GUARANTEE_REVIEW_PERMISSION: PermissionId = "deliveries.confirm"
 /** The catalog grouped by portal component, for the group editor — a
  * permission belongs to exactly one section (guarded by a test). */
 export const PERMISSION_SECTIONS: Array<{ key: string; permissions: PermissionId[] }> = [
-  { key: "projects", permissions: ["projects.view", "projects.edit", "projects.publish", "projects.delete"] },
+  { key: "projects", permissions: ["projects.view", "projects.edit", "projects.publish", "projects.delete", "pm.manage", "pm.cost", "pm.site"] },
   { key: "procurement", permissions: ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"] },
   { key: "inventory", permissions: ["warehouses.manage", "warehouses.receive"] },
   { key: "finance", permissions: ["invoices.manage"] },

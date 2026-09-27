@@ -230,8 +230,8 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 29 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(29)
+  it("contains exactly 32 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(32)
   })
 
   it("groups every permission into exactly one component section", () => {
@@ -452,6 +452,9 @@ describe("permissionLabelKey", () => {
       "projects.edit": "perm_projects_edit",
       "projects.publish": "perm_projects_publish",
       "projects.delete": "perm_projects_delete",
+      "pm.manage": "perm_pm_manage",
+      "pm.cost": "perm_pm_cost",
+      "pm.site": "perm_pm_site",
       "rfq.create": "perm_rfq_create",
       "rfq.manage": "perm_rfq_manage",
       "offers.view": "perm_offers_view",

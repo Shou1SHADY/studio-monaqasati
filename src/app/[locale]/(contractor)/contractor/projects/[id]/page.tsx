@@ -127,6 +127,7 @@ import { CATEGORIES_DATA, PREDEFINED_CATEGORIES, displayCategory, SAUDI_CITIES, 
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
+import { usePmAccess } from "@/hooks/usePmAccess"
 import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
@@ -282,7 +283,7 @@ export default function ProjectDetailPage() {
   // parent doc and surface a spurious permission-denied on the way out.
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingWarehouse, setIsCreatingWarehouse] = useState(false)
-  const { can, isOrgOwner } = usePermissions(isDeleting ? undefined : projectId)
+  const { can } = usePermissions(isDeleting ? undefined : projectId)
   const boqFileRef = useRef<HTMLInputElement>(null)
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => searchParams.get("tab") || "info")
@@ -364,6 +365,8 @@ export default function ProjectDetailPage() {
   }, [firestore, projectId])
 
   const { data: project, isLoading: projectLoading } = useDoc(projectDocRef)
+  // PM 1.0: on a project born from a handover, actions pass the central guard.
+  const pmAccess = usePmAccess(isDeleting ? undefined : projectId, project as { pm?: { lifecycle?: string } | null; status?: string } | null)
 
   // Status/category/city narrow the query itself (each is a single extra equality
   // filter on top of projectId, same combinations the old standalone tenders page
@@ -2095,7 +2098,7 @@ export default function ProjectDetailPage() {
               projectId={projectId}
               project={typedProject}
               boqItems={boqItems.length}
-              canEdit={isOrgOwner || typedProject.projectManagerId === user?.uid}
+              access={pmAccess}
             />
           )}
           <Card className="border-primary/15">

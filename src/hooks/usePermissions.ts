@@ -67,5 +67,7 @@ export function usePermissions(projectId?: string) {
     isOrgOwner: organizationRole === "owner",
     profile,
     groups: (groups || []) as TeamGroup[],
+    /** The caller's own `projects/{id}/members` doc (null off the team or org-wide). */
+    projectMember: projectId ? (projectMember as Record<string, unknown> | null) ?? null : null,
   }
 }

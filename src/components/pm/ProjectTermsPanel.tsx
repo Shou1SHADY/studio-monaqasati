@@ -20,6 +20,8 @@ import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
+import type { PmAccess } from "@/hooks/usePmAccess"
+import { PmAccessError } from "@/lib/pm/access"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { pmDate, pmPct } from "@/lib/pm/format"
 import { lifecycleOf, plannedEnd, startBlocks, type PmLifecycle } from "@/lib/pm/lifecycle"
@@ -54,12 +56,12 @@ export function ProjectTermsPanel({
   projectId,
   project,
   boqItems,
-  canEdit,
+  access,
 }: {
   projectId: string
   project: { pm?: PmProjectBlock | null; status?: string | null; projectManagerId?: string | null }
   boqItems: number
-  canEdit: boolean
+  access: PmAccess
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -73,7 +75,9 @@ export function ProjectTermsPanel({
 
   useEffect(() => setDraft(pm.terms ?? defaultTerms()), [pm.terms])
 
-  const editable = canEdit && termsEditable(lifecycle)
+  // Completing the original: money + (all | approve); Start: approve (PRD §4).
+  const editable = access.allowed("terms.complete") && termsEditable(lifecycle)
+  const canStart = access.allowed("project.start")
   const problems = termProblems(draft)
   const dirty = JSON.stringify(draft) !== JSON.stringify(stored)
   const starts = startBlocks({ lifecycle, hasManager: Boolean(project.projectManagerId), boqItems, termProblems: termProblems(stored).length })
@@ -85,11 +89,11 @@ export function ProjectTermsPanel({
     if (!firestore || problems.length) return
     setBusy("save")
     try {
-      await savePlanTerms(firestore, projectId, draft)
+      await savePlanTerms(firestore, access.ctx, projectId, draft)
       toast({ title: t("terms.saved") })
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmProjectError && err.code === "started" ? "terms.already_started" : "error.save"), variant: "destructive" })
+      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmProjectError && err.code === "started" ? "terms.already_started" : "error.save"), variant: "destructive" })
     } finally {
       setBusy(null)
     }
@@ -99,11 +103,11 @@ export function ProjectTermsPanel({
     if (!firestore || starts.length || dirty) return
     setBusy("start")
     try {
-      await startProject(firestore, projectId, boqItems)
+      await startProject(firestore, access.ctx, projectId, boqItems)
       toast({ title: t("terms.started") })
     } catch (err) {
       console.error(err)
-      toast({ title: t("error.save"), variant: "destructive" })
+      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
     } finally {
       setBusy(null)
     }
@@ -217,12 +221,12 @@ export function ProjectTermsPanel({
               {busy === "save" && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
               {t("terms.save")}
             </Button>
-            <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
+            {canStart && <Button onClick={() => void start()} disabled={starts.length > 0 || dirty || busy !== null}>
               {busy === "start" ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Play size={16} className="me-1.5" aria-hidden="true" />}
               {t("terms.start")}
-            </Button>
+            </Button>}
           </div>
-          <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />
+          {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
         </div>
       )}
     </Panel>

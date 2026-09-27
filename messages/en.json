@@ -1477,6 +1477,12 @@
       "perm_projects_edit": "Edit projects & BOQ",
       "perm_projects_publish": "Publish projects / tenders",
       "perm_projects_delete": "Delete projects",
+      "perm_pm_manage": "Project manager (system role)",
+      "perm_pm_manage_desc": "The ceiling on every project they join: amounts, create projects, approve — measurements, certificates internally, addenda, start, handovers, close. No daily report. A project assignment only narrows it.",
+      "perm_pm_cost": "QS & cost control (system role)",
+      "perm_pm_cost_desc": "Amounts and every project: measure, prepare certificates, claims and addenda, variations, correspondence, subcontracts — never approves what it prepares.",
+      "perm_pm_site": "Site engineer (system role)",
+      "perm_pm_site_desc": "Measure, daily report, request and receive material, inspections, safety when seated as HSE officer. No prices, approves nothing.",
       "perm_rfq_create": "Create RFQs",
       "perm_rfq_manage": "Manage RFQs",
       "perm_offers_view": "View offers",
@@ -11866,6 +11872,13 @@
             "full": "All of it after final acceptance"
           }
         }
+      },
+      "refused": {
+        "archived": "The project is archived — nothing on it changes, for anyone",
+        "no_duty": "You do not hold the duty this needs on this project",
+        "not_on_team": "You are not on this project's team",
+        "self_approval": "Someone other than its preparer must approve it",
+        "owner_only": "Only the company owner can do this"
       }
     }
   },

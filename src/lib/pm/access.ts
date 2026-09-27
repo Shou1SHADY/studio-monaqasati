@@ -65,6 +65,22 @@ export const PM_SYSTEM_CEILINGS: Record<"owner" | "pm" | "site" | "qs", readonly
   qs: ["money", "all", "ipc", "measure", "vo", "client", "prep", "corr", "sub"],
 }
 
+/** The team-group permission that carries each system role (src/lib/permissions.ts).
+ * The same map sits in firestore.rules (`pmCeilingHas`) — a test keeps them equal. */
+export const PM_CEILING_PERMISSIONS = { "pm.manage": "pm", "pm.cost": "qs", "pm.site": "site" } as const
+
+/** A person's system ceiling: the owner's (org owner, or a '*' group), else the
+ * union of the system roles their DEFAULT group carries. The ceiling is the
+ * company's word; a project-level group never widens it (S-10). */
+export function pmCeiling(input: { owner: boolean; permissions: readonly string[] }): Set<PmKey> {
+  if (input.owner || input.permissions.includes("*")) return new Set(PM_SYSTEM_CEILINGS.owner)
+  const out = new Set<PmKey>()
+  for (const [perm, role] of Object.entries(PM_CEILING_PERMISSIONS)) {
+    if (input.permissions.includes(perm)) PM_SYSTEM_CEILINGS[role].forEach((k) => out.add(k))
+  }
+  return out
+}
+
 /** A seat on a project's team. `off` holds duties removed from this person here.
  * Leaving is dated, never deleted: `to` is the exit day (inclusive of history). */
 export interface PmSeat {
@@ -82,6 +98,24 @@ export interface PmSeat {
  * "no date" and kept them approving. */
 export function seatActive(seat: Pick<PmSeat, "to">, today: string): boolean {
   return !seat.to || seat.to > today
+}
+
+/** The seat stored on `projects/{id}/members/{uid}`, or null when the member has
+ * no project role (a pre-PM assignment, which holds no duty on a PM project).
+ * Unknown duties in `off` are dropped rather than trusted. */
+export function seatFromMember(data: Record<string, unknown> | null | undefined, uid?: string): PmSeat | null {
+  const role = data?.pmRole
+  if (typeof role !== "string" || !(PM_PROJECT_ROLES as readonly string[]).includes(role)) return null
+  const off = Array.isArray(data?.off) ? (data.off as unknown[]).filter((d): d is PmDuty => (PM_DUTIES as readonly unknown[]).includes(d)) : []
+  const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+  return {
+    uid: str(data?.userId) ?? uid ?? "",
+    role: role as PmProjectRole,
+    roleName: str(data?.roleName),
+    off,
+    from: str(data?.from),
+    to: str(data?.to),
+  }
 }
 
 export interface PmContext {
@@ -188,6 +222,21 @@ export function pmRefusal(ctx: PmContext, action: PmAction): PmRefusal | null {
 }
 
 export const pmAllowed = (ctx: PmContext, action: PmAction): boolean => pmRefusal(ctx, action) === null
+
+/** A handler's refusal: the guard said no, whatever the screen showed. */
+export class PmAccessError extends Error {
+  constructor(readonly code: PmRefusal | "self_approval" | "owner_only", readonly action: string) {
+    super(`${code}:${action}`)
+    this.name = "PmAccessError"
+  }
+}
+
+/** The first line of every PM write: re-run the guard with what the write just
+ * read (archived is taken from the fresh project, not the screen's copy). */
+export function assertPm(ctx: PmContext, action: PmAction): void {
+  const refusal = pmRefusal(ctx, action)
+  if (refusal) throw new PmAccessError(refusal, action)
+}
 
 // ---------------------------------------------------------------------------
 // Rules that need the action's data, so they live beside the guard, not in it.

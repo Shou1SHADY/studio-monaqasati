@@ -13,6 +13,7 @@ import type { CrmOpportunity } from "@/lib/crm"
 import { PM_EVENTS } from "@/lib/pm/events"
 import { PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
 import { acceptHandover, reassignHandover, returnHandover, sendHandoverFile, PmHandoverError } from "@/lib/pm/handover-writes"
+import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { savePlanTerms, startProject, PmProjectError } from "@/lib/pm/project-writes"
 import { defaultTerms } from "@/lib/pm/terms"
 
@@ -48,6 +49,9 @@ async function send(over: Partial<Parameters<typeof sendHandoverFile>[1]> = {}) 
 }
 const file = (id: string) => readDoc<PmHandover>(`${PM_HANDOVERS}/${id}`) as PmHandover
 const accept = (id: string, actor = pm) => acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], groupId: "g-pm" })
+
+const pmCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
+const siteCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
 
 beforeEach(() => resetFakeDb())
 
@@ -129,18 +133,24 @@ describe("terms before start, and Start (TRM-01, TRM-02, WF-03)", () => {
   it("terms save only while the project is not started; Start needs a BOQ and freezes the original", async () => {
     const { projectId } = await accept(await send())
     const terms = { ...defaultTerms({ advance: 0.1, retention: 0.05 }), paymentDays: 45 }
-    await savePlanTerms(db, projectId, terms)
-    await expect(startProject(db, projectId, 0)).rejects.toMatchObject({ code: "blocked", blocks: ["no_boq"] })
-    await startProject(db, projectId, 12)
+    await savePlanTerms(db, pmCtx, projectId, terms)
+    await expect(startProject(db, pmCtx, projectId, 0)).rejects.toMatchObject({ code: "blocked", blocks: ["no_boq"] })
+    await startProject(db, pmCtx, projectId, 12)
     const pmBlock = (readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>).pm
     expect(pmBlock).toMatchObject({ lifecycle: "live", original: { paymentDays: 45 } })
     expect(pmBlock.startedAt).toBeTruthy()
-    await expect(savePlanTerms(db, projectId, { ...terms, paymentDays: 60 })).rejects.toBeInstanceOf(PmProjectError)
-    await expect(startProject(db, projectId, 12)).rejects.toMatchObject({ code: "blocked", blocks: ["not_plan"] })
+    await expect(savePlanTerms(db, pmCtx, projectId, { ...terms, paymentDays: 60 })).rejects.toBeInstanceOf(PmProjectError)
+    await expect(startProject(db, pmCtx, projectId, 12)).rejects.toMatchObject({ code: "blocked", blocks: ["not_plan"] })
   })
 
   it("invalid terms are refused before any write", async () => {
     const { projectId } = await accept(await send())
-    await expect(savePlanTerms(db, projectId, { ...defaultTerms(), advance: 2 })).rejects.toMatchObject({ code: "invalid" })
+    await expect(savePlanTerms(db, pmCtx, projectId, { ...defaultTerms(), advance: 2 })).rejects.toMatchObject({ code: "invalid" })
+  })
+
+  it("the write runs the guard itself: a site engineer is refused terms and Start whatever the screen showed (RL-02)", async () => {
+    const { projectId } = await accept(await send())
+    await expect(savePlanTerms(db, siteCtx, projectId, defaultTerms())).rejects.toBeInstanceOf(PmAccessError)
+    await expect(startProject(db, siteCtx, projectId, 12)).rejects.toMatchObject({ code: "no_duty", action: "project.start" })
   })
 })

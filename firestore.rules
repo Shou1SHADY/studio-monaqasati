@@ -80,6 +80,56 @@ service cloud.firestore {
         && request.resource.data.get('projectManagerId', '') == request.auth.uid;
     }
 
+    // PM 1.0 (PRD §3–4, RL-01/02) — a duty on a PM project is the person's system
+    // ceiling (their DEFAULT group's pm.* role; owner / '*' = everything) ∩ their
+    // project role's template − the duties removed from them. A member with an exit
+    // date is off the team: an exit is dated today or earlier (TM-01), never later.
+    // Someone off the team keeps a duty only through the `all` key (owner, QS office).
+    // An archived (closed) project grants no duty to anyone. Mirrors src/lib/pm/access.ts
+    // — pm-access-rules.test.ts keeps the two lists equal.
+    function pmTemplate(role) {
+      return {
+        'pm': ['measure', 'daily', 'qa', 'hse', 'req', 'rcv', 'sub', 'approve', 'vo', 'prep', 'ipc', 'ipcOk', 'client', 'corr'],
+        'site': ['measure', 'daily', 'qa', 'req', 'rcv'],
+        'qs': ['measure', 'prep', 'ipc', 'vo', 'client', 'corr', 'sub'],
+        'hse': ['daily', 'hse'],
+        'supervisor': ['daily'],
+        'other': ['measure', 'daily', 'qa', 'hse', 'req', 'rcv', 'sub', 'approve', 'vo', 'prep', 'ipc', 'ipcOk', 'client', 'corr']
+      }.get(role, []);
+    }
+
+    function pmCeilingHas(key) {
+      let g = memberDefaultGroupId();
+      return isOrgOwner()
+        || groupGrants(g, '*')
+        || (groupGrants(g, 'pm.manage') && key in ['money', 'create', 'approve', 'measure', 'ipc', 'vo', 'req', 'client', 'prep', 'ipcOk', 'rcv', 'qa', 'hse', 'corr', 'sub'])
+        || (groupGrants(g, 'pm.cost') && key in ['money', 'all', 'ipc', 'measure', 'vo', 'client', 'prep', 'corr', 'sub'])
+        || (groupGrants(g, 'pm.site') && key in ['measure', 'daily', 'req', 'rcv', 'qa', 'hse']);
+    }
+
+    function pmMemberPath(projectId) {
+      return /databases/$(database)/documents/projects/$(projectId)/members/$(request.auth.uid);
+    }
+
+    function pmLiveSeat(projectId) {
+      return exists(pmMemberPath(projectId))
+        && get(pmMemberPath(projectId)).data.get('pmRole', '') != ''
+        && get(pmMemberPath(projectId)).data.get('to', null) == null;
+    }
+
+    function pmArchivedData(data) {
+      return data.get('pm', {}).get('lifecycle', '') == 'closed';
+    }
+
+    function pmDuty(projectId, duty) {
+      return !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
+        && pmCeilingHas(duty)
+        && (pmLiveSeat(projectId)
+              ? (duty in pmTemplate(get(pmMemberPath(projectId)).data.pmRole)
+                  && !(duty in get(pmMemberPath(projectId)).data.get('off', [])))
+              : pmCeilingHas('all'));
+    }
+
     // The project manager of a PM 1.0 project (one born from a handover file).
     function isPmProjectManager(projectId) {
       let p = get(/databases/$(database)/documents/projects/$(projectId)).data;
@@ -583,7 +633,14 @@ service cloud.firestore {
                 // the project — the `pm` block and the status, nothing else.
                 || (resource.data.get('projectManagerId', '') == request.auth.uid
                     && ('pm' in resource.data)
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))));
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))
+                // …and so may whoever the guard allows on the pm block: the terms need
+                // money + (all | approve), everything else on it needs approve.
+                || (('pm' in resource.data)
+                    && (pmDuty(projectId, 'approve') || (pmCeilingHas('money') && pmCeilingHas('all')))
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt'])))
+            // An archived PM project accepts no change from anyone but an admin (RL-04, INV-21).
+            && !pmArchivedData(resource.data));
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
             && hasProjectPermission(projectId, 'projects.delete'));

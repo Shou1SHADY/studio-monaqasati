@@ -1,9 +1,11 @@
 // PM 1.0 — writes on a PM project's own block (`pm` on the project document):
 // completing the original terms before start (TRM-01) and starting work, which
 // freezes that original for good (TRM-02, WF-03). Each is one transaction that
-// re-reads the project, so a stale screen cannot overwrite a started contract.
+// re-reads the project, so a stale screen cannot overwrite a started contract,
+// and each runs the guard first with the archived state it just read (RL-02).
 
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { assertPm, type PmContext } from "./access"
 import { lifecycleOf, startBlocks } from "./lifecycle"
 import { termProblems, termsEditable, type ContractTerms } from "./terms"
 
@@ -16,7 +18,13 @@ export class PmProjectError extends Error {
 
 type PmBlock = { lifecycle?: string; terms?: ContractTerms; original?: ContractTerms | null; startedAt?: string | null } & Record<string, unknown>
 
-export async function savePlanTerms(firestore: Firestore, projectId: string, terms: ContractTerms): Promise<void> {
+/** The caller's context re-read against the project's own state. */
+export const withFreshState = (ctx: PmContext, data: { pm?: unknown; status?: string | null }): PmContext => ({
+  ...ctx,
+  archived: Boolean(data.pm) && lifecycleOf(data as { pm?: { lifecycle?: string } }) === "closed",
+})
+
+export async function savePlanTerms(firestore: Firestore, ctx: PmContext, projectId: string, terms: ContractTerms): Promise<void> {
   if (termProblems(terms).length) throw new PmProjectError("invalid")
   const ref = doc(firestore, "projects", projectId)
   await runTransaction(firestore, async (tx) => {
@@ -24,19 +32,21 @@ export async function savePlanTerms(firestore: Firestore, projectId: string, ter
     if (!snap.exists()) throw new PmProjectError("missing")
     const data = snap.data() as { pm?: PmBlock; status?: string }
     if (!data.pm) throw new PmProjectError("not_pm_project")
+    assertPm(withFreshState(ctx, data), "terms.complete")
     if (!termsEditable(lifecycleOf(data))) throw new PmProjectError("started")
     tx.update(ref, { pm: { ...data.pm, terms }, updatedAt: serverTimestamp() })
   })
 }
 
 /** Start work: plan → live, and the original contract freezes as it stands. */
-export async function startProject(firestore: Firestore, projectId: string, boqItems: number): Promise<void> {
+export async function startProject(firestore: Firestore, ctx: PmContext, projectId: string, boqItems: number): Promise<void> {
   const ref = doc(firestore, "projects", projectId)
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new PmProjectError("missing")
     const data = snap.data() as { pm?: PmBlock; status?: string; projectManagerId?: string | null }
     if (!data.pm?.terms) throw new PmProjectError("not_pm_project")
+    assertPm(withFreshState(ctx, data), "project.start")
     const blocks = startBlocks({ lifecycle: lifecycleOf(data), hasManager: Boolean(data.projectManagerId), boqItems, termProblems: termProblems(data.pm.terms).length })
     if (blocks.length) throw new PmProjectError("blocked", blocks)
     tx.update(ref, {
