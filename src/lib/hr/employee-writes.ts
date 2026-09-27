@@ -6,6 +6,7 @@
 import { collection, doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { hrAllowed, type HrContext } from "./access"
 import { HR_EMPLOYEES, HR_PAY } from "./collections"
+import { HR_SETTINGS } from "./settings"
 import type { DocType } from "./documents"
 import {
   assignBlocks,
@@ -87,6 +88,16 @@ export async function createEmployee(
     const cRef = doc(firestore, HR_COUNTERS, orgId)
     const c = await tx.get(cRef)
     no = ((c.exists() ? (c.data() as { lastEmployeeNo?: number }).lastEmployeeNo : 0) ?? 0) + 1
+    // A visa arrival uses one visa of the establishment file — read again here,
+    // so two arrivals never spend the last visa twice.
+    const sRef = doc(firestore, HR_SETTINGS, orgId)
+    let visasLeft: number | null = null
+    if (input.source === "visa") {
+      const s = await tx.get(sRef)
+      const v = s.exists() ? (s.data() as { establishment?: { visas?: unknown } }).establishment?.visas : null
+      visasLeft = typeof v === "number" ? v : 0
+      if (visasLeft <= 0) throw new HrWriteError("blocked", ["no_visas"])
+    }
     const trade = tradeOf(input.trade)!
     const emp: Omit<HrEmployee, "id"> = {
       organizationId: orgId,
@@ -113,6 +124,7 @@ export async function createEmployee(
       hajjTaken: false,
     }
     tx.set(cRef, { organizationId: orgId, lastEmployeeNo: no, updatedAt: serverTimestamp() })
+    if (visasLeft != null) tx.update(sRef, { "establishment.visas": visasLeft - 1 })
     // The old readers (delivery notes, lists) read `name`; pay never sits here.
     tx.set(ref, { ...emp, name: emp.names.ar, createdAt: serverTimestamp(), updatedAt: serverTimestamp() })
     if (withPay) {
@@ -185,7 +197,10 @@ export async function changePay(
     if (input.trade && input.trade !== emp.trade && tradeOf(input.trade)) {
       tx.update(ref, { trade: input.trade, category: tradeOf(input.trade)!.category, updatedAt: serverTimestamp() })
     }
-    log(tx, firestore, id, emp.organizationId, actor, input.kind === "promotion" ? "promoted" : "pay_changed", { from: currentBasic, to: input.basic, on: input.effectiveOn, reason: input.reason.trim(), retro })
+    // The log is read by roles that may not see pay and by the employee — it
+    // names the change and its day, never an amount (RL-03); the figures live
+    // on the pay document.
+    log(tx, firestore, id, emp.organizationId, actor, input.kind === "promotion" ? "promoted" : "pay_changed", { on: input.effectiveOn, reason: input.reason.trim(), trade: input.kind === "promotion" ? input.trade ?? null : null })
   })
   return { retro }
 }

@@ -549,6 +549,7 @@
       "component_finance_desc": "Invoices, guarantees, financial statements and the journal — every money movement in the system lands here",
       "component_hr": "HR",
       "hr_nav_today": "HR — Today",
+      "hr_nav_people": "People",
       "hr_nav_sites": "Workplaces",
       "hr_nav_settings": "HR settings",
       "component_hr_desc": "Employees and salaries",
@@ -12784,7 +12785,8 @@
         "no_role": "Your HR role does not allow this",
         "not_your_site": "This workplace is not one you supervise",
         "own_request": "Nobody approves his own request",
-        "blocked": "Some values are missing or wrong"
+        "blocked": "Some values are missing or wrong",
+        "missing": "This employee no longer exists"
       },
       "site_type": {
         "project": "Project site",
@@ -12864,7 +12866,10 @@
           "name": "Company name (as on the letterhead)",
           "cr": "Commercial registration",
           "mol": "Establishment number (MHRSD)",
-          "gosi": "GOSI establishment number"
+          "gosi": "GOSI establishment number",
+          "visas": "Unused work visas",
+          "visas_note": "From the establishment file — a visa arrival uses one.",
+          "visasAsOf": "Visas as of"
         },
         "features": "Optional features",
         "features_note": "The core is always on. Switching a feature off hides its tab, decisions and sections — its data is kept.",
@@ -12914,6 +12919,321 @@
           "supervisors": "Every site, workshop and warehouse has a supervisor",
           "employees": "Employees on the record — imported or added"
         }
+      },
+      "back": "Back",
+      "next": "Next",
+      "status": {
+        "expected": "Expected",
+        "active": "Active",
+        "leave": "On leave",
+        "leaving": "Leaving",
+        "left": "Left"
+      },
+      "doc": {
+        "iqama": "Iqama",
+        "passport": "Passport",
+        "insurance": "Medical insurance",
+        "contract": "Contract",
+        "licence": "Driving licence",
+        "forklift": "Forklift licence"
+      },
+      "doc_state": {
+        "missing": "Not entered",
+        "valid": "Valid",
+        "d60": "Renew soon",
+        "d30": "Under 30 days",
+        "expired": "Expired"
+      },
+      "category": {
+        "labour": "Labour",
+        "staff": "Staff"
+      },
+      "source": {
+        "local": "Local hire",
+        "transfer": "Sponsorship transfer",
+        "visa": "New visa"
+      },
+      "gender": {
+        "m": "Male",
+        "f": "Female"
+      },
+      "contract": {
+        "open": "Open-ended",
+        "fixed": "Fixed term"
+      },
+      "pay": {
+        "basic": "Basic",
+        "housing": "Housing",
+        "transport": "Transport",
+        "wage": "Monthly wage"
+      },
+      "nat": {
+        "sa": "Saudi",
+        "eg": "Egyptian",
+        "in": "Indian",
+        "pk": "Pakistani",
+        "bd": "Bangladeshi",
+        "ye": "Yemeni",
+        "sd": "Sudanese",
+        "ph": "Filipino",
+        "np": "Nepali",
+        "sy": "Syrian",
+        "jo": "Jordanian",
+        "lb": "Lebanese"
+      },
+      "trade": {
+        "labourer": "Labourer",
+        "mason": "Mason",
+        "carpenter": "Carpenter",
+        "steelFixer": "Steel fixer",
+        "plumber": "Plumber",
+        "electrician": "Electrician",
+        "tiler": "Tiler",
+        "painter": "Painter",
+        "plasterer": "Plasterer",
+        "welder": "Welder",
+        "stoneMason": "Stone mason",
+        "operator": "Equipment operator",
+        "driver": "Driver",
+        "heavyDriver": "Heavy vehicle driver",
+        "security": "Security guard",
+        "loader": "Loader",
+        "forklift": "Forklift operator",
+        "mechanic": "Mechanic",
+        "officeBoy": "Office assistant",
+        "foreman": "Foreman",
+        "surveyor": "Surveyor",
+        "safety": "Safety officer",
+        "siteEngineer": "Site engineer",
+        "quantitySurveyor": "Quantity surveyor",
+        "draughtsman": "Draughtsman",
+        "accountant": "Accountant",
+        "administrator": "Administrator",
+        "govRelations": "Government relations officer",
+        "hrOfficer": "HR officer",
+        "salesRep": "Sales representative",
+        "manager": "Manager",
+        "storekeeper": "Storekeeper",
+        "warehouseClerk": "Warehouse clerk",
+        "warehouseSupervisor": "Warehouse supervisor",
+        "dispatcher": "Dispatcher",
+        "cashier": "Cashier",
+        "customerService": "Customer service",
+        "showroomManager": "Showroom manager",
+        "buyer": "Buyer",
+        "developmentManager": "Development manager",
+        "developmentEngineer": "Development engineer",
+        "architect": "Architect",
+        "civilEngineer": "Civil engineer",
+        "supervisionEngineer": "Supervision engineer",
+        "marketing": "Marketing",
+        "legal": "Legal counsel",
+        "investment": "Investment officer"
+      },
+      "people": {
+        "new": "New employee",
+        "created": "Employee {no} added",
+        "search": "Search by name, number, ID or trade",
+        "filter_site": "Workplace",
+        "all_sites": "All workplaces",
+        "filter_status": "Status",
+        "all": "All",
+        "empty": "No employees yet",
+        "empty_desc": "Add the first employee — the number is given once and never reused.",
+        "none_match": "No employee matches",
+        "no_docs": "No documents entered",
+        "doc_line": "{doc}: {state}",
+        "col": {
+          "no": "No.",
+          "name": "Name",
+          "trade": "Trade",
+          "site": "Workplace",
+          "document": "Nearest document",
+          "status": "Status",
+          "wage": "Monthly wage"
+        }
+      },
+      "new": {
+        "title": "New employee",
+        "desc": "Contract first, then documents and bank. What you do not know stays blank.",
+        "steps": "New employee steps",
+        "step_contract": "Contract",
+        "step_docs": "Documents & bank",
+        "source": "How they join",
+        "visas_left": "{count, plural, =0 {no visas left} one {# visa left} other {# visas left}}",
+        "name_ar": "Name (Arabic)",
+        "name_en": "Name (English)",
+        "nationality": "Nationality",
+        "gender": "Gender",
+        "id_no": "National ID / iqama no.",
+        "trade": "Trade",
+        "pick_trade": "Choose a trade",
+        "site": "Workplace",
+        "join": "Joining date",
+        "contract": "Contract",
+        "contract_end": "Contract end",
+        "basic": "Basic salary",
+        "no_pay_note": "Pay is entered by the HR manager — it is not part of your role.",
+        "probation_note": "Probation: 90 days from joining; extended only with the worker's written consent, to 180 at most.",
+        "blanks_note": "Dates you do not have yet stay blank — the file shows them as not entered.",
+        "iqama_visa": "Iqama (once issued)",
+        "iban": "IBAN",
+        "save": "Add employee",
+        "block": {
+          "no_name": "The Arabic name is required",
+          "no_trade": "Choose a trade",
+          "no_join": "The joining date is required",
+          "no_visas": "No unused visas in the establishment file — enter the count in HR settings",
+          "saudi_only": "This trade is reserved for Saudis",
+          "iqama_expired_site": "The iqama has expired — the employee can only be left unassigned",
+          "fixed_needs_end": "A fixed-term contract needs its end date",
+          "bad_basic": "The basic salary must be above zero"
+        },
+        "warn": {
+          "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat",
+          "no_basic": "No basic salary yet — the employee will not be paid until it is entered"
+        }
+      },
+      "file": {
+        "title": "Employee file",
+        "description": "The record, documents, pay and everything that happened to it.",
+        "missing": "Employee not found",
+        "missing_desc": "The record does not exist or is not in your company.",
+        "back": "Back to People",
+        "legacy": "This record is from before the HR update — the migration brings it onto the new card.",
+        "segments": "Employee file sections",
+        "on_probation": "On probation until {end}",
+        "iqama_expired": "The iqama has expired: the employee may not be on a site until it is renewed.",
+        "tile": {
+          "service": "Service",
+          "leave": "Leave balance",
+          "wage": "Monthly wage",
+          "document": "Nearest document"
+        },
+        "years": "{n} years",
+        "days": "{n, plural, one {# day} other {# days}}",
+        "since": "Since {date}",
+        "leave_taken": "{n} days taken",
+        "basic_line": "Basic {basic}",
+        "no_pay": "Pay not entered yet",
+        "doc_sub": "{doc} · {date}",
+        "seg": {
+          "job": "Job",
+          "docs": "Documents",
+          "pay": "Pay",
+          "leave": "Leave",
+          "log": "Log"
+        },
+        "category": "Category",
+        "fixed_until": "Fixed term until {date}",
+        "probation": "Probation",
+        "probation_until": "Until {date}",
+        "probation_confirmed": "Confirmed",
+        "probation_ended": "Ended during probation",
+        "my_file": "My file",
+        "linked_yes": "Linked to a platform user",
+        "linked_no": "Not linked",
+        "gosi": "GOSI (employee / company)",
+        "gosi_line": "{emp}% / {co}%",
+        "iban": "IBAN",
+        "advance": "Advance outstanding",
+        "retro": "Retro difference — {month}",
+        "entitlement": "Annual entitlement",
+        "leave_taken_row": "Taken",
+        "opening": "Opening balance",
+        "balance": "Balance today",
+        "sick_used": "Sick days this year",
+        "log_empty": "Nothing recorded yet",
+        "moved": "Workplace changed",
+        "pay_changed": "Pay changed",
+        "probation_done": "Probation decision recorded",
+        "renewed": "Renewal recorded",
+        "linked": "Platform user updated",
+        "act": {
+          "move": "Move",
+          "pay": "Pay change",
+          "probation": "Probation",
+          "renew": "Record renewal",
+          "link": "Link user"
+        }
+      },
+      "move": {
+        "to": "Move to",
+        "effective": "From",
+        "cost_note": "From this date the employee's cost goes to the new workplace.",
+        "block": {
+          "iqama_expired": "The iqama has expired — only unassigned is allowed",
+          "same_place": "The employee is already there",
+          "left": "The employee has left",
+          "no_date": "Choose the date"
+        }
+      },
+      "paychange": {
+        "kind": "Change",
+        "kinds": {
+          "raise": "Raise",
+          "promotion": "Promotion",
+          "correction": "Correction"
+        },
+        "new_basic": "New basic",
+        "effective": "Effective",
+        "reason": "Reason",
+        "from": "Wage now",
+        "to": "Wage after",
+        "retro_note": "An effective date inside a closed month adds the difference to the supplementary payroll; the closed month is not reopened.",
+        "block": {
+          "bad_basic": "The basic must be above zero",
+          "no_reason": "Give the reason",
+          "no_date": "Choose the effective date",
+          "too_old": "At most one closed month back",
+          "no_change": "The basic is unchanged"
+        },
+        "warn": {
+          "pay_cut": "This lowers the pay — it needs the worker's written consent",
+          "saudi_below_nitaqat": "A Saudi below 4,000 basic does not count fully in Nitaqat"
+        }
+      },
+      "probation": {
+        "decision": "Decision",
+        "confirm": "Confirm",
+        "extend": "Extend",
+        "end": "End during probation",
+        "to": "Extend to",
+        "consent": "Worker's written consent on",
+        "end_note": "Ending during probation owes no end-of-service award; the exit itself is handled by end of service.",
+        "block": {
+          "decided": "Probation is already decided",
+          "extend_needs_consent": "An extension needs the worker's written consent",
+          "extend_too_long": "Probation cannot exceed 180 days",
+          "extend_not_later": "The new end must be after the current one"
+        }
+      },
+      "renew": {
+        "document": "Document",
+        "expiry": "New expiry",
+        "fee": "Fee paid",
+        "note": "The old expiry stays in the log.",
+        "block": {
+          "bad_date": "Choose a future expiry",
+          "passport_first": "Renew the passport first — the iqama cannot outlast it",
+          "not_later": "The new expiry must be after the current one"
+        }
+      },
+      "link": {
+        "user": "Platform user",
+        "pick": "Choose the user",
+        "note": "The linked user opens My file: their own record, pay slips and requests."
+      },
+      "log": {
+        "created": "Record opened — no. {no}, {trade}, {site}",
+        "moved": "Moved from {from} to {to} on {on}",
+        "pay_changed": "Pay changed from {on} — {reason}",
+        "promoted": "Promoted to {trade} from {on} — {reason}",
+        "probation_confirm": "Probation confirmed",
+        "probation_extend": "Probation extended to {to} (consent {consent})",
+        "probation_end": "Ended during probation",
+        "renewed": "{doc} renewed to {to}",
+        "user_linked": "Platform user link changed"
       }
     }
   },

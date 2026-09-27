@@ -106,6 +106,21 @@ describe("the writes", () => {
     await expect(createEmployee(db, payroll, ORG, actor, base, { visas: 3 })).rejects.toBeInstanceOf(HrWriteError)
   })
 
+  it("a visa arrival uses one visa of the establishment file; the last one cannot be spent twice", async () => {
+    seed(`hrSettings/${ORG}`, { organizationId: ORG, establishment: { visas: 1 } })
+    await createEmployee(db, gov, ORG, { uid: "gro", name: "Majed" }, { ...base, source: "visa" }, { visas: 1 })
+    expect(readDoc(`hrSettings/${ORG}`)).toMatchObject({ establishment: { visas: 0 } })
+    // The screen still thinks one is left — the write reads the file again.
+    await expect(createEmployee(db, gov, ORG, { uid: "gro", name: "Majed" }, { ...base, source: "visa" }, { visas: 1 })).rejects.toMatchObject({ blocks: ["no_visas"] })
+  })
+
+  it("the log names a pay change and its day, never the amounts (RL-03)", async () => {
+    const { id } = await createEmployee(db, manager, ORG, actor, base, { visas: 3 })
+    await changePay(db, manager, id, actor, { basic: 2_600, effectiveOn: today, reason: "annual", kind: "raise" })
+    const entry = logOf(id).find((l) => l.kind === "pay_changed") as unknown as { params: Record<string, unknown> }
+    expect(entry.params).toEqual({ on: today, reason: "annual", trade: null })
+  })
+
   it("an expired iqama is refused a site, then moved to unassigned with history", async () => {
     const { id } = await createEmployee(db, manager, ORG, actor, { ...base, siteId: null }, { visas: 3 })
     seed(`employees/${id}`, { ...emp(id), docs: { iqama: plusDays(-2) } })

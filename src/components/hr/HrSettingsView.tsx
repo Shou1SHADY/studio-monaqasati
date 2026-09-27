@@ -89,6 +89,35 @@ export function HrSettingsView({ access }: { access: HrAccess }) {
               />
             </div>
           ))}
+          <div className="space-y-1.5">
+            <Label htmlFor="hr-est-visas">{t("settings.est.visas")}</Label>
+            <Input
+              id="hr-est-visas"
+              type="number"
+              min="0"
+              step="1"
+              dir="ltr"
+              value={draft.establishment.visas ?? ""}
+              onChange={(e) => {
+                const v = e.target.value === "" ? null : Math.max(0, Math.floor(Number(e.target.value)))
+                // A new count is as of today unless the manager says otherwise.
+                setDraft((d) => ({ ...d, establishment: { ...d.establishment, visas: v, visasAsOf: v == null ? null : d.establishment.visasAsOf || new Date().toISOString().slice(0, 10) } }))
+              }}
+              disabled={!canEdit || busy}
+            />
+            <p className="text-[11px] text-muted-foreground">{t("settings.est.visas_note")}</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="hr-est-visas-asof">{t("settings.est.visasAsOf")}</Label>
+            <Input
+              id="hr-est-visas-asof"
+              type="date"
+              dir="ltr"
+              value={draft.establishment.visasAsOf ?? ""}
+              onChange={(e) => setDraft((d) => ({ ...d, establishment: { ...d.establishment, visasAsOf: e.target.value || null } }))}
+              disabled={!canEdit || busy || draft.establishment.visas == null}
+            />
+          </div>
         </div>
       </Panel>
 

@@ -29,6 +29,9 @@ export interface Establishment {
   /** Ministry (MHRSD) establishment number. */
   mol?: string | null
   gosi?: string | null
+  /** Unused work visas in the establishment file, entered by hand with its as-of day (ST-04). */
+  visas?: number | null
+  visasAsOf?: string | null
 }
 
 export interface HrSettings {
@@ -49,7 +52,14 @@ export function normalizeHrSettings(raw: Partial<HrSettings> | null | undefined)
     policies: resolveHrPolicies(raw?.policies),
     businessType: type,
     defaultsAppliedFor: BUSINESS_TYPES.includes(raw?.defaultsAppliedFor as BusinessType) ? (raw!.defaultsAppliedFor as BusinessType) : null,
-    establishment: { name: est.name ?? null, cr: est.cr ?? null, mol: est.mol ?? null, gosi: est.gosi ?? null },
+    establishment: {
+      name: est.name ?? null,
+      cr: est.cr ?? null,
+      mol: est.mol ?? null,
+      gosi: est.gosi ?? null,
+      visas: typeof est.visas === "number" && Number.isInteger(est.visas) && est.visas >= 0 ? est.visas : null,
+      visasAsOf: typeof est.visasAsOf === "string" ? est.visasAsOf : null,
+    },
   }
 }
 

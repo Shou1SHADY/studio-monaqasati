@@ -1525,6 +1525,14 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && isOrgMember(orgId)
         && request.resource.data.get('organizationId', orgId) == orgId
         && hrManager();
+      // A visa arrival recorded by government relations uses one visa — the
+      // count goes down by exactly one and nothing else changes.
+      allow update: if isSignedIn() && isOrgMember(orgId) && hrRole('hr.gov')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['establishment'])
+        && request.resource.data.establishment.diff(resource.data.establishment).affectedKeys().hasOnly(['visas'])
+        && resource.data.establishment.get('visas', 0) is int
+        && resource.data.establishment.get('visas', 0) > 0
+        && request.resource.data.establishment.visas == resource.data.establishment.visas - 1;
       allow delete: if isAdmin();
     }
 

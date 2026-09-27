@@ -89,6 +89,8 @@ const PROC_ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.ap
 
 /** The five HR roles' permissions (HR 1.0, src/lib/hr/access.ts). */
 const HR_ROLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.supervisor", "hr.management"]
+/** People is every HR role's but the supervisor's (he works from his workplaces). */
+const HR_PEOPLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.management"]
 
 export interface NavItem {
   titleKey: string
@@ -323,7 +325,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
         items: [
           // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
           { titleKey: "hr_nav_today", href: "/contractor/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
-          { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          { titleKey: "hr_nav_people", href: "/contractor/hr/people", icon: Users, requiredAnyPermission: HR_PEOPLE_PERMISSIONS },
           { titleKey: "hr_nav_sites", href: "/contractor/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
           { titleKey: "hr_nav_settings", href: "/contractor/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
         ],
@@ -615,7 +617,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
         items: [
           // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
           { titleKey: "hr_nav_today", href: "/supplier/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
-          { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          { titleKey: "hr_nav_people", href: "/supplier/hr/people", icon: Users, requiredAnyPermission: HR_PEOPLE_PERMISSIONS },
           { titleKey: "hr_nav_sites", href: "/supplier/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
           { titleKey: "hr_nav_settings", href: "/supplier/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
         ],
