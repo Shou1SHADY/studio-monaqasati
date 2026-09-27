@@ -8,6 +8,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import { CertificatesPanel } from "@/components/pm/CertificatesPanel"
 import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
@@ -131,6 +132,7 @@ import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmAccess } from "@/hooks/usePmAccess"
+import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
 import { IpcClaimsTab } from "@/components/contractor/IpcClaimsTab"
@@ -213,6 +215,8 @@ type BoqItem = {
   /** PM 1.0: the line requires an inspection before it is measured, and its last result (MS-03). */
   pmInspect?: boolean
   pmWir?: "open" | "pass" | "cond" | "fail" | null
+  /** PM 1.0: the quantity billed on certificates (IPC-01). */
+  billedQuantity?: number
 }
 
 type BoqGroupMeta = {
@@ -812,6 +816,7 @@ export default function ProjectDetailPage() {
         executedQuantity: Number(data.executedQuantity) || 0,
         pmInspect: data.pmInspect === true,
         pmWir: data.pmWir ?? null,
+        billedQuantity: Number(data.billedQuantity) || 0,
       }
     })
     const groups: BoqGroupMeta[] = groupsSnap.docs.map((d) => {
@@ -1945,6 +1950,7 @@ export default function ProjectDetailPage() {
     quantity: parseFloat(String(i.quantity).replace(/,/g, "")) || 0,
     rate: parseFloat(String(i.unitPrice).replace(/,/g, "")) || 0,
     executed: i.executedQuantity || 0,
+    billed: i.billedQuantity || 0,
     gate: { pmInspect: i.pmInspect, pmWir: i.pmWir },
   }))
   const pmActor = { uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }
@@ -3114,7 +3120,21 @@ export default function ProjectDetailPage() {
 
         {/* ── Dynamic section tabs ── */}
         {activeTab === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
-          <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} canEditTerms={can("projects.edit")} />
+          typedProject.pm?.terms ? (
+            <CertificatesPanel
+              projectId={projectId}
+              original={typedProject.pm.original ?? typedProject.pm.terms}
+              lifecycle={lifecycleOf(typedProject)}
+              contractValue={typedProject.budget ?? 0}
+              totals={typedProject.pm as { retentionHeld?: number; advanceRecovered?: number; cutPool?: number }}
+              items={pmItems}
+              access={pmAccess}
+              actor={pmActor}
+              onItemsChanged={() => void loadBoqItems()}
+            />
+          ) : (
+            <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} canEditTerms={can("projects.edit")} />
+          )
         )}
         {activeTab === "store" && dynamicTabs.includes("store" as SectionId) && (
           typedProject.warehouseId ? (

@@ -642,6 +642,14 @@ service cloud.firestore {
                     && pmDuty(projectId, 'measure')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
                     && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['sheetCount']))
+                // …certificates keep the project's running totals — the retention held
+                // (what an addendum's cap is checked against), the advance recovered, the
+                // deductions returned to unbilled, and the certificate count.
+                || (('pm' in resource.data)
+                    && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'ipcOk') || pmDuty(projectId, 'approve'))
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys()
+                         .hasOnly(['ipcCount', 'retentionHeld', 'advanceRecovered', 'cutPool']))
                 // …and whoever records inspections numbers theirs — `pm.wirCount`.
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'qa')
@@ -708,6 +716,15 @@ service cloud.firestore {
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && pmDuty(projectId, 'approve')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['executedQuantity', 'updatedAt']);
+        // …a certificate bills the line (prepare), or gives it back (withdraw).
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['billedQuantity', 'updatedAt'])
+          && request.resource.data.billedQuantity is number
+          && request.resource.data.billedQuantity >= 0
+          && request.resource.data.billedQuantity <= resource.data.get('executedQuantity', 0) + 0.01;
         // …the line's last inspection result is written by quality (`qa`), one of the
         // known states only (WIR-03); which lines require inspection is `approve`'s.
         allow update: if isSignedIn()
@@ -862,6 +879,48 @@ service cloud.firestore {
               || (resource.data.status == 'fail' && request.resource.data.status == 'open'
                   && request.resource.data.attempts.size() == resource.data.attempts.size() + 1))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'attempts', 'updatedAt']);
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 owner certificates (IPC-01…05, RET-01) — `pmCertificates/{NN}`. Seen by
+      // holders of money. Prepared by prep + ipc + client ("int"); approved internally
+      // by ipcOk and NEVER by its preparer ("sub"); certified by ipcOk
+      // ("appr"); withdrawn before submission by its preparer or approve ("void").
+      match /pmCertificates/{certId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmCeilingHas('money');
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'prep') && pmDuty(projectId, 'ipc') && pmDuty(projectId, 'client')
+          && request.resource.data.status == 'int'
+          && request.resource.data.prep == request.auth.uid
+          && request.resource.data.gross is number && request.resource.data.gross > 0
+          && request.resource.data.seq is int;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ((resource.data.status == 'int' && request.resource.data.status == 'sub'
+                && pmDuty(projectId, 'ipcOk')
+                && request.resource.data.appr == request.auth.uid
+                // Two people (IPC-02). A small firm's recorded self-approval needs a company
+                // setting that does not exist yet — until it does, never the preparer.
+                && resource.data.prep != request.auth.uid
+                && request.resource.data.selfApp == false
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'appr', 'apprName', 'apprOn', 'selfApp', 'updatedAt']))
+              || (resource.data.status == 'sub' && request.resource.data.status == 'appr'
+                && pmDuty(projectId, 'ipcOk')
+                && request.resource.data.certBy == request.auth.uid
+                && request.resource.data.certified is number
+                && request.resource.data.certified > 0
+                && request.resource.data.certified <= resource.data.gross + 0.01)
+              || (resource.data.status == 'int' && request.resource.data.status == 'void'
+                && (pmDuty(projectId, 'approve') || (resource.data.prep == request.auth.uid && pmDuty(projectId, 'prep')))
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt'])));
 
         allow delete: if isAdmin();
       }
