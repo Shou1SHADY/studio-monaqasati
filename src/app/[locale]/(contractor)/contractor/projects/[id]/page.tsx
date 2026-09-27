@@ -11,6 +11,7 @@ import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBa
 import { CertificatesPanel } from "@/components/pm/CertificatesPanel"
 import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
+import { HandoverPanel } from "@/components/pm/HandoverPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { PunchPanel } from "@/components/pm/PunchPanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
@@ -133,6 +134,7 @@ import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmAccess } from "@/hooks/usePmAccess"
+import type { Acceptances } from "@/lib/pm/acceptance"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { SectionToggleGrid } from "@/components/contractor/SectionToggleGrid"
 import { ComingSoonTab } from "@/components/contractor/ComingSoonTab"
@@ -158,7 +160,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound } from "lucide-react"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
 
@@ -1965,6 +1967,7 @@ export default function ProjectDetailPage() {
           { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
           { key: "pmWir" as ActiveTab, label: tPm("wir.title"), icon: <SearchCheck size={15} /> },
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
+          { key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> },
         ]
       : []),
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
@@ -3104,6 +3107,18 @@ export default function ProjectDetailPage() {
           />
         )}
         {activeTab === "pmPunch" && typedProject.pm && <PunchPanel projectId={projectId} access={pmAccess} actor={pmActor} />}
+        {activeTab === "pmClose" && typedProject.pm?.terms && (
+          <HandoverPanel
+            projectId={projectId}
+            lifecycle={lifecycleOf(typedProject)}
+            original={typedProject.pm.original ?? typedProject.pm.terms}
+            acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
+            retentionHeld={typedProject.pm.retentionHeld ?? 0}
+            items={pmItems}
+            access={pmAccess}
+            actor={pmActor}
+          />
+        )}
         {activeTab === "pmWir" && typedProject.pm && (
           <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
         )}

@@ -12259,6 +12259,35 @@
           "source_text": "Pick who raised it, and state it if other",
           "wrong_state": "This item has moved on — refresh"
         }
+      },
+      "hnd": {
+        "tab": "Handover & closeout",
+        "title": "Handover to the client",
+        "prov": "Provisional handover",
+        "final": "Final acceptance",
+        "progress": "Progress by value (needs {at}%)",
+        "recorded": "Recorded",
+        "by_on": "{who} · {date}",
+        "dlp_end": "Defects period ends ({days} days, from the contract)",
+        "open_punch": "Open punch items",
+        "cannot": "Cannot be recorded yet",
+        "record_prov": "Record provisional handover",
+        "record_final": "Record final acceptance",
+        "prov_done": "Provisional handover recorded — the defects period started and Finance was told",
+        "final_done": "Final acceptance recorded — the project is handed over and Finance was told",
+        "before_dlp": "The defects period runs until {date}. Record final acceptance early only if the client has granted it.",
+        "dlp_over": "The defects period has ended with no final acceptance recorded.",
+        "ret_held": "Retention held",
+        "ret_claimable": "Claimable at Finance now ({rule})",
+        "ret_note": "Claiming and collecting the retention are Finance's; this project only tells Finance the handover happened.",
+        "block": {
+          "archived": "The project is archived",
+          "not_live": "The project is not live",
+          "already": "Already recorded",
+          "progress": "Progress has not reached {at}% — execution is not complete",
+          "no_provisional": "Record the provisional handover first",
+          "punch_open": "{count, plural, one {# punch item is} other {# punch items are}} still open — close the punch list first"
+        }
       }
     }
   },
