@@ -157,6 +157,12 @@ service cloud.firestore {
       return hrRole('employees.manage') || hrRole('hr.gov') || hrRole('hr.payroll')
         || hrRole('hr.supervisor') || hrRole('hr.management');
     }
+    // A workplace supervisor acts on his own workplaces only (the site names him).
+    function hrSupervises(siteId) {
+      return hrRole('hr.supervisor')
+        && exists(/databases/$(database)/documents/hrSites/$(siteId))
+        && get(/databases/$(database)/documents/hrSites/$(siteId)).data.get('supervisorUserId', '') == request.auth.uid;
+    }
 
     // The project manager of a PM 1.0 project (one born from a handover file).
     function isPmProjectManager(projectId) {
@@ -1660,6 +1666,30 @@ service cloud.firestore {
     // HR 1.0 workplaces (AS-01) — project sites, workshop, warehouse, fleet,
     // showroom, department, head office. Read by every member (people, attendance
     // and cost all point at them); kept by the HR manager; deactivated, never deleted.
+    // Attendance (AT-01…04): one document per workplace and month. Recorded by
+    // the HR manager, payroll or the site's supervisor; the missing-days
+    // declaration by the HR manager or the supervisor only; closed after the
+    // month by any of the three — and after that nothing changes, ever.
+    match /hrAttendance/{id} {
+      allow get: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrSupervises(resource.data.siteId))));
+      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management'))));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && id == request.resource.data.organizationId + '__' + request.resource.data.siteId + '__' + request.resource.data.month
+        && (hrManager() || hrRole('hr.payroll') || hrSupervises(request.resource.data.siteId))
+        && (request.resource.data.get('declarations', []).size() == 0 || hrManager() || hrSupervises(request.resource.data.siteId));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.get('closed', null) == null
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.siteId == resource.data.siteId
+        && request.resource.data.month == resource.data.month
+        && (hrManager() || hrRole('hr.payroll') || hrSupervises(resource.data.siteId))
+        && (request.resource.data.get('declarations', []) == resource.data.get('declarations', [])
+          || hrManager() || hrSupervises(resource.data.siteId));
+      allow delete: if false;
+    }
+
     match /hrSites/{siteId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)

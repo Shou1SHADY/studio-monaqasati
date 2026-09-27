@@ -10,7 +10,7 @@ export default function HrSitesPage() {
   return (
     <PortalLayout>
       <HrShell portal="supplier" tab="sites">
-        {(access) => <HrSitesView access={access} actorName={(profile?.name as string) || ""} />}
+        {(access) => <HrSitesView access={access} portal="supplier" actorName={(profile?.name as string) || ""} />}
       </HrShell>
     </PortalLayout>
   )

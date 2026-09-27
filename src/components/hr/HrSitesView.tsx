@@ -9,7 +9,7 @@
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { Loader2, MapPin, Pencil, Plus, Power } from "lucide-react"
+import { CalendarCheck2, Loader2, MapPin, Pencil, Plus, Power } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -25,15 +25,17 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useToast } from "@/hooks/use-toast"
 import type { HrAccess } from "@/hooks/useHrAccess"
+import { Link } from "@/i18n/routing"
 import { HR_EMPLOYEES, HR_SITES } from "@/lib/hr/collections"
 import { costKindOf, SITE_TYPES, siteBlocks, UNASSIGNED_SITE, type HrSite, type SiteType } from "@/lib/hr/sites"
 import { saveSite, setSiteActive } from "@/lib/hr/site-writes"
 import { HrWriteError } from "@/lib/hr/write-guard"
+import type { HrPortal } from "./HrShell"
 
 type Draft = { id?: string; name: string; type: SiteType; projectId: string; endDate: string; supervisorUserId: string }
 const EMPTY: Draft = { name: "", type: "project", projectId: "", endDate: "", supervisorUserId: "" }
 
-export function HrSitesView({ access, actorName }: { access: HrAccess; actorName: string }) {
+export function HrSitesView({ access, portal, actorName }: { access: HrAccess; portal: HrPortal; actorName: string }) {
   const t = useTranslations("Portal.HR")
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -50,7 +52,24 @@ export function HrSitesView({ access, actorName }: { access: HrAccess; actorName
   const { data: projData } = useCollection(projQ)
   const { orgMembers } = useOrgMembers(orgId)
 
-  const sites = useMemo(() => ((sitesData ?? []) as unknown as HrSite[]).slice().sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || a.name.localeCompare(b.name)), [sitesData])
+  // A supervisor and nothing else sees his own workplaces only.
+  const onlySupervisor = access.ctx.roles.size === 1 && access.ctx.roles.has("supervisor")
+  const sites = useMemo(
+    () =>
+      ((sitesData ?? []) as unknown as HrSite[])
+        .filter((s) => !onlySupervisor || access.ctx.sites.includes(s.id))
+        .sort((a, b) => Number(b.active !== false) - Number(a.active !== false) || a.name.localeCompare(b.name)),
+    [sitesData, onlySupervisor, access.ctx.sites]
+  )
+  const seesAttendance = (siteId: string) => access.allowed("attendance.record", { site: siteId }) || access.ctx.roles.has("management")
+  const attendanceLink = (siteId: string) => (
+    <Button asChild size="sm" variant="outline">
+      <Link href={`/${portal}/hr/sites/${siteId}`}>
+        <CalendarCheck2 size={14} className="me-1.5" aria-hidden="true" />
+        {t("att.open")}
+      </Link>
+    </Button>
+  )
   const headcount = useMemo(() => {
     const m = new Map<string, number>()
     for (const e of (empData ?? []) as Array<{ siteId?: string | null; status?: string | null }>) {
@@ -138,6 +157,7 @@ export function HrSitesView({ access, actorName }: { access: HrAccess; actorName
                     {s.endDate ? ` · ${t("sites.ends", { date: s.endDate })}` : ""}
                   </p>
                 </div>
+                {s.active !== false && seesAttendance(s.id) && attendanceLink(s.id)}
                 {canEdit && (
                   <div className="flex shrink-0 gap-1.5">
                     <Button
@@ -160,6 +180,7 @@ export function HrSitesView({ access, actorName }: { access: HrAccess; actorName
                 <p className="text-sm font-bold">{t("sites.unassigned")}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{t("sites.unassigned_line", { count: headcount.get(UNASSIGNED_SITE) ?? 0 })}</p>
               </div>
+              {!onlySupervisor && seesAttendance(UNASSIGNED_SITE) && attendanceLink(UNASSIGNED_SITE)}
             </li>
           </ul>
         )}
