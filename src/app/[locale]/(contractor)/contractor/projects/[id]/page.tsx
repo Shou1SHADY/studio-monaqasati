@@ -174,6 +174,7 @@ import { NcrPanel } from "@/components/pm/NcrPanel"
 import { VariationsPanel } from "@/components/pm/VariationsPanel"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
 import { ProjectWorkshopPanel } from "@/components/projects/ProjectWorkshopPanel"
+import { ProjectManpowerPanel } from "@/components/projects/ProjectManpowerPanel"
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -3215,11 +3216,20 @@ export default function ProjectDetailPage() {
 
         {/* ── TAB: TEAM ── */}
         {activeTab === "team" && (
-          typedProject.pm ? (
-            <PmTeamPanel projectId={projectId} project={typedProject} access={pmAccess} />
-          ) : (
-            <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
-          )
+          <div className="space-y-8">
+            {typedProject.pm ? (
+              <PmTeamPanel projectId={projectId} project={typedProject} access={pmAccess} />
+            ) : (
+              <ProjectTeamSection projectId={projectId} organizationId={typedProject.organizationId || ""} />
+            )}
+            {/* HR 1.0 (AS-02): the project asks HR for manpower and reads the coverage plan. */}
+            <ProjectManpowerPanel
+              projectId={projectId}
+              projectName={typedProject.name || ""}
+              organizationId={typedProject.organizationId || ""}
+              isPm={Boolean(typedProject.pm) && (typedProject as { projectManagerId?: string | null }).projectManagerId === user?.uid}
+            />
+          </div>
         )}
 
         {activeTab === "purchaseRequests" && (

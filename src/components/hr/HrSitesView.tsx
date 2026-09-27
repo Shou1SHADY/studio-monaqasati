@@ -31,6 +31,7 @@ import { costKindOf, SITE_TYPES, siteBlocks, UNASSIGNED_SITE, type HrSite, type 
 import { saveSite, setSiteActive } from "@/lib/hr/site-writes"
 import { HrWriteError } from "@/lib/hr/write-guard"
 import type { HrPortal } from "./HrShell"
+import { HrManpowerPanel } from "./HrManpowerPanel"
 
 type Draft = { id?: string; name: string; type: SiteType; projectId: string; endDate: string; supervisorUserId: string }
 const EMPTY: Draft = { name: "", type: "project", projectId: "", endDate: "", supervisorUserId: "" }
@@ -114,6 +115,7 @@ export function HrSitesView({ access, portal, actorName }: { access: HrAccess; p
 
   return (
     <div className="space-y-6">
+      <HrManpowerPanel access={access} />
       <Panel
         title={t("sites.title")}
         icon={MapPin}

@@ -14,6 +14,7 @@ import { attendanceId, type WorkplaceMonth } from "@/lib/hr/attendance"
 import { HR_ATTENDANCE, HR_EXITS, HR_INJURIES, HR_PAYROLLS } from "@/lib/hr/collections"
 import type { HrExit } from "@/lib/hr/exit-writes"
 import type { HrInjury } from "@/lib/hr/injuries"
+import { MANPOWER_REQUESTS, type ManpowerRequest } from "@/lib/hr/manpower"
 import type { Payroll } from "@/lib/hr/payroll"
 import { addDays } from "@/lib/hr/statutory"
 
@@ -56,6 +57,9 @@ export function useHrToday(access: HrAccess, today: string) {
   const { data: inj } = useCollection(injQ)
   const { data: ex } = useCollection(exQ)
   const { data: pr } = useCollection(prQ)
+  const answers = access.allowed("manpower.answer")
+  const mpQ = useMemoFirebase(() => (firestore && orgId && answers ? query(collection(firestore, MANPOWER_REQUESTS), where("organizationId", "==", orgId), where("state", "==", "open")) : null), [firestore, orgId, answers])
+  const { data: mp } = useCollection(mpQ)
   return useMemo(
     () => ({
       employees,
@@ -67,7 +71,8 @@ export function useHrToday(access: HrAccess, today: string) {
       injuries: (inj ?? []) as unknown as HrInjury[],
       exits: (ex ?? []) as unknown as HrExit[],
       payrolls: (pr ?? []) as unknown as Payroll[],
+      manpower: (mp ?? []) as unknown as ManpowerRequest[],
     }),
-    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr]
+    [employees, sites, pays, requests, lastWm, thisWm, inj, ex, pr, mp]
   )
 }

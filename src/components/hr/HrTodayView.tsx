@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { Ambulance, CalendarClock, CheckCircle2, Circle, CircleAlert, ClipboardCheck, FileWarning, Hourglass, Inbox, Landmark, Lock, OctagonAlert, Route, UserCheck, Wallet, type LucideIcon } from "lucide-react"
+import { Ambulance, CalendarClock, CheckCircle2, Circle, CircleAlert, ClipboardCheck, FileWarning, Hourglass, Inbox, Landmark, Lock, OctagonAlert, Route, UserCheck, UsersRound, Wallet, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
 import { Panel } from "@/components/module-ui/Panel"
@@ -171,6 +171,7 @@ const KIND_ICON: Record<string, LucideIcon> = {
   wait_post: Hourglass,
   wait_pay: Hourglass,
   wait_advance: Hourglass,
+  manpower: UsersRound,
   doc_due: FileWarning,
   iqama_clock: FileWarning,
   probation_end: UserCheck,

@@ -12,6 +12,7 @@ import type { EmployeePay, HrEmployee } from "./employee"
 import type { HrExit } from "./exit-writes"
 import { injuryState, type HrInjury } from "./injuries"
 import { sitesToClose, type Payroll } from "./payroll"
+import type { ManpowerRequest } from "./manpower"
 import type { HrRequest } from "./requests"
 import type { HrSite } from "./sites"
 import { addDays, daysBetween, monthRange } from "./statutory"
@@ -19,7 +20,7 @@ import { addDays, daysBetween, monthRange } from "./statutory"
 export type TodayGroup = "blocking" | "other" | "requests" | "due"
 export const TODAY_GROUPS: TodayGroup[] = ["blocking", "other", "requests", "due"]
 
-export type TodaySource = "payments" | "warehouses"
+export type TodaySource = "payments" | "warehouses" | "project-management"
 
 export interface TodayItem {
   key: string
@@ -32,6 +33,9 @@ export interface TodayItem {
   /** The first action's label key; never set on a row another module holds. */
   action?: string
   source?: TodaySource
+  /** Held by another module — shown with its source, never a button (TD-03). An incoming
+   * request from another module (a manpower request) has a source AND an action: it is ours to answer. */
+  waiting?: boolean
 }
 
 export interface TodayInput {
@@ -48,6 +52,7 @@ export interface TodayInput {
   requests: HrRequest[]
   payrolls: Payroll[]
   pays: Map<string, EmployeePay>
+  manpower?: ManpowerRequest[]
 }
 
 const DUE_SOON_DAYS = 14
@@ -100,18 +105,23 @@ export function todayItems(i: TodayInput): TodayItem[] {
       if (s.active !== false && !assumesPresence(s.id, s.type) && !recordedToday.has(s.id) && live.some((e) => e.siteId === s.id) && may("attendance.record", s.id) && ctx.roles.has("supervisor"))
         out.push({ key: `sheet:${s.id}`, group: "due", severity: "blue", kind: "sheet_today", params: { site: s.name }, href: `sites/${s.id}`, action: "record" })
 
-  // --- From another module: shown with its source, never a button (TD-03) -------
+  // --- From another module ------------------------------------------------------
+  // What Projects asks of HR is ours to answer (WF-12)…
+  if (may("manpower.answer"))
+    for (const m of i.manpower ?? [])
+      if (m.state === "open") out.push({ key: `mp:${m.id}`, group: "other", severity: "amber", kind: "manpower", params: { project: m.projectName, count: m.count, trade: m.trade, date: m.from }, href: "sites", action: "answer", source: "project-management" })
+  // …what another module holds is shown with its source, never a button (TD-03).
   if (may("exit.manage"))
     for (const x of i.exits) {
-      if (x.state === "leaving" && x.custody?.state === "requested") out.push({ key: `custody:${x.id}`, group: "other", severity: "blue", kind: "wait_custody", params: { name: x.employeeName }, source: "warehouses" })
-      if (x.state === "settled") out.push({ key: `fs:${x.id}`, group: "other", severity: "blue", kind: "wait_settlement", params: { name: x.employeeName }, source: "payments" })
+      if (x.state === "leaving" && x.custody?.state === "requested") out.push({ key: `custody:${x.id}`, group: "other", severity: "blue", kind: "wait_custody", params: { name: x.employeeName }, source: "warehouses", waiting: true })
+      if (x.state === "settled") out.push({ key: `fs:${x.id}`, group: "other", severity: "blue", kind: "wait_settlement", params: { name: x.employeeName }, source: "payments", waiting: true })
     }
   if (may("pay.view"))
     for (const p of i.payrolls)
-      if (p.state === "approved" || p.state === "posted") out.push({ key: `fin:${p.key}`, group: "other", severity: "blue", kind: p.state === "approved" ? "wait_post" : "wait_pay", params: { key: p.key }, source: "payments" })
+      if (p.state === "approved" || p.state === "posted") out.push({ key: `fin:${p.key}`, group: "other", severity: "blue", kind: p.state === "approved" ? "wait_post" : "wait_pay", params: { key: p.key }, source: "payments", waiting: true })
   if (may("request.decide"))
     for (const r of i.requests)
-      if (r.state === "finance") out.push({ key: `adv:${r.id}`, group: "other", severity: "blue", kind: "wait_advance", params: { name: r.employeeName, no: r.no }, source: "payments" })
+      if (r.state === "finance") out.push({ key: `adv:${r.id}`, group: "other", severity: "blue", kind: "wait_advance", params: { name: r.employeeName, no: r.no }, source: "payments", waiting: true })
 
   // --- Due dates ---------------------------------------------------------------
   if (may("documents.manage"))
@@ -147,4 +157,4 @@ export function todayItems(i: TodayInput): TodayItem[] {
 }
 
 /** TD-03 — rows another module holds that carry an action. Must be zero. */
-export const leakage = (items: TodayItem[]) => items.filter((x) => x.group === "other" && (x.action || x.href)).length
+export const leakage = (items: TodayItem[]) => items.filter((x) => x.waiting && (x.action || x.href)).length

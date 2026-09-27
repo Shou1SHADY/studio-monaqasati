@@ -1941,6 +1941,28 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Manpower requests (HR AS-02, WF-12): Projects asks — the project's editor
+    // or its PM 1.0 manager; the HR manager answers with the coverage plan. No
+    // pay inside: the org's members read them.
+    match /manpowerRequests/{requestId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'open'
+        && request.resource.data.requested.by == request.auth.uid
+        && request.resource.data.get('answer', null) == null
+        && (hasOrgPermission('projects.edit') || hasProjectPermission(request.resource.data.projectId, 'projects.edit')
+            || isPmProjectManager(request.resource.data.projectId));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.state == 'open'
+        && (
+          (request.resource.data.state == 'answered' && hrManager()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'answer', 'updatedAt']))
+          || (request.resource.data.state == 'withdrawn' && resource.data.requested.by == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
     // HR requests (LV, AD): filed by the employee — or the HR manager for him —
     // endorsed by the site's supervisor or the line manager, decided by the HR
     // manager, the HR manager's own by management; an advance above the limit

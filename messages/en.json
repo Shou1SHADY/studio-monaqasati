@@ -12940,7 +12940,8 @@
         },
         "src": {
           "payments": "Finance",
-          "warehouses": "Inventory"
+          "warehouses": "Inventory",
+          "project-management": "Projects"
         },
         "k": {
           "iqama_on_site": "{name} is on {site} with an expired iqama",
@@ -12960,7 +12961,8 @@
           "doc_due": "{doc} of {name} — {date}",
           "iqama_clock": "Iqama for {name} due by {date} (90 days from arrival)",
           "probation_end": "Probation of {name} ends {date}",
-          "contract_end": "Contract of {name} ends {date}"
+          "contract_end": "Contract of {name} ends {date}",
+          "manpower": "{project} asks for {count} × {trade} from {date}"
         },
         "a": {
           "move": "Move",
@@ -12973,7 +12975,8 @@
           "record": "Record",
           "renew": "Renew",
           "decide": "Decide",
-          "open": "Open"
+          "open": "Open",
+          "answer": "Answer"
         }
       },
       "back": "Back",
@@ -13946,6 +13949,48 @@
           "bad_leave_ignored": "Leave balance “{value}” ignored",
           "leave_capped": "Leave balance {value} is more than could accrue — capped at {cap}",
           "advance_without_wage": "An advance without a wage is not recorded"
+        }
+      },
+      "mp": {
+        "title": "Manpower requests from Projects",
+        "project_title": "Manpower from HR",
+        "none": "No manpower requested",
+        "ask": "Ask HR for manpower",
+        "ask_desc": "HR answers with who can come and from when — honestly dated.",
+        "count": "How many",
+        "from": "From",
+        "line": "{count} × {trade} from {date}",
+        "state": {
+          "open": "Waiting for HR",
+          "answered": "Answered",
+          "withdrawn": "Withdrawn"
+        },
+        "answer": "Answer with the plan",
+        "plan": "Covered {covered} of {count}",
+        "plan_note": "In order: unassigned now → a site ending within a week → unused visas → hire or temporary labour. Dates are when they can start.",
+        "send": "Send the plan",
+        "answered_ok": "Plan sent to the project",
+        "sent_ok": "Sent to HR",
+        "waiting_hr": "HR has not answered yet",
+        "hr_note": "HR ({name}): {note}",
+        "no_site": "This project has no HR workplace yet — HR links one under Workplaces.",
+        "from_date": "from {date}",
+        "excluded": "Excluded: {list}",
+        "src": {
+          "unassigned": "unassigned now",
+          "site_ending": "freed by a site that ends",
+          "visa": "on unused visas (arrival)",
+          "hire": "to hire",
+          "ajeer": "or temporary labour (Ajeer, ×1.4 cost)"
+        },
+        "why": {
+          "iqama_expired": "iqama expired",
+          "licence_expired": "licence expired"
+        },
+        "block": {
+          "no_trade": "Choose the trade",
+          "bad_count": "A whole number above zero",
+          "no_date": "Choose the start date"
         }
       }
     }
