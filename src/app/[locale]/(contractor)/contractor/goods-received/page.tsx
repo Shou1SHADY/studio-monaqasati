@@ -17,6 +17,7 @@ import { AlertTriangle, ClipboardCheck, Download, ExternalLink, Forward, Loader2
 import { ForwardReceiptDialog } from "@/components/procurement/ForwardReceiptDialog"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { ManualReceiptDialog } from "@/components/procurement/ManualReceiptDialog"
 import { ReceiptDrawer, ReceiptStatePill } from "@/components/procurement/ReceiptDrawer"
 import { ReceiveDeliveryDialog } from "@/components/procurement/ReceiveDeliveryDialog"
@@ -211,12 +212,12 @@ export default function GoodsReceivedPage() {
           description={t("subtitle")}
           action={
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="gap-2" onClick={exportCsv} disabled={loading}>
+              <Button variant="outline" className="gap-2 rounded-xl border border-border bg-card text-muted-foreground shadow-none hover:bg-card hover:text-foreground" onClick={exportCsv} disabled={loading}>
                 <Download size={16} aria-hidden="true" />
                 {t("csv.button")}
               </Button>
               {canReceive && (
-                <Button className="gap-2" onClick={() => setManualOpen(true)}>
+                <Button className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90" onClick={() => setManualOpen(true)}>
                   <PlusCircle size={18} aria-hidden="true" />
                   {t("manual.button")}
                 </Button>
@@ -227,24 +228,7 @@ export default function GoodsReceivedPage() {
 
         {/* Segments + tools */}
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div role="tablist" aria-label={t("title")} className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1">
-            {RECEIPT_SEGMENTS.map((s) => (
-              <button
-                key={s}
-                role="tab"
-                type="button"
-                aria-selected={tab === s}
-                onClick={() => setQuery({ tab: s })}
-                className={cn(
-                  "flex min-h-[40px] items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  tab === s ? "bg-background text-module shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {segTitle[s]}
-                <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", tab === s ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{counts[s]}</span>
-              </button>
-            ))}
-          </div>
+          <ProcChipGroup items={RECEIPT_SEGMENTS.map((s) => ({ id: s, label: segTitle[s], count: counts[s] }))} active={tab} onPick={(s) => setQuery({ tab: s })} label={t("title")} />
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground ltr:left-3 rtl:right-3" aria-hidden="true" />
@@ -266,7 +250,7 @@ export default function GoodsReceivedPage() {
           </div>
         </div>
 
-        <p className="rounded-lg border border-module/20 bg-module/5 p-3 text-xs leading-relaxed text-foreground/80">{segInfo[tab]}</p>
+        <p className="rounded-xl border border-cta/20 bg-cta/5 p-3 text-xs leading-relaxed text-cta">{segInfo[tab]}</p>
 
         {loading ? (
           <div className="flex items-center justify-center p-20">

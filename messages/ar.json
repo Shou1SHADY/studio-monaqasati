@@ -10780,7 +10780,10 @@
         "supplier": "المورد والطلب",
         "status": "الحالة",
         "value": "القيمة قبل الضريبة",
-        "date": "موعد المورد"
+        "date": "موعد المورد",
+        "order_supplier": "الأمر والمورد",
+        "lines": "البنود",
+        "supplier_date": "موعد المورد"
       },
       "pill_returned": "أُعيد لمُعِدّه",
       "date": {
@@ -11081,7 +11084,10 @@
         "proc_manager": "مدير المشتريات",
         "st_footer_final": "كشف نهائي: اكتمل التوريد على هذا الأمر.",
         "st_footer_interim": "كشف مرحلي: يُعاد إصداره بعد كل شحنة حتى يكتمل التوريد."
-      }
+      },
+      "project_filter": "المشروع",
+      "project_all": "كل المشاريع",
+      "more_lines": "+{count} بنود أخرى"
     },
     "ProcReceipts": {
       "forward": {

@@ -10780,7 +10780,10 @@
         "supplier": "Supplier & request",
         "status": "Status",
         "value": "Value excl. VAT",
-        "date": "Supplier date"
+        "date": "Supplier date",
+        "order_supplier": "Order & supplier",
+        "lines": "Lines",
+        "supplier_date": "Supplier date"
       },
       "pill_returned": "Returned to preparer",
       "date": {
@@ -11081,7 +11084,10 @@
         "proc_manager": "Procurement manager",
         "st_footer_final": "Final statement: delivery on this order is complete.",
         "st_footer_interim": "Interim statement: reissued after each shipment until delivery is complete."
-      }
+      },
+      "project_filter": "Project",
+      "project_all": "All projects",
+      "more_lines": "+{count} more lines"
     },
     "ProcReceipts": {
       "forward": {
