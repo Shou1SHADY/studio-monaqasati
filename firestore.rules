@@ -1665,11 +1665,68 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // HR 1.0 — the employee record (EM-01…06). HR staff read the org's people; an
+    // employee reads his own (ES-05). Pay is NEVER on this document (RL-03) — it
+    // lives in employeePay. The permanent number never changes (EM-02); a record
+    // is never deleted (an exit closes it).
     match /employees/{employeeId} {
-      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
-      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow get, list: if isSignedIn() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId)
+            && (hrStaff() || resource.data.get('userId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hrManager() || hrRole('hr.gov'))
+        && !('salary' in request.resource.data);
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.get('no', null) == resource.data.get('no', null)
+        && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null));
+      allow delete: if isAdmin();
+
+      // The undeletable log (EM-06): written by HR staff or the employee himself,
+      // in his own name; read by HR staff and the employee.
+      match /log/{entryId} {
+        allow read: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
+          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow create: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
+          && request.resource.data.by == request.auth.uid
+          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow update, delete: if false;
+      }
+    }
+
+    // HR 1.0 — pay and bank (RL-03): the HR manager, payroll and management — and
+    // the employee himself, read through the link on his record. Government
+    // relations and supervisors never. Payroll only marks a returned IBAN fixed;
+    // the HR manager approves it (RL-02).
+    match /employeePay/{employeeId} {
+      allow get: if isSignedIn() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId)
+            && (hrSeesPay()
+                || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid)));
+      allow list: if isSignedIn() && isOrgMember(resource.data.organizationId) && hrSeesPay();
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId) && hrManager();
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hrManager()
+            || (hrRole('hr.payroll')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
+                && request.resource.data.ibanState == 'fixed'));
+      allow delete: if isAdmin();
+    }
+
+    // The last permanent employee number (EM-02) — only ever moves forward.
+    match /hrCounters/{orgId} {
+      allow get: if isSignedIn() && isOrgMember(orgId);
+      allow create: if isSignedIn() && isOrgMember(orgId) && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.lastEmployeeNo is int && request.resource.data.lastEmployeeNo >= 1;
+      allow update: if isSignedIn() && isOrgMember(orgId) && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.lastEmployeeNo is int
+        && request.resource.data.lastEmployeeNo > resource.data.lastEmployeeNo
+        && request.resource.data.lastEmployeeNo <= resource.data.lastEmployeeNo + 500;
+      allow delete: if isAdmin();
     }
 
     // CRM contacts — scoped to an organization
