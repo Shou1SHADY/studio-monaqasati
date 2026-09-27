@@ -486,8 +486,10 @@ const filteredRfqs = rfqs?.filter((rfq: any) => {
           ))}
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden">
-          <CardHeader className="bg-muted/30 border-b pb-4">
+        {/* The RFQ list is its own bordered card, so it stands apart from
+            Manufacturing's requests above it (customer review, 27 Sep 2026). */}
+        <Card className="border border-border shadow-sm overflow-hidden">
+          <CardHeader className="bg-muted/50 border-b pb-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3 flex-wrap">

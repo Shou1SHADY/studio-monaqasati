@@ -179,10 +179,12 @@ export function MfgPurchaseRequestsPanel({
   }
 
   return (
-    <Card className="overflow-hidden border-none shadow-sm" dir={isRtl ? "rtl" : "ltr"}>
-      <CardHeader className="border-b bg-muted/30 pb-4">
+    // An inbox, not a list: tinted and edged in amber so it never reads as part
+    // of the RFQ list below it (customer review, 27 Sep 2026 — it was white on white).
+    <Card className="overflow-hidden border border-warning/30 border-s-4 border-s-warning bg-warning/5 shadow-sm" dir={isRtl ? "rtl" : "ltr"}>
+      <CardHeader className="border-b border-warning/20 bg-warning/10 pb-4">
         <CardTitle className="flex flex-wrap items-center gap-2 text-base font-black">
-          <Factory size={18} className="text-primary" aria-hidden="true" />
+          <Factory size={18} className="text-warning" aria-hidden="true" />
           {t("mfy_pr_title")}
           {requests.length > 0 && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{requests.length}</Badge>}
         </CardTitle>
