@@ -39,6 +39,12 @@ export async function savePlanTerms(firestore: Firestore, ctx: PmContext, projec
   })
 }
 
+/** plan → live: the original freezes as it stands (TRM-02). `by` says why — the
+ * manager's Start, or the first approved measurement (MS-04). */
+export function goLive<T extends PmBlock>(pm: T, by: "start" | "measurement"): T & { lifecycle: "live" } {
+  return { ...pm, lifecycle: "live", original: pm.original ?? pm.terms ?? null, startedAt: new Date().toISOString(), startedBy: by }
+}
+
 /** Start work: plan → live, and the original contract freezes as it stands. */
 export async function startProject(firestore: Firestore, ctx: PmContext, projectId: string, boqItems: number): Promise<void> {
   const ref = doc(firestore, "projects", projectId)
@@ -51,7 +57,7 @@ export async function startProject(firestore: Firestore, ctx: PmContext, project
     const blocks = startBlocks({ lifecycle: lifecycleOf(data), hasManager: Boolean(data.projectManagerId), boqItems, termProblems: termProblems(data.pm.terms).length })
     if (blocks.length) throw new PmProjectError("blocked", blocks)
     tx.update(ref, {
-      pm: { ...data.pm, lifecycle: "live", original: data.pm.terms, startedAt: new Date().toISOString() },
+      pm: goLive(data.pm, "start"),
       status: "working",
       updatedAt: serverTimestamp(),
     })

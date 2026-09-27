@@ -12036,6 +12036,52 @@
         },
         "signed_line": "Signed on {date} · recorded by {who} · for the client: {signatory}",
         "void_line": "Withdrawn on {date} by {who} — {reason}"
+      },
+      "meas": {
+        "title": "Measurement",
+        "new": "New measurement sheet",
+        "new_title": "Measurement sheet",
+        "new_desc": "Quantities executed per item. Nothing moves until the project manager approves the sheet.",
+        "new_desc_self": "You hold both measure and approve: saving approves the sheet at once, and it is recorded as a self-approval.",
+        "day": "Measured on",
+        "search": "Find an item",
+        "lump_note": "Lump-sum contract: a quantity over an item's remaining is cut at approval — the extra needs a variation order.",
+        "no_boq": "The project has no BOQ items yet — nothing to measure against.",
+        "remaining": "Remaining {qty} {unit}",
+        "unpriced": "Unpriced — adds no money until priced",
+        "over": "{qty} {unit} over the remaining — cut at approval",
+        "qty_for": "Quantity for item {code}",
+        "note": "Note (optional)",
+        "save": "Send to the project manager",
+        "save_self": "Save & approve (self-approval)",
+        "saved": "Sheet {no} sent to the project manager — nothing moves before approval",
+        "saved_self": "Sheet {no} approved by you — recorded as a self-approval",
+        "went_live": "The project moved from “not started” to live — its first approved work. The original contract is frozen.",
+        "approved": "Sheet {no} approved — executed quantities moved",
+        "returned": "Sheet {no} sent back — nothing moved",
+        "not_waiting": "This sheet was already decided",
+        "cut": "measured {qty}",
+        "rule_lump": "Lump sum: executed moves only by an approved sheet, capped at each item's remaining at the moment of approval.",
+        "rule_rem": "Re-measurement: executed moves only by an approved sheet; extra quantity is measured without a variation, and beyond 25% over the contract quantity it is re-rated.",
+        "awaiting": "Sheet {no} by {who} awaits the project manager",
+        "approve": "Approve",
+        "send_back": "Send back",
+        "empty": "No measurement yet",
+        "empty_desc": "The site engineer writes a sheet; the project manager approves it — then executed moves and becomes claimable.",
+        "no": "Sheet {no}",
+        "self": "Self-approved",
+        "line": "Measured {day} by {by} · decided by {ok}",
+        "status": {
+          "wait": "Awaiting the PM",
+          "ok": "Approved",
+          "no": "Sent back"
+        },
+        "block": {
+          "archived": "The project is archived",
+          "no_lines": "Enter a quantity for at least one item",
+          "bad_qty": "Quantities are numbers above zero",
+          "unknown_item": "An item is no longer in the BOQ"
+        }
       }
     }
   },

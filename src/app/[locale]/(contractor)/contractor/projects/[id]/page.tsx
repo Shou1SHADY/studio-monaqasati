@@ -8,6 +8,7 @@ import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
 import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
 import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBanner"
+import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { ProjectTermsPanel, type PmProjectBlock } from "@/components/pm/ProjectTermsPanel"
 import type { ProjectHandover } from "@/lib/crm"
@@ -270,6 +271,7 @@ type ActiveTab = string
 export default function ProjectDetailPage() {
   const t = useTranslations("Portal.Contractor")
   const tShared = useTranslations("Portal.Shared")
+  const tPm = useTranslations("Portal.PM")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const router = useRouter()
@@ -367,7 +369,9 @@ export default function ProjectDetailPage() {
 
   const { data: project, isLoading: projectLoading } = useDoc(projectDocRef)
   // PM 1.0: on a project born from a handover, actions pass the central guard.
-  const pmAccess = usePmAccess(isDeleting ? undefined : projectId, project as { pm?: { lifecycle?: string } | null; status?: string } | null)
+  const pmAccess = usePmAccess(isDeleting ? undefined : projectId, project as { pm?: { lifecycle?: string } | null; status?: string; projectManagerId?: string | null } | null)
+  // Its measurements go through sheets the PM approves — never straight onto the BOQ line (MS-02).
+  const isPmProject = Boolean((project as { pm?: unknown } | null)?.pm)
 
   // Status/category/city narrow the query itself (each is a single extra equality
   // filter on top of projectId, same combinations the old standalone tenders page
@@ -1707,7 +1711,7 @@ export default function ProjectDetailPage() {
                 {executed.toLocaleString()} / {qty ? qty.toLocaleString() : "–"}
               </p>
             </div>
-            <button
+            {!isPmProject && <button
               type="button"
               onClick={() => setMeasureTarget(item)}
               aria-label={t("measure_record_btn")}
@@ -1715,7 +1719,7 @@ export default function ProjectDetailPage() {
               className="h-6 w-6 shrink-0 rounded-md grid place-items-center text-cta hover:bg-cta/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Ruler size={13} />
-            </button>
+            </button>}
           </div>
         )
       },
@@ -1825,7 +1829,7 @@ export default function ProjectDetailPage() {
       },
       size: 175,
     }),
-  ], [t, locale, updateBoqCell, deleteBoqRow, boqGroups, moveItemToGroup, splitItemToNewGroup, handleRowDragStart, deselectedIds, toggleItemSelected])
+  ], [t, locale, updateBoqCell, deleteBoqRow, boqGroups, moveItemToGroup, splitItemToNewGroup, handleRowDragStart, deselectedIds, toggleItemSelected, isPmProject])
 
   const boqTable = useReactTable({
     data: boqItems,
@@ -1929,6 +1933,8 @@ export default function ProjectDetailPage() {
   const tabs: { key: ActiveTab; label: string; icon: React.ReactNode }[] = [
     { key: "info", label: t("proj_tab_info"), icon: <FolderOpen size={15} /> },
     { key: "boq", label: t("proj_tab_boq"), icon: <TableProperties size={15} /> },
+    // PM 1.0: measurement goes through sheets the PM approves (WF-04).
+    ...(typedProject.pm ? [{ key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> }] : []),
     { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
     { key: "purchaseRequests", label: t("proj_tab_purchase_requests"), icon: <ClipboardList size={15} /> },
     { key: "team", label: t("proj_tab_team"), icon: <Users size={15} /> },
@@ -3052,6 +3058,26 @@ export default function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* ── TAB: MEASUREMENT (PM 1.0) ── */}
+        {activeTab === "pmMeasure" && typedProject.pm && (
+          <MeasurementPanel
+            projectId={projectId}
+            basis={typedProject.pm.terms?.basis ?? "rem"}
+            items={boqItems.map((i) => ({
+              id: i.id,
+              code: i.itemNo,
+              description: (isRtl ? i.descriptionAr || i.descriptionEn : i.descriptionEn || i.descriptionAr) || "",
+              unit: i.unit,
+              quantity: parseFloat(String(i.quantity).replace(/,/g, "")) || 0,
+              rate: parseFloat(String(i.unitPrice).replace(/,/g, "")) || 0,
+              executed: i.executedQuantity || 0,
+            }))}
+            access={pmAccess}
+            actor={{ uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }}
+            onItemsChanged={() => void loadBoqItems()}
+          />
         )}
 
         {/* ── TAB: TEAM ── */}

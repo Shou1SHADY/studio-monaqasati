@@ -637,6 +637,11 @@ service cloud.firestore {
                 || (resource.data.get('projectManagerId', '') == request.auth.uid
                     && ('pm' in resource.data)
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))
+                // PM 1.0: whoever measures numbers their sheet — `pm.sheetCount`, nothing else.
+                || (('pm' in resource.data)
+                    && pmDuty(projectId, 'measure')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['sheetCount']))
                 // …and so may whoever the guard allows on the pm block: the terms need
                 // money + (all | approve), everything else on it needs approve.
                 || (('pm' in resource.data)
@@ -674,6 +679,9 @@ service cloud.firestore {
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
+          // On a PM 1.0 project this path never moves "executed" — only an approved sheet does.
+          && (!('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+              || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['executedQuantity']))
           && (
             resource.data.isEditable != false
             ||
@@ -687,6 +695,14 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && resource.data.isEditable != false;
+
+        // PM 1.0 (MS-02): on a PM project "executed" moves only by an approved
+        // measurement sheet — the approver writes it, and only it.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
+          && pmDuty(projectId, 'approve')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['executedQuantity', 'updatedAt']);
       }
 
       // Project team assignments — which org member works on this project and
@@ -774,6 +790,35 @@ service cloud.firestore {
                 && request.resource.data.voidBy == request.auth.uid
                 && request.resource.data.diff(resource.data).affectedKeys()
                      .hasOnly(['status', 'voidOn', 'voidBy', 'voidByName', 'voidReason', 'voidText', 'updatedAt'])));
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 measurement sheets (MS-01…04) — `pmSheets/{NN}`. Written by `measure`
+      // ("wait"), or approved at once when the writer also holds `approve` (marked
+      // self). The approver moves a waiting sheet once: ok or sent back. Never deleted.
+      match /pmSheets/{sheetId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'measure')
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.lines is list && request.resource.data.lines.size() > 0
+          && (request.resource.data.status == 'wait'
+              || (request.resource.data.status == 'ok' && request.resource.data.self == true
+                  && request.resource.data.okBy == request.auth.uid && pmDuty(projectId, 'approve')));
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && pmDuty(projectId, 'approve')
+          && resource.data.status == 'wait'
+          && request.resource.data.status in ['ok', 'no']
+          && request.resource.data.okBy == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'lines', 'okBy', 'okByName', 'okAt', 'self', 'returnNote', 'updatedAt']);
 
         allow delete: if isAdmin();
       }
