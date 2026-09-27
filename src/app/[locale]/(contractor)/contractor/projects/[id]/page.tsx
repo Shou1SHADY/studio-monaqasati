@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react"
+import { useState, useRef, useCallback, useMemo, useEffect, memo, type ComponentProps } from "react"
 import { useParams, useSearchParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
 import { useRouter, Link } from "@/i18n/routing"
@@ -11,6 +11,8 @@ import { ProjectHandoverBanner } from "@/components/contractor/ProjectHandoverBa
 import { CertificatesPanel } from "@/components/pm/CertificatesPanel"
 import { InspectionsPanel } from "@/components/pm/InspectionsPanel"
 import { MeasurementPanel } from "@/components/pm/MeasurementPanel"
+import { Callout } from "@/components/module-ui/Callout"
+import { CloseoutPanel } from "@/components/pm/CloseoutPanel"
 import { HandoverPanel } from "@/components/pm/HandoverPanel"
 import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { PunchPanel } from "@/components/pm/PunchPanel"
@@ -2132,6 +2134,12 @@ export default function ProjectDetailPage() {
           ))}
         </div>
 
+        {typedProject.pm && pmAccess.ctx.archived && (
+          <Callout tone="info" className="mb-4" title={tPm("close.archived_title")}>
+            {tPm("close.read_only")}
+          </Callout>
+        )}
+
         {/* ── TAB: INFO ── */}
         {activeTab === "info" && (
           <div className="space-y-4">
@@ -3108,16 +3116,27 @@ export default function ProjectDetailPage() {
         )}
         {activeTab === "pmPunch" && typedProject.pm && <PunchPanel projectId={projectId} access={pmAccess} actor={pmActor} />}
         {activeTab === "pmClose" && typedProject.pm?.terms && (
-          <HandoverPanel
-            projectId={projectId}
-            lifecycle={lifecycleOf(typedProject)}
-            original={typedProject.pm.original ?? typedProject.pm.terms}
-            acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
-            retentionHeld={typedProject.pm.retentionHeld ?? 0}
-            items={pmItems}
-            access={pmAccess}
-            actor={pmActor}
-          />
+          <div className="space-y-4">
+            <HandoverPanel
+              projectId={projectId}
+              lifecycle={lifecycleOf(typedProject)}
+              original={typedProject.pm.original ?? typedProject.pm.terms}
+              acceptances={(typedProject.pm as { acceptances?: Acceptances }).acceptances ?? {}}
+              retentionHeld={typedProject.pm.retentionHeld ?? 0}
+              items={pmItems}
+              access={pmAccess}
+              actor={pmActor}
+            />
+            <CloseoutPanel
+              projectId={projectId}
+              lifecycle={lifecycleOf(typedProject)}
+              hasClient={typedProject.pm.terms.payer !== "none"}
+              pm={typedProject.pm as ComponentProps<typeof CloseoutPanel>["pm"]}
+              items={pmItems}
+              access={pmAccess}
+              actor={pmActor}
+            />
+          </div>
         )}
         {activeTab === "pmWir" && typedProject.pm && (
           <InspectionsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />

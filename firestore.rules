@@ -121,6 +121,12 @@ service cloud.firestore {
       return data.get('pm', {}).get('lifecycle', '') == 'closed';
     }
 
+    // An archived PM project accepts no change from anyone — its subcollections
+    // included (RL-04, INV-21). Legacy projects have no `pm` block: always open.
+    function projectOpen(projectId) {
+      return !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data);
+    }
+
     // A PM project with no project manager: only the owner approves (TM-01, RL-07).
     function pmDuty(projectId, duty) {
       return !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
@@ -682,6 +688,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish')
               || isPmProjectManager(projectId));
 
@@ -691,6 +698,7 @@ service cloud.firestore {
         // else on a locked row may change.
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           // On a PM 1.0 project this path never moves "executed" — only an approved sheet does.
           && (!('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
@@ -706,6 +714,7 @@ service cloud.firestore {
 
         allow delete: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && resource.data.isEditable != false;
 
@@ -713,12 +722,14 @@ service cloud.firestore {
         // measurement sheet — the approver writes it, and only it.
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && pmDuty(projectId, 'approve')
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['executedQuantity', 'updatedAt']);
         // …a certificate bills the line (prepare), or gives it back (withdraw).
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['billedQuantity', 'updatedAt'])
@@ -729,6 +740,7 @@ service cloud.firestore {
         // known states only (WIR-03); which lines require inspection is `approve`'s.
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && ((pmDuty(projectId, 'qa')
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pmWir', 'updatedAt'])
@@ -746,11 +758,13 @@ service cloud.firestore {
 
         allow create, update: if isAdmin() || (isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && hasOrgPermission('team.manage'));
         // A seat on a PM 1.0 project is never deleted: an exit closes it and the
         // person's records stay in their name (TM-01).
         allow delete: if isAdmin() || (isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && !('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && hasOrgPermission('team.manage'));
         // PM 1.0 (WF-24, RL-07): on a PM project the team is managed by `all`, or by
@@ -758,6 +772,7 @@ service cloud.firestore {
         // the owner's alone (`admin`). Nothing on an archived project.
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
           && (pmCeilingHas('all') || pmDuty(projectId, 'approve'))
@@ -767,6 +782,7 @@ service cloud.firestore {
           && (request.resource.data.pmRole != 'pm' || pmCeilingHas('admin'));
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ('pm' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && !pmArchivedData(get(/databases/$(database)/documents/projects/$(projectId)).data)
           && (pmCeilingHas('all') || pmDuty(projectId, 'approve'))
@@ -777,6 +793,7 @@ service cloud.firestore {
         // created — one member, flagged as such, on a project that names its deal.
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && hasOrgPermission('crm.close')
           && ('sourceOpportunityId' in get(/databases/$(database)/documents/projects/$(projectId)).data)
           && request.resource.data.viaHandover == true
@@ -802,6 +819,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && get(/databases/$(database)/documents/projects/$(projectId)).data.get('pm', {}).get('lifecycle', 'plan') in ['live', 'hold', 'done']
           && (pmDuty(projectId, 'prep') || pmDuty(projectId, 'approve'))
           && request.resource.data.status == 'draft'
@@ -811,6 +829,7 @@ service cloud.firestore {
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && resource.data.status == 'draft'
           && ((request.resource.data.status == 'signed'
                 && pmDuty(projectId, 'approve')
@@ -836,6 +855,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'measure')
           && request.resource.data.by == request.auth.uid
           && request.resource.data.seq is int
@@ -846,6 +866,7 @@ service cloud.firestore {
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'approve')
           && resource.data.status == 'wait'
           && request.resource.data.status in ['ok', 'no']
@@ -865,6 +886,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'qa')
           && request.resource.data.status == 'open'
           && request.resource.data.seq is int
@@ -873,6 +895,7 @@ service cloud.firestore {
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'qa')
           && request.resource.data.status in ['open', 'pass', 'cond', 'fail']
           && ((resource.data.status == 'open' && request.resource.data.status in ['pass', 'cond', 'fail'])
@@ -894,6 +917,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'prep') && pmDuty(projectId, 'ipc') && pmDuty(projectId, 'client')
           && request.resource.data.status == 'int'
           && request.resource.data.prep == request.auth.uid
@@ -902,6 +926,7 @@ service cloud.firestore {
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && ((resource.data.status == 'int' && request.resource.data.status == 'sub'
                 && pmDuty(projectId, 'ipcOk')
                 && request.resource.data.appr == request.auth.uid
@@ -934,6 +959,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'qa')
           && request.resource.data.status == 'open'
           && request.resource.data.by == request.auth.uid
@@ -942,6 +968,7 @@ service cloud.firestore {
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && pmDuty(projectId, 'qa')
           && ((resource.data.status == 'open' && request.resource.data.status == 'fix'
                 && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'fix', 'updatedAt']))
@@ -960,6 +987,7 @@ service cloud.firestore {
 
         allow create, update, delete: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish')
               || isPmProjectManager(projectId));
       }
@@ -974,12 +1002,14 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && request.resource.data.recordedByUserId == request.auth.uid
           && request.resource.data.get('claimId', null) == null;
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && hasProjectPermission(projectId, 'invoices.manage')
           && resource.data.get('claimId', null) == null
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimId'])
@@ -997,12 +1027,14 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && request.resource.data.submittedByUserId == request.auth.uid
           && request.resource.data.status == 'submitted'
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'invoices.manage'));
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && hasProjectPermission(projectId, 'invoices.manage')
           && resource.data.status == 'submitted'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'collectedAt', 'updatedAt'])
@@ -1020,6 +1052,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasProjectPermission(projectId, 'projects.edit') || hasProjectPermission(projectId, 'projects.publish'))
           && request.resource.data.recordedByUserId == request.auth.uid;
 
@@ -1034,6 +1067,7 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && request.resource.data.actorId == request.auth.uid;
 
         allow update, delete: if isAdmin();
@@ -1049,11 +1083,13 @@ service cloud.firestore {
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && request.resource.data.requestedByUserId == request.auth.uid
           && request.resource.data.status == 'pending';
 
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && hasProjectPermission(projectId, 'warehouses.manage')
           && resource.data.status == 'pending'
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedByUserId', 'decidedByUserName', 'decidedAt', 'updatedAt'])
@@ -1063,6 +1099,7 @@ service cloud.firestore {
         // the manufacturing request is written, at any status.
         allow update: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
           && (hasOrgPermission('rfq.manage') || hasOrgPermission('warehouses.manage'))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mfgRequestId', 'mfgRoutedAt', 'mfgRoutedByName', 'updatedAt']);
 

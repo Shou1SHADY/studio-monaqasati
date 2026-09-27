@@ -12288,6 +12288,51 @@
           "no_provisional": "Record the provisional handover first",
           "punch_open": "{count, plural, one {# punch item is} other {# punch items are}} still open — close the punch list first"
         }
+      },
+      "close": {
+        "title": "Closeout",
+        "button": "Close & archive",
+        "blocked": "{count, plural, one {# row blocks} other {# rows block}} closing — what cannot be closed cannot be archived.",
+        "blocked_toast": "It cannot be closed yet — see the closeout list",
+        "not_done": "Close and archive come after final acceptance.",
+        "confirm_title": "Close and archive this project?",
+        "confirm_desc": "Its final figures are frozen and never recomputed, and nothing on it can change again — for anyone, the owner included.",
+        "done": "Closed and archived — its final figures are frozen",
+        "waits_finance": "Waiting on Finance.",
+        "money_hidden": "Money rows are shown to holders of money only.",
+        "archived_title": "Archived — read-only",
+        "archived_note": "Closed on {date} by {who}. These figures were frozen then and are never recomputed.",
+        "read_only": "This project is archived: nothing on it changes, for anyone. Its record stays for reference.",
+        "row": {
+          "punch": "Punch list closed",
+          "prov": "Provisional handover recorded",
+          "final": "Final acceptance recorded",
+          "unpriced": "No executed work left unpriced",
+          "unbilled": "No executed work left unbilled",
+          "in_progress": "No certificate still in progress",
+          "overdue": "No overdue collection",
+          "retention": "Retention released"
+        },
+        "why": {
+          "punch": "{count, plural, one {# item} other {# items}} still open",
+          "prov": "Not recorded yet",
+          "final": "Not recorded yet",
+          "unpriced": "{count, plural, one {# item was} other {# items were}} executed and never priced — closing means giving them up",
+          "unbilled": "{amount} executed and not billed — prepare the final certificate",
+          "in_progress": "{count, plural, one {# certificate is} other {# certificates are}} awaiting approval or certification",
+          "overdue": "{amount} past its due date and not collected",
+          "retention": "{amount} retention held and not yet released"
+        },
+        "snap": {
+          "contract": "Contract value",
+          "earned": "Earned (approved executed × rate)",
+          "certified": "Certified",
+          "retention": "Retention held at close",
+          "contract_days": "Contract duration",
+          "actual_days": "Actual duration (start to final acceptance)",
+          "delay": "Delay",
+          "cost_note": "Cost and margin join the snapshot when the cost section is built — never an invented figure."
+        }
       }
     }
   },
