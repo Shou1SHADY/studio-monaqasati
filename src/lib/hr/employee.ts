@@ -57,6 +57,8 @@ export interface HrEmployee {
   /** Sick days used in the current service year, and which year. */
   sick?: { year: number; days: number } | null
   hajjTaken?: boolean
+  /** Contact details — changed only by an approved data-update request (ES-03). */
+  contact?: { mobile?: string | null; address?: string | null; emergency?: string | null } | null
 }
 
 export interface EmployeePay {

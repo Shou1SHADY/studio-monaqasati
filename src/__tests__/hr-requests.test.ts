@@ -157,6 +157,18 @@ describe("the writes", () => {
     expect(pay("e1").advance).toMatchObject({ amount: 5_000, balance: 5_000 })
   })
 
+  it("a data update is a request: an IBAN needs the bank's letter; HR's approval applies it (ES-03)", async () => {
+    await expect(fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "data", data: { field: "iban", value: "SA44 2000 0001 2345 6789 1234" } }, opts)).rejects.toMatchObject({ blocks: ["no_document"] })
+    const a = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "data", data: { field: "iban", value: "sa44 2000 0001 2345 6789 1234", document: "Bank letter 55/2026" } }, opts)
+    expect(a.no).toBe("HQ-2026/001")
+    expect(requestNoDisplay(a.no, "ar")).toBe("ط.ص-2026/001")
+    await decideRequest(db, hrm, a.id, who(hrm), "approve", "", opts)
+    expect(pay("e1")).toMatchObject({ iban: "SA4420000001234567891234", ibanState: "ok" })
+    const b = await fileRequest(db, worker, ORG, who(worker), { employeeId: "e1", kind: "data", data: { field: "mobile", value: "0550000000" } }, opts)
+    await decideRequest(db, hrm, b.id, who(hrm), "approve", "", opts)
+    expect(emp("e1")).toMatchObject({ contact: { mobile: "0550000000" } })
+  })
+
   it("only the employee himself or the HR manager files", async () => {
     await expect(fileRequest(db, sup, ORG, who(sup), { employeeId: "e1", kind: "leave", leave }, opts)).rejects.toMatchObject({ code: "no_role" })
   })

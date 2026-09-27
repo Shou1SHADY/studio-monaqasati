@@ -6,18 +6,19 @@
 // nothing but the reason: the screen is not a guard, but it never shows a
 // door it would refuse.
 
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import { CalendarCheck2, FileUser, LayoutDashboard, Lock, MapPin, Receipt, Settings2, Users, BarChart3, Loader2 } from "lucide-react"
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { ModuleHeader, type ModuleKpi, type ModuleTab } from "@/components/module-ui/ModuleHeader"
 import { useHrAccess, type HrAccess } from "@/hooks/useHrAccess"
+import { useRouter } from "@/i18n/routing"
 import type { HrTab } from "@/lib/hr/access"
 
 export type HrPortal = "contractor" | "supplier"
 
 /** Tabs built so far — an optional feature's tab appears once it is built. */
-export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "settings"]
+export const HR_BUILT_TABS: readonly HrTab[] = ["today", "people", "sites", "payroll", "settings", "me"]
 
 const ICON: Partial<Record<HrTab, typeof Users>> = {
   today: LayoutDashboard,
@@ -54,6 +55,13 @@ export function HrShell({
   const tabs = access.tabs.filter((x) => HR_BUILT_TABS.includes(x))
   const rail: ModuleTab[] = tabs.map((x) => ({ id: x, label: t(`tab.${x}`), href: hrHref(portal, x), icon: ICON[x] }))
   const mayOpen = tabs.includes(tab)
+  const router = useRouter()
+  // TD-01 — the module's home is Today; a person whose role has no Today (an
+  // employee with My file only) lands on his first tab instead of a refusal.
+  const first = tabs[0]
+  useEffect(() => {
+    if (!access.isLoading && tab === "today" && !mayOpen && first) router.replace(hrHref(portal, first))
+  }, [access.isLoading, tab, mayOpen, first, portal, router])
 
   return (
     <div className="space-y-6">

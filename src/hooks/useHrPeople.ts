@@ -14,7 +14,8 @@ export function useHrPeople(orgId: string | null, enabled = true) {
   const firestore = useFirestore()
   const empQ = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, HR_EMPLOYEES), where("organizationId", "==", orgId)) : null), [firestore, orgId, enabled])
   const { data: empData, isLoading } = useCollection(empQ)
-  const sitesQ = useMemoFirebase(() => (firestore && orgId && enabled ? query(collection(firestore, HR_SITES), where("organizationId", "==", orgId)) : null), [firestore, orgId, enabled])
+  // Workplaces are readable by every member (My file names his own); only the people are gated.
+  const sitesQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, HR_SITES), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: sitesData } = useCollection(sitesQ)
   return useMemo(() => {
     const employees = ((empData ?? []) as unknown as HrEmployee[]).slice().sort((a, b) => (a.no ?? 0) - (b.no ?? 0))

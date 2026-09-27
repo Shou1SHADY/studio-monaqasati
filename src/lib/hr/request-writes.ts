@@ -13,10 +13,12 @@ import type { Holiday } from "./leave"
 import { LEAVE_RULES, type LeaveType } from "./leave"
 import {
   advanceQuote,
+  dataBlocks,
   leaveQuote,
   mayCancel,
   REQUEST_NUMBER_TYPE,
   sickUsedIn,
+  type DataFields,
   type HrRequest,
   type HrRequestKind,
   type Stamp,
@@ -52,6 +54,7 @@ export interface FileRequestInput {
   kind: HrRequestKind
   leave?: { type: LeaveType; from: string; to: string; excessUnpaid: boolean; travel: boolean; note?: string | null }
   advance?: { amount: number; reason: string }
+  data?: DataFields
   /** The site's supervisor — the line manager (RL-04) — as the site names him. */
   supervisor?: { employeeId: string | null; userId: string | null } | null
 }
@@ -92,6 +95,11 @@ export async function fileRequest(firestore: Firestore, ctx: HrContext, orgId: s
       const q = leaveQuote(emp, l, { holidays: opts.holidays, others: opts.others })
       if (q.blocks.length) throw new HrWriteError("blocked", q.blocks)
       body = { leave: { type: l.type, from: l.from, to: l.to, days: q.days, balance: q.balance, fromBalance: q.fromBalance, unpaidDays: q.unpaidDays, travel: l.travel, sick: q.sick, note: l.note?.trim() || null } }
+    } else if (input.kind === "data") {
+      const d = input.data!
+      const blocks = dataBlocks(d)
+      if (blocks.length) throw new HrWriteError("blocked", blocks)
+      body = { data: { field: d.field, value: d.field === "iban" ? d.value.replace(/\s+/g, "").toUpperCase() : d.value.trim(), document: d.document?.trim() || null } }
     } else {
       const a = input.advance!
       const p = pay?.exists() ? (pay.data() as EmployeePay) : null
@@ -146,6 +154,16 @@ export async function decideRequest(
       tx.update(reqRef, { state: "declined", decision, updatedAt: serverTimestamp() })
       log(tx, firestore, emp, actor, `${r.kind}_declined`, { no: r.no })
       state = "declined"
+      return
+    }
+    if (r.kind === "data") {
+      // ES-03 — applied by the HR manager's approval; the employee never edits his record.
+      const d = r.data!
+      if (d.field === "iban") tx.set(doc(firestore, HR_PAY, r.employeeId), { employeeId: r.employeeId, organizationId: r.organizationId, iban: d.value, ibanState: "ok", updatedAt: serverTimestamp() }, { merge: true })
+      else tx.update(doc(firestore, HR_EMPLOYEES, r.employeeId), { [`contact.${d.field}`]: d.value, updatedAt: serverTimestamp() })
+      tx.update(reqRef, { state: "approved", decision, updatedAt: serverTimestamp() })
+      log(tx, firestore, emp, actor, "data_updated", { no: r.no, field: d.field })
+      state = "approved"
       return
     }
     if (r.kind === "leave") {

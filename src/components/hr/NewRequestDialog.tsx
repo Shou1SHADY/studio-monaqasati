@@ -26,7 +26,7 @@ import type { HrActor } from "@/lib/hr/employee-writes"
 import { hrMoney, todayDay } from "@/lib/hr/format"
 import { LEAVE_RULES, LEAVE_TYPES, type LeaveType } from "@/lib/hr/leave"
 import { fileRequest } from "@/lib/hr/request-writes"
-import { advanceQuote, leaveQuote, requestNoDisplay, type HrRequest, type HrRequestKind } from "@/lib/hr/requests"
+import { advanceQuote, DATA_FIELDS, dataBlocks, leaveQuote, requestNoDisplay, type DataField, type HrRequest, type HrRequestKind } from "@/lib/hr/requests"
 import type { HrSite } from "@/lib/hr/sites"
 import { HrWriteError } from "@/lib/hr/write-guard"
 
@@ -64,6 +64,9 @@ export function NewRequestDialog({
   const [note, setNote] = useState("")
   const [amount, setAmount] = useState("")
   const [reason, setReason] = useState("")
+  const [field, setField] = useState<DataField>("iban")
+  const [value, setValue] = useState("")
+  const [document, setDocument] = useState("")
 
   const mine = existing.filter((r) => r.employeeId === emp.id)
   const others = mine.filter((r) => r.kind === "leave" && r.leave && ["pending", "endorsed", "approved"].includes(r.state)).map((r) => ({ from: r.leave!.from, to: r.leave!.to }))
@@ -73,7 +76,7 @@ export function NewRequestDialog({
     kind === "advance"
       ? advanceQuote(pay, { amount: Number(amount), reason }, { policies: access.settings.policies, today, contractEnd: emp.contract?.type === "fixed" ? emp.contract.end : null, pendingAdvance })
       : null
-  const blocks: string[] = lq ? lq.blocks : (aq?.blocks ?? []).filter((b) => b !== "no_wage" || Boolean(pay))
+  const blocks: string[] = lq ? lq.blocks : kind === "data" ? dataBlocks({ field, value, document }) : (aq?.blocks ?? []).filter((b) => b !== "no_wage" || Boolean(pay))
   const warnings: string[] = lq ? lq.warnings : (aq?.warnings ?? [])
   const site = sites.find((s) => s.id === emp.siteId)
 
@@ -91,6 +94,7 @@ export function NewRequestDialog({
           kind,
           leave: kind === "leave" ? { type, from, to, excessUnpaid, travel, note } : undefined,
           advance: kind === "advance" ? { amount: Number(amount), reason } : undefined,
+          data: kind === "data" ? { field, value, document } : undefined,
           supervisor: site ? { employeeId: site.supervisorEmployeeId ?? null, userId: site.supervisorUserId ?? null } : null,
         },
         { policies: access.settings.policies, others, pendingAdvance }
@@ -167,6 +171,38 @@ export function NewRequestDialog({
           </div>
         )}
 
+        {kind === "data" && (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="du-field">{t("req.data_field")}</Label>
+              <Select value={field} onValueChange={(v) => setField(v as DataField)} disabled={busy}>
+                <SelectTrigger id="du-field">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATA_FIELDS.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {t(`data_field.${f}`)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="du-value">{t("req.new_value")}</Label>
+              <Input id="du-value" dir={field === "iban" || field === "mobile" ? "ltr" : "auto"} value={value} onChange={(e) => setValue(e.target.value)} disabled={busy} />
+            </div>
+            {field === "iban" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="du-doc">{t("req.bank_document")}</Label>
+                <Input id="du-doc" value={document} onChange={(e) => setDocument(e.target.value)} disabled={busy} />
+                <p className="text-[11px] text-muted-foreground">{t("req.bank_document_note")}</p>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t("req.data_note")}</p>
+          </div>
+        )}
+
         {kind === "advance" && aq && (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -199,7 +235,7 @@ export function NewRequestDialog({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             {t("cancel")}
           </Button>
-          <Button onClick={() => void submit()} disabled={busy || blocks.length > 0 || (kind === "leave" ? !from || !to : !(Number(amount) > 0))}>
+          <Button onClick={() => void submit()} disabled={busy || blocks.length > 0 || (kind === "leave" ? !from || !to : kind === "advance" ? !(Number(amount) > 0) : !value.trim())}>
             {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
             {t("req.send")}
           </Button>

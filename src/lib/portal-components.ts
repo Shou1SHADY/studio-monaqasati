@@ -31,6 +31,7 @@ import {
   ShoppingBasket,
   Users,
   PackageCheck,
+  FileUser,
   ShieldCheck,
   Briefcase,
   Receipt,
@@ -331,6 +332,8 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "hr_nav_sites", href: "/contractor/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
           { titleKey: "hr_nav_payroll", href: "/contractor/hr/payroll", icon: Receipt, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.management"] },
           { titleKey: "hr_nav_settings", href: "/contractor/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
+          // ES-00 — My file is every member's on the record: ungated (the page says so when there is no record).
+          { titleKey: "hr_nav_me", href: "/contractor/hr/me", icon: FileUser },
         ],
       },
     ],
@@ -626,6 +629,8 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "hr_nav_sites", href: "/supplier/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
           { titleKey: "hr_nav_payroll", href: "/supplier/hr/payroll", icon: Receipt, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.management"] },
           { titleKey: "hr_nav_settings", href: "/supplier/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
+          // ES-00 — My file is every member's on the record: ungated (the page says so when there is no record).
+          { titleKey: "hr_nav_me", href: "/supplier/hr/me", icon: FileUser },
         ],
       },
     ],

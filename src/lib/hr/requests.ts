@@ -14,15 +14,39 @@ import { balanceSplit, leaveBalance, leaveDays, leaveEligibility, LEAVE_RULES, s
 import { advanceInstalment, advanceMonths, wageOf } from "./pay"
 import { addDays, serviceYears, type HrPolicies } from "./statutory"
 
-export const HR_REQUEST_KINDS = ["leave", "advance"] as const
+export const HR_REQUEST_KINDS = ["leave", "advance", "data"] as const
 export type HrRequestKind = (typeof HR_REQUEST_KINDS)[number]
 
 /** pending → (endorsed) → approved | declined | finance → approved | declined; not started → cancelled. */
 export const HR_REQUEST_STATES = ["pending", "endorsed", "approved", "declined", "finance", "cancelled"] as const
 export type HrRequestState = (typeof HR_REQUEST_STATES)[number]
 
-/** The yearly sequence codes — shown ط.إ / ط.سل in Arabic. */
-export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV" }
+/** The yearly sequence codes — shown ط.إ / ط.سل / ط.ص in Arabic. */
+export const REQUEST_NUMBER_TYPE: Record<HrRequestKind, string> = { leave: "LV", advance: "AV", data: "HQ" }
+
+/** ES-03 — what an employee may ask to change; he never edits his own record. */
+export const DATA_FIELDS = ["iban", "mobile", "address", "emergency"] as const
+export type DataField = (typeof DATA_FIELDS)[number]
+
+export interface DataFields {
+  field: DataField
+  value: string
+  /** The supporting document (a bank letter for an IBAN) — its reference; attachments come later (EM-07). */
+  document?: string | null
+}
+
+export type DataBlock = "no_value" | "bad_iban" | "no_document"
+
+export function dataBlocks(input: { field: DataField; value: string; document?: string | null }): DataBlock[] {
+  const out: DataBlock[] = []
+  const v = input.value.trim()
+  if (!v) out.push("no_value")
+  if (input.field === "iban") {
+    if (v && !/^SA\d{22}$/.test(v.replace(/\s+/g, "").toUpperCase())) out.push("bad_iban")
+    if (!input.document?.trim()) out.push("no_document")
+  }
+  return out
+}
 
 export interface Stamp {
   by: string
@@ -78,6 +102,7 @@ export interface HrRequest {
   state: HrRequestState
   leave?: LeaveFields | null
   advance?: AdvanceFields | null
+  data?: DataFields | null
   endorsement?: Stamp | null
   decision?: (Stamp & { ownFlagged?: boolean }) | null
   /** Set when an advance goes to Finance — Finance reads by it, before and after deciding. */
@@ -213,5 +238,5 @@ export function requestActions(ctx: HrContext, r: HrRequest, opts: { today: stri
 /** The request's number as a person reads it (ط.إ / ط.سل in Arabic). */
 export function requestNoDisplay(no: string, locale: string): string {
   if (locale !== "ar") return no
-  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-")
+  return no.replace(/^LV-/, "ط.إ-").replace(/^AV-/, "ط.سل-").replace(/^HQ-/, "ط.ص-")
 }

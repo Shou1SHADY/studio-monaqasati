@@ -553,6 +553,7 @@
       "hr_nav_sites": "Workplaces",
       "hr_nav_payroll": "Payroll",
       "hr_nav_settings": "HR settings",
+      "hr_nav_me": "My file",
       "component_hr_desc": "Employees and salaries",
       "component_crm": "CRM",
       "component_crm_desc": "Customer relationships — coming in careful, incremental steps",
@@ -13259,7 +13260,8 @@
         "objection_upheld": "Objection decided: penalty upheld — {code}",
         "objection_cancelled": "Objection decided: penalty cancelled — {code}",
         "exit_started": "End of service started — {reason}, last day {lastDay}",
-        "settlement_approved": "Settlement approved — last day {lastDay}"
+        "settlement_approved": "Settlement approved — last day {lastDay}",
+        "data_updated": "Details updated by request {no} — {field}"
       },
       "violation": {
         "late15": "Late up to 15 min",
@@ -13372,7 +13374,8 @@
         "new_advance": "New advance",
         "kind": {
           "leave": "Leave",
-          "advance": "Advance"
+          "advance": "Advance",
+          "data": "Data update"
         },
         "leave_type": "Type",
         "from": "From",
@@ -13440,7 +13443,14 @@
           "excess_unpaid": "Part of this leave is unpaid — deducted in payroll.",
           "over_limit": "Above the HR limit — decided in Finance after HR's view.",
           "past_contract": "Repayment runs past the contract's end — the rest comes from the final settlement."
-        }
+        },
+        "new_data": "Update my details",
+        "data_field": "What to change",
+        "new_value": "New value",
+        "bank_document": "Bank letter reference",
+        "bank_document_note": "A new IBAN needs the bank's letter; HR checks it before approving.",
+        "data_note": "You never edit your record yourself — the HR manager checks and approves the change.",
+        "document_ref": "document {ref}"
       },
       "payroll": {
         "state": {
@@ -13729,7 +13739,7 @@
         "task_saved": "Saved",
         "certificate": "Service certificate",
         "cert_title": "Service certificate",
-        "cert_body": "We certify that {name}, ID {id}, worked with us as {trade} from {join} to {last}.",
+        "cert_body": "{gender, select, f {We certify that {name}, ID {id}, worked with us as {trade} from {join} to {last}.} other {We certify that {name}, ID {id}, worked with us as {trade} from {join} to {last}.}}",
         "cert_close": "{gender, select, f {This certificate is issued at her request} other {This certificate is issued at his request}}, without any liability on the company.",
         "block": {
           "no_reason": "Choose the reason",
@@ -13743,6 +13753,57 @@
           "no_wage": "No wage on record",
           "sent": "Already sent to Finance",
           "bad_amount": "Enter a valid amount"
+        }
+      },
+      "data_field": {
+        "iban": "IBAN",
+        "mobile": "Mobile",
+        "address": "Address",
+        "emergency": "Emergency contact"
+      },
+      "me": {
+        "no_record": "You are not on the employee record yet — ask the HR manager to link your account.",
+        "segments": "My file sections",
+        "seg": {
+          "home": "Home",
+          "requests": "My requests",
+          "leave": "Attendance & leave",
+          "pay": "My pay",
+          "docs": "Documents & details"
+        },
+        "card": "My card",
+        "line_manager": "My line manager",
+        "eos_info": "End-of-service award to date — information",
+        "eos_note": "What you would receive if the contract ended today; on resignation it would be {resignation} (art. 85). Not a decision.",
+        "held_by": "With: {name}",
+        "holder": {
+          "line_manager": "Your line manager",
+          "hr": "The HR manager",
+          "management": "Management",
+          "finance": "Finance"
+        },
+        "reason": "Reason: {text}",
+        "month_by_month": "Month by month",
+        "att_line": "absent {absent} · sick {sick} · overtime {ot} h",
+        "no_payslips": "No paid month yet",
+        "payslips": "Payslips",
+        "paid_on": "paid {date}",
+        "details": "My details",
+        "details_note": "To change a detail, use “Update my details”.",
+        "slip": {
+          "month_wage": "Wage for {days} days",
+          "absence": "Absence ({days} days)",
+          "overtime": "Overtime ({hours} h, art. 107)",
+          "commission": "Commission",
+          "gross": "Gross",
+          "gosi": "GOSI — your share",
+          "sick": "Sick leave ({q} days at 75%, {zero} unpaid — art. 117)",
+          "unpaid": "Unpaid leave ({days} days)",
+          "penalty": "Penalty — {code}, {on}",
+          "penalties": "Penalties",
+          "advance": "Advance instalment",
+          "net": "Net paid",
+          "retro": "Retro pay difference"
         }
       }
     }

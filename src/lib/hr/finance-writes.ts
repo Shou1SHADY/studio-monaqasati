@@ -8,10 +8,10 @@
 import { doc, getDoc, serverTimestamp, writeBatch, type Firestore } from "firebase/firestore"
 import { postToLedger } from "../accounting/post"
 import { postHrAdvance, postHrEos, postHrPay, postHrPayPayment, postHrPayReturn, postHrSettlement, type HrCostRow, type PostingResult } from "../accounting/posting-rules"
-import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
+import { HR_EVENTS, HR_EXITS, HR_PAY, HR_PAYROLLS, HR_PAYSLIPS, HR_REQUESTS, HR_SETTLEMENTS } from "./collections"
 import type { EmployeePay } from "./employee"
 import type { HrSettlement } from "./exit-writes"
-import { payrollId, payrollTotals, type Payroll } from "./payroll"
+import { payrollId, payrollTotals, type Payroll, type PayrollLine, type SupplementaryLine } from "./payroll"
 import { eventId } from "./payroll-writes"
 import type { HrRequest } from "./requests"
 import { monthRange, r2 } from "./statutory"
@@ -77,6 +77,38 @@ export function transferAmount(p: Payroll): number {
   return r2(t.net - t.heldNet)
 }
 
+/** `hrPayslips/{payrollDocId}__{employeeId}` — one per paid line, the employee's to read (ES-04). */
+export const payslipId = (payrollDocId: string, employeeId: string) => `${payrollDocId}__${employeeId}`
+
+type AnyLine = PayrollLine | SupplementaryLine
+
+/** Payslips open when the money leaves (fin:PAID): written after the payment, in chunks, best-effort —
+ * a failure is logged and the next payment of the line writes it again. */
+async function writePayslips(firestore: Firestore, orgId: string, p: Payroll, lines: AnyLine[], paidOn: string) {
+  for (let i = 0; i < lines.length; i += 400) {
+    const batch = writeBatch(firestore)
+    for (const l of lines.slice(i, i + 400)) {
+      batch.set(doc(firestore, HR_PAYSLIPS, payslipId(p.id, l.employeeId)), {
+        organizationId: orgId,
+        payrollId: p.id,
+        key: p.key,
+        month: p.month,
+        kind: p.kind,
+        employeeId: l.employeeId,
+        employeeUserId: l.userId ?? null,
+        line: l,
+        paidOn,
+        createdAt: serverTimestamp(),
+      })
+    }
+    try {
+      await batch.commit()
+    } catch (err) {
+      console.error("Payslips not written:", p.key, err)
+    }
+  }
+}
+
 /** fin:PAID — salaries transferred. Payslips open and the Mudad window starts. */
 export async function recordPayrollPaid(firestore: Firestore, a: FinanceActor, orgId: string, p: Payroll, books: Books): Promise<void> {
   need(a)
@@ -88,6 +120,8 @@ export async function recordPayrollPaid(firestore: Firestore, a: FinanceActor, o
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { state: "paid", paid: { ...by, date: books.date }, updatedAt: serverTimestamp() })
   batch.update(doc(firestore, HR_EVENTS, eventId(orgId, `hr:PAY:${p.key}`)), { state: "paid", paid: { ...by, date: books.date }, updatedAt: serverTimestamp() })
   await batch.commit()
+  const lines: AnyLine[] = p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines
+  await writePayslips(firestore, orgId, p, lines.filter((l) => !l.held), books.date)
 }
 
 type LineRef = { employeeId: string; no: number; net: number; held: boolean }
@@ -122,6 +156,8 @@ export async function payHeldLine(firestore: Firestore, a: FinanceActor, orgId: 
   await book(firestore, a, orgId, postHrPayPayment({ sourceId: `${p.key}:held:${l.no}`, date: books.date, amount: l.net, bankAccount: books.bankAccount, description: `سداد راتب موقوف ${p.key}` }), books, batch)
   batch.update(doc(firestore, HR_PAYROLLS, p.id), { [`paidHeld.${employeeId}`]: { ...stamp(a), date: books.date }, updatedAt: serverTimestamp() })
   await batch.commit()
+  const line = (p.kind === "supplementary" ? (p.supplementary ?? []) : p.lines).find((x) => x.employeeId === employeeId)
+  if (line) await writePayslips(firestore, orgId, p, [line], books.date)
 }
 
 /** Pay out an approved advance (hr:PR → fin:PRPAID): payroll takes it back in instalments. */

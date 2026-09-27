@@ -44,6 +44,7 @@ export function HrRequestList({ access, requests, portal, showEmployee = true, e
   const what = (r: HrRequest) => {
     if (r.kind === "leave" && r.leave) return `${t(`leave_type.${r.leave.type}`)} · ${hrDate(r.leave.from, locale)} → ${hrDate(r.leave.to, locale)} · ${t("file.days", { n: r.leave.days })}`
     if (r.kind === "advance" && r.advance) return `${t("req.kind.advance")}${access.seesPay(r.employeeId) ? ` · ${hrMoney(r.advance.amount)}` : ""}`
+    if (r.kind === "data" && r.data) return `${t("req.kind.data")} · ${t(`data_field.${r.data.field}`)}: ${r.data.field === "iban" && !access.seesPay(r.employeeId) ? "•••" : r.data.value}${r.data.document ? ` · ${t("req.document_ref", { ref: r.data.document })}` : ""}`
     return t(`req.kind.${r.kind}`)
   }
 

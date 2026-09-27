@@ -1726,7 +1726,7 @@ service cloud.firestore {
       // Management decides the HR manager's own leave (LV-05): only its effects.
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
         && hrRole('hr.management')
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'updatedAt']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']);
       allow delete: if isAdmin();
 
       // The undeletable log (EM-06): written by HR staff or the employee himself,
@@ -1767,7 +1767,11 @@ service cloud.firestore {
                 && request.resource.data.ibanState == 'returned')
             // An approved advance: management (the HR manager's own) or Finance (above the limit).
             || ((hrRole('hr.management') || hrFinance())
-                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['advance', 'updatedAt'])));
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['advance', 'updatedAt']))
+            // The HR manager's own data update, decided by management (ES-03, LV-05).
+            || (hrRole('hr.management')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
+                && request.resource.data.ibanState == 'ok'));
       allow delete: if isAdmin();
     }
 
@@ -1798,6 +1802,19 @@ service cloud.firestore {
             && hrFinance())
         );
       allow delete: if false;
+    }
+
+    // Payslips (ES-04): written by Finance once the payroll is paid, one per
+    // line; the employee reads his own; nothing changes them afterwards.
+    match /hrPayslips/{payslipId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hrFinance()
+        && payslipId == request.resource.data.payrollId + '__' + request.resource.data.employeeId
+        && exists(/databases/$(database)/documents/hrPayrolls/$(request.resource.data.payrollId))
+        && get(/databases/$(database)/documents/hrPayrolls/$(request.resource.data.payrollId)).data.state == 'paid';
+      allow update, delete: if false;
     }
 
     // The outbox to Finance (§7.2): one document per event key, written once by
@@ -1920,7 +1937,7 @@ service cloud.firestore {
             || resource.data.get('employeeUserId', '') == request.auth.uid
             || (resource.data.kind == 'advance' && hrFinance()))));
       allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
-        && request.resource.data.kind in ['leave', 'advance']
+        && request.resource.data.kind in ['leave', 'advance', 'data']
         && request.resource.data.state == 'pending'
         && request.resource.data.filedBy.by == request.auth.uid
         && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))

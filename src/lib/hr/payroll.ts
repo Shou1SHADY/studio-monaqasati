@@ -25,6 +25,8 @@ export type PayrollState = (typeof PAYROLL_STATES)[number]
 
 export interface PayrollLine extends PayLine {
   employeeId: string
+  /** The employee's platform user — his payslip is his to read (ES-04). */
+  userId?: string | null
   no: number
   name: string
   idNo: string | null
@@ -37,6 +39,8 @@ export interface PayrollLine extends PayLine {
   held: boolean
   heldReason: "iban_returned" | "iban_unapproved" | "no_iban" | null
   attendance: Pick<EmployeeMonth, "present" | "absent" | "sick" | "permission" | "declared" | "overtimeHours">
+  /** Every deduction with its reason (ES-04): unpaid leave days, sick days by band, each penalty. */
+  reasons?: { unpaidDays: number; sickThreeQuarters: number; sickUnpaid: number; penalties: Array<{ code: string; on: string; deducted: number }> }
   /** Sick days used in the service year after this month (art. 117 bands carry across months). */
   sickUsed: number
   sickYear: number
@@ -49,6 +53,7 @@ export interface PayrollLine extends PayLine {
 
 export interface SupplementaryLine {
   employeeId: string
+  userId?: string | null
   no: number
   name: string
   idNo: string | null
@@ -193,6 +198,7 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
     const leaveSet = new Set([...leave.unpaid, ...leave.sick])
     let absent = 0
     for (const wm of closed) for (const [d, s] of Object.entries(wm.days ?? {})) if (s.listed.includes(e.id) && s.ex?.[e.id]?.status === "absent" && !leaveSet.has(d)) absent++
+    const pen = monthPenalties(input.violations ?? [], e.id, month, wageOf(pay))
     const line = payLine({
       pay,
       nationality: e.nationality,
@@ -200,7 +206,7 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
       month,
       attendance: { absent, overtimeHours: att.overtimeHours, sickThreeQuarters: split.threeQuarters, sickUnpaid: split.unpaid + split.beyond, unpaid: leave.unpaid.length },
       advance: pay.advance ?? null,
-      penalties: monthPenalties(input.violations ?? [], e.id, month, wageOf(pay)).total,
+      penalties: pen.total,
     })
     const site = input.sites.find((s) => s.id === e.siteId)
     const costKind: CostKind = e.siteId && site ? costKindOf(site.type) : "admin"
@@ -211,6 +217,7 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
     lines.push({
       ...line,
       employeeId: e.id,
+      userId: e.userId ?? null,
       no: e.no,
       name: e.names?.ar ?? "",
       idNo: e.idNo ?? null,
@@ -222,6 +229,17 @@ export function computePayroll(input: ComputeInput): { lines: PayrollLine[]; mis
       held: heldReason !== null,
       heldReason,
       attendance: { present: att.present, absent, sick: sickDates.size, permission: att.permission, declared: att.declared, overtimeHours: att.overtimeHours },
+      reasons: {
+        unpaidDays: leave.unpaid.length,
+        sickThreeQuarters: split.threeQuarters,
+        sickUnpaid: split.unpaid + split.beyond,
+        penalties: pen.items
+          .filter((x) => x.deducted > 0)
+          .map((x) => {
+            const v = (input.violations ?? []).find((y) => y.id === x.id)
+            return { code: v?.code ?? "", on: v?.on ?? "", deducted: x.deducted }
+          }),
+      },
       sickUsed: usedBefore + sickDates.size,
       sickYear,
       eosAccrual: r2(monthlyEosAccrual(line.wage, years) * share),
@@ -244,6 +262,7 @@ export function computeSupplementary(month: string, employees: HrEmployee[], pay
     const heldReason = heldOf(pay)
     out.push({
       employeeId: e.id,
+      userId: e.userId ?? null,
       no: e.no,
       name: e.names?.ar ?? "",
       idNo: e.idNo ?? null,
