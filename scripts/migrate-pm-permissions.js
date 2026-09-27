@@ -3,11 +3,18 @@
 // permission ids in src/lib/permissions.ts never reach an existing
 // organisation's `teamGroups` documents on their own.
 //
-//   `pm.manage` → every group holding `projects.edit` (it runs projects today)
+//   a group holding `projects.edit` AND a money permission (offers.accept,
+//   po.approve, invoices.manage, rfq.manage) → `pm.manage` — it runs projects
+//   and their spend, so it gets the project manager's ceiling (money, approve)
 //
-// `pm.cost` (QS & cost control) and `pm.site` (site engineer) are NOT inferred:
-// nothing in the old catalogue says who is a quantity surveyor or a site
-// engineer. The owner ticks them in Team → groups.
+//   a group holding `projects.edit` with NO money permission → `pm.site` — it
+//   works projects on site (a site supervisor), so it gets the site engineer's
+//   ceiling: measure, daily, request, receive, inspect, safety — no prices,
+//   approves nothing
+//
+// `pm.cost` (QS & cost control) is NOT inferred: nothing in the old catalogue
+// says who is a quantity surveyor. The owner ticks it in Team → groups. A group
+// that already holds any pm.* id is left alone — the owner has decided it.
 //
 // Without a pm.* id a member holds no duty on a PM 1.0 project (one born from a
 // handover file) unless their group is '*' — legacy projects are unaffected.
@@ -53,8 +60,14 @@ initializeApp({
 })
 const db = getFirestore()
 
-// granted permission → the existing permission that earns it
-const GRANTS = [{ grant: "pm.manage", when: "projects.edit" }]
+const MONEY = ["offers.accept", "po.approve", "invoices.manage", "rfq.manage"]
+const PM_IDS = ["pm.manage", "pm.cost", "pm.site"]
+
+/** The system role a group's existing permissions earn, or none. */
+function grantFor(perms) {
+  if (!perms.includes("projects.edit") || perms.some((p) => PM_IDS.includes(p))) return []
+  return [perms.some((p) => MONEY.includes(p)) ? "pm.manage" : "pm.site"]
+}
 
 ;(async () => {
   console.log(`${target.toUpperCase()} · project ${projectId} · ${apply ? "APPLYING" : "dry run — nothing will be written"}\n`)
@@ -64,7 +77,7 @@ const GRANTS = [{ grant: "pm.manage", when: "projects.edit" }]
     const data = d.data()
     const perms = Array.isArray(data.permissions) ? data.permissions : []
     if (perms.includes("*")) continue
-    const add = GRANTS.filter((g) => perms.includes(g.when) && !perms.includes(g.grant)).map((g) => g.grant)
+    const add = grantFor(perms)
     if (add.length) plan.push({ id: d.id, org: data.organizationId || "?", name: data.name || data.key || "?", add })
   }
   if (!plan.length) {
