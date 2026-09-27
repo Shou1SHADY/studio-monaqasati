@@ -407,7 +407,7 @@ export function ChartOfAccountsView({ portal }: { portal: CrmPortal }) {
       title={t("acc_nav_coa")}
       description={t("acc_coa_desc")}
       icon={ListTree}
-      toolbar={<AccountingToolbar data={data} showProject={false} />}
+      toolbar={<AccountingToolbar data={data} showBranch={false} />}
       exportXbrl={false}
       exportDoc={() => {
         if (data.isLoading) return null

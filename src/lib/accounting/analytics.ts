@@ -8,11 +8,12 @@
 
 import { ACC, CHART_OF_ACCOUNTS, naturalSign } from "./accounts"
 import { aggregate, nodeNatural, LEDGER_EPOCH, type BalanceMap, type LedgerFilter, type PeriodWindows } from "./balances"
+import { lineInBranch } from "./branches"
 import { round2, type AccountingPeriod, type JournalEntry, type JournalLine } from "./journal"
 import type { FiscalPeriod } from "./periods"
 
 function lineMatches(line: JournalLine, filter: LedgerFilter): boolean {
-  if (filter.branch && line.branch !== filter.branch) return false
+  if (filter.branch && !lineInBranch(line, filter.branch, filter.projectBranches)) return false
   if (filter.project && line.project !== filter.project) return false
   if (filter.costCenter && line.costCenter !== filter.costCenter) return false
   return true

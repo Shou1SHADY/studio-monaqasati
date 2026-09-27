@@ -60,7 +60,7 @@ export interface AccountingData {
   setScale: (scale: MoneyScale) => void
   filter: LedgerFilter
   setFilter: (f: LedgerFilter) => void
-  projects: Array<{ id: string; name: string }>
+  projects: Array<{ id: string; name: string; region?: string | null }>
 }
 
 export function useAccounting(): AccountingData {
@@ -112,7 +112,7 @@ export function useAccounting(): AccountingData {
   }, [firestore, organizationId])
   const { data: projectsData } = useCollection(projectsQuery)
   const projects = useMemo(
-    () => ((projectsData || []) as Array<{ id: string; name: string }>).map((p) => ({ id: p.id, name: p.name })),
+    () => ((projectsData || []) as Array<{ id: string; name: string; region?: string | null }>).map((p) => ({ id: p.id, name: p.name, region: p.region ?? null })),
     [projectsData]
   )
 
@@ -136,11 +136,15 @@ export function useAccounting(): AccountingData {
     [prefs.periodKey, prefs.customFrom, prefs.customTo, fiscalYear, startMonth, today]
   )
   const [rawFilter, setFilter] = useState<LedgerFilter>({})
-  // Per-project financials are a customisation: with the switch off, no stale
-  // project choice may keep narrowing the books.
+  // Financials by branch are a customisation: with the switch off, no stale
+  // branch choice may keep narrowing the books. A line finds its branch through
+  // its project, so the filter carries the org's project → branch map.
   const filter = useMemo<LedgerFilter>(
-    () => (settings.projectReports ? rawFilter : { ...rawFilter, project: null }),
-    [rawFilter, settings.projectReports]
+    () =>
+      settings.branchReports
+        ? { ...rawFilter, project: null, projectBranches: settings.projectBranches }
+        : { ...rawFilter, project: null, branch: null, projectBranches: null },
+    [rawFilter, settings.branchReports, settings.projectBranches]
   )
 
   const windows = useMemo(

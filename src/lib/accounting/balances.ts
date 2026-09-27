@@ -9,6 +9,7 @@
 //   closing  — everything up to the period end (balance sheet, trial balance)
 
 import { naturalSign, ACCOUNT_BY_CODE, type CashFlowClass } from "./accounts"
+import { lineInBranch, type ProjectBranches } from "./branches"
 import { round2, type JournalEntry } from "./journal"
 
 export interface AccountMovement {
@@ -22,7 +23,10 @@ export interface AccountMovement {
 export type BalanceMap = Record<string, AccountMovement>
 
 export interface LedgerFilter {
+  /** A branch id, or UNASSIGNED_BRANCH for lines that belong to none. */
   branch?: string | null
+  /** How a line without its own branch finds one: through its project. */
+  projectBranches?: ProjectBranches | null
   project?: string | null
   costCenter?: string | null
 }
@@ -31,7 +35,7 @@ function lineMatches(
   line: { branch?: string | null; project?: string | null; costCenter?: string | null },
   filter: LedgerFilter
 ): boolean {
-  if (filter.branch && line.branch !== filter.branch) return false
+  if (filter.branch && !lineInBranch(line, filter.branch, filter.projectBranches)) return false
   if (filter.project && line.project !== filter.project) return false
   if (filter.costCenter && line.costCenter !== filter.costCenter) return false
   return true

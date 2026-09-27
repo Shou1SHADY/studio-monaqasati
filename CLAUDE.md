@@ -229,8 +229,10 @@ project MATERIAL ISSUES at snapshotted cost; not automated: VAT settlement, expe
 guarantee margins) ·
 `accounting_settings` (doc id = orgId; the module is OFF until `enabled: true`;
 `fiscalYearStartMonth` 1–12 defines Q1/H1/FY on every screen, `displayScale`
-units|thousands|millions is the default presentation; `projectReports` — statements
-by project, OFF by default, a per-client customisation; `customerTermDays`/
+units|thousands|millions is the default presentation; `branchReports` — statements
+by branch (Riyadh office, Jeddah office…; replaced per-project 27 Sep 2026), OFF by default, a per-client
+customisation, with `branches` and `projectBranches` (project → branch; a line's branch is its own
+`branch` or its project's, else "not assigned" — `src/lib/accounting/branches.ts`); `customerTermDays`/
 `supplierTermDays` time the cash projection; `whtRates` overrides the WHT table) ·
 `accounting_zakat` (`{orgId}__{fy}` — the zakat working paper: overrides,
 adjustments, Hijri/Gregorian rate; never the ledger) ·

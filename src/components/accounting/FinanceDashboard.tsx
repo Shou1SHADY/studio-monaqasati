@@ -8,7 +8,7 @@ import {
   BarChart3,
   BookOpen,
   Boxes,
-  Briefcase,
+  Building2,
   CheckCircle2,
   FilePlus2,
   FileSpreadsheet,
@@ -36,7 +36,6 @@ import {
   expenseBreakdown,
   liquidity,
   monthlyTrend,
-  projectProfitability,
   type MonthPoint,
 } from "@/lib/accounting/analytics"
 import { formatMoney, formatMoneyCompact } from "@/lib/accounting/display"
@@ -48,6 +47,7 @@ import { AccountingToolbar, ScaleCaption, periodLabel, periodRangeText } from ".
 import { EmptyBooks, Kpi, LoadingBooks, SOURCE_LABEL_KEY } from "./AccountingParts"
 import { StatementTreeTable } from "./StatementTreeTable"
 import { AccountBreakdownSheet } from "./AccountBreakdownSheet"
+import { branchProfitability, UNASSIGNED_BRANCH } from "@/lib/accounting/branches"
 import { CashConversionCycleCard } from "./LockedCashView"
 import { accountNode } from "./AccountBreakdownSheet"
 import { CHART_INK, CHART_SERIES } from "./chart-palette"
@@ -156,7 +156,11 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
     () => agingReport(entries, { accounts: [ACC.suppliersPayable], side: "credit", asOf: data.period.to, filter: data.filter }),
     [entries, data.period.to, data.filter]
   )
-  const projects = useMemo(() => projectProfitability(entries, data.period.from, data.period.to), [entries, data.period.from, data.period.to])
+  const branches = useMemo(
+    () => branchProfitability(entries, data.period.from, data.period.to, data.settings.branches, data.settings.projectBranches),
+    [entries, data.period.from, data.period.to, data.settings.branches, data.settings.projectBranches]
+  )
+  const branchName = (id: string) => (id === UNASSIGNED_BRANCH ? t("acc_branch_unassigned") : data.settings.branches.find((b) => b.id === id)?.name ?? id)
   const recent = useMemo(
     () => [...entries].sort((a, b) => (a.date === b.date ? b.entryNumber - a.entryNumber : a.date < b.date ? 1 : -1)).slice(0, 6),
     [entries]
@@ -422,17 +426,17 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
         </div>
       </AccountingSection>
 
-      {/* Per-project results are part of the per-project financials switch. */}
-      {data.settings.projectReports && (
-      <AccountingSection collapsible id="projects" defaultOpen={false} title={t("acc_dash_projects_title")} icon={Briefcase} summary={String(projects.length)} action={<ScaleCaption scale={data.scale} />}>
-          {projects.length === 0 ? (
-            <p className="p-6 text-center text-xs text-muted-foreground">{t("acc_dash_no_projects")}</p>
+      {/* Results by branch are part of the per-branch financials switch. */}
+      {data.settings.branchReports && data.settings.branches.length > 0 && (
+      <AccountingSection collapsible id="branches" defaultOpen={false} title={t("acc_dash_branches_title")} icon={Building2} summary={String(data.settings.branches.length)} action={<ScaleCaption scale={data.scale} />}>
+          {branches.length === 0 ? (
+            <p className="p-6 text-center text-xs text-muted-foreground">{t("acc_dash_no_branch_results")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-xs font-black text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2.5 text-start">{t("acc_filter_project")}</th>
+                    <th className="px-4 py-2.5 text-start">{t("acc_filter_branch")}</th>
                     <th className="px-4 py-2.5 text-end">{t("acc_kpi_revenue")}</th>
                     <th className="px-4 py-2.5 text-end">{t("acc_dash_cost")}</th>
                     <th className="px-4 py-2.5 text-end">{t("acc_dash_profit")}</th>
@@ -440,9 +444,9 @@ function DashboardBody({ portal, data, canDocuments, canPost }: { portal: CrmPor
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.slice(0, 8).map((p) => (
-                    <tr key={p.project} className="border-t">
-                      <td className="px-4 py-2.5 font-semibold">{p.projectName || data.projects.find((x) => x.id === p.project)?.name || p.project}</td>
+                  {branches.map((p) => (
+                    <tr key={p.branch} className="border-t">
+                      <td className={cn("px-4 py-2.5 font-semibold", p.branch === UNASSIGNED_BRANCH && "text-muted-foreground")}>{branchName(p.branch)}</td>
                       <td className="px-4 py-2.5 text-end"><Money value={p.revenue} /></td>
                       <td className="px-4 py-2.5 text-end"><Money value={p.cost} /></td>
                       <td className="px-4 py-2.5 text-end font-bold"><Money value={p.profit} /></td>

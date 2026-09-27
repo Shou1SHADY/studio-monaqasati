@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
+import { UNASSIGNED_BRANCH } from "@/lib/accounting/branches"
 import { cn } from "@/lib/utils"
 import type { AccountingData } from "@/hooks/useAccounting"
 import { MONEY_SCALES } from "@/lib/accounting/display"
@@ -34,12 +35,12 @@ export function periodLabel(period: FiscalPeriod, locale: string): string {
 export function AccountingToolbar({
   data,
   showPeriod = true,
-  showProject = true,
+  showBranch = true,
   showScale = true,
 }: {
   data: AccountingData
   showPeriod?: boolean
-  showProject?: boolean
+  showBranch?: boolean
   showScale?: boolean
 }) {
   const t = useTranslations("Portal.Shared")
@@ -166,21 +167,23 @@ export function AccountingToolbar({
         </>
       )}
 
-      {/* Financials by project are a per-client customisation (finance review,
-          23 Sep 2026) — the filter appears only where Settings switched it on. */}
-      {showProject && data.settings.projectReports && data.projects.length > 0 && (
+      {/* Financials by branch are a per-client customisation (customer review,
+          27 Sep 2026 — it replaced the per-project filter) — the filter appears
+          only where Settings switched it on and named the branches. */}
+      {showBranch && data.settings.branchReports && data.settings.branches.length > 0 && (
         <div className="w-52">
           <SearchableSelect
             size="sm"
             className="h-9"
-            ariaLabel={t("acc_filter_project")}
-            value={data.filter.project || "__all__"}
-            onChange={(v) => data.setFilter({ ...data.filter, project: v === "__all__" ? null : v })}
+            ariaLabel={t("acc_filter_branch")}
+            value={data.filter.branch || "__all__"}
+            onChange={(v) => data.setFilter({ ...data.filter, branch: v === "__all__" ? null : v })}
             options={[
-              { value: "__all__", label: t("acc_filter_all_projects") },
-              ...data.projects.map((p) => ({ value: p.id, label: p.name })),
+              { value: "__all__", label: t("acc_filter_all_branches") },
+              ...data.settings.branches.map((b) => ({ value: b.id, label: b.name })),
+              { value: UNASSIGNED_BRANCH, label: t("acc_branch_unassigned") },
             ]}
-            placeholder={t("acc_filter_project")}
+            placeholder={t("acc_filter_branch")}
             searchPlaceholder={t("acc_search_options")}
             noResultsText={t("acc_no_options")}
           />

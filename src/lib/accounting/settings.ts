@@ -8,6 +8,7 @@ import { doc, serverTimestamp, setDoc, type Firestore } from "firebase/firestore
 import { ACCOUNTING_SETTINGS } from "./journal"
 import { isMoneyScale, type MoneyScale } from "./display"
 import { normalizeStartMonth } from "./periods"
+import { normalizeBranches, normalizeProjectBranches, type Branch, type ProjectBranches } from "./branches"
 
 export interface AccountingSettings {
   enabled: boolean
@@ -15,11 +16,16 @@ export interface AccountingSettings {
   fiscalYearStartMonth: number
   /** The org's default presentation; each reader may override it for themselves. */
   displayScale: MoneyScale
-  /** Statements filtered by project. Off in the standard product (finance review,
-   * 23 Sep 2026): per-project, per-branch and per-region financials are a
-   * customisation switched on for the client who asks for them. Lines still
-   * carry their project, so job costing in Projects is unaffected. */
-  projectReports: boolean
+  /** Statements filtered by branch — "Riyadh office", "Jeddah office" (customer
+   * review, 27 Sep 2026; it replaced the per-project switch). Off in the
+   * standard product: per-branch/per-region financials are a customisation
+   * switched on for the client who asks for them. Lines still carry their
+   * project, so job costing in Projects is unaffected. */
+  branchReports: boolean
+  /** The org's branches, named by Finance. */
+  branches: Branch[]
+  /** Which branch each project reports under (project id → branch id). */
+  projectBranches: ProjectBranches
   /** Days after booking a client is expected to pay, and the company to pay a
    * supplier — the cash projection's timing when a line carries no due date. */
   customerTermDays: number
@@ -41,7 +47,9 @@ export const DEFAULT_ACCOUNTING_SETTINGS: AccountingSettings = {
   enabled: false,
   fiscalYearStartMonth: 1,
   displayScale: "units",
-  projectReports: false,
+  branchReports: false,
+  branches: [],
+  projectBranches: {},
   customerTermDays: 30,
   supplierTermDays: 30,
   whtRates: {},
@@ -64,11 +72,14 @@ function rates(value: unknown): Record<string, number> {
 }
 
 export function normalizeAccountingSettings(raw: Partial<AccountingSettings> | null | undefined): AccountingSettings {
+  const branches = normalizeBranches(raw?.branches)
   return {
     enabled: raw?.enabled === true,
     fiscalYearStartMonth: normalizeStartMonth(raw?.fiscalYearStartMonth ?? DEFAULT_ACCOUNTING_SETTINGS.fiscalYearStartMonth),
     displayScale: isMoneyScale(raw?.displayScale) ? raw.displayScale : DEFAULT_ACCOUNTING_SETTINGS.displayScale,
-    projectReports: raw?.projectReports === true,
+    branchReports: raw?.branchReports === true,
+    branches,
+    projectBranches: normalizeProjectBranches(raw?.projectBranches, branches),
     customerTermDays: termDays(raw?.customerTermDays, DEFAULT_ACCOUNTING_SETTINGS.customerTermDays),
     supplierTermDays: termDays(raw?.supplierTermDays, DEFAULT_ACCOUNTING_SETTINGS.supplierTermDays),
     whtRates: rates(raw?.whtRates),
@@ -90,15 +101,15 @@ export async function saveAccountingSettings(
   }
 ): Promise<void> {
   const id = input.existingDocId || input.organizationId
-  await setDoc(
-    doc(firestore, ACCOUNTING_SETTINGS, id),
-    {
-      organizationId: input.organizationId,
-      ...normalizeAccountingSettings(input.settings),
-      updatedAt: serverTimestamp(),
-      updatedByUserId: input.actor.id,
-      updatedByUserName: input.actor.name,
-    },
-    { merge: true }
-  )
+  const data = {
+    organizationId: input.organizationId,
+    ...normalizeAccountingSettings(input.settings),
+    updatedAt: serverTimestamp(),
+    updatedByUserId: input.actor.id,
+    updatedByUserName: input.actor.name,
+  }
+  // Each written field replaces what was stored — a plain merge deep-merges
+  // maps, so a project taken out of its branch would stay in it. Fields this
+  // version does not write (older ones) are left as they are.
+  await setDoc(doc(firestore, ACCOUNTING_SETTINGS, id), data, { mergeFields: Object.keys(data) })
 }

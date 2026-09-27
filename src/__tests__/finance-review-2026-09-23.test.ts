@@ -162,7 +162,7 @@ describe("finance review 2026-09-23", () => {
     assert.equal(jd.sections[0].rows.length, booked.reduce((s, e) => s + e.lines.length, 0))
     assert.equal(trialBalanceExportDoc(base, trialBalance(w2), t).xbrl, undefined)
     assert.ok(exportHtml(isDoc).includes("<table>"))
-    // Settings default: per-project financials off
-    assert.equal(normalizeAccountingSettings(null).projectReports, false)
+    // Settings default: per-branch financials off (they replaced per-project, 27 Sep 2026)
+    assert.equal(normalizeAccountingSettings(null).branchReports, false)
   })
 })

@@ -27,6 +27,7 @@ import { toIsoTimestamp } from "@/lib/accounting/analytics"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingSection, AccountingShell } from "./AccountingShell"
 import { periodLabel, periodRangeText } from "./AccountingToolbar"
+import { BranchReportsSettings } from "./BranchReportsSettings"
 import { MfgPoliciesCard } from "./MfgPoliciesCard"
 
 /**
@@ -144,13 +145,7 @@ export function AccountingSettingsView({ portal }: { portal: CrmPortal }) {
         </AccountingSection>
 
         <AccountingSection title={t("acc_settings_reports_title")} icon={Layers}>
-          <div className="flex items-start justify-between gap-4 p-5">
-            <div className="min-w-0">
-              <Label htmlFor="acc-project-reports" className="text-sm font-bold">{t("acc_settings_project_reports")}</Label>
-              <p className="mt-1 text-xs text-muted-foreground">{t("acc_settings_project_reports_hint")}</p>
-            </div>
-            <Switch id="acc-project-reports" checked={draft.projectReports} onCheckedChange={(v) => setDraft((d) => ({ ...d, projectReports: v }))} disabled={!canEdit} />
-          </div>
+          <BranchReportsSettings draft={draft} setDraft={setDraft} projects={data.projects} canEdit={canEdit} />
         </AccountingSection>
 
         <AccountingSection title={t("acc_settings_projection_title")} icon={TrendingUp}>

@@ -256,7 +256,7 @@ export function WhtView({ portal }: { portal: CrmPortal }) {
       title={t("acc_nav_wht")}
       description={t("acc_wht_desc")}
       icon={ArrowDownToLine}
-      toolbar={<AccountingToolbar data={data} showProject={false} />}
+      toolbar={<AccountingToolbar data={data} showBranch={false} />}
       exportDoc={() => {
         if (data.isLoading) return null
         const base = {
@@ -492,7 +492,7 @@ export function ZakatView({ portal }: { portal: CrmPortal }) {
       title={t("acc_nav_zakat")}
       description={t("acc_zakat_desc")}
       icon={Coins}
-      toolbar={<AccountingToolbar data={data} showPeriod={false} showProject={false} />}
+      toolbar={<AccountingToolbar data={data} showPeriod={false} showBranch={false} />}
     >
       {data.isLoading || !data.organizationId ? <LoadingBooks /> : <ZakatBody key={`${data.organizationId}-${data.fiscalYear}`} data={data} locale={locale} />}
     </AccountingShell>
