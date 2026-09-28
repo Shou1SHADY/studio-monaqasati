@@ -9,16 +9,17 @@
 // may not see money is shown the three reports that carry none — the others
 // are removed, not masked. CSV carries plain numbers and no currency sign.
 
-import type { ElementType, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { useCallback, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { AlertTriangle, Banknote, Clock, Download, FolderOpen, Loader2, Lock, TrendingUp, Truck, Users } from "lucide-react"
+import { Download, Info, Loader2, Lock, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { todayOf } from "@/lib/procurement/po"
@@ -26,16 +27,6 @@ import { COMMITMENT_BUCKETS, cycleAndCompetition, deliveryPerformance, exception
 import { csvText, PERIOD_PRESETS, PROC_REPORTS_HREF, REPORT_NEEDS_PRICE, resolveReport, toProcWorld, visibleReports, type PeriodPreset, type ReportId } from "@/lib/procurement/shell"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
-
-const REPORT_ICON: Record<ReportId, ElementType> = {
-  project: FolderOpen,
-  supplier: Users,
-  delivery: Truck,
-  drift: TrendingUp,
-  cycle: Clock,
-  exceptions: AlertTriangle,
-  commitments: Banknote,
-}
 
 /** On screen: the sign, isolated LTR. */
 const money = (n: number | null | undefined) => (n == null ? "—" : sarLtr(Math.round(n).toLocaleString("en-US")))
@@ -141,14 +132,6 @@ export function ProcurementReports() {
       <ProcurementHeader
         title={t("page.title")}
         description={t("page.subtitle")}
-        action={
-          !loading && (
-            <Button variant="outline" className="gap-2" onClick={exportCsv}>
-              <Download size={16} aria-hidden="true" />
-              {t("csv")}
-            </Button>
-          )
-        }
       />
 
       {!sees && (
@@ -159,47 +142,27 @@ export function ProcurementReports() {
       )}
 
       {/* ── Which report, and over which days ── */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:thin] sm:mx-0 sm:flex-wrap sm:px-0" role="tablist" aria-label={t("page.title")}>
-          {reports.map((id) => {
-            const Icon = REPORT_ICON[id]
-            const on = report === id
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={on}
-                onClick={() => setReport(id)}
-                className={cn(
-                  "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  on ? "border-module bg-module text-white" : "border-border bg-white text-muted-foreground hover:border-module/40 hover:text-foreground"
-                )}
-              >
-                <Icon size={14} aria-hidden="true" />
-                {t(`report.${id}`)}
-              </button>
-            )
-          })}
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+          <ProcChipGroup items={reports.map((id) => ({ id, label: t(`report.${id}`) }))} active={report} onPick={setReport} label={t("page.title")} />
         </div>
-        {periodFiltered && (
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("period.label")}>
-            {PERIOD_PRESETS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                aria-pressed={preset === p}
-                onClick={() => setPreset(p)}
-                className={cn(
-                  "min-h-9 rounded-lg border px-3 py-1.5 text-xs font-bold tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  preset === p ? "border-primary bg-primary text-white" : "border-border bg-white text-muted-foreground hover:border-slate-300"
-                )}
-              >
-                {t(`period.${p}`)}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          {periodFiltered && (
+            <ProcChipGroup items={PERIOD_PRESETS.map((p) => ({ id: p, label: t(`period.${p}`) }))} active={preset} onPick={setPreset} label={t("period.label")} />
+          )}
+          {!loading && (
+            <>
+              <Button variant="outline" className="h-10 gap-2 border border-border bg-card text-foreground shadow-none hover:bg-muted" onClick={exportCsv}>
+                <Download size={15} aria-hidden="true" />
+                {t("csv")}
+              </Button>
+              <Button variant="outline" className="h-10 gap-2 border border-border bg-card text-foreground shadow-none hover:bg-muted" onClick={() => window.print()}>
+                <Printer size={15} aria-hidden="true" />
+                {t("print")}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {periodFiltered && preset === "custom" && (
@@ -220,7 +183,7 @@ export function ProcurementReports() {
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
       ) : (
-        <Panel title={t(`report.${report}`)} sub={periodFiltered ? periodLabel : t("period.notApplied")} icon={REPORT_ICON[report]}>
+        <Panel title={t(`report.${report}`)} sub={periodFiltered ? periodLabel : t("period.notApplied")}>
           {/* 1 · Spend by project */}
           {project && (
             <>
@@ -450,19 +413,23 @@ export function ProcurementReports() {
       )}
 
       {REPORT_NEEDS_PRICE[report] && !sees && <Empty>{t("noPrices")}</Empty>}
+
+      {sees && (
+        <p className="flex items-start gap-2 rounded-2xl border border-cta/20 bg-cta/5 px-4 py-3 text-sm text-cta">
+          <Info size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {t("commitNotCost")}
+        </p>
+      )}
     </div>
   )
 }
 
-function Panel({ title, sub, icon: Icon, children }: { title: string; sub: string; icon: ElementType; children: ReactNode }) {
+function Panel({ title, sub, children }: { title: string; sub: string; children: ReactNode }) {
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border bg-white">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-black text-foreground">
-          <Icon size={15} className="text-module" aria-hidden="true" />
-          {title}
-        </h2>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{sub}</span>
+    <section className="min-w-0 overflow-hidden rounded-2xl border bg-card">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b px-4 py-3.5">
+        <h2 className="text-base font-black text-foreground">{title}</h2>
+        <span className="text-xs tabular-nums text-muted-foreground">{sub}</span>
       </header>
       {children}
     </section>
@@ -472,11 +439,11 @@ function Panel({ title, sub, icon: Icon, children }: { title: string; sub: strin
 function Table({ head, children, className }: { head: string[]; children: ReactNode; className?: string }) {
   return (
     <div className={cn("overflow-x-auto", className)}>
-      <table className="w-full min-w-[520px] text-xs">
+      <table className="w-full min-w-[520px] text-sm">
         <thead>
-          <tr className="bg-muted/20 text-[11px] text-muted-foreground">
+          <tr className="border-b text-xs text-muted-foreground">
             {head.map((h, i) => (
-              <th key={i} scope="col" className={cn("whitespace-nowrap px-4 py-2 font-semibold", i === 0 ? "text-start" : "text-end")}>
+              <th key={i} scope="col" className={cn("whitespace-nowrap px-4 py-3 font-semibold", i === 0 ? "text-start" : "text-end")}>
                 {h}
               </th>
             ))}
@@ -490,7 +457,7 @@ function Table({ head, children, className }: { head: string[]; children: ReactN
 
 function Td({ children, end, num: isNum }: { children?: ReactNode; end?: boolean; num?: boolean }) {
   return (
-    <td className={cn("px-4 py-2 align-top", end && "text-end", isNum && "whitespace-nowrap tabular-nums")} dir={isNum ? "ltr" : undefined}>
+    <td className={cn("px-4 py-3 align-top", end && "text-end", isNum && "whitespace-nowrap tabular-nums")} dir={isNum ? "ltr" : undefined}>
       {children}
     </td>
   )

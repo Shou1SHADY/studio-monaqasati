@@ -8008,7 +8008,21 @@
       "crm_handover_start_on": "Contract starts on",
       "proc_authority_any": "All categories · approves any order",
       "proc_authority_limit": "All categories · approves others' orders up to {limit}",
-      "mfy_pr_details": "Details"
+      "mfy_pr_details": "Details",
+      "pri_state_action": "Needs action",
+      "pri_state_rfq": "In RFQs",
+      "pri_col_material": "Material & source",
+      "pri_col_qty": "Quantity",
+      "pri_col_route": "Computed route",
+      "pri_from_mfg": "From Manufacturing",
+      "pri_on_hand": "On hand {qty}",
+      "pri_need_today": "Needed today",
+      "pri_need_in": "{count, plural, one {In # day} other {In # days}}",
+      "pri_need_late": "{count, plural, one {# day late} other {# days late}}",
+      "pri_route_stock": "Reserve from stock",
+      "pri_route_agreement": "Order on the agreement",
+      "pri_route_direct": "Direct order — under the ceiling",
+      "pri_route_rfq": "Request for quotations"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -9892,7 +9906,24 @@
       "rfqv_col_offers": "Offers",
       "rfqv_col_deadline": "Deadline",
       "rfqv_col_estimate": "Estimate at last price",
-      "rfqv_col_status": "Status"
+      "rfqv_col_status": "Status",
+      "suppliers_col_supplier": "Supplier",
+      "suppliers_col_supplies": "Supplies",
+      "suppliers_col_on_time": "On time",
+      "suppliers_col_rejected": "Rejected at receipt",
+      "suppliers_of_orders": "{count, plural, one {of # order} other {of # orders}}",
+      "suppliers_no_record": "No record",
+      "suppliers_docs_ok": "Documents valid",
+      "suppliers_docs_cr_expired": "CR expired",
+      "suppliers_docs_no_vat": "No VAT number",
+      "suppliers_docs_unknown": "Documents not on file",
+      "suppliers_open_orders": "{count, plural, one {# open order} other {# open orders}}",
+      "suppliers_inv_title": "Invitations to join the Mdmak platform",
+      "suppliers_inv_desc": "A supplier not on the platform: we invite them by e-mail — once they join they become one of our suppliers with a verified file, and see our public RFQs too.",
+      "suppliers_inv_sent": "Invited {date}",
+      "suppliers_inv_joined": "Joined — one of our suppliers",
+      "suppliers_inv_not_yet": "Not joined yet",
+      "suppliers_invite_platform": "Invite a supplier to the platform"
     },
     "Admin": {
       "Dashboard": {
@@ -11522,7 +11553,9 @@
         "self_received": "Self-received",
         "no_notice": "Arrived with no notice",
         "cash_expense": "Cash expense"
-      }
+      },
+      "print": "Print",
+      "commitNotCost": "The value here is a commitment, not a cost: the actual cost of a line is read from Finance's books after the invoice."
     },
     "ProcPrices": {
       "state": {
@@ -11768,6 +11801,68 @@
           "item4": "Approve an order we prepared",
           "item5": "Show a price to someone who may not see it",
           "item6": "Message the supplier beyond dispatch and reminders"
+        }
+      },
+      "seg": {
+        "path": "Purchase path",
+        "policies": "Policies",
+        "roles": "Roles & receivers",
+        "boundaries": "Links with modules"
+      },
+      "path": {
+        "title": "From need to payment — nine steps, one owner each",
+        "owned": "Highlighted: ours",
+        "owner": {
+          "projects": "Projects",
+          "inventory": "Inventory",
+          "manufacturing": "Manufacturing",
+          "procurement": "Procurement",
+          "finance": "Finance"
+        },
+        "step1": {
+          "title": "Need",
+          "desc": "A material request from a project, a workshop shortfall or a stock gap",
+          "rule": "No need is lost"
+        },
+        "step2": {
+          "title": "Stock check",
+          "desc": "Inventory reserves what it holds before anything is bought",
+          "rule": "Nothing bought that we hold"
+        },
+        "step3": {
+          "title": "Make or buy",
+          "desc": "The workshop answers first whether it makes the item",
+          "rule": "One day to answer"
+        },
+        "step4": {
+          "title": "Route",
+          "desc": "Stock, then a live agreement, then direct under the ceiling, else an RFQ",
+          "rule": "Computed, not chosen"
+        },
+        "step5": {
+          "title": "Offers & award",
+          "desc": "Invited suppliers price it; offers stay sealed until the deadline",
+          "rule": "A non-lowest award carries its reason"
+        },
+        "step6": {
+          "title": "Purchase order",
+          "desc": "Prepared by one hand, approved by another, then sent",
+          "rule": "Nobody approves their own order"
+        },
+        "step7": {
+          "title": "Finance",
+          "desc": "The approved order is a commitment; an advance goes through Finance",
+          "rule": "No payment without an order"
+        },
+        "step8": {
+          "title": "Delivery & receipt",
+          "desc": "The store counts blind and records what arrived, rejected or held",
+          "rule": "No receipt unrecorded"
+        },
+        "step9": {
+          "title": "Invoice & payment",
+          "desc": "Finance matches the invoice to the order and the receipt, then pays",
+          "rule": "A price gap needs a decision"
         }
       }
     },

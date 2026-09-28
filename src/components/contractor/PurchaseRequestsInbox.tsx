@@ -12,7 +12,7 @@
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
-import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, PackageCheck, Search, ShoppingCart, Undo2, X } from "lucide-react"
+import { AlertTriangle, CheckCircle2, ExternalLink, Factory, FileSignature, Loader2, PackageCheck, Scale, Search, ShoppingCart, Undo2, Warehouse, X, type LucideIcon } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,9 +34,24 @@ import { emitMfgEvent, mfgLinks } from "@/lib/mfg-events"
 import { fmtQty } from "@/components/manufacturing/ui/MfgUi"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { SignedInAs, mfgActError } from "@/components/shared/MfgHandoffBits"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { needRoute, type NeedRoute } from "@/lib/procurement/route"
+import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
 
-type StateFilter = "open" | "arrived" | "declined" | "all"
-const STATE_FILTERS: StateFilter[] = ["open", "arrived", "declined", "all"]
+type StateFilter = "action" | "rfq" | "arrived" | "declined" | "all"
+const STATE_FILTERS: StateFilter[] = ["action", "rfq", "arrived", "declined", "all"]
+
+const ROUTE_LOOK: Record<NeedRoute, { tone: PillTone; icon: LucideIcon }> = {
+  stock: { tone: "warn", icon: Warehouse },
+  agreement: { tone: "ok", icon: FileSignature },
+  direct: { tone: "info", icon: ShoppingCart },
+  rfq: { tone: "violet", icon: Scale },
+}
+
+const DAY_MS = 86_400_000
 
 interface Row {
   order: WorkOrderV2
@@ -79,6 +94,10 @@ export function PurchaseRequestsInbox() {
   const { data: warehousesData } = useCollection(warehousesQuery)
   const warehouses = useMemo(() => ((warehousesData || []) as Array<{ id: string; isOutbound?: boolean }>), [warehousesData])
   const stock = useOrgStock(warehouses, warehouses.length > 0)
+  const { agreements, history } = useProcurementPrices(orgId || null)
+  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: settingsData } = useDoc(settingsRef)
+  const policies = resolvePolicies(settingsData as Partial<ProcurementPolicies> | null)
 
   const productById = useMemo(() => new Map(((productsData || []) as MfgProduct[]).map((p) => [p.id, p])), [productsData])
   const rfqById = useMemo(() => new Map(((rfqsData || []) as Array<{ id: string; rfqNumber?: string; title?: string; status?: string }>).map((r) => [r.id, r])), [rfqsData])
@@ -97,12 +116,12 @@ export function PurchaseRequestsInbox() {
     [ordersData, productById]
   )
 
-  const [state, setState] = useState<StateFilter>("open")
+  const [state, setState] = useState<StateFilter>("action")
   const [onlyOverdue, setOnlyOverdue] = useState(false)
   const [search, setSearch] = useState("")
   const today = new Date().toISOString().slice(0, 10)
   const overdue = (r: Row) => !!r.request.needBy && r.request.needBy.slice(0, 10) < today && (r.request.state === "sent" || r.request.state === "ordered")
-  const inState = (r: Row) => (state === "all" ? true : state === "open" ? r.request.state === "sent" || r.request.state === "ordered" : r.request.state === state)
+  const inState = (r: Row) => (state === "all" ? true : state === "action" ? r.request.state === "sent" : state === "rfq" ? r.request.state === "ordered" : r.request.state === state)
   const searching = search.trim().length > 0
   const visible = rows.filter(
     (r) =>
@@ -110,8 +129,9 @@ export function PurchaseRequestsInbox() {
       (!onlyOverdue || overdue(r)) &&
       matchesSearch(search, [r.request.itemName, orderRef(r.order), r.productName, r.request.by, r.order.projectName, r.order.source?.contactName, r.request.rfqNumber])
   )
-  const counts = {
-    open: rows.filter((r) => r.request.state === "sent" || r.request.state === "ordered").length,
+  const counts: Record<StateFilter, number> = {
+    action: rows.filter((r) => r.request.state === "sent").length,
+    rfq: rows.filter((r) => r.request.state === "ordered").length,
     arrived: rows.filter((r) => r.request.state === "arrived").length,
     declined: rows.filter((r) => r.request.state === "declined").length,
     all: rows.length,
@@ -190,21 +210,14 @@ export function PurchaseRequestsInbox() {
             </button>
           )}
         </div>
-        <div className={cn("flex flex-wrap items-center gap-1.5", searching && "opacity-60")} role="group" aria-label={t("pri_state")}>
-          {STATE_FILTERS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              aria-pressed={state === s && !searching}
-              onClick={() => { setSearch(""); setState(s) }}
-              className={cn(
-                "rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                state === s && !searching ? "border-module bg-module text-module-foreground" : "border-border bg-card text-muted-foreground hover:border-module/40"
-              )}
-            >
-              {t(`pri_state_${s}`)} <span className="ms-1 opacity-70">{counts[s]}</span>
-            </button>
-          ))}
+        <ProcChipGroup
+          items={STATE_FILTERS.map((f) => ({ id: f, label: t(`pri_state_${f}`), count: counts[f] }))}
+          active={state}
+          onPick={(f) => { setSearch(""); setState(f) }}
+          label={t("pri_state")}
+          dimmed={searching}
+        />
+        <div className="flex items-center">
           <button
             type="button"
             aria-pressed={onlyOverdue}
@@ -219,7 +232,7 @@ export function PurchaseRequestsInbox() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-2xl border bg-card">
         {isLoading ? (
           <div className="flex items-center justify-center p-16">
             <Loader2 className="animate-spin text-muted-foreground" size={28} />
@@ -232,58 +245,75 @@ export function PurchaseRequestsInbox() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-xs font-bold text-muted-foreground">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead className="border-b text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-start">{t("pri_col_item")}</th>
-                  <th className="px-3 py-2 text-start">{t("pri_col_order")}</th>
-                  <th className="px-3 py-2 text-start">{t("pri_col_need_by")}</th>
-                  <th className="px-3 py-2 text-end">{t("pri_col_on_hand")}</th>
-                  <th className="px-3 py-2 text-start">{t("pri_col_state")}</th>
-                  <th className="px-3 py-2 text-end">{t("pri_col_actions")}</th>
+                  <th className="px-4 py-3 text-start font-semibold">{t("pri_col_material")}</th>
+                  <th className="px-4 py-3 text-start font-semibold">{t("pri_col_qty")}</th>
+                  <th className="px-4 py-3 text-start font-semibold">{t("pri_col_need_by")}</th>
+                  <th className="px-4 py-3 text-start font-semibold">{t("pri_col_route")}</th>
+                  <th className="px-4 py-3 text-end font-semibold"><span className="sr-only">{t("pri_col_actions")}</span></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y">
                 {visible.map((row) => {
                   const { order: o, request: r } = row
                   const late = overdue(row)
                   const onHand = stock.byName.get(itemKey(r.itemName))
                   const rfq = r.rfqId ? rfqById.get(r.rfqId) : undefined
+                  const days = r.needBy ? Math.round((Date.parse(r.needBy.slice(0, 10)) - Date.parse(today)) / DAY_MS) : null
+                  const route = r.state === "sent" ? needRoute({ name: r.itemName, unit: r.unit, quantity: r.quantity, onHand: onHand ?? null, agreements, history, directCap: policies.directPurchaseCap, today }) : null
+                  const RouteIcon = route ? ROUTE_LOOK[route].icon : null
                   return (
-                    <tr key={`${o.id}-${r.id}`} className={cn("border-t align-top", late && "bg-destructive/[0.03]")}>
-                      <td className="px-3 py-2.5">
-                        <p className="font-bold" dir="auto">{r.itemName}</p>
-                        <p className="text-xs text-muted-foreground" dir="ltr">
-                          {fmtQty(r.quantity)} {r.unit}
-                          {row.lotted && <span className="ms-1">· {t("pri_lotted")}</span>}
+                    <tr key={`${o.id}-${r.id}`} className="align-middle">
+                      <td className="px-4 py-3">
+                        <p className="font-bold text-foreground" dir="auto">{r.itemName}</p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                            <Factory size={11} aria-hidden="true" /> {t("pri_from_mfg")}
+                          </span>
+                          <Link href={`/contractor/${mfgLinks.order(o.id)}`} className="rounded font-mono font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="ltr">
+                            {orderRef(o)}
+                          </Link>
+                          <span dir="auto">· {row.productName || sourceText(o)}</span>
+                          <span>· {r.by}</span>
                         </p>
                         {r.note && <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">{r.note}</p>}
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">{t("mfy_pr_requested", { name: r.by, date: formatCrmDate(r.at, locale) })}</p>
                       </td>
-                      <td className="px-3 py-2.5">
-                        <Link href={`/contractor/${mfgLinks.order(o.id)}`} className="font-mono text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded" dir="ltr">
-                          {orderRef(o)}
-                        </Link>
-                        <p className="text-xs" dir="auto">{row.productName}</p>
-                        <p className="text-[11px] text-muted-foreground" dir="auto">{sourceText(o)}</p>
+                      <td className="px-4 py-3">
+                        <p className="font-black tabular-nums" dir="ltr">
+                          {fmtQty(r.quantity)} <span className="text-xs font-normal text-muted-foreground">{r.unit}</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {stock.loading ? "…" : onHand == null ? t("pri_not_in_stock") : t("pri_on_hand", { qty: `${fmtQty(onHand)} ${r.unit}` })}
+                          {row.lotted && <span> · {t("pri_lotted")}</span>}
+                        </p>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         {r.needBy ? (
-                          <Badge className={cn("gap-1 border-none text-[11px]", late ? "bg-destructive/10 text-destructive" : "bg-muted text-foreground")}>
-                            {late && <AlertTriangle size={11} aria-hidden="true" />}
-                            <span dir="ltr">{r.needBy.slice(0, 10)}</span>
-                          </Badge>
+                          <>
+                            <p className="font-semibold" dir="ltr">{formatCrmDate(r.needBy, locale)}</p>
+                            {days !== null && (r.state === "sent" || r.state === "ordered") && (
+                              <p className={cn("flex items-center gap-1 text-[11px]", late ? "text-destructive" : days <= 3 ? "text-amber-600" : "text-muted-foreground")}>
+                                {late && <AlertTriangle size={11} aria-hidden="true" />}
+                                {days < 0 ? t("pri_need_late", { count: -days }) : days === 0 ? t("pri_need_today") : t("pri_need_in", { count: days })}
+                              </p>
+                            )}
+                          </>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-end tabular-nums" dir="ltr">
-                        {stock.loading ? <span className="text-xs text-muted-foreground">…</span> : onHand == null ? <span className="text-xs text-muted-foreground">{t("pri_not_in_stock")}</span> : `${fmtQty(onHand)} ${r.unit}`}
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <Badge className={cn("border-none text-[11px]", STATE_TONE[r.state])}>{t(`pri_state_badge_${r.state}`)}</Badge>
+                      <td className="px-4 py-3">
+                        {route && RouteIcon ? (
+                          <StatusPill tone={ROUTE_LOOK[route].tone}>
+                            <RouteIcon size={12} aria-hidden="true" /> {t(`pri_route_${route}`)}
+                          </StatusPill>
+                        ) : (
+                          <Badge className={cn("border-none text-[11px]", STATE_TONE[r.state])}>{t(`pri_state_badge_${r.state}`)}</Badge>
+                        )}
                         {r.state === "ordered" && r.rfqId && (
-                          <Link href={`/contractor/rfqs/${r.rfqId}`} className="mt-1 flex items-center gap-1 text-[11px] font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                          <Link href={`/contractor/rfqs/${r.rfqId}`} className="mt-1 flex items-center gap-1 rounded text-[11px] font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             {rfq?.rfqNumber || r.rfqNumber || t("pri_open_rfq")}
                             <ExternalLink size={10} className="rtl-flip" aria-hidden="true" />
                           </Link>
@@ -291,17 +321,17 @@ export function PurchaseRequestsInbox() {
                         {r.state === "arrived" && <p className="mt-1 text-[11px] text-muted-foreground">{r.arrivedBy || ""} {r.arrivedAt ? formatCrmDate(r.arrivedAt, locale) : ""}</p>}
                         {r.state === "declined" && r.declinedReason && <p className="mt-1 text-[11px] text-muted-foreground" dir="auto">{r.declinedReason}</p>}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           {r.state === "sent" && canStartRfq && (
-                            <Button asChild size="sm" className="h-8 gap-1.5 text-xs">
+                            <Button asChild size="sm" className="h-8 gap-1.5 bg-module text-xs text-module-foreground hover:bg-module/90">
                               <Link href={rfqHref(row)}>
                                 <ShoppingCart size={13} aria-hidden="true" /> {t("mfy_pr_start_rfq")}
                               </Link>
                             </Button>
                           )}
                           {(r.state === "sent" || r.state === "ordered") && canMarkArrived && (
-                            <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={() => setPending({ kind: "arrived", row })}>
+                            <Button size="sm" variant="outline" className="h-8 gap-1.5 border border-border bg-card text-xs text-foreground shadow-none hover:bg-muted" onClick={() => setPending({ kind: "arrived", row })}>
                               <PackageCheck size={13} aria-hidden="true" /> {t("mfy_pr_mark_arrived")}
                             </Button>
                           )}

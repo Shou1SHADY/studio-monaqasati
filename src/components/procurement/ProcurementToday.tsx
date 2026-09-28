@@ -124,7 +124,7 @@ export function ProcurementToday() {
                       }}
                       className={cn(
                         "flex min-h-9 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        on ? "border-module bg-module text-white" : "border-border bg-white text-muted-foreground hover:border-module/40 hover:text-foreground"
+                        on ? "border-module bg-module text-white" : "border-border bg-card text-muted-foreground hover:border-module/40 hover:text-foreground"
                       )}
                     >
                       {t(`groups.${g}`)}
@@ -167,7 +167,7 @@ export function ProcurementToday() {
                         className={cn(
                           "inline-flex min-h-9 shrink-0 items-center gap-1 self-center rounded-lg border px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           "max-sm:ms-11 max-sm:basis-full max-sm:justify-center",
-                          task.priority === 0 ? "border-module bg-module text-white hover:bg-module/90" : "border-border bg-white text-foreground hover:border-module/40"
+                          task.priority === 0 ? "border-module bg-module text-white hover:bg-module/90" : "border-border bg-card text-foreground hover:border-module/40"
                         )}
                       >
                         {t(task.actionKey)}
@@ -249,14 +249,14 @@ export function ProcurementToday() {
 
 function Panel({ title, subtitle, icon: Icon, count, children }: { title: string; subtitle: string; icon: ElementType; count?: number; children: ReactNode }) {
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border bg-white">
-      <header className="flex items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-sm font-black text-foreground">
+    <section className="min-w-0 overflow-hidden rounded-2xl border bg-card">
+      <header className="flex items-start justify-between gap-3 border-b px-4 py-3.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <h2 className="flex items-center gap-2 text-base font-black text-foreground">
             <Icon size={15} className="shrink-0 text-module" aria-hidden="true" />
             {title}
           </h2>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">{subtitle}</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">{subtitle}</p>
         </div>
         {count != null && count > 0 && <span className="shrink-0 rounded-full bg-module/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-module">{count}</span>}
       </header>
@@ -281,7 +281,7 @@ function MoreButton({ open, onClick, label }: { open: boolean; onClick: () => vo
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t bg-muted/20 text-xs font-bold text-module transition-colors hover:bg-module/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="flex min-h-11 w-full items-center justify-center gap-1.5 border-t text-sm font-bold text-cta transition-colors hover:bg-module/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       {label}
       <ChevronDown size={14} className={cn("transition-transform", open && "rotate-180")} aria-hidden="true" />

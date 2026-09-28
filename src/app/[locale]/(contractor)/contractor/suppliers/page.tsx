@@ -72,6 +72,24 @@ import { useProcActor } from "@/hooks/useProcActor"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
+import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { poStatus, supplierScore, type SupplierScore } from "@/lib/procurement/po"
+
+/** What the table shows of a supplier's record with us (PRD 3.0 §7.2): computed from its orders, never typed. */
+type SupplierRecord = SupplierScore & { open: number }
+
+const OPEN_WITH_SUPPLIER = new Set(["sent", "accepted", "in_delivery", "part_received"])
+
+function docsState(s: { taxNumber?: unknown; legalDocuments?: { cr?: { expiryDate?: unknown } } }, today: string): "ok" | "cr_expired" | "no_vat" | "unknown" {
+  const cr = typeof s.legalDocuments?.cr?.expiryDate === "string" ? s.legalDocuments.cr.expiryDate.slice(0, 10) : null
+  if (cr && cr < today) return "cr_expired"
+  if (!String(s.taxNumber ?? "").trim()) return cr ? "no_vat" : "unknown"
+  return "ok"
+}
+
+const DOCS_TONE: Record<ReturnType<typeof docsState>, PillTone> = { ok: "ok", cr_expired: "bad", no_vat: "warn", unknown: "mute" }
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -116,12 +134,12 @@ export default function SuppliersDirectory() {
     const asked = searchParams?.get("segment")
     return asked === "agreements" || asked === "history" || asked === "platform" ? asked : "mine"
   })
-  const [viewMode, setViewModeState] = useState<"grid" | "table">("grid")
-  // Read after mount: the server renders the grid, and the first client render
+  const [viewMode, setViewModeState] = useState<"grid" | "table">("table")
+  // Read after mount: the server renders the table, and the first client render
   // must match it.
   useEffect(() => {
     try {
-      if (window.localStorage.getItem(VIEW_MODE_KEY) === "table") setViewModeState("table")
+      if (window.localStorage.getItem(VIEW_MODE_KEY) === "grid") setViewModeState("grid")
     } catch {
       /* private browsing */
     }
@@ -150,6 +168,20 @@ export default function SuppliersDirectory() {
   const { actor, orgId: procOrgId } = useProcActor()
   const { agreements, history, ready: pricesReady } = useProcurementPrices(procOrgId)
   const mayEditAgreements = actor.isOwner || actor.canPrepare || actor.canApprove
+  // Each supplier's record with us, from our own orders and receipts.
+  const { orders: procOrders, deliveries: procDeliveries } = useProcurementWorld()
+  const recordByOrg = new Map<string, SupplierRecord>()
+  {
+    const now = new Date()
+    const bySupplier = new Map<string, typeof procOrders>()
+    for (const o of procOrders) {
+      if (!o.supplierOrgId) continue
+      bySupplier.set(o.supplierOrgId, [...(bySupplier.get(o.supplierOrgId) || []), o])
+    }
+    bySupplier.forEach((list, id) => {
+      recordByOrg.set(id, { ...supplierScore(list, procDeliveries, now), open: list.filter((o) => OPEN_WITH_SUPPLIER.has(poStatus(o))).length })
+    })
+  }
   /** The two segments that list suppliers; the other two are price records. */
   const directory = scope === "mine" || scope === "platform"
 
@@ -452,9 +484,9 @@ export default function SuppliersDirectory() {
           title={t("suppliers_page_title")}
           description={t("suppliers_page_desc")}
           action={
-            canManageSuppliers && (<Button variant="outline" className="gap-2" onClick={() => setShowInviteDialog(true)}>
-              <UserPlus size={18} />
-              {t("my_sup_invite_tab")}
+            canManageSuppliers && (<Button className="gap-2 bg-module text-module-foreground hover:bg-module/90" onClick={() => setShowInviteDialog(true)}>
+              <Send size={16} className="rtl-flip" aria-hidden="true" />
+              {t("suppliers_invite_platform")}
               {sentInvitations.filter((inv: any) => inv.status === "pending").length > 0 && (
                 <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-4">
                   {sentInvitations.filter((inv: any) => inv.status === "pending").length}
@@ -554,28 +586,22 @@ export default function SuppliersDirectory() {
               </PopoverContent>
             </Popover>
             </>)}
-            <div className="flex flex-wrap rounded-lg border p-0.5" role="group" aria-label={t("suppliers_scope_label")}>
-              {(["mine", "platform", "agreements", "history"] as const).map((sc) => (
-                <button
-                  key={sc}
-                  type="button"
-                  aria-pressed={scope === sc}
-                  onClick={() => setScope(sc)}
-                  className={cn(
-                    "min-h-9 rounded-md px-3 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    scope === sc ? "bg-module text-module-foreground" : "text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  {sc === "mine"
+            <ProcChipGroup
+              items={(["mine", "platform", "agreements", "history"] as const).map((sc) => ({
+                id: sc,
+                label:
+                  sc === "mine"
                     ? t("suppliers_scope_mine", { count: mineCount })
                     : sc === "platform"
                       ? t("suppliers_scope_platform", { count: displaySuppliers.length })
                       : sc === "agreements"
                         ? t("suppliers_scope_agreements", { count: agreements.length })
-                        : t("suppliers_scope_history")}
-                </button>
-              ))}
-            </div>
+                        : t("suppliers_scope_history"),
+              }))}
+              active={scope}
+              onPick={setScope}
+              label={t("suppliers_scope_label")}
+            />
             {directory && (
             <div className="ms-auto flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_view_label")}>
               <button type="button" aria-pressed={viewMode === "grid"} aria-label={t("suppliers_view_grid")} onClick={() => setViewMode("grid")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "grid" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
@@ -587,6 +613,31 @@ export default function SuppliersDirectory() {
             </div>
             )}
         </div>
+
+        {scope === "mine" && sentInvitations.length > 0 && (
+          <section className="overflow-hidden rounded-2xl border bg-card" aria-labelledby="sup-invitations">
+            <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
+              <h2 id="sup-invitations" className="text-sm font-black text-foreground">{t("suppliers_inv_title")}</h2>
+              <span className="rounded-full bg-muted px-2 text-xs font-bold tabular-nums text-muted-foreground">{sentInvitations.filter((inv: any) => inv.status === "pending").length}</span>
+              <p className="text-xs text-muted-foreground">{t("suppliers_inv_desc")}</p>
+            </header>
+            <ul className="divide-y">
+              {sentInvitations.slice(0, 6).map((inv: any) => (
+                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-foreground" dir="auto">{inv.companyName || inv.email}</p>
+                    <p className="truncate text-xs text-muted-foreground" dir="auto">
+                      {[inv.companyName ? inv.email : null, t("suppliers_inv_sent", { date: fmtDate(inv.createdAt, locale) })].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <StatusPill tone={inv.status === "accepted" ? "ok" : inv.status === "declined" ? "bad" : "warn"}>
+                    {inv.status === "accepted" ? t("suppliers_inv_joined") : inv.status === "declined" ? t("my_sup_inv_declined") : t("suppliers_inv_not_yet")}
+                  </StatusPill>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {scope === "agreements" || scope === "history" ? (
           !pricesReady ? (
@@ -640,6 +691,7 @@ export default function SuppliersDirectory() {
             t={t}
             onOpen={setSelectedSupplier}
             onToggleFavorite={toggleFavorite}
+            records={recordByOrg}
           />
         ) : (
           <div className="space-y-0">
@@ -1078,82 +1130,91 @@ function SupplierTable({
   t,
   onOpen,
   onToggleFavorite,
+  records,
 }: {
   suppliers: any[]
   locale: string
   t: ReturnType<typeof useTranslations>
   onOpen: (supplier: any) => void
   onToggleFavorite: (e: React.MouseEvent, supplier: any) => void
+  records: Map<string, SupplierRecord>
 }) {
+  const today = new Date().toISOString().slice(0, 10)
   return (
-    <div className="overflow-x-auto rounded-xl border">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead className="bg-muted/50 text-xs text-muted-foreground">
+    <div className="overflow-x-auto rounded-2xl border bg-card">
+      <table className="w-full min-w-[820px] text-sm">
+        <thead className="border-b text-xs text-muted-foreground">
           <tr>
-            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_name")}</th>
-            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_city")}</th>
-            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_specs")}</th>
-            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_rating")}</th>
-            <th scope="col" className="px-3 py-2 text-start font-bold">{t("suppliers_col_status")}</th>
-            <th scope="col" className="px-3 py-2"><span className="sr-only">{t("suppliers_view_profile")}</span></th>
+            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_supplier")}</th>
+            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_supplies")}</th>
+            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_on_time")}</th>
+            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_rejected")}</th>
+            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_status")}</th>
+            <th scope="col" className="px-4 py-3"><span className="sr-only">{t("suppliers_view_profile")}</span></th>
           </tr>
         </thead>
         <tbody className="divide-y">
-          {suppliers.map((s) => (
-            <tr key={s.id} className="hover:bg-muted/40">
-              <td className="px-3 py-2.5 align-top">
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => onToggleFavorite(e, s)}
-                    aria-label={s.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
-                    aria-pressed={Boolean(s.isExplicitFavorite)}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Heart size={15} className={s.isExplicitFavorite ? "fill-amber-500 text-amber-500" : ""} aria-hidden="true" />
-                  </button>
-                  <span className="font-semibold text-foreground" dir="auto">{s.name}</span>
-                </div>
-              </td>
-              <td className="px-3 py-2.5 align-top text-muted-foreground">{displayCity(s.city, locale)}</td>
-              <td className="px-3 py-2.5 align-top">
-                <div className="flex flex-wrap gap-1">
-                  {(s.specializations || []).slice(0, 2).map((spec: string) => (
-                    <Badge key={spec} variant="secondary" className="bg-muted px-2 text-[10px] font-normal text-muted-foreground">
-                      {displayCategory(spec, locale)}
-                    </Badge>
-                  ))}
-                  {(s.specializations || []).length > 2 && <span className="text-[10px] text-muted-foreground">+{s.specializations.length - 2}</span>}
-                </div>
-              </td>
-              <td className="px-3 py-2.5 align-top tabular-nums">
-                {s.rating > 0 ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Star size={12} className="fill-amber-400 text-amber-400" aria-hidden="true" />
-                    {s.rating}
-                    <span className="text-[10px] text-muted-foreground">({s.reviewsCount || 0})</span>
-                  </span>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
-              </td>
-              <td className="px-3 py-2.5 align-top">
-                {s.isConnected ? (
-                  <Badge className="border-none bg-success/10 text-[10px] text-success">{t("suppliers_status_connected")}</Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">{t("suppliers_not_connected_badge")}</Badge>
-                )}
-              </td>
-              <td className="px-3 py-2.5 text-end align-top">
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-module hover:bg-module/10" onClick={() => onOpen(s)}>
-                  {t("suppliers_view_profile")}
-                </Button>
-              </td>
-            </tr>
-          ))}
+          {suppliers.map((s) => {
+            const rec = records.get(s.organizationId || s.id) || records.get(s.id)
+            const onTime = rec?.onTimePercent ?? null
+            const docs = docsState(s, today)
+            return (
+              <tr key={s.id} className="cursor-pointer hover:bg-muted/40" onClick={() => onOpen(s)}>
+                <td className="px-4 py-3 align-middle">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => onToggleFavorite(e, s)}
+                      aria-label={s.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
+                      aria-pressed={Boolean(s.isExplicitFavorite)}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <Heart size={15} className={s.isExplicitFavorite ? "fill-amber-500 text-amber-500" : ""} aria-hidden="true" />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-foreground" dir="auto">{s.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{displayCity(s.city, locale)}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 align-middle text-foreground">
+                  {(s.specializations || []).length ? (
+                    <span className="line-clamp-2">{(s.specializations || []).slice(0, 3).map((spec: string) => displayCategory(spec, locale)).join(locale === "ar" ? "، " : ", ")}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 align-middle">
+                  {onTime === null ? (
+                    <span className="text-xs text-muted-foreground">{t("suppliers_no_record")}</span>
+                  ) : (
+                    <>
+                      <p className={cn("font-black tabular-nums", onTime >= 90 ? "text-success" : onTime >= 75 ? "text-amber-600" : "text-destructive")} dir="ltr">
+                        {onTime}%
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">{t("suppliers_of_orders", { count: rec?.orders ?? 0 })}</p>
+                    </>
+                  )}
+                </td>
+                <td className="px-4 py-3 align-middle tabular-nums" dir="ltr">
+                  {rec?.rejectPercent == null ? <span className="text-muted-foreground">—</span> : `${rec.rejectPercent}%`}
+                </td>
+                <td className="px-4 py-3 align-middle">
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusPill tone={DOCS_TONE[docs]}>{t(`suppliers_docs_${docs}`)}</StatusPill>
+                    {rec && rec.open > 0 && <span className="text-[11px] text-muted-foreground">{t("suppliers_open_orders", { count: rec.open })}</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-end align-middle">
+                  <Button variant="ghost" size="sm" className="h-8 text-xs text-module hover:bg-module/10" onClick={(e) => { e.stopPropagation(); onOpen(s) }}>
+                    {t("suppliers_view_profile")}
+                  </Button>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
   )
 }
-
