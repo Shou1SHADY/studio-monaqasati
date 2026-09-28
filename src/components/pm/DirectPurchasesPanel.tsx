@@ -62,14 +62,14 @@ export function DirectPurchasesPanel({ projectId, orgId, access, actor }: { proj
           <div className="rounded-xl border p-3">
             <p className="text-xs text-muted-foreground">{t("petty.spent")}</p>
             <p className={cn("text-lg font-black tabular-nums", month > PETTY_CAP.month * 0.8 && "text-destructive")} dir="ltr">
-              {pmMoney(month)}
+              {money ? pmMoney(month) : "•••"}
             </p>
             <p className="text-xs text-muted-foreground">{t("petty.of", { cap: n0(PETTY_CAP.month) })}</p>
           </div>
           <div className="rounded-xl border p-3">
             <p className="text-xs text-muted-foreground">{t("petty.left")}</p>
             <p className="text-lg font-black tabular-nums" dir="ltr">
-              {pmMoney(left)}
+              {money ? pmMoney(left) : "•••"}
             </p>
             <p className="text-xs text-muted-foreground">{left <= 0 ? t("petty.exhausted") : t("petty.after")}</p>
           </div>

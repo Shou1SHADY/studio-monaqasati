@@ -93,5 +93,10 @@ export const SOURCE_LABEL_KEY: Record<string, string> = {
   wip_revenue: "acc_src_wip_revenue",
   manual_voucher: "acc_src_manual_voucher",
   settlement: "acc_src_settlement",
+  pm_sub_certificate: "acc_src_pm_sub_certificate",
+  pm_sub_payment: "acc_src_pm_sub_payment",
+  pm_cash: "acc_src_pm_cash",
+  pm_loss: "acc_src_pm_loss",
+  pm_xfer: "acc_src_pm_xfer",
 }
 

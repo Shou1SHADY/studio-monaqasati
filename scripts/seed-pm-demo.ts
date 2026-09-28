@@ -267,7 +267,7 @@ async function seedProject(orgId: string, uid: string, name: string) {
   })
   put((`projects/${PROJECT_ID}/pmSubmittals/01`), { seq: 1, itemId: "i05", code: "07-01-01", supplier: "مصنع الجزيرة للعوازل", rev: 1, status: "rej", day: d(-25), ...by, reply: { on: d(-18), by: uid, byName: name, note: "السماكة 3 مم بدل 4 مم المطلوبة" }, ...stamp })
 
-  put((`projects/${PROJECT_ID}/pmVariations/01`), { seq: 1, title: "إضافة غرفة خادمة للفيلا 5", source: "client", instructionNo: "CI-07", day: d(-60), value: 85000, cost: 62000, executedPct: 40, status: "appr", ...by, decision: { on: d(-50), by: uid, byName: name, ref: "APP-VO-01", reason: null }, ...stamp })
+  put((`projects/${PROJECT_ID}/pmVariations/01`), { seq: 1, title: "إضافة غرفة خادمة للفيلا 5", source: "client", instructionNo: "CI-07", day: d(-60), value: 85000, cost: 62000, executedPct: 0.4, status: "appr", ...by, decision: { on: d(-50), by: uid, byName: name, ref: "APP-VO-01", reason: null }, ...stamp })
   put((`projects/${PROJECT_ID}/pmVariations/02`), { seq: 2, title: "تغيير نوع البلاط الخارجي", source: "cons", instructionNo: "SI-12", day: d(-12), value: 46000, cost: 35000, executedPct: 0, status: "wait", ...by, decision: null, ...stamp })
 
   put((`projects/${PROJECT_ID}/pmClaims/01`), {

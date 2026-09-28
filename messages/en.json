@@ -648,7 +648,8 @@
       "contractor_proc_settings": "Settings & boundaries",
       "contractor_pm_inbox": "New projects",
       "contractor_pm_today": "Projects today",
-      "fin_nav_projects_desk": "Project certificates"
+      "fin_nav_projects_desk": "Project certificates",
+      "inventory_project_returns": "Project returns"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -8343,7 +8344,64 @@
       "sec_corr_title": "Formal correspondence",
       "sec_corr_desc": "Dated letters — the claim evidence",
       "sec_close_title": "Project close-out",
-      "sec_close_desc": "Handover, maintenance, retention, lessons"
+      "sec_close_desc": "Handover, maintenance, retention, lessons",
+      "fpj_sc_title": "Subcontractor certificates",
+      "fpj_sc_sub": "An approved sub certificate is his payable: his work to subcontract cost, VAT, his retention held and waste recovered. Pay it here — the project sees it paid.",
+      "fpj_sc_empty": "No approved subcontractor certificate yet.",
+      "fpj_sc_row_sub": "{sub} · certificate {no} · approved {date}",
+      "fpj_sc_breakdown": "Work {gross} · retention {retention} · recovered {recovery}",
+      "fpj_sc_payable": "Payable",
+      "fpj_sc_paid": "Paid {date}",
+      "fpj_sc_paid_pill": "Paid",
+      "fpj_sc_post_first": "Post it to the books before paying",
+      "fpj_sc_pay": "Pay",
+      "fpj_sc_post_title": "Post sub certificate {no} — {project}",
+      "fpj_sc_post_desc": "His work goes to subcontract cost, his retention is held, the waste recovered from him comes off material cost, and the rest is owed to him.",
+      "fpj_sc_pay_title": "Pay certificate {no} — {sub}",
+      "fpj_sc_pay_desc": "Pays the whole certificate. His retention stays held until it is released.",
+      "fpj_sc_pay_date": "Payment date",
+      "fpj_sc_books_off": "Accounting is off — the payment is recorded on the project only.",
+      "fpj_sc_pay_done": "Payment recorded — the project sees it paid",
+      "fpj_sc_vat_registered": "The subcontractor is VAT-registered (15%)",
+      "fpj_sc_vat_fixed": "VAT as the project sent it.",
+      "fpj_l_gross": "Work this period",
+      "fpj_l_retention": "Retention held",
+      "fpj_l_recovery": "Waste recovered",
+      "fpj_l_net": "Net before VAT",
+      "fpj_l_vat": "VAT",
+      "fpj_l_payable": "Owed to him",
+      "fpj_err_not_approved": "The certificate is not approved",
+      "fpj_err_already_paid": "Already paid",
+      "fpj_err_not_posted": "Post the certificate to the books first",
+      "fpj_cost_title": "Site costs",
+      "fpj_cost_sub": "Petty purchases, approved store losses and materials moved between projects — each posted once to the project's cost.",
+      "fpj_cost_empty": "No site cost sent yet.",
+      "fpj_cost_kind_CASH": "Petty purchase",
+      "fpj_cost_kind_LOSS": "Store loss",
+      "fpj_cost_kind_XFER": "Moved between projects",
+      "fpj_cash_sub": "{what} · {supplier} · receipt {receipt} · {date}",
+      "fpj_cash_sub_noreceipt": "{what} · {supplier} · no receipt · {date}",
+      "fpj_loss_sub": "{qty} {unit} {material} · {date}",
+      "fpj_xfer_sub": "{qty} {unit} {material} · from {from} · {date}",
+      "fpj_no_cost": "No cost sent — nothing to post",
+      "fpj_post_all": "Post all ({count})",
+      "fpj_posted_n": "{count, plural, =0 {Nothing posted} one {# entry posted} other {# entries posted}}",
+      "fpj_failed_n": "{count, plural, one {# could not be posted — check the period is open} other {# could not be posted — check the periods are open}}",
+      "fpj_bud_title": "Approved estimate at completion",
+      "fpj_bud_sub": "Each project's latest approved revision — what its actual cost is measured against. Nothing posts.",
+      "fpj_bud_empty": "No project has an approved estimate yet.",
+      "fpj_bud_row": "Revision {rev} · approved {date}",
+      "fpj_bud_detail": "Contract {contract} · actual so far {actual}",
+      "fpj_bud_margin": "Forecast margin {v}",
+      "fpj_amd_title": "Financial addenda",
+      "fpj_amd_sub": "Signed addenda that change a financial term — read with the certificates and retention they affect. Nothing posts.",
+      "fpj_amd_empty": "No signed addendum changes a financial term.",
+      "fpj_amd_row": "Addendum {no} · signed {date}",
+      "acc_src_pm_sub_certificate": "Subcontractor certificate",
+      "acc_src_pm_sub_payment": "Subcontractor payment",
+      "acc_src_pm_cash": "Site petty purchase",
+      "acc_src_pm_loss": "Site store loss",
+      "acc_src_pm_xfer": "Material moved between projects"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -11081,7 +11139,9 @@
           "guest_registered": "A guest supplier was registered",
           "extended": "Deadline moved to {date}{added, plural, =0 {} one { and # supplier added} other { and # suppliers added}}",
           "guest_invited": "{supplier} (guest) was sent a join link",
-          "document_printed": "The request document was downloaded to send outside the platform"
+          "document_printed": "The request document was downloaded to send outside the platform",
+          "guest_link_shared": "Guest link shared via {channel}",
+          "guest_link_emailed": "Guest invitation sent by {channel}"
         },
         "invited": {
           "title": "Invited",
@@ -11602,7 +11662,56 @@
         }
       },
       "err_guest_unregistered": "Register the guest supplier first — or confirm he gets this order unregistered",
-      "err_not_your_rfq": "Another buyer raised this RFQ — he or the purchasing manager acts on it"
+      "err_not_your_rfq": "Another buyer raised this RFQ — he or the purchasing manager acts on it",
+      "rfqextras": {
+        "sourcing": {
+          "unverified": "Not verified yet — not invited until verified",
+          "no_vat": "No VAT number",
+          "cr_expired": "CR expired"
+        },
+        "card": {
+          "otp_verified": "(verified by code)",
+          "papers": "Papers:",
+          "paper_cr": "CR",
+          "paper_vat": "VAT certificate"
+        },
+        "share": {
+          "sub": "For a supplier off the platform — sees the full details and quotes without an account",
+          "valid_until_deadline": "Valid until the deadline {date} ({days, plural, =0 {ends today} one {# day left} other {# days left}}) — closes with it.",
+          "closed": "The deadline passed and the link is closed — no new offers. Extend the deadline from the RFQ to reopen it.",
+          "invites_title": "Guest invitations",
+          "via_wa": "via WhatsApp",
+          "via_mail": "via email",
+          "via_plat": "Platform email",
+          "channel_wa": "WhatsApp",
+          "channel_mail": "Email — your tool",
+          "channel_plat": "Platform email",
+          "pdf": "Download RFQ PDF to attach"
+        },
+        "invited": {
+          "link_sent": "Guest link sent to {sent} · {offered} submitted",
+          "favourite": "Preferred"
+        },
+        "extend": {
+          "platform": "Platform"
+        },
+        "form": {
+          "title_and": " & ",
+          "title_more": " {count, plural, one {+# more} other {+# more}}",
+          "title_help": "A clear title helps suppliers search — suggested from the products, editable",
+          "need_by": "Needed by",
+          "line_project": "Charged to project",
+          "general_stock": "General — for stock",
+          "search_project": "Search projects",
+          "this_project": "This project",
+          "public_reach": "Reaches {count, plural, one {# specialised supplier} other {# specialised suppliers}} in “{cats}” — yours and the platform’s.",
+          "direct_blocked": "Cannot be awarded directly: {reason}"
+        },
+        "award": {
+          "finance_pays": "Finance pays before delivery",
+          "no_order_yet": "No PO before its record is complete (VAT number and verification) — the order waits"
+        }
+      }
     },
     "ProcToday": {
       "title": "Needs your decision",
@@ -11652,7 +11761,8 @@
         "openLine": "Open line",
         "openNeeds": "Open needs",
         "answer": "Answer",
-        "forward": "Forward"
+        "forward": "Forward",
+        "openProject": "Open the project"
       },
       "task": {
         "approve": {
@@ -11776,6 +11886,19 @@
             "title": "{supplier}’s invoice rejected: {reason}",
             "sub": "{need} — we talk to the supplier, not Finance"
           }
+        },
+        "pm_supplier_return": {
+          "title_nc": "Non-conforming, back to the supplier: {qty} {unit} {name}",
+          "title_charged": "Damage charged to the supplier: {qty} {unit} {name}",
+          "sub": "{project} · {date} — claim the credit note from the supplier"
+        },
+        "pm_cash_inbound": {
+          "title": "Receipt without a PO on the project: {qty} {unit} {name} — cash purchase",
+          "sub": "{project} · {date} — regularise it with a retroactive order if it repeats"
+        },
+        "pm_hire": {
+          "title": "Hire in place of {request} — {what}, {fromDay} → {toDay}",
+          "sub": "{project} · {qty} {operator, select, 1 {with operator} other {without operator}} — not in our fleet; a timed hire with a return date"
         }
       },
       "wait": {
@@ -16348,7 +16471,14 @@
           "ADV": "Contract advance term",
           "BUD": "Approved cost budget",
           "HND": "Handover / end of defects period",
-          "AMD": "Signed contract addendum"
+          "AMD": "Signed contract addendum",
+          "CASH": "Direct site purchase",
+          "LOSS": "Approved loss in the project store",
+          "XFER": "Material moved between projects",
+          "RET": "Return to the warehouse",
+          "SRET": "Non-conforming, back to the supplier",
+          "NOPO": "Receipt without a PO on the project",
+          "EQH": "Plant hire — not in our fleet"
         },
         "ev_when": {
           "IPC": "When the consultant's certification is recorded — at the certified amount, not the submitted one",
@@ -17047,7 +17177,9 @@
         "inv": {
           "title": "Inventory's reply through Procurement:",
           "issue": "issues {q} {unit} from a main store",
-          "none": "not issued — {why} — it is bought"
+          "none": "not issued — {why} — it is bought",
+          "issue_wh": "issues {q} {unit} from {warehouse}",
+          "kept": "{q} {unit} not issued: {why} — to be bought"
         }
       },
       "store": {
@@ -19541,6 +19673,83 @@
         "subtitle": "Supplier file, agreements and price history — rating is computed from its orders, not typed stars",
         "empty_desc": "Add one from the platform directory, or invite a supplier who is not on the platform yet."
       }
+    },
+    "InvPm": {
+      "no_permission": "This desk is for Inventory — warehouse management or receiving.",
+      "cancel": "Cancel",
+      "show_more": "Show {count} more",
+      "show_less": "Show less",
+      "err": {
+        "save": "Could not save — try again"
+      },
+      "ret": {
+        "title": "Project returns",
+        "desc": "What the projects send back from their stores to a main warehouse. Confirm it arrived: the return closes on the project and the stock is free again in your warehouse.",
+        "waiting": "Awaiting receipt at the main warehouse",
+        "none": "No returns waiting",
+        "none_desc": "When a project returns material to a main warehouse it shows here.",
+        "from": "From",
+        "to": "to {warehouse}",
+        "logged": "Logged by {name} · {date}",
+        "age": "{days, plural, =0 {today} one {# day} other {# days}}",
+        "confirm": "Confirm receipt at the main warehouse",
+        "confirm_desc": "{q} {unit} {material} from {project} are added to {warehouse}'s stock and the return closes on the project. This cannot be undone.",
+        "confirm_btn": "Received — add to stock",
+        "recent": "Recently received",
+        "received_by": "{name} · {warehouse} · {date}",
+        "done_toast": "{q} {unit} {material} received at {warehouse}",
+        "block": {
+          "no_permission": "Only warehouse management or receiving confirms a return",
+          "archived": "The project is archived — nothing changes on it",
+          "not_waiting": "This return is no longer waiting",
+          "no_warehouse": "The warehouse named on the return no longer exists",
+          "other_org": "The warehouse belongs to another company"
+        }
+      },
+      "rep": {
+        "title": "Projects' material requests — Inventory's reply",
+        "desc": "Approved project requests reach Procurement whole, and it asks the store. Reply per line: issue what you have from a main store; what you cannot issue, Procurement buys.",
+        "none": "No line waits on your reply",
+        "req_no": "MR {no}",
+        "need_by": "Needed by {date}",
+        "kind_label": "Reply",
+        "kind": {
+          "issue": "Available — issued from stock",
+          "part": "Partly available",
+          "none": "Not available — to be bought"
+        },
+        "dialog_title": "Inventory's reply",
+        "from_wh": "From main warehouse",
+        "no_wh": "No main warehouse exists yet",
+        "on_hand_loading": "Reading the balance…",
+        "on_hand": "On hand: {q} {unit}",
+        "q_label": "Quantity issued (of {owed} {unit})",
+        "kept": "{q} {unit} go to Procurement to buy",
+        "why_part": "Why the rest is not issued",
+        "why_none": "Why it is not issued",
+        "why": {
+          "linked": "Committed to another project",
+          "none": "No stock in the main stores",
+          "dir": "Direct-supply material — not stocked"
+        },
+        "note": "Note (optional)",
+        "foot": "The project reads your reply on its request; the line stays with Procurement for what is not issued.",
+        "send": "Send the reply",
+        "saved": {
+          "issue": "Reply sent: {material} is issued from stock",
+          "part": "Reply sent: {material} partly issued — the rest is bought",
+          "none": "Reply sent: {material} is bought"
+        },
+        "block": {
+          "no_permission": "Only warehouse management or receiving replies",
+          "archived": "The project is archived — nothing changes on it",
+          "not_waiting": "This line no longer waits on a reply",
+          "bad_qty": "A partial issue is more than zero and less than what is owed",
+          "over_stock": "More than the warehouse holds",
+          "no_warehouse": "Choose the main warehouse it is issued from",
+          "no_reason": "Give the reason"
+        }
+      }
     }
   },
   "Auth": {
@@ -19749,7 +19958,47 @@
     "footer_powered": "Powered by Mdmak Tech — the B2B smart procurement & RFQ platform",
     "vat_number": "VAT number",
     "vat_number_hint": "Optional — without it the buyer's Finance cannot accept your invoice",
-    "invalid_vat_number": "A VAT number is 15 digits starting and ending with 3"
+    "invalid_vat_number": "A VAT number is 15 digits starting and ending with 3",
+    "extras": {
+      "queries_title": "Answered questions",
+      "queries_answered_on": "Answered {date}",
+      "queries_note": "Answers reach every invitee — no supplier gets an edge.",
+      "otp_hint": "Your mobile is verified by a one-time code before you submit",
+      "otp_send": "Send code",
+      "otp_resend": "Resend",
+      "otp_resend_in": "Resend in {seconds}s",
+      "otp_sent_to": "We sent a 6-digit code to {phone} — enter it here",
+      "otp_test_code": "Test environment — code: {code}",
+      "otp_number_changed": "The number changed — request a new code",
+      "otp_err_phone": "Enter a valid mobile number (05xxxxxxxx)",
+      "otp_err_too_soon": "A code was sent less than a minute ago — wait a moment",
+      "otp_err_limit": "Too many codes were requested on this link — try later",
+      "otp_err_closed": "This request no longer accepts offers",
+      "otp_err_send": "The code could not be sent — try again",
+      "otp_required": "Verify your mobile with the code first",
+      "otp_err_wrong": "Wrong code",
+      "otp_err_expired": "The code expired — request a new one",
+      "otp_err_unchecked": "The code could not be checked — try again",
+      "papers_label": "Your official papers (CR · VAT certificate)",
+      "papers_kind_cr": "Commercial registration",
+      "papers_kind_vat": "VAT certificate",
+      "papers_remove": "Remove {kind}",
+      "papers_hint": "PDF or image, up to 5 MB each — no PO can be issued without them",
+      "papers_too_large": "The file is larger than 5 MB",
+      "papers_bad_type": "Papers must be PDF, JPG or PNG files",
+      "papers_panel_title": "Complete your papers",
+      "papers_panel_desc": "No PO can be issued without your VAT number, CR and VAT certificate — attach them any time.",
+      "papers_nothing": "Attach a paper or enter the VAT number",
+      "papers_failed": "Could not save your papers — try again",
+      "papers_saved": "Saved — the contractor has been told",
+      "papers_submit": "Save papers",
+      "vat_invalid": "A VAT number is 15 digits starting and ending with 3",
+      "vat_on_file": "VAT number:",
+      "vat_label": "VAT number",
+      "vat_hint": "No PO can be issued without it",
+      "attachments_title": "Attachments",
+      "attachment_view": "View"
+    }
   },
   "GuestOffer": {
     "brand_tagline": "Offer tracking",

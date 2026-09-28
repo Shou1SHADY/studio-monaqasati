@@ -7,7 +7,7 @@ import type { ContractTerms, TermChange } from "./terms"
 
 export const PM_EVENTS = "pmEvents"
 
-export type PmEventKind = "ADV" | "IPC" | "SC" | "BUD" | "HND" | "AMD"
+export type PmEventKind = "ADV" | "IPC" | "SC" | "BUD" | "HND" | "AMD" | "CASH" | "LOSS" | "XFER" | "RET" | "SRET" | "NOPO" | "EQH"
 
 export interface PmEvent {
   key: string

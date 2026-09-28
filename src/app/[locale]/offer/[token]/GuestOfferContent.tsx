@@ -38,6 +38,9 @@ import { displayCity } from "@/lib/constants"
 import { OFFER_STATUS, SAMPLE_STATUS } from "@/utils/guest-offer-workflow"
 import { CLOSED_UNAWARDED } from "@/lib/procurement/supplier"
 import { priceOffer, pricedProducts } from "@/lib/procurement/offer-pricing"
+import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
+import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
+import { GuestPapersPanel, type GuestPaperSummary } from "@/components/procurement/guest/GuestPapersPanel"
 
 type GuestOfferData = {
   offer: {
@@ -60,7 +63,11 @@ type GuestOfferData = {
     /** Their own rates when the RFQ asked for a price per material. */
     lines?: Array<{ rfqProductIndex: number; unitPrice: number }>
     createdAt: string | null
+    vatNumber?: string | null
+    phoneVerified?: boolean
+    papers?: GuestPaperSummary[]
   }
+  queries?: AnsweredQuery[]
   rfq: {
     title: string
     city: string | null
@@ -768,6 +775,16 @@ export function GuestOfferContent() {
               <div className="flex items-start gap-3 p-4 rounded-2xl border border-blue-200 bg-blue-50/60">
                 <CheckCircle2 size={18} className="text-blue-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-slate-700 leading-relaxed">{t("completed_desc")}</p>
+              </div>
+            )}
+
+            {!availability?.isClosed && (!offer.vatNumber || (offer.papers || []).length < 2) && (
+              <GuestPapersPanel token={token} vatNumber={offer.vatNumber || null} papers={offer.papers || []} onSaved={load} />
+            )}
+
+            {data?.queries && data.queries.length > 0 && (
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+                <GuestAnsweredQueries queries={data.queries} />
               </div>
             )}
 

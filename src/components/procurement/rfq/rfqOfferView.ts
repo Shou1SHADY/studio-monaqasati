@@ -26,7 +26,9 @@ export interface RfqOfferView extends NoteOffer {
   poNumber?: string | null
   awardedLines?: number[] | null
   awardedTotal?: number | null
-  guestContact?: { name?: string | null; email?: string | null; phone?: string | null; vatNumber?: string | null } | null
+  guestContact?: { name?: string | null; email?: string | null; phone?: string | null; vatNumber?: string | null; phoneVerified?: boolean | null } | null
+  /** The guest's CR and VAT certificate, uploaded through the guest link. */
+  guestPapers?: Array<{ kind: "cr" | "vat"; name: string; url: string }> | null
   priceHistory?: Array<{ price?: string | number | null; replacedAt?: string | null }> | null
   reductionRound?: boolean | null
 }
@@ -62,6 +64,8 @@ export interface RfqView extends NoteRfq {
   unawardedLines?: number[] | null
   reductionRound?: ReductionRound | null
   log?: RfqLogEntry[] | null
+  /** How many times the guest link was sent (the share dialog's «دعوات الزوار»). */
+  guestInviteCount?: number | null
   products?: Array<{
     name?: string | null
     quantity?: number | string | null

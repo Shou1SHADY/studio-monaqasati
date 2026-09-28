@@ -61,6 +61,10 @@ import { useOpenNeeds } from "@/hooks/useOpenNeeds"
 import { lastPaid } from "@/lib/procurement/prices"
 import { addDays, supplierScore } from "@/lib/procurement/po"
 import type { Need } from "@/lib/procurement/needs"
+import { useSupplierDirectory } from "@/hooks/useSupplierDirectory"
+import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
+import { earliestNeedBy, invitableRecipients, publicReach, sourcingBlockOf, suggestRfqTitle } from "@/lib/procurement/rfq-extras"
+import type { SourcingBlock } from "@/lib/procurement/supplier-file"
 
 interface ValidationError {
   field: string
@@ -151,9 +155,6 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   )
   const allRecipientIds = supplierOptions.map((o) => o.orgId)
 
-  /** Who the RFQ actually reaches — the explicit picks, or everyone connected
-   * while the contractor has not narrowed it down. */
-  const selectedRecipients: string[] = privateRecipients ?? allRecipientIds
 
   // ── All useState/useRef hooks MUST be declared before any early returns ──
 
@@ -197,20 +198,62 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // supplier when the total passes the no-competition cap.
   const [directLinePrices, setDirectLinePrices] = useState<Record<string, string>>({})
   const [directReason, setDirectReason] = useState<"" | "sole" | "match" | "urgent">("")
-  // The private list's facts (R-37): on-time from our orders, an expired CR.
+  // Who may be invited privately or awarded directly (`supplierSourcingBlock`):
+  // our record over the platform profile; an unread profile is not held against him.
+  const { suppliers: platformSuppliers } = useSupplierDirectory(procWorld.orgId, favoriteSupplierIds, procWorld.offers)
+  const sourcingOf = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const byId = new Map(platformSuppliers.flatMap((s) => [s.orgId, ...s.memberIds].map((id) => [id, s] as const)))
+    const records = new Map(procWorld.supplierRecords.map((r) => [r.supplierOrgId, r]))
+    return (id: string): SourcingBlock | null => {
+      const s = byId.get(id)
+      return s ? sourcingBlockOf(s.record || records.get(id), { vat: s.profileVat, crExpiry: s.profileCrExpiry }, today) : sourcingBlockOf(records.get(id), undefined, today)
+    }
+  }, [platformSuppliers, procWorld.supplierRecords])
+
+  /** Who the RFQ actually reaches — the explicit picks, or everyone connected
+   * while the contractor has not narrowed it down; never one who may not be invited. */
+  const selectedRecipients: string[] = invitableRecipients(allRecipientIds, privateRecipients, sourcingOf)
+
+  // The private list's facts (R-37): on-time from our orders, an expired CR, and why one may not be invited.
   const supplierFacts = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10)
     const bySupplier = new Map<string, typeof procWorld.orders>()
     for (const o of procWorld.orders) bySupplier.set(o.supplierOrgId, [...(bySupplier.get(o.supplierOrgId) || []), o])
-    const out = new Map<string, { onTime: number | null; crExpired: boolean }>()
-    const ids = new Set([...bySupplier.keys(), ...procWorld.supplierFacts.keys()])
+    const out = new Map<string, { onTime: number | null; crExpired: boolean; block: SourcingBlock | null }>()
+    const ids = new Set([...bySupplier.keys(), ...procWorld.supplierFacts.keys(), ...allRecipientIds])
     const now = new Date()
     ids.forEach((id) => {
       const cr = procWorld.supplierFacts.get(id)?.crExpiry
-      out.set(id, { onTime: supplierScore(bySupplier.get(id) || [], procWorld.deliveries, now).onTimePercent, crExpired: Boolean(cr && cr < today) })
+      const block = sourcingOf(id)
+      out.set(id, { onTime: supplierScore(bySupplier.get(id) || [], procWorld.deliveries, now).onTimePercent, crExpired: block === "cr_expired" || Boolean(cr && cr < today), block })
     })
     return out
-  }, [procWorld.orders, procWorld.deliveries, procWorld.supplierFacts])
+    // allRecipientIds is rebuilt every render; its ids are the dependency.
+  }, [procWorld.orders, procWorld.deliveries, procWorld.supplierFacts, sourcingOf, allRecipientIds.join(",")])
+
+  // Per-line project («يُحمَّل على مشروع»): the org's projects; a project's own form locks it.
+  const formOrgId = (profile as { organizationId?: string } | null)?.organizationId || user?.uid || ""
+  const orgProjectsQuery = useMemoFirebase(() => (firestore && formOrgId ? query(collection(firestore, "projects"), where("organizationId", "==", formOrgId)) : null), [firestore, formOrgId])
+  const { data: orgProjects } = useCollection(orgProjectsQuery)
+  const projectChoices = useMemo(
+    () => ((orgProjects || []) as Array<{ id: string; name?: string }>).map((p) => ({ value: p.id, label: p.name || p.id })).sort((a, b) => a.label.localeCompare(b.label, locale === "ar" ? "ar" : "en")),
+    [orgProjects, locale]
+  )
+  const projectLabelOf = (id: string | null | undefined): string | null => (id ? projectChoices.find((p) => p.value === id)?.label || null : null)
+
+  // The title follows the lines until the buyer types his own («يُقترح من المنتجات ويمكنك تعديله»).
+  const tr = useTranslations("Portal.Procurement.rfqextras")
+  const [titleEdited, setTitleEdited] = useState(false)
+  const rowName = (p: ProductRow) => ((p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.description || p.category || "").trim()
+  const suggestedTitle = suggestRfqTitle(
+    products.map((p) => ({ name: rowName(p), project: projectLabelOf(projectId || p.projectId || null) })),
+    { and: tr("form.title_and"), more: (count) => tr("form.title_more", { count }) }
+  )
+  useEffect(() => {
+    if (isEditing || titleEdited || !suggestedTitle) return
+    setFormData((prev) => (prev.title === suggestedTitle ? prev : { ...prev, title: suggestedTitle }))
+  }, [suggestedTitle, titleEdited, isEditing])
 
   useEffect(() => {
     if (!editId || !firestore || !user) return
@@ -246,6 +289,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           }
 
           setEditRfqData(data)
+          setTitleEdited(true)
           setFormData({
             title: data.title || "",
             country: data.country || "SA",
@@ -279,7 +323,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
               description: p.description || "",
               category: p.category || "",
               subCategory: p.subCategory || "",
-              requiresWarranty: !!p.requiresWarranty
+              requiresWarranty: !!p.requiresWarranty,
+              needBy: typeof p.needBy === "string" ? p.needBy.slice(0, 10) : "",
+              projectId: typeof p.projectId === "string" ? p.projectId : "",
             })))
           }
         }
@@ -486,15 +532,16 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const productName = (p: ProductRow) => ((p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category || p.description || "").trim()
   const pickNeed = (n: Need) => {
     const stamp = Date.now()
-    const rows = n.lines.map((l, idx) => ({ ...makeEmptyProductRow(`need-${stamp}-${idx}`), quantity: String(l.quantity), unit: l.unit, description: l.name, otherSubCategory: l.name }))
+    const rows = n.lines.map((l, idx) => ({ ...makeEmptyProductRow(`need-${stamp}-${idx}`), quantity: String(l.quantity), unit: l.unit, description: l.name, otherSubCategory: l.name, needBy: n.needBy?.slice(0, 10) || "", projectId: n.projectId || "" }))
     setProducts((prev) => [...prev.filter((p) => p.quantity.trim() || p.unit.trim() || p.description.trim() || p.category), ...rows])
     setPickedNeeds((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.id, n])) }))
   }
   const liveNeeds = Object.entries(pickedNeeds).filter(([rowId]) => products.some((p) => p.id === rowId))
   const pickedKeys = new Set(liveNeeds.map(([, n]) => n.key))
   const needChoices = openNeeds.filter((n) => !pickedKeys.has(n.key) && (!purchaseSource || JSON.stringify(n.source) !== JSON.stringify(purchaseSource))).slice(0, 8)
-  const needByOf = (rowId: string) => pickedNeeds[rowId]?.needBy || null
-  const earliestNeed = liveNeeds.map(([, n]) => n.needBy).filter((d): d is string => Boolean(d)).sort()[0] || null
+  const needByOf = (rowId: string) => products.find((p) => p.id === rowId)?.needBy || pickedNeeds[rowId]?.needBy || null
+  const earliestNeed = earliestNeedBy([...liveNeeds.map(([, n]) => ({ needBy: n.needBy })), ...products.filter(productComplete)])
+  const lineProjectOf = (p: ProductRow): string | null => projectId || p.projectId || null
   const latestDeadline = earliestNeed ? addDays(earliestNeed, -policies.awardCycleDays) : null
   const directTotal = products.filter(productComplete).reduce((sum, p) => sum + toAmount(p.quantity) * (Number(directLinePrices[p.id]) || 0), 0)
   const directOverCap = directTotal > policies.directPurchaseCap
@@ -503,10 +550,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
     setValidationErrors(prev => prev.filter(e => e.field !== field))
   }
 
-  const validateStep1 = (): ValidationError[] => {
+  const titleToSave = formData.title.trim() || suggestedTitle
+
+  const validateStep1 = (draft = false): ValidationError[] => {
     const errors: ValidationError[] = []
 
-    if (!formData.title.trim()) {
+    if (!formData.title.trim() && !(draft && suggestedTitle)) {
       errors.push({ field: "title", message: t("newrfq_val_title_required") })
     }
 
@@ -596,6 +645,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         notes: formData.notes
       })
 
+      setTitleEdited(true)
       setFormData(prev => ({
         ...prev,
         title: result.title,
@@ -629,9 +679,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const handleSubmit = async (status: "Draft" | "New" = "New") => {
     if (!firestore || !user) return
 
-    // Perform full validation
-    const step1Errors = validateStep1()
-    const step3Errors = validateStep3()
+    // Full validation — a draft needs only its lines (prototype `draftOk`): it reaches no supplier yet.
+    const draft = status === "Draft"
+    const step1Errors = validateStep1(draft)
+    const step3Errors = draft ? [] : validateStep3()
     const allErrors = [...step1Errors, ...step3Errors]
 
     if (allErrors.length > 0) {
@@ -656,6 +707,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         toast({ title: tp("rfqpo.form.direct_reason_required"), variant: "destructive" })
         return
       }
+      const block = sourcingOf(directSupplierOrgId)
+      if (block) {
+        toast({ title: tr("form.direct_blocked", { reason: tr(`sourcing.${block}`) }), variant: "destructive" })
+        return
+      }
       if (new Set(validProducts.map(p => p.category)).size > 1) {
         // Multi-category submissions split into several RFQs — one agreed price
         // can't be divided across them, so a direct award stays single-category.
@@ -672,7 +728,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Edit mode: update the single existing RFQ. projectId is intentionally NOT included here —
       // it's immutable after creation (reassigning between projects/standalone is not supported).
       const rfqData: any = {
-        title: formData.title,
+        title: titleToSave,
         category: validProducts[0]?.category || editRfqData?.category || "",
         subCategory: validProducts.every(p => p.subCategory === validProducts[0].subCategory)
           ? (validProducts[0].subCategory === "أخرى" ? validProducts[0].otherSubCategory : validProducts[0].subCategory)
@@ -686,7 +742,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           description: p.description,
           category: p.category,
           subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory,
-          requiresWarranty: !!p.requiresWarranty
+          requiresWarranty: !!p.requiresWarranty,
+          ...(needByOf(p.id) ? { needBy: needByOf(p.id) } : {}),
+          ...(lineProjectOf(p) ? { projectId: lineProjectOf(p), projectName: projectLabelOf(lineProjectOf(p)) } : {}),
         })),
         deadline: formData.deadline,
         estimatedBudget: formData.estimatedBudget
@@ -743,7 +801,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
     for (const cat of categories) {
       const catProducts = groupedProducts[cat]
-      const rfqTitle = categories.length > 1 ? `${formData.title} - ${cat}` : formData.title
+      const rfqTitle = categories.length > 1 ? `${titleToSave} - ${cat}` : titleToSave
 
       const rfqData = {
         contractorId: user.uid,
@@ -766,6 +824,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory,
           requiresWarranty: !!p.requiresWarranty,
           ...(needByOf(p.id) ? { needBy: needByOf(p.id) } : {}),
+          ...(lineProjectOf(p) ? { projectId: lineProjectOf(p), projectName: projectLabelOf(lineProjectOf(p)) } : {}),
         })),
         ...(catProducts.some((p) => needByOf(p.id)) ? { needBy: catProducts.map((p) => needByOf(p.id)).filter((d): d is string => Boolean(d)).sort()[0] } : {}),
         ...(catProducts.some((p) => pickedNeeds[p.id]) ? { needSources: Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id].source])).values()) } : {}),
@@ -866,6 +925,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       })
       setAttachments([])
       setPickedNeeds({})
+      setTitleEdited(false)
       setProducts([{ id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
       setStep(1)
       setIsSubmitting(false)
@@ -874,7 +934,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // notification are created here — the same end-state the accept flow in
       // RfqOffersView produces, minus the offer round.
       const rfqId = createdRfqIds[0]
-      const rfqTitle = formData.title
+      const rfqTitle = titleToSave
       let directOffer: { id: string; price: string; supplierId: string; organizationId: string; supplierName: string } | null = null
       try {
         const supplierOption = supplierOptions.find((o) => o.orgId === directSupplierOrgId)
@@ -1065,12 +1125,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       value={formData.title}
                       onChange={e => {
                         setFormData({ ...formData, title: e.target.value })
+                        setTitleEdited(e.target.value.trim() !== "")
                         clearError("title")
                       }}
                       className={`h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 rounded-xl ${hasError("title") ? 'border-destructive ring-1 ring-destructive' : ''}`}
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">{t("newrfq_tender_title_help")}</p>
+                  <p className="text-xs text-muted-foreground">{tr("form.title_help")}</p>
                 </div>
 
                 <div className="h-px bg-gradient-to-r from-transparent via-slate-200 to-transparent" />
@@ -1101,6 +1162,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     locale={locale}
                     t={t}
                     onFieldTouched={(id, field) => clearError(`product_${id}_${field}`)}
+                    lineExtras={{
+                      projects: projectChoices,
+                      lockedProjectLabel: projectId ? projectLabelOf(projectId) || tr("form.this_project") : null,
+                      minNeedBy: todayDay,
+                      copy: { needBy: tr("form.need_by"), project: tr("form.line_project"), general: tr("form.general_stock"), search: tr("form.search_project"), none: t("newrfq_no_results") },
+                    }}
                   />
                   {liveNeeds.length > 0 && (
                     <ul className="mt-3 space-y-1 rounded-xl border bg-muted/30 p-3 text-xs">
@@ -1406,7 +1473,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         : t("newrfq_visibility_public_desc")}
                   </p>
                   {visibilityMode === "public" && (
-                    <p className="mt-2 text-xs text-cta">{tp("rfqpo.form.public_reach", { cats: Array.from(new Set(products.map((p) => p.category).filter(Boolean))).join("، ") || "—" })}</p>
+                    <p className="mt-2 text-xs text-cta">
+                      {tr("form.public_reach", {
+                        count: publicReach(platformSuppliers, products.map((p) => p.category), CATEGORIES_DATA).length,
+                        cats: Array.from(new Set(products.map((p) => p.category).filter(Boolean))).map((c) => displayCategory(c, locale)).join(locale === "ar" ? "، " : ", ") || "—",
+                      })}
+                    </p>
                   )}
 
                   {visibilityMode !== "public" && supplierOptions.length === 0 && (
@@ -1423,12 +1495,18 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         <SearchableSelect
                           value={directSupplierOrgId}
                           onChange={setDirectSupplierOrgId}
-                          options={supplierOptions.map((o) => ({ value: o.orgId, label: o.name }))}
+                          options={supplierOptions.map((o) => {
+                            const block = sourcingOf(o.orgId)
+                            return { value: o.orgId, label: `${o.name}${o.isFavorite ? " ★" : ""}${block ? ` — ${tr(`sourcing.${block}`)}` : ""}` }
+                          })}
                           placeholder={t("newrfq_direct_supplier_label")}
                           searchPlaceholder={t("newrfq_direct_supplier_label")}
                           noResultsText={t("newrfq_visibility_no_suppliers")}
                           size="md"
                         />
+                        {directSupplierOrgId && sourcingOf(directSupplierOrgId) && (
+                          <p className="text-xs font-semibold text-destructive">{tr(`sourcing.${sourcingOf(directSupplierOrgId)}`)}</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1510,7 +1588,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
                 <ul className="space-y-1 rounded-xl bg-muted/50 p-4 text-xs text-muted-foreground">
                   {(visibilityMode === "direct" ? ["direct_1", "direct_2"] : ["publish_1", "publish_2", "publish_3"]).map((k) => (
-                    <li key={k}>• {tp(`rfqpo.form.effect_${k}`, { count: visibilityMode === "private" ? selectedRecipients.length : 0 })}</li>
+                    <li key={k}>• {tp(`rfqpo.form.effect_${k}`, { count: visibilityMode === "private" ? selectedRecipients.length : visibilityMode === "public" ? publicReach(platformSuppliers, products.map((p) => p.category), CATEGORIES_DATA).length : 0 })}</li>
                   ))}
                 </ul>
               </div>
@@ -1530,10 +1608,23 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             </Button>
 
             {step < 3 ? (
-              <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
-                {t("newrfq_next")}
-                {locale === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-              </Button>
+              <div className="flex gap-3 flex-wrap justify-end">
+                {visibilityMode !== "direct" && products.some(productComplete) && (!isEditing || editRfqData?.status === "Draft") && (
+                  <Button
+                    onClick={() => handleSubmit("Draft")}
+                    disabled={isSubmitting}
+                    variant="outline"
+                    className="gap-2 px-6 rounded-xl"
+                  >
+                    {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+                    {t("newrfq_save_draft")}
+                  </Button>
+                )}
+                <Button onClick={nextStep} className="gap-2 px-8 rounded-xl cursor-pointer shadow-lg shadow-primary/25">
+                  {t("newrfq_next")}
+                  {locale === 'ar' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+                </Button>
+              </div>
             ) : (
               <div className="flex gap-3 flex-wrap">
                 <Button

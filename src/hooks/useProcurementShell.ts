@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react"
 import { usePermissions } from "@/hooks/usePermissions"
+import { usePmBoundaryEvents } from "@/hooks/usePmBoundaryEvents"
 import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld, type ProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -34,13 +35,14 @@ export function useProcTodayWorld(): ProcTodayWorld {
   const [now] = useState(() => new Date())
   const openRfqIds = useMemo(() => rfqs.filter((r) => r.status === "New").map((r) => r.id), [rfqs])
   const rfqQueries = useRfqQueries(openRfqIds)
+  const pmEvents = usePmBoundaryEvents(orgId)
   const canSource = can("rfq.manage")
   const actor = useMemo<TodayActor>(() => ({ ...loaded.actor, canSource: loaded.actor.canPrepare || canSource }), [loaded.actor, canSource])
 
   const needDesk = useMemo(() => ({ rows: needs.rows, buyers: needs.buyers, viewerCategories: needs.viewerCategories }), [needs.rows, needs.buyers, needs.viewerCategories])
   const world = useMemo(
-    () => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements, history, supplierRecords, needDesk, rfqQueries, ownerHasTeam: needs.ownerHasTeam }),
-    [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, needs.ownerHasTeam]
+    () => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, ownerHasTeam: needs.ownerHasTeam }),
+    [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, pmEvents, needs.ownerHasTeam]
   )
   return { loaded, needs, world, actor, now }
 }

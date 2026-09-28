@@ -6,11 +6,14 @@
 // on, or from here), what the client pays on it, the retention a handover makes
 // claimable, and the advance the contract asks for. PM reads the answers back:
 // `collected` on the certificate and `pm.retentionReleased` on the project.
+// The site side (sub certificates, petty purchases, losses, transfers, the
+// approved estimate, financial addenda) is FinanceProjectsSiteSections.
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, doc, query, where } from "firebase/firestore"
 import { BadgeCheck, CheckCircle2, HandCoins, KeyRound, Loader2, Lock, Receipt, Wallet } from "lucide-react"
+import type { JournalLine, SourceType } from "@/lib/accounting/journal"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,7 +27,7 @@ import { Link } from "@/i18n/routing"
 import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
 import { isAccountingEnabled } from "@/lib/accounting/post"
 import { PmFinanceError, postPmCertificate, recordPmCollection, releasePmRetention } from "@/lib/accounting/pm-finance-writes"
-import { outstandingOf, pmCertificateSeq } from "@/lib/accounting/pm-postings"
+import { PM_DESK_SOURCES, outstandingOf, pmCertificateSeq } from "@/lib/accounting/pm-postings"
 import type { PostingContext } from "@/lib/accounting/posting-rules"
 import { PM_CERTIFICATES, certificateNo } from "@/lib/pm/certificate"
 import { PM_EVENTS, eventDocId, type PmEvent } from "@/lib/pm/events"
@@ -32,6 +35,8 @@ import { pmDate, pmMoney } from "@/lib/pm/format"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { cn } from "@/lib/utils"
 import { AccountingShell } from "./AccountingShell"
+import { Empty, ProjectCell, Section } from "./FinanceProjectsParts"
+import { AddendaSection, EstimatesSection, SiteCostsSection, SubCertificatesSection, postedKey, type PostedEntries } from "./FinanceProjectsSiteSections"
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
@@ -49,7 +54,7 @@ export function FinanceProjectsDesk({ portal }: { portal: CrmPortal }) {
   const projectsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data: projectsData } = useCollection(projectsQ)
   const journalQ = useMemoFirebase(
-    () => (firestore && orgId ? query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", orgId), where("sourceType", "in", ["ipc_claim", "retention_release"])) : null),
+    () => (firestore && orgId ? query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", orgId), where("sourceType", "in", [...PM_DESK_SOURCES])) : null),
     [firestore, orgId]
   )
   const { data: journalData } = useCollection(journalQ)
@@ -61,7 +66,9 @@ export function FinanceProjectsDesk({ portal }: { portal: CrmPortal }) {
 
   const names = useMemo(() => new Map(((projectsData || []) as Array<{ id: string; name?: string }>).map((p) => [p.id, p.name || ""])), [projectsData])
   const retentionReleased = useMemo(() => new Set(((projectsData || []) as Array<{ id: string; pm?: { retentionReleased?: boolean } | null }>).filter((p) => p.pm?.retentionReleased).map((p) => p.id)), [projectsData])
-  const posted = useMemo(() => new Set(((journalData || []) as Array<{ sourceId?: string }>).map((e) => e.sourceId || "")), [journalData])
+  const journal = useMemo(() => (journalData || []) as Array<{ sourceType?: SourceType; sourceId?: string; lines?: JournalLine[] }>, [journalData])
+  const posted = useMemo(() => new Set(journal.filter((e) => e.sourceType === "ipc_claim" || e.sourceType === "retention_release").map((e) => e.sourceId || "")), [journal])
+  const postedEntries: PostedEntries = useMemo(() => new Map(journal.filter((e) => e.sourceType && e.sourceId).map((e) => [postedKey(e.sourceType as SourceType, e.sourceId as string), { lines: e.lines || [] }])), [journal])
   const events = useMemo(() => ((eventsData || []) as unknown as PmEvent[]).sort((a, b) => (b.at || "").localeCompare(a.at || "")), [eventsData])
   const certs = events.filter((e) => e.kind === "IPC")
   const handovers = events.filter((e) => e.kind === "HND" && e.amount > 0)
@@ -129,23 +136,17 @@ export function FinanceProjectsDesk({ portal }: { portal: CrmPortal }) {
               </p>
             )}
           </Section>
+
+          <SubCertificatesSection events={events} names={names} posted={postedEntries} booksOn={booksOn === true} mayAct={mayAct} ctx={ctx} />
+          <SiteCostsSection events={events} names={names} posted={postedEntries} booksOn={booksOn === true} mayAct={mayAct} ctx={ctx} />
+          <EstimatesSection events={events} names={names} />
+          <AddendaSection events={events} names={names} />
         </>
       )}
     </AccountingShell>
   )
 }
 
-function ProjectCell({ event, projectName, sub }: { event: PmEvent; projectName: string; sub: string }) {
-  return (
-    <span className="min-w-0 flex-1">
-      <Link href={`/contractor/projects/${event.projectId}`} className="rounded font-bold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <span dir="ltr">{event.projectNo}</span>
-        {projectName && <span dir="auto"> — {projectName}</span>}
-      </Link>
-      <span className="mt-0.5 block text-xs text-muted-foreground">{sub}</span>
-    </span>
-  )
-}
 
 function CertificateRow({ event, projectName, posted, booksOn, mayAct, ctx }: { event: PmEvent; projectName: string; posted: boolean; booksOn: boolean; mayAct: boolean; ctx: PostingContext }) {
   const t = useTranslations("Portal.Shared")
@@ -311,22 +312,4 @@ function RetentionRow({ event, projectName, released, booksOn, mayAct, ctx }: { 
   )
 }
 
-function Section({ icon: Icon, title, sub, count, children }: { icon: typeof Receipt; title: string; sub: string; count: number; children: React.ReactNode }) {
-  return (
-    <section className="overflow-hidden rounded-2xl border bg-card">
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b px-5 py-3.5">
-        <div className="min-w-0">
-          <h2 className="flex items-center gap-2 text-base font-black text-foreground">
-            <Icon size={15} className="text-module" aria-hidden="true" />
-            {title}
-            {count > 0 && <Badge className="border-none bg-warning/10 text-[10px] tabular-nums text-warning">{count}</Badge>}
-          </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
-        </div>
-      </header>
-      {children}
-    </section>
-  )
-}
 
-const Empty = ({ children }: { children: React.ReactNode }) => <p className="p-6 text-center text-sm text-muted-foreground">{children}</p>

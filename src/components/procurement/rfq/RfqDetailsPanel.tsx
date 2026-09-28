@@ -26,6 +26,7 @@ import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/l
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
 import { rfqFiles } from "@/lib/procurement/rfq-view"
+import { guestLinkLine } from "@/lib/procurement/rfq-extras"
 
 const SOURCE_KEY: Record<string, string> = { mfg_purchase: "source.mfg", project_request: "source.project", stock_gap: "source.stock" }
 
@@ -210,6 +211,7 @@ export function RfqDetailsPanel({
 export function RfqLogPanel({ entries }: { entries: RfqLogEntry[] | null | undefined }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const tc = useTranslations("Portal.Contractor")
+  const tr = useTranslations("Portal.Procurement.rfqextras.share")
   const date = useDateText()
   const rows = rfqLog(entries)
   if (!rows.length) return null
@@ -218,6 +220,7 @@ export function RfqLogPanel({ entries }: { entries: RfqLogEntry[] | null | undef
     const key = v.slice(1)
     if (key.startsWith("exclusion.")) return tc(`offers_exclusion_${key.slice("exclusion.".length)}`)
     if (key.startsWith("rfqCancel.")) return t(`cancel.code.${key.slice("rfqCancel.".length)}`)
+    if (key.startsWith("guestChannel.")) return tr(`channel_${key.slice("guestChannel.".length)}`)
     return v
   }
   return (
@@ -239,28 +242,35 @@ export function RfqLogPanel({ entries }: { entries: RfqLogEntry[] | null | undef
   )
 }
 
-export function RfqInvitedList({ rfq, offers, guestOffers }: { rfq: RfqView; offers: InviteOfferLike[]; guestOffers: number }) {
+export function RfqInvitedList({ rfq, offers, guestOffers, favoriteIds }: { rfq: RfqView; offers: InviteOfferLike[]; guestOffers: number; favoriteIds?: string[] }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tr = useTranslations("Portal.Procurement.rfqextras.invited")
   const rows = invitedRows(rfq, offers)
-  if (!rows.length && !guestOffers) return null
+  const linkLine = guestLinkLine(rfq.guestInviteCount, guestOffers)
+  if (!rows.length && !guestOffers && !linkLine) return null
   return (
     <Panel title={t("invited.title")} icon={Users} count={rows.length || undefined} bodyClassName="p-0">
       {rows.length > 0 ? (
         <ul className="divide-y">
           {rows.map((r) => (
-            <InvitedRow key={r.orgId} orgId={r.orgId} offered={r.offered} />
+            <InvitedRow key={r.orgId} orgId={r.orgId} offered={r.offered} favourite={Boolean(favoriteIds?.includes(r.orgId))} />
           ))}
         </ul>
       ) : (
         <p className="px-4 py-2.5 text-xs text-muted-foreground">{t("invited.public")}</p>
       )}
-      {guestOffers > 0 && <p className="border-t px-4 py-2 text-[11.5px] text-muted-foreground">{t("invited.guests", { count: guestOffers })}</p>}
+      {linkLine ? (
+        <p className="border-t px-4 py-2 text-[11.5px] text-muted-foreground">{tr("link_sent", { sent: linkLine.sent, offered: linkLine.offered })}</p>
+      ) : (
+        guestOffers > 0 && <p className="border-t px-4 py-2 text-[11.5px] text-muted-foreground">{t("invited.guests", { count: guestOffers })}</p>
+      )}
     </Panel>
   )
 }
 
-function InvitedRow({ orgId, offered }: { orgId: string; offered: boolean }) {
+function InvitedRow({ orgId, offered, favourite }: { orgId: string; offered: boolean; favourite: boolean }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tr = useTranslations("Portal.Procurement.rfqextras.invited")
   const firestore = useFirestore()
   const ref = useMemoFirebase(() => (firestore ? doc(firestore, "users", orgId) : null), [firestore, orgId])
   const { data } = useDoc(ref)
@@ -270,6 +280,11 @@ function InvitedRow({ orgId, offered }: { orgId: string; offered: boolean }) {
       <Link href={`/contractor/supplier/profile/${orgId}`} className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 truncate font-semibold" dir="auto">
           {name || t("invited.unknown")}
+          {favourite && (
+            <span className="ms-1 text-warning" title={tr("favourite")} aria-label={tr("favourite")}>
+              ★
+            </span>
+          )}
         </span>
         <StatusPill tone={offered ? "ok" : "mute"}>{offered ? t("invited.offered") : t("invited.not_yet")}</StatusPill>
       </Link>

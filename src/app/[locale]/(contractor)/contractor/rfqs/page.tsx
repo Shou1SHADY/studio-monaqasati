@@ -549,6 +549,7 @@ const handleBatchPublish = async () => {
                       title: rfq.title || "",
                       passed: Boolean(rfq.deadline) && String(rfq.deadline).slice(0, 10) < new Date().toISOString().slice(0, 10),
                       invited: [...(rfq.allowedSupplierOrgIds || []), ...(rfq.invitedSupplierOrgIds || [])],
+                      categories: [rfq.category, ...((rfq.products || []) as Array<{ category?: string }>).map((p) => p.category)].filter((c): c is string => Boolean(c)),
                     })
                   }
                 />
@@ -590,9 +591,10 @@ const handleBatchPublish = async () => {
         rfq={shareTarget}
         isOpen={!!shareTarget}
         onClose={() => setShareTarget(null)}
+        onPrint={shareTarget ? () => printOne(shareTarget) : null}
       />
 
-      <RfqExtendDialog target={extendTarget} actor={runner} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
+      <RfqExtendDialog target={extendTarget} actor={runner} options={supplierOptions} orgId={procWorld.orgId} onOpenChange={(o) => !o && setExtendTarget(null)} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

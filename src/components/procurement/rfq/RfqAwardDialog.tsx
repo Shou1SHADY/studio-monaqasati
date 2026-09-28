@@ -31,6 +31,8 @@ import { awardRfq, ProcWriteError, type AwardGroupInput, type AwardOfferLike, ty
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { leadDaysOf, useTermsText } from "./RfqComparison"
+import { paidBeforeDelivery } from "@/lib/procurement/rfq-extras"
+import type { SourcingBlock } from "@/lib/procurement/supplier-file"
 import { supplierNameOf, type RfqOfferView, type RfqView } from "./rfqOfferView"
 
 export interface AwardDone {
@@ -52,6 +54,7 @@ export function RfqAwardDialog({
   blocksFor,
   budget,
   onDone,
+  sourcingFor,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -65,12 +68,15 @@ export function RfqAwardDialog({
   blocksFor: (offer: RfqOfferView) => PoBlock[]
   budget: { budget: number; committed: number } | null
   onDone: (done: AwardDone) => void
+  /** Why a registered supplier may not be ordered from yet — said beside his name; his order waits (`supplierSourcingBlock`). */
+  sourcingFor?: (offer: RfqOfferView) => SourcingBlock | null
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const tx = useTranslations("Portal.Procurement.rfqx")
   const tc = useTranslations("Portal.Contractor")
   const tProc = useTranslations("Portal.Procurement")
   const tShared = useTranslations("Portal.Shared")
+  const tr = useTranslations("Portal.Procurement.rfqextras")
   const locale = useLocale()
   const firestore = useFirestore()
   const termsText = useTermsText()
@@ -266,7 +272,11 @@ export function RfqAwardDialog({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <b dir="auto">{name(o)}</b>
                     {o.isGuestOffer && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-bold text-destructive">{t("award.guest_pill")}</span>}
+                    {!o.isGuestOffer && sourcingFor?.(o) && (
+                      <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-bold text-warning">{tr(`sourcing.${sourcingFor(o)}`)}</span>
+                    )}
                   </div>
+                  {!o.isGuestOffer && sourcingFor?.(o) && <p className="text-[11px] text-muted-foreground">{tr("award.no_order_yet")}</p>}
                   <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-xs">
                     <dt className="text-muted-foreground">{t("award.lines")}</dt>
                     <dd className="space-y-0.5">
@@ -283,6 +293,7 @@ export function RfqAwardDialog({
                     <dt className="text-muted-foreground">{t("award.value_payment")}</dt>
                     <dd>
                       <Money value={g.total} className="font-bold" /> · {terms || t("award.terms_as_offer")}
+                      {paidBeforeDelivery(o) && <span className="text-warning"> — {tr("award.finance_pays")}</span>}
                     </dd>
                     <dt className="self-center text-muted-foreground">
                       <Label htmlFor={`award-date-${g.offerId}`}>{t("award.deliver_by")}</Label>

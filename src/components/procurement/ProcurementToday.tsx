@@ -58,7 +58,7 @@ type Params = Record<string, string | number>
 function presentParams(p: Params, locale: string, words: (key: string) => string): Params {
   const out: Params = { ...p }
   for (const k of ["number", "receipt", "invoice", "advance"]) if (typeof out[k] === "string") out[k] = displayDocNumber(out[k] as string, locale)
-  for (const k of ["date", "promised", "ready"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
+  for (const k of ["date", "promised", "ready", "fromDay", "toDay"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
   if (typeof out.holdReason === "string") out.reason = words(`rfqpo.po.hold.reason.${out.holdReason}`)
   if (typeof out.holdOwner === "string") out.owner = words(`rfqpo.po.hold.owner.${out.holdOwner}`)
   if (typeof out.over === "number") out.over = sarLtr(Math.round(out.over).toLocaleString("en-US"))

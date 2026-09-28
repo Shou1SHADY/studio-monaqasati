@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
 import { guestVisibleStatus, resolveGuestOfferToken } from "@/lib/guest-offer"
 import { guestOfferAvailability } from "@/utils/guest-offer-workflow"
+import { answeredQueries, mergeGuestPapers, type GuestPaper, type InquiryDoc } from "@/lib/procurement/guest-supplier"
 
 // Public endpoint: resolves a guest offer token to everything the supplier
 // needs to follow their offer through the workflow — current status, what the
@@ -58,6 +59,17 @@ export async function GET(
       // Display-only — the page falls back to a generic label.
     }
 
+    // The answers every invitee receives (§5.1) — question and answer, never who asked.
+    let queries: ReturnType<typeof answeredQueries> = []
+    if (offer.rfqId) {
+      try {
+        const snap = await db.collection("rfqs").doc(offer.rfqId as string).collection("inquiries").limit(200).get()
+        queries = answeredQueries(snap.docs.map((d) => d.data() as InquiryDoc))
+      } catch (err) {
+        console.error("Guest offer queries lookup failed:", err)
+      }
+    }
+
     // What the guest may see of an award: nothing until its order is sent.
     const shownStatus = await guestVisibleStatus(db, offer)
 
@@ -89,7 +101,11 @@ export async function GET(
           // Their own rates, so a per-material quote is revised per material.
           lines: Array.isArray(offer.lines) ? offer.lines : [],
           createdAt: offer.createdAt || null,
+          vatNumber: (offer.guestContact as { vatNumber?: string } | undefined)?.vatNumber || null,
+          phoneVerified: Boolean((offer.guestContact as { phoneVerified?: boolean } | undefined)?.phoneVerified),
+          papers: mergeGuestPapers(offer.guestPapers as GuestPaper[] | undefined, []).map((p) => ({ kind: p.kind, name: p.name, at: p.at })),
         },
+        queries,
         rfq: rfq
           ? {
               title: rfq.title || "",

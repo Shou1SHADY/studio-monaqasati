@@ -65,6 +65,9 @@ import type { RfqOfferView, RfqView } from "@/components/procurement/rfq/rfqOffe
 import { Callout } from "@/components/module-ui/Callout"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { OfferTermsChips } from "@/components/procurement/OfferTermsChips"
+import { GuestOfferProof } from "@/components/procurement/guest/GuestOfferProof"
+import { useSupplierRecords } from "@/hooks/useSupplierRecords"
+import { profileOfFacts, sourcingBlockOf } from "@/lib/procurement/rfq-extras"
 
 
 import {
@@ -312,6 +315,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     }
   }, [firestore, pickedSupplierIds, supplierFacts])
   const { history: priceHistory } = useProcurementPrices(procOrgId)
+  const supplierRecords = useSupplierRecords(procOrgId)
   const tProc = useTranslations("Portal.Procurement")
   const tx = useTranslations("Portal.Procurement.rfqx")
   const linksQuery = useMemoFirebase(() => (firestore && procOrgId ? query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", procOrgId), where("status", "==", "active")) : null), [firestore, procOrgId])
@@ -923,6 +927,10 @@ ${t("offers_notif_reduction_note", { note })}`
       value: rfqView.estimatedBudget ?? null,
     })
   }, [rfq, offers, sealed, seesPrices, orgOrders, orgReceipts, priceHistory, policies])
+  const sourcingFor = (o: RfqOfferView) => {
+    const id = awardSupplierOrgId(o)
+    return id ? sourcingBlockOf(supplierRecords.get(id), profileOfFacts(supplierFacts[id]), new Date().toISOString().slice(0, 10)) : null
+  }
   const blocksFor = (o: RfqOfferView) => {
     const id = awardSupplierOrgId(o)
     if (!id) return []
@@ -1227,6 +1235,7 @@ ${t("offers_notif_reduction_note", { note })}`
                                         {offer.guestContact.phone}
                                       </a>
                                     )}
+                                    <GuestOfferProof offer={offer} />
                                     {offer.guestContact.vatNumber ? (
                                       <span className="text-xs text-muted-foreground" dir="ltr">{tx("card.vat", { vat: offer.guestContact.vatNumber })}</span>
                                     ) : (
@@ -1676,7 +1685,7 @@ ${t("offers_notif_reduction_note", { note })}`
               <RfqGuestLinkPanel rfqId={rfqId} canShare={acts} onShare={() => setShareOpen(true)} />
             )}
             {rfqView && !isLoading && (
-              <RfqInvitedList rfq={rfqView} offers={offerViews} guestOffers={guestOffers} />
+              <RfqInvitedList rfq={rfqView} offers={offerViews} guestOffers={guestOffers} favoriteIds={(profile as { favoriteSuppliers?: string[] } | null)?.favoriteSuppliers || []} />
             )}
           </TabsContent>
 
@@ -1730,6 +1739,7 @@ ${t("offers_notif_reduction_note", { note })}`
                           title: rfqView.title || "",
                           passed: deadlinePassed,
                           invited: [...(rfqView.allowedSupplierOrgIds || []), ...(rfqView.invitedSupplierOrgIds || [])],
+                          categories: [rfqView.category, ...((rfqView.products || []) as Array<{ category?: string | null }>).map((p) => p.category)].filter((c): c is string => Boolean(c)),
                         })
                     : null
                 }
@@ -1757,6 +1767,7 @@ ${t("offers_notif_reduction_note", { note })}`
           blocksFor={blocksFor}
           budget={awardBudget}
           onDone={onAwarded}
+          sourcingFor={sourcingFor}
         />
       )}
       <ExcludeOfferDialog
@@ -1925,8 +1936,8 @@ ${t("offers_notif_reduction_note", { note })}`
       {/* Guest supplier notification — pushes the workflow step out to a
           share-link supplier on WhatsApp or email */}
       <GuestNotifyDialog target={guestNotify} onClose={() => setGuestNotify(null)} />
-      <ShareRfqLinkDialog rfq={shareOpen && rfq ? { id: rfqId, title: (rfq as { title?: string }).title } : null} isOpen={shareOpen} onClose={() => setShareOpen(false)} />
-      <RfqExtendDialog target={extendTarget} actor={writeActor} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
+      <ShareRfqLinkDialog rfq={shareOpen && rfq ? { id: rfqId, title: (rfq as { title?: string }).title } : null} isOpen={shareOpen} onClose={() => setShareOpen(false)} onPrint={printDoc} />
+      <RfqExtendDialog target={extendTarget} actor={writeActor} options={supplierOptions} orgId={procOrgId} onOpenChange={(o) => !o && setExtendTarget(null)} />
       <RfqRegisterGuestDialog guest={registerGuest} rfqId={rfqId} rfqTitle={(rfq as { title?: string } | null)?.title || ""} orgName={procOrgName || activeCompanyName || ""} actor={writeActor} onOpenChange={(o) => !o && setRegisterGuest(null)} />
       <Dialog open={draftDeleteOpen} onOpenChange={(o) => !deletingDraft && setDraftDeleteOpen(o)}>
         <DialogContent className="sm:max-w-md">

@@ -22,6 +22,7 @@
 
 import type { ElementType } from "react"
 import {
+  Undo2,
   LayoutDashboard,
   SlidersHorizontal,
   FolderOpen,
@@ -239,6 +240,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/contractor/warehouses/manufacturing", icon: Factory },
           { titleKey: "inventory_custody", href: "/contractor/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
+          { titleKey: "inventory_project_returns", href: "/contractor/warehouses/project-returns", icon: Undo2, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
       },
     ],

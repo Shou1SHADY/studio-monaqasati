@@ -638,7 +638,14 @@ function DrawerLine({
       </div>
       {l.inv && (
         <p className={cn("rounded-md px-2 py-1 text-xs", l.inv.k === "issue" ? "bg-success/10 text-success" : "bg-warning/10 text-warning")} dir="auto">
-          <b>{t("sup.inv.title")}</b> {l.inv.k === "issue" ? t("sup.inv.issue", { q: qty(l.inv.q ?? 0), unit: l.unit }) : t("sup.inv.none", { why: l.inv.why ?? "—" })}
+          <b>{t("sup.inv.title")}</b>{" "}
+          {l.inv.k === "issue"
+            ? l.inv.warehouseName
+              ? t("sup.inv.issue_wh", { q: qty(l.inv.q ?? 0), unit: l.unit, warehouse: l.inv.warehouseName })
+              : t("sup.inv.issue", { q: qty(l.inv.q ?? 0), unit: l.unit })
+            : t("sup.inv.none", { why: l.inv.why ?? "—" })}
+          {l.inv.k === "issue" && (l.inv.kept ?? 0) > 0 && ` · ${t("sup.inv.kept", { q: qty(l.inv.kept ?? 0), unit: l.unit, why: l.inv.why ?? "—" })}`}
+          {l.inv.note ? ` · ${l.inv.note}` : ""}
           {l.inv.byName ? ` · ${l.inv.byName}` : ""}
         </p>
       )}

@@ -5,6 +5,7 @@ import { collection, documentId, query, where } from "firebase/firestore"
 import { CheckCircle2, AlertCircle, Heart } from "lucide-react"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { cn } from "@/lib/utils"
+import type { SourcingBlock } from "@/lib/procurement/supplier-file"
 
 export interface SupplierOption {
   orgId: string
@@ -137,14 +138,16 @@ export function SupplierRecipientsPicker({
   disabled?: boolean
   id?: string
   className?: string
-  /** Per supplier: his on-time share (null = no record) and an expired CR — no order will be approved for him. */
-  facts?: Map<string, { onTime: number | null; crExpired: boolean }>
+  /** Per supplier: his on-time share (null = no record), an expired CR — no order will be approved for him —
+   * and why he may not be invited at all (`supplierSourcingBlock`): such a row is greyed and cannot be ticked. */
+  facts?: Map<string, { onTime: number | null; crExpired: boolean; block?: SourcingBlock | null }>
 }) {
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
   if (options.length === 0) return null
 
-  const allSelected = selected.length === options.length
+  const invitable = options.filter((o) => !facts?.get(o.orgId)?.block).map((o) => o.orgId)
+  const allSelected = invitable.length > 0 && invitable.every((id) => selected.includes(id))
   const toggle = (orgId: string) =>
     onChange(selected.includes(orgId) ? selected.filter((s) => s !== orgId) : [...selected, orgId])
 
@@ -158,7 +161,7 @@ export function SupplierRecipientsPicker({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => onChange(allSelected ? [] : options.map((o) => o.orgId))}
+          onClick={() => onChange(allSelected ? [] : invitable)}
           className="text-xs font-bold text-primary hover:underline disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-1 py-0.5"
         >
           {allSelected ? t("newrfq_visibility_clear_all") : t("newrfq_visibility_select_all")}
@@ -167,20 +170,21 @@ export function SupplierRecipientsPicker({
 
       <div className="mt-2.5 max-h-52 overflow-y-auto rounded-xl border border-border bg-white divide-y divide-border">
         {options.map((option) => {
-          const isSelected = selected.includes(option.orgId)
+          const block = facts?.get(option.orgId)?.block || null
+          const isSelected = !block && selected.includes(option.orgId)
           return (
             <label
               key={option.orgId}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 transition-colors",
-                disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
-                isSelected ? "bg-primary/5" : "hover:bg-muted/50"
+                disabled || block ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                isSelected ? "bg-primary/5" : !block && "hover:bg-muted/50"
               )}
             >
               <input
                 type="checkbox"
                 checked={isSelected}
-                disabled={disabled}
+                disabled={disabled || Boolean(block)}
                 onChange={() => toggle(option.orgId)}
                 className="h-4 w-4 shrink-0 rounded border-slate-300 text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
@@ -189,7 +193,11 @@ export function SupplierRecipientsPicker({
                 {facts && (
                   <span className="block text-[11px] text-muted-foreground">
                     {facts.get(option.orgId)?.onTime == null ? tp("rfqpo.form.no_record") : tp("rfqpo.form.on_time", { pct: facts.get(option.orgId)?.onTime ?? 0 })}
-                    {facts.get(option.orgId)?.crExpired && <span className="text-destructive"> · {tp("rfqpo.form.cr_expired")}</span>}
+                    {block ? (
+                      <span className="text-destructive"> · {tp(`rfqextras.sourcing.${block}`)}</span>
+                    ) : (
+                      facts.get(option.orgId)?.crExpired && <span className="text-destructive"> · {tp("rfqpo.form.cr_expired")}</span>
+                    )}
                   </span>
                 )}
               </span>

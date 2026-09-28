@@ -16,22 +16,42 @@ import {
   Clock,
   MessageCircle,
   AlertCircle,
+  FileDown,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/firebase"
+import { Callout } from "@/components/module-ui/Callout"
+import { displayCity, displayDistrict } from "@/lib/constants"
+import { displayDocNumber } from "@/lib/sales-numbering"
+import { guestInvitesNewestFirst, type GuestInvite } from "@/lib/procurement/guest-supplier"
 
 interface ShareRfqLinkDialogProps {
   rfq: { id: string; title?: string } | null
   isOpen: boolean
   onClose: () => void
+  /** «نزّل الطلب PDF لإرفاقه» — the RFQ as a document to attach. */
+  onPrint?: (() => void) | null
 }
 
-// Generates a portable 3-day guest link for an RFQ so a supplier can view it
-// and submit an offer without registering, then offers one-tap sharing via
-// copy / Gmail / WhatsApp or a direct branded email from the platform.
-export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogProps) {
+interface ShareSummary {
+  title: string
+  number: string | null
+  city: string | null
+  district: string | null
+  deadline: string | null
+}
+
+const DAY_MS = 86_400_000
+
+// Generates the RFQ's guest link — valid until the deadline and closed with it
+// (an extension reopens it) — so a supplier can view it and submit an offer
+// without registering, then offers one-tap sharing via copy / Gmail / WhatsApp
+// or a direct branded email from the platform. Every share is listed under
+// «دعوات الزوار».
+export function ShareRfqLinkDialog({ rfq, isOpen, onClose, onPrint }: ShareRfqLinkDialogProps) {
   const t = useTranslations("Portal.Contractor")
+  const tr = useTranslations("Portal.Procurement.rfqextras.share")
   const locale = useLocale()
   const { toast } = useToast()
   const { user } = useUser()
@@ -43,6 +63,18 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
   const [copied, setCopied] = useState(false)
   const [emailTo, setEmailTo] = useState("")
   const [isSendingEmail, setIsSendingEmail] = useState(false)
+  const [summary, setSummary] = useState<ShareSummary | null>(null)
+  const [invites, setInvites] = useState<GuestInvite[]>([])
+  const [closed, setClosed] = useState(false)
+  const [byDeadline, setByDeadline] = useState(false)
+
+  const takeResponse = useCallback((data: { expiresAt?: string | null; invites?: GuestInvite[]; closed?: boolean; validity?: string; rfq?: ShareSummary }) => {
+    if (data.expiresAt) setExpiresAt(data.expiresAt)
+    if (Array.isArray(data.invites)) setInvites(guestInvitesNewestFirst(data.invites))
+    if (typeof data.closed === "boolean") setClosed(data.closed)
+    if (data.validity) setByDeadline(data.validity === "deadline")
+    if (data.rfq) setSummary(data.rfq)
+  }, [])
 
   const generateLink = useCallback(async () => {
     if (!user || !rfq) return
@@ -59,13 +91,14 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
       if (!res.ok || json?.error) throw new Error(json?.code || "FAILED")
       setShareUrl(json.data.url as string)
       setExpiresAt(json.data.expiresAt as string)
+      takeResponse(json.data)
     } catch (err) {
       console.error("Failed to generate share link:", err)
       setGenerateError(true)
     } finally {
       setIsGenerating(false)
     }
-  }, [user, rfq])
+  }, [user, rfq, takeResponse])
 
   useEffect(() => {
     if (isOpen && rfq) {
@@ -73,6 +106,9 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
       setExpiresAt(null)
       setCopied(false)
       setEmailTo("")
+      setSummary(null)
+      setInvites([])
+      setClosed(false)
       generateLink()
     }
   }, [isOpen, rfq, generateLink])
@@ -85,18 +121,20 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
       if (!user || !rfq) return
       try {
         const idToken = await user.getIdToken()
-        await fetch("/api/rfq-share/create", {
+        const res = await fetch("/api/rfq-share/create", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
           body: JSON.stringify({ rfqId: rfq.id, channel }),
         })
+        const json = await res.json().catch(() => null)
+        if (json?.data) takeResponse(json.data)
       } catch (err) {
         // Non-critical: the link still works, the contractor just gets a
         // neutral default when notifying the supplier later.
         console.error("Failed to record share channel:", err)
       }
     },
-    [user, rfq]
+    [user, rfq, takeResponse]
   )
 
   const handleCopy = async () => {
@@ -143,6 +181,7 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
       })
       const json = await res.json().catch(() => null)
       if (!res.ok || json?.error || !json?.data?.emailSent) throw new Error(json?.code || "FAILED")
+      takeResponse(json.data)
       toast({ title: t("rfq_share_email_sent"), description: t("rfq_share_email_sent_desc", { email: emailTo.trim() }) })
       setEmailTo("")
     } catch (err) {
@@ -170,13 +209,25 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-black text-slate-800">{t("rfq_share_title")}</h2>
-              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{rfq?.title}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{tr("sub")}</p>
             </div>
           </div>
         </div>
 
-        <div className="px-5 py-5 space-y-4">
-          <p className="text-sm text-slate-600 leading-relaxed">{t("rfq_share_desc")}</p>
+        <div className="px-5 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="rounded-xl border bg-muted/30 px-3.5 py-2.5">
+            <p className="font-bold text-foreground line-clamp-2" dir="auto">
+              {summary?.title || rfq?.title}
+            </p>
+            {summary && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {summary.number && <bdi dir="ltr">{displayDocNumber(summary.number, locale)}</bdi>}
+                {summary.number && summary.city ? " · " : ""}
+                {summary.city ? displayCity(summary.city, locale) : ""}
+                {summary.district ? ` — ${displayDistrict(summary.district, locale)}` : ""}
+              </p>
+            )}
+          </div>
 
           {isGenerating ? (
             <div className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
@@ -215,12 +266,22 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
                     {copied ? <Check size={16} /> : <Copy size={16} />}
                   </Button>
                 </div>
-                {expiresAt && (
+                {closed ? (
+                  <Callout tone="block">{tr("closed")}</Callout>
+                ) : byDeadline && expiresAt ? (
+                  <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 font-semibold" suppressHydrationWarning>
+                    <Clock size={12} className="shrink-0" />
+                    {tr("valid_until_deadline", {
+                      date: new Date(expiresAt).toLocaleDateString(locale),
+                      days: Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / DAY_MS)),
+                    })}
+                  </div>
+                ) : expiresAt ? (
                   <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 font-semibold" suppressHydrationWarning>
                     <Clock size={12} />
                     {t("rfq_share_expires", { date: new Date(expiresAt).toLocaleDateString(locale) })}
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* One-tap share targets */}
@@ -267,6 +328,31 @@ export function ShareRfqLinkDialog({ rfq, isOpen, onClose }: ShareRfqLinkDialogP
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-relaxed">{t("rfq_share_email_help")}</p>
               </div>
+
+              {invites.length > 0 && (
+                <div className="space-y-1.5 border-t border-slate-100 pt-3">
+                  <p className="text-xs font-bold text-muted-foreground">{tr("invites_title")}</p>
+                  <ul className="divide-y rounded-xl border text-xs">
+                    {invites.map((x, i) => (
+                      <li key={`${x.at}-${i}`} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                        <span className="min-w-0 truncate font-semibold" dir={x.to ? "ltr" : "auto"}>
+                          {x.to || tr(`via_${x.channel}`)}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground" suppressHydrationWarning>
+                          {tr(`channel_${x.channel}`)} · {new Date(x.at).toLocaleDateString(locale)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {onPrint && (
+                <Button type="button" variant="outline" size="sm" onClick={onPrint} className="gap-1.5 rounded-lg">
+                  <FileDown size={14} aria-hidden="true" />
+                  {tr("pdf")}
+                </Button>
+              )}
             </>
           ) : null}
         </div>

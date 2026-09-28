@@ -22,7 +22,7 @@ import { Lock, Plus, Search, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
-import { activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
+import { PROC_TABS, activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
 import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
 import { ServiceOrderDialog } from "@/components/procurement/ServiceOrderDialog"
@@ -64,9 +64,17 @@ export function ProcurementHeader({ title, description, action, sharedAction }: 
   const tToday = useTranslations("Portal.ProcToday")
   const locale = useLocale()
   const pathname = usePathname()
-  const { can } = usePermissions()
+  const { can, isLoading } = usePermissions()
+  const router = useRouter()
   const tabs = visibleProcTabs(can)
   const active = activeProcTab(tabs, pathname)
+  // A link may name a tab this viewer does not hold (an expediter typing the RFQs'
+  // address): the prototype's shell never renders one — open his first tab instead.
+  const here = activeProcTab(PROC_TABS, pathname)
+  const home = !isLoading && here && tabs.length > 0 && !tabs.some((x) => x.id === here.id) ? tabs[0].href : null
+  useEffect(() => {
+    if (home) router.replace(home)
+  }, [home, router])
   const shell = useProcurementShell()
   const [serviceOpen, setServiceOpen] = useState(false)
   // The orders tab's own act (prototype poFree): whoever prepares orders, never the reading owner.

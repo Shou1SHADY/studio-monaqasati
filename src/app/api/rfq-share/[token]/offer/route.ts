@@ -14,11 +14,31 @@ import { offersSealed } from "@/lib/procurement/award"
 import { newOfferNotice, newOfferNoticeId } from "@/lib/procurement/offer-announce"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import type { ProcurementPolicies } from "@/lib/procurement/types"
+import { verifyOtp } from "@/lib/otp"
+import { canSendCodes } from "@/lib/sms"
+import {
+  GUEST_PAPER_KINDS,
+  guestOtpRequired,
+  guestOtpSubject,
+  guestPaperPath,
+  guestPaperRefusal,
+  normalizeGuestMobile,
+  type GuestPaper,
+} from "@/lib/procurement/guest-supplier"
 
 // Public endpoint: a guest supplier (no account) submits a price offer on an
 // RFQ through a valid share link. The offer lands in the same `offers`
 // collection the contractor already reads, flagged with isGuestOffer +
 // guestContact so it can be told apart from registered-supplier offers.
+// The mobile is proven by a one-time code (`/code`) whenever the platform can
+// send one; the guest's papers (CR, VAT certificate) are stored under the link.
+
+const isUat = () => process.env.NEXT_PUBLIC_APP_ENV === "uat" || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "mdmaktech-uat"
+
+const otpSchema = z.object({
+  challengeId: z.string().trim().min(1).max(128),
+  code: z.string().trim().regex(/^\d{6}$/),
+})
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 const MAX_OFFERS_PER_LINK = 100
@@ -104,6 +124,8 @@ export async function POST(
       "validUntil",
       "advancePercent",
       "creditDays",
+      "challengeId",
+      "code",
     ]) {
       const v = form.get(key)
       if (typeof v === "string") raw[key] = v
@@ -127,6 +149,21 @@ export async function POST(
       return errorResponse("Please review the submitted fields", "INVALID_INPUT", 400)
     }
     const data = parsed.data
+    const phoneE164 = normalizeGuestMobile(data.phone)
+    const otpNeeded = guestOtpRequired(canSendCodes(), isUat())
+    if (otpNeeded && !phoneE164) return errorResponse("Enter a valid mobile number", "INVALID_PHONE", 400)
+    const otp = otpNeeded ? otpSchema.safeParse({ challengeId: raw.challengeId, code: raw.code }) : null
+    if (otp && !otp.success) return errorResponse("Verify your mobile number first", "CODE_REQUIRED", 400)
+
+    // Papers are checked before anything is stored or any code is spent.
+    const papers: Array<{ kind: (typeof GUEST_PAPER_KINDS)[number]; file: File }> = []
+    for (const kind of GUEST_PAPER_KINDS) {
+      const f = form.get(`paper_${kind}`)
+      if (!(f instanceof File) || f.size === 0) continue
+      const refusal = guestPaperRefusal(f)
+      if (refusal) return errorResponse("Papers must be PDF, JPG or PNG files of 5MB or less", refusal === "size" ? "PAPER_TOO_LARGE" : "INVALID_PAPER", 400)
+      papers.push({ kind, file: f })
+    }
 
     const db = getAdminFirestore()
 
@@ -140,6 +177,13 @@ export async function POST(
       .get()
     if (!dup.empty) {
       return errorResponse("An offer from this email already exists for this RFQ", "DUPLICATE_OFFER", 409)
+    }
+
+    if (otp?.success && phoneE164) {
+      const verdict = await verifyOtp(db, otp.data.challengeId, { purpose: "guest_offer", subjectId: guestOtpSubject(linkId, phoneE164) }, otp.data.code)
+      if (verdict === "wrong") return errorResponse("Wrong code", "WRONG_CODE", 400)
+      if (verdict === "unavailable") return errorResponse("The code could not be checked — try again", "CODE_UNCHECKED", 503)
+      if (verdict !== "ok") return errorResponse("The code has expired — ask for a new one", "CODE_EXPIRED", 410)
     }
 
     // --- Optional PDF attachment (uploaded server-side with the Admin SDK,
@@ -163,6 +207,29 @@ export async function POST(
         metadata: { metadata: { firebaseStorageDownloadTokens: downloadToken } },
       })
       offerPdfUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`
+    }
+
+    const offerRef = db.collection("offers").doc()
+    const guestPapers: GuestPaper[] = []
+    if (papers.length) {
+      const bucket = getAdminStorage().bucket(getStorageBucketName())
+      const stamp = Date.now()
+      for (const { kind, file } of papers) {
+        const objectPath = guestPaperPath(linkId, offerRef.id, kind, file.name, stamp)
+        const downloadToken = randomUUID()
+        await bucket.file(objectPath).save(Buffer.from(await file.arrayBuffer()), {
+          contentType: file.type,
+          metadata: { metadata: { firebaseStorageDownloadTokens: downloadToken } },
+        })
+        guestPapers.push({
+          kind,
+          name: file.name || kind,
+          url: `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(objectPath)}?alt=media&token=${downloadToken}`,
+          contentType: file.type,
+          size: file.size,
+          at: new Date().toISOString(),
+        })
+      }
     }
 
     // --- Create the offer, mirroring the registered-supplier offer shape ---
@@ -209,9 +276,12 @@ export async function POST(
       guestContact: {
         name: data.contactName,
         email: data.email,
-        phone: data.phone,
+        phone: phoneE164 || data.phone,
         vatNumber: data.vatNumber || null,
+        phoneVerified: Boolean(otp?.success),
+        ...(otp?.success ? { phoneVerifiedAt: nowIso } : {}),
       },
+      ...(guestPapers.length ? { guestPapers } : {}),
       guestMessage: data.message || null,
       shareLinkId: linkId,
       // The channel the contractor shared on — the rest of the workflow pushes
@@ -229,7 +299,7 @@ export async function POST(
     }
     if (offerPdfUrl) offerData.offerPdfUrl = offerPdfUrl
 
-    const offerRef = await db.collection("offers").add(offerData)
+    await offerRef.set(offerData)
 
     // --- Private follow-up link: the guest's own page for the rest of the
     //     workflow (revised prices, sample confirmation, delivery notice) ---

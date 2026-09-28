@@ -2,6 +2,7 @@
 // Never import this file in client components.
 
 import { getAdminFirestore } from "@/lib/firebaseAdmin"
+import { shareLinkState } from "@/lib/procurement/guest-supplier"
 
 // Guest links are handed to suppliers outside the platform (Gmail, WhatsApp,
 // ...), so they must always point at the canonical production domain — never a
@@ -12,9 +13,10 @@ export type ShareLinkResolution =
   | { ok: true; linkId: string; link: FirebaseFirestore.DocumentData; rfq: FirebaseFirestore.DocumentData; rfqId: string }
   | { ok: false; code: "INVALID_TOKEN" | "NOT_FOUND" | "LINK_EXPIRED" | "LINK_REVOKED" | "RFQ_NOT_FOUND"; status: number }
 
-// Resolves a share token to its link + RFQ documents, enforcing the 3-day
-// expiry and revocation. RFQ closed/awarded states are left to the callers,
-// which need to distinguish "view only" from "can submit".
+// Resolves a share token to its link + RFQ documents, enforcing revocation and
+// expiry: a link minted for the deadline lives while the RFQ is open (view only
+// once the deadline passes — an extension reopens it), an older link keeps its
+// fixed expiry. Submitting is the callers' call ("view only" vs "can submit").
 export async function resolveShareToken(token: string): Promise<ShareLinkResolution> {
   if (!/^[a-f0-9]{64}$/.test(token)) {
     return { ok: false, code: "INVALID_TOKEN", status: 400 }
@@ -27,12 +29,13 @@ export async function resolveShareToken(token: string): Promise<ShareLinkResolut
   const linkDoc = snap.docs[0]
   const link = linkDoc.data()
   if (link.revoked) return { ok: false, code: "LINK_REVOKED", status: 410 }
-  if (new Date(link.expiresAt as string).getTime() <= Date.now()) {
+  if (link.expiresWith !== "deadline" && new Date(link.expiresAt as string).getTime() <= Date.now()) {
     return { ok: false, code: "LINK_EXPIRED", status: 410 }
   }
 
   const rfqSnap = await db.collection("rfqs").doc(link.rfqId as string).get()
   if (!rfqSnap.exists) return { ok: false, code: "RFQ_NOT_FOUND", status: 404 }
+  if (shareLinkState(link, rfqSnap.data() ?? null, new Date()) === "gone") return { ok: false, code: "LINK_EXPIRED", status: 410 }
 
   return { ok: true, linkId: linkDoc.id, link, rfq: rfqSnap.data()!, rfqId: rfqSnap.id }
 }

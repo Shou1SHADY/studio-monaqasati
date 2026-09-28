@@ -1,12 +1,12 @@
 "use client"
 
 import { SAUDI_VAT_RE } from "@/lib/procurement/rfq-form"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { EMPTY_OFFER_TERMS, OfferTermsFields, type OfferTermsValue } from "@/components/procurement/OfferTermsFields"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { useParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Link } from "@/i18n/routing"
@@ -46,9 +46,14 @@ import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 import { displayCategory, displayCity, displaySubcategory } from "@/lib/constants"
 import { offerPricingFields, priceOffer, pricedProducts, pricingModeOf } from "@/lib/procurement/offer-pricing"
+import type { AnsweredQuery } from "@/lib/procurement/guest-supplier"
+import { GuestAnsweredQueries } from "@/components/procurement/guest/GuestAnsweredQueries"
+import { GuestOtpField, type GuestOtpValue } from "@/components/procurement/guest/GuestOtpField"
+import { GuestPapersField, type GuestPaperFiles } from "@/components/procurement/guest/GuestPapersField"
 
 type SharedRfq = {
   id: string
+  number?: string | null
   title: string
   category: string | null
   subCategory: string | null
@@ -66,6 +71,7 @@ type SharedRfq = {
   unitOfMeasure: string | null
   notes: string | null
   pdfUrl: string | null
+  attachments?: Array<{ name: string; url: string }>
   paymentTerms: string | null
   requiresWarranty: boolean
   locationCoords: { lat: number; lng: number } | null
@@ -81,6 +87,8 @@ type LookupData = {
   linkExpiresAt: string
   deadlinePassed: boolean
   canSubmit: boolean
+  otpRequired?: boolean
+  queries?: AnsweredQuery[]
 }
 
 const offerSchema = z.object({
@@ -107,6 +115,14 @@ export function PublicRfqContent() {
   const params = useParams()
   const token = params.token as string
   const t = useTranslations("PublicRfq")
+  const tg = useTranslations("PublicRfq.extras")
+  const [otp, setOtp] = useState<GuestOtpValue | null>(null)
+  const [otpMissing, setOtpMissing] = useState(false)
+  const [papers, setPapers] = useState<GuestPaperFiles>({})
+  const onOtpChange = useCallback((v: GuestOtpValue | null) => {
+    setOtp(v)
+    if (v) setOtpMissing(false)
+  }, [])
   const locale = useLocale()
   const isRTL = locale === "ar"
   const { toast } = useToast()
@@ -129,11 +145,13 @@ export function PublicRfqContent() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<OfferFormValues>({
     resolver: zodResolver(offerSchema),
     defaultValues: { deliveryLocation: "", deliveryDate: "", executionDuration: "", website: "", message: "", vatNumber: "" },
   })
+  const phoneValue = useWatch({ control, name: "phone" }) || ""
 
   useEffect(() => {
     if (!token) return
@@ -195,6 +213,11 @@ export function PublicRfqContent() {
       toast({ title: t("invalid_price"), description: t("line_prices_incomplete"), variant: "destructive" })
       return
     }
+    if (lookup?.otpRequired && !otp) {
+      setOtpMissing(true)
+      toast({ title: t("error_title"), description: tg("otp_required"), variant: "destructive" })
+      return
+    }
     const parsedTerms = parseOfferTerms(terms, new Date().toISOString().slice(0, 10))
     if (parsedTerms.error) {
       toast({ title: tTerms(`rfqpo.terms.err_${parsedTerms.error}`), variant: "destructive" })
@@ -227,13 +250,29 @@ export function PublicRfqContent() {
       if (values.vatNumber) form.set("vatNumber", values.vatNumber)
       if (values.message) form.set("message", values.message)
       if (pdfFile) form.set("pdf", pdfFile)
+      if (papers.cr) form.set("paper_cr", papers.cr)
+      if (papers.vat) form.set("paper_vat", papers.vat)
+      if (otp) {
+        form.set("challengeId", otp.challengeId)
+        form.set("code", otp.code)
+      }
 
       const res = await fetch(`/api/rfq-share/${token}/offer`, { method: "POST", body: form })
       const json = await res.json().catch(() => null)
       if (!res.ok || json?.error) {
         const code = json?.code as string | undefined
-        const description =
-          code === "DUPLICATE_OFFER"
+        const guestCodes: Record<string, string> = {
+          WRONG_CODE: "otp_err_wrong",
+          CODE_EXPIRED: "otp_err_expired",
+          CODE_REQUIRED: "otp_required",
+          CODE_UNCHECKED: "otp_err_unchecked",
+          INVALID_PHONE: "otp_err_phone",
+          PAPER_TOO_LARGE: "papers_too_large",
+          INVALID_PAPER: "papers_bad_type",
+        }
+        const description = code && guestCodes[code]
+          ? tg(guestCodes[code])
+          : code === "DUPLICATE_OFFER"
             ? t("error_duplicate")
             : code === "DEADLINE_PASSED" || code === "RFQ_CLOSED"
               ? t("error_closed")
@@ -424,8 +463,8 @@ export function PublicRfqContent() {
                             {t("rfq_status_closed")}
                           </span>
                         )}
-                        <span className="text-[10px] text-slate-400 font-mono bg-white/70 px-2 py-0.5 rounded-md border border-slate-200">
-                          #{rfq.id.substring(0, 8).toUpperCase()}
+                        <span className="text-[10px] text-slate-400 font-mono bg-white/70 px-2 py-0.5 rounded-md border border-slate-200" dir="ltr">
+                          {rfq.number || `#${rfq.id.substring(0, 8).toUpperCase()}`}
                         </span>
                         {rfq.requiresWarranty && (
                           <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-200">
@@ -558,8 +597,27 @@ export function PublicRfqContent() {
                     </div>
                   )}
 
+                  {/* Every attachment on the request */}
+                  {rfq.attachments && rfq.attachments.length > 1 && (
+                    <ul className="space-y-2" aria-label={tg("attachments_title")}>
+                      {rfq.attachments.map((a) => (
+                        <li key={a.url} className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                          <File size={18} className="shrink-0 text-blue-600" aria-hidden="true" />
+                          <span className="min-w-0 flex-1 truncate text-sm font-bold text-slate-700" dir="auto">
+                            {a.name}
+                          </span>
+                          <a href={a.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg text-xs font-bold text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            {tg("attachment_view")}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {lookup.queries && lookup.queries.length > 0 && <GuestAnsweredQueries queries={lookup.queries} />}
+
                   {/* PDF attachment */}
-                  {rfq.pdfUrl && (
+                  {rfq.pdfUrl && !(rfq.attachments && rfq.attachments.length > 1) && (
                     <div className="flex items-center gap-3 p-4 bg-blue-50/60 rounded-xl border border-blue-100 shadow-sm">
                       <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                         <File size={20} className="text-blue-600" />
@@ -657,6 +715,7 @@ export function PublicRfqContent() {
                           {errors.phone && <p className="text-xs text-destructive">{t("invalid_phone")}</p>}
                         </div>
                       </div>
+                      {lookup.otpRequired && <GuestOtpField token={token} phone={phoneValue} onChange={onOtpChange} invalid={otpMissing} />}
                       <div className="space-y-1.5">
                         <Label htmlFor="vatNumber" className="text-sm font-semibold flex items-center gap-1.5">
                           <Building2 size={13} className="text-primary" />
@@ -839,6 +898,8 @@ export function PublicRfqContent() {
                         </div>
                       )}
                     </div>
+
+                    <GuestPapersField value={papers} onChange={setPapers} onRefused={(m) => toast({ title: t("error_title"), description: m, variant: "destructive" })} />
 
                     {/* Website */}
                     <div className="space-y-1.5">

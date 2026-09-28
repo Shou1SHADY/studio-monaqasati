@@ -29,7 +29,12 @@ export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sou
   switch (entry.sourceType) {
     case "ipc_claim":
     case "ipc_collection":
-    case "retention_release": {
+    case "retention_release":
+    case "pm_sub_certificate":
+    case "pm_sub_payment":
+    case "pm_cash":
+    case "pm_loss":
+    case "pm_xfer": {
       // A claim lives inside its project; the entry's lines carry the project.
       const project = entry.lines.find((l) => l.project)?.project
       return portal === "contractor" && project ? `projects/${project}` : null

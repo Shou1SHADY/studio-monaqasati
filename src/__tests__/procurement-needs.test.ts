@@ -45,6 +45,14 @@ describe("a project's internal request", () => {
     expect(projectNeed(p, pr({ poId: "o1" }), "PR-1").state).toBe("order")
     expect(projectNeed(p, pr({ status: "rejected" }), "PR-1").state).toBe("done")
   })
+  it("buys only what Inventory did not issue from stock", () => {
+    const withLines = (inv: { k: string; kept?: number } | null) => pr({ lines: [{ name: "Rebar", unit: "t", inv }] })
+    expect(projectNeed(p, withLines({ k: "issue", kept: 1 }), "PR-1").lines).toEqual([expect.objectContaining({ name: "Rebar", quantity: 1 })])
+    expect(projectNeed(p, withLines({ k: "issue", kept: 0 }), "PR-1").lines).toEqual([])
+    expect(projectNeed(p, withLines({ k: "none" }), "PR-1").lines).toEqual([expect.objectContaining({ quantity: 3 })])
+    expect(projectNeed(p, withLines(null), "PR-1").lines).toEqual([expect.objectContaining({ quantity: 3 })])
+  })
+
   it("keeps only lines with a name and a quantity", () => {
     expect(projectNeed(p, pr(), "PR-1").lines).toEqual([{ name: "Rebar", unit: "t", quantity: 3 }])
   })

@@ -1497,7 +1497,8 @@ service cloud.firestore {
                 && request.resource.data.lines.size() == resource.data.lines.size())
               || (hasOrgPermission('invoices.manage')
                 && changedKeys().hasOnly(['paid', 'updatedAt'])
-                && request.resource.data.paid is number));
+                && request.resource.data.paid is number
+                && request.resource.data.paid >= resource.data.get('paid', 0)));
 
         allow delete: if isAdmin();
       }
@@ -1521,12 +1522,22 @@ service cloud.firestore {
         allow update: if isSignedIn()
           && inProjectOrg(projectId)
           && projectOpen(projectId)
-          && pmDuty(projectId, 'ipcOk')
-          && resource.data.status == 'int' && request.resource.data.status == 'ok'
-          && resource.data.prep != request.auth.uid
-          && request.resource.data.appr == request.auth.uid
-          && (pmCeilingHas('admin') || (pmCeilingHas('approve') && resource.data.gross <= 75000))
-          && changedKeys().hasOnly(['status', 'appr', 'apprName', 'apprOn', 'updatedAt']);
+          && (
+            (pmDuty(projectId, 'ipcOk')
+              && resource.data.status == 'int' && request.resource.data.status == 'ok'
+              && resource.data.prep != request.auth.uid
+              && request.resource.data.appr == request.auth.uid
+              && (pmCeilingHas('admin') || (pmCeilingHas('approve') && resource.data.gross <= 75000))
+              && changedKeys().hasOnly(['status', 'appr', 'apprName', 'apprOn', 'updatedAt']))
+            // Finance pays an approved sub certificate — once.
+            || (hasOrgPermission('invoices.manage')
+              && resource.data.status == 'ok'
+              && resource.data.get('paidOn', null) == null
+              && request.resource.data.paidOn is string
+              && request.resource.data.paidAmount is number && request.resource.data.paidAmount > 0
+              && request.resource.data.paidBy == request.auth.uid
+              && changedKeys().hasOnly(['paidOn', 'paidAmount', 'paidBy', 'paidByName', 'updatedAt']))
+          );
 
         allow delete: if isAdmin();
       }
@@ -2126,6 +2137,18 @@ service cloud.firestore {
               && resource.data.createdAt is timestamp
               && request.time > resource.data.createdAt + duration.value(procReplyWindowDays(), 'd'))
           );
+
+        // Inventory replies on a PM request line (issue from stock / partial / buy).
+        allow update: if isSignedIn()
+          && inProjectOrg(projectId)
+          && projectOpen(projectId)
+          && (isOrgOwner() || hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))
+          && resource.data.get('pm', false) == true
+          && resource.data.status == 'approved'
+          && resource.data.get('poId', null) == null
+          && changedKeys().hasOnly(['lines', 'updatedAt'])
+          && request.resource.data.lines is list
+          && request.resource.data.lines.size() == resource.data.lines.size();
 
         allow delete: if isAdmin();
 

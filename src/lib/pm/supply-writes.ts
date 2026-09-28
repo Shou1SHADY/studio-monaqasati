@@ -633,16 +633,49 @@ export async function confirmMoveIn(firestore: Firestore, ctx: PmContext, projec
 }
 
 /** Inventory confirms a return is back in its main store (the keeper's act, from
- * Inventory's desk): the move closes, and the stock is Inventory's again. */
-export async function confirmStoreReturn(firestore: Firestore, projectId: string, actor: SupplyActor, storeId: string, index: number): Promise<void> {
+ * Inventory's desk): the move closes, and the stock is Inventory's again. With
+ * `landing`, the same transaction credits the warehouse the move names — on the
+ * row `landing.itemId` (found by the caller: transactions cannot query), or a
+ * new row when null or when that row no longer matches. */
+export async function confirmStoreReturn(firestore: Firestore, projectId: string, actor: SupplyActor, storeId: string, index: number, landing?: { itemId: string | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    await readProject(tx, firestore, projectId)
+    const { project } = await readProject(tx, firestore, projectId)
     const { ref, line } = await readStore(tx, firestore, projectId, storeId)
     const move = line?.moves[index]
     if (!line || !move) throw new PmSupplyError("missing")
     if (!returnWaiting(move)) throw new PmSupplyError("blocked", ["not_waiting"])
+    let credit: (() => void) | null = null
+    if (landing) {
+      if (!move.warehouseId) throw new PmSupplyError("blocked", ["no_warehouse"])
+      const wh = await tx.get(doc(firestore, "warehouses", move.warehouseId))
+      if (!wh.exists()) throw new PmSupplyError("blocked", ["no_warehouse"])
+      const orgId = (wh.data() as { organizationId?: string }).organizationId ?? null
+      if (orgId !== (project.organizationId ?? null)) throw new PmSupplyError("blocked", ["other_org"])
+      const rowRef = landing.itemId ? doc(firestore, "warehouses", move.warehouseId, "inventoryItems", landing.itemId) : null
+      const row = rowRef ? await tx.get(rowRef) : null
+      const cur = row?.exists() ? (row.data() as { quantity?: number; unit?: string; trackingMode?: string | null }) : null
+      const whId = move.warehouseId
+      credit =
+        rowRef && cur && cur.trackingMode !== "unit"
+          ? () => tx.update(rowRef, { quantity: r3(Math.max(0, Number(cur.quantity) || 0) + move.q), updatedAt: serverTimestamp() })
+          : () =>
+              tx.set(doc(collection(firestore, "warehouses", whId, "inventoryItems")), {
+                name: line.name,
+                sku: null,
+                quantity: move.q,
+                unit: line.unit,
+                unitCost: null,
+                minStockLevel: null,
+                trackingMode: null,
+                organizationId: orgId,
+                warehouseId: whId,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              })
+    }
     const day = todayDay()
     tx.update(ref, { moves: line.moves.map((m, i) => (i === index ? { ...m, st: "done", invBy: actor.uid, invByName: actor.name, invOn: day } : m)), updatedAt: serverTimestamp() })
+    credit?.()
   })
 }
 

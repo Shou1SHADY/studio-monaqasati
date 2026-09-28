@@ -137,7 +137,26 @@ export interface ProcWorld {
   budgetOverruns?: Record<string, number>
   /** By need row key: the workshop's readiness date for a line being made. */
   readyDates?: Record<string, string>
+  /** Projects' boundary events Procurement reads (`pmEvents` SRET · NOPO · EQH). */
+  pmEvents?: PmBoundaryFact[]
 }
+
+/** What a PM project tells Procurement through its outbox (`pmEvents`): a
+ * material going back to the supplier — non-conforming, or damage charged to
+ * him (SRET) · a cash inbound on the project with no order (NOPO) · a hire in
+ * place of our fleet, dated from/to (EQH). Procurement reads; the project wrote. */
+export interface PmBoundaryFact {
+  key: string
+  kind: "SRET" | "NOPO" | "EQH"
+  projectId: string
+  projectNo: string
+  amount: number
+  params: Record<string, string | number | boolean>
+  /** ISO. */
+  at: string
+}
+
+export const PM_BOUNDARY_KINDS = ["SRET", "NOPO", "EQH"] as const
 
 export const OFFER_PENDING = new Set(["قيد المراجعة", "مطلوب تخفيض"])
 export const OFFER_ACCEPTED = "مقبول"
@@ -176,6 +195,9 @@ export type TaskKind =
   | "cancel_remainder" // Projects stopped a material still owed on an order
   | "notice_forward" // a supplier's notice nobody has passed to the receiver
   | "finance_hold" // Finance held a supplier's invoice — the next move is ours, the receiver's or the supplier's
+  | "pm_supplier_return" // a project sends a material back to its supplier: claim the credit note
+  | "pm_cash_inbound" // a project took a material in for cash, with no order: regularise it
+  | "pm_hire" // a project's plant cannot come from our fleet: hire it for the dates asked
 
 export type TaskAction = "review" | "view" | "send" | "open" | "updateDate" | "decide" | "receive" | "rate" | "compare" | "openDraft" | "openRfq" | "seeArrived" | "openReceipt"
 
@@ -216,6 +238,9 @@ export const AGREEMENT_HREF = (id: string) => `/contractor/suppliers?segment=agr
 export const COMMITMENTS_HREF = "/contractor/rfqs/reports?report=commitments"
 export const NEEDS_HREF = "/contractor/rfqs/requests"
 export const NEED_LINE_HREF = (key: string) => `/contractor/rfqs/requests?line=${encodeURIComponent(key)}`
+/** A project's page on one of its tabs. */
+export const PROJECT_HREF = (id: string, tab: string) => `/contractor/projects/${id}?tab=${tab}`
+
 /** The goods-received desk opens the forward dialog for this notice. */
 export const FORWARD_HREF = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}&forward=1`
 
@@ -245,6 +270,9 @@ const GROUP_OF: Record<TaskKind, TaskGroup> = {
   cancel_remainder: "po",
   notice_forward: "delivery",
   finance_hold: "po",
+  pm_supplier_return: "delivery",
+  pm_cash_inbound: "delivery",
+  pm_hire: "need",
 }
 
 const SEVERITY_RANK: Record<TaskSeverity, number> = { red: 0, amber: 1, blue: 2 }
@@ -253,6 +281,9 @@ const SEVERITY_RANK: Record<TaskSeverity, number> = { red: 0, amber: 1, blue: 2 
 export const CONFIRM_BEFORE_DATE_BELOW = 85
 /** A receipt with no order stays on the desk this long, then it is a report row. */
 const NO_PO_WINDOW_DAYS = 30
+/** A project's boundary event stays on Today this long — it carries no state of
+ * its own to close, so after that it is history on the project. */
+export const PM_EVENT_WINDOW_DAYS = 30
 
 export type ActorKind = "owner" | "buyer" | "expediter"
 
@@ -510,6 +541,10 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
     }
   }
 
+  if (sources) {
+    for (const e of pmBoundaryTasks(w.pmEvents || [], now)) add({ ...e, amount: money(actor, e.amount), actionKey: look(e.actionKey) })
+  }
+
   if (sources && !ownerRO) {
     const offersByRfq = new Map<string, OfferFact[]>()
     for (const o of w.offers) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
@@ -644,6 +679,42 @@ export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
 }
 
 /** A receipt carries rejects, or came short of what the notice announced. */
+const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "")
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number(v) || 0)
+
+/** Projects' boundary events as Today rows: informational (tier 3), each
+ * opening the project on the tab that holds it, within the window. */
+export function pmBoundaryTasks(events: PmBoundaryFact[], now: Date): Array<Omit<Task, "group" | "subNs">> {
+  const out: Array<Omit<Task, "group" | "subNs">> = []
+  for (const e of events) {
+    const day = (e.at || "").slice(0, 10)
+    const ago = day ? -(daysFromNow(day, now) ?? 0) : 0
+    if (!day || ago > PM_EVENT_WINDOW_DAYS || ago < 0) continue
+    const p = e.params || {}
+    const project = str(p.project) || e.projectNo
+    const common = { id: `pm:${e.key}`, priority: 3 as const, severity: "amber" as const, sortDays: -ago, subParams: { project, projectNo: e.projectNo, date: day } }
+    if (e.kind === "SRET") {
+      const nc = str(p.why) === "nc" || !str(p.why)
+      out.push({ ...common, kind: "pm_supplier_return", titleKey: nc ? "task.pm_supplier_return.title_nc" : "task.pm_supplier_return.title_charged", titleParams: { qty: num(p.qty), unit: str(p.unit), name: str(p.material) }, subKey: "task.pm_supplier_return.sub", amount: e.amount > 0 ? e.amount : null, href: PROJECT_HREF(e.projectId, "pmStore"), actionKey: "actions.openProject" })
+    } else if (e.kind === "NOPO") {
+      out.push({ ...common, kind: "pm_cash_inbound", titleKey: "task.pm_cash_inbound.title", titleParams: { qty: num(p.qty), unit: str(p.unit), name: str(p.material) }, subKey: "task.pm_cash_inbound.sub", amount: e.amount > 0 ? e.amount : null, href: PROJECT_HREF(e.projectId, "pmStore"), actionKey: "actions.openProject" })
+    } else if (e.kind === "EQH") {
+      out.push({
+        ...common,
+        kind: "pm_hire",
+        titleKey: "task.pm_hire.title",
+        titleParams: { request: str(p.request), what: str(p.what), fromDay: str(p.from), toDay: str(p.to) },
+        subKey: "task.pm_hire.sub",
+        subParams: { ...common.subParams, qty: num(p.qty) || 1, operator: p.operator === true || p.operator === "true" ? 1 : 0 },
+        amount: null,
+        href: PROJECT_HREF(e.projectId, "pmReq"),
+        actionKey: "actions.openProject",
+      })
+    }
+  }
+  return out.sort((a, b) => a.sortDays - b.sortDays)
+}
+
 export function arrivedFlags(r: ReceiptFact): { rejects: boolean; short: boolean } {
   const lines = r.lines || []
   return {
@@ -876,6 +947,14 @@ export const TODAY_KEYS = [
   "actions.openNeeds",
   "actions.answer",
   "actions.forward",
+  "actions.openProject",
+  "task.pm_supplier_return.title_nc",
+  "task.pm_supplier_return.title_charged",
+  "task.pm_supplier_return.sub",
+  "task.pm_cash_inbound.title",
+  "task.pm_cash_inbound.sub",
+  "task.pm_hire.title",
+  "task.pm_hire.sub",
   "task.need_line.title",
   "task.need_line.sub",
   "task.need_rollup.title",

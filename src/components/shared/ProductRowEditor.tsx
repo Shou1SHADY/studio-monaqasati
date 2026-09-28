@@ -19,6 +19,19 @@ export interface ProductRow {
   subCategory: string
   otherSubCategory?: string
   requiresWarranty?: boolean
+  /** `YYYY-MM-DD` — «مطلوب قبل». */
+  needBy?: string
+  /** «يُحمَّل على مشروع» — empty = general, for stock. */
+  projectId?: string
+}
+
+/** The RFQ form's per-line need date and project (prototype FORMS.rfq «مطلوب قبل» · «يُحمَّل على مشروع»). */
+export interface ProductLineExtras {
+  projects: Array<{ value: string; label: string }>
+  /** Set when the whole form belongs to one project — every line is for it. */
+  lockedProjectLabel?: string | null
+  minNeedBy: string
+  copy: { needBy: string; project: string; general: string; search: string; none: string }
 }
 
 export function makeEmptyProductRow(id: string): ProductRow {
@@ -36,9 +49,10 @@ interface ProductRowEditorProps {
   t: ReturnType<typeof useTranslations<"Portal.Contractor">>
   /** Fired after any field on a row changes — parents can use this to clear their own validation errors. */
   onFieldTouched?: (id: string, field: keyof ProductRow) => void
+  lineExtras?: ProductLineExtras
 }
 
-export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched }: ProductRowEditorProps) {
+export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched, lineExtras }: ProductRowEditorProps) {
   const addRow = () => onChange([...rows, makeEmptyProductRow(Date.now().toString())])
 
   const removeRow = (id: string) => {
@@ -149,6 +163,33 @@ export function ProductRowEditor({ rows, onChange, locale, t, onFieldTouched }: 
                 />
               </div>
             </div>
+            {lineExtras && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+                <div className="space-y-2">
+                  <Label htmlFor={`need-by-${row.id}`} className="text-xs font-semibold text-slate-600">
+                    {lineExtras.copy.needBy}
+                  </Label>
+                  <Input id={`need-by-${row.id}`} type="date" dir="ltr" min={lineExtras.minNeedBy} value={row.needBy || ""} onChange={(e) => updateRow(row.id, "needBy", e.target.value)} className="h-11 rounded-xl border-slate-200" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-slate-600">{lineExtras.copy.project}</Label>
+                  {lineExtras.lockedProjectLabel ? (
+                    <p className="flex h-11 items-center rounded-xl border border-slate-200 bg-muted/40 px-3 text-sm" dir="auto">
+                      {lineExtras.lockedProjectLabel}
+                    </p>
+                  ) : (
+                    <SearchableSelect
+                      value={row.projectId || "__general"}
+                      onChange={(v) => updateRow(row.id, "projectId", v === "__general" ? "" : v)}
+                      options={[{ value: "__general", label: lineExtras.copy.general }, ...lineExtras.projects]}
+                      placeholder={lineExtras.copy.general}
+                      searchPlaceholder={lineExtras.copy.search}
+                      noResultsText={lineExtras.copy.none}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
             <div className="mt-5">
               <Label className="text-xs font-semibold text-slate-600">{t("newrfq_specifications")}</Label>
               <Textarea

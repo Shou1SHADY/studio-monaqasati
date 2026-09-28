@@ -78,6 +78,14 @@ export type SourceType =
   /** A hand-posted clearing of a counterparty balance — a receipt, a payment,
    * an advance offset or a write-off — from the Settlements screen. */
   | "settlement"
+  /** Project Management's outbox (`pmEvents`), posted from Finance → Projects
+   * desk: a subcontractor certificate's payable, its payment, a site petty
+   * purchase, an approved store loss, a material moved between projects. */
+  | "pm_sub_certificate"
+  | "pm_sub_payment"
+  | "pm_cash"
+  | "pm_loss"
+  | "pm_xfer"
 
 export interface JournalLine {
   /** A postable leaf code — a rollup here is rejected at build time. */

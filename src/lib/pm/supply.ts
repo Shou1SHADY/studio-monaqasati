@@ -66,8 +66,17 @@ export interface ReqReceipt {
 export interface ReqInventoryReply {
   k: "issue" | "none"
   q?: number | null
+  /** Not issued (a partial issue's rest, or all of it) — Procurement buys it. */
+  kept?: number | null
+  /** The reason, rendered in the keeper's language; `whyK` its code (linked · none · dir). */
   why?: string | null
+  whyK?: string | null
+  /** The main store it is issued from. */
+  warehouseId?: string | null
+  warehouseName?: string | null
+  note?: string | null
   on: string
+  by?: string | null
   byName?: string | null
 }
 

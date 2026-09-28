@@ -8,6 +8,7 @@ import { doc } from "firebase/firestore"
 import { useCentralWarehouse } from "@/hooks/useCentralWarehouse"
 import { usePermissions } from "@/hooks/usePermissions"
 import { WarehouseRequestsSection } from "@/components/contractor/WarehouseRequestsSection"
+import { PmRequestRepliesPanel } from "@/components/inventory/PmRequestRepliesPanel"
 import { ClipboardList, ArrowRight, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -60,6 +61,8 @@ export default function ContractorWarehouseRequestsPage() {
             locale={locale}
           />
         )}
+
+        <PmRequestRepliesPanel />
       </div>
     </PortalLayout>
   )

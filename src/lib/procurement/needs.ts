@@ -126,6 +126,20 @@ export interface ProjectRequestDoc {
   poId?: string | null
   poNumber?: string | null
   decidedByUserName?: string | null
+  /** A PM 1.0 request's own lines — Inventory's reply on each says what it issued from stock. */
+  lines?: Array<{ name?: string; unit?: string; inv?: { k?: string; kept?: number | null } | null }>
+}
+
+const lineKey = (name: string | undefined, unit: string | undefined) => `${(name || "").trim().toLowerCase()}|${(unit || "").trim().toLowerCase()}`
+
+/** What Inventory issued from stock is not bought: a line it answered «issue» leaves only
+ * what it kept (0 for a full issue); «none» leaves the whole line to Procurement. */
+function stockAdjusted(pr: ProjectRequestDoc): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const l of pr.lines || []) {
+    if (l.inv?.k === "issue") out.set(lineKey(l.name, l.unit), Math.max(0, Number(l.inv.kept) || 0))
+  }
+  return out
 }
 
 const iso = (v: unknown): string => {
@@ -135,9 +149,11 @@ const iso = (v: unknown): string => {
 }
 
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
+  const issued = stockAdjusted(pr)
   const lines = (pr.items || [])
     .map((i) => {
-      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: Number(i.quantity) || 0 }
+      const kept = issued.get(lineKey(i.name, i.unit))
+      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: kept ?? (Number(i.quantity) || 0) }
       if (i.category) l.category = i.category
       if (i.samplePending) l.samplePending = true
       if (i.needBy) l.needBy = i.needBy.slice(0, 10)

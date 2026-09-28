@@ -35,7 +35,7 @@ export interface RfqEarlyClose {
   originalDeadline: string | null
 }
 
-export const RFQ_LOG_ACTIONS = ["awarded", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed"] as const
+export const RFQ_LOG_ACTIONS = ["awarded", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed", "guest_link_shared", "guest_link_emailed"] as const
 export type RfqLogAction = (typeof RFQ_LOG_ACTIONS)[number]
 
 export interface RfqLogEntry {
