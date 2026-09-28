@@ -22,9 +22,9 @@ export interface SectionRow {
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
-/** The divisions furthest behind the planned progress, worst first (none when
- * nothing is planned yet, or no division is priced). */
-export function sectionsBehind(items: SectionItem[], planned: number | null, top = 4): SectionRow[] {
+/** Every priced division against the planned progress, worst first (none when
+ * nothing is planned yet). */
+export function sectionRows(items: SectionItem[], planned: number | null): SectionRow[] {
   if (planned == null || planned <= 0) return []
   const by = new Map<string, { c: number; e: number }>()
   for (const i of items) {
@@ -39,8 +39,13 @@ export function sectionsBehind(items: SectionItem[], planned: number | null, top
       const progress = r1((s.e / s.c) * 100)
       return { division, progress, deviation: r1(progress - planned), value: s.c }
     })
-    .filter((s) => s.deviation < 0)
     .sort((a, b) => a.deviation - b.deviation || b.value - a.value)
+}
+
+/** The divisions furthest behind the planned progress, worst first. */
+export function sectionsBehind(items: SectionItem[], planned: number | null, top = 4): SectionRow[] {
+  return sectionRows(items, planned)
+    .filter((s) => s.deviation < 0)
     .slice(0, top)
 }
 

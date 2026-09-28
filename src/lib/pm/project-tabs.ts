@@ -15,6 +15,7 @@ export const GROUP_OF: Record<string, ProjectGroup> = {
   pmVo: "contract",
   vo: "contract",
   pmClaims: "contract",
+  pmProgramme: "contract",
   pmMeasure: "exec",
   pmWir: "exec",
   pmPunch: "exec",

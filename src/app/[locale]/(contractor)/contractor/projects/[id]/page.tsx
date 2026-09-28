@@ -162,7 +162,7 @@ import {
   sectionLabelKey,
   type SectionId,
 } from "@/lib/project-sections"
-import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel, Gauge } from "lucide-react"
+import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, ListTodo, KeyRound, Hammer, Gavel, Gauge, CalendarRange } from "lucide-react"
 import { ProjectPulse } from "@/components/pm/ProjectPulse"
 import { ProjectKpis } from "@/components/pm/ProjectKpis"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
@@ -176,6 +176,7 @@ import { PmSectionsError, readSectionFacts, SECTION_OFF_REASONS, switchBlocks, s
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
 import { SamplesPanel } from "@/components/pm/SamplesPanel"
 import { ClaimsPanel } from "@/components/pm/ClaimsPanel"
+import { ProgrammePanel } from "@/components/pm/ProgrammePanel"
 import { NcrPanel } from "@/components/pm/NcrPanel"
 import { VariationsPanel } from "@/components/pm/VariationsPanel"
 import { ManufacturingView } from "@/components/manufacturing/ManufacturingView"
@@ -2014,6 +2015,7 @@ export default function ProjectDetailPage() {
           { key: "pmPunch" as ActiveTab, label: tPm("punch.title"), icon: <ListTodo size={15} /> },
           { key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> },
           { key: "pmClaims" as ActiveTab, label: tPm("claim.tab"), icon: <Gavel size={15} /> },
+          { key: "pmProgramme" as ActiveTab, label: tPm("prg.tab"), icon: <CalendarRange size={15} /> },
           { key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> },
         ]
       : []),
@@ -3224,6 +3226,19 @@ export default function ProjectDetailPage() {
         {activeTab === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} baseValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} />}
         {activeTab === "pmClaims" && typedProject.pm?.terms && (
           <ClaimsPanel
+            projectId={projectId}
+            lifecycle={lifecycleOf(typedProject)}
+            original={typedProject.pm.original ?? typedProject.pm.terms}
+            startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
+            durationDays={typedProject.pm.durationDays ?? 0}
+            baseValue={typedProject.budget ?? 0}
+            items={pmItems}
+            access={pmAccess}
+            actor={pmActor}
+          />
+        )}
+        {activeTab === "pmProgramme" && typedProject.pm?.terms && (
+          <ProgrammePanel
             projectId={projectId}
             lifecycle={lifecycleOf(typedProject)}
             original={typedProject.pm.original ?? typedProject.pm.terms}
