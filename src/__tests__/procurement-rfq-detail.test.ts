@@ -300,6 +300,17 @@ describe("awardRfq", () => {
     await expect(awardRfq(db, actor(), input(), { now: NOW })).rejects.toMatchObject({ code: "rfq_not_open" })
     await expect(awardRfq(db, actor({ canPrepare: false }), input(), { now: NOW })).rejects.toMatchObject({ code: "no_permission" })
   })
+
+  it("a buyer awards only the RFQs he raised; a guest supplier needs the explicit acceptance (R-10)", async () => {
+    seed("rfqs/rfq1", { ...rfqDoc, status: "New", createdByUserId: "someone-else", contractorId: "someone-else" })
+    await expect(awardRfq(db, actor(), input(), { now: NOW })).rejects.toMatchObject({ code: "not_your_rfq" })
+    seed("rfqs/rfq1", { ...rfqDoc, status: "New" })
+    const guest = input()
+    guest.groups[0] = { ...guest.groups[0], offer: { ...guest.groups[0].offer, isGuestOffer: true } }
+    await expect(awardRfq(db, actor(), guest, { now: NOW })).rejects.toMatchObject({ code: "guest_unregistered" })
+    expect(listCollection("purchaseOrders")).toHaveLength(0)
+    await expect(awardRfq(db, actor(), { ...guest, acceptedGuest: true }, { now: NOW })).resolves.toHaveLength(2)
+  })
 })
 
 describe("rfq writes", () => {

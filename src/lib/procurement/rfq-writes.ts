@@ -25,10 +25,12 @@ import {
   type RfqEarlyClose,
   type RfqLogEntry,
 } from "./rfq-detail"
-import type { ProcActor } from "./types"
+import { rfqMine, type RfqWriteActor } from "./rfq-access"
 import { ProcWriteError } from "./writes"
 
 interface RfqDoc {
+  createdByUserId?: string | null
+  contractorId?: string | null
   status?: string
   deadline?: string | null
   title?: string
@@ -39,13 +41,14 @@ interface RfqDoc {
 const rfqRef = (firestore: Firestore, rfqId: string) => doc(firestore, "rfqs", rfqId)
 
 /** «أغلِق الآن وافتح الأسعار» — the manager's, with a reason, logged in his name. */
-export async function closeRfqNow(firestore: Firestore, actor: ProcActor, rfqId: string, reason: string, now = new Date()): Promise<void> {
+export async function closeRfqNow(firestore: Firestore, actor: RfqWriteActor, rfqId: string, reason: string, now = new Date()): Promise<void> {
   if (!canCloseEarly(actor)) throw new ProcWriteError("no_permission")
   if (!reason.trim()) throw new ProcWriteError("reason_required")
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(rfqRef(firestore, rfqId))
     if (!snap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = snap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     const fields = earlyCloseFields(rfq, actor, reason, now)
     if (!fields) throw new ProcWriteError("rfq_not_open")
     const at = now.toISOString()
@@ -60,13 +63,14 @@ export async function closeRfqNow(firestore: Firestore, actor: ProcActor, rfqId:
 /** «ألغِ الطلب» — before any award, with one of three reasons. The status
  * becomes "Cancelled" (counted under completed); a stock need reads only open
  * RFQs and so returns to the needs by itself. */
-export async function cancelRfq(firestore: Firestore, actor: ProcActor, rfqId: string, code: RfqCancelCode, now = new Date()): Promise<void> {
+export async function cancelRfq(firestore: Firestore, actor: RfqWriteActor, rfqId: string, code: RfqCancelCode, now = new Date()): Promise<void> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   if (!isRfqCancelCode(code)) throw new ProcWriteError("reason_required")
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(rfqRef(firestore, rfqId))
     if (!snap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = snap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     if (!canCancelRfq(rfq)) throw new ProcWriteError("rfq_not_open")
     const at = now.toISOString()
     tx.update(rfqRef(firestore, rfqId), {
@@ -89,7 +93,7 @@ export interface ExcludeInput {
 
 /** «استبعاد عرض» — the offer leaves the comparison as `مرفوض` with its reason
  * (`exclusion`), and the RFQ's log names who and why. */
-export async function excludeOffer(firestore: Firestore, actor: ProcActor, input: ExcludeInput, now = new Date()): Promise<void> {
+export async function excludeOffer(firestore: Firestore, actor: RfqWriteActor, input: ExcludeInput, now = new Date()): Promise<void> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   const at = now.toISOString()
   const exclusion = buildExclusion({ code: input.code, note: input.note, byId: actor.uid, at })
@@ -103,6 +107,7 @@ export async function excludeOffer(firestore: Firestore, actor: ProcActor, input
     const offer = oSnap.data() as { status?: string; poId?: string }
     if (offer.poId || offer.status === "مقبول") throw new ProcWriteError("offer_taken")
     const rfq = rSnap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     tx.update(oRef, {
       status: "مرفوض",
       exclusion,
@@ -129,7 +134,7 @@ export interface AnswerInput {
 
 /** The answer is published on the query and sent to every invitee — no
  * supplier gets an informational edge (§5.1). Returns how many were told. */
-export async function answerQuery(firestore: Firestore, actor: ProcActor, input: AnswerInput, opts: { copy?: Translator | null; now?: Date } = {}): Promise<number> {
+export async function answerQuery(firestore: Firestore, actor: RfqWriteActor, input: AnswerInput, opts: { copy?: Translator | null; now?: Date } = {}): Promise<number> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   const answer = input.answer.trim()
   if (!answer) throw new ProcWriteError("reason_required")
@@ -139,6 +144,7 @@ export async function answerQuery(firestore: Firestore, actor: ProcActor, input:
     const rSnap = await tx.get(rfqRef(firestore, input.rfqId))
     if (!rSnap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = rSnap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     tx.update(doc(firestore, "rfqs", input.rfqId, "inquiries", input.inquiryId), {
       reply: answer,
       repliedAt: at,
@@ -199,13 +205,14 @@ export interface ReductionRoundInput {
  * the RFQ records the round so it cannot be asked twice. Returns the offers
  * the round reached.
  */
-export async function requestReductionRound(firestore: Firestore, actor: ProcActor, input: ReductionRoundInput, now = new Date()): Promise<string[]> {
+export async function requestReductionRound(firestore: Firestore, actor: RfqWriteActor, input: ReductionRoundInput, now = new Date()): Promise<string[]> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   const at = now.toISOString()
   return runTransaction(firestore, async (tx) => {
     const rSnap = await tx.get(rfqRef(firestore, input.rfqId))
     if (!rSnap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = rSnap.data() as RfqDoc & { reductionRound?: ReductionRound | null }
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     if (rfq.status !== "New" || rfq.reductionRound) throw new ProcWriteError("rfq_not_open")
     const reached: string[] = []
     for (const id of input.offerIds) {
@@ -240,7 +247,7 @@ export async function requestReductionRound(firestore: Firestore, actor: ProcAct
 
 /** «سجّل عرضاً وصل خارج المنصة»: the offer enters the comparison in the
  * buyer's name; the RFQ counts it and logs who keyed it in. */
-export async function recordManualOffer(firestore: Firestore, actor: ProcActor, input: ManualOfferInput, products: Array<{ rfqProductIndex: number; quantity: number }>, now = new Date()): Promise<string> {
+export async function recordManualOffer(firestore: Firestore, actor: RfqWriteActor, input: ManualOfferInput, products: Array<{ rfqProductIndex: number; quantity: number }>, now = new Date()): Promise<string> {
   if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
   const refusal = manualOfferRefusal(input)
   if (refusal === "supplier_missing") throw new ProcWriteError("supplier_missing")
@@ -251,6 +258,7 @@ export async function recordManualOffer(firestore: Firestore, actor: ProcActor, 
     const rSnap = await tx.get(rfqRef(firestore, input.rfq.id))
     if (!rSnap.exists()) throw new ProcWriteError("rfq_missing")
     const rfq = rSnap.data() as RfqDoc & { offersCount?: number }
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
     if (rfq.status !== "New") throw new ProcWriteError("rfq_not_open")
     tx.set(offerRef, manualOfferDoc(input, products, actor, at))
     tx.update(rfqRef(firestore, input.rfq.id), {
@@ -260,4 +268,48 @@ export async function recordManualOffer(firestore: Firestore, actor: ProcActor, 
     })
   })
   return offerRef.id
+}
+
+export interface GuestInviteInput {
+  rfqId: string
+  offerId: string
+  supplierName: string
+  channel: "wa" | "email"
+  invitationId: string | null
+}
+
+/** «سجّله مورداً»: the guest was sent a join link in his company's name
+ * (`/api/invitations/send`, supplier_invite). His offer remembers it and the
+ * RFQ's log says who invited him; he stays a guest — the award still waits —
+ * until he joins and his record is complete. */
+export async function recordGuestInvite(firestore: Firestore, actor: RfqWriteActor, input: GuestInviteInput, now = new Date()): Promise<void> {
+  if (!canRunRfq(actor)) throw new ProcWriteError("no_permission")
+  const at = now.toISOString()
+  await runTransaction(firestore, async (tx) => {
+    const rSnap = await tx.get(rfqRef(firestore, input.rfqId))
+    if (!rSnap.exists()) throw new ProcWriteError("rfq_missing")
+    const rfq = rSnap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) throw new ProcWriteError("no_permission")
+    const oRef = doc(firestore, "offers", input.offerId)
+    const oSnap = await tx.get(oRef)
+    if (!oSnap.exists()) throw new ProcWriteError("offer_missing")
+    tx.update(oRef, { guestInvite: { at, byId: actor.uid, byName: actor.name, channel: input.channel, invitationId: input.invitationId } })
+    tx.update(rfqRef(firestore, input.rfqId), {
+      log: [...(rfq.log || []), rfqLogEntry(actor, "guest_invited", at, { params: { supplier: input.supplierName } })],
+      updatedAt: serverTimestamp(),
+    })
+  })
+}
+
+/** «نُزّل مستند الطلب لإرساله خارج المنصة» — a log line only, best-effort. */
+export async function logRfqDocument(firestore: Firestore, actor: RfqWriteActor, rfqId: string, now = new Date()): Promise<void> {
+  if (!canRunRfq(actor)) return
+  const at = now.toISOString()
+  await runTransaction(firestore, async (tx) => {
+    const rSnap = await tx.get(rfqRef(firestore, rfqId))
+    if (!rSnap.exists()) return
+    const rfq = rSnap.data() as RfqDoc
+    if (!rfqMine(rfq, actor)) return
+    tx.update(rfqRef(firestore, rfqId), { log: [...(rfq.log || []), rfqLogEntry(actor, "document_printed", at)], updatedAt: serverTimestamp() })
+  })
 }

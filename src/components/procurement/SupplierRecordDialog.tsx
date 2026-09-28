@@ -28,12 +28,14 @@ export function SupplierRecordDialog({
   supplier,
   actor,
   orgId,
+  ownerHasTeam = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   supplier: PlatformSupplier
   actor: ProcActor
   orgId: string
+  ownerHasTeam?: boolean
 }) {
   const t = useTranslations("Portal.ProcSuppliers")
   const firestore = useFirestore()
@@ -75,7 +77,7 @@ export function SupplierRecordDialog({
     if (!firestore) return
     setSaving(true)
     try {
-      await saveSupplierRecord(firestore, actor, orgId, { orgId: supplier.orgId, name: supplier.name }, v)
+      await saveSupplierRecord(firestore, actor, orgId, { orgId: supplier.orgId, name: supplier.name }, v, new Date(), ownerHasTeam)
       toast({ title: t("toast.saved") })
       onOpenChange(false)
     } catch (err) {

@@ -21,7 +21,7 @@ export const GROUP_OF: Record<string, ProjectGroup> = {
   pmQa: "exec",
   pmPunch: "exec",
   pmSubs: "exec",
-  pmClose: "exec",
+  pmClose: "file",
   mfg: "exec",
   daily: "exec",
   progress: "exec",
@@ -65,8 +65,28 @@ export interface GroupedTabs<T extends { key: string }> {
   tabs: T[]
 }
 
+// Where the prototype's SEGS put a screen first: the certificates lead Money,
+// the contract data leads File. Unranked screens keep the order they were given.
+const LEAD: Record<string, number> = { ipc: 0, pmCost: 1, pmMatch: 2, pmCvr: 3, info: 0, pmDocs: 1, pmCorr: 2, pmClose: 3 }
+
 /** The groups that have at least one screen, in the prototype's order, each
- * keeping the screens in the order they were given. */
+ * with its screens in the prototype's order. */
 export function groupTabs<T extends { key: string }>(tabs: T[]): GroupedTabs<T>[] {
-  return PROJECT_GROUPS.map((group) => ({ group, tabs: tabs.filter((t) => groupOf(t.key) === group) })).filter((g) => g.tabs.length > 0)
+  return PROJECT_GROUPS.map((group) => ({
+    group,
+    tabs: tabs
+      .map((t, i) => ({ t, i }))
+      .filter(({ t }) => groupOf(t.key) === group)
+      .sort((a, b) => (LEAD[a.t.key] ?? 100) - (LEAD[b.t.key] ?? 100) || a.i - b.i)
+      .map(({ t }) => t),
+  })).filter((g) => g.tabs.length > 0)
+}
+
+/** The screen to show for a requested key: itself when the viewer has it, else
+ * the first screen of its group, else the first screen of all (the prototype's
+ * shell() never renders a tab that is not in the rail). */
+export function visibleTab(requested: string, keys: readonly string[]): string {
+  if (keys.includes(requested)) return requested
+  const group = groupOf(requested)
+  return keys.find((k) => groupOf(k) === group) ?? keys[0] ?? requested
 }

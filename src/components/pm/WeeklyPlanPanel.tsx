@@ -83,6 +83,10 @@ export function WeeklyPlanPanel({
         return t("wwp.cx.obstacle", { title: d.title, party: d.party })
       case "no_permit":
         return t("wwp.cx.no_permit")
+      case "materials":
+        return d.count > 2 ? t("wwp.cx.materials_more", { names: d.names.join(" · "), count: d.count - 2 }) : t("wwp.cx.materials", { names: d.names.join(" · ") })
+      case "plant":
+        return t("wwp.cx.plant", { what: d.what })
     }
   }
   const when = (r: LookRow) => (r.startsIn > 0 ? t("wwp.starts_in", { count: r.startsIn }) : t("wwp.running", { count: -r.startsIn }))

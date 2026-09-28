@@ -54,8 +54,12 @@ export function PrRouteToMfgDialog({
   actor,
   products,
   settings,
+  makeOrBuy = false,
   onClose,
 }: {
+  /** Procurement's desk asks it as the prototype's «نصنّع أم نشتري؟» — a
+   * question the workshop may decline, which hands the decision back to us. */
+  makeOrBuy?: boolean
   request: RoutablePurchaseRequest | null
   projectId: string
   projectName: string
@@ -168,9 +172,9 @@ export function PrRouteToMfgDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Factory size={18} className="text-cta" aria-hidden="true" />
-            {t("mfx_route_title")}
+            {makeOrBuy ? t("nd_ask_mfg_title") : t("mfx_route_title")}
           </DialogTitle>
-          <DialogDescription>{t("mfx_route_desc", { hours: settings.answerWindowHours })}</DialogDescription>
+          <DialogDescription>{makeOrBuy ? t("nd_ask_mfg_sub") : t("mfx_route_desc", { hours: settings.answerWindowHours })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-1">
@@ -264,6 +268,12 @@ export function PrRouteToMfgDialog({
               <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
               {t("mfx_route_effect_window", { hours: settings.answerWindowHours })}
             </li>
+            {makeOrBuy && (
+              <li className="flex items-start gap-2">
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+                {t("nd_ask_mfg_effect_decline")}
+              </li>
+            )}
           </ul>
 
           <RecordedAsLine name={actor.name} />

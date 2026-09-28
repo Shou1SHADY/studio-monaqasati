@@ -17,13 +17,16 @@ import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { isActionState, type NeedRow } from "@/lib/procurement/need-desk"
-import { agreementFor, lastPaid, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
+import { agreementFor, lastPaid, materialKey, type PriceAgreement, type PriceHistoryEntry } from "@/lib/procurement/prices"
+import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 import { LINE_STATE_TONE, PATH_ICON, fmtDay, qty } from "@/components/procurement/need-bits"
 
 export interface NeedLineActs {
   canAct: boolean
+  /** May raise an RFQ (rfq.create / rfq.manage); a buyer who only prepares orders may not. */
+  canRfq?: boolean
   seesPrices: boolean
   onRfq: (row: NeedRow) => void
   onOrder: (row: NeedRow, mode: "agreement" | "direct") => void
@@ -52,6 +55,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
 
   let step: ReactNode = null
   if (act) {
+    const rfqOk = acts.canRfq !== false
     const btn = (label: string, onClick: () => void, primary = false, icon?: ReactNode) => (
       <Button key={label} size="sm" variant={primary ? "default" : "outline"} onClick={onClick} className={cn("h-9 gap-1.5", primary ? "bg-module text-module-foreground hover:bg-module/90" : "border border-border bg-card text-foreground shadow-none hover:bg-muted")}>
         {icon}
@@ -88,7 +92,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
           <Callout tone="info">{t("nd_step_agreement", { number: displayDocNumber(ag.agreement.docNumber, locale), supplier: ag.agreement.supplierName, price: acts.seesPrices ? money(ag.price) : "—" })}</Callout>
           <div className="flex flex-wrap gap-2">
             {btn(t("dor_open_agreement"), () => acts.onOrder(row, "agreement"), true, <FileSignature size={14} aria-hidden="true" />)}
-            {btn(t("nd_rfq_anyway"), () => acts.onRfq(row))}
+            {rfqOk && btn(t("nd_rfq_anyway"), () => acts.onRfq(row))}
           </div>
         </>
       )
@@ -98,7 +102,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
           <Callout tone="info">{t("nd_step_direct", { value: acts.seesPrices && row.estimate != null ? money(row.estimate) : "—", cap: money(cap) })}</Callout>
           <div className="flex flex-wrap gap-2">
             {btn(t("dor_open_direct"), () => acts.onOrder(row, "direct"), true, <ShoppingCart size={14} aria-hidden="true" />)}
-            {btn(t("nd_rfq"), () => acts.onRfq(row))}
+            {rfqOk && btn(t("nd_rfq"), () => acts.onRfq(row))}
           </div>
         </>
       )
@@ -106,14 +110,14 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
       step = (
         <>
           <Callout tone="info">{t("nd_step_stock", { qty: qty(row.onHand ?? 0), unit: row.unit })}</Callout>
-          <div className="flex flex-wrap gap-2">{btn(t("nd_rfq_anyway"), () => acts.onRfq(row))}</div>
+          {rfqOk && <div className="flex flex-wrap gap-2">{btn(t("nd_rfq_anyway"), () => acts.onRfq(row))}</div>}
         </>
       )
     else
       step = (
         <div className="flex flex-wrap gap-2">
-          {btn(t("nd_request_quotes"), () => acts.onRfq(row), true, <Scale size={14} aria-hidden="true" />)}
-          {row.estimate != null && btn(t("nd_single_source"), () => acts.onOrder(row, "direct"))}
+          {rfqOk && btn(t("nd_request_quotes"), () => acts.onRfq(row), true, <Scale size={14} aria-hidden="true" />)}
+          {row.estimate != null && btn(t("nd_single_source"), () => acts.onOrder(row, "direct"), !rfqOk)}
         </div>
       )
   }
@@ -185,9 +189,9 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
             <KeyValueRow label={t("nd_source")} value={`${t(`pri_from_${n.kind}`)} · ${n.refLabel}`} />
             {n.projectName && <KeyValueRow label={t("nd_project")} value={n.projectName} />}
             {n.requestedBy && <KeyValueRow label={t("nd_requested_by")} value={`${n.requestedBy}${n.at ? ` · ${fmtDay(n.at, locale)}` : ""}`} />}
-            {n.kind === "stock" && n.stock && <KeyValueRow label={t("nd_deliver_to")} value={n.refLabel} />}
+            {n.kind === "stock" && n.stock ? <KeyValueRow label={t("nd_deliver_to")} value={n.refLabel} /> : n.projectName ? <KeyValueRow label={t("nd_deliver_to")} value={n.projectName} /> : n.kind === "mfg" ? <KeyValueRow label={t("nd_deliver_to")} value={t("nd_deliver_workshop")} /> : null}
             <KeyValueRow label={t("nd_stock_check")} value={row.onHand == null ? t("pri_not_in_stock") : t("pri_on_hand", { qty: `${qty(row.onHand)} ${row.unit}` })} />
-            {row.category && <KeyValueRow label={t("nd_category")} value={row.category} />}
+            {row.category && <KeyValueRow label={t("nd_category")} value={displayCategory(row.category, locale)} />}
             {n.note && <p className="py-2 text-sm text-muted-foreground" dir="auto">{n.note}</p>}
           </DrawerSection>
 
@@ -195,7 +199,7 @@ export function NeedLineDrawer({ row, agreements, history, cap, today, acts, onC
             <DrawerSection title={t("nd_price")}>
               {ag && <KeyValueRow label={t("nd_agreement_price", { number: displayDocNumber(ag.agreement.docNumber, locale) })} value={money(ag.price)} ltr />}
               {last ? <KeyValueRow label={t("nd_last_price", { supplier: last.supplierName, date: fmtDay(last.day, locale) })} value={money(last.price)} ltr /> : <p className="py-2 text-sm text-muted-foreground">{t("nd_no_price")}</p>}
-              <Link href="/contractor/suppliers?segment=history" className="inline-flex items-center gap-1 py-2 text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Link href={`/contractor/suppliers?segment=history&material=${encodeURIComponent(materialKey(row.name, row.unit))}`} className="inline-flex items-center gap-1 py-2 text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 {t("nd_price_history")} <ExternalLink size={11} className="rtl-flip" aria-hidden="true" />
               </Link>
             </DrawerSection>

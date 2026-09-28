@@ -3,17 +3,25 @@
 // gate · amber = waiting on an action · blue = arriving soon), an amount where
 // there is one, an age where it has one, and the tab where it is solved. They
 // appear and disappear with their cause, and each reaches only the people who
-// hold the duty that answers it (the prototype's final filter). Pure: no I/O.
+// hold the duty that answers it (the prototype's final filter), and a kind that
+// lives in a section (claims, samples, inspections, documents, reconciliation,
+// the store, equipment) only while that section is on. Pure: no I/O.
 
 import { defectsEnd, progressOf, PROVISIONAL_AT, type Acceptances } from "./acceptance"
 import { CERTIFICATE_READY_AT, type CertificateStatus } from "./certificate"
 import { delayAndDamages, grantedDays, noticeDeadline, noticeLate, type ClaimStatus } from "./claim"
 import { isLetterLate, type PmLetter } from "./correspondence"
 import { staleDocuments, type PmDocument } from "./documents"
+import { RERATE_SHARE } from "./measurement"
+import { IDLE_ALERT_DAYS, IDLE_SHARE, idleSince, licenceState, onSite, overdueDays, type PmPlant } from "./plant"
 import { isOpenPunch, type PunchStatus } from "./punch"
+import { pmTabVisible } from "./sections"
 import { blockingObstacles, unprotectedObstacles, type PmObstacle } from "./site"
+import { itemProgress, storeState, type PmStoreLine, type StoreItem } from "./store"
+import { lineGot, lineNeed, lineOut, lineOver, openChanges, plantHireable, plantReceivable, receivable, reqState, type PmMaterialRequest, type PmPlantRequest } from "./supply"
 import type { ContractTerms } from "./terms"
 import { approvedValue, workBeforeApproval, type VoStatus } from "./variation"
+import type { SectionId } from "../project-sections"
 
 export type DecisionKind =
   | "no_pm"
@@ -46,8 +54,27 @@ export type DecisionKind =
   | "obstacle_blocking"
   | "obstacle_unprotected"
   | "cvr_stale"
+  | "req_waiting"
+  | "req_stop"
+  | "req_incoming"
+  | "store_move"
+  | "store_incoming"
+  | "store_close"
+  | "store_negative"
+  | "change_held"
+  | "change_rejected"
+  | "need_short"
+  | "eqp_waiting"
+  | "eqp_receive"
+  | "eqp_hire"
+  | "eqp_idle"
+  | "eqp_overdue"
+  | "eqp_offhire"
+  | "eqp_licence"
+  | "rerate"
+  | "po_budget"
 
-export type DecisionTab = "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "ipc" | "team" | "info"
+export type DecisionTab = "pmMeasure" | "pmQa" | "pmSubm" | "pmVo" | "pmClaims" | "pmClose" | "pmProgramme" | "pmTerms" | "pmSubs" | "pmDocs" | "pmCorr" | "pmSite" | "pmCvr" | "pmReq" | "pmStore" | "pmPo" | "boq" | "ipc" | "team" | "info"
 
 /** The prototype's four groups (DGRP): money on hold, contract risk, what
  * stops the site, and what waits on you. */
@@ -83,6 +110,25 @@ export const DECISION_GROUP: Record<DecisionKind, DecisionGroup> = {
   cert_consultant: "appr",
   final_ready: "appr",
   sub_cert_waiting: "appr",
+  req_waiting: "appr",
+  req_stop: "appr",
+  req_incoming: "appr",
+  store_move: "appr",
+  store_incoming: "appr",
+  change_held: "appr",
+  store_close: "money",
+  store_negative: "risk",
+  change_rejected: "risk",
+  rerate: "risk",
+  po_budget: "appr",
+  need_short: "block",
+  eqp_waiting: "appr",
+  eqp_receive: "appr",
+  eqp_hire: "appr",
+  eqp_idle: "appr",
+  eqp_overdue: "appr",
+  eqp_offhire: "appr",
+  eqp_licence: "appr",
 }
 
 /** The order of the group chips for each seat (the prototype's GORD). */
@@ -106,6 +152,8 @@ export interface PmDecision {
 export interface DecisionViewer {
   uid: string
   has: (key: string) => boolean
+  /** The company owner: site chores (receipts, store closing, shortages) never reach him. */
+  owner?: boolean
 }
 
 export interface DecisionFacts {
@@ -117,12 +165,12 @@ export interface DecisionFacts {
   baseValue: number
   terms: ContractTerms
   acceptances: Acceptances
-  items: Array<{ quantity: number; rate: number; executed: number; billed?: number; gate?: { pmInspect?: boolean | null; pmWir?: string | null } | null; pmSample?: boolean | null; pmSub?: string | null }>
+  items: Array<{ id?: string; code?: string; unit?: string; quantity: number; rate: number; executed: number; billed?: number; gate?: { pmInspect?: boolean | null; pmWir?: string | null } | null; pmSample?: boolean | null; pmSub?: string | null }>
   sheets: Array<{ status: string; day: string }>
   addenda: Array<{ status: string; day: string }>
   certificates: Array<{ status: CertificateStatus; net: number; dueOn?: string | null; collected?: number | null; prepOn?: string | null; prep?: string | null }>
   punch: Array<{ status: PunchStatus }>
-  variations: Array<{ status: VoStatus; value: number; executedPct: number; day: string }>
+  variations: Array<{ seq?: number; status: VoStatus; value: number; executedPct: number; day: string }>
   claims: Array<{ status: ClaimStatus; eventOn: string; response?: { days: number } | null; obstacleId?: string | null }>
   submittals?: Array<{ itemId: string; status: string; rev: number; day: string }>
   subCertificates?: Array<{ status: string; gross: number; prepOn: string }>
@@ -135,6 +183,21 @@ export interface DecisionFacts {
   eac?: { on: string } | null
   /** When the project was put on hold, if it is. */
   holdSince?: string | null
+  /** The project's switched-on sections; absent = every kind applies. */
+  sections?: readonly string[] | null
+  /** The project manager's uid: the owner hears of store moves only when the manager logged them. */
+  managerId?: string | null
+  /** Supply: material requests, the project store, equipment requests and plant on site. */
+  requests?: PmMaterialRequest[]
+  stores?: PmStoreLine[]
+  /** Materials short within 30 days with no live request (needsWithin, computed with the programme). */
+  shortages?: number
+  plantRequests?: Array<Pick<PmPlantRequest, "status" | "rep" | "got" | "day" | "from">>
+  plant?: Array<Pick<PmPlant, "status" | "to" | "days" | "dayRate" | "category" | "qty" | "licenceTo" | "offOk">>
+  /** Realised margin (earned − actual cost); damages above it turn red. Absent = unknown. */
+  margin?: number | null
+  /** The project's purchase orders Procurement referred for a budget decision (pmBudget pending). */
+  budgetReferrals?: Array<{ askedAt?: string | null; over?: number | null }>
   today: string
   /** Who is looking: decisions reach only the duty that answers them. Absent = everything. */
   viewer?: DecisionViewer | null
@@ -177,13 +240,142 @@ const REACHES: Record<DecisionKind, (h: (k: string) => boolean) => boolean> = {
   obstacle_blocking: () => true,
   obstacle_unprotected: (h) => h("approve") || h("prep"),
   cvr_stale: (h) => h("approve") && h("money"),
+  req_waiting: (h) => h("req") || h("approve"),
+  req_stop: (h) => h("req") || h("approve"),
+  req_incoming: (h) => h("req"),
+  store_move: (h) => h("approve"),
+  store_incoming: (h) => h("req"),
+  store_close: (h) => h("req") || h("approve"),
+  store_negative: (h) => h("approve") || h("measure"),
+  change_held: (h) => h("approve"),
+  change_rejected: (h) => h("approve"),
+  need_short: () => true,
+  eqp_waiting: (h) => h("approve"),
+  eqp_receive: (h) => h("req") || h("approve"),
+  eqp_hire: (h) => h("approve"),
+  eqp_idle: () => true,
+  eqp_overdue: () => true,
+  eqp_offhire: () => true,
+  eqp_licence: () => true,
+  rerate: (h) => h("client"),
+  po_budget: (h) => h("approve"),
+}
+
+/** A kind that lives in a section, and the section (the prototype's HAS2 guards). */
+export const SECTION_OF: Partial<Record<DecisionKind, SectionId>> = {
+  claim_notice_late: "claim",
+  claim_notice_due: "claim",
+  claim_waiting: "claim",
+  obstacle_unprotected: "claim",
+  sample_rejected: "subm",
+  sample_late: "subm",
+  wir_failed: "qa",
+  doc_stale: "docs",
+  cvr_stale: "cvr",
+  store_move: "store",
+  store_incoming: "store",
+  store_close: "store",
+  store_negative: "store",
+  eqp_waiting: "eqp",
+  eqp_receive: "eqp",
+  eqp_hire: "eqp",
+  eqp_idle: "eqp",
+  eqp_overdue: "eqp",
+  eqp_offhire: "eqp",
+  eqp_licence: "eqp",
+}
+
+// Site chores the owner is never sent (the prototype's `CU().role!=='owner'`).
+const NOT_FOR_OWNER = new Set<DecisionKind>(["req_stop", "req_incoming", "store_incoming", "store_close", "need_short"])
+
+const until = (from: string, to: string) => Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
+
+function supplyDecisions(f: DecisionFacts, out: PmDecision[]): void {
+  const requests = f.requests ?? []
+  const stores = f.stores ?? []
+  const viewer = f.viewer
+  const storeItems: StoreItem[] = f.items.filter((i) => i.id).map((i) => ({ id: i.id as string, code: i.code ?? "", description: "", unit: i.unit ?? "", quantity: i.quantity, executed: i.executed }))
+  const itemOf = (id: string | null) => (id ? storeItems.find((i) => i.id === id) : undefined)
+
+  const waiting = requests.filter((r) => reqState(r) === "wait")
+  if (waiting.length) {
+    const soon = waiting.some((r) => r.needBy && until(f.today, r.needBy) <= 7)
+    const over = waiting.some((r) => r.lines.some((l) => lineOver(lineNeed({ key: l.key, stores, items: storeItems, requests, except: r.id }), l.qty) > 0))
+    out.push({ kind: "req_waiting", severity: soon ? "red" : over ? "amber" : "blue", count: waiting.length, age: oldest(waiting.map((r) => r.day ?? f.today), f.today), tab: "pmReq" })
+  }
+
+  const going = requests.filter((r) => reqState(r) === "go")
+  const stoppable = going
+    .filter((r) => !viewer || viewer.has("approve") || r.requestedByUserId === viewer.uid)
+    .flatMap((r) =>
+      r.lines
+        .filter((l) => !l.cl && lineOut(l) > 0)
+        .filter((l) => itemProgress(itemOf(l.itemId)) >= 99.5 || (Boolean(r.needBy) && (r.needBy as string) < f.today && lineGot(l) >= l.qty * 0.85))
+        .map(() => r)
+    )
+  if (stoppable.length) {
+    const age = oldest(stoppable.map((r) => (r.needBy && r.needBy < f.today ? r.needBy : f.today)), f.today)
+    out.push({ kind: "req_stop", severity: "amber", count: stoppable.length, age: age || undefined, tab: "pmReq" })
+  }
+
+  const coming = going.flatMap((r) => r.lines.filter((l) => receivable(r, l)))
+  if (coming.length) out.push({ kind: "req_incoming", severity: "blue", count: coming.length, tab: "pmReq" })
+
+  const held = going.flatMap((r) => openChanges(r).map(() => r))
+  if (held.length) out.push({ kind: "change_held", severity: "amber", count: held.length, age: oldest(held.map((r) => r.day ?? f.today), f.today), tab: "pmReq" })
+  const voStatus = new Map(f.variations.filter((v) => v.seq != null).map((v) => [v.seq as number, v.status]))
+  const refusedByClient = requests
+    .filter((r) => reqState(r) === "go" || reqState(r) === "wait")
+    .flatMap((r) => r.lines.filter((l) => !l.cl && l.chg?.st === "own" && l.chg.voSeq != null && voStatus.get(l.chg.voSeq) === "rej"))
+  if (refusedByClient.length) out.push({ kind: "change_rejected", severity: "red", count: refusedByClient.length, tab: "pmReq" })
+
+  if ((f.shortages ?? 0) > 0) out.push({ kind: "need_short", severity: "amber", count: f.shortages, tab: "pmReq" })
+
+  // An order above its item's budget waits on the project's word (R-25): accept, or renegotiate.
+  const referred = f.budgetReferrals ?? []
+  if (referred.length)
+    out.push({ kind: "po_budget", severity: "amber", count: referred.length, amount: r2(referred.reduce((a, r) => a + (r.over ?? 0), 0)) || undefined, age: oldest(referred.map((r) => r.askedAt ?? f.today), f.today), tab: "pmPo" })
+
+  const moves = stores.flatMap((x) =>
+    x.moves
+      .filter((m) => (m.t === "loss" || m.t === "use" || m.t === "rx") && m.st === "wait")
+      .filter((m) => !viewer || m.by !== viewer.uid || viewer.owner)
+      .filter((m) => !viewer?.owner || m.by === f.managerId)
+  )
+  if (moves.length) out.push({ kind: "store_move", severity: "amber", count: moves.length, age: oldest(moves.map((m) => m.on), f.today), tab: "pmStore" })
+  const incoming = stores.flatMap((x) => x.moves.filter((m) => m.t === "xi" && m.st === "wait"))
+  if (incoming.length) out.push({ kind: "store_incoming", severity: "blue", count: incoming.length, tab: "pmStore" })
+  const states = stores.map((x) => storeState(x, storeItems))
+  const toClose = states.filter((st) => st === "close").length
+  if (toClose) out.push({ kind: "store_close", severity: "amber", count: toClose, tab: "pmStore" })
+  const negative = states.filter((st) => st === "neg").length
+  if (negative) out.push({ kind: "store_negative", severity: "amber", count: negative, tab: "pmStore" })
+
+  const eqWait = (f.plantRequests ?? []).filter((r) => r.status === "wait")
+  if (eqWait.length) out.push({ kind: "eqp_waiting", severity: "amber", count: eqWait.length, age: oldest(eqWait.map((r) => r.day), f.today), tab: "pmReq" })
+  const eqGet = (f.plantRequests ?? []).filter((r) => plantReceivable(r) && r.from <= f.today)
+  if (eqGet.length) out.push({ kind: "eqp_receive", severity: "amber", count: eqGet.length, tab: "pmReq" })
+  const eqHire = (f.plantRequests ?? []).filter(plantHireable)
+  if (eqHire.length) out.push({ kind: "eqp_hire", severity: "amber", count: eqHire.length, tab: "pmReq" })
+  const site = onSite(f.plant ?? [])
+  const idle = site.filter((p) => (p.dayRate ?? 0) > 0 && p.category !== "tool" && idleSince(p) >= IDLE_ALERT_DAYS)
+  if (idle.length) {
+    const cost = idle.reduce((a, p) => a + (p.dayRate ?? 0) * Math.max(1, p.qty || 1) * IDLE_SHARE * idleSince(p), 0)
+    out.push({ kind: "eqp_idle", severity: "red", count: idle.length, age: idle.reduce((m, p) => Math.max(m, idleSince(p)), 0), amount: r2(cost), tab: "pmSite" })
+  }
+  const late = site.filter((p) => overdueDays(p, f.today) > 0)
+  if (late.length) out.push({ kind: "eqp_overdue", severity: "red", count: late.length, age: late.reduce((m, p) => Math.max(m, overdueDays(p, f.today)), 0), tab: "pmSite" })
+  const off = site.filter((p) => p.status === "req" && !p.offOk)
+  if (off.length) out.push({ kind: "eqp_offhire", severity: "amber", count: off.length, tab: "pmSite" })
+  const lic = site.map((p) => licenceState(p, f.today)).filter((st) => st === "expired" || st === "warn")
+  if (lic.length) out.push({ kind: "eqp_licence", severity: lic.includes("expired") ? "red" : "amber", count: lic.length, tab: "pmSite" })
 }
 
 export function projectDecisions(f: DecisionFacts): PmDecision[] {
   if (f.lifecycle === "closed") return []
   const out: PmDecision[] = []
 
-  if (f.managerless) out.push({ kind: "no_pm", severity: "red", tab: "team" })
+  if (f.managerless && f.lifecycle !== "done") out.push({ kind: "no_pm", severity: "red", tab: "team" })
   if (f.lifecycle === "plan" && f.plannedStart && f.plannedStart < f.today) out.push({ kind: "plan_overdue", severity: "amber", age: days(f.plannedStart, f.today), tab: "info" })
   if (f.lifecycle === "hold") {
     const age = f.holdSince ? days(f.holdSince, f.today) : undefined
@@ -271,12 +463,21 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
     damages: f.terms.damages,
     today: f.today,
   })
-  if (delay && delay.damages > 0) out.push({ kind: "damages", severity: "amber", count: delay.delayDays, amount: delay.damages, tab: "pmProgramme" })
+  if (delay && delay.damages > 0) out.push({ kind: "damages", severity: f.margin != null && delay.damages > f.margin ? "red" : "amber", count: delay.delayDays, amount: delay.damages, tab: "pmProgramme" })
   if (f.lifecycle === "live" && delay && progress !== null && delay.planned - progress > 4) out.push({ kind: "slip", severity: "amber", count: Math.round(delay.planned - progress), tab: "pmProgramme" })
 
   // The estimate at completion goes stale after 35 days of work (CVR-01).
   if (f.lifecycle === "live" && (!f.eac || days(f.eac.on, f.today) > 35))
     out.push({ kind: "cvr_stale", severity: "amber", count: f.eac ? days(f.eac.on, f.today) : 0, age: f.eac ? days(f.eac.on, f.today) : undefined, tab: "pmCvr" })
+
+  // A re-measurement contract: executed beyond the BOQ quantity by more than 25%
+  // opens the right to re-rate the excess (not a variation).
+  if (f.terms.basis === "rem") {
+    const over = f.items.filter((i) => i.quantity > 0 && i.executed - i.quantity > i.quantity * RERATE_SHARE)
+    if (over.length) out.push({ kind: "rerate", severity: "amber", count: over.length, amount: r2(over.reduce((a, i) => a + (i.executed - i.quantity) * i.rate, 0)), tab: "boq" })
+  }
+
+  supplyDecisions(f, out)
 
   if (f.lifecycle === "live" && !f.acceptances.prov && progress !== null && progress >= PROVISIONAL_AT) out.push({ kind: "provisional_ready", severity: "blue", tab: "pmClose" })
   if (f.acceptances.prov && !f.acceptances.final) {
@@ -286,5 +487,10 @@ export function projectDecisions(f: DecisionFacts): PmDecision[] {
   }
 
   const h = f.viewer?.has
-  return out.filter((d) => !h || REACHES[d.kind](h)).sort((a, b) => RANK[a.severity] - RANK[b.severity] || (b.amount ?? 0) - (a.amount ?? 0))
+  const sectionOn = (d: PmDecision) => !f.sections || !SECTION_OF[d.kind] || pmTabVisible(f.sections as readonly SectionId[], SECTION_OF[d.kind] as SectionId, 0)
+  return out
+    .filter(sectionOn)
+    .filter((d) => !f.viewer?.owner || !NOT_FOR_OWNER.has(d.kind))
+    .filter((d) => !h || REACHES[d.kind](h))
+    .sort((a, b) => RANK[a.severity] - RANK[b.severity] || (b.amount ?? 0) - (a.amount ?? 0))
 }

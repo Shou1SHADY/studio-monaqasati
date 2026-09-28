@@ -1,5 +1,6 @@
 "use client"
 
+import { DEFAULT_RFQ_PRICING, asksForOffers, effectivePricing, firstDeadline, showsPricingChoice, step3Refusals } from "@/lib/procurement/rfq-form"
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "@/i18n/routing"
 import { useSearchParams } from "next/navigation"
@@ -97,6 +98,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // request, a stock gap). The RFQ carries it, and the need is told which RFQ it became.
   const sourceParam = searchParams.get("source")
   const purchaseSource = useMemo(() => parseNeedSource(sourceParam), [sourceParam])
+  // Several needs combined on the desk arrive as `sources=a|b|c` (P-30): every one is linked.
+  const sourcesParam = searchParams.get("sources")
+  const extraSources = useMemo(
+    () => (sourcesParam ? sourcesParam.split("|").filter((x) => x && x !== sourceParam).map((x) => parseNeedSource(x)).filter((x): x is NonNullable<typeof x> => x !== null) : []),
+    [sourcesParam, sourceParam]
+  )
   const tShared = useTranslations("Portal.Shared")
   const [editRfqData, setEditRfqData] = useState<any>(null)
   const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
@@ -106,10 +113,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const { profile, isLoading: isProfileLoading } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const [visibilityMode, setVisibilityMode] = useState<"public" | "private" | "direct">("public")
-  // How we ask to be quoted (PRD SS4). A total is what this product always did and
-  // stays the default; per line asks for a rate per material, which is the only
-  // way an order ends up with a unit price somebody can compare later.
-  const [pricingMode, setPricingMode] = useState<PricingMode>("total")
+  // How we ask to be quoted (PRD SS4, prototype FORMS.rfq): per line is the
+  // default — the only way a multi-line RFQ can be split across suppliers and
+  // an order carries a unit price; one total is the buyer's explicit choice.
+  const [pricingMode, setPricingMode] = useState<PricingMode>(DEFAULT_RFQ_PRICING)
   // Which suppliers a private RFQ goes to. null means "not narrowed" — every
   // connected supplier, which is what private meant before this picker existed
   // and stays the default so an untouched form behaves exactly as it used to.
@@ -169,9 +176,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // now: emptying a quantity takes the choice away again, and the effect below
   // puts the RFQ back to a total rather than storing a mode nobody can honour.
   const canPriceLines = products.some((p) => p.category || p.quantity.trim()) && products.every((p) => toAmount(p.quantity) > 0)
-  useEffect(() => {
-    if (!canPriceLines && pricingMode === "line") setPricingMode("total")
-  }, [canPriceLines, pricingMode])
+  // Derived, never forced into the state: a quantity typed later brings the
+  // buyer's choice back instead of leaving the RFQ on a total nobody picked.
+  const storedPricing = effectivePricing(pricingMode, products.length, canPriceLines, visibilityMode)
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -182,6 +189,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // need-by date and their source, per product row.
   const tp = useTranslations("Portal.Procurement")
   const procWorld = useProcurementWorld()
+  const [todayDay] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))
   const { history: priceHistory } = useProcurementPrices(procWorld.orgId || null)
   const openNeeds = useOpenNeeds(procWorld, !isEditing)
   const [pickedNeeds, setPickedNeeds] = useState<Record<string, Need>>({})
@@ -516,12 +524,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   const validateStep3 = (): ValidationError[] => {
     const errors: ValidationError[] = []
 
-    if (!formData.city) {
-      errors.push({ field: "city", message: t("newrfq_val_city_required") })
-    }
-
-    if (!formData.deadline) {
-      errors.push({ field: "deadline", message: t("newrfq_val_deadline_required") })
+    // A direct award has no offer round: no deadline is asked (prototype FORMS.rfq).
+    for (const refusal of step3Refusals({ city: formData.city, deadline: formData.deadline, audience: visibilityMode, today: todayDay })) {
+      if (refusal === "city") errors.push({ field: "city", message: t("newrfq_val_city_required") })
+      if (refusal === "deadline") errors.push({ field: "deadline", message: t("newrfq_val_deadline_required") })
+      if (refusal === "deadline_past") errors.push({ field: "deadline", message: tp("rfqx.form.deadline_after_today") })
     }
 
     // A private RFQ addressed to nobody is invisible to every supplier —
@@ -693,7 +700,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfStoragePath: formData.pdfStoragePath,
         attachments,
         status: status,
-        pricingMode,
+        pricingMode: storedPricing,
         visibility: visibilityMode,
         allowedSupplierOrgIds: visibilityMode === "private" ? [...selectedRecipients] : [],
         orderedFromMdmakDirect: false,
@@ -763,8 +770,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         ...(catProducts.some((p) => needByOf(p.id)) ? { needBy: catProducts.map((p) => needByOf(p.id)).filter((d): d is string => Boolean(d)).sort()[0] } : {}),
         ...(catProducts.some((p) => pickedNeeds[p.id]) ? { needSources: Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id].source])).values()) } : {}),
         attachments,
-        deadline: formData.deadline,
-        estimatedBudget: formData.estimatedBudget
+        deadline: asksForOffers(visibilityMode) ? formData.deadline : null,
+        estimatedBudget: asksForOffers(visibilityMode) && formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
           : null,
         country: formData.country,
@@ -774,7 +781,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
         status: visibilityMode === "direct" ? "Awarded" : status,
-        pricingMode,
+        pricingMode: storedPricing,
         visibility: visibilityMode === "direct" ? "private" : visibilityMode,
         allowedSupplierOrgIds:
           visibilityMode === "direct" ? [directSupplierOrgId]
@@ -810,6 +817,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           } catch (linkErr) {
             // The RFQ exists; only the back-reference failed — Purchasing can still see both.
             console.error("purchase request ↔ RFQ link failed:", linkErr)
+          }
+          for (const extra of extraSources) {
+            try {
+              await linkNeed(firestore, extra, { rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null }, (profile as { name?: string } | null)?.name || user?.email || "")
+            } catch (linkErr) {
+              console.error("combined need ↔ RFQ link failed:", linkErr)
+            }
           }
         }
         if (projectId) {
@@ -1260,6 +1274,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   </div>
                 </div>
 
+                {asksForOffers(visibilityMode) && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-3">
                     <Label className="text-sm font-semibold text-slate-700">
@@ -1275,7 +1290,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       }}
                       className={`flex h-12 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm cursor-pointer ${hasError("deadline") ? 'border-destructive ring-1 ring-destructive' : ''}`}
                       dir="ltr"
-                      min={new Date().toISOString().split('T')[0]}
+                      min={firstDeadline(todayDay)}
                     />
                     {formData.deadline && (
                       <p className="text-xs text-muted-foreground">
@@ -1308,12 +1323,14 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     <p className="text-xs text-muted-foreground">{tp("rfqpo.form.budget_hint")}</p>
                   </div>
                 </div>
+                )}
 
                 {/* Visibility mode */}
                 {/* How to be quoted (PRD SS4): one figure, or a rate per material.
                     Per line is what gives an order real unit prices — and so a price
                     history, a drift report and an estimate to route the next need on.
                     Offered only when every material has a quantity to multiply by. */}
+                {showsPricingChoice(products.length, visibilityMode) && (
                 <div className="p-5 rounded-2xl border bg-muted/40 border-border">
                   <p className="text-sm font-bold text-foreground mb-3">{t("newrfq_pricing_label")}</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1328,7 +1345,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         onClick={() => setPricingMode(mode)}
                         className={cn(
                           "flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-bold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
-                          pricingMode === mode
+                          storedPricing === mode
                             ? "bg-primary text-white border-primary shadow-sm"
                             : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
                         )}
@@ -1339,7 +1356,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mt-3 leading-relaxed">
-                    {pricingMode === "line" ? t("newrfq_pricing_line_desc") : t("newrfq_pricing_total_desc")}
+                    {storedPricing === "line" ? t("newrfq_pricing_line_desc") : t("newrfq_pricing_total_desc")}
                   </p>
                   {!canPriceLines && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
@@ -1348,6 +1365,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     </p>
                   )}
                 </div>
+                )}
 
                 <div className={cn(
                   "p-5 rounded-2xl border transition-all duration-200",
@@ -1533,7 +1551,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                   className={`bg-success hover:bg-success/90 gap-2 px-10 rounded-xl shadow-lg shadow-success/25 ${isSubmitting ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <Send size={18} />}
-                  {t("newrfq_publish_now")}
+                  {visibilityMode === "direct" ? tp("rfqx.form.submit_direct") : t("newrfq_publish_now")}
                 </Button>
               </div>
             )}

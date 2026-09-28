@@ -189,18 +189,17 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
       ],
     })
     const t = todayTasks(w, MANAGER, NOW)
+    // A forwarded notice simply on its way (n1) is no decision: it waits in «يصل خلال 7 أيام».
     expect(t.map((x) => [x.kind, x.id])).toEqual([
       ["notice_overdue", "notice_overdue:n2"],
       ["notice_late_date", "notice_late_date:n3"],
       ["arrived_today", "arrived:2026-09-22"],
-      ["notice_incoming", "notice:n1"],
     ])
     expect(t[0]).toMatchObject({ priority: 1, severity: "red", subParams: { number: "PO-2026/014", date: "2026-09-20", daysAgo: 2 }, href: "/contractor/goods-received?tab=incoming&delivery=n2", actionKey: "actions.open" })
     expect(t[1]).toMatchObject({ priority: 1, severity: "amber", titleParams: { supplier: "Al-Hadid", days: 2 }, subParams: { promised: "2026-09-30" } })
-    expect(t[2]).toMatchObject({ titleParams: { count: 2 }, subParams: { list: "Al-Hadid GR-2026/031 · Al-Hadid GR-2026/032" }, href: "/contractor/goods-received?tab=log" })
-    expect(t[3]).toMatchObject({ priority: 2, severity: "blue", titleParams: { inDays: 2, hasDate: 1 }, subParams: { lines: "Rebar 12 mm 50 t" } })
-    // A receiver's button is "record receipt".
-    expect(todayTasks(w, RECEIVER, NOW).find((x) => x.kind === "notice_incoming")?.actionKey).toBe("actions.receive")
+    expect(t[2]).toMatchObject({ titleParams: { count: 2 }, subKey: "task.arrived_today.sub_flags", subParams: { list: "Al-Hadid GR-2026/031 · Al-Hadid GR-2026/032", rejects: 0, short: 0 }, href: "/contractor/goods-received?tab=log" })
+    // The overdue and late-date rows are for those who see the order's money (the prototype's `see`).
+    expect(todayTasks(w, RECEIVER, NOW).map((x) => x.kind)).toEqual([])
   })
 
   it("a manual receipt with no order is informational and ages out after 30 days; one tied to a legacy award is not one", () => {
@@ -233,6 +232,7 @@ describe("T3/T4 · RFQ tasks", () => {
       offers: [offer({ id: "a", rfqId: "ready", price: "12,500" }), offer({ id: "b", rfqId: "ready", price: "11000" }), offer({ id: "c", rfqId: "ready", status: "مرفوض", price: "9000" }), offer({ id: "d", rfqId: "stale" }), offer({ id: "e", rfqId: "thin" }), offer({ id: "f", rfqId: "fine" }), offer({ id: "g", rfqId: "fine" }), offer({ id: "h", rfqId: "fine" })],
     })
     const t = todayTasks(w, MANAGER, NOW)
+    expect(t.find((x) => x.kind === "rfq_draft")).toMatchObject({ href: "/contractor/rfqs/new?edit=draft", actionKey: "actions.openDraft" })
     expect(t.map((x) => [x.kind, x.id, x.severity])).toEqual([
       ["rfq_award", "rfq_award:stale", "red"],
       ["rfq_no_offers", "rfq_no_offers:empty", "red"],
@@ -243,8 +243,10 @@ describe("T3/T4 · RFQ tasks", () => {
     const ready = t.find((x) => x.id === "rfq_award:ready")!
     expect(ready).toMatchObject({ group: "rfq", titleParams: { title: "Rebar for Tower A", count: 2 }, subParams: { ago: 1 }, amount: 11000, href: "/contractor/rfqs/ready/offers", actionKey: "actions.compare" })
     expect(t.find((x) => x.id === "rfq_closing_thin:thin")).toMatchObject({ titleParams: { inDays: 1, count: 1 } })
-    // A buyer sees them; an expediter does not.
-    expect(kinds(w, BUYER)).toHaveLength(5)
+    // A buyer sees his own (the prototype's `rfqMine`); an expediter none.
+    expect(kinds(w, BUYER)).toHaveLength(0)
+    const his = { ...w, rfqs: w.rfqs.map((r) => ({ ...r, createdByUserId: "buyer" })) }
+    expect(kinds(his, BUYER)).toHaveLength(5)
     expect(kinds(w, EXPEDITER)).toEqual([])
   })
 })
@@ -397,28 +399,11 @@ describe("§5.2-3b · a notice nobody has been told to receive", () => {
     expect(fwd({ forwardedTo: { name: "ماجد" } })).toBeUndefined()
   })
 
-  it("says so, and turns amber inside the forwarding window", () => {
-    const t = noticeTask(world({ receipts: [pending()] }))
-    expect(t).toMatchObject({ kind: "notice_incoming", severity: "amber", priority: 1 })
-    expect(t?.subParams.notForwarded).toBe(1)
-  })
-
-  it("goes quiet once somebody has been told", () => {
-    const t = noticeTask(world({ receipts: [pending({ forwardedTo: { name: "ماجد" } })] }))
-    expect(t).toMatchObject({ kind: "notice_incoming", severity: "blue", priority: 2 })
-    expect(t?.subParams.notForwarded).toBe(0)
-  })
-
-  it("counts a receiver who already signed as told", () => {
-    const t = noticeTask(world({ receipts: [pending({ receiverReport: { signedAt: "2026-09-22T06:00:00Z" } })] }))
-    expect(t?.subParams.notForwarded).toBe(0)
-  })
-
-  it("stays blue while the delivery is still days away", () => {
-    const t = noticeTask(world({ receipts: [pending({ deliveryDate: "2026-09-30" })] }))
-    expect(t).toMatchObject({ severity: "blue", priority: 2 })
-    // Still worth saying, just not yet worth a colour.
-    expect(t?.subParams.notForwarded).toBe(1)
+  it("a notice somebody was told about, still on its way, is not a decision — no row at all", () => {
+    expect(noticeTask(world({ receipts: [pending({ forwardedTo: { name: "ماجد" } })] }))).toBeUndefined()
+    expect(noticeTask(world({ receipts: [pending({ receiverReport: { signedAt: "2026-09-22T06:00:00Z" } })] }))).toBeUndefined()
+    // Nor one nobody was told about, for a viewer who does not chase — the forward task is the chaser's.
+    expect(noticeTask(world({ receipts: [pending()] }))).toBeUndefined()
   })
 
   it("carries it on the overdue row too — nobody was ever told", () => {
@@ -429,7 +414,7 @@ describe("§5.2-3b · a notice nobody has been told to receive", () => {
 
   it("honours a wider window from the policy", () => {
     const w = { ...world({ receipts: [pending({ deliveryDate: "2026-09-27" })] }), policies: { ...DEFAULT_POLICIES, forwardWindowDays: 7 } }
-    expect(noticeTask(w)).toMatchObject({ severity: "amber" })
+    expect(todayTasks(w, MANAGER, NOW).find((t) => t.kind === "notice_forward")).toMatchObject({ severity: "amber", priority: 0 })
   })
 })
 

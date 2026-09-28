@@ -45,6 +45,7 @@ export function MeasurementPanel({
   actor,
   lastIpc,
   onItemsChanged,
+  startMeasuring,
 }: {
   projectId: string
   /** For attachments; without it the sheet saves without files. */
@@ -56,12 +57,14 @@ export function MeasurementPanel({
   /** The last certificate prepared (`pm.ipcCount` / `pm.lastIpcOn`) — «آخر قياس دخل مستخلصاً». */
   lastIpc?: { seq: number; on: string | null } | null
   onItemsChanged?: () => void
+  /** Opened from the head's «قياس»: the writer is open on arrival. */
+  startMeasuring?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const [measuring, setMeasuring] = useState(false)
+  const [measuring, setMeasuring] = useState(() => Boolean(startMeasuring) && !access.ctx.archived && access.allowed("measurement.write"))
   const [qty, setQty] = useState<Record<string, string>>({})
   const [search, setSearch] = useState("")
   const [confirming, setConfirming] = useState(false)

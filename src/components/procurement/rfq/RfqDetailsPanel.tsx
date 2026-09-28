@@ -8,7 +8,7 @@
 
 import { useLocale, useTranslations } from "next-intl"
 import { doc } from "firebase/firestore"
-import { Ban, ClipboardList, File, History, Package, Plus, Users } from "lucide-react"
+import { Ban, CalendarClock, ClipboardList, File, FileText, History, Package, Plus, Send, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
@@ -25,6 +25,7 @@ import { poValue } from "@/lib/procurement/po"
 import { invitedRows, rfqLog, type InviteOfferLike, type RfqLogEntry } from "@/lib/procurement/rfq-detail"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import type { RfqView } from "./rfqOfferView"
+import { rfqFiles } from "@/lib/procurement/rfq-view"
 
 const SOURCE_KEY: Record<string, string> = { mfg_purchase: "source.mfg", project_request: "source.project", stock_gap: "source.stock" }
 
@@ -35,6 +36,10 @@ export function RfqDetailsPanel({
   canCancel,
   onCancel,
   onRecordOffer,
+  onExtend,
+  extendLabel,
+  onPrint,
+  projectName,
 }: {
   rfq: RfqView
   orders: PurchaseOrder[]
@@ -43,8 +48,16 @@ export function RfqDetailsPanel({
   onCancel: () => void
   /** «سجّل عرضاً وصل خارج المنصة» — while the RFQ is open, for whoever runs it. */
   onRecordOffer?: (() => void) | null
+  /** «تعديل الموعد أو المدعوّين» / «إعادة نشر…» — while nobody has seen a price. */
+  onExtend?: (() => void) | null
+  extendLabel?: string
+  /** The RFQ as a document to send outside the platform (PDF). */
+  onPrint?: (() => void) | null
+  /** Who the lines are for — the prototype's «for» under each product. */
+  projectName?: string | null
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tx = useTranslations("Portal.Procurement.rfqx")
   const locale = useLocale()
   const date = useDateText()
   const now = new Date()
@@ -106,15 +119,21 @@ export function RfqDetailsPanel({
         )}
       </Panel>
 
-      {rfq.pdfUrl && (
-        <Panel title={t("details.attachments")} icon={File} bodyClassName="p-0">
-          <a href={rfq.pdfUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <span className="flex items-center gap-2">
-              <File size={14} aria-hidden="true" />
-              {t("details.rfq_file")}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{t("details.visible_to_suppliers")}</span>
-          </a>
+      {rfqFiles(rfq).length > 0 && (
+        <Panel title={t("details.attachments")} icon={File} count={rfqFiles(rfq).length} bodyClassName="p-0">
+          <ul className="divide-y">
+            {rfqFiles(rfq).map((f, i) => (
+              <li key={`${f.url}-${i}`}>
+                <a href={f.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <File size={14} className="shrink-0" aria-hidden="true" />
+                    <bdi className="truncate">{f.name || t("details.rfq_file")}</bdi>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{t("details.visible_to_suppliers")}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </Panel>
       )}
 
@@ -131,6 +150,7 @@ export function RfqDetailsPanel({
                   </b>
                   <span className="text-[11px] text-muted-foreground">
                     {rfq.purchaseSource?.kind ? t(SOURCE_KEY[rfq.purchaseSource.kind] || "source.direct") : t("source.direct")}
+                    {` · ${projectName || tx("details.for_general")}`}
                     {need ? ` · ${t("details.need", { date: date(need) })}` : ""}
                   </span>
                 </span>
@@ -153,12 +173,24 @@ export function RfqDetailsPanel({
         )}
       </Panel>
 
-      {(canCancel || onRecordOffer) && (
+      {(canCancel || onRecordOffer || onExtend || onPrint) && (
         <div className="flex flex-wrap gap-2">
           {onRecordOffer && (
             <Button variant="outline" size="sm" className="gap-2" onClick={onRecordOffer}>
               <Plus size={14} aria-hidden="true" />
               {t("manual.button")}
+            </Button>
+          )}
+          {onExtend && (
+            <Button variant="outline" size="sm" className="gap-2" onClick={onExtend}>
+              <CalendarClock size={14} aria-hidden="true" />
+              {extendLabel}
+            </Button>
+          )}
+          {onPrint && (
+            <Button variant="outline" size="sm" className="gap-2" onClick={onPrint}>
+              <FileText size={14} aria-hidden="true" />
+              {tx("details.pdf")}
             </Button>
           )}
           {canCancel && (
@@ -175,7 +207,7 @@ export function RfqDetailsPanel({
   )
 }
 
-function RfqLogPanel({ entries }: { entries: RfqLogEntry[] | null | undefined }) {
+export function RfqLogPanel({ entries }: { entries: RfqLogEntry[] | null | undefined }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const tc = useTranslations("Portal.Contractor")
   const date = useDateText()
@@ -242,5 +274,78 @@ function InvitedRow({ orgId, offered }: { orgId: string; offered: boolean }) {
         <StatusPill tone={offered ? "ok" : "mute"}>{offered ? t("invited.offered") : t("invited.not_yet")}</StatusPill>
       </Link>
     </li>
+  )
+}
+
+/** A draft's page (prototype `dRfqDraft`): not sent to anyone yet, its lines
+ * held for it until it is published or deleted. */
+export function RfqDraftPanel({
+  rfq,
+  projectName,
+  editHref,
+  canAct,
+  deleting,
+  onDelete,
+}: {
+  rfq: RfqView
+  projectName: string | null
+  editHref: string
+  canAct: boolean
+  deleting: boolean
+  onDelete: () => void
+}) {
+  const t = useTranslations("Portal.Procurement.rfqd")
+  const tx = useTranslations("Portal.Procurement.rfqx")
+  const date = useDateText()
+  const products = pricedProducts(rfq)
+  const privacy = rfq.directAward ? "direct" : rfq.visibility === "private" ? "private" : "public"
+  return (
+    <div className="space-y-4">
+      <Callout tone="info">{tx("draft.note")}</Callout>
+      {canAct && (
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" className="gap-2 bg-module text-module-foreground hover:bg-module/90">
+            <Link href={editHref}>
+              <Send size={14} aria-hidden="true" />
+              {tx("draft.complete")}
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={onDelete} disabled={deleting}>
+            <Trash2 size={14} aria-hidden="true" />
+            {tx("draft.delete")}
+          </Button>
+        </div>
+      )}
+      <Panel title={t("details.title")} icon={ClipboardList}>
+        <div className="grid gap-x-6 sm:grid-cols-2">
+          <KeyValueRow label={tx("draft.proposed_deadline")} value={rfq.deadline ? date(rfq.deadline) : "—"} />
+          <KeyValueRow label={t("details.privacy")} value={t(`privacy.${privacy}`)} />
+        </div>
+      </Panel>
+      <Panel title={tx("draft.products")} icon={Package} count={products.length} bodyClassName="p-0">
+        <ul className="divide-y">
+          {products.map((p) => (
+            <li key={p.rfqProductIndex} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+              <span className="min-w-0">
+                <b className="block" dir="auto">
+                  {p.name || "—"}
+                </b>
+                <span className="text-[11px] text-muted-foreground">
+                  {rfq.purchaseSource?.kind ? t(SOURCE_KEY[rfq.purchaseSource.kind] || "source.direct") : t("source.direct")}
+                  {` · ${projectName || tx("details.for_general")}`}
+                </span>
+              </span>
+              <span className="flex items-center gap-2">
+                <b className="tabular-nums" dir="ltr">
+                  {p.quantity.toLocaleString("en-US")}
+                </b>
+                <span className="text-xs text-muted-foreground">{p.unit}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+      <RfqLogPanel entries={rfq.log} />
+    </div>
   )
 }

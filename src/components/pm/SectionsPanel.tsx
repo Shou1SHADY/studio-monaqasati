@@ -310,6 +310,7 @@ function SwitchOffDialog({
 
   const blockLine = (b: (typeof blocks)[number]) => {
     if (b.key === "store_stock") return t("sec.blocker.store_stock", { count: b.n })
+    if (b.key === "plant_on_site") return t("sec.blocker.plant_on_site", { count: b.n })
     if (b.key === "uncollected") return money && b.amount ? t("sec.blocker.uncollected", { amount: pmMoney(b.amount) }) : t("sec.blocker.uncollected_hidden", { count: b.n })
     const parts: string[] = []
     if ((b.amount ?? 0) > 0.5) parts.push(money ? t("sec.blocker.sub_dues", { amount: pmMoney(b.amount ?? 0) }) : t("sec.blocker.sub_dues_hidden"))

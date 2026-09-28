@@ -27,6 +27,9 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils"
 import { withSarSign } from "@/lib/riyal"
 import type { Translator } from "@/lib/mfg-events"
+import { operatingPolicies } from "@/lib/procurement/policies"
+import { receiveRight } from "@/lib/procurement/policy-enforce"
+import { poActs } from "@/lib/procurement/po-extras"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { RECEIPT_CHECKS, acceptedOf, canRate, lineToArrive, round2 } from "@/lib/procurement/po"
 import { procLinks } from "@/lib/procurement/events"
@@ -48,7 +51,7 @@ import {
   type TrailState,
 } from "@/lib/procurement/receipt-desk"
 import { printGoodsReceipt, type ReceiptPrintCompany } from "@/lib/procurement/receipt-print"
-import type { PoLine, ProcActor, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
+import type { PoLine, ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptCheck, RejectDecision } from "@/lib/procurement/types"
 import { ProcWriteError, decideReject, ratePurchaseOrder, type RatingInput } from "@/lib/procurement/writes"
 import { RejectDecisionDialog } from "./PoActionDialogs"
 import { PoRateDialog } from "./PoRateDialog"
@@ -96,6 +99,8 @@ export interface ReceiptDrawerProps {
   placeKind: (d: DeskDelivery, po: PurchaseOrder | null) => DestKind | null
   now: Date
   onReceive?: (d: DeskDelivery) => void
+  /** The org's policies: who may record (buyerReceives) and how notices travel (noticeRouting). */
+  policies?: ProcurementPolicies | null
   onRegularise?: (d: DeskDelivery) => void
 }
 
@@ -103,7 +108,8 @@ const TRAIL_ICON: Record<TrailState, typeof CheckCircle2> = { ok: CheckCircle2, 
 const TRAIL_TONE: Record<TrailState, string> = { ok: "bg-success/10 text-success", bad: "bg-destructive/10 text-destructive", now: "bg-amber-100 text-amber-800" }
 
 export function ReceiptDrawer(props: ReceiptDrawerProps) {
-  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise } = props
+  const { delivery: d, po, deliveries, onOpenChange, actor, orgName, company, warehouseName, projectName, placeKind, now, onReceive, onRegularise, policies } = props
+  const routing = operatingPolicies(policies).noticeRouting
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   const tOrders = useTranslations("Portal.ProcOrders")
@@ -139,10 +145,11 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
   const shorts = lines.map((l) => ({ l, short: shortVsNotice(l) })).filter((x) => x.short > 0)
   const attachments = (d.attachmentUrls || []) as string[]
   const checks = (d.checklist || []) as ReceiptCheck[]
-  const canAct = actor.isOwner || actor.canReceive
-  const canPrepare = actor.isOwner || actor.canPrepare
+  const canAct = receiveRight(actor, policies) !== null
+  // Procurement's own acts on a receipt (regularise, expense, rate) — buyer or manager (S-13, S-17).
+  const canPrepare = actor.isOwner || actor.canPrepare || actor.canApprove
   const canDecide = actor.isOwner || actor.canPrepare || actor.canApprove
-  const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries)
+  const rateable = Boolean(po) && canPrepare && canRate(po as PurchaseOrder, deliveries) && poActs(po as PurchaseOrder, actor).acts
   const opts = { copy: tShared as unknown as Translator, locale: locale as "ar" | "en", orgName }
 
   const dateText = (iso: string | null | undefined) => {
@@ -316,7 +323,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
     )
   }
 
-  const trail = po && !pending ? receiptTrail(d, po) : []
+  const trail = po && !pending ? receiptTrail(d, po, routing) : []
   const trailText = (key: string, variant: string, params: Record<string, string | number>): string => {
     switch (key) {
       case "requested":
@@ -326,7 +333,7 @@ export function ReceiptDrawer(props: ReceiptDrawerProps) {
       case "notified":
         return variant === "none" ? t("trail.notified_none") : [t("trail.notified_for", { day: dateText(String(params.day || "")) }), params.note ? `${t("incoming.note")} ${params.note}` : "", String(params.driver || "")].filter(Boolean).join(" · ")
       case "forwarded":
-        return variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : t("trail.forwarded_direct")
+        return variant === "link" ? t("trail.forwarded_link", params) : variant === "member" ? t("trail.forwarded_member", params) : variant === "unannounced" ? t("trail.forwarded_unannounced") : variant === "both" ? t("trail.forwarded_both") : t("trail.forwarded_direct")
       case "received":
         return [place || project || "—", receiverName, number, variant === "link" ? t("trail.received_link") : ""].filter(Boolean).join(" · ")
       case "went":

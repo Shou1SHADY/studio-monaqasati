@@ -15,6 +15,7 @@ import type { CertificateStatus } from "./certificate"
 import { isLetterOpen } from "./correspondence"
 import { isOpenNcr, type NcrStatus } from "./ncr"
 import { isOpenPunch, type PunchStatus } from "./punch"
+import { storeBalance, storeLineOf, type PmStoreLine, type StoreItem } from "./store"
 import { awaitingSubCertificates, subSummaries, type PmSubcontract, type SubCertStatus } from "./subcontract"
 import { pricedPending, type VoStatus } from "./variation"
 
@@ -124,7 +125,7 @@ export function subDues(contracts: PmSubcontract[], certificates: Array<{ status
 }
 
 /** What the project taught, in numbers not opinions — they feed the next bid.
- * Material lost waits for the project-store ledger: never an invented number. */
+ * Material lost is read from the project-store ledger (`materialLost`). */
 export interface Lessons {
   rework: number
   ncrs: number
@@ -152,12 +153,63 @@ export function projectLessons(input: {
 
 export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok)
 
-/** The final figures, frozen at archive and never recomputed (CST-04). Cost and
- * margin wait for the cost section — never an invented number (S-13). */
+/** What the project store still holds (prototype `plOf(p).filter(plBal>0.005)`):
+ * the PM ledger `projects/{id}/pmStore`, never a company warehouse. The value
+ * counts only lines with a known cost. */
+export function storeHoldings(lines: PmStoreLine[], items: StoreItem[], costOf?: (x: PmStoreLine) => number | null): { lines: number; value: number } {
+  let n = 0
+  let value = 0
+  for (const x of lines) {
+    const bal = storeBalance(x, items)
+    if (bal <= 0.005) continue
+    n++
+    const c = costOf?.(x) ?? null
+    if (c != null && c > 0) value += bal * c
+  }
+  return { lines: n, value: r2(value) }
+}
+
+/** Material written off as lost, damaged or stolen and approved, at cost (lessons «ما فُقد من المواد»). */
+export function materialLost(lines: PmStoreLine[], costOf: (x: PmStoreLine) => number | null): number {
+  return r2(lines.reduce((a, x) => a + x.moves.filter((m) => m.t === "loss" && m.st === "ok").reduce((c, m) => c + m.q * (costOf(x) ?? 0), 0), 0))
+}
+
+const numOf = (v: unknown) => {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+
+/** A stored BOQ line as the store ledger reads it. */
+export const storeItemOf = (id: string, d: Record<string, unknown>): StoreItem => ({
+  id,
+  code: typeof d.itemNo === "string" ? d.itemNo : "",
+  description: "",
+  unit: typeof d.unit === "string" ? d.unit : "",
+  quantity: numOf(d.quantity),
+  executed: numOf(d.executedQuantity),
+})
+
+/** A stored store line (`pmStore/{id}`) with its lists defaulted. */
+export const storeDocOf = (id: string, d: Record<string, unknown>): PmStoreLine => storeLineOf(id, d as Partial<Omit<PmStoreLine, "id">>)
+
+/** The cost section's roll-up at closing (cost.ts `projectCost`): actual cost to
+ * date and what was earned, variations included. */
+export interface ClosingCost {
+  actual: number
+  earned: number
+}
+
+/** The final figures, frozen at archive and never recomputed (CST-04). Actual
+ * cost and the realised margin (earned − actual, prototype pMargin) come from
+ * the cost section; without it they stay null — never an invented number (S-13). */
 export interface ArchiveSnapshot {
   contractValue: number
   earned: number
   certified: number
+  actualCost?: number | null
+  margin?: number | null
+  /** Margin ÷ final contract value, in % to one decimal. */
+  marginPct?: number | null
   retentionHeld: number
   advanceRecovered: number
   contractDays: number | null
@@ -177,16 +229,22 @@ export function archiveSnapshot(input: {
   startedAt: string | null
   finalOn: string | null
   today: string
+  cost?: ClosingCost | null
 }): ArchiveSnapshot {
   // Earned = approved executed × rate (§8); unpriced items earn nothing.
   const earned = r2(input.items.reduce((a, i) => a + (i.rate > 0 ? i.executed * i.rate : 0), 0))
   const certified = r2(input.certificates.filter((c) => c.status === "appr" || c.status === "part" || c.status === "paid").reduce((a, c) => a + c.gross, 0))
   const actualDays = input.startedAt ? days(input.startedAt, input.finalOn ?? input.today) : null
   const contractDays = input.durationDays ?? null
+  const c = input.cost
+  const margin = c ? r2(c.earned - c.actual) : null
   return {
     contractValue: input.contractValue,
     earned,
     certified,
+    actualCost: c ? r2(c.actual) : null,
+    margin,
+    marginPct: margin !== null && input.contractValue > 0 ? Math.round((margin / input.contractValue) * 1000) / 10 : null,
     retentionHeld: input.retentionHeld,
     advanceRecovered: input.advanceRecovered,
     contractDays,

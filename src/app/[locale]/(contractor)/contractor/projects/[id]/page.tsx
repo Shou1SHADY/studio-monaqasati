@@ -18,6 +18,8 @@ import { PmTeamPanel } from "@/components/pm/PmTeamPanel"
 import { PunchPanel } from "@/components/pm/PunchPanel"
 import { SubcontractorsPanel } from "@/components/pm/SubcontractorsPanel"
 import { SitePanel } from "@/components/pm/SitePanel"
+import { PmSubTabNav } from "@/components/pm/PmSubTabNav"
+import { pmTabVisible } from "@/lib/pm/sections"
 import { PmBoqPanel } from "@/components/pm/PmBoqPanel"
 import { PmInfoPanel, PmStartPanel, PmTermsGlance } from "@/components/pm/PmFilePanels"
 import { ItpPanel } from "@/components/pm/ItpPanel"
@@ -158,6 +160,7 @@ import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { ProjectTeamSection } from "@/components/project-team"
 import { usePermissions } from "@/hooks/usePermissions"
 import { usePmAccess } from "@/hooks/usePmAccess"
+import { usePmItemActualCost } from "@/hooks/usePmItemActualCost"
 import { pmSeesProject } from "@/lib/pm/access"
 import type { Acceptances } from "@/lib/pm/acceptance"
 import { lifecycleOf } from "@/lib/pm/lifecycle"
@@ -188,9 +191,12 @@ import {
 import { Settings2, Sparkles, Receipt, ClipboardList, User, Banknote, Ruler, Factory, SearchCheck, KeyRound, Hammer, Gavel, Gauge, CalendarRange } from "lucide-react"
 import { ProjectPulse, type PulseProject } from "@/components/pm/ProjectPulse"
 import { ProjectHead, type PmHeadProject } from "@/components/pm/ProjectHead"
+import { PmHoldControl } from "@/components/pm/PmHoldControl"
+import { PmBudgetDecisions } from "@/components/pm/PmBudgetDecisions"
 import { SegmentedNav } from "@/components/module-ui/SegmentedNav"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { groupOf, groupTabs, type ProjectGroup } from "@/lib/pm/project-tabs"
+import { groupOf, groupTabs, visibleTab, type ProjectGroup } from "@/lib/pm/project-tabs"
+import { bulkDeleteSplit } from "@/lib/procurement/rfq-view"
 import { Activity, ClipboardCheck, Coins, FileStack, HardHat, Mail, SlidersHorizontal, Truck, ScrollText } from "lucide-react"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { AdoptProjectDialog } from "@/components/pm/AdoptProjectDialog"
@@ -340,6 +346,7 @@ export default function ProjectDetailPage() {
   const t = useTranslations("Portal.Contractor")
   const tShared = useTranslations("Portal.Shared")
   const tPm = useTranslations("Portal.PM")
+  const tProc = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const router = useRouter()
@@ -447,6 +454,12 @@ export default function ProjectDetailPage() {
   // PM 1.0: on a project born from a handover, actions pass the central guard.
   const pmAccess = usePmAccess(isDeleting ? undefined : projectId, project as { pm?: { lifecycle?: string } | null; status?: string; projectManagerId?: string | null } | null)
   const [claimSeed, setClaimSeed] = useState<ClaimSeed | null>(null)
+  // «قياس» opens the measurement writer and «أعِدّ مستخلصاً» the IPC form, not just their tab
+  // (the head, the ipc decision, and `?work=` from Today's decision rows).
+  const [work, setWork] = useState<{ what: "measure" | "prepare"; n: number } | null>(() => {
+    const w = searchParams.get("work")
+    return w === "measure" || w === "prepare" ? { what: w, n: 0 } : null
+  })
   const [storeFocus, setStoreFocus] = useState<string | null>(null)
   // Its measurements go through sheets the PM approves — never straight onto the BOQ line (MS-02).
   const isPmProject = Boolean((project as { pm?: unknown } | null)?.pm)
@@ -688,6 +701,15 @@ export default function ProjectDetailPage() {
 
   const handleDeleteTender = async () => {
     if (!firestore || !tenderDeleteTarget || !projectId) return
+    // Only a draft is deleted: a published RFQ may hold offers — it is withdrawn with
+    // «ألغِ الطلب» and a reason on its own page, never erased (the rules say the same).
+    const target = ((linkedRfqs as Array<{ id: string; status?: string }> | null) || []).find((r) => r.id === tenderDeleteTarget.id)
+    if (target && target.status !== "Draft") {
+      toast({ title: t("rfq_bulk_delete_none_eligible"), description: tProc("rfqx.bulk.cancel_instead", { count: 1 }), variant: "destructive" })
+      setTenderDeleteTarget(null)
+      router.push(`/contractor/rfqs/${target.id}`)
+      return
+    }
     setIsDeletingTender(true)
     try {
       // Hand the RFQ's draws back to the BOQ lines before it goes.
@@ -756,11 +778,12 @@ export default function ProjectDetailPage() {
 
   const handleBulkDeleteTenders = async () => {
     if (isBulkDeletingTenders || !firestore || !projectId) return
-    const candidates = ((linkedRfqs as any[]) || []).filter((r) => selectedTenderIds.includes(r.id))
-    const eligible = candidates.filter((r) => canEditOrDeleteTender(r))
-    const skipped = candidates.length - eligible.length
+    const candidates = ((linkedRfqs as any[]) || []).filter((r) => selectedTenderIds.includes(r.id) && canEditOrDeleteTender(r))
+    // Drafts only; a published one is cancelled with a reason on its page (as the RFQ list does).
+    const { drafts: eligible, toCancel } = bulkDeleteSplit(candidates as Array<{ id: string; status?: string }>)
+    const skipped = selectedTenderIds.length - eligible.length
     if (eligible.length === 0) {
-      toast({ title: t("rfq_bulk_delete_none_eligible"), variant: "destructive" })
+      toast({ title: t("rfq_bulk_delete_none_eligible"), description: toCancel.length ? tProc("rfqx.bulk.cancel_instead", { count: toCancel.length }) : undefined, variant: "destructive" })
       setShowBulkTenderDeleteDialog(false)
       return
     }
@@ -781,7 +804,8 @@ export default function ProjectDetailPage() {
     toast({
       title: t("rfq_delete_success"),
       description: t("rfq_bulk_delete_result", { deleted, skipped })
-        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : ""),
+        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : "")
+        + (toCancel.length > 0 ? ` — ${tProc("rfqx.bulk.cancel_instead", { count: toCancel.length })}` : ""),
       variant: failedIds.length > 0 ? "destructive" : undefined,
     })
     setSelectedTenderIds(failedIds)
@@ -838,7 +862,7 @@ export default function ProjectDetailPage() {
 
   // On a PM project the site, safety, documents and subcontractor sections are
   // the PM tabs themselves — never the old placeholder beside them.
-  const PM_OWN_SECTIONS: SectionId[] = ["daily", "rfi", "hse", "docs", "subs", "store"]
+  const PM_OWN_SECTIONS: SectionId[] = ["daily", "rfi", "hse", "docs", "subs", "store", "vo", "progress", "qa"]
   const dynamicTabs = SECTION_IDS
     .filter((id) => enabledSectionIds.includes(id) || (id === "mfg" && hasWorkshopOrders))
     .filter((id) => SECTION_REGISTRY[id].tabRoute && id !== "collect")
@@ -927,6 +951,7 @@ export default function ProjectDetailPage() {
     const tab = next === "pmWir" || next === "pmPunch" ? "pmQa" : next
     setLastInGroup((prev) => ({ ...prev, [groupOf(tab)]: tab }))
     setActiveTab(tab)
+    setWork(null)
     if (tab === "boq") loadBoqItems()
   }
 
@@ -2006,6 +2031,9 @@ export default function ProjectDetailPage() {
     </table>
   )
 
+  const pmOrg = (project as { organizationId?: string } | null)?.organizationId || myOrgId
+  const pmItemCost = usePmItemActualCost(projectId, pmOrg || null, boqItems.map((i) => i.id), (project as { warehouseId?: string } | null)?.warehouseId ?? null, pmAccess.has("money") && isPmProject)
+
   if (projectLoading) {
     return (
       <PortalLayout>
@@ -2057,37 +2085,59 @@ export default function ProjectDetailPage() {
   }))
   const pmActor = { uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }
 
+  const pmSectionOn = (id: SectionId, records: number | undefined) => pmTabVisible(enabledSectionIds, id, records)
+  const pmCount = (key: string) => Number((typedProject.pm as Record<string, unknown> | null | undefined)?.[key] ?? 0) || 0
+  // Each PM sub-tab follows its section (the prototype's HAS guards) — or shows while the project holds its records.
+  const pmOn = {
+    qa: pmSectionOn("qa", pmCount("wirCount") + pmCount("punchCount") + pmCount("ncrCount") + pmCount("itpCount")),
+    vo: pmSectionOn("vo", pmCount("voCount")),
+    claim: pmSectionOn("claim", pmCount("claimCount")),
+    programme: pmSectionOn("progress", lifecycleOf(typedProject) === "plan" ? 0 : 1) && Boolean(typedProject.pm?.terms),
+    sched: pmSectionOn("sched", pmCount("activityCount")),
+    subm: pmSectionOn("subm", pmCount("sampleCount")),
+    petty: pmSectionOn("petty", pmCount("pettyCount")),
+    price: pmSectionOn("price", 0),
+    match: pmSectionOn("match", 0),
+    cvr: pmSectionOn("cvr", (typedProject.pm as { eac?: unknown } | null | undefined)?.eac ? 1 : 0) && Boolean(typedProject.pm?.terms),
+    docs: enabledSectionIds.includes("docs") || pmCount("docCount") > 0,
+    corr: pmSectionOn("corr", pmCount("letterCount")),
+    close: pmSectionOn("close", (typedProject.pm as { acceptances?: { prov?: unknown } } | null | undefined)?.acceptances?.prov ? 1 : 0) && Boolean(typedProject.pm?.terms),
+    eqp: pmSectionOn("eqp", pmCount("plantReqCount") + pmCount("plantCount")),
+    store: enabledSectionIds.includes("store"),
+  }
+  const lookSections = { docs: pmOn.docs, subm: pmItems.some((i) => i.pmSample), wir: true, rfi: enabledSectionIds.includes("rfi" as SectionId), hse: enabledSectionIds.includes("hse" as SectionId), stock: pmOn.store, eqp: pmOn.eqp }
   const tabs: { key: ActiveTab; label: string; icon: React.ReactNode }[] = [
-    { key: "info", label: t("proj_tab_info"), icon: <FolderOpen size={15} /> },
+    { key: "info", label: typedProject.pm ? tPm("seg.info") : t("proj_tab_info"), icon: <FolderOpen size={15} /> },
     { key: "boq", label: t("proj_tab_boq"), icon: <TableProperties size={15} /> },
     // PM 1.0: measurement goes through sheets the PM approves (WF-04).
     ...(typedProject.pm
       ? [
           { key: "pmToday" as ActiveTab, label: tPm("grp.pulse"), icon: <Gauge size={15} /> },
-          ...(pmAccess.has("money") || pmAccess.has("approve") ? [{ key: "pmTerms" as ActiveTab, label: tPm("grp.terms"), icon: <ScrollText size={15} /> }] : []),
-          { key: "pmMeasure" as ActiveTab, label: tPm("meas.title"), icon: <Ruler size={15} /> },
-          { key: "pmQa" as ActiveTab, label: tPm("qa.tab"), icon: <SearchCheck size={15} /> },
+          ...(pmAccess.has("money") || pmAccess.has("approve") ? [{ key: "pmTerms" as ActiveTab, label: tPm("seg.terms"), icon: <ScrollText size={15} /> }] : []),
+          { key: "pmMeasure" as ActiveTab, label: tPm("seg.meas"), icon: <Ruler size={15} /> },
+          ...(pmOn.qa ? [{ key: "pmQa" as ActiveTab, label: tPm("qa.tab"), icon: <SearchCheck size={15} /> }] : []),
           ...((["daily", "rfi", "hse", "wwp", "eqp"] as SectionId[]).some((s) => enabledSectionIds.includes(s))
             ? [{ key: "pmSite" as ActiveTab, label: tPm(enabledSectionIds.includes("wwp") ? "wwp.tab" : enabledSectionIds.includes("hse") ? "site.tab_safety" : "site.tab_obstacles"), icon: <HardHat size={15} /> }]
             : []),
           ...(enabledSectionIds.includes("subs") ? [{ key: "pmSubs" as ActiveTab, label: tPm("subs.title"), icon: <Users size={15} /> }] : []),
-          { key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> },
-          { key: "pmClaims" as ActiveTab, label: tPm("claim.tab"), icon: <Gavel size={15} /> },
-          { key: "pmProgramme" as ActiveTab, label: tPm("prg.tab"), icon: <CalendarRange size={15} /> },
-          { key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> },
-          { key: "pmDocs" as ActiveTab, label: tPm("docs.tab"), icon: <FileStack size={15} /> },
-          { key: "pmCorr" as ActiveTab, label: tPm("corr.tab"), icon: <Mail size={15} /> },
+          ...(pmOn.vo ? [{ key: "pmVo" as ActiveTab, label: tPm("vo.title"), icon: <Hammer size={15} /> }] : []),
+          ...(pmOn.claim ? [{ key: "pmClaims" as ActiveTab, label: tPm("seg.claim"), icon: <Gavel size={15} /> }] : []),
+          ...(pmOn.programme ? [{ key: "pmProgramme" as ActiveTab, label: tPm("prg.tab"), icon: <CalendarRange size={15} /> }] : []),
+          ...(pmOn.close ? [{ key: "pmClose" as ActiveTab, label: tPm("hnd.tab"), icon: <KeyRound size={15} /> }] : []),
+          ...(pmOn.docs ? [{ key: "pmDocs" as ActiveTab, label: tPm("docs.tab"), icon: <FileStack size={15} /> }] : []),
+          ...(pmOn.corr ? [{ key: "pmCorr" as ActiveTab, label: tPm("corr.tab"), icon: <Mail size={15} /> }] : []),
         ]
       : []),
-    { key: "rfqs", label: t("proj_tab_rfqs"), icon: <FileText size={15} /> },
+    // The legacy tenders tab is not a PM 1.0 screen: Supply is requests · store · submittals · direct · orders.
+    ...(typedProject.pm ? [] : [{ key: "rfqs" as ActiveTab, label: t("proj_tab_rfqs"), icon: <FileText size={15} /> }]),
     // On a PM project, Supply's own screens read the same requests (E-26).
     ...(typedProject.pm
       ? [
           { key: "pmReq" as ActiveTab, label: tPm("sup.tab"), icon: <ShoppingCart size={15} /> },
-          ...(enabledSectionIds.includes("store" as SectionId) ? [{ key: "pmStore" as ActiveTab, label: tPm("store.title"), icon: <Warehouse size={15} /> }] : []),
-          { key: "pmSubm" as ActiveTab, label: tPm("sup.subm_tab"), icon: <ClipboardCheck size={15} /> },
-          { key: "pmPetty" as ActiveTab, label: tPm("sup.petty_tab"), icon: <ShoppingBag size={15} /> },
-          { key: "pmPo" as ActiveTab, label: tPm("sup.po_tab"), icon: <FileText size={15} /> },
+          ...(pmOn.store ? [{ key: "pmStore" as ActiveTab, label: tPm("store.title"), icon: <Warehouse size={15} /> }] : []),
+          ...(pmOn.subm ? [{ key: "pmSubm" as ActiveTab, label: tPm("sup.subm_tab"), icon: <ClipboardCheck size={15} /> }] : []),
+          ...(pmOn.petty ? [{ key: "pmPetty" as ActiveTab, label: tPm("sup.petty_tab"), icon: <ShoppingBag size={15} /> }] : []),
+          { key: "pmPo" as ActiveTab, label: pmOn.price ? tPm("sup.po_tab") : tPm("seg.po"), icon: <FileText size={15} /> },
         ]
       : [{ key: "purchaseRequests" as ActiveTab, label: t("proj_tab_purchase_requests"), icon: <ClipboardList size={15} /> }]),
     { key: "team", label: typedProject.pm ? tPm("tab.team") : t("proj_tab_team"), icon: <Users size={15} /> },
@@ -2100,8 +2150,8 @@ export default function ProjectDetailPage() {
     ...(typedProject.pm && pmAccess.has("money")
       ? [
           { key: "pmCost" as ActiveTab, label: tPm("money.tab.cost"), icon: <Coins size={15} /> },
-          ...(enabledSectionIds.includes("receive" as SectionId) ? [{ key: "pmMatch" as ActiveTab, label: tPm("money.tab.match"), icon: <ClipboardCheck size={15} /> }] : []),
-          { key: "pmCvr" as ActiveTab, label: tPm("money.tab.cvr"), icon: <Activity size={15} /> },
+          ...(pmOn.match ? [{ key: "pmMatch" as ActiveTab, label: tPm("money.tab.match"), icon: <ClipboardCheck size={15} /> }] : []),
+          ...(pmOn.cvr ? [{ key: "pmCvr" as ActiveTab, label: tPm("money.tab.cvr"), icon: <Activity size={15} /> }] : []),
         ]
       : []),
     ...dynamicTabs
@@ -2109,13 +2159,20 @@ export default function ProjectDetailPage() {
       .filter((id) => !(typedProject.pm && id === "ipc" && !(pmAccess.has("client") && pmAccess.has("ipc"))))
       .map((id) => ({
       key: id as ActiveTab,
-      label: tShared(sectionLabelKey(id)),
+      label: typedProject.pm && id === "ipc" ? tPm("money.tab.ipc") : tShared(sectionLabelKey(id)),
       icon: id === "ipc" ? <Receipt size={15} /> : id === "store" ? <Warehouse size={15} /> : id === "mfg" ? <Factory size={15} /> : <Sparkles size={15} />,
     })),
   ]
 
   const tabGroups = groupTabs(tabs)
-  const activeGroup = groupOf(activeTab)
+  // A link, a tile or a decision may name a screen this viewer or these sections do not
+  // have (the prototype's shell() never renders one): show the first of its group instead.
+  const current = pmAccess.isLoading ? activeTab : visibleTab(activeTab, tabGroups.flatMap((g) => g.tabs.map((x) => x.key)))
+  const activeGroup = groupOf(current)
+  const openWork = (what: "measure" | "prepare") => {
+    handleTabChange(what === "measure" ? "pmMeasure" : "ipc")
+    setWork((w) => ({ what, n: (w?.n ?? 0) + 1 }))
+  }
   const activeGroupTabs = tabGroups.find((g) => g.group === activeGroup)?.tabs ?? []
   const openManageSections = () => {
     setPendingSections(new Set(enabledSectionIds))
@@ -2178,27 +2235,8 @@ export default function ProjectDetailPage() {
             access={pmAccess}
             ipcOn={dynamicTabs.includes("ipc" as SectionId)}
             onOpen={(tab) => handleTabChange(tab as ActiveTab)}
-            actions={
-              <>
-                {pmAccess.allowed("sections.manage") && (
-                  <Button variant="outline" size="sm" onClick={() => handleTabChange("pmSections")} className="gap-1">
-                    <Settings2 size={14} />
-                    {t("proj_manage_sections_btn")}
-                  </Button>
-                )}
-                {can("projects.delete") && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDeleteDialog(true)}
-                    className="gap-1 text-destructive border-destructive/30 hover:bg-destructive hover:text-white hover:border-destructive"
-                  >
-                    <Trash2 size={14} />
-                    {t("proj_delete")}
-                  </Button>
-                )}
-              </>
-            }
+            onWork={openWork}
+            actions={<PmHoldControl projectId={projectId} project={typedProject} access={pmAccess} actor={pmActor} />}
           />
         ) : (
           <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -2322,16 +2360,48 @@ export default function ProjectDetailPage() {
                     )}
                   >
                     <GroupIcon size={16} aria-hidden="true" />
-                    {tPm(`grp.${g.group}`)}
+                    {typedProject.pm && g.group === "money" && !pmAccess.has("client") ? tPm("grp.money_cost") : tPm(`grp.${g.group}`)}
+                    {typedProject.pm && g.group === "settings" && !typedProject.projectManagerId && (
+                      <span className="min-w-5 rounded-full bg-destructive px-1.5 text-center text-[11px] leading-5 text-destructive-foreground tabular-nums" aria-label={tPm("rail.no_pm")}>
+                        1
+                      </span>
+                    )}
                   </button>
                 </li>
               )
             })}
           </ul>
-          {activeGroupTabs.length > 1 && (
+          {activeGroupTabs.length > 1 && typedProject.pm && (
+            <PmSubTabNav
+              projectId={projectId}
+              orgId={pmOrg || null}
+              group={activeGroup}
+              tabs={activeGroupTabs}
+              active={current}
+              onSelect={(key) => handleTabChange(key)}
+              access={pmAccess}
+              items={pmItems}
+              sections={lookSections}
+              weeklyPlan={enabledSectionIds.includes("wwp" as SectionId)}
+              terms={typedProject.pm.original ?? typedProject.pm.terms ?? null}
+              lastIpcOn={(typedProject.pm as { lastIpcOn?: string | null }).lastIpcOn ?? null}
+              hasManager={Boolean(typedProject.projectManagerId)}
+              project={{
+                lifecycle: lifecycleOf(typedProject),
+                eac: (typedProject.pm as { eac?: { on: string } | null }).eac ?? null,
+                acceptances: (typedProject.pm as { acceptances?: Acceptances }).acceptances,
+                cutPool: (typedProject.pm as { cutPool?: number }).cutPool ?? 0,
+                retentionHeld: typedProject.pm.retentionHeld ?? 0,
+                retentionReleased: Boolean((typedProject.pm as { retentionReleased?: boolean }).retentionReleased),
+                hasClient: (typedProject.pm.terms?.payer ?? "owner") !== "none",
+                storeOn: pmOn.store,
+              }}
+            />
+          )}
+          {activeGroupTabs.length > 1 && !typedProject.pm && (
             <SegmentedNav
               ariaLabel={tPm(`grp.${activeGroup}`)}
-              active={activeTab}
+              active={current}
               onSelect={(key) => handleTabChange(key)}
               segments={activeGroupTabs.map((x) => ({ id: x.key, label: x.label }))}
             />
@@ -2345,7 +2415,7 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── TAB: INFO ── */}
-        {activeTab === "pmTerms" && typedProject && typedProject.pm && (pmAccess.has("money") || pmAccess.has("approve")) && (
+        {current === "pmTerms" && typedProject && typedProject.pm && (pmAccess.has("money") || pmAccess.has("approve")) && (
             <ProjectTermsPanel
               projectId={projectId}
               project={typedProject}
@@ -2355,7 +2425,7 @@ export default function ProjectDetailPage() {
               actor={{ uid: user?.uid ?? "", name: ((profile as { name?: string } | null)?.name as string) || user?.email || null }}
             />
         )}
-        {activeTab === "info" && (
+        {current === "info" && (
           <div className="space-y-4">
           {typedProject.pm ? (
             <div className="grid gap-4 lg:grid-cols-2">
@@ -2550,10 +2620,10 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── TAB: BOQ ── */}
-        {activeTab === "boq" && typedProject.pm && (
-          <PmBoqPanel projectId={projectId} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} />
+        {current === "boq" && typedProject.pm && (
+          <PmBoqPanel projectId={projectId} orgId={pmOrg} contractValue={typedProject.budget ?? 0} access={pmAccess} actor={pmActor} actualCost={pmItemCost} />
         )}
-        {activeTab === "boq" && !typedProject.pm && (
+        {current === "boq" && !typedProject.pm && (
           <div className="space-y-4">
               {/* Stats bar */}
               {/* Three numbers do not need three tall cards. As a single strip this band
@@ -2897,7 +2967,7 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── TAB: RFQS ── */}
-        {activeTab === "rfqs" && (
+        {current === "rfqs" && (
           <Card className="border-primary/15">
             <CardHeader className="border-b pb-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -3323,12 +3393,12 @@ export default function ProjectDetailPage() {
           </Card>
         )}
 
-        {activeTab === "pmToday" && typedProject.pm && (
-          <ProjectPulse projectId={projectId} organizationId={typedProject.organizationId || myOrgId} project={typedProject as PulseProject} items={pmItems} access={pmAccess} onOpen={(tab) => handleTabChange(tab)} sections={enabledSectionIds} />
+        {current === "pmToday" && typedProject.pm && (
+          <ProjectPulse projectId={projectId} organizationId={typedProject.organizationId || myOrgId} project={typedProject as PulseProject} items={pmItems} access={pmAccess} onOpen={(tab, kind) => (kind === "ipc_ready" ? openWork("prepare") : handleTabChange(tab))} sections={enabledSectionIds} programmeOn={pmOn.programme} />
         )}
 
         {/* ── TABS: MEASUREMENT · INSPECTIONS (PM 1.0) ── */}
-        {activeTab === "pmMeasure" && typedProject.pm && (
+        {current === "pmMeasure" && typedProject.pm && (
           <MeasurementPanel
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
@@ -3338,27 +3408,29 @@ export default function ProjectDetailPage() {
             access={pmAccess}
             actor={pmActor}
             onItemsChanged={() => void loadBoqItems()}
+            startMeasuring={work?.what === "measure"}
+            key={work?.what === "measure" ? `write-${work.n}` : "sheets"}
           />
         )}
-        {activeTab === "pmSite" && typedProject.pm && enabledSectionIds.includes("wwp" as SectionId) && (
+        {current === "pmSite" && typedProject.pm && enabledSectionIds.includes("wwp" as SectionId) && (
           <WeeklyPlanPanel
             projectId={projectId}
             items={pmItems}
-            sections={{ docs: enabledSectionIds.includes("docs" as SectionId), subm: pmItems.some((i) => i.pmSample), wir: true, rfi: enabledSectionIds.includes("rfi" as SectionId), hse: enabledSectionIds.includes("hse" as SectionId) }}
+            sections={lookSections}
             access={pmAccess}
             actor={pmActor}
           />
         )}
-        {activeTab === "pmSite" && typedProject.pm && enabledSectionIds.includes("eqp" as SectionId) && (
+        {current === "pmSite" && typedProject.pm && enabledSectionIds.includes("eqp" as SectionId) && (
           <PlantPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} actor={pmActor} />
         )}
-        {activeTab === "pmSite" && typedProject.pm && (
+        {current === "pmSite" && typedProject.pm && (
           <SitePanel
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
             items={pmItems}
             startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
-            sections={{ daily: enabledSectionIds.includes("daily"), rfi: enabledSectionIds.includes("rfi"), hse: enabledSectionIds.includes("hse"), claim: true }}
+            sections={{ daily: enabledSectionIds.includes("daily"), rfi: enabledSectionIds.includes("rfi"), hse: enabledSectionIds.includes("hse"), claim: pmOn.claim && Boolean(typedProject.pm.terms) }}
             access={pmAccess}
             actor={pmActor}
             onLogClaim={(seed) => {
@@ -3367,15 +3439,15 @@ export default function ProjectDetailPage() {
             }}
           />
         )}
-        {activeTab === "pmSections" && typedProject.pm && (
+        {current === "pmSections" && typedProject.pm && (
           <SectionsPanel projectId={projectId} project={typedProject as ComponentProps<typeof SectionsPanel>["project"]} access={pmAccess} actor={pmActor} />
         )}
-        {activeTab === "pmBoundary" && typedProject.pm && <BoundaryPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} />}
-        {activeTab === "pmCost" && typedProject.pm && (
+        {current === "pmBoundary" && typedProject.pm && <BoundaryPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} access={pmAccess} />}
+        {current === "pmCost" && typedProject.pm && (
           <CostPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} projectWarehouseId={typedProject.warehouseId ?? null} baseValue={typedProject.budget ?? 0} access={pmAccess} />
         )}
-        {activeTab === "pmMatch" && typedProject.pm && <MatchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} />}
-        {activeTab === "pmCvr" && typedProject.pm?.terms && (
+        {current === "pmMatch" && typedProject.pm && <MatchPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} />}
+        {current === "pmCvr" && typedProject.pm?.terms && (
           <CvrPanel
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
@@ -3391,14 +3463,14 @@ export default function ProjectDetailPage() {
             actor={pmActor}
           />
         )}
-        {activeTab === "pmReq" && typedProject.pm && (
+        {current === "pmReq" && typedProject.pm && (
           <SupplyRequestsPanel
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
             items={pmItems}
             startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null}
-            withStore={enabledSectionIds.includes("store" as SectionId)}
-            withPlant
+            withStore={pmOn.store}
+            withPlant={pmOn.eqp}
             access={pmAccess}
             actor={pmActor}
             onOpenStore={(id) => {
@@ -3407,18 +3479,21 @@ export default function ProjectDetailPage() {
             }}
           />
         )}
-        {activeTab === "pmStore" && typedProject.pm && (
+        {current === "pmStore" && typedProject.pm && (
           <ProjectStorePanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} openStoreId={storeFocus} onOpenedStore={() => setStoreFocus(null)} />
         )}
-        {activeTab === "pmSubm" && typedProject.pm && (
+        {current === "pmSubm" && typedProject.pm && (
           <SamplesPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} onItemsChanged={() => void loadBoqItems()} />
         )}
-        {activeTab === "pmPetty" && typedProject.pm && <DirectPurchasesPanel projectId={projectId} access={pmAccess} actor={pmActor} />}
-        {activeTab === "pmPo" && typedProject.pm && (
-          <ProjectPurchasingPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null} access={pmAccess} withPrices />
+        {current === "pmPetty" && typedProject.pm && <DirectPurchasesPanel projectId={projectId} orgId={pmOrg} access={pmAccess} actor={pmActor} />}
+        {current === "pmPo" && typedProject.pm && (
+          <div className="space-y-4">
+            <PmBudgetDecisions projectId={projectId} orgId={pmOrg || null} access={pmAccess} actor={pmActor} />
+            <ProjectPurchasingPanel projectId={projectId} orgId={pmOrg} items={pmItems} startOn={typedProject.pm.startedAt ?? typedProject.pm.startOn ?? null} access={pmAccess} withPrices={pmOn.price} />
+          </div>
         )}
-        {activeTab === "pmSubs" && typedProject.pm && <SubcontractorsPanel projectId={projectId} items={pmItems} access={pmAccess} actor={pmActor} />}
-        {activeTab === "pmDocs" && typedProject.pm && (
+        {current === "pmSubs" && typedProject.pm && <SubcontractorsPanel projectId={projectId} orgId={pmOrg} items={pmItems} access={pmAccess} actor={pmActor} />}
+        {current === "pmDocs" && typedProject.pm && (
           <DocumentsPanel
             projectId={projectId}
             orgId={typedProject.organizationId || myOrgId}
@@ -3428,11 +3503,11 @@ export default function ProjectDetailPage() {
             actor={pmActor}
           />
         )}
-        {activeTab === "pmCorr" && typedProject.pm && (
+        {current === "pmCorr" && typedProject.pm && (
           <CorrespondencePanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} projectName={typedProject.name ?? ""} pm={typedProject.pm} items={pmItems} access={pmAccess} actor={pmActor} />
         )}
-        {activeTab === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} baseValue={typedProject.budget ?? 0} items={pmItems} access={pmAccess} actor={pmActor} />}
-        {activeTab === "pmClaims" && typedProject.pm?.terms && (
+        {current === "pmVo" && typedProject.pm && <VariationsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} baseValue={typedProject.budget ?? 0} items={pmItems} access={pmAccess} actor={pmActor} />}
+        {current === "pmClaims" && typedProject.pm?.terms && (
           <ClaimsPanel
             projectId={projectId}
             lifecycle={lifecycleOf(typedProject)}
@@ -3447,7 +3522,7 @@ export default function ProjectDetailPage() {
             onSeedUsed={() => setClaimSeed(null)}
           />
         )}
-        {activeTab === "pmProgramme" && typedProject.pm?.terms && (
+        {current === "pmProgramme" && typedProject.pm?.terms && (
           <ProgrammePanel
             projectId={projectId}
             lifecycle={lifecycleOf(typedProject)}
@@ -3458,9 +3533,10 @@ export default function ProjectDetailPage() {
             items={pmItems}
             access={pmAccess}
             actor={pmActor}
+            showActivities={pmOn.sched}
           />
         )}
-        {activeTab === "pmClose" && typedProject.pm?.terms && (
+        {current === "pmClose" && typedProject.pm?.terms && (
           <div className="space-y-4">
             <HandoverPanel
               projectId={projectId}
@@ -3487,7 +3563,7 @@ export default function ProjectDetailPage() {
             />
           </div>
         )}
-        {activeTab === "pmQa" && typedProject.pm && (
+        {current === "pmQa" && typedProject.pm && (
           <div className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-2">
               <InspectionsPanel projectId={projectId} orgId={typedProject.organizationId || myOrgId} items={pmItems} access={pmAccess} actor={pmActor} bare onItemsChanged={() => void loadBoqItems()} />
@@ -3499,7 +3575,7 @@ export default function ProjectDetailPage() {
         )}
 
         {/* ── TAB: TEAM ── */}
-        {activeTab === "team" && (
+        {current === "team" && (
           <div className="space-y-8">
             {typedProject.pm ? (
               <PmTeamPanel projectId={projectId} project={typedProject} access={pmAccess} />
@@ -3516,12 +3592,12 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {activeTab === "purchaseRequests" && (
+        {current === "purchaseRequests" && (
           <PurchaseRequestsTab projectId={projectId} canDecide={can("warehouses.manage")} />
         )}
 
         {/* ── Dynamic section tabs ── */}
-        {activeTab === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
+        {current === "ipc" && dynamicTabs.includes("ipc" as SectionId) && (
           typedProject.pm?.terms ? (
             <CertificatesPanel
               projectId={projectId}
@@ -3538,12 +3614,14 @@ export default function ProjectDetailPage() {
               access={pmAccess}
               actor={pmActor}
               onItemsChanged={() => void loadBoqItems()}
+              startPreparing={work?.what === "prepare"}
+              key={work?.what === "prepare" ? `prepare-${work.n}` : "certificates"}
             />
           ) : (
             <IpcClaimsTab projectId={projectId} canManage={can("invoices.manage")} canEditTerms={can("projects.edit")} />
           )
         )}
-        {activeTab === "store" && dynamicTabs.includes("store" as SectionId) && (
+        {current === "store" && dynamicTabs.includes("store" as SectionId) && (
           typedProject.warehouseId ? (
             <WarehouseInventoryPanel warehouseId={typedProject.warehouseId} orgId={myOrgId} variant="embedded" />
           ) : (
@@ -3566,7 +3644,7 @@ export default function ProjectDetailPage() {
             </Card>
           )
         )}
-        {activeTab === "mfg" && dynamicTabs.includes("mfg" as SectionId) && (
+        {current === "mfg" && dynamicTabs.includes("mfg" as SectionId) && (
           <div className="space-y-8">
             {/* The workshop's product-born orders for this project, and the
                 steps that are the project's to take (drawing result, receipt
@@ -3575,7 +3653,7 @@ export default function ProjectDetailPage() {
             <ManufacturingView projectId={projectId} projectName={typedProject.name || ""} />
           </div>
         )}
-        {dynamicTabs.includes(activeTab as SectionId) && activeTab !== "ipc" && activeTab !== "store" && activeTab !== "mfg" && (
+        {dynamicTabs.includes(current as SectionId) && current !== "ipc" && current !== "store" && current !== "mfg" && (
           <ComingSoonTab sectionId={activeTab as SectionId} tShared={tShared} />
         )}
       </div>

@@ -13,6 +13,7 @@ import { addDays, daysBetween, round2, todayOf } from "./po"
 import { agreementFor, lastPaid, materialKey, type PriceAgreement, type PriceHistoryEntry } from "./prices"
 import { needRoute, type NeedRoute, type RouteResult } from "./route"
 import type { Need } from "./needs"
+import { replyWindowHours } from "./policy-enforce"
 import type { ProcurementPolicies, PurchaseOrder } from "./types"
 
 /** Where a line is now. open/late/mfgl = Purchasing's move; chk/mfgw/mfg =
@@ -29,8 +30,6 @@ export const DESK_SEGMENTS: DeskSegment[] = ["act", "oth", "rfq", "po", "done", 
 
 /** A material with no order history: the prototype's lead for an uncatalogued item. */
 export const DEFAULT_LEAD_DAYS = 10
-/** Inventory's stock check and the workshop's reply both fail OPEN after this. */
-export const STOCK_WINDOW_HOURS = 24
 
 export interface MfgRequestFact {
   status: string
@@ -50,7 +49,6 @@ export interface DeskFacts {
   /** Our workshop makes it (a product card of that name). */
   makeable: (name: string) => boolean
   mfgRequests: Record<string, MfgRequestFact>
-  mfgWindowHours: number
 }
 
 export interface NeedRow {
@@ -86,7 +84,10 @@ const ageHours = (at: string | null | undefined, now: Date): number | null => {
 }
 
 /** The state every line of one need shares. */
-export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgRequests" | "mfgWindowHours">): LineState {
+/** Inventory's stock check and the workshop's reply both fail OPEN after the
+ * org's reply window (the prototype's POL.sla, `replyWindowDays`). */
+export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgRequests" | "policies">): LineState {
+  const window = replyWindowHours(facts.policies)
   switch (need.state) {
     case "action":
       return "open"
@@ -103,10 +104,10 @@ export function needLineState(need: Need, facts: Pick<DeskFacts, "now" | "mfgReq
         if (mr.status === "rejected" || mr.status === "moved") return "open"
         if (mr.status !== "new") return "mfg"
         const age = ageHours(mr.at, facts.now)
-        return age != null && age >= facts.mfgWindowHours ? "mfgl" : "mfgw"
+        return age != null && age >= window ? "mfgl" : "mfgw"
       }
       const age = ageHours(need.at, facts.now)
-      return age != null && age > STOCK_WINDOW_HOURS ? "late" : "chk"
+      return age != null && age > window ? "late" : "chk"
     }
   }
 }

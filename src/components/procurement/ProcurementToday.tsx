@@ -13,13 +13,10 @@ import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Clock, Hourglass, Info, Loader2, Truck } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
-import { useProcurementWorld } from "@/hooks/useProcurementWorld"
-import { useProcurementPrices } from "@/hooks/useProcurementPrices"
-import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
-import { useRfqQueries } from "@/hooks/useRfqQueries"
+import { useProcTodayWorld } from "@/hooks/useProcurementShell"
 import { ORDER_HREF, RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
-import { arrivingWithinWeek, toProcWorld } from "@/lib/procurement/shell"
+import { arrivingWithinWeek } from "@/lib/procurement/shell"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
@@ -56,11 +53,15 @@ type Params = Record<string, string | number>
 
 /** The parameters the sentences take, with the document number in the
  * reader's script and the days as dates. Numbers stay numbers — the ICU
- * `{x, number}` and plural forms need them. */
-function presentParams(p: Params, locale: string): Params {
+ * `{x, number}` and plural forms need them. Coded facts (a finance hold's
+ * reason, whose move it is, which module receives) become their words here. */
+function presentParams(p: Params, locale: string, words: (key: string) => string): Params {
   const out: Params = { ...p }
-  for (const k of ["number", "receipt"]) if (typeof out[k] === "string") out[k] = displayDocNumber(out[k] as string, locale)
-  for (const k of ["date", "promised"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
+  for (const k of ["number", "receipt", "invoice", "advance"]) if (typeof out[k] === "string") out[k] = displayDocNumber(out[k] as string, locale)
+  for (const k of ["date", "promised", "ready"]) if (typeof out[k] === "string" && out[k]) out[k] = fmtDay(out[k] as string, locale)
+  if (typeof out.holdReason === "string") out.reason = words(`rfqpo.po.hold.reason.${out.holdReason}`)
+  if (typeof out.holdOwner === "string") out.owner = words(`rfqpo.po.hold.owner.${out.holdOwner}`)
+  if (typeof out.over === "number") out.over = sarLtr(Math.round(out.over).toLocaleString("en-US"))
   return out
 }
 
@@ -70,23 +71,9 @@ export function ProcurementToday() {
   const locale = useLocale()
   const isRtl = locale === "ar"
   const Chevron = isRtl ? ChevronLeft : ChevronRight
-  const loaded = useProcurementWorld()
-  const { actor, loading } = loaded
-  // One clock per visit: the derivations take time as an input.
-  const [now] = useState(() => new Date())
-
-  const { orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords } = loaded
-  // The "agreement about to end" task reads w.agreements, which nothing fed:
-  // the world hook does not load them, so the reminder never appeared.
-  const { agreements, history } = useProcurementPrices(loaded.orgId)
-  const needs = useProcurementNeeds(loaded)
-  const openRfqIds = useMemo(() => rfqs.filter((r) => r.status === "New").map((r) => r.id), [rfqs])
-  const rfqQueries = useRfqQueries(openRfqIds)
-  const needDesk = useMemo(() => ({ rows: needs.rows, buyers: needs.buyers, viewerCategories: needs.viewerCategories }), [needs.rows, needs.buyers, needs.viewerCategories])
-  const world = useMemo(
-    () => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements, history, supplierRecords, needDesk, rfqQueries, ownerHasTeam: needs.ownerHasTeam }),
-    [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, needs.ownerHasTeam]
-  )
+  // One world and one clock per visit, shared with the header's counts.
+  const { loaded, world, actor, now } = useProcTodayWorld()
+  const { loading } = loaded
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
   const arriving = useMemo(() => arrivingWithinWeek(world, now, ORDER_HREF, RECEIPT_HREF), [world, now])
@@ -105,8 +92,14 @@ export function ProcurementToday() {
   const visibleWaits = allWaits ? waits : waits.slice(0, CLIP_WAITS)
   const visibleArriving = allArriving ? arriving : arriving.slice(0, CLIP_ARRIVING)
 
-  const taskTitle = (task: Task) => t(task.titleKey, presentParams(task.titleParams, locale))
-  const taskSub = (task: Task) => (task.subNs === "Procurement" ? tProc(task.subKey, presentParams(task.subParams, locale)) : t(task.subKey, presentParams(task.subParams, locale)))
+  const words = (key: string) => tProc(key)
+  const present = (p: Params) => {
+    const out = presentParams(p, locale, words)
+    if (typeof out.where === "string") out.where = t(`modules.${out.where}`)
+    return out
+  }
+  const taskTitle = (task: Task) => t(task.titleKey, present(task.titleParams))
+  const taskSub = (task: Task) => (task.subNs === "Procurement" ? tProc(task.subKey, present(task.subParams)) : t(task.subKey, present(task.subParams)))
 
   return (
     <div className="space-y-6">
@@ -204,10 +197,10 @@ export function ProcurementToday() {
                     <li key={w.id} className="px-4 py-3">
                       <span className={cn("mb-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold", MODULE_TAG[w.module])}>{t("waits.on", { module: t(`modules.${w.module}`) })}</span>
                       <p className="text-sm font-bold leading-snug text-foreground" dir="auto">
-                        {t(w.titleKey, presentParams(w.titleParams, locale))}
+                        {t(w.titleKey, present(w.titleParams))}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground" dir="auto">
-                        {t(w.subKey, presentParams(w.subParams, locale))}
+                        {t(w.subKey, present(w.subParams))}
                         {w.kind === "held_inspection" && w.reasonCode && <> · {tProc(`holdReason.${w.reasonCode}`)}</>}
                       </p>
                     </li>

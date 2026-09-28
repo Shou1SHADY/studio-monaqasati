@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { collection } from "firebase/firestore"
+import { collection, doc } from "firebase/firestore"
 import { Archive, BookOpen, CheckCircle2, Clock, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,14 +18,17 @@ import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useProjectCost } from "@/hooks/useProjectCost"
+import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
 import type { Acceptances } from "@/lib/pm/acceptance"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
-import { CLOSE_ROW_TAB, closeBlocks, closeoutRows, projectLessons, subDues, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
+import { CLOSE_ROW_TAB, closeBlocks, closeoutRows, materialLost, projectLessons, storeHoldings, subDues, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
+import { itemCosts, projectCost } from "@/lib/pm/cost"
 import { closeAndArchive, PmCloseError, type CloseActor } from "@/lib/pm/closeout-writes"
 import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
@@ -36,6 +39,8 @@ import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSub
 import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 
+// The client-money rows: shown to holders of money who also see the client side
+// (prototype closeRows `CAN('client')`); the gate itself counts them for everyone.
 const MONEY_ROWS = new Set<CloseRow["key"]>(["unbilled", "in_progress", "overdue", "retention"])
 const AMOUNT_ROWS = new Set<CloseRow["key"]>(["unbilled", "overdue", "retention"])
 const FINANCE_ROWS = new Set<CloseRow["key"]>(["overdue", "retention", "subs"])
@@ -67,7 +72,7 @@ export function CloseoutPanel({
   lifecycle: string
   hasClient: boolean
   pm: PmBlock
-  items: Array<{ rate: number; executed: number; billed: number }>
+  items: Array<{ id: string; code: string; description: string; unit: string; division: string; quantity: number; rate: number; executed: number; billed: number; estCost?: number }>
   access: PmAccess
   actor: CloseActor
   /** The project's enabled sections: the store and subcontractor rows follow them. */
@@ -84,8 +89,15 @@ export function CloseoutPanel({
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const money = access.has("money")
+  const clientMoney = money && access.has("client")
   const storeOn = (sections ?? []).includes("store")
   const subsOn = (sections ?? []).includes("subs")
+  const projectRef = useMemoFirebase(() => (firestore ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
+  const { data: projectDoc } = useDoc<{ organizationId?: string }>(projectRef)
+  const orgId = projectDoc?.organizationId ?? null
+  // The project's OWN store ledger (pmStore) — a company warehouse is not its custody.
+  const supply = useSupplyWorld(projectId, orgId)
+  const costWorld = useProjectCost(projectId, orgId, money)
 
   const sub = (name: string, on = true) => (firestore && on ? collection(firestore, "projects", projectId, name) : null)
   const punchQ = useMemoFirebase(() => sub(PM_PUNCH), [firestore, projectId])
@@ -106,11 +118,15 @@ export function CloseoutPanel({
   const { data: obstacles } = useCollection(obsQ)
   const seatQ = useMemoFirebase(() => sub("members"), [firestore, projectId])
   const { data: members } = useCollection(seatQ)
-  const storeQ = useMemoFirebase(
-    () => (firestore && storeOn && warehouseId ? collection(firestore, "warehouses", warehouseId, "inventoryItems") : null),
-    [firestore, storeOn, warehouseId]
-  )
-  const { data: stock } = useCollection(storeQ)
+  const storeLines = useMemo(() => (storeOn ? storeHoldings(supply.stores, items).lines : null), [storeOn, supply.stores, items])
+  const lost = useMemo(() => (storeOn || supply.stores.length ? materialLost(supply.stores, supply.costOf) : null), [storeOn, supply.stores, supply.costOf])
+  const closingCost = useMemo(() => {
+    if (!money || costWorld.isLoading) return null
+    const costItems = items.map((i) => ({ ...i, estCost: i.estCost ?? 0 }))
+    const { items: costs, unassigned } = itemCosts({ items: costItems, pos: costWorld.pos, issues: costWorld.issues, projectWarehouseId: warehouseId ?? null, subcontracts: costWorld.subcontracts, direct: costWorld.direct })
+    const c = projectCost({ items: costItems, costs, unassigned, variations: costWorld.variations, baseValue: 0, penalty: 0 })
+    return { actual: c.actual, earned: c.earned }
+  }, [money, costWorld, items, warehouseId])
 
   const rows = useMemo(() => {
     const scList = (contracts ?? []) as unknown as PmSubcontract[]
@@ -125,15 +141,16 @@ export function CloseoutPanel({
       certificates: (certs ?? []) as unknown as PmCertificate[],
       retentionHeld: pm.retentionHeld ?? 0,
       retentionReleased: pm.retentionReleased === true,
-      storeLines: storeOn ? (stock ?? []).filter((s) => (Number((s as { quantity?: unknown }).quantity) || 0) > 0).length : null,
+      storeLines,
       subs: subsOn || scList.length ? subDues(scList, (subCerts ?? []) as unknown as PmSubCertificate[]) : null,
       letters: (letters ?? []) as unknown as PmLetter[],
       today: todayDay(),
     })
-  }, [hasClient, pm, punch, items, certs, ncrs, vos, contracts, subCerts, letters, stock, storeOn, subsOn])
+  }, [hasClient, pm, punch, items, certs, ncrs, vos, contracts, subCerts, letters, storeLines, subsOn])
   const blocked = closeBlocks(rows)
-  // Without money the certificates are not read — their rows are not shown rather than shown wrong.
-  const shown = money ? rows : rows.filter((r) => !MONEY_ROWS.has(r.key))
+  // Without money the certificates are not read — their rows are not shown rather
+  // than shown wrong; without the client side they are not this person's to see.
+  const shown = clientMoney ? rows : rows.filter((r) => !MONEY_ROWS.has(r.key))
   const left = shown.filter((r) => !r.ok)
   const canClose = access.allowed("project.close") && lifecycle === "done"
 
@@ -151,7 +168,7 @@ export function CloseoutPanel({
     if (!firestore) return
     setBusy(true)
     try {
-      await closeAndArchive(firestore, access.ctx, projectId, actor)
+      await closeAndArchive(firestore, access.ctx, projectId, actor, closingCost)
       toast({ title: t("close.done") })
       setConfirming(false)
     } catch (err) {
@@ -180,7 +197,7 @@ export function CloseoutPanel({
     return t(`close.why.${r.key}`, { count: r.n ?? 0 })
   }
 
-  const lessonsPanel = <LessonsPanel lessons={lessons} money={money} />
+  const lessonsPanel = <LessonsPanel lessons={lessons} money={money} lost={lost} />
 
   if (lifecycle === "closed" && pm.fin) {
     const f = pm.fin
@@ -194,6 +211,18 @@ export function CloseoutPanel({
             {money && <KeyValueRow label={t("close.snap.contract")} value={pmMoney(f.contractValue)} ltr />}
             {money && <KeyValueRow label={t("close.snap.earned")} value={pmMoney(f.earned)} ltr />}
             {money && <KeyValueRow label={t("close.snap.certified")} value={pmMoney(f.certified)} ltr />}
+            {money && f.actualCost != null && <KeyValueRow label={t("close.snap.actual_cost")} value={pmMoney(f.actualCost)} ltr />}
+            {money && f.margin != null && (
+              <KeyValueRow
+                label={t("close.snap.margin")}
+                value={
+                  <span dir="ltr" className="inline-flex items-center gap-1.5">
+                    {f.marginPct != null && <b className={cn(f.marginPct > 10 ? "text-success" : "text-warning")}>{f.marginPct}%</b>}
+                    <span>· {pmMoney(f.margin)}</span>
+                  </span>
+                }
+              />
+            )}
             {money && <KeyValueRow label={t("close.snap.retention")} value={pmMoney(f.retentionHeld)} ltr />}
             {money && <KeyValueRow label={t("close.snap.advance")} value={pmMoney(f.advanceRecovered)} ltr />}
             <KeyValueRow
@@ -213,7 +242,7 @@ export function CloseoutPanel({
             <KeyValueRow label={t("close.snap.closed_on")} value={pmDate(f.closedOn, locale)} />
             <KeyValueRow label={t("close.snap.manager")} value={<span dir="auto">{managerName || "—"}</span>} />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">{t("close.snap.cost_note")}</p>
+          {money && f.actualCost == null && <p className="mt-2 text-xs text-muted-foreground">{t("close.snap.cost_note")}</p>}
         </Panel>
         {lessonsPanel}
       </div>
@@ -270,7 +299,7 @@ export function CloseoutPanel({
             )
           })}
         </ul>
-        {!money && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
+        {!clientMoney && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
         <div className="mt-3">
           {blocked.length > 0 ? (
             <Callout tone="warn">{t("close.left_note", { count: blocked.length })}</Callout>
@@ -314,7 +343,7 @@ export function CloseoutPanel({
   )
 }
 
-function LessonsPanel({ lessons, money }: { lessons: ReturnType<typeof projectLessons>; money: boolean }) {
+function LessonsPanel({ lessons, money, lost }: { lessons: ReturnType<typeof projectLessons>; money: boolean; lost: number | null }) {
   const t = useTranslations("Portal.PM")
   const card = (tone: string, title: string, body: string) => (
     <div className={cn("rounded-xl border px-3.5 py-3 text-sm leading-relaxed", tone)}>
@@ -332,6 +361,7 @@ function LessonsPanel({ lessons, money }: { lessons: ReturnType<typeof projectLe
             t("close.lessons.rework", { amount: pmMoney(lessons.rework) }),
             t("close.lessons.rework_note", { count: lessons.ncrs })
           )}
+        {money && lost !== null && card("border-warning/25 bg-warning/5", t("close.lessons.lost", { amount: pmMoney(lost) }), t("close.lessons.lost_note"))}
         {card(
           "border-cta/20 bg-cta/5",
           t("close.lessons.obstacles", { count: lessons.obstaclesClosed }),
@@ -339,7 +369,6 @@ function LessonsPanel({ lessons, money }: { lessons: ReturnType<typeof projectLe
         )}
         {card("border-success/25 bg-success/5", t("close.lessons.team", { count: lessons.team }), t("close.lessons.team_note"))}
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{t("close.lessons.loss_note")}</p>
     </Panel>
   )
 }

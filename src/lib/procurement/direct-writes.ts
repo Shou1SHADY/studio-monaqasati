@@ -10,6 +10,7 @@ import { emitProcEvent, sarText } from "./events"
 import { drawProcDocNumber } from "./numbering"
 import { requiredApprover } from "./po"
 import { PRICE_AGREEMENTS, type PriceAgreement } from "./prices"
+import { serviceOrderLine, serviceOrderRefusal, serviceOrderValue } from "./service-order"
 import { PURCHASE_ORDERS, type ProcActor, type ProcurementPolicies, type PurchaseOrder } from "./types"
 import { ProcWriteError, type WriteOpts } from "./writes"
 
@@ -117,6 +118,85 @@ export async function createOrderWithoutRfq(firestore: Firestore, actor: ProcAct
     return order
   })
 
+  await emitProcEvent(firestore, actor, {
+    kind: "po_awaiting_approval",
+    organizationId: input.organizationId,
+    to: [po.approverKind === "owner" ? { owner: true } : { permission: "po.approve" }],
+    params: { number: po.docNumber, supplier: po.supplierName, amount: sarText(po.totalExVat, opts.locale), rfq: po.rfqTitle },
+    poId: poRef.id,
+    copy: opts.copy,
+  })
+  return { id: poRef.id, docNumber: po.docNumber }
+}
+
+const SERVICE_REFUSAL_CODE = { description_missing: "order_no_lines", supplier_missing: "order_supplier_missing", value_missing: "price_missing", due_past: "date_invalid" } as const
+
+export interface ServiceOrderWriteInput {
+  organizationId: string
+  description: string
+  supplier: { orgId?: string | null; userId?: string | null; name: string }
+  value: number | string
+  dueBy?: string | null
+  /** Charged to a project, or null = a general expense. */
+  projectId?: string | null
+  projectName?: string | null
+  policies: ProcurementPolicies
+}
+
+/** «أمر مباشر لخدمة أو مقطوعية»: one lump-sum line, awaiting approval like any direct order. */
+export async function createServiceOrder(firestore: Firestore, actor: ProcActor, input: ServiceOrderWriteInput, opts: WriteOpts = {}): Promise<{ id: string; docNumber: string }> {
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  const now = opts.now ?? new Date()
+  const at = now.toISOString()
+  const refusal = serviceOrderRefusal({ description: input.description, supplierName: input.supplier.name, value: input.value, dueBy: input.dueBy ?? null }, at.slice(0, 10))
+  if (refusal) throw new ProcWriteError(SERVICE_REFUSAL_CODE[refusal], { item: input.description.trim() })
+  const value = serviceOrderValue(input.value)
+  const poRef = doc(collection(firestore, PURCHASE_ORDERS))
+  const po = await runTransaction(firestore, async (tx) => {
+    const number = await drawProcDocNumber(firestore, tx, input.organizationId, "PO", now.getUTCFullYear())
+    const supplierOrgId = input.supplier.orgId || "guest"
+    const order: Omit<PurchaseOrder, "id"> = {
+      organizationId: input.organizationId,
+      docNumber: number,
+      status: "awaiting_approval",
+      basis: "direct",
+      rfqId: null,
+      rfqTitle: input.description.trim(),
+      offerId: null,
+      projectId: input.projectId ?? null,
+      projectName: input.projectName ?? null,
+      purchaseSource: null,
+      agreementId: null,
+      agreementNo: null,
+      supplierOrgId,
+      supplierUserId: input.supplier.userId ?? null,
+      supplierName: input.supplier.name.trim(),
+      isGuestSupplier: supplierOrgId === "guest",
+      lines: [serviceOrderLine(input.description, value)],
+      totalExVat: value,
+      vatRate: 0.15,
+      offersCount: 0,
+      lowestOfferTotal: null,
+      awardReasonCode: null,
+      awardReasonText: null,
+      shortCompetition: false,
+      noOfficialQuote: true,
+      preparedById: actor.uid,
+      preparedByName: actor.name,
+      createdAt: at,
+      requestedDeliveryDate: input.dueBy || null,
+      approverKind: "manager",
+      approvedById: null,
+      approvedAt: null,
+      returnedReason: null,
+      rating: null,
+      log: [{ at, byId: actor.uid, byName: actor.name, action: "created", note: null, params: { basis: "direct", number, agreement: "", kind: "service" } }],
+      updatedAt: serverTimestamp(),
+    }
+    order.approverKind = requiredApprover({ ...order, id: poRef.id } as PurchaseOrder, input.policies, actor.isOwner || actor.canApprove)
+    tx.set(poRef, { ...order, orderKind: "service" })
+    return order
+  })
   await emitProcEvent(firestore, actor, {
     kind: "po_awaiting_approval",
     organizationId: input.organizationId,

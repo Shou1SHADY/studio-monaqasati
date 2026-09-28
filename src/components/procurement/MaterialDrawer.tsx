@@ -16,6 +16,10 @@ import { agreementFor, type PriceAgreement, type PriceHistoryEntry } from "@/lib
 import { materialCategory, materialPurchases, usualLeadDays } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { useDateText } from "./PoBits"
+import { sarLtr } from "@/lib/riyal"
+
+/** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
+const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -71,7 +75,7 @@ export function MaterialDrawer({
               {last ? (
                 <>
                   <span dir="ltr" className="tabular-nums">
-                    {last.price}
+                    {priceText(last.price)}
                   </span>{" "}
                   <small className="text-xs font-normal text-muted-foreground">/ {material.unit}</small>
                 </>
@@ -86,7 +90,7 @@ export function MaterialDrawer({
               {t("material.live_agreement", {
                 number: displayAgreementNumber(live.agreement.docNumber, locale),
                 supplier: live.agreement.supplierName || "—",
-                price: live.price,
+                price: priceText(live.price),
                 date: fmt(live.agreement.until),
               })}
             </Callout>
@@ -109,7 +113,7 @@ export function MaterialDrawer({
                   </span>
                 </span>
                 <b className="tabular-nums" dir="ltr">
-                  {h.price}
+                  {priceText(h.price)}
                 </b>
               </div>
             ))}

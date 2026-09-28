@@ -8,7 +8,7 @@ import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/f
 import { mayManageTeam, PmAccessError, seatActive, seatFromMember, type PmContext, type PmDuty, type PmProjectRole } from "./access"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
-import { assignBlocks, cleanDuties, removeBlocks, type SeatLogEntry } from "./team"
+import { assignBlocks, cleanDuties, PM_HANDED_OVER, removeBlocks, replacedManager, type SeatLogEntry } from "./team"
 
 export class PmTeamError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -47,22 +47,38 @@ export interface AssignInput {
   /** The member's default group, copied onto the seat so the older per-project
    * permission checks read the same group as before. */
   groupId: string | null
+  /** The seat's first day (a new seat) — today or earlier; defaults to today. */
+  from?: string | null
 }
 
 /** Seat someone, or change the role/duties of a live seat. Appointing the
  * project manager — or moving them off that role — is the owner's alone, and
- * the project names its manager in the same write (INV-11: at most one). */
+ * the project names its manager in the same write (INV-11: at most one). A new
+ * manager where there is one closes the outgoing manager's seat in the same
+ * transaction, dated the new seat's first day, «handed over to another manager». */
 export async function assignSeat(firestore: Firestore, ctx: PmContext, projectId: string, actor: TeamActor, input: AssignInput): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { pRef, mRef, project, member } = await readBoth(tx, firestore, projectId, input.uid)
     const today = todayDay()
+    const outgoing = replacedManager({ uid: input.uid, role: input.role, projectManagerId: project.projectManagerId })
+    const oRef = outgoing ? doc(firestore, "projects", projectId, "members", outgoing) : null
+    const oSnap = oRef ? await tx.get(oRef) : null
     const seat = seatFromMember(member, input.uid)
     const current = seat && seatActive(seat, today) ? seat : null
     const touchesPm = input.role === "pm" || current?.role === "pm"
     const fresh = withFreshState(ctx, project)
     if (!mayManageTeam(fresh, touchesPm)) throw refusal(fresh, touchesPm)
-    const blocks = assignBlocks({ uid: input.uid, role: input.role, roleName: input.roleName, current, projectManagerId: project.projectManagerId, admin: fresh.ceiling.has("admin") })
+    const from = (input.from ?? "").slice(0, 10) || today
+    const blocks = assignBlocks({ uid: input.uid, role: input.role, roleName: input.roleName, current, projectManagerId: project.projectManagerId, admin: fresh.ceiling.has("admin"), from: current ? null : from, today })
     if (blocks.length) throw new PmTeamError("blocked", blocks)
+    if (oRef && oSnap?.exists()) {
+      const o = oSnap.data() as Record<string, unknown>
+      const oSeat = seatFromMember(o, outgoing as string)
+      if (oSeat && seatActive(oSeat, today)) {
+        const out: SeatLogEntry = { at: new Date().toISOString(), by: actor.uid, byName: actor.name, act: "remove", to: from, why: PM_HANDED_OVER }
+        tx.update(oRef, { to: from, why: PM_HANDED_OVER, byOut: actor.uid, log: [...((o.log as SeatLogEntry[] | undefined) ?? []), out], updatedAt: serverTimestamp() })
+      }
+    }
 
     const off = cleanDuties(input.off)
     const entry: SeatLogEntry = { at: new Date().toISOString(), by: actor.uid, byName: actor.name, act: current ? "duties" : "assign", role: input.role, off }
@@ -79,7 +95,7 @@ export async function assignSeat(firestore: Firestore, ctx: PmContext, projectId
         pmRole: input.role,
         roleName,
         off,
-        from: today,
+        from,
         to: null,
         why: null,
         byOut: null,

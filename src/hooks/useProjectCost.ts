@@ -3,15 +3,17 @@
 // A PM 1.0 project's cost world, read once for the Money group's Cost,
 // Match and Reconciliation sub-tabs: the project's purchase orders (the
 // buyer's org, this project), the stock issued to it (`wasteRecords`), its
-// subcontracts and variations, and the supplier invoices tied to its orders'
-// RFQs. Only for holders of money — nothing is read otherwise.
+// subcontracts and variations, its direct site purchases (`pmPetty`, paid on
+// the spot), and the supplier invoices tied to its orders' RFQs. Only for
+// holders of money — nothing is read otherwise.
 
 import { useMemo } from "react"
 import { collection, query, where } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
-import type { CostIssue, CostPo, CostSubcontract, CostVariation } from "@/lib/pm/cost"
+import type { CostDirect, CostIssue, CostPo, CostSubcontract, CostVariation } from "@/lib/pm/cost"
 import type { InvoiceFact } from "@/lib/pm/match"
 import { PM_SUBCONTRACTS } from "@/lib/pm/subcontract"
+import { PM_PETTY } from "@/lib/pm/supply"
 import { PM_VARIATIONS } from "@/lib/pm/variation"
 import { PURCHASE_ORDERS } from "@/lib/procurement/types"
 
@@ -28,6 +30,8 @@ export interface ProjectCostWorld {
   issues: CostIssue[]
   subcontracts: CostSubcontract[]
   variations: CostVariation[]
+  /** Direct site purchases — a project cost not tied to a BOQ line, paid on the spot. */
+  direct: CostDirect[]
   invoices: InvoiceFact[]
   isLoading: boolean
 }
@@ -42,10 +46,12 @@ export function useProjectCost(projectId: string, orgId: string | null, money: b
   const issueQ = useMemoFirebase(() => (on && firestore ? collection(firestore, "projects", projectId, "wasteRecords") : null), [on, firestore, projectId])
   const subQ = useMemoFirebase(() => (on && firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [on, firestore, projectId])
   const voQ = useMemoFirebase(() => (on && firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [on, firestore, projectId])
+  const pettyQ = useMemoFirebase(() => (on && firestore ? collection(firestore, "projects", projectId, PM_PETTY) : null), [on, firestore, projectId])
   const { data: poData, isLoading: poLoading } = useCollection(poQ)
   const { data: issueData } = useCollection(issueQ)
   const { data: subData } = useCollection(subQ)
   const { data: voData } = useCollection(voQ)
+  const { data: pettyData } = useCollection(pettyQ)
 
   const pos = useMemo<CostPo[]>(
     () =>
@@ -104,6 +110,7 @@ export function useProjectCost(projectId: string, orgId: string | null, money: b
         rfqId: str(d.rfqId) || null,
         lines: (Array.isArray(d.items) ? (d.items as Array<Record<string, unknown>>) : []).map((x) => ({ name: str(x.description), quantity: num(x.quantity), unitPrice: num(x.unitPrice) })),
       }))
-    return { pos, issues, subcontracts, variations, invoices, isLoading: poLoading }
-  }, [pos, issueData, subData, voData, invData, poLoading])
+    const direct: CostDirect[] = ((pettyData ?? []) as Row[]).map((d) => ({ itemId: str(d.itemId) || null, amount: num(d.amount), paid: true }))
+    return { pos, issues, subcontracts, variations, direct, invoices, isLoading: poLoading }
+  }, [pos, issueData, subData, voData, pettyData, invData, poLoading])
 }

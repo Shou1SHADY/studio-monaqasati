@@ -3,17 +3,19 @@
 // Settings › Module boundary on a PM 1.0 project (prototype fileBound, PRD §11).
 // What the module owns, what it only reads, what it sends as an event, and what
 // it never does for another module — then Finance's integration contract with
-// this project's live count per event, and the log of what crossed.
+// this project's live count per event, the conflicts with existing modules that
+// governance must unify, and the log of what crossed.
 
 import { useMemo } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection, query, where } from "firebase/firestore"
-import { Ban, Check, Clock, Eye, Landmark, Link2, ShieldCheck } from "lucide-react"
+import { AlertTriangle, Ban, Check, Clock, Eye, Landmark, Link2, ShieldCheck } from "lucide-react"
 import { Panel } from "@/components/module-ui/Panel"
+import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
-import { boundaryLog, eventStats } from "@/lib/pm/boundary"
+import { BOUNDARY_CONFLICTS, boundaryLog, eventStats } from "@/lib/pm/boundary"
 import { PM_EVENTS, type PmEvent } from "@/lib/pm/events"
 import { pmDate, pmMoney } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
@@ -89,6 +91,25 @@ export function BoundaryPanel({ projectId, orgId, access }: { projectId: string;
           </table>
         </div>
       </Panel>
+
+      <details className="overflow-hidden rounded-xl border bg-card">
+        <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-2 px-4 py-3 text-sm font-bold">
+          <AlertTriangle size={16} className="text-warning" aria-hidden="true" />
+          {t("bound.conf_title")}
+          <StatusPill tone="warn">
+            <span dir="ltr">{BOUNDARY_CONFLICTS.length}</span>
+          </StatusPill>
+          <span className="text-xs font-normal text-muted-foreground">{t("bound.conf_sub")}</span>
+        </summary>
+        <ul className="divide-y border-t">
+          {BOUNDARY_CONFLICTS.map((c) => (
+            <li key={c.key} className="flex items-start gap-2.5 px-4 py-2.5 text-sm leading-relaxed">
+              <SourceBadge module={c.module} label={t(`bound.conf_module.${c.module}`)} className="mt-0.5 shrink-0" />
+              <span className="min-w-0 flex-1">{t(`bound.conf.${c.key}`)}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
 
       <details className="overflow-hidden rounded-xl border bg-card">
         <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-4 py-3 text-sm font-bold">

@@ -47,3 +47,15 @@ describe("the write", () => {
     await expect(switchSections(db, site, "p1", { uid: "se1", name: null }, { next: ["contract", "procure"], reason: "scope", facts: none })).rejects.toBeInstanceOf(PmAccessError)
   })
 })
+
+describe("C-47 — variations, claims and programme follow their sections", () => {
+  const { pmTabVisible } = jest.requireActual("@/lib/pm/sections") as typeof import("@/lib/pm/sections")
+  it("a project whose sections predate the gate keeps every tab", () => {
+    expect(pmTabVisible(["contract", "procure", "ipc"], "vo", 0)).toBe(true)
+  })
+  it("a modern project shows a tab only when its section is on or it holds records", () => {
+    expect(pmTabVisible(["contract", "claim"], "vo", 0)).toBe(false)
+    expect(pmTabVisible(["contract", "claim"], "vo", 2)).toBe(true)
+    expect(pmTabVisible(["contract", "claim"], "claim", 0)).toBe(true)
+  })
+})

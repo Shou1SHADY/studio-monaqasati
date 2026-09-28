@@ -43,7 +43,15 @@ import { agreementDaysLeft, agreementState, lastPaid, type PriceAgreement, type 
 import { buyerRollups, inBuyerScope, isActionState, needKpi, rollupOf, type BuyerRollup, type BuyerScope, type NeedRow } from "./need-desk"
 import { forwardUrgency } from "./receivers"
 import { priceDrift } from "./reports"
+import { advanceAmount, advanceNumber, advanceState, asX, HOLD_OWNER, openHolds, pmCancelOpen, type HoldOwner } from "./po-extras"
+import { noticeTold } from "./policy-enforce"
+import { poInScope, rfqInScope } from "./rfq-view"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
+
+/** The viewer as Today reads him: `canSource` = rfq.manage (or offers.accept) —
+ * the seeded supply-chain group runs RFQs without preparing orders, and the
+ * prototype's `src` right is exactly that: sourcing. */
+export type TodayActor = ProcActor & { canSource?: boolean }
 
 // ---------------------------------------------------------------------------
 // The world — minimal structural facts, not the app's types
@@ -58,7 +66,7 @@ export interface RfqFact {
   title?: string | null
   offersCount?: number | null
   /** What was asked, for the RFQ's estimate at the last prices paid. */
-  products?: Array<{ name?: string; quantity?: number | string | null; unit?: string | null }> | null
+  products?: Array<{ name?: string; quantity?: number | string | null; unit?: string | null; category?: string | null }> | null
   organizationId?: string
   projectId?: string | null
   category?: string | null
@@ -67,6 +75,9 @@ export interface RfqFact {
   awardedAt?: string | null
   /** Suppliers invited, when the RFQ was private (competition report). */
   invitedCount?: number | null
+  /** Who raised it — a buyer's own RFQs are his (the prototype's `rfqMine`). */
+  createdByUserId?: string | null
+  contractorId?: string | null
 }
 
 /** What the queue needs to know about an offer. Status literals are the
@@ -121,6 +132,11 @@ export interface ProcWorld {
    * approves what is routed to him — the prototype's owner role. A one-person
    * company's owner does everything himself. */
   ownerHasTeam?: boolean
+  /** By order id: how far an order awaiting approval runs past its BOQ items'
+   * budgets, when the screen computed it (`budgetOverrun`). */
+  budgetOverruns?: Record<string, number>
+  /** By need row key: the workshop's readiness date for a line being made. */
+  readyDates?: Record<string, string>
 }
 
 export const OFFER_PENDING = new Set(["قيد المراجعة", "مطلوب تخفيض"])
@@ -159,6 +175,7 @@ export type TaskKind =
   | "rfq_query" // a supplier's question nobody answered
   | "cancel_remainder" // Projects stopped a material still owed on an order
   | "notice_forward" // a supplier's notice nobody has passed to the receiver
+  | "finance_hold" // Finance held a supplier's invoice — the next move is ours, the receiver's or the supplier's
 
 export type TaskAction = "review" | "view" | "send" | "open" | "updateDate" | "decide" | "receive" | "rate" | "compare" | "openDraft" | "openRfq" | "seeArrived" | "openReceipt"
 
@@ -191,6 +208,12 @@ export const AGREEMENTS_HREF = "/contractor/suppliers?segment=agreements"
 export const RECEIPT_HREF = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}`
 export const RFQ_HREF = (id: string) => `/contractor/rfqs/${id}/offers`
 export const DRAFTS_HREF = "/contractor/rfqs"
+/** A draft opens in the form it was left in. */
+export const DRAFT_HREF = (id: string) => `/contractor/rfqs/new?edit=${encodeURIComponent(id)}`
+/** The Suppliers tab, on one agreement's drawer. */
+export const AGREEMENT_HREF = (id: string) => `/contractor/suppliers?segment=agreements&agreement=${encodeURIComponent(id)}`
+/** The reports tab's commitments report — what Finance will be asked to pay. */
+export const COMMITMENTS_HREF = "/contractor/rfqs/reports?report=commitments"
 export const NEEDS_HREF = "/contractor/rfqs/requests"
 export const NEED_LINE_HREF = (key: string) => `/contractor/rfqs/requests?line=${encodeURIComponent(key)}`
 /** The goods-received desk opens the forward dialog for this notice. */
@@ -221,6 +244,7 @@ const GROUP_OF: Record<TaskKind, TaskGroup> = {
   rfq_query: "rfq",
   cancel_remainder: "po",
   notice_forward: "delivery",
+  finance_hold: "po",
 }
 
 const SEVERITY_RANK: Record<TaskSeverity, number> = { red: 0, amber: 1, blue: 2 }
@@ -232,11 +256,19 @@ const NO_PO_WINDOW_DAYS = 30
 
 export type ActorKind = "owner" | "buyer" | "expediter"
 
-/** The owner; anyone else who sees prices (manager, buyer); the expediter who does not. */
-export function actorKind(actor: ProcActor): ActorKind {
-  if (actor.isOwner) return "owner"
+/** The owner; anyone else who sees prices (manager, buyer); the expediter who
+ * does not. A one-person company's owner (`ownerHasTeam === false`) works the
+ * desk himself, so he gets the working numbers, not the read-only ones. */
+export function actorKind(actor: ProcActor, ownerHasTeam?: boolean): ActorKind {
+  if (actor.isOwner) return ownerHasTeam === false ? "buyer" : "owner"
   return actor.seesPrices ? "buyer" : "expediter"
 }
+
+/** A buyer (prepares or sources, never approves) sees his own and his categories. */
+export const sourcesOnly = (actor: TodayActor): boolean => !actor.isOwner && !actor.canApprove && (actor.canPrepare || Boolean(actor.canSource))
+
+/** Who owns the next move on an open finance hold. */
+export const holdOwnerOf = (reason: string): HoldOwner => HOLD_OWNER[reason as keyof typeof HOLD_OWNER] ?? "fin"
 
 const money = (actor: ProcActor, value: number | null) => (actor.seesPrices ? value : null)
 const linesText = (po: PurchaseOrder) =>
@@ -253,19 +285,24 @@ const REFUSAL_SUB: Record<RefusalCode, string> = {
   above_limit: "task.approval_wait.sub.above_limit",
 }
 
-export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
+export function todayTasks(w: ProcWorld, actor: TodayActor, now: Date): Task[] {
   const out: Task[] = []
   const today = todayOf(now)
   const kind = actorKind(actor)
   const expediter = kind === "expediter"
   const sees = actor.seesPrices
   const decides = actor.canPrepare || actor.canApprove || actor.isOwner
+  // The prototype's `src`: the manager and the buyer source; so does a member
+  // who runs RFQs (rfq.manage) without preparing orders.
+  const sources = actor.canPrepare || actor.canApprove || actor.isOwner || Boolean(actor.canSource)
   const add = (t: Omit<Task, "group" | "subNs"> & { subNs?: Task["subNs"] }) => out.push({ subNs: "ProcToday", ...t, group: GROUP_OF[t.kind] })
   // The prototype's four roles: the owner reads (when he has a team), a buyer
   // works his own orders and categories, the manager sees everyone's.
   const ownerRO = actor.isOwner && w.ownerHasTeam === true
-  const buyerOnly = !actor.isOwner && actor.canPrepare && !actor.canApprove
-  const mine = (po: PurchaseOrder | undefined) => !buyerOnly || !po || po.preparedById === actor.uid
+  const buyerOnly = sourcesOnly(actor)
+  const cats = w.needDesk?.viewerCategories ?? null
+  const scope = { uid: actor.uid, isOwner: actor.isOwner, canApprove: actor.canApprove, canPrepare: buyerOnly }
+  const mine = (po: PurchaseOrder | undefined) => !buyerOnly || !po || poInScope(po, scope, cats)
   const chases = actor.canExpedite && !ownerRO
   const look = (key: string) => (ownerRO ? "actions.view" : key)
 
@@ -377,10 +414,10 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
     }
 
     if (decides && mine(po) && st !== "closed" && st !== "cancelled") {
-      // Projects stopped the material while the rest is still owed: tell the supplier.
-      for (const l of po.lines as Array<PurchaseOrder["lines"][number] & { stopRequested?: { byName?: string | null } | null }>) {
+      // Projects closed the material while the rest is still owed (`pmCancels`): tell the supplier.
+      for (const l of po.lines) {
         const open = lineOutstanding(l)
-        if (!l.stopRequested || !(open > 0)) continue
+        if (!pmCancelOpen(asX(po), l) || !(open > 0)) continue
         add({ id: `cancel_remainder:${po.id}:${l.id}`, kind: "cancel_remainder", priority: 1, severity: "amber", sortDays: -1, titleKey: "task.cancel_remainder.title", titleParams: { qty: open, unit: l.unit, name: l.name }, subKey: "task.cancel_remainder.sub", subParams: base, amount: money(actor, l.unitPrice == null ? null : round2(open * l.unitPrice)), href: ORDER_HREF(po.id), actionKey: look("actions.open") })
       }
     }
@@ -389,13 +426,35 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
       // T10 · the story is whole: rate him.
       add({ id: `rate:${po.id}`, kind: "rate", priority: 3, severity: "blue", sortDays: 0, titleKey: "task.rate.title", titleParams: base, subKey: "task.rate.sub", subParams: {}, amount: null, href: ORDER_HREF(po.id), actionKey: "actions.rate" })
     }
+
+    if (sees && mine(po)) {
+      // Finance held a supplier's invoice (prototype FREJ): whose move it is decides the row.
+      for (const h of openHolds(asX(po))) {
+        const owner = holdOwnerOf(h.reason)
+        const at = daysFromNow(dayOf(h.at), now) ?? 0
+        const common = { sortDays: at, amount: money(actor, h.amount), href: ORDER_HREF(po.id), reasonCode: h.reason }
+        const params = { supplier: po.supplierName, invoice: h.invoiceNo, holdReason: h.reason, need: h.need || h.text || "", number: po.docNumber }
+        if (owner === "proc" && sources && !ownerRO) {
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 0, severity: "red", titleKey: "task.finance_hold.proc.title", titleParams: params, subKey: "task.finance_hold.proc.sub", subParams: params, actionKey: "actions.decide", ...common })
+        } else if (owner === "rcv" && chases) {
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.rcv.title", titleParams: params, subKey: "task.finance_hold.rcv.sub", subParams: { ...params, where: po.projectId ? "projects" : "inventory" }, actionKey: "actions.open", ...common })
+        } else if (ownerRO) {
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.owner.title", titleParams: params, subKey: "task.finance_hold.owner.sub", subParams: { ...params, holdOwner: owner }, actionKey: "actions.view", ...common })
+        } else if (owner === "sup" && sources) {
+          add({ id: `hold:${po.id}:${h.id}`, kind: "finance_hold", priority: 1, severity: "amber", titleKey: "task.finance_hold.sup.title", titleParams: params, subKey: "task.finance_hold.sup.sub", subParams: params, actionKey: "actions.decide", ...common })
+        }
+      }
+    }
   }
 
   const orderById = new Map(w.orders.map((o) => [o.id, o]))
 
-  // T8/T9 · a pending notice — on the way, or its date passed with no receipt.
+  // T8/T9 · a pending notice nobody passed on, or one whose date passed with
+  // no receipt, or dated after his promise. A forwarded notice that is simply
+  // on its way is not a decision: it waits on the receipts tab and in
+  // «يصل خلال 7 أيام» (the prototype has no row for it).
   for (const r of w.receipts) {
-    if (r.status !== "pending_confirmation") continue
+    if (r.status !== "pending_confirmation" || (r as { closedByReceipt?: unknown }).closedByReceipt) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
     if (!mine(po)) continue
     const d = daysFromNow(r.deliveryDate, now)
@@ -403,58 +462,65 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
     const supplier = r.supplierName || po?.supplierName || ""
     const number = r.poNumber || po?.docNumber || ""
     const lines = (r.lines || []).map((l) => `${l.name} ${l.noticeQuantity} ${l.unit}`).join(" · ")
-    const action = actor.canReceive ? "actions.receive" : "actions.open"
+    const action = actor.canReceive && !ownerRO ? "actions.receive" : "actions.open"
     // §5.2-3b: a notice nobody has forwarded is a delivery whose receiver does
     // not know it is coming. The PRD auto-forwards once the window lapses;
     // nothing here runs on a schedule, so instead the notice says so and turns
     // amber inside the window. Receiving it centrally is a perfectly good answer
     // — which is why this colours a row and never blocks one.
-    const told = Boolean(r.forwardedTo) || Boolean(r.receiverReport)
+    const told = noticeTold(r, w.policies)
     const chase = !told && forwardUrgency(d, w.policies.forwardWindowDays) !== "none"
     const notForwarded = told ? 0 : 1
     if (!told && chases) {
       // The prototype's forward task: the receiver must know before the truck leaves.
       const due = d != null && (d <= 0 || chase)
-      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub", subParams: { number, lines }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
+      const place = po?.projectName || ""
+      add({ id: `notice_forward:${r.id}`, kind: "notice_forward", priority: due ? 0 : 2, severity: d != null && d <= 0 ? "red" : due ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_forward.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1, overdue: d != null && d < 0 ? 1 : 0 }, subKey: "task.notice_forward.sub_place", subParams: { number, lines, place, hasPlace: place ? 1 : 0 }, amount: null, href: FORWARD_HREF(r.id), actionKey: "actions.forward" })
+    } else if (!sees) {
+      continue
     } else if (d != null && d < 0) {
       add({ id: `notice_overdue:${r.id}`, kind: "notice_overdue", priority: 1, severity: "red", sortDays: d, titleKey: "task.notice_overdue.title", titleParams: { supplier }, subKey: "task.notice_overdue.sub", subParams: { number, date: dayOf(r.deliveryDate), daysAgo: -d, notForwarded }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
     } else if (promised != null && d != null && d > promised) {
       // T9b · the supplier announces a date after his own promise — the delay is known before it happens.
       const behind = d - promised
       add({ id: `notice_late_date:${r.id}`, kind: "notice_late_date", priority: 1, severity: "amber", sortDays: d, titleKey: "task.notice_late_date.title", titleParams: { supplier, days: behind }, subKey: "task.notice_late_date.sub", subParams: { number, date: dayOf(r.deliveryDate), promised: po?.promisedDate || "" }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
-    } else {
-      add({ id: `notice:${r.id}`, kind: "notice_incoming", priority: d != null && (d === 0 || chase) ? 1 : 2, severity: d != null && (d === 0 || chase) ? "amber" : "blue", sortDays: d ?? 9, titleKey: "task.notice_incoming.title", titleParams: { supplier, inDays: d ?? 0, hasDate: d == null ? 0 : 1 }, subKey: "task.notice_incoming.sub", subParams: { number, lines, notForwarded }, amount: null, href: RECEIPT_HREF(r.id), actionKey: action })
+    }
+  }
+
+  if (!expediter && chases) {
+    // T6 · what arrived today on our orders — one roll-up row, each receipt
+    // flagged when it carries rejects or came short of the notice.
+    const arrived = w.receipts.filter((r) => r.status === "confirmed" && r.poId && receiptDay(r) === today && mine(orderById.get(r.poId)))
+    if (arrived.length) {
+      const items = arrived.map((r) => ({ name: `${r.supplierName || orderById.get(r.poId as string)?.supplierName || ""} ${r.docNumber || ""}`.trim(), ...arrivedFlags(r) }))
+      const list = items.map((i) => i.name).join(" · ")
+      add({ id: `arrived:${today}`, kind: "arrived_today", priority: 2, severity: "blue", sortDays: 0, titleKey: "task.arrived_today.title", titleParams: { count: arrived.length }, subKey: "task.arrived_today.sub_flags", subParams: { list, rejects: items.filter((i) => i.rejects).length, short: items.filter((i) => i.short).length }, amount: null, href: "/contractor/goods-received?tab=log", actionKey: "actions.seeArrived" })
     }
   }
 
   if (!expediter) {
-    // T6 · what arrived today on our orders — one roll-up row.
-    const arrived = w.receipts.filter((r) => r.status === "confirmed" && r.poId && receiptDay(r) === today && mine(orderById.get(r.poId)))
-    if (arrived.length) {
-      const list = arrived.map((r) => `${r.supplierName || orderById.get(r.poId as string)?.supplierName || ""} ${r.docNumber || ""}`.trim()).join(" · ")
-      add({ id: `arrived:${today}`, kind: "arrived_today", priority: 2, severity: "blue", sortDays: 0, titleKey: "task.arrived_today.title", titleParams: { count: arrived.length }, subKey: "task.arrived_today.sub", subParams: { list }, amount: null, href: "/contractor/goods-received?tab=log", actionKey: "actions.seeArrived" })
-    }
-
     // T11 · a receipt with no order — informational; the regularisation is a retroactive order.
     for (const r of w.receipts) {
       if (r.source !== "manual" || r.poId || r.offerId || r.status !== "confirmed") continue
       const day = receiptDay(r)
       const age = day ? -(daysFromNow(day, now) ?? 0) : 0
       if (!day || age > NO_PO_WINDOW_DAYS) continue
+      if (buyerOnly && cats?.length && !receiptInCategories(r, cats)) continue
       add({ id: `nopo:${r.id}`, kind: "receipt_no_po", priority: 1, severity: "amber", sortDays: -age, titleKey: "task.receipt_no_po.title", titleParams: { supplier: r.supplierName || "", hasSupplier: r.supplierName ? 1 : 0 }, subKey: "task.receipt_no_po.sub", subParams: { number: r.docNumber || "", date: day }, amount: null, href: RECEIPT_HREF(r.id), actionKey: look("actions.openReceipt") })
     }
   }
 
-  if ((actor.canPrepare || actor.isOwner) && !ownerRO) {
+  if (sources && !ownerRO) {
     const offersByRfq = new Map<string, OfferFact[]>()
     for (const o of w.offers) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
 
     for (const r of w.rfqs) {
+      if (buyerOnly && !rfqInScope(r, scope, cats)) continue
       const title = r.title || ""
       const deadline = daysFromNow(r.deadline, now)
       if (r.status === "Draft") {
         // T3 · never published: its lines are held for nothing.
-        add({ id: `rfq_draft:${r.id}`, kind: "rfq_draft", priority: 2, severity: "blue", sortDays: deadline ?? 9, titleKey: "task.rfq_draft.title", titleParams: { title }, subKey: "task.rfq_draft.sub", subParams: {}, amount: null, href: DRAFTS_HREF, actionKey: "actions.openDraft" })
+        add({ id: `rfq_draft:${r.id}`, kind: "rfq_draft", priority: 2, severity: "blue", sortDays: deadline ?? 9, titleKey: "task.rfq_draft.title", titleParams: { title }, subKey: "task.rfq_draft.sub", subParams: {}, amount: null, href: DRAFT_HREF(r.id), actionKey: "actions.openDraft" })
         continue
       }
       if (r.status !== "New") continue
@@ -502,7 +568,7 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
         subKey: "task.agreement_expiring.sub",
         subParams: { number: a.docNumber, materials: (a.lines || []).length },
         amount: null,
-        href: AGREEMENTS_HREF,
+        href: AGREEMENT_HREF(a.id),
         actionKey: "actions.openAgreement",
       })
     }
@@ -528,7 +594,7 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
     }
   }
 
-  if (w.needDesk && (actor.isOwner || actor.canApprove || actor.canPrepare)) {
+  if (w.needDesk && sources) {
     const desk = w.needDesk
     const managerView = actor.isOwner || actor.canApprove
     const rows = buyerOnly ? desk.rows.filter((r) => inBuyerScope(r, desk.viewerCategories)) : desk.rows
@@ -577,6 +643,21 @@ export function todayTasks(w: ProcWorld, actor: ProcActor, now: Date): Task[] {
   return out.sort((a, b) => a.priority - b.priority || SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.sortDays - b.sortDays)
 }
 
+/** A receipt carries rejects, or came short of what the notice announced. */
+export function arrivedFlags(r: ReceiptFact): { rejects: boolean; short: boolean } {
+  const lines = r.lines || []
+  return {
+    rejects: lines.some((l) => Number(l.rejected) > 0),
+    short: lines.some((l) => l.counted != null && Number(l.counted) < Number(l.noticeQuantity)),
+  }
+}
+
+/** A receipt with no order belongs to a buyer when it names one of his
+ * categories; one that names none is everyone's (a hidden row is a lost one). */
+export function receiptInCategories(r: ReceiptFact & { category?: string | null }, categories: string[]): boolean {
+  return !r.category || categories.includes(r.category)
+}
+
 /** `when` for the last-order-day sentence: passed / today / ahead / no need date. */
 function whenParams(days: number | null): Record<string, string | number> {
   if (days == null) return { when: "none", n: 0 }
@@ -600,7 +681,7 @@ export function rfqEstimate(r: RfqFact, history: PriceHistoryEntry[] | undefined
 // Waits — "the action is theirs and the state reaches us" (no button)
 // ---------------------------------------------------------------------------
 
-export type WaitKind = "supplier_acceptance" | "finance_payment" | "held_inspection" | "stock_check" | "workshop_reply" | "being_made" | "sample_approval"
+export type WaitKind = "supplier_acceptance" | "finance_payment" | "held_inspection" | "stock_check" | "workshop_reply" | "being_made" | "sample_approval" | "invoice_hold" | "pm_budget" | "supplier_advance"
 export type WaitModule = "supplier" | "finance" | "inventory" | "manufacturing" | "projects"
 
 export interface Wait {
@@ -615,11 +696,30 @@ export interface Wait {
   reasonCode?: string | null
 }
 
-export function todayWaits(w: ProcWorld, actor: ProcActor, now: Date): Wait[] {
+/** Projects has not yet decided an order that runs past the item's budget. */
+const PM_BUDGET_WAITS = new Set(["pending", "renegotiate"])
+
+export function todayWaits(w: ProcWorld, actor: TodayActor, now: Date): Wait[] {
   const out: Wait[] = []
   for (const po of w.orders) {
     const st = poStatus(po)
     const base = { number: po.docNumber, supplier: po.supplierName }
+    const x = asX(po)
+    if (po.status === "awaiting_approval" && x.pmBudget && PM_BUDGET_WAITS.has(x.pmBudget.state)) {
+      // The order runs past the BOQ item's balance: the project manager decides (R-25).
+      const over = w.budgetOverruns?.[po.id] ?? null
+      out.push({ id: `w_budget:${po.id}`, kind: "pm_budget", module: "projects", titleKey: "wait.pm_budget.title", titleParams: base, subKey: "wait.pm_budget.sub", subParams: { over: actor.seesPrices && over != null ? over : 0, hasOver: actor.seesPrices && over != null && over > 0 ? 1 : 0 }, href: ORDER_HREF(po.id) })
+    }
+    if (advanceState(x) === "requested") {
+      // Approval asked Finance for the advance; the supplier's lead time starts when it is paid.
+      out.push({ id: `w_adv:${po.id}`, kind: "supplier_advance", module: "finance", titleKey: "wait.supplier_advance.title", titleParams: { ...base, percent: Number(x.advancePercent) || 0 }, subKey: "wait.supplier_advance.sub", subParams: { advance: advanceNumber(po) }, href: ORDER_HREF(po.id) })
+    }
+    for (const h of openHolds(x)) {
+      const owner = holdOwnerOf(h.reason)
+      if (owner !== "fin" && owner !== "rcv") continue
+      // Finance's own hold (a duplicate, the cash position) or the receiver's missing receipt.
+      out.push({ id: `w_hold:${po.id}:${h.id}`, kind: "invoice_hold", module: owner === "fin" ? "finance" : po.projectId ? "projects" : "inventory", titleKey: "wait.invoice_hold.title", titleParams: { ...base, invoice: h.invoiceNo, holdReason: h.reason }, subKey: "wait.invoice_hold.sub", subParams: { need: h.need || h.text || "", number: po.docNumber }, href: ORDER_HREF(po.id), reasonCode: h.reason })
+    }
     if (st === "sent") {
       // W9 · inside the acceptance window it is the supplier's move.
       const sent = daysFromNow(dayOf(po.sentAt), now)
@@ -627,7 +727,7 @@ export function todayWaits(w: ProcWorld, actor: ProcActor, now: Date): Wait[] {
         out.push({ id: `w_accept:${po.id}`, kind: "supplier_acceptance", module: "supplier", titleKey: "wait.supplier_acceptance.title", titleParams: base, subKey: "wait.supplier_acceptance.sub", subParams: { ago: sent == null ? 0 : -sent }, href: ORDER_HREF(po.id) })
       }
     }
-    if (st === "received") {
+    if (st === "received" && !openHolds(x).length) {
       // W10 · fully received: invoice, match and payment are Finance's.
       out.push({ id: `w_pay:${po.id}`, kind: "finance_payment", module: "finance", titleKey: "wait.finance_payment.title", titleParams: base, subKey: "wait.finance_payment.sub", subParams: {}, href: ORDER_HREF(po.id) })
     }
@@ -642,16 +742,21 @@ export function todayWaits(w: ProcWorld, actor: ProcActor, now: Date): Wait[] {
       }
     }
   }
-  if (w.needDesk && (actor.isOwner || actor.canApprove || actor.canPrepare)) {
+  // The need desk's waits reach every Procurement role, the expediter too (the
+  // prototype's `inScope` is true for everyone but a buyer outside his categories).
+  if (w.needDesk) {
     const desk = w.needDesk
-    const buyerOnly = !actor.isOwner && actor.canPrepare && !actor.canApprove
+    const buyerOnly = sourcesOnly(actor)
     for (const r of desk.rows) {
       if (buyerOnly && !inBuyerScope(r, desk.viewerCategories)) continue
       const base = { name: r.name, qty: r.state === "mfg" ? r.total : r.open, unit: r.unit }
       const href = NEED_LINE_HREF(r.key)
       if (r.state === "chk") out.push({ id: `w_chk:${r.key}`, kind: "stock_check", module: "inventory", titleKey: "wait.stock_check.title", titleParams: base, subKey: "wait.stock_check.sub", subParams: { ref: r.need.refLabel, cover: Math.min(r.onHand ?? 0, r.total) }, href })
       else if (r.state === "mfgw") out.push({ id: `w_mfgw:${r.key}`, kind: "workshop_reply", module: "manufacturing", titleKey: "wait.workshop_reply.title", titleParams: base, subKey: "wait.workshop_reply.sub", subParams: { ref: r.need.refLabel }, href })
-      else if (r.state === "mfg") out.push({ id: `w_mfg:${r.key}`, kind: "being_made", module: "manufacturing", titleKey: "wait.being_made.title", titleParams: base, subKey: "wait.being_made.sub", subParams: { ref: r.need.refLabel, date: r.needBy || "", hasDate: r.needBy ? 1 : 0 }, href })
+      else if (r.state === "mfg") {
+        const ready = w.readyDates?.[r.key] || ""
+        out.push({ id: `w_mfg:${r.key}`, kind: "being_made", module: "manufacturing", titleKey: "wait.being_made.title", titleParams: base, subKey: "wait.being_made.sub_ready", subParams: { ref: r.need.refLabel, date: r.needBy || "", hasDate: r.needBy ? 1 : 0, ready, hasReady: ready ? 1 : 0 }, href })
+      }
       if (isActionState(r.state) && r.samplePending) out.push({ id: `w_sample:${r.key}`, kind: "sample_approval", module: "projects", titleKey: "wait.sample_approval.title", titleParams: { name: r.name }, subKey: "wait.sample_approval.sub", subParams: {}, href })
     }
   }
@@ -666,7 +771,8 @@ export interface KpiTile {
   id: string
   labelKey: string
   value: number
-  unit: "count" | "money"
+  /** `lines` = a count the screen words «N سطراً». */
+  unit: "count" | "money" | "lines"
   noteKey: string
   noteParams: Record<string, string | number>
   tone: "good" | "bad" | "warn" | "neutral"
@@ -678,8 +784,8 @@ export interface ProcKpis {
   tiles: KpiTile[]
 }
 
-export function todayKpis(w: ProcWorld, actor: ProcActor, now: Date): ProcKpis {
-  const kind = actorKind(actor)
+export function todayKpis(w: ProcWorld, actor: TodayActor, now: Date): ProcKpis {
+  const kind = actorKind(actor, w.ownerHasTeam)
   const live = w.orders.filter((po) => ["approved", "sent", "in_delivery", "part_received"].includes(poStatus(po)))
   const lateOrders = live.filter((po) => poLate(po, now))
   const lateValue = round2(lateOrders.reduce((s, po) => s + poOpenValue(po), 0))
@@ -695,16 +801,17 @@ export function todayKpis(w: ProcWorld, actor: ProcActor, now: Date): ProcKpis {
   }
 
   const desk = w.needDesk
-  const needRows = desk ? (!actor.isOwner && actor.canPrepare && !actor.canApprove ? desk.rows.filter((r) => inBuyerScope(r, desk.viewerCategories)) : desk.rows) : null
+  const needRows = desk ? (sourcesOnly(actor) ? desk.rows.filter((r) => inBuyerScope(r, desk.viewerCategories)) : desk.rows) : null
   const nk = needRows ? needKpi(needRows) : null
 
   if (kind === "owner") {
     const mine = w.orders.filter((po) => po.status === "awaiting_approval" && !approvalRefusal(po, actor, w.policies))
     const mineValue = round2(mine.reduce((s, po) => s + poValue(po), 0))
-    // Received and not yet closed: Finance will be asked for this next.
-    const due = round2(w.orders.filter((po) => poStatus(po) === "received").reduce((s, po) => s + (acceptedValue(po) ?? 0), 0))
+    // Finance will be asked for this next: the advances approval requested, and
+    // what was received in full and not yet closed.
+    const due = financeDue(w.orders)
     tiles.push({ id: "my_approval", labelKey: "kpi.my_approval.label", value: mineValue, unit: "money", noteKey: mine.length ? "kpi.my_approval.note_some" : "kpi.my_approval.note_none", noteParams: { count: mine.length }, tone: mine.length ? "warn" : "good", href: "/contractor/rfqs/orders?filter=awaiting_approval" })
-    tiles.push({ id: "finance_due", labelKey: "kpi.finance_due.label", value: due, unit: "money", noteKey: "kpi.finance_due.note", noteParams: {}, tone: "neutral", href: "/contractor/rfqs/orders?filter=received" })
+    tiles.push({ id: "finance_due", labelKey: "kpi.finance_due.label", value: due.total, unit: "money", noteKey: "kpi.finance_due.note_split", noteParams: { advances: due.advances, received: due.received }, tone: "neutral", href: COMMITMENTS_HREF })
     if (nk) tiles.push({ id: "overdue_lines", labelKey: "kpi.overdue_lines.label", value: nk.overdue, unit: "count", noteKey: nk.overdue ? "kpi.overdue_lines.note_some" : "kpi.overdue_lines.note_none", noteParams: { total: nk.need }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
     else tiles.push({ id: "late", labelKey: "kpi.late.label", value: lateOrders.length, unit: "count", noteKey: lateOrders.length ? "kpi.late.note_value" : "kpi.late.note_none", noteParams: { amount: lateValue }, tone: lateOrders.length ? "bad" : "good", href: "/contractor/rfqs/orders?filter=late" })
     return { kind, tiles }
@@ -715,11 +822,18 @@ export function todayKpis(w: ProcWorld, actor: ProcActor, now: Date): ProcKpis {
   const needs = nk ? nk.need : w.rfqs.filter((r) => r.status === "New" && (daysFromNow(r.deadline, now) ?? 1) <= 0 && w.offers.some((o) => o.rfqId === r.id && OFFER_PENDING.has(o.status || ""))).length
   const committed = round2(live.reduce((s, po) => s + poOpenValue(po), 0))
   const drift = priceDrift(w, { from: addDays(todayOf(now), -30) })
-  if (nk) tiles.push({ id: "needs", labelKey: "kpi.needs.label_requests", value: nk.need, unit: "count", noteKey: nk.overdue ? "kpi.needs.note_overdue" : "kpi.needs.note_none", noteParams: { count: nk.overdue }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
+  if (nk) tiles.push({ id: "needs", labelKey: "kpi.needs.label_requests", value: nk.need, unit: "lines", noteKey: nk.overdue ? "kpi.needs.note_overdue" : "kpi.needs.note_none", noteParams: { count: nk.overdue }, tone: nk.overdue ? "bad" : "good", href: `${NEEDS_HREF}?seg=act` })
   else tiles.push({ id: "needs", labelKey: "kpi.needs.label_rfqs", value: needs, unit: "count", noteKey: needs ? "kpi.needs.note_rfqs" : "kpi.needs.note_none", noteParams: {}, tone: needs ? "warn" : "good", href: requests ? NEEDS_HREF : "/contractor/rfqs" })
   tiles.push({ id: "committed", labelKey: "kpi.committed.label", value: committed, unit: "money", noteKey: lateOrders.length ? "kpi.committed.note_late" : "kpi.committed.note_none", noteParams: { amount: lateValue, count: lateOrders.length }, tone: lateOrders.length ? "bad" : "good", href: "/contractor/rfqs/orders?filter=live" })
-  tiles.push({ id: "drift", labelKey: "kpi.drift.label", value: drift.totals.impact, unit: "money", noteKey: drift.totals.impact > 0 ? "kpi.drift.note_up" : drift.totals.impact < 0 ? "kpi.drift.note_down" : "kpi.drift.note_none", noteParams: { percent: Math.abs(drift.totals.percent ?? 0) }, tone: drift.totals.impact > 0 ? "warn" : "good", href: "/contractor/rfqs/reports?report=drift" })
+  tiles.push({ id: "drift", labelKey: "kpi.drift.label", value: drift.totals.impact, unit: "money", noteKey: drift.totals.impact > 0 ? "kpi.drift.note_up" : drift.totals.impact < 0 ? "kpi.drift.note_down" : "kpi.drift.note_none", noteParams: { percent: Math.abs(drift.totals.percent ?? 0) }, tone: drift.totals.impact > 0 ? "warn" : "good", href: "/contractor/rfqs/reports?report=drift&period=30" })
   return { kind, tiles }
+}
+
+/** The owner's «ستطلبه المالية للموردين قريباً»: requested advances + received-unpaid (prototype `due7`). */
+export function financeDue(orders: PurchaseOrder[]): { advances: number; received: number; total: number } {
+  const advances = round2(orders.filter((po) => advanceState(asX(po)) === "requested").reduce((s, po) => s + advanceAmount(asX(po)), 0))
+  const received = round2(orders.filter((po) => poStatus(po) === "received").reduce((s, po) => s + (acceptedValue(po) ?? 0), 0))
+  return { advances, received, total: round2(advances + received) }
 }
 
 // ---------------------------------------------------------------------------
@@ -851,6 +965,25 @@ export const TODAY_KEYS = [
   "kpi.late.note_some",
   "kpi.late.note_none",
   "kpi.late.note_value",
+  "task.finance_hold.proc.title",
+  "task.finance_hold.proc.sub",
+  "task.finance_hold.rcv.title",
+  "task.finance_hold.rcv.sub",
+  "task.finance_hold.owner.title",
+  "task.finance_hold.owner.sub",
+  "task.finance_hold.sup.title",
+  "task.finance_hold.sup.sub",
+  "task.notice_forward.sub_place",
+  "task.arrived_today.sub_flags",
+  "wait.invoice_hold.title",
+  "wait.invoice_hold.sub",
+  "wait.pm_budget.title",
+  "wait.pm_budget.sub",
+  "wait.supplier_advance.title",
+  "wait.supplier_advance.sub",
+  "wait.being_made.sub_ready",
+  "kpi.finance_due.note_split",
+  "kpi.lines",
   "kpi.with_suppliers.label",
   "kpi.with_suppliers.note",
   "kpi.sent_not_accepted.label",

@@ -15,13 +15,18 @@ export interface RfqOfferView extends NoteOffer {
   exclusion?: OfferExclusion | null
   isManualOffer?: boolean | null
   recordedByName?: string | null
+  /** Keyed in while the round was still sealed — the buyer saw its price first. */
+  recordedEarly?: boolean | null
+  directAward?: boolean | null
+  /** The «سجّله مورداً» invitation sent to a guest (`inviteGuestSupplier`). */
+  guestInvite?: { at?: string | null; byName?: string | null; channel?: string | null } | null
   manualProofUrl?: string | null
   isFromMdmak?: boolean | null
   poId?: string | null
   poNumber?: string | null
   awardedLines?: number[] | null
   awardedTotal?: number | null
-  guestContact?: { name?: string | null; email?: string | null; phone?: string | null } | null
+  guestContact?: { name?: string | null; email?: string | null; phone?: string | null; vatNumber?: string | null } | null
   priceHistory?: Array<{ price?: string | number | null; replacedAt?: string | null }> | null
   reductionRound?: boolean | null
 }
@@ -43,6 +48,10 @@ export interface RfqView extends NoteRfq {
   requiresWarranty?: boolean | null
   notes?: string | null
   pdfUrl?: string | null
+  attachments?: Array<{ url?: string | null; name?: string | null } | string> | null
+  rfqNumber?: string | null
+  createdByUserId?: string | null
+  pricingMode?: string | null
   createdAt?: string | null
   createdByUserName?: string | null
   allowedSupplierOrgIds?: string[] | null

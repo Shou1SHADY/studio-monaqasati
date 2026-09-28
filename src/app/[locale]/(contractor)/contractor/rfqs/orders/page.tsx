@@ -51,7 +51,8 @@ export default function PurchaseOrdersPage() {
 
   const filterParam = searchParams?.get("filter")
   const [segment, setSegment] = useState<PoSegment>(() => (isPoSegment(filterParam) ? filterParam : DEFAULT_SEGMENT))
-  const [search, setSearch] = useState("")
+  // The header's search sends the expediter here with `?search=` (P-09).
+  const [search, setSearch] = useState(() => searchParams?.get("search") ?? "")
   const searching = search.trim().length > 0
   const pick = (s: PoSegment) => {
     setSearch("")
@@ -205,6 +206,7 @@ export default function PurchaseOrdersPage() {
                         <PoStatusPill po={po} now={now} />
                         {openHolds(asX(po)).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
                         {advanceState(asX(po)) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp("rfqpo.po.row_advance")}</p>}
+                        {asX(po).pmBudget?.state === "pending" && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.po.row_budget")}</p>}
                       </td>
                     </tr>
                   ))}

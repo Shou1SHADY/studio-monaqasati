@@ -15,6 +15,7 @@ import { ProcWriteError } from "./writes"
 import { drawProcDocNumber } from "./numbering"
 import { PRICE_AGREEMENTS, agreementState, materialKey, type AgreementLine, type AgreementLogEntry, type PriceAgreement } from "./prices"
 import { dayOf, todayOf } from "./po"
+import { canRenewAgreements, canSignAgreements } from "./supplier-file"
 import type { ProcActor } from "./types"
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -27,9 +28,12 @@ const logEntry = (actor: ProcActor, action: AgreementLogEntry["action"], at: str
   ...(params ? { params } : {}),
 })
 
-/** Signing or renewing an agreement commits the company to a price, so it asks
- * for the same hand that awards or approves an order. */
-const mayWrite = (actor: ProcActor): boolean => Boolean(actor.isOwner || actor.canPrepare || actor.canApprove)
+/** Signing an agreement commits the company to a price, so it asks for the
+ * same hand that awards or approves an order. Renewing or ending one is the
+ * procurement manager's (the prototype's «جدّد», `CAN('all')`); the owner of a
+ * company with a procurement team reads (`ownerHasTeam`). */
+const mayWrite = (actor: ProcActor, ownerHasTeam = false): boolean => canSignAgreements(actor, ownerHasTeam)
+const mayRenew = (actor: ProcActor, ownerHasTeam = false): boolean => canRenewAgreements(actor, ownerHasTeam)
 
 export interface AgreementLineInput {
   name: string
@@ -72,9 +76,9 @@ export async function createPriceAgreement(
   firestore: Firestore,
   actor: ProcActor,
   input: CreateAgreementInput,
-  opts: { now?: Date } = {}
+  opts: { now?: Date; ownerHasTeam?: boolean } = {}
 ): Promise<{ id: string; docNumber: string }> {
-  if (!mayWrite(actor)) throw new ProcWriteError("no_permission")
+  if (!mayWrite(actor, opts.ownerHasTeam)) throw new ProcWriteError("no_permission")
   const now = opts.now ?? new Date()
   const at = now.toISOString()
   const from = dayOf(input.from)
@@ -131,9 +135,9 @@ export async function renewPriceAgreement(
   actor: ProcActor,
   agreementId: string,
   input: RenewAgreementInput,
-  opts: { now?: Date } = {}
+  opts: { now?: Date; ownerHasTeam?: boolean } = {}
 ): Promise<PriceAgreement> {
-  if (!mayWrite(actor)) throw new ProcWriteError("no_permission")
+  if (!mayRenew(actor, opts.ownerHasTeam)) throw new ProcWriteError("no_permission")
   const now = opts.now ?? new Date()
   const at = now.toISOString()
   const until = dayOf(input.until)
@@ -167,9 +171,9 @@ export async function endPriceAgreement(
   actor: ProcActor,
   agreementId: string,
   reason: string,
-  opts: { now?: Date } = {}
+  opts: { now?: Date; ownerHasTeam?: boolean } = {}
 ): Promise<PriceAgreement> {
-  if (!mayWrite(actor)) throw new ProcWriteError("no_permission")
+  if (!mayRenew(actor, opts.ownerHasTeam)) throw new ProcWriteError("no_permission")
   const text = (reason || "").trim()
   if (!text) throw new ProcWriteError("reason_required")
   const now = opts.now ?? new Date()

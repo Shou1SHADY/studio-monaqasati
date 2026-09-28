@@ -18,7 +18,7 @@ import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { extendRfq } from "@/lib/procurement/rfq-extend-writes"
 import { ProcWriteError } from "@/lib/procurement/writes"
-import type { ProcActor } from "@/lib/procurement/types"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { cn } from "@/lib/utils"
 
 export interface ExtendTarget {
@@ -28,7 +28,7 @@ export interface ExtendTarget {
   invited: string[]
 }
 
-export function RfqExtendDialog({ target, actor, options, onOpenChange }: { target: ExtendTarget | null; actor: ProcActor; options: Array<{ orgId: string; name: string }>; onOpenChange: (open: boolean) => void }) {
+export function RfqExtendDialog({ target, actor, options, onOpenChange }: { target: ExtendTarget | null; actor: RfqWriteActor; options: Array<{ orgId: string; name: string }>; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("Portal.Procurement")
   const firestore = useFirestore()
   const { toast } = useToast()

@@ -15,7 +15,7 @@ import { WaitingOnOthers } from "@/components/pm/WaitingOnOthers"
 import { ProjectLogPanel, SectionsBehindPanel } from "@/components/pm/PulseExtras"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
-import type { DecisionTab } from "@/lib/pm/decisions"
+import type { DecisionKind, DecisionTab } from "@/lib/pm/decisions"
 import { boqNote } from "@/lib/pm/pulse"
 
 export type PulseProject = PmDecisionProject & TrailProject & { name?: string; location?: string; warehouseId?: string | null; pm?: (PmDecisionProject["pm"] & { retentionReleased?: boolean; cutPool?: number }) | null }
@@ -28,15 +28,18 @@ export function ProjectPulse({
   access,
   onOpen,
   sections,
+  programmeOn,
 }: {
   projectId: string
   organizationId: string
   project: PulseProject
   items: Array<{ id?: string; division?: string; quantity: number; rate: number; executed: number }>
   access: PmAccess
-  onOpen: (tab: DecisionTab) => void
-  /** The project's switched-on sections; the trail needs billing or cost, the programme button its tab. */
+  onOpen: (tab: DecisionTab, kind?: DecisionKind) => void
+  /** The project's switched-on sections; the trail needs billing or cost. */
   sections?: readonly string[]
+  /** The Programme tab is in the rail (its section is on and the terms exist): the button opens it. */
+  programmeOn?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const money = access.has("money")
@@ -63,7 +66,7 @@ export function ProjectPulse({
           <PulseMoneyTrail projectId={projectId} project={trailProject} access={access} ipcOn={has("ipc")} costOn={has("cost")} />
         </div>
         <div className="space-y-4">
-          <SectionsBehindPanel projectId={projectId} project={project} items={items} onProgramme={project.pm?.terms ? () => open("pmProgramme") : undefined} />
+          <SectionsBehindPanel projectId={projectId} project={project} items={items} onProgramme={programmeOn ? () => open("pmProgramme") : undefined} />
           <WaitingOnOthers
             organizationId={organizationId}
             projects={[{ id: projectId, name: project.name, retentionReleased: project.pm?.retentionReleased }]}

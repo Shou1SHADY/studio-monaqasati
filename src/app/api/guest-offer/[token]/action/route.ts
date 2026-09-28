@@ -5,6 +5,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
 import { guestVisibleStatus, resolveGuestOfferToken, notifyContractor } from "@/lib/guest-offer"
 import { pricedProducts, revisePrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
+import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import {
   isGuestActionAllowed,
   isGuestOfferAction,
@@ -239,16 +240,28 @@ export async function POST(
       createdAt: FieldValue.serverTimestamp(),
     })
 
-    await notifyContractor({
-      contractorId,
-      organizationId: contractorOrgId,
-      type: "delivery_notice",
-      title: "🚚 إشعار تسليم جديد",
-      message: `قام المورد ${supplierName} بإرسال إشعار تسليم عبر رابط المشاركة لطلب عروض الأسعار: ${rfqTitle}`,
-      offerId,
-      rfqId: (offer.rfqId as string) || null,
-      rfqTitle,
-    })
+    // noticeRouting `both`: the receivers stamped on the order at approval
+    // (`noticeCopyTo`) hear of the guest's notice with the buyer — as the
+    // supplier portal does (policy-enforce.ts `noticeAudience`).
+    let po: { noticeCopyTo?: unknown } | null = null
+    if (typeof offer.poId === "string" && offer.poId) {
+      const poSnap = await db.collection("purchaseOrders").doc(offer.poId).get().catch(() => null)
+      po = poSnap?.exists ? ((poSnap.data() as { noticeCopyTo?: unknown }) ?? null) : null
+    }
+    await Promise.all(
+      noticeAudience(contractorId ? [contractorId] : [], po).map((uid) =>
+        notifyContractor({
+          contractorId: uid,
+          organizationId: contractorOrgId,
+          type: "delivery_notice",
+          title: "🚚 إشعار تسليم جديد",
+          message: `قام المورد ${supplierName} بإرسال إشعار تسليم عبر رابط المشاركة لطلب عروض الأسعار: ${rfqTitle}`,
+          offerId,
+          rfqId: (offer.rfqId as string) || null,
+          rfqTitle,
+        })
+      )
+    )
 
     return NextResponse.json({ success: true, data: { action } })
   } catch (err) {

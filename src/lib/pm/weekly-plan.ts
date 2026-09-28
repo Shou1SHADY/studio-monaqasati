@@ -8,14 +8,19 @@
 //   insp passed inspection — no failed inspection on an item needing one
 //   rfi  no open obstacle  — no open obstacle stopping one of its items
 //   pmt  valid work permit — for an activity that needs a permit, one is live
-// (materials on site and crew/plant join when the project store and plant
-// requests are built.) Committing with open constraints is allowed and
+//   mat  materials on site — every material of its items is on the project, or
+//        an approved request brings it within a week of the start
+//   crew plant             — every approved equipment request of the activity
+//        was received on site (not evaluated when it asked for none)
+// Committing with open constraints is allowed and
 // recorded; at the week's end every task not done needs a reason from a closed
 // list ("other" stated) — a repeated cause is a management defect, not bad
 // luck. PPC = done ÷ committed. Pure: no I/O.
 
 import { activityProgress, addDays, type PmActivity } from "./programme"
 import { sampleStateOf } from "./sample"
+import { storeBalance, type PmStoreLine } from "./store"
+import { lineOut, type PmMaterialRequest } from "./supply"
 
 /** `projects/{id}/pmWeeks/{weekStart}` — one plan a week, keyed by its first day. */
 export const PM_WEEKS = "pmWeeks"
@@ -23,7 +28,7 @@ export const PM_WEEKS = "pmWeeks"
 export const LOOKAHEAD_WEEKS = 3
 export const PRED_READY = 95
 
-export const CONSTRAINTS = ["dwg", "subm", "pred", "insp", "rfi", "pmt"] as const
+export const CONSTRAINTS = ["dwg", "subm", "mat", "pred", "insp", "rfi", "crew", "pmt"] as const
 export type ConstraintKey = (typeof CONSTRAINTS)[number]
 
 /** A computed constraint. `ok: null` = not evaluated. `detail` words the failure. */
@@ -37,6 +42,8 @@ export interface Constraint {
     | { kind: "failed"; code: string }
     | { kind: "obstacle"; title: string; party: string }
     | { kind: "no_permit" }
+    | { kind: "materials"; names: string[]; count: number }
+    | { kind: "plant"; what: string; count: number }
 }
 
 export interface LookItem {
@@ -53,6 +60,14 @@ export interface LookItem {
 
 export type LookActivity = PmActivity & { permit?: boolean | null }
 
+/** An equipment request as the look-ahead reads it: approved (`go`) and whether it reached the site. */
+export interface LookPlant {
+  activityId: string | null
+  status: string
+  what: string
+  got?: unknown
+}
+
 export interface LookFacts {
   items: LookItem[]
   activities: LookActivity[]
@@ -60,14 +75,35 @@ export interface LookFacts {
   obstacles: Array<{ title: string; party: string; itemIds: string[]; closeOn?: string | null }>
   livePermits: number
   staleDrawings: number
+  /** The project store and the material requests (mat), the equipment requests (crew). */
+  stores?: PmStoreLine[]
+  requests?: Array<Pick<PmMaterialRequest, "status" | "withdrawn" | "needBy" | "lines">>
+  plant?: LookPlant[]
   /** Which sections the project has on — a constraint of a section that is off is not evaluated. */
-  on: { docs: boolean; subm: boolean; wir: boolean; rfi: boolean; hse: boolean }
+  on: { docs: boolean; subm: boolean; wir: boolean; rfi: boolean; hse: boolean; stock?: boolean; eqp?: boolean }
+}
+
+/** Materials of the activity's items that are neither on the project nor
+ * brought by an approved request within a week of its start. */
+export function missingMaterials(a: Pick<LookActivity, "from" | "itemIds">, f: Pick<LookFacts, "items" | "stores" | "requests">, today: string): string[] {
+  const items = f.items.map((i) => ({ id: i.id, code: i.code, description: "", unit: i.unit ?? "", quantity: i.quantity, executed: i.executed }))
+  const by = addDays(a.from > today ? a.from : today, 7)
+  const out: string[] = []
+  for (const x of f.stores ?? []) {
+    const ids = a.itemIds.filter((id) => id in (x.rates || {}))
+    if (!ids.length || storeBalance(x, items) > 0.005) continue
+    const coming = (f.requests ?? []).some(
+      (r) => r.status === "approved" && !r.withdrawn && (!r.needBy || r.needBy <= by) && r.lines.some((l) => l.key === x.key && (!l.itemId || ids.includes(l.itemId)) && lineOut(l) > 0)
+    )
+    if (!coming) out.push(x.name)
+  }
+  return out
 }
 
 const pcOf = (a: Pick<PmActivity, "itemIds">, items: LookItem[]) => activityProgress(a, items) ?? 0
 
 /** The constraints of one activity. */
-export function activityConstraints(a: LookActivity, f: LookFacts): Constraint[] {
+export function activityConstraints(a: LookActivity, f: LookFacts, today = new Date().toISOString().slice(0, 10)): Constraint[] {
   const out: Constraint[] = []
   const mine = f.items.filter((i) => a.itemIds.includes(i.id))
   if (f.on.docs) out.push({ k: "dwg", ok: f.staleDrawings === 0, detail: f.staleDrawings ? { kind: "stale", count: f.staleDrawings } : undefined })
@@ -88,6 +124,15 @@ export function activityConstraints(a: LookActivity, f: LookFacts): Constraint[]
   if (f.on.rfi) {
     const o = f.obstacles.find((x) => !x.closeOn && x.itemIds.some((id) => a.itemIds.includes(id)))
     out.push({ k: "rfi", ok: !o, detail: o ? { kind: "obstacle", title: o.title, party: o.party } : undefined })
+  }
+  if (f.on.stock) {
+    const miss = missingMaterials(a, f, today)
+    out.push({ k: "mat", ok: !miss.length, detail: miss.length ? { kind: "materials", names: miss.slice(0, 2), count: miss.length } : undefined })
+  }
+  if (f.on.eqp) {
+    const rq = (f.plant ?? []).filter((r) => r.activityId === a.id && r.status === "go")
+    const miss = rq.filter((r) => !r.got)
+    out.push({ k: "crew", ok: rq.length ? !miss.length : null, detail: miss.length ? { kind: "plant", what: miss[0].what, count: miss.length } : undefined })
   }
   if (f.on.hse && a.permit) out.push({ k: "pmt", ok: f.livePermits > 0, detail: f.livePermits > 0 ? undefined : { kind: "no_permit" } })
   return out
@@ -110,7 +155,7 @@ export function lookahead(f: LookFacts, today: string, weeks = LOOKAHEAD_WEEKS):
   return f.activities
     .filter((a) => a.to >= today && a.from <= end && pcOf(a, f.items) < 99.5)
     .map((a) => {
-      const cs = activityConstraints(a, f)
+      const cs = activityConstraints(a, f, today)
       return { a, pc: pcOf(a, f.items), cs, block: cs.filter((c) => c.ok === false), startsIn: dayDiff(today, a.from) }
     })
     .sort((x, y) => x.a.from.localeCompare(y.a.from) || x.a.seq - y.a.seq)

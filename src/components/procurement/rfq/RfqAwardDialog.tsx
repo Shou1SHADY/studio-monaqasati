@@ -5,7 +5,8 @@
 // and the date we need it by. Total pricing asks for the awarded supplier's
 // per-line breakdown, which must equal his total (±1) before the order can
 // carry unit prices. Passing over a cheaper rate needs a reason; a missing
-// official quote, a guest supplier and lines nobody won are said, not stopped.
+// official quote and lines nobody won are said, not stopped; a guest supplier
+// stops the award until he registers or the buyer accepts him in so many words (R-10).
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -22,8 +23,10 @@ import { useFirestore } from "@/firebase"
 import { competingOffers, parseAwardReason } from "@/lib/procurement/award"
 import { pricedProducts } from "@/lib/procurement/offer-pricing"
 import { AWARD_REASON_CODES, addDays, todayOf, type PoBlock } from "@/lib/procurement/po"
-import { awardSummary, checkBreakdown, lowestForLines, offerTotal, type Picks } from "@/lib/procurement/rfq-award"
-import type { AwardReasonCode, ProcActor, ProcurementPolicies } from "@/lib/procurement/types"
+import { awardSummary, checkBreakdown, guestAwardRefusal, lowestForLines, offerTotal, type Picks } from "@/lib/procurement/rfq-award"
+import { Checkbox } from "@/components/ui/checkbox"
+import type { AwardReasonCode, ProcurementPolicies } from "@/lib/procurement/types"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { awardRfq, ProcWriteError, type AwardGroupInput, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
@@ -56,7 +59,7 @@ export function RfqAwardDialog({
   projectName: string | null
   offers: RfqOfferView[]
   picks: Picks
-  actor: ProcActor
+  actor: RfqWriteActor
   policies: ProcurementPolicies
   orgName: string | null
   blocksFor: (offer: RfqOfferView) => PoBlock[]
@@ -64,6 +67,7 @@ export function RfqAwardDialog({
   onDone: (done: AwardDone) => void
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tx = useTranslations("Portal.Procurement.rfqx")
   const tc = useTranslations("Portal.Contractor")
   const tProc = useTranslations("Portal.Procurement")
   const tShared = useTranslations("Portal.Shared")
@@ -84,6 +88,7 @@ export function RfqAwardDialog({
   const [reasonCode, setReasonCode] = useState<AwardReasonCode | "">("")
   const [reasonText, setReasonText] = useState("")
   const [budgetReason, setBudgetReason] = useState("")
+  const [acceptGuest, setAcceptGuest] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -99,6 +104,7 @@ export function RfqAwardDialog({
     setReasonCode("")
     setReasonText("")
     setBudgetReason("")
+    setAcceptGuest(false)
     setError(null)
     // Reset only when the dialog opens on a new set of picks.
   }, [open])
@@ -120,6 +126,7 @@ export function RfqAwardDialog({
     if (summary.offLowest.length && !reason) return t("award.err_reason_text")
     if (summary.groups.some((g) => !dates[g.offerId] || dates[g.offerId] < today)) return t("award.err_date")
     if (overBudget && budgetReason.trim().length < 8) return tc("offers_budget_reason_required")
+    if (guestAwardRefusal(unregistered, acceptGuest)) return tx("award.guest_block")
     return null
   })()
 
@@ -174,6 +181,7 @@ export function RfqAwardDialog({
           awardReason: reason,
           breakdown: needsBreakdown,
           policies,
+          acceptedGuest: acceptGuest,
         },
         { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName }
       )
@@ -335,7 +343,17 @@ export function RfqAwardDialog({
 
           {noQuote.length > 0 && <Callout tone="warn">{t("award.no_quote", { suppliers: noQuote.map(name).join(locale === "ar" ? "، " : ", ") })}</Callout>}
           {summary.unpicked.length > 0 && <Callout tone="info">{t("award.unpicked", { count: summary.unpicked.length })}</Callout>}
-          {unregistered.length > 0 && <Callout tone="warn">{tc("offers_guest_order_caveat")}</Callout>}
+          {unregistered.length > 0 && (
+            <div className="space-y-2">
+              <Callout tone="block" title={tx("award.guest_title")}>
+                {tx("award.guest_body", { suppliers: unregistered.map(name).join(locale === "ar" ? "، " : ", ") })}
+              </Callout>
+              <label className="flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-xs">
+                <Checkbox checked={acceptGuest} onCheckedChange={(v) => setAcceptGuest(v === true)} className="mt-0.5" />
+                <span>{tx("award.guest_accept")}</span>
+              </label>
+            </div>
+          )}
 
           {overBudget && budget && (
             <div className="space-y-2">

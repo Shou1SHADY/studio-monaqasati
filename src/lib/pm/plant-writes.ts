@@ -1,7 +1,8 @@
 // PM 1.0 — plant-on-site writes (WF-14). The handover, the off-hire request,
 // the desk's confirmation and the hand-back are `plant.request` (req); the day
 // log is the site record (`daily.write`). One transaction each, guard first;
-// the project numbers the units it receives. Nothing is ever deleted.
+// the project numbers the units it receives. Nothing is ever deleted. A unit
+// received against an equipment request closes that request in the same write.
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmAction, type PmContext } from "./access"
@@ -22,6 +23,7 @@ import {
   type PmPlant,
 } from "./plant"
 import { withFreshState } from "./project-writes"
+import { PM_PLANT as PM_PLANT_REQUESTS, plantNo as plantReqNo, plantReceivable, type PmPlantRequest } from "./supply"
 
 export class PmPlantError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -71,6 +73,8 @@ export interface HandoverInput extends NoteInput {
   from: string
   to: string
   licenceTo?: string | null
+  /** The equipment request it answers (`pmPlantRequests/{NN}`), when there is one. */
+  requestSeq?: number | null
 }
 
 const note = (input: NoteInput, actor: Actor, on: string) => ({
@@ -93,6 +97,13 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
     const today = todayDay()
     const blocks = handoverBlocks({ archived: fresh.archived, name: input.name, qty: input.qty, from: input.from, to: input.to, category: input.category, meter: input.meter, dayRate: input.dayRate, licenceTo: input.licenceTo, condition: input.condition, remark: input.remark, today })
     if (blocks.length) throw new PmPlantError("blocked", blocks)
+    let reqRef: ReturnType<typeof doc> | null = null
+    if (input.requestSeq) {
+      reqRef = doc(firestore, "projects", projectId, PM_PLANT_REQUESTS, plantReqNo(input.requestSeq))
+      const rs = await tx.get(reqRef)
+      if (!rs.exists()) throw new PmPlantError("missing")
+      if (!plantReceivable(rs.data() as PmPlantRequest)) throw new PmPlantError("blocked", ["not_receivable"])
+    }
     seq = (pm.plantCount ?? 0) + 1
     const plant: Omit<PmPlant, "id"> = {
       seq,
@@ -116,7 +127,8 @@ export async function receivePlant(firestore: Firestore, ctx: PmContext, project
       by: actor.uid,
       byName: actor.name,
     }
-    tx.set(doc(firestore, "projects", projectId, PM_PLANT, plantNo(seq)), { ...plant, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
+    tx.set(doc(firestore, "projects", projectId, PM_PLANT, plantNo(seq)), { ...plant, requestSeq: input.requestSeq ?? null, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
+    if (reqRef) tx.update(reqRef, { got: { plantSeq: seq, on: input.from, by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
     tx.update(ref, { pm: { ...pm, plantCount: seq }, updatedAt: serverTimestamp() })
   })
   return seq

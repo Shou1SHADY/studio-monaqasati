@@ -5,6 +5,8 @@ import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildSupplierInviteEmail, buildTeamInviteEmail } from "@/lib/email"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
+import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
+import { mayInviteSuppliers } from "@/lib/procurement/team"
 
 const bodySchema = z
   .object({
@@ -219,6 +221,17 @@ export async function POST(req: NextRequest) {
     // ========================== SUPPLIER INVITE ==========================
     if (senderBase.role !== "Contractor" && !isAdmin) {
       return errorResponse("Only contractors can invite suppliers", "FORBIDDEN", 403)
+    }
+    // The supplier file is the procurement manager's and the buyer's (the
+    // prototype's `CAN('sup')`): an expediter or a member outside Procurement
+    // does not put names on our list. A legacy account with no role is an owner.
+    if (!isAdmin) {
+      const role = !("organizationRole" in senderBase) ? "owner" : ((senderBase.organizationRole as string | null) || null)
+      const groupsSnap = role === "owner" ? null : await db.collection("teamGroups").where("organizationId", "==", senderOrgId).get()
+      const ctx = { organizationRole: role, defaultGroupId: (senderBase.defaultGroupId as string | null) || null, groups: (groupsSnap?.docs || []).map((d) => ({ id: d.id, ...d.data() }) as TeamGroup) }
+      if (!mayInviteSuppliers((p) => resolveCan(p, ctx))) {
+        return errorResponse("Only the procurement manager or a buyer can invite suppliers", "FORBIDDEN", 403)
+      }
     }
     const contractorOrgId = senderOrgId
     const contractorName = senderOrgName

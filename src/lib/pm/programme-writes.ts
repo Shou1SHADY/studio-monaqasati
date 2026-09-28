@@ -26,6 +26,7 @@ export interface ActivityInput {
   to: string
   itemIds: string[]
   pred: string | null
+  permit?: boolean
 }
 
 type ProjectData = { organizationId?: string; status?: string; projectManagerId?: string | null; pm?: { lifecycle?: string; activityCount?: number } & Record<string, unknown> }
@@ -63,6 +64,7 @@ export async function addActivity(firestore: Firestore, ctx: PmContext, projectI
       to: input.to,
       itemIds: input.itemIds,
       pred: input.pred || null,
+      permit: Boolean(input.permit),
       by: actor.uid,
       byName: actor.name,
       at: new Date().toISOString(),
@@ -84,6 +86,6 @@ export async function updateActivity(firestore: Firestore, ctx: PmContext, proje
     if (!(await tx.get(aRef)).exists()) throw new PmActivityError("missing")
     const blocks = activityBlocks({ ...input, id }, others)
     if (blocks.length) throw new PmActivityError("blocked", blocks)
-    tx.update(aRef, { name: input.name.trim(), from: input.from, to: input.to, itemIds: input.itemIds, pred: input.pred || null, updatedAt: serverTimestamp() })
+    tx.update(aRef, { name: input.name.trim(), from: input.from, to: input.to, itemIds: input.itemIds, pred: input.pred || null, permit: Boolean(input.permit), updatedAt: serverTimestamp() })
   })
 }

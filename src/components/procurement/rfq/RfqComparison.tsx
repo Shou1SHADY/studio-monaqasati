@@ -25,6 +25,8 @@ import { moneyFigure } from "@/components/procurement/PoModel"
 import { supplierNameOf, termsOf, type RfqOfferView, type RfqView } from "./rfqOfferView"
 
 const NOTE_TONE = { bad: "block", warn: "warn", info: "info" } as const
+/** The prototype shows the six notes that matter most — the list is ordered by weight. */
+const MAX_NOTES = 6
 
 export function leadDaysOf(o: Pick<RfqOfferView, "executionDuration" | "executionDurationUnit">): number | null {
   const n = parseInt(String(o.executionDuration ?? ""), 10)
@@ -78,6 +80,7 @@ export function RfqComparison({
   onAskRound: () => void
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")
+  const tx = useTranslations("Portal.Procurement.rfqx")
   const tc = useTranslations("Portal.Contractor")
   const locale = useLocale()
   const termsText = useTermsText()
@@ -156,6 +159,7 @@ export function RfqComparison({
                           <span className="text-warning">
                             {" · "}
                             {t("cmp.keyed_by", { name: o.recordedByName || "—" })}
+                            {o.recordedEarly && ` · ${tx("cmp.before_close")}`}
                             {!o.offerPdfUrl && !o.manualProofUrl && ` · ${t("cmp.no_attachment")}`}
                           </span>
                         )}
@@ -279,7 +283,7 @@ export function RfqComparison({
 
       {notes.length > 0 && (
         <div className="space-y-2" aria-label={t("cmp.notes_label")}>
-          {notes.map((n, i) => (
+          {notes.slice(0, MAX_NOTES).map((n, i) => (
             <Callout key={`${n.code}-${i}`} tone={NOTE_TONE[n.tone]}>
               {t(`note.${n.code}`, noteParams(n, locale))}
             </Callout>

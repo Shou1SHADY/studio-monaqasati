@@ -260,7 +260,7 @@ export async function certifyCertificate(
       ...amounts,
       certified: amounts.gross,
       cut,
-      cutReason: cut > 0 ? input.reason?.trim() ?? null : null,
+      cutReason: cut > 0 ? (input.reason ?? null) : null,
       consultantRef: input.consultantRef?.trim() || null,
       certOn,
       certBy: actor.uid,

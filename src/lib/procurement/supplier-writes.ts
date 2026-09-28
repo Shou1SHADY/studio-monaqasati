@@ -7,7 +7,8 @@
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch, type Firestore } from "firebase/firestore"
 import {
   SUPPLIER_RECORDS,
-  isProcManager,
+  canManageSuppliers,
+  canVouchSuppliers,
   recordErrors,
   recordFields,
   supplierRecordId,
@@ -42,7 +43,8 @@ export interface DirectorySupplier {
  * unverified record waiting for the manager. A record we already keep (he was
  * ours before, and the connection was ended) is left as it is — its
  * verification and its log stay true. */
-export async function addFromDirectory(firestore: Firestore, actor: ProcActor, orgId: string, s: DirectorySupplier, now = new Date()): Promise<void> {
+export async function addFromDirectory(firestore: Firestore, actor: ProcActor, orgId: string, s: DirectorySupplier, now = new Date(), ownerHasTeam = false): Promise<void> {
+  if (!canManageSuppliers(actor, ownerHasTeam)) throw new SupplierWriteError("no_permission")
   const at = now.toISOString()
   const links = await getDocs(query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", orgId), where("supplierOrgId", "==", s.orgId)))
   if (links.docs.some((d) => d.data().status === "active")) throw new SupplierWriteError("already_ours")
@@ -80,12 +82,12 @@ export async function addFromDirectory(firestore: Firestore, actor: ProcActor, o
   await batch.commit()
 }
 
-export async function verifySupplier(firestore: Firestore, actor: ProcActor, orgId: string, supplierOrgId: string, profileVat: string | null, now = new Date()): Promise<void> {
+export async function verifySupplier(firestore: Firestore, actor: ProcActor, orgId: string, supplierOrgId: string, profileVat: string | null, now = new Date(), ownerHasTeam = false): Promise<void> {
   const ref = doc(firestore, SUPPLIER_RECORDS, supplierRecordId(orgId, supplierOrgId))
   await runTransaction(firestore, async (tx) => {
     const snap = await tx.get(ref)
     const record = snap.exists() ? (snap.data() as SupplierRecord) : null
-    const refusal = verifyRefusal(actor, record, (record?.vatNumber || "").trim() || profileVat)
+    const refusal = verifyRefusal(actor, record, (record?.vatNumber || "").trim() || profileVat, ownerHasTeam)
     if (refusal) throw new SupplierWriteError(refusal)
     const at = now.toISOString()
     tx.update(ref, {
@@ -104,9 +106,10 @@ export async function saveSupplierRecord(
   orgId: string,
   supplier: { orgId: string; name: string },
   input: RecordInput,
-  now = new Date()
+  now = new Date(),
+  ownerHasTeam = false
 ): Promise<void> {
-  if (!isProcManager(actor)) throw new SupplierWriteError("no_permission")
+  if (!canVouchSuppliers(actor, ownerHasTeam)) throw new SupplierWriteError("no_permission")
   const errors = recordErrors(input)
   if (errors.length) throw new SupplierWriteError(errors[0])
   const ref = doc(firestore, SUPPLIER_RECORDS, supplierRecordId(orgId, supplier.orgId))

@@ -14,6 +14,7 @@
 // held for it. Received quantities come from the project-side receipt, which is
 // the project's own act. Pure.
 
+import type { PmAttachment } from "./attachments"
 import { sampleStateOf } from "./sample"
 import { itemProgress, materialKeyOf, r2, ratedOn, storeBalance, type PmStoreLine, type StoreItem } from "./store"
 
@@ -56,6 +57,18 @@ export interface ReqReceipt {
   dn?: string | null
   note?: string | null
   short?: boolean
+  /** The delivery note photographed, or the material itself. */
+  files?: PmAttachment[]
+}
+
+/** Inventory's reply on a line, through Procurement: issued from a main store,
+ * or not — with the reason, and then it is bought. Written by Inventory's desk. */
+export interface ReqInventoryReply {
+  k: "issue" | "none"
+  q?: number | null
+  why?: string | null
+  on: string
+  byName?: string | null
 }
 
 export interface ReqLine {
@@ -71,6 +84,7 @@ export interface ReqLine {
   chg?: ReqChange | null
   cl?: ReqClose | null
   receipts?: ReqReceipt[]
+  inv?: ReqInventoryReply | null
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected"
@@ -177,6 +191,15 @@ export function reqPct(r: Pick<PmMaterialRequest, "lines">): number {
 }
 
 export const openChanges = (r: Pick<PmMaterialRequest, "lines">) => r.lines.filter(held)
+
+/** What a change line offers its decider. A line put on the client waits on the
+ * client: «على حسابنا» and «أوقِف» come back only once the client rejected its
+ * variation. Above the decider's riyal limit «على حسابنا» is the owner's. */
+export function changeOptions(input: { line: ReqLine; voStatus: string | null; estimate: number | null; limit: number }): { decide: boolean; clientRejected: boolean; usOverLimit: boolean } {
+  const st = input.line.chg?.st
+  const clientRejected = st === "own" && input.voStatus === "rej"
+  return { decide: st === "wait", clientRejected, usOverLimit: input.estimate !== null && input.estimate > input.limit }
+}
 
 /** Where one line stands. prop expected (awaiting approval) · held a change
  * awaiting the manager · refused the change was rejected · ask with Procurement ·
@@ -502,6 +525,7 @@ export interface PmPetty {
   supplier: string
   amount: number
   receipt: string | null
+  files?: PmAttachment[]
   day: string
   by: string
   byName?: string | null
@@ -553,6 +577,56 @@ export interface PmPlantRequest {
   decidedBy?: string | null
   decidedByName?: string | null
   decidedOn?: string | null
+  /** The plant desk's reply as the site recorded it (there is no desk module yet). */
+  rep?: PlantReply | null
+  /** Received on site: the unit it became in `pmPlant`. */
+  got?: { plantSeq: number; on: string; by: string; byName?: string | null } | null
+}
+
+/** alloc a unit of our fleet · late busy until a date · alt an alternative offered ·
+ * none not in our fleet · hire sent to Procurement as a timed hire. */
+export const PLANT_REPLIES = ["alloc", "late", "alt", "none"] as const
+export type PlantReplyKind = (typeof PLANT_REPLIES)[number] | "hire"
+
+export interface PlantReply {
+  k: PlantReplyKind
+  /** alloc: the unit's tag · late: free from (date) · alt: what was offered. */
+  unit?: string | null
+  free?: string | null
+  text?: string | null
+  on: string
+  by: string
+  byName?: string | null
+}
+
+export type PlantReplyBlock = "archived" | "not_with_desk" | "replied" | "no_kind" | "no_unit" | "no_free" | "no_text" | "future"
+
+/** Recording the desk's reply: once, on an approved request not yet replied to. */
+export function plantReplyBlocks(input: { archived: boolean; r: Pick<PmPlantRequest, "status" | "rep">; k: PlantReplyKind | null; unit?: string | null; free?: string | null; text?: string | null; on: string; today: string }): PlantReplyBlock[] {
+  const out: PlantReplyBlock[] = []
+  if (input.archived) out.push("archived")
+  if (input.r.status !== "go") out.push("not_with_desk")
+  else if (input.r.rep) out.push("replied")
+  if (!input.k || input.k === "hire") out.push("no_kind")
+  else if (input.k === "alloc" && !input.unit?.trim()) out.push("no_unit")
+  else if (input.k === "late" && !input.free) out.push("no_free")
+  else if (input.k === "alt" && !input.text?.trim()) out.push("no_text")
+  if (!input.on || input.on > input.today) out.push("future")
+  return out
+}
+
+/** Received on site once allocated from our fleet or hired in its place. */
+export const plantReceivable = (r: Pick<PmPlantRequest, "status" | "rep" | "got">) => r.status === "go" && !r.got && (r.rep?.k === "alloc" || r.rep?.k === "alt" || r.rep?.k === "hire")
+
+/** «استأجر بدلها»: the fleet cannot serve it (busy or none) — the approver sends it to Procurement. */
+export const plantHireable = (r: Pick<PmPlantRequest, "status" | "rep" | "got">) => r.status === "go" && !r.got && (r.rep?.k === "late" || r.rep?.k === "none")
+
+/** The pill a request shows. */
+export function plantState(r: Pick<PmPlantRequest, "status" | "rep" | "got">): "wait" | "rej" | "desk" | "alloc" | "late" | "alt" | "none" | "hire" | "got" {
+  if (r.status === "wait") return "wait"
+  if (r.status === "rej") return "rej"
+  if (r.got) return "got"
+  return r.rep?.k ?? "desk"
 }
 
 export const plantNo = (seq: number) => String(seq).padStart(2, "0")

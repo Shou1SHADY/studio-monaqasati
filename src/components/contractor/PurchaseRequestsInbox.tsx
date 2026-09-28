@@ -177,6 +177,7 @@ export function PurchaseRequestsInbox() {
     const live = m && (m.request.state === "sent" || m.request.state === "ordered")
     return {
       canAct: canAct && inBuyerScope(row, desk.viewerCategories),
+      canRfq: canStartRfq,
       seesPrices: procActor.seesPrices,
       onRfq: (r: NeedRow) => router.push(rfqHref(siblings(r))),
       onOrder: (r: NeedRow, mode: "agreement" | "direct") => setOrdering({ rows: siblings(r), mode }),
@@ -369,6 +370,7 @@ export function PurchaseRequestsInbox() {
       {proceeding && <ProceedPurchaseDialog rows={proceeding} actor={procActor} onClose={() => setProceeding(null)} />}
       {asking && asking.need.source.kind === "project_request" && (
         <PrRouteToMfgDialog
+          makeOrBuy
           request={{ id: asking.need.source.purchaseRequestId || "", title: asking.need.refLabel, items: asking.need.lines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit })), notes: asking.need.note }}
           projectId={asking.need.projectId || ""}
           projectName={asking.need.projectName || ""}

@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { SupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
+import type { PmAttachment } from "@/lib/pm/attachments"
 import { todayDay } from "@/lib/pm/format"
 import { addDays } from "@/lib/pm/programme"
 import { itemMaterials, lineDays, lineGot, lineKind, lineNeed, lineOut, linePhase, reqNo, reqTitle, CLOSE_WHY, type CloseWhy, type LineDraft, type PmMaterialRequest } from "@/lib/pm/supply"
@@ -29,6 +30,7 @@ import { materialKeyOf, r2, ratedOn, storeBalance, type StoreItem } from "@/lib/
 import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import { createMaterialRequest, decideChange, PmSupplyError, receiveOnProject, rejectMaterialRequest, stopLine, type SupplyActor } from "@/lib/pm/supply-writes"
 import { ChoiceChips, FormHint } from "./ContractBits"
+import { PmFilesField } from "./PmAttachments"
 
 export type SupplyItem = StoreItem & { division?: string; pmSample?: boolean | null; pmSub?: string | null }
 
@@ -311,7 +313,26 @@ function LineEditor({
 
 // ── Receiving on the project ─────────────────────────────────────────────────
 
-export function ReceiveDialog({ projectId, access, actor, request, index, onClose }: { projectId: string; access: PmAccess; actor: SupplyActor; request: PmMaterialRequest; index: number; onClose: () => void }) {
+export function ReceiveDialog({
+  projectId,
+  orgId,
+  withStore = true,
+  access,
+  actor,
+  request,
+  index,
+  onClose,
+}: {
+  projectId: string
+  orgId?: string | null
+  /** The project keeps a store — else the receipt is expensed to site overheads. */
+  withStore?: boolean
+  access: PmAccess
+  actor: SupplyActor
+  request: PmMaterialRequest
+  index: number
+  onClose: () => void
+}) {
   const t = useTranslations("Portal.PM")
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
@@ -322,6 +343,7 @@ export function ReceiveDialog({ projectId, access, actor, request, index, onClos
   const [dn, setDn] = useState("")
   const [note, setNote] = useState("")
   const [short, setShort] = useState(false)
+  const [files, setFiles] = useState<PmAttachment[]>([])
   const a = Number(acc) || 0
   const r = Number(rej) || 0
   const over = a > left + 0.005
@@ -335,7 +357,7 @@ export function ReceiveDialog({ projectId, access, actor, request, index, onClos
     const done = await run(
       "rcv",
       async () => {
-        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, dn, note, short })
+        grn = await receiveOnProject(firestore, access.ctx, projectId, actor, request.id, index, { acc: a, rej: r, dn, note, short, files, withStore })
       },
       () => t(dn.trim() ? "sup.rcv.done" : "sup.rcv.done_no_dn", { no: grn, q: qty(a), unit: line.unit, name: line.name })
     )
@@ -390,7 +412,8 @@ export function ReceiveDialog({ projectId, access, actor, request, index, onClos
               <span className="text-xs text-muted-foreground">{t("sup.rcv.short_hint")}</span>
             </span>
           </label>
-          <Callout tone="info">{line.itemId ? t("sup.rcv.enters_store") : t("sup.rcv.expensed")}</Callout>
+          <PmFilesField orgId={orgId} folder={`projects/${projectId}/receipts`} value={files} onChange={setFiles} label={t("sup.rcv.files")} hint={t("sup.rcv.files_hint")} />
+          <Callout tone="info">{line.itemId && withStore ? t("sup.rcv.enters_store") : t("sup.rcv.expensed")}</Callout>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={busy !== null}>

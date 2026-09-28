@@ -175,7 +175,7 @@ export const WAIT_CAP = 4
 
 export type WaitModule = "proc" | "fin" | "inv" | "crm"
 
-export type WaitKind = "po" | "request" | "request_rfq" | "cert_invoice" | "retention" | "crm_returned"
+export type WaitKind = "po" | "request" | "request_rfq" | "cert_invoice" | "retention" | "crm_returned" | "store_return"
 
 export interface WaitRow {
   id: string
@@ -221,7 +221,7 @@ export function poWaitRows(
 
 /** A project's approved material request that Procurement has not answered with an order yet. */
 export function requestWaitRows(
-  requests: Array<{ id: string; title: string; status: string; withdrawn?: boolean; rfqId?: string | null; rfqNumber?: string | null; poId?: string | null; mfgRequestId?: string | null; approvedOn?: string | null; day?: string | null; lines: Array<{ cl?: unknown }> }>,
+  requests: Array<{ id: string; title: string; status: string; withdrawn?: boolean; rfqId?: string | null; rfqNumber?: string | null; poId?: string | null; mfgRequestId?: string | null; approvedOn?: string | null; day?: string | null; needBy?: string | null; lines: Array<{ cl?: unknown }> }>,
   projectId: string,
   today: string
 ): WaitRow[] {
@@ -229,6 +229,8 @@ export function requestWaitRows(
     .filter((r) => r.status === "approved" && !r.withdrawn && !r.poId && !r.mfgRequestId && r.lines.some((l) => !l.cl))
     .map((r): WaitRow => {
       const age = ageOf(r.approvedOn ?? r.day, today)
+      // Late when it has waited, or when the site needs it within three days (the prototype's need ≤ 3).
+      const needSoon = Boolean(d10(r.needBy)) && daysBetween(today, d10(r.needBy)) <= WAIT_LATE_DAYS
       return {
         id: `req:${r.id}`,
         module: "proc",
@@ -236,11 +238,38 @@ export function requestWaitRows(
         params: { title: r.title, rfq: r.rfqNumber ?? "" },
         sub: { kind: "request_items", params: { count: r.lines.filter((l) => !l.cl).length } },
         age,
-        late: age >= WAIT_LATE_DAYS,
+        late: age >= WAIT_LATE_DAYS || needSoon,
         projectId,
         tab: "pmReq",
       }
     })
+}
+
+/** Material the site sent back to a main warehouse that the keeper has not received yet (prj:RET). */
+export function storeWaitRows(
+  stores: Array<{ id: string; name: string; unit: string; moves: Array<{ t: string; st?: string | null; q: number; on: string; warehouseName?: string | null }> }>,
+  projectId: string,
+  today: string
+): WaitRow[] {
+  return stores.flatMap((x) =>
+    x.moves
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => m.t === "ret" && m.st === "wait")
+      .map(({ m, i }): WaitRow => {
+        const age = ageOf(m.on, today)
+        return {
+          id: `inv:${x.id}:${i}`,
+          module: "inv",
+          kind: "store_return",
+          params: { name: x.name, q: m.q, unit: x.unit },
+          sub: { kind: "store_return_to", params: { wh: m.warehouseName || "—" } },
+          age,
+          late: age >= WAIT_LATE_DAYS,
+          projectId,
+          tab: "pmStore",
+        }
+      })
+  )
 }
 
 /** Finance's side: a certified certificate not yet in the books (the tax invoice
@@ -255,6 +284,9 @@ export function financeWaitRows(
     released: ReadonlySet<string>
     /** Certificates still collectable ("appr") by project and number — a paid one waits on nobody. */
     open?: ReadonlySet<string>
+    /** Accounting is off: nothing is ever posted, so a row says Finance works outside the books,
+     * and a certificate waits only while it is still collectable (`open`). */
+    booksOff?: boolean
     today: string
   }
 ): WaitRow[] {
@@ -266,11 +298,11 @@ export function financeWaitRows(
     if (e.kind === "IPC") {
       const seq = Number(e.params.certificate) || 0
       if (f.open && !f.open.has(`${e.projectId}:${seq}`)) continue
-      out.push({ id: `fin:${docId}`, module: "fin", kind: "cert_invoice", params: { no: two(seq) }, sub: { kind: "sent_on", params: { date: d10(e.at) } }, amount: Number(e.params.net) || e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "ipc" })
+      out.push({ id: `fin:${docId}`, module: "fin", kind: "cert_invoice", params: { no: two(seq) }, sub: { kind: f.booksOff ? "books_off" : "sent_on", params: { date: d10(e.at) } }, amount: Number(e.params.net) || e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "ipc" })
     } else if (e.kind === "HND" && e.amount > 0) {
       const stage = String(e.params.stage) === "final" ? "final" : "prov"
       if (stage === "final" && f.released.has(e.projectId)) continue
-      out.push({ id: `fin:${docId}`, module: "fin", kind: "retention", params: { stage }, sub: { kind: "retention_desk", params: {} }, amount: e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "pmClose" })
+      out.push({ id: `fin:${docId}`, module: "fin", kind: "retention", params: { stage }, sub: { kind: f.booksOff ? "retention_books_off" : "retention_desk", params: {} }, amount: e.amount, age, late: age >= WAIT_LATE_DAYS, projectId: e.projectId, tab: "pmClose" })
     }
   }
   return out

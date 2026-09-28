@@ -57,8 +57,12 @@ export interface PmFileProject {
     terms?: ContractTerms
     original?: ContractTerms | null
     acceptances?: { prov?: { on: string } | null } | null
+    holdSince?: string | null
+    holdWhy?: string | null
   } | null
 }
+
+const dayGap = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000))
 
 const useClaims = (projectId: string) => {
   const firestore = useFirestore()
@@ -80,7 +84,12 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
   const [consultant, setConsultant] = useState("")
   const [busy, setBusy] = useState(false)
   const pm = project.pm ?? {}
-  const terms = pm.terms ?? defaultTerms()
+  // The terms IN FORCE (original + signed addenda) — addenda are read by money or approve only.
+  const seesAddenda = access.has("money") || access.has("approve")
+  const addQ = useMemoFirebase(() => (firestore && seesAddenda ? collection(firestore, "projects", projectId, PM_ADDENDA) : null), [firestore, projectId, seesAddenda])
+  const { data: addenda } = useCollection(addQ)
+  const terms = inForce(pm.original ?? pm.terms ?? defaultTerms(), (addenda ?? []) as unknown as PmAddendum[])
+  const onHold = lifecycleOf(project) === "hold"
   const eot = grantedDays(claims)
   const start = (pm.startedAt ?? pm.startOn ?? "").slice(0, 10) || null
   const dur = pm.durationDays ?? 0
@@ -136,6 +145,21 @@ export function PmInfoPanel({ projectId, project, access }: { projectId: string;
       <KeyValueRow label={t("info.location")} value={project.location || "—"} />
       <KeyValueRow label={t("info.consultant")} value={project.consultant || "—"} />
       <KeyValueRow label={t("info.manager")} value={project.projectManagerName || "—"} />
+      {onHold && (pm.holdWhy || pm.holdSince) && (
+        <KeyValueRow
+          label={t("info.hold_why")}
+          value={
+            <span className="block text-end">
+              <b dir="auto">{pm.holdWhy || "—"}</b>
+              {pm.holdSince && (
+                <span className="block text-xs text-muted-foreground">
+                  {t("info.hold_since", { date: pmDate(pm.holdSince, locale), days: t("days", { count: dayGap(pm.holdSince, todayDay()) }) })}
+                </span>
+              )}
+            </span>
+          }
+        />
+      )}
       <KeyValueRow
         label={t("info.start_duration")}
         value={

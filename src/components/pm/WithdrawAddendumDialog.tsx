@@ -19,6 +19,7 @@ import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
 import { addendumNo, WITHDRAW_REASONS, withdrawBlocks, type PmAddendum, type WithdrawReason } from "@/lib/pm/addenda"
 import { PmAddendumError, withdrawAddendum, type AddendumActor } from "@/lib/pm/addendum-writes"
+import { TermChangeList } from "./TermChangeList"
 
 export function WithdrawAddendumDialog({
   open,
@@ -75,6 +76,10 @@ export function WithdrawAddendumDialog({
           <DialogDescription>{t("amend.withdraw_desc")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          <div className="rounded-xl border bg-muted/30 px-3 py-2">
+            <p className="text-xs font-semibold text-muted-foreground">{t("amend.withdraw_changes")}</p>
+            <TermChangeList changes={addendum.changes} className="mt-1 text-xs" />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="amd-wd-reason">{t("amend.reason")}</Label>
             <Select value={reason ?? ""} onValueChange={(v) => setReason(v as WithdrawReason)} disabled={busy}>

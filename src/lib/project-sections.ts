@@ -30,10 +30,10 @@ export interface SectionDef {
 
 export const SECTION_IDS = [
   "contract", "procure", "docs",
-  "receive", "store", "mats",
-  "invoice", "pay", "cost", "ipc", "collect",
-  "mfg", "daily", "progress", "vo", "subs", "wwp", "eqp",
-  "qa", "hse", "rfi",
+  "receive", "store", "mats", "subm", "petty", "price",
+  "invoice", "pay", "cost", "ipc", "collect", "cvr", "match",
+  "mfg", "daily", "progress", "sched", "vo", "claim", "subs", "wwp", "eqp",
+  "qa", "hse", "rfi", "corr", "close",
 ] as const
 export type SectionId = (typeof SECTION_IDS)[number]
 
@@ -45,24 +45,33 @@ export const SECTION_REGISTRY: Record<SectionId, SectionDef> = {
   receive: { id: "receive", group: "materials", required: false, dependsOn: [], stages: ["recv"], reconciliationId: "r2", source: "auto", status: "built", tabRoute: null },
   store: { id: "store", group: "materials", required: false, dependsOn: ["receive"], stages: [], reconciliationId: "r3", source: "man", status: "built", tabRoute: "warehouse" },
   mats: { id: "mats", group: "materials", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "ghost", tabRoute: "materials" },
+  subm: { id: "subm", group: "materials", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
+  petty: { id: "petty", group: "materials", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
+  price: { id: "price", group: "materials", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "built", tabRoute: null },
 
   invoice: { id: "invoice", group: "money", required: false, dependsOn: ["receive"], stages: ["inv"], reconciliationId: "r4", source: "auto", status: "ghost", tabRoute: "invoices" },
   pay: { id: "pay", group: "money", required: false, dependsOn: ["invoice"], stages: ["paid"], reconciliationId: "r7", source: "auto", status: "ghost", tabRoute: "payments" },
   cost: { id: "cost", group: "money", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "ghost", tabRoute: "cost" },
   ipc: { id: "ipc", group: "money", required: false, dependsOn: ["progress"], stages: ["claim"], reconciliationId: "r5", source: "mix", status: "built", tabRoute: "ipc" },
   collect: { id: "collect", group: "money", required: false, dependsOn: ["ipc"], stages: ["coll"], reconciliationId: "r6", source: "mix", status: "built", tabRoute: "ipc" },
+  cvr: { id: "cvr", group: "money", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "built", tabRoute: null },
+  match: { id: "match", group: "money", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "auto", status: "built", tabRoute: null },
 
   mfg: { id: "mfg", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "mfg" },
   daily: { id: "daily", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "daily" },
-  progress: { id: "progress", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "ghost", tabRoute: "progress" },
-  vo: { id: "vo", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "ghost", tabRoute: "vo" },
+  progress: { id: "progress", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "progress" },
+  sched: { id: "sched", group: "execution", required: false, dependsOn: ["progress"], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
+  vo: { id: "vo", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "built", tabRoute: "vo" },
+  claim: { id: "claim", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
   subs: { id: "subs", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "mix", status: "built", tabRoute: "subs" },
   wwp: { id: "wwp", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
   eqp: { id: "eqp", group: "execution", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
 
-  qa: { id: "qa", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "ghost", tabRoute: "qa" },
+  qa: { id: "qa", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "qa" },
   hse: { id: "hse", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "hse" },
   rfi: { id: "rfi", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: "rfi" },
+  corr: { id: "corr", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
+  close: { id: "close", group: "governance", required: false, dependsOn: [], stages: [], reconciliationId: null, source: "man", status: "built", tabRoute: null },
 }
 
 export function sectionLabelKey(id: SectionId): string {

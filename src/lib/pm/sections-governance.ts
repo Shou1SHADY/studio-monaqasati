@@ -2,20 +2,28 @@
 // Switching a section off is not hiding a tab: its decisions, alerts and gate
 // go silent while the work on site carries on. So, before it goes: a census of
 // what it holds now (count and riyals), what the system will stop telling you,
-// and the blockers — money and custody block (stock in the project store, an
-// uncollected certificate, a subcontractor still owed or awaiting approval),
+// and the blockers — money and custody block (stock in the project's own store
+// `pmStore`, plant still on site, an uncollected certificate, a subcontractor
+// still owed or awaiting approval),
 // open paperwork only warns. A reason is mandatory ("other" stated) and every
 // switch is logged with who, what, when and why. Nothing is deleted: switching
 // back restores it. Switching on is immediate, with its dependencies. Core
 // sections never switch off. By `approve`, never on an archived project.
 
-import { collection, doc, getDoc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
-import { subDues } from "./closeout"
+import { openClaims, PM_CLAIMS, type ClaimStatus } from "./claim"
+import { storeDocOf, storeHoldings, storeItemOf, subDues } from "./closeout"
 import { PM_DOCS } from "./documents"
 import { PM_INSPECTIONS } from "./inspection"
+import { onSite, plantCost, PM_PLANT, type PmPlant } from "./plant"
+import { PM_ACTIVITIES } from "./programme"
+import { PM_STORE } from "./store"
+import { PM_PLANT as PM_PLANT_REQUESTS } from "./supply"
+import { PM_WEEKS } from "./weekly-plan"
+import { lastPaid, PRICE_HISTORY, type PriceHistoryEntry } from "../procurement/prices"
 import { withFreshState } from "./project-writes"
 import { isOpenPunch, PM_PUNCH, type PunchStatus } from "./punch"
 import { PM_DAILY, PM_INCIDENTS, PM_OBSTACLES, PM_PERMITS } from "./site"
@@ -30,7 +38,7 @@ export type SectionOffReason = (typeof SECTION_OFF_REASONS)[number]
 /** Reasons written before the list was aligned — still read in the log. */
 export const LEGACY_OFF_REASONS = ["not_in_contract", "client_scope", "subcontracted"] as const
 
-export type SectionBlocker = "store_stock" | "uncollected" | "sub_dues"
+export type SectionBlocker = "store_stock" | "plant_on_site" | "uncollected" | "sub_dues"
 
 export interface SectionFacts {
   /** Lines with stock left in the project's own store. */
@@ -55,6 +63,13 @@ export interface SectionFacts {
   voApproved?: number
   wirOpen?: number
   punchOpen?: number
+  claimsOpen?: number
+  activities?: number
+  weeks?: number
+  /** Plant still on site in the project's custody — it blocks switching `eqp` off. */
+  plantOnSite?: number
+  plantCharged?: number
+  plantRequestsOpen?: number
 }
 
 export const NO_FACTS: SectionFacts = { storeLines: 0, uncollected: 0 }
@@ -65,6 +80,7 @@ const subOwed = (f: SectionFacts) => (f.subDue ?? 0) > 0.5 || (f.subPending ?? 0
 export function switchOffBlockers(turnedOff: SectionId[], facts: SectionFacts): SectionBlocker[] {
   const out: SectionBlocker[] = []
   if (turnedOff.includes("store") && facts.storeLines > 0) out.push("store_stock")
+  if (turnedOff.includes("eqp") && (facts.plantOnSite ?? 0) > 0) out.push("plant_on_site")
   if ((turnedOff.includes("ipc") || turnedOff.includes("collect")) && facts.uncollected > 0) out.push("uncollected")
   if (turnedOff.includes("subs") && subOwed(facts)) out.push("sub_dues")
   return out
@@ -96,6 +112,7 @@ export interface BlockerDetail {
 export function blockerDetails(turnedOff: SectionId[], f: SectionFacts): BlockerDetail[] {
   const out: BlockerDetail[] = []
   if (turnedOff.includes("store") && f.storeLines > 0) out.push({ key: "store_stock", section: "store", n: f.storeLines, amount: f.storeValue ?? null })
+  if (turnedOff.includes("eqp") && (f.plantOnSite ?? 0) > 0) out.push({ key: "plant_on_site", section: "eqp", n: f.plantOnSite ?? 0, amount: null })
   const money = turnedOff.find((id) => id === "ipc" || id === "collect")
   if (money && f.uncollected > 0) out.push({ key: "uncollected", section: money, n: f.uncollected, amount: f.uncollectedAmount ?? null })
   if (turnedOff.includes("subs") && subOwed(f)) out.push({ key: "sub_dues", section: "subs", n: f.subPending ?? 0, amount: f.subDue ?? 0 })
@@ -145,13 +162,21 @@ export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
   }
   if (id === "daily") add("daily", f.daily)
   if (id === "rfi") add("obstacles_open", f.obstaclesOpen, "w")
+  if (id === "claim") add("claims_open", f.claimsOpen, "w")
+  if (id === "progress") add("activities", f.activities)
+  if (id === "wwp") add("weeks", f.weeks)
+  if (id === "eqp") {
+    add("plant_on_site", f.plantOnSite, "r")
+    add("plant_charged", f.plantCharged, "", true)
+    add("plant_requests", f.plantRequestsOpen, "w")
+  }
   if (id === "docs") add("docs", f.docs)
   return out
 }
 
 /** Sections with their own "what goes silent" sentence (SECLOSS); the rest say
  * their screen and decisions disappear. */
-export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive"])
+export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive", "claim", "wwp", "eqp"])
 
 /** Sections another module owns: we only read them here (the prototype's «يُقرأ من»). */
 export type SectionOwner = "procurement" | "finance" | "manufacturing"
@@ -205,18 +230,20 @@ export class PmSectionsError extends Error {
   }
 }
 
-const num = (v: unknown) => {
-  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
-  return Number.isFinite(n) ? n : 0
-}
-
 /** What the census and the blockers need, read now. A collection this reader
- * may not see counts as empty in the census; the write reads again. */
-export async function readSectionFacts(firestore: Firestore, projectId: string, warehouseId: string | null | undefined): Promise<SectionFacts> {
+ * may not see counts as empty in the census; the write reads again. The store
+ * is the project's own ledger (`pmStore`, balances from the BOQ's progress) — a
+ * company warehouse is not the project's custody, so the third argument (the
+ * project's warehouse, from before the ledger) is ignored. */
+export async function readSectionFacts(firestore: Firestore, projectId: string, _warehouseId?: string | null): Promise<SectionFacts> {
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name)).catch(() => null)
-  const [certs, store, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch] = await Promise.all([
+  const pSnap = await getDoc(doc(firestore, "projects", projectId)).catch(() => null)
+  const orgId = (pSnap?.exists() ? (pSnap.data() as { organizationId?: string }).organizationId : null) ?? null
+  const [certs, store, boq, history, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch, claims, acts, weeks, plant, plantReqs] = await Promise.all([
     col(PM_CERTIFICATES),
-    warehouseId ? getDocs(collection(firestore, "warehouses", warehouseId, "inventoryItems")).catch(() => null) : Promise.resolve(null),
+    col(PM_STORE),
+    col("boqItems"),
+    orgId ? getDocs(query(collection(firestore, PRICE_HISTORY), where("organizationId", "==", orgId))).catch(() => null) : Promise.resolve(null),
     col(PM_SUBCONTRACTS),
     col(PM_SUB_CERTIFICATES),
     col(PM_DOCS),
@@ -227,16 +254,27 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     col(PM_VARIATIONS),
     col(PM_INSPECTIONS),
     col(PM_PUNCH),
+    col(PM_CLAIMS),
+    col(PM_ACTIVITIES),
+    col(PM_WEEKS),
+    col(PM_PLANT),
+    col(PM_PLANT_REQUESTS),
   ])
   const certList = (certs?.docs ?? []).map((d) => d.data() as PmCertificate & { collected?: number | null })
   const open = certList.filter((c) => (c.status === "appr" || c.status === "part") && (c.collected ?? 0) < 1)
-  const stock = (store?.docs ?? []).map((d) => d.data() as { quantity?: unknown; unitCost?: unknown }).filter((d) => num(d.quantity) > 0)
+  const priceRows = (history?.docs ?? []).map((d) => d.data() as PriceHistoryEntry)
+  const held = storeHoldings(
+    (store?.docs ?? []).map((d) => storeDocOf(d.id, d.data() as Record<string, unknown>)),
+    (boq?.docs ?? []).map((d) => storeItemOf(d.id, d.data() as Record<string, unknown>)),
+    (x) => lastPaid(priceRows, x.name, x.unit)?.price ?? null
+  )
+  const units = (plant?.docs ?? []).map((d) => d.data() as PmPlant)
   const contracts = (subs?.docs ?? []).map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
   const dues = subDues(contracts, (subCerts?.docs ?? []).map((d) => d.data() as PmSubCertificate))
   const voList = (vos?.docs ?? []).map((d) => d.data() as { status: VoStatus; value?: number })
   return {
-    storeLines: stock.length,
-    storeValue: Math.round(stock.reduce((a, d) => a + num(d.quantity) * num(d.unitCost), 0)),
+    storeLines: held.lines,
+    storeValue: Math.round(held.value),
     uncollected: open.length,
     uncollectedAmount: Math.round(open.reduce((a, c) => a + (c.net ?? 0) * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)),
     certificates: certList.filter((c) => c.status !== "void").length,
@@ -253,6 +291,15 @@ export async function readSectionFacts(firestore: Firestore, projectId: string, 
     voApproved: Math.round(voList.filter((v) => v.status === "appr").reduce((a, v) => a + (v.value ?? 0), 0)),
     wirOpen: (wirs?.docs ?? []).filter((d) => (d.data() as { status?: string }).status === "open").length,
     punchOpen: (punch?.docs ?? []).filter((d) => isOpenPunch(d.data() as { status: PunchStatus })).length,
+    claimsOpen: openClaims((claims?.docs ?? []).map((d) => d.data() as { status: ClaimStatus })).length,
+    activities: acts?.size ?? 0,
+    weeks: weeks?.size ?? 0,
+    plantOnSite: onSite(units).length,
+    plantCharged: Math.round(units.reduce((a, p) => a + (p.dayRate ? plantCost(p) : 0), 0)),
+    plantRequestsOpen: (plantReqs?.docs ?? []).filter((d) => {
+      const r = d.data() as { status?: string; got?: unknown }
+      return r.status !== "rej" && !r.got
+    }).length,
   }
 }
 
@@ -272,8 +319,7 @@ export async function switchSections(
 ): Promise<void> {
   let facts = input.facts
   if (!facts) {
-    const pre = await getDoc(doc(firestore, "projects", projectId))
-    facts = await readSectionFacts(firestore, projectId, (pre.data() as { warehouseId?: string | null } | undefined)?.warehouseId)
+    facts = await readSectionFacts(firestore, projectId)
   }
   const gateFacts = facts
   await runTransaction(firestore, async (tx) => {

@@ -26,6 +26,10 @@ import { PRICE_RISE_ALARM_PERCENT, priceTrends, sparkHeights, type PriceAgreemen
 import { materialCategory, readByManufacturing } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder, ReceiptFact } from "@/lib/procurement/types"
 import { MaterialDrawer } from "./MaterialDrawer"
+import { sarLtr } from "@/lib/riyal"
+
+/** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
+const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export function PriceHistoryView({
   history,
@@ -138,7 +142,7 @@ export function PriceHistoryView({
                   </td>
                   <td className="p-3 text-end">
                     <b className="tabular-nums" dir="ltr">
-                      {tr.last}
+                      {priceText(tr.last)}
                     </b>
                     <span className="block text-[11px] text-muted-foreground">{`/ ${tr.unit}`}</span>
                     <span className="block text-[11px] text-muted-foreground">

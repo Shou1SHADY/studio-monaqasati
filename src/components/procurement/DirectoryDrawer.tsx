@@ -38,6 +38,7 @@ export function DirectoryDrawer({
   actor,
   orgId,
   canManage,
+  ownerHasTeam = false,
   onOpenOurs,
 }: {
   supplier: PlatformSupplier | null
@@ -46,6 +47,7 @@ export function DirectoryDrawer({
   actor: ProcActor
   orgId: string
   canManage: boolean
+  ownerHasTeam?: boolean
   onOpenOurs: (orgId: string) => void
 }) {
   const t = useTranslations("Portal.ProcSuppliers")
@@ -60,7 +62,7 @@ export function DirectoryDrawer({
     if (!firestore) return
     setAdding(true)
     try {
-      await addFromDirectory(firestore, actor, orgId, { orgId: supplier.orgId, name: supplier.name, categories: supplier.categories, vat: supplier.profileVat })
+      await addFromDirectory(firestore, actor, orgId, { orgId: supplier.orgId, name: supplier.name, categories: supplier.categories, vat: supplier.profileVat }, new Date(), ownerHasTeam)
       toast({ title: t("toast.added") })
     } catch (err) {
       const code = err instanceof SupplierWriteError ? err.code : "generic"

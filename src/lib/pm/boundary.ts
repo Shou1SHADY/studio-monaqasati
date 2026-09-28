@@ -15,6 +15,23 @@ export const FIN_EVENTS: ReadonlyArray<{ kind: PmEventKind; key: string }> = [
   { kind: "BUD", key: "prj:BUD:<project>" },
   { kind: "HND", key: "prj:HND:<project>:<type>" },
   { kind: "AMD", key: "prj:AMD:<project>:<no>" },
+  { kind: "ADVCHG", key: "prj:ADVCHG:<project>:<n>" },
+]
+
+/** Conflicts with existing modules (prototype XCONF): gaps between what this
+ * module sends or owns and what the other modules are built to receive. They
+ * need unifying in governance — not ours to fix here. */
+export const BOUNDARY_CONFLICTS: ReadonlyArray<{ key: string; module: "payments" | "crm" | "procurement" | "warehouses" | "manufacturing" | "sales" }> = [
+  { key: "amd", module: "payments" },
+  { key: "advchg", module: "payments" },
+  { key: "ipc_books", module: "payments" },
+  { key: "sub_commit", module: "payments" },
+  { key: "loss_move", module: "payments" },
+  { key: "hnd_units", module: "payments" },
+  { key: "crm_creates", module: "crm" },
+  { key: "crm_months", module: "crm" },
+  { key: "store_twice", module: "warehouses" },
+  { key: "prefix", module: "manufacturing" },
 ]
 
 export interface EventStat {

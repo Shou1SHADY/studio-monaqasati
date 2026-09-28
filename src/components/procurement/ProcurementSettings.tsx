@@ -119,6 +119,8 @@ const NOT_BUILT_COUNT = 9
 const CONFLICTS: Party[] = ["inv", "mfg", "fin", "inv", "pm", "pm", "gov", "gov"]
 const LOG_SHOWN = 14
 
+const OWNER_ONLY_POLICIES = new Set<string>(["managerApprovalLimit", "buyerSelfIssueLimit", "directPurchaseCap", "overReceiptTolerancePercent"])
+
 export function ProcurementSettings() {
   const t = useTranslations("Portal.ProcSettings")
   const tRcv = useTranslations("Portal.ProcReceivers")
@@ -129,6 +131,8 @@ export function ProcurementSettings() {
   const { actor, orgId, policies: worldPolicies, orders, deliveries, loading } = useProcurementWorld()
   const policies = useMemo(() => resolvePolicies(worldPolicies), [worldPolicies])
   const mayEdit = actor.isOwner || actor.canApprove
+  // The limits that bound the approver himself are the owner's alone (the rules say so too).
+  const lockedFor = (key: string) => !mayEdit || (OWNER_ONLY_POLICIES.has(key) && !actor.isOwner)
   // The receiver register (§4 `RCVR`) lives here because it is a standing setting,
   // not a per-delivery decision. Signing for goods is not enough to keep it.
   const { receivers } = useProcReceivers(orgId)
@@ -163,7 +167,9 @@ export function ProcurementSettings() {
     setSaving(true)
     try {
       const clean = resolvePolicies(values)
-      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...clean, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
+      const written: Record<string, unknown> = { ...clean }
+      if (!actor.isOwner) OWNER_ONLY_POLICIES.forEach((k) => delete written[k])
+      await setDoc(doc(firestore, PROCUREMENT_SETTINGS, orgId), { ...written, organizationId: orgId, updatedAt: serverTimestamp(), updatedById: user.uid }, { merge: true })
       form.reset(clean)
       toast({ title: t("saved") })
     } catch (err) {
@@ -330,7 +336,7 @@ export function ProcurementSettings() {
                                     <FormDescription className="mt-1 text-[11px] leading-relaxed">{t(field.value ? `policy.${row.key}.descOn` : `policy.${row.key}.desc`)}</FormDescription>
                                   </div>
                                   <FormControl>
-                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={!mayEdit} aria-label={t(`policy.${row.key}.label`)} />
+                                    <Switch checked={field.value} onCheckedChange={field.onChange} disabled={lockedFor(row.key)} aria-label={t(`policy.${row.key}.label`)} />
                                   </FormControl>
                                 </FormItem>
                               )}
@@ -360,7 +366,7 @@ export function ProcurementSettings() {
                                         inputMode="decimal"
                                         min={0}
                                         step={unit === "sar" ? 100 : 1}
-                                        disabled={!mayEdit}
+                                        disabled={lockedFor(key)}
                                         placeholder={fmtRef(key, unit)}
                                         className="h-10 pe-14 text-end tabular-nums"
                                         dir="ltr"

@@ -64,8 +64,8 @@ describe("sealed prices until the deadline", () => {
 })
 
 describe("the idempotency key on an order's events", () => {
-  const once: ProcEventKind[] = ["po_approved", "po_expected_arrival", "po_sent", "po_supplier_accepted", "po_remainder_cancelled", "po_closed", "po_cancelled", "po_rated"]
-  const repeatable: ProcEventKind[] = ["po_reminder", "po_date_updated", "po_receipt_recorded", "po_rejects_decided", "po_returned", "po_awaiting_approval"]
+  const once: ProcEventKind[] = ["po_approved", "po_expected_arrival", "po_sent", "po_supplier_accepted", "po_closed", "po_cancelled", "po_rated"]
+  const repeatable: ProcEventKind[] = ["po_reminder", "po_date_updated", "po_receipt_recorded", "po_rejects_decided", "po_returned", "po_awaiting_approval", "po_remainder_cancelled", "po_hold_decided"]
 
   it.each(once)("%s is keyed on the order — a resend addresses the same document", (kind) => {
     expect(procEventKey({ kind, poId: "po1" })).toBe(`${kind}__po1`)

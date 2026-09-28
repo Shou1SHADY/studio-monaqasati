@@ -27,6 +27,20 @@ export interface TabBadgeFacts {
   staleDocuments?: number
   letters?: Array<{ status: LetterStatus; day: string; due: number }>
   closeoutOpen?: number
+  /** Supply: requests awaiting technical approval; store lines needing a
+   * decision (close · negative · a move to approve) and whether one is negative;
+   * items whose latest sample is with the consultant or rejected. */
+  requestsWaiting?: number
+  storeAct?: number
+  storeNegative?: boolean
+  samples?: Array<{ pmSub?: string | null }>
+  /** Money: certificates in preparation or with the consultant, and whether a
+   * certified one is past due; order lines invoiced above what arrived; the
+   * monthly reconciliation gone stale on a live project. */
+  certificatesOpen?: number
+  certificateOverdue?: boolean
+  matchOver?: number
+  cvrStale?: boolean
 }
 
 const badge = (n: number, tone: TabBadge["tone"] = "warn"): TabBadge | null => (n > 0 ? { n, tone } : null)
@@ -44,6 +58,12 @@ export function tabBadges(f: TabBadgeFacts): Record<string, TabBadge> {
     pmDocs: badge(f.staleDocuments ?? 0, "bad"),
     pmCorr: badge((f.letters ?? []).filter((l) => isLetterLate(l, f.today)).length, "bad"),
     pmClose: badge(f.closeoutOpen ?? 0),
+    pmReq: badge(f.requestsWaiting ?? 0),
+    pmStore: badge(f.storeAct ?? 0, f.storeNegative ? "bad" : "warn"),
+    pmSubm: badge((f.samples ?? []).filter((i) => i.pmSub === "sub" || i.pmSub === "rej").length, (f.samples ?? []).some((i) => i.pmSub === "rej") ? "bad" : "warn"),
+    ipc: badge(f.certificatesOpen ?? 0, f.certificateOverdue ? "bad" : "warn"),
+    pmMatch: badge(f.matchOver ?? 0, "bad"),
+    pmCvr: f.cvrStale ? { n: "!", tone: "warn" } : null,
   }
   return Object.fromEntries(Object.entries(out).filter((e): e is [string, TabBadge] => e[1] !== null))
 }

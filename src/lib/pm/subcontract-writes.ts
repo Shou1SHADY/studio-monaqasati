@@ -7,17 +7,26 @@
 // other than its preparer, within their riyal limit — and prj:SC goes to
 // Finance in that same write. Recoveries are deducted when a certificate is
 // PREPARED, so one recovery can never reach two certificates.
+//
+// Custody lives on the project store ledger: an issue, a return and a count are
+// moves on `pmStore/{storeId}` carrying his party key, and a recovery is kept on
+// the same line. The `pmSubCustody` writes below stay for projects that recorded
+// custody before the ledger existed.
 
 import { collection, doc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, mayApproveSubCertificate, PmAccessError, pmCan, type PmContext } from "./access"
 import { eventDocId, PM_EVENTS } from "./events"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
+import { cleanAttachments, type PmAttachment } from "./attachments"
+import { PM_STORE, r3, storeLineOf, type PmStoreLine, type StoreItem, type StoreMove, type StoreRecovery } from "./store"
 import {
   custodyBlocks,
   custodyFigures,
   custodyNo,
+  engineerHold,
   freeQty,
+  ledgerCustody,
   letQty,
   lineCap,
   lineKey,
@@ -38,6 +47,7 @@ import {
   subCertificateNo,
   subcontractBlocks,
   subcontractNo,
+  subStoreBlocks,
   type CustodyMove,
   type PmSubcontract,
   type PmSubCertificate,
@@ -104,6 +114,7 @@ export interface RegisterInput {
   endOn: string | null
   note: string | null
   lines: Array<{ itemId: string; qty: number; rate: number }>
+  files?: PmAttachment[] | null
 }
 
 /** Register a subcontract: his scope from the BOQ with his quantity and rate.
@@ -154,6 +165,7 @@ export async function registerSubcontract(firestore: Firestore, ctx: PmContext, 
       lines,
       value: r2(lines.reduce((a, l) => a + l.value, 0)),
       paid: 0,
+      files: cleanAttachments(input.files),
       by: actor.uid,
       byName: actor.name,
       on: todayDay(),
@@ -179,6 +191,8 @@ export async function prepareSubCertificate(firestore: Firestore, ctx: PmContext
   const certs = certSnap.docs.map((d) => d.data() as Omit<PmSubCertificate, "id">)
   const custodySnap = await getDocs(query(collection(firestore, "projects", projectId, PM_SUB_CUSTODY), where("partyKey", "==", input.partyKey)))
   const custodyIds = custodySnap.docs.map((d) => d.id)
+  const storeSnap = await getDocs(collection(firestore, "projects", projectId, PM_STORE))
+  const storeIds = storeSnap.docs.filter((d) => ((d.data() as Partial<PmStoreLine>).recoveries ?? []).some((r) => r.sub === input.partyKey && r.certSeq === null)).map((d) => d.id)
   const mine = contracts.filter((c) => c.partyKey === input.partyKey)
   let out = { seq: 0, gross: 0, recovery: 0 }
 
@@ -210,8 +224,18 @@ export async function prepareSubCertificate(firestore: Firestore, ctx: PmContext
       if (snap.exists()) custody.push({ id: snap.id, ...(snap.data() as Omit<PmSubCustody, "id">) })
     }
 
+    const stores: Array<{ ref: ReturnType<typeof doc>; line: PmStoreLine }> = []
+    for (const id of storeIds) {
+      const sRef = doc(firestore, "projects", projectId, PM_STORE, id)
+      const snap = await tx.get(sRef)
+      if (snap.exists()) stores.push({ ref: sRef, line: storeLineOf(id, snap.data() as Partial<PmStoreLine>) })
+    }
+
     const prepared = subCertificateLines(freshMine, input.percents, caps)
-    const recoveries: SubCertRecovery[] = custody.flatMap((c) => c.recoveries.flatMap((r, index) => (r.certSeq === null ? [{ custodySeq: c.seq, index, amount: r.amount }] : [])))
+    const recoveries: SubCertRecovery[] = [
+      ...custody.flatMap((c) => c.recoveries.flatMap((r, index) => (r.certSeq === null ? [{ custodySeq: c.seq, index, amount: r.amount }] : []))),
+      ...stores.flatMap(({ line }) => (line.recoveries ?? []).flatMap((r, index) => (r.sub === input.partyKey && r.certSeq === null ? [{ custodySeq: 0, storeId: line.id, index, amount: r.amount }] : []))),
+    ]
     const amounts = subCertificateAmounts(prepared.lines, recoveries.reduce((a, r) => a + r.amount, 0))
     const blocks = subCertBlocks({
       archived: fresh.archived,
@@ -242,6 +266,9 @@ export async function prepareSubCertificate(firestore: Firestore, ctx: PmContext
     for (const c of custody) {
       if (!c.recoveries.some((r) => r.certSeq === null)) continue
       tx.update(doc(firestore, "projects", projectId, PM_SUB_CUSTODY, c.id), { recoveries: c.recoveries.map((r) => (r.certSeq === null ? { ...r, certSeq: seq } : r)), updatedAt: serverTimestamp() })
+    }
+    for (const { ref: sRef, line } of stores) {
+      tx.update(sRef, { recoveries: (line.recoveries ?? []).map((r) => (r.sub === input.partyKey && r.certSeq === null ? { ...r, certSeq: seq } : r)), updatedAt: serverTimestamp() })
     }
     tx.update(ref, { pm: { ...pm, subCertCount: seq }, updatedAt: serverTimestamp() })
     out = { seq, gross: amounts.gross, recovery: amounts.recovery }
@@ -420,6 +447,97 @@ export async function recordRecovery(
       moves: [...custody.moves, { t: "back", q: r2(input.q), day, by: actor.uid, byName: actor.name, note, recovery: true }],
       updatedAt: serverTimestamp(),
     })
+  })
+  return amount
+}
+
+// ── Custody on the project store ledger ─────────────────────────────────────
+
+async function readStoreFacts(tx: Transaction, firestore: Firestore, projectId: string, storeId: string) {
+  const ref = doc(firestore, "projects", projectId, PM_STORE, storeId)
+  const snap = await tx.get(ref)
+  if (!snap.exists()) throw new PmSubError("missing")
+  const line = storeLineOf(storeId, snap.data() as Partial<PmStoreLine>)
+  const items: StoreItem[] = []
+  for (const id of Object.keys(line.rates || {})) {
+    const it = await readItem(tx, firestore, projectId, id)
+    if (it) items.push({ ...it, code: it.code ?? "", description: it.description ?? "", unit: it.unit ?? "" })
+  }
+  return { ref, line, items }
+}
+
+export interface SubStoreMoveInput {
+  t: "iss" | "back" | "cnt"
+  partyKey: string
+  q: number
+  day: string
+  note: string | null
+  /** A count: the signed count sheet. */
+  files?: PmAttachment[] | null
+}
+
+/** Issue a material into a subcontractor's custody, take it back, or record a
+ * count at his place (his representative signing). Custody moves only: the
+ * material stays ours and the store balance does not move. An issue beyond his
+ * entitlement is allowed with a reason — the excess is on him. */
+export async function recordSubStoreMove(firestore: Firestore, ctx: PmContext, projectId: string, actor: SubActor, storeId: string, input: SubStoreMoveInput): Promise<{ gap: number | null; over: number }> {
+  const contracts = await allContracts(firestore, projectId)
+  let out: { gap: number | null; over: number } = { gap: null, over: 0 }
+  await runTransaction(firestore, async (tx) => {
+    const { project } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "store.move")
+    const { ref, line, items } = await readStoreFacts(tx, firestore, projectId, storeId)
+    const party = contracts.find((c) => c.partyKey === input.partyKey)?.party ?? null
+    const blocks = subStoreBlocks({
+      archived: fresh.archived,
+      t: input.t,
+      hasSub: Boolean(party),
+      q: input.q,
+      hold: engineerHold(line, items, contracts),
+      custody: ledgerCustody(line, items, contracts, input.partyKey),
+      note: input.note,
+      day: input.day,
+      today: todayDay(),
+    })
+    if (blocks.length || !party) throw new PmSubError("blocked", blocks)
+    const files = cleanAttachments(input.files)
+    const move: StoreMove = { t: input.t, q: r3(input.q), on: input.day, by: actor.uid, byName: actor.name, sub: input.partyKey, subName: party.name, note: input.note?.trim() || null, ...(files.length ? { files } : {}) }
+    const moves = [...line.moves, move]
+    const after = ledgerCustody({ ...line, moves }, items, contracts, input.partyKey)
+    out = { gap: after.gap, over: input.t === "iss" ? r2(Math.max(0, after.issued - after.cap)) : 0 }
+    tx.update(ref, { moves, updatedAt: serverTimestamp() })
+  })
+  return out
+}
+
+/** Recover the value of his waste on a material: kept on the ledger line,
+ * deducted from his next certificate before retention, and booked as an
+ * accounting return so the book and the count agree. */
+export async function recordStoreRecovery(
+  firestore: Firestore,
+  ctx: PmContext,
+  projectId: string,
+  actor: SubActor,
+  storeId: string,
+  input: { partyKey: string; q: number; rate: number; double: boolean; note: string | null }
+): Promise<number> {
+  const contracts = await allContracts(firestore, projectId)
+  let amount = 0
+  await runTransaction(firestore, async (tx) => {
+    const { project } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "subcontract.manage")
+    const { ref, line } = await readStoreFacts(tx, firestore, projectId, storeId)
+    const party = contracts.find((c) => c.partyKey === input.partyKey)?.party ?? null
+    const blocks: string[] = [...recoveryBlocks({ archived: fresh.archived, q: input.q, rate: input.rate }), ...(party ? [] : ["no_sub"])]
+    if (blocks.length || !party) throw new PmSubError("blocked", blocks)
+    amount = recoveryAmount(input.q, input.rate, input.double)
+    const day = todayDay()
+    const note = input.note?.trim() || null
+    const rec: StoreRecovery = { sub: input.partyKey, subName: party.name, q: r2(input.q), rate: r2(input.rate), double: input.double, amount, on: day, by: actor.uid, byName: actor.name, note, certSeq: null }
+    const back: StoreMove = { t: "back", q: r2(input.q), on: day, by: actor.uid, byName: actor.name, sub: input.partyKey, subName: party.name, note, recovery: true }
+    tx.update(ref, { recoveries: [...(line.recoveries ?? []), rec], moves: [...line.moves, back], updatedAt: serverTimestamp() })
   })
   return amount
 }

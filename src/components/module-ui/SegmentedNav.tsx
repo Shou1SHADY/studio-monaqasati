@@ -7,8 +7,8 @@ export type SegmentTone = "bad" | "warn" | "ok" | "mute"
 export interface Segment {
   id: string
   label: string
-  /** Computed from the data (e.g. addenda awaiting signature), never typed. */
-  count?: number
+  /** Computed from the data (e.g. addenda awaiting signature), never typed; "!" is a state, not a number. */
+  count?: number | "!"
   tone?: SegmentTone
   /** Shown as a small tag when the viewer can read but not change this segment. */
   readOnlyLabel?: string
@@ -52,7 +52,7 @@ export function SegmentedNav({
             )}
           >
             {s.label}
-            {s.count !== undefined && s.count > 0 && (
+            {s.count !== undefined && (s.count === "!" || s.count > 0) && (
               <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5", on ? "bg-white/20 text-module-foreground" : COUNT_TONE[s.tone ?? "mute"])}>{s.count}</span>
             )}
             {s.readOnlyLabel && <span className={cn("rounded px-1 text-[10px] font-semibold", on ? "bg-white/20" : "bg-muted")}>{s.readOnlyLabel}</span>}

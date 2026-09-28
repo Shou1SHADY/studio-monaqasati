@@ -9,6 +9,7 @@
 import { daysFromNow, dayOf, lineToArrive, poStatus, receiptDay, round2 } from "./po"
 import { receiptState, shortVsNotice, type ReceiptState } from "./receipts"
 import { acceptedOf } from "./po"
+import type { NoticeRouting } from "./policies"
 import { forwardUrgency, receiversForPlace, type ProcReceiver, type ReceiverChoice, type ReceiverModule } from "./receivers"
 import type { DeliveryLine, PoLine, PurchaseOrder, ReceiptFact } from "./types"
 import { matchesSearch } from "../search-text"
@@ -37,6 +38,8 @@ export interface DeskDelivery extends ReceiptFact {
   forwardedTo?: ForwardedTo | null
   /** What that person counted and signed for, verified by a code to their phone. */
   receiverReport?: ReceiverReportFact | null
+  /** A receipt recorded without this notice took everything it announced (receipt-writes). */
+  closedByReceipt?: { deliveryId: string; docNumber: string } | null
 }
 
 export interface ForwardedTo {
@@ -96,7 +99,7 @@ export function incomingRows(deliveries: DeskDelivery[], orders: PurchaseOrder[]
   const out: IncomingRow[] = []
   const noticed = new Set<string>()
   for (const d of deliveries) {
-    if (d.status === "confirmed") continue
+    if (d.status === "confirmed" || d.closedByReceipt) continue
     const po = d.poId ? byId.get(d.poId) || null : null
     if (po) noticed.add(po.id)
     const day = dayOf(d.deliveryDate)
@@ -319,22 +322,23 @@ export const receiptCsvFilename = (now: Date) => `receipts-${dayOf(now.toISOStri
 // ---------------------------------------------------------------------------
 
 export type IncomingPill =
-  | { kind: "to_forward"; tone: "bad" | "warn" }
+  | { kind: "to_forward"; tone: "bad" | "warn" | "info" }
   | { kind: "due_late"; days: number }
   | { kind: "due_no_notice" }
   | { kind: "after_promise"; days: number }
   | { kind: "passed_no_receipt" }
   | { kind: "in_days"; days: number | null }
 
-/** First match wins, in the prototype's order: a notice still with us inside
- * the forwarding window is OUR task; an order with no notice is the
- * supplier's; then lateness against the promise; then a notice whose day
- * passed with no receipt; else how far off it is. */
-export function incomingPill(r: IncomingRow, forwardWindowDays: number): IncomingPill {
+/** First match wins, in the prototype's order: a notice still with us is OUR
+ * task (red past the day, amber inside the forwarding window, blue before it) —
+ * unless the notice reaches the receiver directly (`noticeRouting: both`); an
+ * order with no notice is the supplier's; then lateness against the promise;
+ * then a notice whose day passed with no receipt; else how far off it is. */
+export function incomingPill(r: IncomingRow, forwardWindowDays: number, routing: NoticeRouting = "procurement"): IncomingPill {
   if (r.kind === "due") return r.daysLate > 0 ? { kind: "due_late", days: r.daysLate } : { kind: "due_no_notice" }
-  if (forwardState(r.delivery) === "none") {
+  if (routing === "procurement" && forwardState(r.delivery) === "none") {
     const u = forwardUrgency(r.daysFromNow, forwardWindowDays)
-    if (u !== "none") return { kind: "to_forward", tone: u === "overdue" || (r.daysFromNow ?? 0) <= 0 ? "bad" : "warn" }
+    return { kind: "to_forward", tone: u === "overdue" || (u === "due" && (r.daysFromNow ?? 0) <= 0) ? "bad" : u === "due" ? "warn" : "info" }
   }
   if (r.afterPromise > 0) return { kind: "after_promise", days: r.afterPromise }
   if (r.daysFromNow != null && r.daysFromNow < 0) return { kind: "passed_no_receipt" }
@@ -458,7 +462,7 @@ export interface TrailStep {
 }
 
 /** Pure: the trail of a receipt on an order. Rendering is the screen's. */
-export function receiptTrail(d: DeskDelivery, po: PurchaseOrder): TrailStep[] {
+export function receiptTrail(d: DeskDelivery, po: PurchaseOrder, routing: NoticeRouting = "procurement"): TrailStep[] {
   const src = po.purchaseSource?.kind || null
   const fw = d.forwardedTo || null
   const held = (d.lines || []).some((l) => num(l.held) > 0)
@@ -470,7 +474,9 @@ export function receiptTrail(d: DeskDelivery, po: PurchaseOrder): TrailStep[] {
       : { key: "notified", state: "ok", at: isoOf(d.createdAt), variant: "notice", params: { day: dayOf(d.deliveryDate), note: d.paperNoteNumber || "", driver: d.deliveryPersonName || "" } },
     fw
       ? { key: "forwarded", state: "ok", at: fw.at, variant: fw.userId ? "member" : "link", params: { name: fw.name, phone: fw.phoneMasked, by: fw.byName } }
-      : { key: "forwarded", state: "bad", at: null, variant: d.noNotice ? "unannounced" : "direct", params: {} },
+      : routing === "both" && !d.noNotice
+        ? { key: "forwarded", state: "ok", at: isoOf(d.createdAt), variant: "both", params: {} }
+        : { key: "forwarded", state: "bad", at: null, variant: d.noNotice ? "unannounced" : "direct", params: {} },
     { key: "received", state: "ok", at: d.confirmedAt || d.deliveryDate || null, variant: d.receiverReport ? "link" : "gate", params: { receiver: d.receivedByName || "", number: d.docNumber || "" } },
     { key: "went", state: held ? "now" : "ok", at: null, variant: held ? "held" : "landed", params: {} },
     { key: "finance", state: po.status === "closed" ? "ok" : "now", at: po.closedAt || null, variant: po.status === "closed" ? "closed" : "match", params: {} },

@@ -10,7 +10,7 @@ import type { Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
-import { archiveSnapshot, closeBlocks, closeoutRows, subDues, type CloseInput } from "./closeout"
+import { archiveSnapshot, closeBlocks, closeoutRows, storeDocOf, storeHoldings, storeItemOf, subDues, type CloseInput, type ClosingCost } from "./closeout"
 import { PM_LETTERS, type PmLetter } from "./correspondence"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
@@ -18,6 +18,7 @@ import { measuredItem } from "./measurement-writes"
 import { withFreshState } from "./project-writes"
 import { PM_NCRS, type PmNcr } from "./ncr"
 import { PM_PUNCH, type PunchItem } from "./punch"
+import { PM_STORE } from "./store"
 import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "./variation"
 import { hasClientSide } from "./terms"
@@ -44,7 +45,7 @@ const num = (v: unknown) => {
  * section is on or a subcontract exists (SC-04). */
 export async function readCloseFacts(firestore: Firestore, projectId: string) {
   const pSnap = await getDoc(doc(firestore, "projects", projectId))
-  const project = (pSnap.exists() ? pSnap.data() : {}) as { enabledSections?: string[]; warehouseId?: string | null }
+  const project = (pSnap.exists() ? pSnap.data() : {}) as { enabledSections?: string[] }
   const sections = project.enabledSections ?? []
   const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name))
   const [items, punch, certs, ncrs, vos, subs, subCerts, letters, store] = await Promise.all([
@@ -56,9 +57,10 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     col(PM_SUBCONTRACTS),
     col(PM_SUB_CERTIFICATES),
     col(PM_LETTERS),
-    sections.includes("store") && project.warehouseId ? getDocs(collection(firestore, "warehouses", project.warehouseId, "inventoryItems")) : Promise.resolve(null),
+    sections.includes("store") ? col(PM_STORE) : Promise.resolve(null),
   ])
   const contracts = subs.docs.map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
+  const storeItems = items.docs.map((d) => storeItemOf(d.id, d.data() as Record<string, unknown>))
   return {
     items: items.docs.map((d) => {
       const data = d.data() as Record<string, unknown>
@@ -68,15 +70,18 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     certificates: certs.docs.map((d) => d.data() as PmCertificate),
     ncrs: ncrs.docs.map((d) => d.data() as PmNcr),
     variations: vos.docs.map((d) => d.data() as PmVariation),
-    storeLines: sections.includes("store") ? (store?.docs ?? []).filter((d) => num((d.data() as { quantity?: unknown }).quantity) > 0).length : null,
+    storeLines: store ? storeHoldings(store.docs.map((d) => storeDocOf(d.id, d.data() as Record<string, unknown>)), storeItems).lines : null,
     subs: sections.includes("subs") || contracts.length ? subDues(contracts, subCerts.docs.map((d) => d.data() as PmSubCertificate)) : null,
     letters: letters.docs.map((d) => d.data() as PmLetter),
   }
 }
 
 /** Close and archive: the gate must hold, the snapshot freezes, the project
- * becomes read-only for everyone (INV-10, INV-21). */
-export async function closeAndArchive(firestore: Firestore, ctx: PmContext, projectId: string, actor: CloseActor): Promise<void> {
+ * becomes read-only for everyone (INV-10, INV-21). `cost` is the cost section's
+ * roll-up as the closer's screen computed it (orders, receipts, issues and
+ * subcontracts the transaction cannot re-read in full — as the CVR approval);
+ * without it the snapshot freezes no cost rather than an invented one. */
+export async function closeAndArchive(firestore: Firestore, ctx: PmContext, projectId: string, actor: CloseActor, cost?: ClosingCost | null): Promise<void> {
   const facts = await readCloseFacts(firestore, projectId)
   await runTransaction(firestore, async (tx) => {
     const { pRef, project, pm, terms } = await readContract(tx, firestore, projectId)
@@ -113,6 +118,7 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       startedAt: block.startedAt ?? null,
       finalOn: block.acceptances?.final?.on ?? null,
       today,
+      cost: cost ?? null,
     })
     tx.update(pRef, { pm: { ...pm, lifecycle: "closed", fin, closedOn: today, closedBy: actor.uid, closedByName: actor.name }, updatedAt: serverTimestamp() })
   })

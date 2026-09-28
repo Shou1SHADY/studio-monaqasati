@@ -341,7 +341,7 @@ describe("7 · open commitments by payment due", () => {
   it("lastDays builds the period the segment means", () => {
     expect(lastDays(30, NOW)).toEqual({ from: "2026-08-23", to: "2026-09-22" })
     expect(presetPeriod("all", NOW)).toEqual({ from: null, to: null })
-    expect(presetPeriod("year", NOW)).toEqual({ from: "2026-01-01", to: "2026-09-22" })
+    expect(presetPeriod("year", NOW)).toEqual({ from: "2025-09-22", to: "2026-09-22" })
     expect(presetPeriod("custom", NOW, { from: "2026-02-01", to: "" })).toEqual({ from: "2026-02-01", to: null })
   })
 })

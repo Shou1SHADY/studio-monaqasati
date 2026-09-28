@@ -27,6 +27,10 @@ import { ProcWriteError } from "@/lib/procurement/writes"
 import type { ProcActor, PurchaseOrder } from "@/lib/procurement/types"
 import { AgreementDialog } from "./AgreementDialog"
 import { AgreementDrawer } from "./AgreementDrawer"
+import { sarLtr } from "@/lib/riyal"
+
+/** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
+const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export function PriceAgreementsView({
   agreements,
@@ -37,6 +41,8 @@ export function PriceAgreementsView({
   locale,
   suppliers,
   mayEdit,
+  mayRenew,
+  ownerHasTeam = false,
   fmtDate,
   focusId,
   onFocusChange,
@@ -48,7 +54,11 @@ export function PriceAgreementsView({
   orgId: string
   locale: string
   suppliers: Array<{ id: string; name: string }>
+  /** Sign a new agreement: the manager and the buyer. */
   mayEdit: boolean
+  /** Renew or end one: the manager only (prototype «جدّد» — `CAN('all')`). */
+  mayRenew: boolean
+  ownerHasTeam?: boolean
   fmtDate: (value: unknown, locale: string) => string
   /** The agreement whose drawer is open — `?agreement=` or a supplier file's link. */
   focusId?: string | null
@@ -88,7 +98,7 @@ export function PriceAgreementsView({
     setEnding(true)
     setEndError(null)
     try {
-      await endPriceAgreement(firestore, actor, endTarget.id, endReason)
+      await endPriceAgreement(firestore, actor, endTarget.id, endReason, { ownerHasTeam })
       setEndTarget(null)
       setEndReason("")
     } catch (err) {
@@ -168,7 +178,7 @@ export function PriceAgreementsView({
                           <span className="text-muted-foreground">
                             {" — "}
                             <b className="tabular-nums text-foreground" dir="ltr">
-                              {l.price}
+                              {priceText(l.price)}
                             </b>
                             {` / ${l.unit}`}
                           </span>
@@ -208,7 +218,7 @@ export function PriceAgreementsView({
         history={history}
         orders={orders}
         today={today}
-        mayEdit={mayEdit}
+        mayEdit={mayRenew}
         onRenew={(a) => setDialogFor(a)}
         onEnd={(a) => {
           setEndTarget(a)
@@ -251,6 +261,7 @@ export function PriceAgreementsView({
         agreement={dialogFor}
         suppliers={suppliers}
         knownMaterials={knownMaterials}
+        ownerHasTeam={ownerHasTeam}
       />
     </div>
   )

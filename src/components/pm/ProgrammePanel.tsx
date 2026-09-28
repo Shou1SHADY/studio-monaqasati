@@ -61,6 +61,8 @@ type Item = {
   executed: number
 }
 
+const spanDays = (from: string, to: string) => Math.max(0, Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000))
+
 const STATE_TONE: Record<ActivityState, PillTone> = {
   done: "ok",
   run: "info",
@@ -163,6 +165,11 @@ export function ProgrammePanel({
       ),
     [items, delay?.planned],
   )
+  const sectionCount = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const i of items) if (i.division && i.rate > 0 && i.quantity > 0) m.set(i.division, (m.get(i.division) ?? 0) + 1)
+    return m
+  }, [items])
   const acts = useMemo(() => actsRaw.slice().sort((a, b) => a.from.localeCompare(b.from) || a.seq - b.seq), [actsRaw])
   const critical = useMemo(() => criticalPath(acts), [acts])
   const canManage = !access.ctx.archived && access.allowed("programme.manage")
@@ -178,7 +185,7 @@ export function ProgrammePanel({
           value={t("days", { count: effective })}
           note={
             start
-              ? t("prg.ends", {
+              ? t(effective - durationDays > 0 ? "prg.ends" : "prg.ends_no_eot", {
                   rev: `R${current.rev}`,
                   date: pmDate(current.endOn || "", locale),
                   eot: effective - durationDays,
@@ -304,9 +311,11 @@ export function ProgrammePanel({
           <ul className="divide-y">
             {sections.map((s) => (
               <li key={s.division} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">
-                  {s.division}
+                <span className="min-w-0 flex-1 truncate text-sm" dir="auto">
+                  <b className="font-semibold">{s.division}</b>
+                  <span className="text-xs text-muted-foreground"> · {t("prg.sec_items", { count: sectionCount.get(s.division) ?? 0 })}</span>
                 </span>
+                <span className="hidden text-xs text-muted-foreground sm:inline">{t("prg.sec_plan", { pct: Math.round(s.planned ?? s.progress - s.deviation) })}</span>
                 <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted sm:w-48">
                   <div
                     className={cn("h-full rounded-full", s.deviation < -6 ? "bg-destructive" : s.deviation < -2 ? "bg-warning" : "bg-success")}
@@ -516,9 +525,10 @@ function ActivityRows({
               <p className="flex flex-wrap items-center gap-2 text-sm font-bold">
                 <span dir="auto">{a.name}</span>
                 {critical.has(a.id) && <StatusPill tone="bad">{t("prg.critical")}</StatusPill>}
+                {a.permit && <StatusPill tone="warn">{t("prg.act_permit_pill")}</StatusPill>}
               </p>
               <p className="text-xs text-muted-foreground" dir="auto">
-                {pmDate(a.from, locale)} — {pmDate(a.to, locale)}
+                {pmDate(a.from, locale)} — {pmDate(a.to, locale)} · {t("days", { count: spanDays(a.from, a.to) })}
                 {a.itemIds.length > 0 &&
                   ` · ${a.itemIds
                     .map((id) => codeOf.get(id) || "")
@@ -597,6 +607,7 @@ function ActivityDialog({
   const [to, setTo] = useState(editing?.to ?? "")
   const [picked, setPicked] = useState<string[]>(editing?.itemIds ?? [])
   const [pred, setPred] = useState<string>(editing?.pred ?? NONE)
+  const [permit, setPermit] = useState<boolean>(Boolean(editing?.permit))
   const [filter, setFilter] = useState("")
   const [busy, setBusy] = useState(false)
   const blocks = activityBlocks(
@@ -621,6 +632,7 @@ function ActivityDialog({
         to,
         itemIds: picked,
         pred: pred === NONE ? null : pred,
+        permit,
       }
       if (editing) await updateActivity(firestore, access.ctx, projectId, editing.id, input)
       else await addActivity(firestore, access.ctx, projectId, actor, input)
@@ -697,6 +709,13 @@ function ActivityDialog({
             </ul>
             <p className="text-[11px] text-muted-foreground">{picked.length ? t("prg.act_items_hint") : t("prg.act_items_none")}</p>
           </div>
+          <label htmlFor="act-permit" className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm">
+            <input id="act-permit" type="checkbox" checked={permit} onChange={(e) => setPermit(e.target.checked)} className="h-4 w-4" />
+            <span>
+              <b className="block">{t("prg.act_permit")}</b>
+              <span className="text-xs text-muted-foreground">{t("prg.act_permit_hint")}</span>
+            </span>
+          </label>
           {blocks.length > 0 && (name || to) && <p className="text-xs text-destructive">{t(`prg.block.${blocks[0]}`)}</p>}
         </div>
         <DialogFooter>

@@ -20,7 +20,7 @@ import { pricedProducts, toAmount } from "@/lib/procurement/offer-pricing"
 import { manualOfferRefusal, type ManualOfferInput } from "@/lib/procurement/rfq-detail"
 import { awardMode } from "@/lib/procurement/rfq-award"
 import { recordManualOffer } from "@/lib/procurement/rfq-writes"
-import type { ProcActor } from "@/lib/procurement/types"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { cn } from "@/lib/utils"
 import type { RfqView } from "./rfqOfferView"
@@ -42,7 +42,7 @@ export function RfqManualOfferDialog({
   /** Invited companies that have not offered yet (org ids). */
   pendingInvitees: string[]
   sealed: boolean
-  actor: ProcActor
+  actor: RfqWriteActor
   onDone: () => void
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")

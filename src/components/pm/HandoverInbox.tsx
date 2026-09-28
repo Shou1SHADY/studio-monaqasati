@@ -21,6 +21,7 @@ import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill } from "@/components/module-ui/StatusPill"
 import { AcceptHandoverWizard, clientTypeKey } from "@/components/pm/AcceptHandoverWizard"
 import { PmSeatChip } from "@/components/pm/PmSeatChip"
+import { PmTodayRedCount } from "@/components/pm/PmPortfolioToday"
 import { ReassignHandoverDialog } from "@/components/pm/ReassignHandoverDialog"
 import { ReturnHandoverDialog } from "@/components/pm/ReturnHandoverDialog"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
@@ -45,7 +46,8 @@ export function HandoverInbox() {
   const orgId = (profile?.organizationId as string | undefined) || user?.uid
   const people = useHandoverPeople(orgId)
   const [dialog, setDialog] = useState<Dialog>(null)
-  const rail = usePmRail()
+  const [todayRed, setTodayRed] = useState<number | undefined>(undefined)
+  const rail = usePmRail(todayRed)
   const uid = user?.uid ?? ""
 
   const filesQuery = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, PM_HANDOVERS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
@@ -73,6 +75,7 @@ export function HandoverInbox() {
 
   return (
     <div className="space-y-6">
+      <PmTodayRedCount onCount={setTodayRed} />
       <ModuleHeader
         status={<PmSeatChip />}
         icon={Hand}

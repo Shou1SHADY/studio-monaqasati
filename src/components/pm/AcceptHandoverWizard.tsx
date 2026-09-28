@@ -7,6 +7,9 @@
 // project is born "not started" with its number and its manager; the advance
 // term goes to Finance once; the BOQ is written right after, as the
 // new-project wizard writes it; then the project opens on its Pulse.
+// Without a file it is the prototype's manual «مشروع جديد» (formPrj without h):
+// the exception path, the same three steps with the project and contract typed
+// in step one (name and client required), and the project born the same way.
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -45,7 +48,21 @@ import {
   type ProjectKind,
 } from "@/lib/pm/handover"
 import { acceptHandover, PmHandoverError, type PmActor } from "@/lib/pm/handover-writes"
+import type { PmContext } from "@/lib/pm/access"
+import {
+  ADVANCE_CHOICES,
+  DEFAULT_ADVANCE,
+  DEFAULT_RETENTION,
+  manualDuration,
+  manualEnd,
+  manualProjectBlocks,
+  manualValue,
+  RETENTION_CHOICES,
+  type ManualProjectDraft,
+} from "@/lib/pm/manual-project"
+import { createManualProject, PmManualProjectError } from "@/lib/pm/manual-project-writes"
 import { sectionsForKind } from "@/lib/pm/sections"
+import { todayDay } from "@/lib/pm/format"
 import { cn } from "@/lib/utils"
 
 /** The module a section reads its data from, when it is not Project Management's own. */
@@ -68,7 +85,37 @@ export function clientTypeKey(v: string | null | undefined): { ns: "shared"; key
   return null
 }
 
-export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { open: boolean; onOpenChange: (open: boolean) => void; handover: PmHandover; actor: PmActor }) {
+const blankDraft = (): ManualProjectDraft => ({
+  name: "",
+  client: "",
+  kind: "bld",
+  region: "",
+  location: "",
+  startOn: todayDay(),
+  duration: "",
+  value: "",
+  advance: DEFAULT_ADVANCE,
+  retention: DEFAULT_RETENTION,
+})
+
+export function AcceptHandoverWizard({
+  open,
+  onOpenChange,
+  handover,
+  actor,
+  organizationId,
+  ctx,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Null: a project created by hand (the exception path). */
+  handover: PmHandover | null
+  actor: PmActor
+  /** The organisation, for a project created by hand (a handover carries its own). */
+  organizationId?: string
+  /** The creator's PM context: a manual project needs the `create` key. */
+  ctx?: PmContext
+}) {
   const t = useTranslations("Portal.PM")
   const tShared = useTranslations("Portal.Shared")
   const tC = useTranslations("Portal.Contractor")
@@ -76,34 +123,39 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
   const firestore = useFirestore()
   const router = useRouter()
   const { toast } = useToast()
-  const { people, candidates, siteStaff } = useHandoverPeople(handover.organizationId)
-  const { centrals } = useCentralWarehouse(handover.organizationId)
+  const orgId = handover?.organizationId ?? organizationId ?? ""
+  const { people, candidates, siteStaff } = useHandoverPeople(orgId)
+  const { centrals } = useCentralWarehouse(orgId)
 
   const managers = useMemo(() => candidates(null), [candidates])
-  const defaultManager = managers.some((m) => m.uid === actor.uid) ? actor.uid : managers.some((m) => m.uid === handover.to) ? handover.to : ""
+  const defaultManager = managers.some((m) => m.uid === actor.uid) ? actor.uid : handover && managers.some((m) => m.uid === handover.to) ? handover.to : ""
 
   const [step, setStep] = useState(0)
-  const [kind, setKind] = useState<ProjectKind>(handover.kind ?? "bld")
-  const [location, setLocation] = useState(handover.location ?? "")
+  const [draft, setDraft] = useState<ManualProjectDraft>(blankDraft)
+  const [kind, setKind] = useState<ProjectKind>(handover?.kind ?? "bld")
+  const [location, setLocation] = useState(handover?.location ?? "")
   const [managerUid, setManagerUid] = useState("")
   const [siteUid, setSiteUid] = useState("")
   const [note, setNote] = useState("")
-  const [sections, setSections] = useState<SectionId[]>(sectionsForKind(handover.kind ?? "bld"))
+  const [sections, setSections] = useState<SectionId[]>(sectionsForKind(handover?.kind ?? "bld"))
   const [source, setSource] = useState<BoqSource | null>(null)
   const [boq, setBoq] = useState<BoqParseResult | null>(null)
   const [parsing, setParsing] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const crmCount = handoverBoqCount(handover)
+  const crmCount = handover ? handoverBoqCount(handover) : 0
+  const manual = !handover
+  const set = <K extends keyof ManualProjectDraft>(k: K, v: ManualProjectDraft[K]) => setDraft((d) => ({ ...d, [k]: v }))
 
   useEffect(() => {
     if (!open) return
     setStep(0)
-    setKind(handover.kind ?? "bld")
-    setLocation(handover.location ?? "")
+    setDraft(blankDraft())
+    setKind(handover?.kind ?? "bld")
+    setLocation(handover?.location ?? "")
     setSiteUid("")
     setNote("")
-    setSections(sectionsForKind(handover.kind ?? "bld"))
+    setSections(sectionsForKind(handover?.kind ?? "bld"))
     setSource(null)
     setBoq(null)
   }, [open, handover])
@@ -158,10 +210,13 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
 
   const xlItems = (boq?.items ?? []).filter((i) => i.selected)
   const selfDev = isSelfDevelopment(kind)
+  const manualBlocks = manual ? manualProjectBlocks({ ...draft, kind, location }, managerUid || null) : []
   const blocks = [
-    ...acceptBlocks(handover).map((b) => t(`accept_block.${b}`)),
+    ...(handover ? acceptBlocks(handover).map((b) => t(`accept_block.${b}`)) : manualBlocks.filter((b) => b !== "no_manager").map((b) => t(`manual.block.${b}`))),
     ...acceptStepBlocks({ source, managerUid: managerUid || null, xlItems: xlItems.length }).map((b) => t(`wizard.block.${b}`)),
   ]
+  const title = handover ? handover.title : draft.name.trim()
+  const advance = handover ? handover.advance : draft.advance
   const manager = people.find((p) => p.uid === managerUid)
   const site = people.find((p) => p.uid === siteUid)
   const storeOn = sections.includes("store")
@@ -171,19 +226,36 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
     setBusy(true)
     try {
       const central = resolveCentralForRegion(centrals, null)
-      const { projectId, projectNo } = await acceptHandover(firestore, actor, handover.id, {
-        kind,
-        location: location.trim() || null,
-        enabledSections: sections,
-        manager: { uid: manager.uid, name: manager.name, groupId: manager.groupId },
-        siteEngineer: site ? { uid: site.uid, name: site.name, groupId: site.groupId } : null,
-        note,
-        store: storeOn ? { name: tC("proj_auto_warehouse_name", { name: handover.title }), centralWarehouseId: central?.id ?? null } : null,
-        notification: { title: t("notif.accepted_title"), message: t("notif.accepted_message", { project: handover.title, by: actor.name ?? "" }) },
-        managerNotification: { title: t("notif.named_pm_title"), message: t("notif.named_pm_message", { project: handover.title, by: actor.name ?? "" }) },
-      })
+      const managerSeat = { uid: manager.uid, name: manager.name, groupId: manager.groupId }
+      const siteSeat = site ? { uid: site.uid, name: site.name, groupId: site.groupId } : null
+      const store = storeOn ? { name: tC("proj_auto_warehouse_name", { name: title }), centralWarehouseId: central?.id ?? null } : null
+      const managerNotification = { title: t("notif.named_pm_title"), message: t("notif.named_pm_message", { project: title, by: actor.name ?? "" }) }
+      const { projectId, projectNo } = handover
+        ? await acceptHandover(firestore, actor, handover.id, {
+            kind,
+            location: location.trim() || null,
+            enabledSections: sections,
+            manager: managerSeat,
+            siteEngineer: siteSeat,
+            note,
+            store,
+            notification: { title: t("notif.accepted_title"), message: t("notif.accepted_message", { project: handover.title, by: actor.name ?? "" }) },
+            managerNotification,
+          })
+        : ctx
+          ? await createManualProject(firestore, ctx, actor, {
+              organizationId: orgId,
+              draft: { ...draft, kind, location },
+              enabledSections: sections,
+              manager: managerSeat,
+              siteEngineer: siteSeat,
+              store,
+              managerNotification,
+            })
+          : { projectId: "", projectNo: "" }
+      if (!projectId) return
       const lines =
-        source === "crm"
+        source === "crm" && handover
           ? (handover.boq ?? [])
               .filter((l) => l.quantity > 0)
               .map((l) => ({ itemNo: l.code, descriptionAr: l.descriptionAr, descriptionEn: l.descriptionEn ?? l.descriptionAr, unit: l.unit, quantity: l.quantity, unitPrice: l.rate, groupId: null as string | null, extra: {} }))
@@ -228,8 +300,9 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
         }
       }
       toast({
-        title:
-          source === "crm"
+        title: manual
+          ? t(`manual.done_${source === "xl" ? "xl" : source === "man" ? "man" : "later"}`, { number: projectNo, count: lines.length })
+          : source === "crm"
             ? t("wizard.done_crm", { number: projectNo, count: lines.length })
             : source === "xl"
               ? t("wizard.done_xl", { number: projectNo, count: lines.length })
@@ -239,6 +312,10 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
       router.push(`/contractor/projects/${projectId}?tab=pmToday`)
     } catch (err) {
       console.error(err)
+      if (err instanceof PmManualProjectError) {
+        toast({ title: t(`manual.block.${err.blocks[0]}`), variant: "destructive" })
+        return
+      }
       const code = err instanceof PmHandoverError ? err.code : "save"
       toast({ title: t(`error.${code === "save" ? "save" : code}`), variant: "destructive" })
     } finally {
@@ -247,7 +324,9 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
   }
 
   const steps = [t("wizard.step_project"), t("wizard.step_sections"), t("wizard.step_boq")]
-  const ct = clientTypeKey(handover.clientType)
+  const ct = clientTypeKey(handover?.clientType)
+  const end = manual ? manualEnd(draft.startOn, manualDuration(draft)) : null
+  const pct = (x: number) => `${Math.round(x * 100)}%`
   const crmTag = <SourceBadge module="crm" label={t("wizard.from_crm")} className="ms-1.5 align-middle" />
   const limitText = (limit: number) => (limit === Number.POSITIVE_INFINITY ? t("wizard.no_limit") : t("wizard.limit", { amount: pmMoney(limit) }))
 
@@ -255,22 +334,178 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("wizard.title")}</DialogTitle>
+          <DialogTitle>{handover ? t("wizard.title") : t("manual.title")}</DialogTitle>
           <DialogDescription>
-            <span dir="auto">{handover.title}</span>
-            {handover.contractNumber && (
-              <span className="text-muted-foreground" dir="ltr">
-                {" "}
-                — {handover.contractNumber}
-              </span>
-            )}{" "}
-            {t("wizard.from_crm_sub")}
+            {handover ? (
+              <>
+                <span dir="auto">{handover.title}</span>
+                {handover.contractNumber && (
+                  <span className="text-muted-foreground" dir="ltr">
+                    {" "}
+                    — {handover.contractNumber}
+                  </span>
+                )}{" "}
+                {t("wizard.from_crm_sub")}
+              </>
+            ) : (
+              t("manual.sub")
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <WizardSteps steps={steps} current={step} ariaLabel={t("wizard.steps_label")} />
 
-        {step === 0 && (
+        {step === 0 && manual && (
+          <div className="space-y-4">
+            <Callout tone="warn">{t("manual.exception")}</Callout>
+            <div className="space-y-1.5">
+              <Label htmlFor="new-name">
+                {t("manual.name")} <span className="text-destructive">*</span>
+              </Label>
+              <Input id="new-name" dir="auto" value={draft.name} onChange={(e) => set("name", e.target.value)} placeholder={t("manual.name_ph")} disabled={busy} aria-required="true" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-client">
+                  {t("field.client")} <span className="text-destructive">*</span>
+                </Label>
+                <Input id="new-client" dir="auto" value={draft.client} onChange={(e) => set("client", e.target.value)} placeholder={t("manual.client_ph")} disabled={busy} aria-required="true" />
+                <p className="text-xs text-muted-foreground">{t("manual.client_hint")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-kind">{t("manual.kind")}</Label>
+                <Select
+                  value={kind}
+                  onValueChange={(v) => {
+                    setKind(v as ProjectKind)
+                    setSections(sectionsForKind(v as ProjectKind))
+                  }}
+                  disabled={busy}
+                >
+                  <SelectTrigger id="new-kind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_KINDS.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {tShared(`pm_kind_${k}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t("manual.kind_hint")}</p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-region">{t("manual.region")}</Label>
+                <Input id="new-region" dir="auto" value={draft.region} onChange={(e) => set("region", e.target.value)} placeholder={t("manual.region_ph")} disabled={busy} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-loc">{t("wizard.site_location")}</Label>
+                <Input id="new-loc" dir="auto" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("wizard.site_location_ph")} disabled={busy} />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-pm">{t("wizard.pm_label")}</Label>
+                <Select value={managerUid} onValueChange={setManagerUid} disabled={busy}>
+                  <SelectTrigger id="new-pm">
+                    <SelectValue placeholder={t("reassign.pick")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {managers.map((m) => (
+                      <SelectItem key={m.uid} value={m.uid}>
+                        {m.name} — {t(`seat.${m.seat}.name`)} · {limitText(m.limit)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t("manual.pm_hint")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-site">{t("wizard.site_label")}</Label>
+                <Select value={siteUid || "__later"} onValueChange={(v) => setSiteUid(v === "__later" ? "" : v)} disabled={busy}>
+                  <SelectTrigger id="new-site">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__later">{t("wizard.site_later")}</SelectItem>
+                    {siteStaff
+                      .filter((p) => p.uid !== managerUid)
+                      .map((p) => (
+                        <SelectItem key={p.uid} value={p.uid}>
+                          {p.name} — {t(`seat.${p.seat}.name`)}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t("wizard.site_hint")}</p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="new-start">{t("manual.start")}</Label>
+                <Input id="new-start" type="date" dir="ltr" value={draft.startOn} onChange={(e) => set("startOn", e.target.value)} disabled={busy} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-dur">{t("manual.duration")}</Label>
+                <Input id="new-dur" type="number" min={1} dir="ltr" value={draft.duration} onChange={(e) => set("duration", e.target.value)} placeholder="365" disabled={busy} />
+                <p className="text-xs text-muted-foreground">{draft.duration.trim() && end ? t("manual.ends", { date: pmDate(end, locale) }) : t("manual.ends_auto")}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-val">{t("manual.value")}</Label>
+                <Input id="new-val" type="number" min={0} dir="ltr" value={draft.value} onChange={(e) => set("value", e.target.value)} placeholder="—" disabled={busy} />
+                <p className="text-xs text-muted-foreground">{t("manual.value_hint")}</p>
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <fieldset className="space-y-1.5">
+                <legend className="text-sm font-medium">{t("manual.advance")}</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {ADVANCE_CHOICES.map((x) => (
+                    <button
+                      key={x}
+                      type="button"
+                      aria-pressed={draft.advance === x}
+                      onClick={() => set("advance", x)}
+                      disabled={busy}
+                      className={cn(
+                        "min-h-9 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        draft.advance === x ? "border-module bg-module/10 text-module" : "hover:border-module/40"
+                      )}
+                    >
+                      {x ? <span dir="ltr">{pct(x)}</span> : t("manual.advance_none")}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="space-y-1.5">
+                <legend className="text-sm font-medium">{t("manual.retention")}</legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {RETENTION_CHOICES.map((x) => (
+                    <button
+                      key={x}
+                      type="button"
+                      aria-pressed={draft.retention === x}
+                      onClick={() => set("retention", x)}
+                      disabled={busy}
+                      className={cn(
+                        "min-h-9 rounded-full border px-3 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        draft.retention === x ? "border-module bg-module/10 text-module" : "hover:border-module/40"
+                      )}
+                    >
+                      {x ? <span dir="ltr">{pct(x)}</span> : t("manual.retention_none")}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            </div>
+            {(manualBlocks.includes("no_name") || manualBlocks.includes("no_client")) && (draft.name || draft.client) && <p className="text-xs font-semibold text-destructive">{t("manual.required")}</p>}
+          </div>
+        )}
+
+        {step === 0 && handover && (
           <div className="space-y-4">
             <Callout tone="info">{t("wizard.read_only_note")}</Callout>
             <div className="rounded-xl border px-4">
@@ -429,7 +664,7 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
             <fieldset className="space-y-2">
               <legend className="text-sm font-bold">{t("wizard.boq_where")}</legend>
               <div className="grid gap-2 sm:grid-cols-2">
-                {boqSourcesFor(handover).map((s) => {
+                {(handover ? boqSourcesFor(handover) : boqSourcesFor({ boq: [] })).map((s) => {
                   const Icon = SOURCE_ICON[s]
                   return (
                     <button
@@ -466,10 +701,17 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
               </>
             )}
             <div className="rounded-xl border px-4">
-              <KeyValueRow label={t("wizard.row_project")} value={<span dir="auto">{handover.title}</span>} />
-              <KeyValueRow label={t("field.client")} value={handover.clientName ?? "—"} />
-              <KeyValueRow label={t("wizard.row_value_duration")} value={`${pmMoney(handover.value)} · ${t("days", { count: handover.durationDays })}`} />
-              <KeyValueRow label={t("wizard.row_start")} value={pmDate(handover.startOn, locale)} />
+              <KeyValueRow label={t("wizard.row_project")} value={<span dir="auto">{title || "—"}</span>} />
+              <KeyValueRow label={t("field.client")} value={(handover ? handover.clientName : draft.client.trim()) || "—"} />
+              <KeyValueRow
+                label={t("wizard.row_value_duration")}
+                value={
+                  handover
+                    ? `${pmMoney(handover.value)} · ${t("days", { count: handover.durationDays })}`
+                    : `${manualValue(draft) > 0 ? pmMoney(manualValue(draft)) : t("not_fixed")} · ${t("days", { count: manualDuration(draft) })}`
+                }
+              />
+              <KeyValueRow label={t("wizard.row_start")} value={pmDate(handover ? handover.startOn : draft.startOn, locale)} />
               <KeyValueRow label={t("wizard.row_manager")} value={manager ? manager.name : "—"} />
               <KeyValueRow label={t("wizard.row_sections")} value={`${sections.length} — ${sections.map(secName).join(" · ")}`} />
             </div>
@@ -478,10 +720,10 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
               <ul className="space-y-1.5 text-xs">
                 {[
                   { k: "eff_project", ok: true },
-                  { k: "eff_crm", ok: true },
+                  ...(handover ? [{ k: "eff_crm", ok: true }] : []),
                   ...(source === "crm" ? [{ k: "eff_boq", ok: true }] : []),
                   { k: "eff_sections", ok: true },
-                  ...(handover.advance && !selfDev ? [{ k: "effect_advance", ok: true }] : []),
+                  ...(advance && !selfDev && (handover || manualValue(draft) > 0) ? [{ k: "effect_advance", ok: true }] : []),
                   ...(storeOn ? [{ k: "eff_store", ok: true }] : []),
                   { k: "eff_no_client_account", ok: false },
                 ].map(({ k, ok }) => (
@@ -503,13 +745,13 @@ export function AcceptHandoverWizard({ open, onOpenChange, handover, actor }: { 
             </Button>
           )}
           {step < 2 ? (
-            <Button onClick={() => setStep((s) => s + 1)} disabled={step === 0 && !managerUid}>
+            <Button onClick={() => setStep((s) => s + 1)} disabled={step === 0 && (!managerUid || manualBlocks.length > 0)}>
               {t("next")}
             </Button>
           ) : (
             <Button onClick={() => void accept()} disabled={busy || blocks.length > 0 || parsing}>
               {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Check size={16} className="me-2" aria-hidden="true" />}
-              {t("wizard.submit")}
+              {handover ? t("wizard.submit") : t("manual.submit")}
             </Button>
           )}
         </DialogFooter>

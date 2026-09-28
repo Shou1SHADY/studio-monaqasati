@@ -6,11 +6,12 @@
 // filtered by the prototype's four groups in the order the viewer's seat reads
 // them; the figures that seat opens with; their projects with progress; and
 // what waits on other modules. Each project's facts are read by its own feed
-// (the hooks are per project); the feeds report up and this page merges.
+// (the hooks are per project); the feeds report up and this page merges. The
+// same feeds give the other portfolio pages Today's red count (PmTodayRedCount).
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { AlertTriangle, Banknote, CalendarCheck2, ClipboardList, Coins, FolderKanban, Hand, TrendingUp, Wallet, Zap } from "lucide-react"
+import { AlertTriangle, Banknote, CalendarCheck2, ClipboardList, Coins, FolderKanban, Hand, HandCoins, TrendingUp, Wallet, Zap } from "lucide-react"
 import { collection, query, where } from "firebase/firestore"
 import { Button } from "@/components/ui/button"
 import { DecisionRow } from "@/components/module-ui/DecisionRow"
@@ -28,7 +29,7 @@ import { usePmDecisions, type PmDecisionProject } from "@/hooks/usePmDecisions"
 import { usePmRail } from "@/hooks/usePmRail"
 import { usePmSeat } from "@/hooks/usePmSeat"
 import { useProjectFigures } from "@/hooks/useProjectFigures"
-import { useProjectPurchaseRequests } from "@/hooks/useProjectPurchaseRequests"
+import { usePulseCost } from "@/hooks/usePulseCost"
 import { Link, useRouter } from "@/i18n/routing"
 import { pmSeesProject } from "@/lib/pm/access"
 import { DECISION_GROUP, GROUP_ORDER, type DecisionGroup, type PmDecision } from "@/lib/pm/decisions"
@@ -38,45 +39,69 @@ import { lifecycleOf } from "@/lib/pm/lifecycle"
 import { cn } from "@/lib/utils"
 
 type Row = PmDecisionProject & { id: string; name?: string; pm?: (PmDecisionProject["pm"] & { no?: string }) | null }
-type Feed = { visible: boolean; money: boolean; client: boolean; decisions: PmDecision[]; progress: number | null; behind: number; unbilled: number; cash: number; overdue: number }
+type Feed = {
+  visible: boolean
+  money: boolean
+  client: boolean
+  decisions: PmDecision[]
+  progress: number | null
+  behind: number
+  unbilled: number
+  cash: number
+  overdue: number
+  obstacles: number
+  requests: number
+  shortages: number
+  costBudget: number
+  committed: number
+}
 type Item = { key: string; severity: PmDecision["severity"]; age: number; amount: number; group: DecisionGroup; node: React.ReactNode }
 
 const SEVERITY_RANK = { red: 0, amber: 1, blue: 2 } as const
 const CLIP = 7
 
 const signature = (f: Feed) =>
-  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}`).join(",")}`
+  `${f.visible}|${f.money}|${f.client}|${f.progress}|${f.behind}|${f.unbilled}|${f.cash}|${f.overdue}|${f.obstacles}|${f.requests}|${f.shortages}|${f.costBudget}|${f.committed}|${f.decisions.map((d) => `${d.kind}:${d.count ?? ""}:${d.amount ?? ""}:${d.age ?? ""}:${d.severity}`).join(",")}`
 
 /** Reads one project's facts and reports them up; renders nothing. */
 function ProjectFeed({ project, onFeed }: { project: Row; onFeed: (id: string, f: Feed) => void }) {
   const access = usePmAccess(project.id, project as { pm?: { lifecycle?: string } | null; status?: string; projectManagerId?: string | null })
   const visible = !access.isLoading && pmSeesProject(access.ctx)
-  const { decisions } = usePmDecisions(project.id, visible ? project : null, access)
+  const { decisions, facts } = usePmDecisions(project.id, visible ? project : null, access)
   const fig = useProjectFigures(project.id, visible ? project : null, access)
   const money = access.has("money")
   const client = access.has("client")
+  const cost = usePulseCost(project.id, project.organizationId ?? null, project.warehouseId ?? null, project.budget ?? 0, visible && money && !client)
+  const committed = cost?.total.committed ?? 0
   const overdue = decisions.find((d) => d.kind === "collection_overdue")?.amount ?? 0
   useEffect(() => {
-    if (!access.isLoading) onFeed(project.id, { visible, money, client, decisions, progress: fig.progress, behind: fig.behind, unbilled: fig.unbilled, cash: fig.cash, overdue })
-  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, project.id, onFeed])
+    if (!access.isLoading)
+      onFeed(project.id, {
+        visible,
+        money,
+        client,
+        decisions,
+        progress: fig.progress,
+        behind: fig.behind,
+        unbilled: fig.unbilled,
+        cash: fig.cash,
+        overdue,
+        obstacles: facts.openObstacles,
+        requests: facts.pendingRequests,
+        shortages: facts.shortages,
+        costBudget: facts.costBudget,
+        committed,
+      })
+  }, [access.isLoading, visible, money, client, decisions, fig.progress, fig.behind, fig.unbilled, fig.cash, overdue, facts, committed, project.id, onFeed])
   return null
 }
 
-export function PmPortfolioToday() {
-  const t = useTranslations("Portal.PM")
-  const locale = useLocale()
-  const router = useRouter()
+/** The org's PM projects still in play, and the handover files waiting on the viewer. */
+function usePortfolioSources() {
   const firestore = useFirestore()
   const { user } = useUser()
   const { profile, isOrgOwner } = usePermissions()
-  const seat = usePmSeat()
   const orgId = (profile?.organizationId as string | undefined) || user?.uid || ""
-  const today = todayDay()
-  const [feeds, setFeeds] = useState<Record<string, Feed>>({})
-  const onFeed = useCallback((id: string, f: Feed) => setFeeds((prev) => (prev[id] && signature(prev[id]) === signature(f) ? prev : { ...prev, [id]: f })), [])
-  const [group, setGroup] = useState<DecisionGroup | "all">("all")
-  const [all, setAll] = useState(false)
-
   const q = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "projects"), where("organizationId", "==", orgId)) : null), [firestore, orgId])
   const { data, isLoading } = useCollection(q)
   const projects = useMemo(
@@ -86,12 +111,49 @@ export function PmPortfolioToday() {
         .sort((a, b) => String(a.pm?.no ?? "").localeCompare(String(b.pm?.no ?? ""))),
     [data]
   )
-  const mine = useMemo(() => projects.filter((p) => feeds[p.id]?.visible), [projects, feeds])
-
   // Handover files addressed to the viewer (the owner sees every one): HO-05.
   const hoQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, PM_HANDOVERS), where("organizationId", "==", orgId), where("status", "==", "wait")) : null), [firestore, orgId])
   const { data: hoData } = useCollection(hoQ)
   const handovers = useMemo(() => ((hoData ?? []) as PmHandover[]).filter((h) => isOrgOwner || h.to === user?.uid), [hoData, isOrgOwner, user?.uid])
+  return { orgId, projects, handovers, isLoading }
+}
+
+function useFeeds() {
+  const [feeds, setFeeds] = useState<Record<string, Feed>>({})
+  const onFeed = useCallback((id: string, f: Feed) => setFeeds((prev) => (prev[id] && signature(prev[id]) === signature(f) ? prev : { ...prev, [id]: f })), [])
+  return { feeds, onFeed }
+}
+
+/** Today's red count for the rail on the other portfolio pages — the prototype
+ * computes it on every portfolio tab, not only after Today was opened. Renders nothing. */
+export function PmTodayRedCount({ onCount }: { onCount: (red: number) => void }) {
+  const { projects, handovers } = usePortfolioSources()
+  const { feeds, onFeed } = useFeeds()
+  const today = todayDay()
+  const red =
+    handovers.filter((h) => handoverFlags(h, today).severity === "red").length +
+    projects.reduce((a, p) => a + (feeds[p.id]?.visible ? feeds[p.id].decisions.filter((d) => d.severity === "red").length : 0), 0)
+  useEffect(() => onCount(red), [red, onCount])
+  return (
+    <>
+      {projects.map((p) => (
+        <ProjectFeed key={p.id} project={p} onFeed={onFeed} />
+      ))}
+    </>
+  )
+}
+
+export function PmPortfolioToday() {
+  const t = useTranslations("Portal.PM")
+  const locale = useLocale()
+  const router = useRouter()
+  const seat = usePmSeat()
+  const { orgId, projects, handovers, isLoading } = usePortfolioSources()
+  const today = todayDay()
+  const { feeds, onFeed } = useFeeds()
+  const [group, setGroup] = useState<DecisionGroup | "all">("all")
+  const [all, setAll] = useState(false)
+  const mine = useMemo(() => projects.filter((p) => feeds[p.id]?.visible), [projects, feeds])
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = handovers.map((h) => {
@@ -129,7 +191,7 @@ export function PmPortfolioToday() {
           age: d.age ?? 0,
           amount: d.amount ?? 0,
           group: DECISION_GROUP[d.kind],
-          node: <DecisionItem key={`${p.id}:${d.kind}`} d={d} money={feeds[p.id].money} project={p.name || "—"} onOpen={() => router.push(`/contractor/projects/${p.id}?tab=${d.tab}`)} />,
+          node: <DecisionItem key={`${p.id}:${d.kind}`} d={d} money={feeds[p.id].money} project={p.name || "—"} onOpen={() => router.push(`/contractor/projects/${p.id}?tab=${d.tab}${d.kind === "ipc_ready" ? "&work=prepare" : ""}`)} />,
         })
       }
     }
@@ -148,24 +210,53 @@ export function PmPortfolioToday() {
   const withProgress = mine.filter((p) => feeds[p.id].progress !== null)
   const avgProgress = withProgress.length ? Math.round(withProgress.reduce((a, p) => a + (feeds[p.id].progress ?? 0), 0) / withProgress.length) : null
   const liveValue = live.reduce((a, p) => a + (p.budget ?? 0), 0)
+  const liveBudget = live.reduce((a, p) => a + feeds[p.id].costBudget, 0)
   const unbilled = mine.reduce((a, p) => a + feeds[p.id].unbilled, 0)
   const cash = mine.reduce((a, p) => a + feeds[p.id].cash, 0)
   const overdue = mine.reduce((a, p) => a + feeds[p.id].overdue, 0)
-  const requests = useProjectPurchaseRequests(orgId || null)
-  const pendingRequests = requests.rows.filter((r) => feeds[r.project.id]?.visible).reduce((a, r) => a + r.requests.filter((x) => x.status === "pending").length, 0)
+  // The advances received: the advance term of every project past planning (the prototype's advRecv).
+  const advances = mine
+    .filter((p) => lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) !== "plan")
+    .reduce((a, p) => a + (p.budget ?? 0) * ((p.pm?.original ?? p.pm?.terms)?.advance ?? 0), 0)
+  const pendingRequests = mine.reduce((a, p) => a + feeds[p.id].requests, 0)
+  const openObstacles = mine.reduce((a, p) => a + feeds[p.id].obstacles, 0)
+  const shortages = mine.reduce((a, p) => a + feeds[p.id].shortages, 0)
+  const committed = mine.reduce((a, p) => a + feeds[p.id].committed, 0)
 
+  const valueKpi: ModuleKpi = {
+    id: "value",
+    label: t("dec.kpi_value"),
+    value: pmMoney(liveValue),
+    note: client && liveBudget > 0 ? t("dec.kpi_value_note_budget", { count: live.length, budget: pmMoney(liveBudget) }) : t("dec.kpi_value_note", { count: live.length }),
+    tone: "neutral",
+    icon: Coins,
+  }
+  const cashNote =
+    cash < 0
+      ? overdue > 0
+        ? t("dec.kpi_cash_negative", { overdue: pmMoney(overdue) })
+        : t("dec.kpi_cash_negative_plain")
+      : overdue > 0
+        ? t("dec.kpi_cash_advances_overdue", { advances: pmMoney(advances), overdue: pmMoney(overdue) })
+        : t("dec.kpi_cash_advances", { advances: pmMoney(advances) })
   const kpis: ModuleKpi[] =
     money && client
       ? [
-          { id: "value", label: t("dec.kpi_value"), value: pmMoney(liveValue), note: t("dec.kpi_value_note", { count: live.length }), tone: "neutral", icon: Coins },
+          valueKpi,
           { id: "unbilled", label: t("pulse.kpi_unbilled"), value: pmMoney(unbilled), note: t("dec.kpi_unbilled_note"), tone: unbilled > 0 ? "bad" : "good", icon: Banknote },
-          { id: "cash", label: t("pulse.kpi_cash"), value: pmMoney(cash), note: cash < 0 ? t("dec.kpi_cash_negative", { overdue: pmMoney(overdue) }) : t("dec.kpi_cash_covered"), tone: cash < 0 ? "bad" : "good", icon: Wallet },
+          { id: "cash", label: t("pulse.kpi_cash"), value: pmMoney(cash), note: cashNote, tone: cash < 0 ? "bad" : "good", icon: Wallet },
         ]
-      : [
-          { id: "progress", label: t("dec.kpi_progress"), value: avgProgress === null ? "—" : `${avgProgress}%`, note: t("dec.kpi_progress_note", { count: live.length }), tone: "neutral", icon: TrendingUp },
-          { id: "urgent", label: t("dec.kpi_red"), value: String(red), note: oldest ? t("dec.kpi_oldest", { count: oldest }) : t("dec.kpi_none"), tone: red ? "bad" : "good", icon: AlertTriangle },
-          { id: "requests", label: t("dec.kpi_requests"), value: String(pendingRequests), note: t("dec.kpi_requests_note"), tone: pendingRequests ? "warn" : "good", icon: ClipboardList },
-        ]
+      : money
+        ? [
+            valueKpi,
+            { id: "committed", label: t("dec.kpi_committed"), value: pmMoney(committed), note: t("dec.kpi_committed_note"), tone: "neutral", icon: HandCoins },
+            { id: "requests", label: t("dec.kpi_requests_waiting"), value: String(pendingRequests), note: t("dec.kpi_short_30", { count: shortages }), tone: pendingRequests ? "warn" : "good", icon: ClipboardList },
+          ]
+        : [
+            { id: "progress", label: t("dec.kpi_progress"), value: avgProgress === null ? "—" : `${avgProgress}%`, note: t("dec.kpi_progress_note", { count: live.length }), tone: "neutral", icon: TrendingUp },
+            { id: "obstacles", label: t("dec.kpi_obstacles"), value: String(openObstacles), note: t("dec.kpi_obstacles_note"), tone: openObstacles ? "warn" : "good", icon: AlertTriangle },
+            { id: "requests", label: t("dec.kpi_requests"), value: String(pendingRequests), note: t("dec.kpi_requests_follow"), tone: pendingRequests ? "warn" : "good", icon: ClipboardList },
+          ]
 
   const groupChips = GROUP_ORDER[seat]
     .map((g) => ({ id: g, label: t(`dec.grp.${g}`), count: items.filter((r) => r.group === g).length }))
@@ -191,7 +282,7 @@ export function PmPortfolioToday() {
         <EmptyState icon={CalendarCheck2} title={t("dec.no_projects")} description={t("dec.no_projects_desc")} />
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
-          <Panel title={t("dec.panel_title")} icon={Zap} count={items.length || undefined} bodyClassName="p-0">
+          <Panel title={t("dec.panel_title")} icon={Zap} count={items.length || undefined} countTone={red ? "bad" : "mute"} bodyClassName="p-0">
             {items.length > 0 && <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("dec.subline", { urgent: red, oldest })}</p>}
             {items.length > 0 && groupChips.length > 1 && (
               <div className="border-b px-4 py-3">
@@ -255,7 +346,7 @@ export function PmPortfolioToday() {
                               {f.progress === null ? "—" : `${Math.round(f.progress)}%`}
                             </span>
                             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                              <div className={cn("h-full rounded-full", f.behind > 0 ? "bg-warning" : "bg-success")} style={{ width: `${Math.min(100, Math.max(0, f.progress ?? 0))}%` }} />
+                              <div className={cn("h-full rounded-full", f.behind > 4 ? "bg-warning" : "bg-success")} style={{ width: `${Math.min(100, Math.max(0, f.progress ?? 0))}%` }} />
                             </div>
                           </div>
                         </Link>

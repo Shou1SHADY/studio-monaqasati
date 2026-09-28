@@ -1,6 +1,7 @@
 "use client"
 
-import { legacyAwareRole } from "@/hooks/usePermissions"
+import { legacyAwareRole, usePermissions } from "@/hooks/usePermissions"
+import { BuyerCategoriesDialog, cleanBuyerCategories } from "@/components/procurement/BuyerCategoriesDialog"
 import { useState, useEffect, useRef } from "react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,6 +66,7 @@ import {
   seededGroupDocId,
   isSuperAdminGroup,
   ALL_PERMISSION,
+  can as groupCan,
   type TeamGroup,
   type PermissionValue,
 } from "@/lib/permissions"
@@ -88,6 +90,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null)
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const [categoriesFor, setCategoriesFor] = useState<{ id: string; name: string; procurementCategories?: unknown } | null>(null)
+  const perms = usePermissions()
 
   // Group editor dialog state
   const [groupDialog, setGroupDialog] = useState<"closed" | "new" | string>("closed") // string = editing group id
@@ -662,6 +666,11 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                       {filteredMembers.map((member: any) => {
                         const memberGroup = groupById(member.defaultGroupId)
                         const memberIsOwner = member.organizationRole === "owner"
+                        // P-21/P-40: a buyer's categories, set by the owner or a purchasing manager.
+                        const memberCtx = { organizationRole: (member.organizationRole as string | null | undefined) ?? null, defaultGroupId: (member.defaultGroupId as string | undefined) || null, groups }
+                        const isBuyer = role === "Contractor" && !memberIsOwner && groupCan("offers.accept", memberCtx)
+                        const buyerCats = cleanBuyerCategories(member.procurementCategories)
+                        const setsCategories = (isOwner || perms.can("po.approve")) && member.id !== user?.uid
                         return (
                           <TableRow key={member.id} className="hover:bg-slate-50/50 transition-colors">
                             <TableCell className={cn("font-bold", locale === "ar" ? "text-right" : "text-left")}>
@@ -714,6 +723,23 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
                                 <Badge className="bg-accent/15 text-cta border-none">{displayGroupName(memberGroup)}</Badge>
                               ) : (
                                 <span className="text-xs text-muted-foreground">{t("team_no_group")}</span>
+                              )}
+                              {isBuyer && (
+                                <div className="mt-1">
+                                  {setsCategories ? (
+                                    <Button
+                                      type="button"
+                                      variant="link"
+                                      size="sm"
+                                      className="h-auto p-0 text-xs"
+                                      onClick={() => setCategoriesFor({ id: member.id, name: member.name || member.email || "", procurementCategories: member.procurementCategories })}
+                                    >
+                                      {buyerCats.length ? t("team_buyer_categories_count", { count: buyerCats.length }) : t("team_buyer_categories_all")}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">{buyerCats.length ? t("team_buyer_categories_count", { count: buyerCats.length }) : t("team_buyer_categories_all")}</span>
+                                  )}
+                                </div>
                               )}
                             </TableCell>
                             <TableCell
@@ -934,6 +960,8 @@ export default function TeamManagementPage({ role }: TeamPageProps) {
           )}
         </Tabs>
       </div>
+
+      <BuyerCategoriesDialog member={categoriesFor} open={categoriesFor !== null} onOpenChange={(o) => !o && setCategoriesFor(null)} />
 
       {/* Invite Dialog */}
       <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>

@@ -24,6 +24,7 @@ import { purchaseRequestRef } from "@/lib/mfg-outside"
 import { can as resolveCan, type TeamGroup } from "@/lib/permissions"
 import { MANUFACTURING_REQUESTS, type ManufacturingRequest } from "@/lib/sales-orders"
 import { buildNeedRows, type BuyerScope, type MfgRequestFact, type NeedRow } from "@/lib/procurement/need-desk"
+import { procTeam } from "@/lib/procurement/team"
 import { mfgNeed, projectNeed, sortNeeds, stockNeeds, type Need } from "@/lib/procurement/needs"
 
 export interface ProcurementNeeds {
@@ -50,12 +51,10 @@ const asIso = (v: unknown): string | null => {
   return t && typeof t.toDate === "function" ? t.toDate().toISOString() : null
 }
 
-const cats = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : [])
-
 export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
   const firestore = useFirestore()
   const { orgId, actor, policies, orders, rfqs } = world
-  const { profile, groups } = usePermissions()
+  const { profile, groups, can: viewerCan } = usePermissions()
   const [now] = useState(() => new Date())
 
   const woQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, WORK_ORDERS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
@@ -114,23 +113,26 @@ export function useProcurementNeeds(world: ProcurementWorld): ProcurementNeeds {
   const rows = useMemo(() => {
     const facts: Record<string, MfgRequestFact> = {}
     for (const [id, r] of Object.entries(mfgRequests)) facts[id] = { status: r.status, at: (r as ManufacturingRequest & { requestedAt?: string }).requestedAt || asIso((r as ManufacturingRequest & { createdAt?: unknown }).createdAt) }
-    return buildNeedRows(needs, { now, policies, agreements, history, orders, rfqs, onHand, makeable, mfgRequests: facts, mfgWindowHours: mfgSettings.answerWindowHours })
-  }, [needs, now, policies, agreements, history, orders, rfqs, onHand, makeable, mfgRequests, mfgSettings.answerWindowHours])
+    return buildNeedRows(needs, { now, policies, agreements, history, orders, rfqs, onHand, makeable, mfgRequests: facts })
+  }, [needs, now, policies, agreements, history, orders, rfqs, onHand, makeable, mfgRequests])
 
-  const team = useMemo(() => {
-    const members = orgMembers.map((m) => ({ m, ctx: { organizationRole: (m.organizationRole as string | null | undefined) ?? null, defaultGroupId: (m.defaultGroupId as string | undefined) || null, groups: groups as TeamGroup[] } }))
-    const staff = members.filter(({ m, ctx }) => m.id !== orgId && ctx.organizationRole !== "owner" && (resolveCan("offers.accept", ctx) || resolveCan("po.approve", ctx)))
-    const buyers: BuyerScope[] = staff
-      .filter(({ ctx }) => resolveCan("offers.accept", ctx) && !resolveCan("po.approve", ctx))
-      .map(({ m }) => ({ uid: m.id, name: (m.name as string) || (m.email as string) || "", categories: cats(m.procurementCategories) }))
-    return { buyers, ownerHasTeam: staff.length > 0 }
-  }, [orgMembers, groups, orgId])
-
-  const viewerCategories = useMemo(() => {
-    if (actor.isOwner || actor.canApprove || !actor.canPrepare) return null
-    const c = cats((profile as Record<string, unknown> | null)?.procurementCategories)
-    return c.length ? c : null
-  }, [actor, profile])
+  const canSource = actor.isOwner || actor.canPrepare || viewerCan("rfq.manage")
+  const team = useMemo(
+    () =>
+      procTeam(
+        orgMembers.map((m) => ({
+          id: m.id,
+          name: (m.name as string) || (m.email as string) || "",
+          procurementCategories: m.procurementCategories,
+          can: (p) => resolveCan(p, { organizationRole: (m.organizationRole as string | null | undefined) ?? null, defaultGroupId: (m.defaultGroupId as string | undefined) || null, groups: groups as TeamGroup[] }),
+          isOwner: m.id === orgId || m.organizationRole === "owner",
+        })),
+        { ...actor, canSource },
+        (profile as Record<string, unknown> | null)?.procurementCategories
+      ),
+    [orgMembers, groups, orgId, actor, canSource, profile]
+  )
+  const viewerCategories = team.viewerCategories
 
   return {
     loading: woLoading || projectRequests.loading || world.loading,

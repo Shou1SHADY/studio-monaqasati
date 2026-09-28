@@ -21,7 +21,7 @@ import { approvalRefusal, poStatus, poValue } from "@/lib/procurement/po"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { formatSar } from "@/lib/crm"
 import type { PurchaseOrder } from "@/lib/procurement/types"
-import { advanceAmount, advanceState, asX, openHolds } from "@/lib/procurement/po-extras"
+import { advanceAmount, advanceState, asX } from "@/lib/procurement/po-extras"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingShell } from "./AccountingShell"
 
@@ -40,7 +40,10 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
   const mine = awaiting.filter((po) => approvalRefusal(po, actor, policies) === null)
   // What Procurement sends Finance after approval (R-24, R-21): advances to pay, invoices held.
   const advances = useMemo(() => orders.filter((po) => advanceState(asX(po)) === "requested").sort(byNewest), [orders])
-  const held = useMemo(() => orders.filter((po) => openHolds(asX(po)).length > 0).sort(byNewest), [orders])
+  // Held and still open, or answered by Procurement and waiting for Finance to release (R-21).
+  const liveHolds = (po: PurchaseOrder) => (asX(po).financeHolds || []).filter((h) => h.state !== "released")
+  const held = useMemo(() => orders.filter((po) => liveHolds(po).length > 0).sort(byNewest), [orders])
+  const heldCount = held.reduce((n, po) => n + liveHolds(po).length, 0)
   const openOrder = orders.find((po) => po.id === openId) || null
   const mayApproveAny = actor.isOwner || actor.canApprove
 
@@ -84,11 +87,15 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
             )}
           </Section>
 
-          <Section icon={PauseCircle} title={tp("rfqpo.desk.held_title")} sub={tp("rfqpo.desk.held_sub")} count={0}>
+          <Section icon={PauseCircle} title={tp("rfqpo.desk.held_title")} sub={tp("rfqpo.desk.held_sub")} count={heldCount}>
             {held.length === 0 ? (
               <Empty>{tp("rfqpo.desk.held_empty")}</Empty>
             ) : (
-              <OrderRows orders={held} locale={locale} onOpen={setOpenId} note={(po) => openHolds(asX(po)).map((h) => `${h.invoiceNo} — ${tp(`rfqpo.po.hold.reason.${h.reason}`)}`).join(" · ")} t={t} />
+              <OrderRows orders={held} locale={locale} onOpen={setOpenId} note={(po) =>
+                  liveHolds(po)
+                    .map((h) => `${h.invoiceNo} — ${tp(`rfqpo.po.hold.reason.${h.reason}`)}${h.state === "decided" && h.decision ? ` — ${tp("enforce.hold_decided_note", { decision: tp(`rfqpo.po.hold.decision.${h.decision}`), by: h.decidedByName || "—" })}` : ""}`)
+                    .join(" · ")
+                } t={t} />
             )}
           </Section>
 

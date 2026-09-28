@@ -15,8 +15,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { AlertTriangle, CheckCircle2, Clock, FileText, Info, Printer, Star } from "lucide-react"
-import { doc } from "firebase/firestore"
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
+import { useFirestore } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useToast } from "@/hooks/use-toast"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
@@ -29,9 +28,10 @@ import { cn } from "@/lib/utils"
 import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { approvalRefusal, canCancelRemainder, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil } from "@/lib/procurement/po"
 import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
-import { PROCUREMENT_SETTINGS, type PoLine, type PoLogEntry, type PoSendChannel, type PurchaseOrder, type RejectDecision } from "@/lib/procurement/types"
-import { advanceState, asX, awaitsPmBudget, budgetOverrun, buyerSelfIssueLimit, lineInTransit, pmCancelOpen, poActs, poRevision, samplePending, selfIssueRefusal, type PoFinanceHold, type PoLineX } from "@/lib/procurement/po-extras"
-import { cancelRemainderWithFee, decideHold, holdInvoice, logSentOutside, recordFinancePayment, releaseHold, selfIssuePurchaseOrder } from "@/lib/procurement/po-extra-writes"
+import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
+import { advanceState, asX, awaitsPmBudget, budgetOverrun, lineInTransit, overrunTotal, pmBudgetAsk, pmCancelOf, pmCancelOpen, poActs, poRevision, samplePending, selfIssueRefusal, type PoFinanceHold, type PoLineX } from "@/lib/procurement/po-extras"
+import { cancelRemainderWithFee, decideHold, holdInvoice, logSentOutside, recordFinancePayment, referBudgetToProjects, releaseHold, selfIssuePurchaseOrder, type PoLogAction } from "@/lib/procurement/po-extra-writes"
+import { operatingPolicies } from "@/lib/procurement/policies"
 import {
   ProcWriteError,
   approvePurchaseOrder,
@@ -175,9 +175,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const [busy, setBusy] = useState<string | null>(null)
   const perms = usePermissions()
   const isFinance = perms.isOrgOwner || perms.can("invoices.manage") || perms.can("accounting.post")
-  const settingsRef = useMemoFirebase(() => (firestore && world.orgId ? doc(firestore, PROCUREMENT_SETTINGS, world.orgId) : null), [firestore, world.orgId])
-  const { data: settingsDoc } = useDoc(settingsRef)
-  const selfLimit = buyerSelfIssueLimit(settingsDoc as { buyerSelfIssueLimit?: unknown } | null)
+  // The resolved policy — the self-issue write re-reads it inside its transaction.
+  const selfLimit = operatingPolicies(policies).buyerSelfIssueLimit
   const boqItems = useBoqGateItems(po ? asX(po) : null)
 
   const receipts = useMemo(() => (po ? receiptsOf(po, world.deliveries) : []), [po, world.deliveries])
@@ -226,7 +225,8 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   const acts = poActs(po, actor)
   const revision = poRevision(po)
   const overrun = po.status === "awaiting_approval" ? budgetOverrun(po, boqItems, world.orders) : []
-  const pmWait = awaitsPmBudget(px, overrun)
+  const pmWait = awaitsPmBudget(px)
+  const pmAsk = pmBudgetAsk(px, overrun)
   const samples = po.status === "awaiting_approval" ? samplePending(po, boqItems) : []
   const selfIssue = selfIssueRefusal(po, actor, selfLimit, blocks.length + samples.length + (pmWait ? 1 : 0)) === null && !actor.canApprove && !actor.isOwner
   const advance = advanceState(px)
@@ -299,9 +299,29 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
         if (pmWait)
           return (
             <>
-              <XCallout tone="amber">{tProc(actor.seesPrices ? "rfqpo.po.pmw_money" : "rfqpo.po.pmw", { over: Math.round(overrun.reduce((s, o) => s + o.over, 0)).toLocaleString("en-US") })}</XCallout>
+              <XCallout tone="amber">
+                {tProc(actor.seesPrices ? "rfqpo.po.pmw_money" : "rfqpo.po.pmw", { over: (overrun.length ? overrunTotal(overrun) : Math.round(Number(px.pmBudget?.over) || 0)).toLocaleString("en-US") })}
+                {px.pmBudget?.state === "renegotiate" && ` — ${tProc("enforce.pm_renegotiate", { by: px.pmBudget.byName || "—", note: px.pmBudget.note || "—" })}`}
+              </XCallout>
               {cancelLink}
             </>
+          )
+        if (pmAsk)
+          flags.push(
+            <div key="pm-ask" className="space-y-2">
+              <XCallout tone="amber">{tProc(actor.seesPrices ? "enforce.pm_over_money" : "enforce.pm_over", { over: overrunTotal(overrun).toLocaleString("en-US") })}</XCallout>
+              {f && (actor.canApprove || actor.isOwner || (actor.canPrepare && acts.acts)) && (
+                <Button size="sm" variant="outline" disabled={busy != null} onClick={() => run("refer", () => referBudgetToProjects(f, actor, po.id, { items: boqItems, otherOrders: world.orders }, opts), "toast.saved")}>
+                  {tProc("enforce.pm_refer")}
+                </Button>
+              )}
+            </div>
+          )
+        else if (px.pmBudget?.state === "accepted")
+          flags.push(
+            <Callout key="pm-ok" tone="green">
+              {tProc("enforce.pm_accepted", { by: px.pmBudget.byName || "—" })}
+            </Callout>
           )
         return (
           <>
@@ -319,7 +339,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             {f && selfIssue && (
               <div className="space-y-2">
                 <Callout tone="blue">{tProc("rfqpo.po.self_issue_hint", { limit: selfLimit.toLocaleString("en-US") })}</Callout>
-                <Button disabled={busy != null} onClick={() => run("self", () => selfIssuePurchaseOrder(f, actor, po.id, { limit: selfLimit, blocks: blocks.length + samples.length }), "toast.approved")}>
+                <Button disabled={busy != null} onClick={() => run("self", () => selfIssuePurchaseOrder(f, actor, po.id, { blocks: { supplier: world.supplierFacts.get(po.supplierOrgId) ?? null, otherOrders: world.orders } }, opts), "toast.approved")}>
                   {tProc("rfqpo.po.self_issue")}
                 </Button>
               </div>
@@ -455,7 +475,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   {t("next.close")}
                 </Button>
               )}
-              {f && canRateNow(po, world.deliveries, actor) && (
+              {f && acts.acts && canRateNow(po, world.deliveries, actor) && (
                 <Button variant="outline" className="gap-2" disabled={busy != null} onClick={() => setDialog({ kind: "rate" })}>
                   <Star size={15} aria-hidden="true" />
                   {t("next.rate")}
@@ -481,6 +501,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               </div>
             ) : (
               f &&
+              acts.acts &&
               canRateNow(po, world.deliveries, actor) && (
                 <Button variant="outline" className="gap-2" disabled={busy != null} onClick={() => setDialog({ kind: "rate" })}>
                   <Star size={15} aria-hidden="true" />
@@ -500,13 +521,22 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
   // ── Log ────────────────────────────────────────────────────────────────
   const logSentence = (e: PoLogEntry): string => {
     const p = e.params || {}
+    const action = e.action as PoLogAction
     const params: Record<string, string | number> = {
       by: e.byName || "—",
       note: e.note || "",
       date: p.date ? fmt(String(p.date)) : "",
       number: p.number ? displayReceiptNumber(String(p.number), locale) : "",
       channel: p.channel ? tProc(`channel.${String(p.channel) as PoSendChannel}`) : "",
-      decision: p.decision ? tProc(`rejectDecision.${String(p.decision) as RejectDecision}`) : "",
+      decision: !p.decision
+        ? ""
+        : action === "hold_decided"
+          ? tProc(`rfqpo.po.hold.decision.${String(p.decision)}`)
+          : action === "budget_decided"
+            ? tProc(`enforce.budget.${String(p.decision)}`)
+            : tProc(`rejectDecision.${String(p.decision) as RejectDecision}`),
+      over: p.over != null ? Number(p.over).toLocaleString("en-US") : "",
+      invoice: p.invoice ? String(p.invoice) : "",
     }
     let s = tProc(`log.${e.action}`, params)
     if (e.action === "approved" && p.selfApproved) s += ` · ${tProc("selfApproval")}`
@@ -622,9 +652,9 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                     <LineBar line={l} />
                     {transit > 0 && <p className="text-[11px] font-semibold text-cta">{tProc("rfqpo.po.in_transit", { qty: figure(transit), unit: l.unit })}</p>}
                     {lx.rejectReplaceBy && <p className="text-[11px] text-muted-foreground">{tProc("rfqpo.po.replace_by", { date: fmt(lx.rejectReplaceBy) })}</p>}
-                    {pmCancelOpen(lx) && (
+                    {pmCancelOpen(px, l) && (
                       <div className="space-y-2">
-                        <Callout tone="amber">{tProc("rfqpo.po.pm_cancel", { reason: lx.pmCancel?.reason || "—", by: lx.pmCancel?.byName || "—" })}</Callout>
+                        <Callout tone="amber">{tProc("rfqpo.po.pm_cancel", { reason: pmCancelOf(px, l)?.reason || "—", by: pmCancelOf(px, l)?.byName || "—" })}</Callout>
                         {f && acts.acts && actorCanDecideLines(actor) && canCancelRemainder(po) && (
                           <Button size="sm" onClick={() => setDialog({ kind: "cancel_line", line: l })}>
                             {tProc("rfqpo.po.pm_cancel_confirm")}
@@ -646,7 +676,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                             {t("line.decide_reject", { qty: figure(l.rejected), unit: l.unit })}
                           </Button>
                         )}
-                        {la.cancelRemainder && !pmCancelOpen(lx) && (
+                        {la.cancelRemainder && !pmCancelOpen(px, l) && (
                           <Button size="sm" variant="outline" disabled={busy != null} onClick={() => setDialog({ kind: "cancel_line", line: l })}>
                             {t("line.cancel_remainder")}
                           </Button>
@@ -750,7 +780,11 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <dt className="text-muted-foreground">{t("docs.supplier_date")}</dt>
                 <dd>
-                  <HonestDateText po={po} now={now} />
+                  {advance === "requested" && !po.lines.some((l) => l.accepted > 0) ? (
+                    <span className="text-warning">{tProc("enforce.date_suspended")}</span>
+                  ) : (
+                    <HonestDateText po={po} now={now} />
+                  )}
                 </dd>
                 {po.paymentTerms && (
                   <>
@@ -833,9 +867,9 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
             open={dialog?.kind === "cancel_line"}
             onOpenChange={(o) => !o && setDialog(null)}
             context={dialog?.kind === "cancel_line" ? t("cancel_line.context", { line: dialog.line.name, qty: figure(lineToArrive(dialog.line)), unit: dialog.line.unit }) : null}
-            fromProjects={dialog?.kind === "cancel_line" ? (dialog.line as PoLineX).pmCancel?.reason || null : null}
+            fromProjects={dialog?.kind === "cancel_line" ? pmCancelOf(px, dialog.line)?.reason || null : null}
             seesPrices={actor.seesPrices}
-            onSubmit={({ reason, fee }) => (dialog?.kind === "cancel_line" ? run("cancel_line", () => cancelRemainderWithFee(f, actor, po.id, { lineId: dialog.line.id, reason, fee }), "toast.remainder_cancelled") : Promise.resolve(false))}
+            onSubmit={({ reason, fee }) => (dialog?.kind === "cancel_line" ? run("cancel_line", () => cancelRemainderWithFee(f, actor, po.id, { lineId: dialog.line.id, reason, fee }, opts), "toast.remainder_cancelled") : Promise.resolve(false))}
           />
           <DateDialog
             open={dialog?.kind === "accept"}
@@ -852,7 +886,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
           <DecideHoldDialog
             hold={dialog?.kind === "decide_hold" ? dialog.hold : null}
             onOpenChange={(o) => !o && setDialog(null)}
-            onSubmit={({ decision, note }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note }), "toast.saved") : Promise.resolve(false))}
+            onSubmit={({ decision, note }) => (dialog?.kind === "decide_hold" ? run("hold", () => decideHold(f, actor, po.id, { holdId: dialog.hold.id, decision, note }, opts), "toast.saved") : Promise.resolve(false))}
           />
           <RecordPaymentDialog open={dialog?.kind === "pay"} onOpenChange={(o) => !o && setDialog(null)} po={px} now={now} onSubmit={(input) => run("pay", () => recordFinancePayment(f, actor, isFinance, po.id, input), "toast.saved")} />
           <HoldInvoiceDialog open={dialog?.kind === "hold_invoice"} onOpenChange={(o) => !o && setDialog(null)} onSubmit={(input) => run("hold_invoice", () => holdInvoice(f, actor, isFinance, po.id, input), "toast.saved")} />

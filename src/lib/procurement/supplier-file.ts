@@ -117,8 +117,8 @@ export function supplierDocs(vat: string | null | undefined, crExpiry: string | 
 export type VerifyRefusal = "no_permission" | "no_vat" | "not_pending"
 
 /** The manager verifies, and only a supplier whose VAT number is on file. */
-export function verifyRefusal(actor: Pick<ProcActor, "isOwner" | "canApprove">, record: Pick<SupplierRecord, "verified"> | null | undefined, vat: string | null | undefined): VerifyRefusal | null {
-  if (!isProcManager(actor)) return "no_permission"
+export function verifyRefusal(actor: Pick<ProcActor, "isOwner" | "canApprove">, record: Pick<SupplierRecord, "verified"> | null | undefined, vat: string | null | undefined, ownerHasTeam = false): VerifyRefusal | null {
+  if (!isProcManager(actor) || (actor.isOwner && ownerHasTeam)) return "no_permission"
   if (!isUnverified(record)) return "not_pending"
   if (!text(vat)) return "no_vat"
   return null
@@ -407,4 +407,161 @@ export const visibleSupplierSegments = (seesPrices: boolean): SupplierTabSegment
 export function segmentFromParam(param: string | null | undefined, seesPrices: boolean): SupplierTabSegment {
   const asked = SUPPLIER_SEGMENTS.find((s) => s === param)
   return asked && visibleSupplierSegments(seesPrices).includes(asked) ? asked : "mine"
+}
+
+// ---------------------------------------------------------------------------
+// Who manages the supplier file (the prototype's `CAN('sup') && !CAN('ro')`)
+// ---------------------------------------------------------------------------
+//
+// The procurement manager (po.approve) and the buyer (offers.accept) add,
+// invite and favour suppliers; the expediter reads; the owner of a company
+// with a procurement team reads too (he approves what is routed to him). A
+// one-person company's owner does everything himself.
+
+type ActorRoles = Pick<ProcActor, "isOwner" | "canApprove" | "canPrepare">
+
+export const ownerReadsOnly = (actor: Pick<ProcActor, "isOwner">, ownerHasTeam: boolean): boolean => actor.isOwner && ownerHasTeam
+
+export const canManageSuppliers = (actor: ActorRoles, ownerHasTeam: boolean): boolean =>
+  !ownerReadsOnly(actor, ownerHasTeam) && Boolean(actor.isOwner || actor.canApprove || actor.canPrepare)
+
+/** Verify and edit the master record: the manager only (`CAN('all') && !ro`). */
+export const canVouchSuppliers = (actor: Pick<ProcActor, "isOwner" | "canApprove">, ownerHasTeam: boolean): boolean => !ownerReadsOnly(actor, ownerHasTeam) && isProcManager(actor)
+
+/** Renew or end a price agreement: the manager only; signing a new one is the buyer's too. */
+export const canRenewAgreements = canVouchSuppliers
+
+export const canSignAgreements = canManageSuppliers
+
+// ---------------------------------------------------------------------------
+// A buyer's suppliers (the prototype's `supScope`)
+// ---------------------------------------------------------------------------
+
+/** The top-level category a specialty belongs to — a buyer's categories are top-level. */
+export function categoryRoot(category: string, tree: Record<string, readonly string[]>): string {
+  if (tree[category]) return category
+  for (const [root, subs] of Object.entries(tree)) if (subs.includes(category)) return root
+  return category
+}
+
+/** A buyer sees the MATERIAL suppliers of his categories, and every service
+ * company and subcontractor. No categories on his record = all of them. */
+export function supplierInScope(
+  supplier: { categories: string[]; record?: Pick<SupplierRecord, "kind"> | null },
+  categories: string[] | null | undefined,
+  tree: Record<string, readonly string[]> = {}
+): boolean {
+  if (!categories || !categories.length) return true
+  if ((supplier.record?.kind || "mat") !== "mat") return true
+  return supplier.categories.some((c) => categories.includes(categoryRoot(c, tree)))
+}
+
+// ---------------------------------------------------------------------------
+// Sourcing from an unverified supplier (prototype `wAll` 2083, `canOrder` 1820)
+// ---------------------------------------------------------------------------
+
+export type SourcingBlock = "unverified" | "no_vat" | "cr_expired"
+
+/** Why this supplier may not be sent a private RFQ or be awarded one: a
+ * supplier added and not yet vouched for, one with no VAT number (Finance will
+ * not take his invoice), one whose CR has lapsed. Null = he may. */
+export function supplierSourcingBlock(record: Pick<SupplierRecord, "verified" | "vatNumber" | "crExpiry"> | null | undefined, profile: { vat?: string | null; crExpiry?: string | null } | null | undefined, today: string): SourcingBlock | null {
+  if (isUnverified(record)) return "unverified"
+  if (!effectiveVat(record, profile?.vat)) return "no_vat"
+  const cr = effectiveCrExpiry(record, profile?.crExpiry)
+  if (cr && cr < today) return "cr_expired"
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// A supplier who joined through our invitation
+// ---------------------------------------------------------------------------
+
+/** The record the invitation's acceptance writes (server-side): he is ours
+ * and UNVERIFIED — VAT and terms to be completed, and no order is approved
+ * for him until the manager vouches for him (prototype 2016-2019). An
+ * existing record is never overwritten. */
+export function invitedSupplierRecord(input: {
+  organizationId: string
+  supplierOrgId: string
+  supplierName: string
+  vat: string | null
+  invitedById: string | null
+  invitedByName: string | null
+  at: string
+}): Omit<SupplierRecord, "id"> {
+  const by = { byId: input.invitedById || "", byName: input.invitedByName || "" }
+  return {
+    organizationId: input.organizationId,
+    supplierOrgId: input.supplierOrgId,
+    supplierName: input.supplierName,
+    kind: "mat",
+    source: "invite",
+    vatNumber: text(input.vat) || null,
+    crExpiry: null,
+    paymentTermsDays: 30,
+    leadTimeDays: null,
+    verified: false,
+    addedById: input.invitedById,
+    addedByName: input.invitedByName,
+    addedAt: input.at,
+    log: [{ action: "added", at: input.at, ...by, params: { source: "invite" } }],
+  }
+}
+
+/** Orders still live with him: approved and not yet sent, sent, accepted, arriving. */
+export const OPEN_WITH_SUPPLIER: ReadonlySet<string> = new Set(["approved", "sent", "accepted", "in_delivery", "part_received"])
+
+// ---------------------------------------------------------------------------
+// A direct order's supplier list (prototype `supOpts`)
+// ---------------------------------------------------------------------------
+
+export interface DirectSupplierOption {
+  key: string
+  orgId: string | null
+  userId: string | null
+  name: string
+  crExpired: boolean
+  unverified: boolean
+}
+
+/** Material suppliers only (a service company or a subcontractor is not a
+ * material's source); those whose orders show they supply none of the lines'
+ * categories are left out — one we know nothing about stays in; a lapsed CR
+ * and an unvouched supplier are flagged, not hidden (the approval stops them). */
+export function directSupplierOptions(input: {
+  records: Array<Pick<SupplierRecord, "supplierOrgId" | "supplierName"> & { kind?: string | null; crExpiry?: string | null; verified?: boolean | null }>
+  orders: PurchaseOrder[]
+  keyOf: (po: PurchaseOrder) => string
+  categories: string[]
+  today: string
+}): DirectSupplierOption[] {
+  const known = new Map<string, Set<string>>()
+  for (const o of input.orders) {
+    if (!o.category) continue
+    const k = input.keyOf(o)
+    known.set(k, (known.get(k) || new Set()).add(o.category))
+  }
+  const fits = (key: string) => {
+    const cats = known.get(key)
+    return !input.categories.length || !cats || input.categories.some((c) => cats.has(c))
+  }
+  const out = new Map<string, DirectSupplierOption>()
+  const skip = new Set<string>()
+  for (const r of input.records) {
+    if ((r.kind || "mat") !== "mat") {
+      skip.add(r.supplierOrgId)
+      continue
+    }
+    const cr = dayOf(text(r.crExpiry)) || null
+    out.set(r.supplierOrgId, { key: r.supplierOrgId, orgId: r.supplierOrgId, userId: r.supplierOrgId, name: r.supplierName, crExpired: Boolean(cr && cr < input.today), unverified: r.verified === false })
+  }
+  for (const o of input.orders) {
+    const key = input.keyOf(o)
+    if (out.has(key) || skip.has(key)) continue
+    out.set(key, { key, orgId: o.isGuestSupplier ? null : o.supplierOrgId, userId: o.supplierUserId, name: o.supplierName, crExpired: false, unverified: false })
+  }
+  return Array.from(out.values())
+    .filter((s) => fits(s.key))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }

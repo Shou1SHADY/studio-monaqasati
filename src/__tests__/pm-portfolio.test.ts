@@ -1,6 +1,8 @@
 import {
   activeFilters,
+  archiveCsvHead,
   archiveCsvRows,
+  archiveSortsFor,
   archiveKpis,
   filterOptions,
   filtersFor,
@@ -95,10 +97,22 @@ describe("the archive (G-22)", () => {
   })
 
   it("CSV: BOM, quoted cells, raw numbers", () => {
-    const csv = toCsv([["No.", "Project"], ...archiveCsvRows([archived[0]], { kind: (k) => k ?? "", manager: (r) => r.managerName ?? "" })])
+    const csv = toCsv([["No.", "Project"], ...archiveCsvRows([archived[0]], { kind: (k) => k ?? "", manager: (r) => r.managerName ?? "" }, true)])
     expect(csv.charCodeAt(0)).toBe(0xfeff)
     expect(csv).toContain('"900","800","11.1","320","300","2025-04-01","Abdullah"')
     expect(toCsv([['say "hi"']])).toContain('"say ""hi"""')
+  })
+
+  it("P0: without money the archive offers no value/margin sort and exports no contract, cost or margin", () => {
+    expect(archiveSortsFor(false)).toEqual(["d", "l"])
+    expect(archiveSortsFor(true)).toEqual(["d", "v", "m", "l"])
+    expect(archiveCsvHead(false)).toEqual(["no", "project", "client", "kind", "region", "actual_days", "contract_days", "closed", "manager"])
+    expect(archiveCsvHead(true)).toHaveLength(12)
+    const row = archiveCsvRows([archived[0]], { kind: (k) => k ?? "", manager: (r) => r.managerName ?? "" }, false)[0]
+    expect(row).toHaveLength(9)
+    expect(row).not.toContain(900)
+    expect(row).not.toContain(800)
+    expect(row).not.toContain(11.1)
   })
 })
 

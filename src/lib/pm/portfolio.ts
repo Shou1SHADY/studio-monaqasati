@@ -104,6 +104,9 @@ export function portfolioList<R extends PortfolioRow>(rows: R[], input: { st: Po
 export const ARCHIVE_SORTS = ["d", "v", "m", "l"] as const
 export type ArchiveSort = (typeof ARCHIVE_SORTS)[number]
 
+/** Value and margin order the archive by money: only a holder of money is offered them. */
+export const archiveSortsFor = (money: boolean): ArchiveSort[] => (money ? [...ARCHIVE_SORTS] : ["d", "l"])
+
 export const marginOf = (fin: PortfolioFin | null): { amount: number; pct: number } | null =>
   fin && fin.cost != null && fin.contractValue > 0 ? { amount: fin.contractValue - fin.cost, pct: Math.round(((fin.contractValue - fin.cost) / fin.contractValue) * 1000) / 10 } : null
 
@@ -152,25 +155,33 @@ export function toCsv(rows: Array<Array<string | number | null | undefined>>): s
   return "﻿" + rows.map((r) => r.map(q).join(",")).join("\r\n")
 }
 
+const CSV_MONEY = new Set(["contract", "cost", "margin"])
+const CSV_HEAD = ["no", "project", "client", "kind", "region", "contract", "cost", "margin", "actual_days", "contract_days", "closed", "manager"] as const
+
+/** The archive CSV's columns: contract, cost and margin only for a holder of money. */
+export const archiveCsvHead = (money: boolean): string[] => CSV_HEAD.filter((h) => money || !CSV_MONEY.has(h))
+
 export function archiveCsvRows(
   list: PortfolioRow[],
-  label: { kind: (k: string | null) => string; manager: (r: PortfolioRow) => string }
+  label: { kind: (k: string | null) => string; manager: (r: PortfolioRow) => string },
+  money: boolean
 ): Array<Array<string | number | null>> {
   return list.map((r) => {
     const m = marginOf(r.fin)
-    return [
-      r.no ?? "",
-      r.name,
-      r.client ?? "",
-      label.kind(r.kind),
-      r.region ?? "",
-      Math.round(r.fin?.contractValue ?? r.value),
-      r.fin?.cost != null ? Math.round(r.fin.cost) : "",
-      m ? m.pct : "",
-      r.fin?.actualDays ?? "",
-      r.fin?.contractDays ?? "",
-      r.fin?.closedOn ?? "",
-      label.manager(r),
-    ]
+    const cells: Record<(typeof CSV_HEAD)[number], string | number | null> = {
+      no: r.no ?? "",
+      project: r.name,
+      client: r.client ?? "",
+      kind: label.kind(r.kind),
+      region: r.region ?? "",
+      contract: Math.round(r.fin?.contractValue ?? r.value),
+      cost: r.fin?.cost != null ? Math.round(r.fin.cost) : "",
+      margin: m ? m.pct : "",
+      actual_days: r.fin?.actualDays ?? "",
+      contract_days: r.fin?.contractDays ?? "",
+      closed: r.fin?.closedOn ?? "",
+      manager: label.manager(r),
+    }
+    return archiveCsvHead(money).map((h) => cells[h as (typeof CSV_HEAD)[number]])
   })
 }

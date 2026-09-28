@@ -75,7 +75,7 @@ export function CvrPanel({
 
   const costItems = useMemo<CostItem[]>(() => items.map((i) => ({ ...i, estCost: i.estCost ?? 0 })), [items])
   const cost = useMemo(() => {
-    const { items: costs, unassigned } = itemCosts({ items: costItems, pos: world.pos, issues: world.issues, projectWarehouseId, subcontracts: world.subcontracts })
+    const { items: costs, unassigned } = itemCosts({ items: costItems, pos: world.pos, issues: world.issues, projectWarehouseId, subcontracts: world.subcontracts, direct: world.direct })
     const terms = inForce(original, (addenda ?? []) as unknown as PmAddendum[])
     const voValue = world.variations.filter((v) => v.status === "appr").reduce((a, v) => a + v.value, 0)
     const delay = delayAndDamages({

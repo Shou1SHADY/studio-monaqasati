@@ -71,6 +71,7 @@ export function ProjectHead({
   access,
   ipcOn,
   onOpen,
+  onWork,
   actions,
 }: {
   projectId: string
@@ -79,6 +80,8 @@ export function ProjectHead({
   /** The project bills its client (the ipc section is on). */
   ipcOn: boolean
   onOpen: (tab: string) => void
+  /** The head's two acts open the work itself — the measurement writer, the IPC form — not just their tab. */
+  onWork?: (what: "measure" | "prepare") => void
   /** The page's own buttons (sections, edit, delete) after the PM actions. */
   actions?: ReactNode
 }) {
@@ -211,13 +214,13 @@ export function ProjectHead({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {access.allowed("measurement.write") && (
-            <Button variant="outline" size="sm" onClick={() => onOpen("pmMeasure")} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:border-module/40 hover:bg-card">
+            <Button variant="outline" size="sm" onClick={() => (onWork ? onWork("measure") : onOpen("pmMeasure"))} className="gap-1.5 rounded-xl border border-border bg-card text-foreground shadow-none hover:border-module/40 hover:bg-card">
               <Ruler size={14} aria-hidden="true" />
               {t("pulse.act_measure")}
             </Button>
           )}
           {ipcOn && access.allowed("certificate.prepare") && fig.unbilled > PREPARE_OFFER_AT && (
-            <Button size="sm" onClick={() => onOpen("ipc")} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+            <Button size="sm" onClick={() => (onWork ? onWork("prepare") : onOpen("ipc"))} className="gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
               <Receipt size={14} aria-hidden="true" />
               {t("head.prepare_ipc")}
             </Button>

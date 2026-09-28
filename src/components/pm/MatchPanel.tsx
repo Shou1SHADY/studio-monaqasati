@@ -38,6 +38,7 @@ export function MatchPanel({ projectId, orgId, items, access }: { projectId: str
       title={t("money.match.title")}
       icon={Scale}
       count={rows.length || undefined}
+      countTone={bad > 0 ? "bad" : "mute"}
       actions={<SourceBadge module="payments" label={t("money.match.payment_in_finance")} />}
       bodyClassName="p-0"
     >

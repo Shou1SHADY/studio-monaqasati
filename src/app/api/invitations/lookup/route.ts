@@ -50,7 +50,8 @@ export async function GET(req: NextRequest) {
       success: true,
       data: {
         type: "supplier_invite" as const,
-        email: inv.email as string,
+        // Null for an invitation sent by WhatsApp only.
+        email: (inv.email as string | null) ?? null,
         companyName: (inv.companyName as string) || null,
         contractorName: (inv.contractorName as string) || "",
       },

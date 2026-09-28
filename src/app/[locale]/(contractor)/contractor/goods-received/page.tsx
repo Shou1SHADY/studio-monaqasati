@@ -36,6 +36,8 @@ import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { cn } from "@/lib/utils"
 import type { Translator } from "@/lib/mfg-events"
+import { operatingPolicies, type NoticeRouting } from "@/lib/procurement/policies"
+import { receiveRight } from "@/lib/procurement/policy-enforce"
 import { procLinks } from "@/lib/procurement/events"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { lineToArrive, reminderCooldownUntil } from "@/lib/procurement/po"
@@ -177,16 +179,31 @@ export default function GoodsReceivedPage() {
     // Only when the id or the loading state changes — not on every list refresh.
   }, [openDeliveryId, loading])
 
+  // Today's «حوّل للمستلم» links here with `forward=1` (P-20): open the forward
+  // dialog on that receipt instead of its drawer, once.
+  const forwardAsked = searchParams.get("forward") === "1"
+  useEffect(() => {
+    if (!forwardAsked || !openDelivery) return
+    if (actor.isOwner || actor.canExpedite) setForwardTarget(openDelivery)
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("forward")
+    params.delete("delivery")
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [forwardAsked, openDelivery, searchParams, router, pathname, actor.isOwner, actor.canExpedite])
+
   const company = useMemo(() => {
     const p = (profile || {}) as { companyName?: string; name?: string; crNumber?: string; taxNumber?: string; city?: string; location?: string; phone?: string; phoneNumber?: string; email?: string }
     return { name: p.companyName || orgName || p.name || "", cr: p.crNumber || null, vat: p.taxNumber || null, address: [p.location, p.city].filter(Boolean).join(" · ") || null, phone: p.phone || p.phoneNumber || null, email: p.email || null }
   }, [profile, orgName])
 
-  const canReceive = actor.isOwner || actor.canReceive
+  // The gate's right — or the buyer's, when the firm has no separate receiver (`buyerReceives`).
+  const canReceive = receiveRight(actor, policies) !== null
+  const routing = operatingPolicies(policies).noticeRouting
   // Follow-up (forward, remind) is the expediter's; a manual receipt and its
-  // regularisation are whoever prepares orders (S-12, S-13).
+  // regularisation are Procurement's — buyer or manager (S-12, S-13).
   const canFollow = actor.isOwner || actor.canExpedite
-  const canPrepare = actor.isOwner || actor.canPrepare
+  const canPrepare = actor.isOwner || actor.canPrepare || actor.canApprove
 
   const exportCsv = () => {
     const words = {
@@ -254,12 +271,14 @@ export default function GoodsReceivedPage() {
         <ProcurementHeader
           title={t("title")}
           description={t("subtitle")}
+          sharedAction={
+            <Button variant="outline" className="gap-2 rounded-xl border border-border bg-card text-muted-foreground shadow-none hover:bg-card hover:text-foreground" onClick={exportCsv} disabled={loading}>
+              <Download size={16} aria-hidden="true" />
+              {t("csv.button")}
+            </Button>
+          }
           action={
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="gap-2 rounded-xl border border-border bg-card text-muted-foreground shadow-none hover:bg-card hover:text-foreground" onClick={exportCsv} disabled={loading}>
-                <Download size={16} aria-hidden="true" />
-                {t("csv.button")}
-              </Button>
               {canPrepare && (
                 <Button className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90" onClick={() => setManualOpen(true)}>
                   <PlusCircle size={18} aria-hidden="true" />
@@ -307,6 +326,7 @@ export default function GoodsReceivedPage() {
             locale={locale}
             now={now}
             forwardWindowDays={policies.forwardWindowDays}
+            routing={routing}
             canReceive={canReceive}
             canFollow={canFollow}
             reminding={reminding}
@@ -349,6 +369,7 @@ export default function GoodsReceivedPage() {
             now={now}
             onReceive={(d) => setReceiveTarget({ delivery: d, po: poOf(d) })}
             onRegularise={(d) => setRegulariseTarget(d)}
+            policies={policies}
           />
         )}
 
@@ -442,6 +463,7 @@ interface IncomingListProps {
   locale: string
   now: Date
   forwardWindowDays: number
+  routing: NoticeRouting
   canReceive: boolean
   canFollow: boolean
   reminding: string | null
@@ -456,7 +478,7 @@ interface IncomingListProps {
 }
 
 function IncomingList(props: IncomingListProps) {
-  const { rows, all, locale, now, forwardWindowDays, canReceive, canFollow, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
+  const { rows, all, locale, now, forwardWindowDays, routing, canReceive, canFollow, reminding, receivers, placeOf, warehouseName, projectName, onReceive, onForward, onRemind, onOpen } = props
   const t = useTranslations("Portal.ProcReceipts")
   const tp = useTranslations("Portal.Procurement")
   const tc = useTranslations("Portal.Contractor")
@@ -469,7 +491,7 @@ function IncomingList(props: IncomingListProps) {
           {t("incoming.panelTitle")}
           <Badge className="border-none bg-module/10 text-[11px] font-bold tabular-nums text-module">{rows.length}</Badge>
         </h2>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("incoming.panelSub")}</p>
+        <p className="text-xs leading-relaxed text-muted-foreground">{routing === "both" ? t("incoming.panelSubBoth") : t("incoming.panelSub")}</p>
       </header>
       {!rows.length ? (
         <Empty text={t("empty.incoming")} />
@@ -492,7 +514,7 @@ function IncomingList(props: IncomingListProps) {
             const fw = notice?.forwardedTo || null
             const fwState = notice ? forwardState(notice) : "none"
             const ship = notice ? shipmentOrdinal(notice, all, po) : null
-            const pill = incomingPill(r, forwardWindowDays)
+            const pill = incomingPill(r, forwardWindowDays, routing)
             const remindBlocked = po ? reminderCooldownUntil(po, now) != null : true
             const fwModule = fw?.userId ? receivers.find((x) => x.userId === fw.userId)?.module : null
             const attachments = (notice?.attachmentUrls || []).length
@@ -625,7 +647,7 @@ function IncomingPillBadge({ pill }: { pill: ReturnType<typeof incomingPill> }) 
   const ok = "bg-success/10 text-success"
   const [tone, text] =
     pill.kind === "to_forward"
-      ? [pill.tone === "bad" ? bad : warn, t("incoming.toForward")]
+      ? [pill.tone === "bad" ? bad : pill.tone === "warn" ? warn : "bg-cta/10 text-cta", t("incoming.toForward")]
       : pill.kind === "due_late"
         ? [bad, t("incoming.lateNoNotice", { days: pill.days })]
         : pill.kind === "due_no_notice"

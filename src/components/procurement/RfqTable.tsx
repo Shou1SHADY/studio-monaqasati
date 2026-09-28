@@ -10,6 +10,7 @@
 import { useLocale, useTranslations } from "next-intl"
 import { LayoutGrid } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Link } from "@/i18n/routing"
 import { DeadlineText, OffersTag, RfqStagePill, type RfqRow } from "@/components/procurement/RfqCard"
 import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { displayCity } from "@/lib/constants"
@@ -44,6 +45,8 @@ export function RfqTable({
   now,
   seesPrices,
   selected,
+  selectable,
+  hrefOf,
   onToggle,
   onToggleAll,
   onGlance,
@@ -52,6 +55,10 @@ export function RfqTable({
   now: Date
   seesPrices: boolean
   selected: string[]
+  /** Only the RFQs this viewer runs carry a checkbox (rfq-access.ts). */
+  selectable: (rfq: RfqRow) => boolean
+  /** The RFQ's own page — the row's title opens it (a draft opens its draft view). */
+  hrefOf: (rfq: RfqRow) => string
   onToggle: (id: string) => void
   onToggleAll: () => void
   onGlance: (rfq: RfqRow) => void
@@ -59,7 +66,8 @@ export function RfqTable({
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
-  const all = rows.length > 0 && selected.length === rows.length
+  const pickable = rows.filter((r) => selectable(r.rfq))
+  const all = pickable.length > 0 && selected.length === pickable.length
 
   return (
     <div className="overflow-x-auto rounded-2xl border bg-card shadow-sm">
@@ -67,7 +75,7 @@ export function RfqTable({
         <thead className="border-b text-xs font-semibold text-muted-foreground">
           <tr>
             <th className="w-10 px-3 py-3">
-              <Checkbox checked={all ? true : selected.length ? "indeterminate" : false} onCheckedChange={onToggleAll} aria-label={t("rfq_select_all")} />
+              {pickable.length > 0 && <Checkbox checked={all ? true : selected.length ? "indeterminate" : false} onCheckedChange={onToggleAll} aria-label={t("rfq_select_all")} />}
             </th>
             <th className="px-3 py-3 text-start">{t("rfqv_col_rfq")}</th>
             <th className="px-3 py-3 text-start">{t("rfqv_col_project")}</th>
@@ -80,7 +88,7 @@ export function RfqTable({
         <tbody className="divide-y">
           {rows.map((row) => {
             const { rfq, projectLabel, sealed, estimate } = row
-            const stage = rfqStage(rfq, now)
+            const stage = rfqStage(rfq, now, sealed)
             const isSelected = selected.includes(rfq.id)
             const meta = [
               rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`,
@@ -91,12 +99,12 @@ export function RfqTable({
             return (
               <tr key={rfq.id} className={cn("hover:bg-muted/30", isSelected && "bg-module/5")}>
                 <td className="px-3 py-3">
-                  <Checkbox checked={isSelected} onCheckedChange={() => onToggle(rfq.id)} aria-label={rfq.title} />
+                  {selectable(rfq) && <Checkbox checked={isSelected} onCheckedChange={() => onToggle(rfq.id)} aria-label={rfq.title} />}
                 </td>
                 <td className="max-w-[360px] px-3 py-3">
-                  <button type="button" onClick={() => onGlance(rfq)} className="block max-w-full truncate rounded-sm text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+                  <Link href={hrefOf(rfq)} className="block max-w-full truncate rounded-sm text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
                     {rfq.title}
-                  </button>
+                  </Link>
                   <span className="block truncate text-[11px] text-muted-foreground">{meta.join(" · ")}</span>
                 </td>
                 <td className="px-3 py-3">

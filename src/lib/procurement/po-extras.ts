@@ -10,6 +10,7 @@
 // Everything else here is derived. Pure: no I/O, the clock is passed in.
 
 import { dayOf, lineToArrive, poCommitment, poStatus, round2 } from "./po"
+import { DEFAULT_OPERATING_POLICIES, resolvePolicies } from "./policies"
 import type { PoLine, ProcActor, PurchaseOrder, ReceiptFact } from "./types"
 
 export type PaymentKind = "adv" | "part" | "inv"
@@ -95,13 +96,37 @@ export interface PoExtras {
   callOff?: boolean | null
   requiresWarranty?: boolean | null
   /** Projects' answer when the order exceeds the item's budget (R-25). */
-  pmBudget?: { state: "pending" | "accepted" | "renegotiate"; byName?: string | null; at?: string | null } | null
+  pmBudget?: PmBudget | null
+  /** Projects closed a material and asks to stop what has not arrived (R-29, P-19), per PO line id. */
+  pmCancels?: Record<string, PmCancel> | null
+  /** The line the LAST stop named — lets the rules find the one entry that changed. */
+  pmCancelKey?: string | null
+  /** noticeRouting `both`: the receivers the supplier's notice also reaches (stamped at approval). */
+  noticeCopyTo?: string[] | null
+}
+
+/** Referred by Procurement (`pending`, with the overrun), answered by the project's manager. */
+export interface PmBudget {
+  state: "pending" | "accepted" | "renegotiate"
+  over?: number | null
+  askedByName?: string | null
+  askedAt?: string | null
+  byName?: string | null
+  at?: string | null
+  note?: string | null
+}
+
+export interface PmCancel {
+  reason?: string | null
+  byName?: string | null
+  at?: string | null
+  projectId?: string | null
+  requestId?: string | null
 }
 
 export type PurchaseOrderX = PurchaseOrder & PoExtras
 
-/** Projects closed the material and asks to stop what has not arrived (R-29). */
-export type PoLineX = PoLine & { pmCancel?: { reason?: string | null; byName?: string | null; at?: string | null } | null; rejectReplaceBy?: string | null }
+export type PoLineX = PoLine & { rejectReplaceBy?: string | null }
 
 export const asX = (po: PurchaseOrder): PurchaseOrderX => po as PurchaseOrderX
 
@@ -242,8 +267,11 @@ export function lineInTransit(po: PurchaseOrder, line: PoLine, deliveries: Array
   return Math.min(round2(q), lineToArrive(line))
 }
 
+/** What Projects asked of this line, if anything. */
+export const pmCancelOf = (po: Pick<PurchaseOrderX, "pmCancels">, line: Pick<PoLine, "id">): PmCancel | null => po.pmCancels?.[line.id] ?? null
+
 /** Projects closed the material and asks to stop the rest: open while something is still to arrive. */
-export const pmCancelOpen = (line: PoLineX): boolean => Boolean(line.pmCancel) && lineToArrive(line) > 0
+export const pmCancelOpen = (po: Pick<PurchaseOrderX, "pmCancels">, line: PoLine): boolean => Boolean(pmCancelOf(po, line)) && lineToArrive(line) > 0
 
 // ---------------------------------------------------------------------------
 // Who may act (R-26): the owner reads; a buyer acts on his own orders only
@@ -269,20 +297,22 @@ export function poActs(po: Pick<PurchaseOrder, "preparedById">, actor: ProcActor
 // A buyer issues his own small order (R-32)
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_BUYER_SELF_ISSUE_LIMIT = 2_000
+export const DEFAULT_BUYER_SELF_ISSUE_LIMIT = DEFAULT_OPERATING_POLICIES.buyerSelfIssueLimit
 
+/** The stored settings document's limit, sanitised exactly as every other policy. */
 export function buyerSelfIssueLimit(settings: { buyerSelfIssueLimit?: unknown } | null | undefined): number {
-  const n = Number(settings?.buyerSelfIssueLimit)
-  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_BUYER_SELF_ISSUE_LIMIT
+  return resolvePolicies(settings as Parameters<typeof resolvePolicies>[0]).buyerSelfIssueLimit
 }
 
-export type SelfIssueRefusal = "not_awaiting" | "not_preparer" | "no_permission" | "retroactive" | "returned" | "over_limit" | "blocked"
+export type SelfIssueRefusal = "not_awaiting" | "not_preparer" | "no_permission" | "retroactive" | "not_direct" | "returned" | "over_limit" | "blocked"
 
 export function selfIssueRefusal(po: PurchaseOrder, actor: ProcActor, limit: number, blocks: number): SelfIssueRefusal | null {
   if (po.status !== "awaiting_approval") return "not_awaiting"
   if (!actor.canPrepare) return "no_permission"
   if (po.preparedById !== actor.uid) return "not_preparer"
   if (po.basis === "retroactive") return "retroactive"
+  // The policy is the DIRECT order's (prototype `p.direct`): an RFQ award goes to an approver.
+  if (po.basis !== "direct") return "not_direct"
   if (po.returnedReason) return "returned"
   if (!(Number(po.totalExVat) <= limit)) return "over_limit"
   if (blocks > 0) return "blocked"
@@ -325,10 +355,20 @@ export function budgetOverrun(po: PurchaseOrder, items: BoqGateItem[], orders: P
   return out
 }
 
-/** While over budget and Projects has not accepted it, the order waits for the PM. */
-export function awaitsPmBudget(po: PurchaseOrderX, overrun: Array<{ over: number }>): boolean {
-  return po.status === "awaiting_approval" && overrun.length > 0 && po.pmBudget?.state !== "accepted"
+/** Projects' budget decision is ASKED for and not yet given — the order waits for the PM.
+ * An overrun nobody referred to Projects does not wait: the approver sees it and
+ * may refer it (`pmBudgetAsk`); an order must never wait on a decision nobody asked for. */
+export function awaitsPmBudget(po: PurchaseOrderX): boolean {
+  const state = po.pmBudget?.state
+  return po.status === "awaiting_approval" && (state === "pending" || state === "renegotiate")
 }
+
+/** Over an item's budget with nothing asked of Projects yet: show it, offer to refer it. */
+export function pmBudgetAsk(po: PurchaseOrderX, overrun: Array<{ over: number }>): boolean {
+  return po.status === "awaiting_approval" && overrun.length > 0 && !po.pmBudget && Boolean(po.projectId)
+}
+
+export const overrunTotal = (overrun: Array<{ over: number }>): number => Math.round(overrun.reduce((s, o) => s + o.over, 0))
 
 /** A line whose BOQ item needs an approved sample and has none yet. */
 export function samplePending(po: PurchaseOrder, items: BoqGateItem[]): BoqGateItem[] {

@@ -17,13 +17,16 @@
 import type { ElementType, ReactNode } from "react"
 import { Suspense, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { useTranslations } from "next-intl"
-import { Lock, Search, X } from "lucide-react"
+import { useLocale, useTranslations } from "next-intl"
+import { Lock, Plus, Search, X } from "lucide-react"
 import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
 import { activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
+import { displayCategory } from "@/lib/constants"
 import { sarLtr } from "@/lib/riyal"
+import { ServiceOrderDialog } from "@/components/procurement/ServiceOrderDialog"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 export interface ProcurementKpi {
@@ -31,6 +34,8 @@ export interface ProcurementKpi {
   label: string
   /** Already formatted — the header never sees a raw amount. */
   value: string
+  /** A word after the figure («سطراً»), outside its left-to-right box. */
+  unit?: string
   note: string
   tone: "good" | "bad" | "warn" | "neutral"
   href: string
@@ -51,20 +56,29 @@ const compact = (n: number) => {
   return sarLtr(figure)
 }
 
-export function ProcurementHeader({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
+/** `action` is the page's own act — hidden from the owner of a company with a
+ * procurement team, who reads (the prototype's `!CAN('ro')`); `sharedAction`
+ * (an export) shows to everyone. */
+export function ProcurementHeader({ title, description, action, sharedAction }: { title: string; description: string; action?: ReactNode; sharedAction?: ReactNode }) {
   const tShared = useTranslations("Portal.Shared")
   const tToday = useTranslations("Portal.ProcToday")
+  const locale = useLocale()
   const pathname = usePathname()
   const { can } = usePermissions()
   const tabs = visibleProcTabs(can)
   const active = activeProcTab(tabs, pathname)
   const shell = useProcurementShell()
+  const [serviceOpen, setServiceOpen] = useState(false)
+  // The orders tab's own act (prototype poFree): whoever prepares orders, never the reading owner.
+  const serviceOrder = active?.id === "orders" && !shell.ownerReadOnly && (shell.actor.isOwner || shell.actor.canPrepare)
+  const ownAction = shell.ownerReadOnly ? null : action
   const searchTarget = tabs.find((x) => x.id === (shell.role === "expediter" ? "orders" : "requests")) ?? tabs.find((x) => x.id === "orders")
 
   const kpis: ProcurementKpi[] = (shell.kpis?.tiles ?? []).map((k) => ({
     id: k.id,
     label: tToday(k.labelKey),
     value: k.unit === "money" ? compact(k.value) : k.value.toLocaleString("en-US"),
+    unit: k.unit === "lines" ? tToday("kpi.lines", { count: k.value }) : undefined,
     note: tToday(k.noteKey, k.noteParams),
     tone: k.tone,
     href: k.href,
@@ -78,7 +92,7 @@ export function ProcurementHeader({ title, description, action }: { title: strin
         : shell.role === "manager"
           ? tShared("proc_authority_limit", { limit })
           : shell.role === "buyer"
-            ? tShared(shell.categories ? "proc_authority_buyer_cats" : "proc_authority_buyer", { cats: (shell.categories || []).join("، ") })
+            ? tShared(shell.categories ? "proc_authority_buyer_cats" : "proc_authority_buyer", { cats: (shell.categories || []).map((c) => displayCategory(c, locale)).join(locale === "ar" ? "، " : ", ") })
             : shell.role === "expediter"
               ? tShared("proc_authority_expediter")
               : null
@@ -99,17 +113,20 @@ export function ProcurementHeader({ title, description, action }: { title: strin
               <ProcSearch targetHref={searchTarget.href} />
             </Suspense>
           )}
-        {(authority || action) && (
-          <>
-            {authority && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">
-                <Lock size={12} aria-hidden="true" />
-                {authority}
-              </span>
-            )}
-            {action}
-          </>
-        )}
+          {authority && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">
+              <Lock size={12} aria-hidden="true" />
+              {authority}
+            </span>
+          )}
+          {sharedAction}
+          {ownAction}
+          {serviceOrder && (
+            <Button variant="outline" className="gap-2 rounded-xl" onClick={() => setServiceOpen(true)}>
+              <Plus size={16} aria-hidden="true" />
+              {tShared("svc_action")}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -122,14 +139,29 @@ export function ProcurementHeader({ title, description, action }: { title: strin
                 className="block h-full rounded-2xl border bg-card p-4 shadow-sm transition-colors hover:border-module/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-5"
               >
                 <p className="text-xs font-semibold text-muted-foreground">{kpi.label}</p>
-                <p className="mt-2 truncate text-2xl font-black tabular-nums text-foreground" dir="ltr">
-                  {kpi.value}
+                <p className="mt-2 flex items-baseline gap-1.5 truncate">
+                  <span className="text-2xl font-black tabular-nums text-foreground" dir="ltr">
+                    {kpi.value}
+                  </span>
+                  {kpi.unit && <span className="text-sm font-bold text-muted-foreground">{kpi.unit}</span>}
                 </p>
                 <p className={cn("mt-2 inline-block max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-semibold", TONE_CHIP[kpi.tone])}>{kpi.note}</p>
               </Link>
             </li>
           ))}
         </ul>
+      )}
+
+      {serviceOrder && (
+        <ServiceOrderDialog
+          open={serviceOpen}
+          onOpenChange={setServiceOpen}
+          orders={shell.loaded.orders}
+          supplierRecords={shell.loaded.supplierRecords}
+          policies={shell.loaded.policies}
+          actor={shell.actor}
+          orgId={shell.loaded.orgId}
+        />
       )}
 
       {tabs.length > 1 && (

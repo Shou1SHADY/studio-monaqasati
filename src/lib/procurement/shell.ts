@@ -5,6 +5,7 @@
 // no React, no sentences: the screens format, the tests read this.
 
 import { PERMISSION_SECTIONS, type PermissionId } from "../permissions"
+import { PROC_TAB_GATES, type ProcTabId } from "./tab-gates"
 import { approvalRefusal, daysFromNow, poLate, poStatus, dayOf, lineOutstanding } from "./po"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } from "./types"
@@ -13,7 +14,7 @@ import type { ProcurementPolicies, PurchaseOrder, ReceiptFact, SupplierFacts } f
 // Tabs — real routes, each gated like the sidebar entry it mirrors
 // ---------------------------------------------------------------------------
 
-export type ProcTabId = "today" | "rfqs" | "requests" | "orders" | "receipts" | "suppliers" | "reports" | "settings"
+export type { ProcTabId }
 
 export interface ProcTabDef {
   id: ProcTabId
@@ -38,17 +39,17 @@ export const PROC_REPORTS_HREF = "/contractor/rfqs/reports"
 export const PROC_SETTINGS_HREF = "/contractor/rfqs/settings"
 
 // The prototype's rail: Today · incoming requests · RFQs · orders · receipts ·
-// suppliers · reports · boundaries. The expediter (no prices) follows orders
-// and receipts and reads suppliers, the price-free reports and the boundaries.
+// suppliers · reports · boundaries. The gates live in `./tab-gates`, which the
+// sidebar reads too.
 export const PROC_TABS: ProcTabDef[] = [
-  { id: "today", href: PROC_TODAY_HREF, labelKey: "contractor_proc_today", railKey: "proc_tab_today", anyOf: PROCUREMENT_PERMISSIONS },
-  { id: "requests", href: "/contractor/rfqs/requests", labelKey: "contractor_purchase_requests", railKey: "proc_tab_requests", anyOf: ["rfq.manage", "offers.accept"] },
-  { id: "rfqs", href: "/contractor/rfqs", labelKey: "contractor_rfqs", railKey: "proc_tab_rfqs", anyOf: ["rfq.manage"] },
-  { id: "orders", href: PROC_ORDERS_HREF, labelKey: "contractor_purchase_orders", railKey: "proc_tab_orders", anyOf: ["offers.view", "offers.accept", "po.approve", "po.expedite"] },
-  { id: "receipts", href: "/contractor/goods-received", labelKey: "contractor_goods_received", railKey: "proc_tab_receipts", anyOf: ["deliveries.confirm", "po.expedite", "offers.accept", "po.approve"] },
-  { id: "suppliers", href: "/contractor/suppliers", labelKey: "contractor_browse_suppliers", railKey: "proc_tab_suppliers", anyOf: ["suppliers.manage", "offers.view", "offers.accept", "po.approve", "po.expedite"] },
-  { id: "reports", href: PROC_REPORTS_HREF, labelKey: "contractor_proc_reports", railKey: "proc_tab_reports", anyOf: ["offers.view", "offers.accept", "po.approve", "po.expedite"] },
-  { id: "settings", href: PROC_SETTINGS_HREF, labelKey: "contractor_proc_settings", railKey: "proc_tab_settings", anyOf: ["po.approve", "offers.view", "offers.accept", "po.expedite"] },
+  { id: "today", href: PROC_TODAY_HREF, labelKey: "contractor_proc_today", railKey: "proc_tab_today", anyOf: PROC_TAB_GATES.today },
+  { id: "requests", href: "/contractor/rfqs/requests", labelKey: "contractor_purchase_requests", railKey: "proc_tab_requests", anyOf: PROC_TAB_GATES.requests },
+  { id: "rfqs", href: "/contractor/rfqs", labelKey: "contractor_rfqs", railKey: "proc_tab_rfqs", anyOf: PROC_TAB_GATES.rfqs },
+  { id: "orders", href: PROC_ORDERS_HREF, labelKey: "contractor_purchase_orders", railKey: "proc_tab_orders", anyOf: PROC_TAB_GATES.orders },
+  { id: "receipts", href: "/contractor/goods-received", labelKey: "contractor_goods_received", railKey: "proc_tab_receipts", anyOf: PROC_TAB_GATES.receipts },
+  { id: "suppliers", href: "/contractor/suppliers", labelKey: "contractor_browse_suppliers", railKey: "proc_tab_suppliers", anyOf: PROC_TAB_GATES.suppliers },
+  { id: "reports", href: PROC_REPORTS_HREF, labelKey: "contractor_proc_reports", railKey: "proc_tab_reports", anyOf: PROC_TAB_GATES.reports },
+  { id: "settings", href: PROC_SETTINGS_HREF, labelKey: "contractor_proc_settings", railKey: "proc_tab_settings", anyOf: PROC_TAB_GATES.settings },
 ]
 
 export type Can = (permission: PermissionId) => boolean
@@ -75,7 +76,7 @@ export function activeProcTab<T extends { href: string }>(tabs: T[], pathname: s
 export interface LoadedRfq {
   id: string
   status?: string | null
-  products?: Array<{ name?: string; quantity?: number | string | null; unit?: string | null; unitOfMeasure?: string | null }> | null
+  products?: Array<{ name?: string; quantity?: number | string | null; unit?: string | null; unitOfMeasure?: string | null; category?: string | null }> | null
   deadline?: string | null
   title?: string | null
   offersCount?: number | null
@@ -85,6 +86,8 @@ export interface LoadedRfq {
   createdAt?: unknown
   awardedAt?: string | null
   invitedSupplierOrgIds?: string[] | null
+  createdByUserId?: string | null
+  contractorId?: string | null
 }
 
 export interface LoadedOffer {
@@ -128,7 +131,9 @@ export function toProcWorld(w: LoadedWorld): ProcWorld {
     createdAt: isoOf(r.createdAt),
     awardedAt: r.awardedAt ?? null,
     invitedCount: r.invitedSupplierOrgIds?.length || null,
-    products: (r.products || []).map((p) => ({ name: p.name, quantity: p.quantity ?? null, unit: p.unit || p.unitOfMeasure || null })),
+    createdByUserId: r.createdByUserId ?? null,
+    contractorId: r.contractorId ?? null,
+    products: (r.products || []).map((p) => ({ name: p.name, quantity: p.quantity ?? null, unit: p.unit || p.unitOfMeasure || null, category: p.category ?? null })),
   }))
   const offers: OfferFact[] = w.offers
     .filter((o) => Boolean(o.rfqId))
@@ -288,8 +293,10 @@ export function procTabCounts(input: {
   orders: PurchaseOrder[]
   receipts?: ReceiptFact[]
   now: Date
+  /** A buyer's RFQs (the prototype's `rfqMine`); absent = every RFQ counts. */
+  rfqInScope?: (r: { status?: string | null; deadline?: string | null }) => boolean
 }): ProcTabCounts {
-  const openRfqs = input.rfqs.filter((r) => r.status === "New").length
+  const openRfqs = input.rfqs.filter((r) => r.status === "New" && (!input.rfqInScope || input.rfqInScope(r))).length
   const live = input.orders.filter((o) => ["approved", "sent", "in_delivery", "part_received"].includes(poStatus(o)))
   const notices = (input.receipts || []).filter((r) => r.status === "pending_confirmation")
   const noticed = new Set(notices.map((r) => r.poId).filter(Boolean))
@@ -304,10 +311,11 @@ export function procTabCounts(input: {
 /** The viewer's authority, as the head of every page says it (the prototype's ROLES.d). */
 export type ProcRole = "owner" | "owner_solo" | "manager" | "buyer" | "expediter" | "receiver"
 
-export function procRole(actor: { isOwner: boolean; canApprove: boolean; canPrepare: boolean; canExpedite: boolean; canReceive: boolean; seesPrices: boolean }, ownerHasTeam: boolean): ProcRole | null {
+export function procRole(actor: { isOwner: boolean; canApprove: boolean; canPrepare: boolean; canExpedite: boolean; canReceive: boolean; seesPrices: boolean; canSource?: boolean }, ownerHasTeam: boolean): ProcRole | null {
   if (actor.isOwner) return ownerHasTeam ? "owner" : "owner_solo"
   if (actor.canApprove) return "manager"
-  if (actor.canPrepare) return "buyer"
+  // rfq.manage without offers.accept (the seeded supply-chain group) sources like a buyer.
+  if (actor.canPrepare || actor.canSource) return "buyer"
   if (actor.canExpedite && !actor.seesPrices) return "expediter"
   if (actor.canReceive) return "receiver"
   return null

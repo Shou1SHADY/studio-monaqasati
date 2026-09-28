@@ -9,7 +9,7 @@
 
 import { lastPaid, type PriceHistoryEntry } from "./prices"
 
-export type RfqStage = "draft" | "open" | "compare" | "closed_empty" | "awarded" | "cancelled"
+export type RfqStage = "draft" | "open" | "compare" | "closed_empty" | "awarded" | "direct" | "cancelled"
 export type RfqStatusChip = "all" | "Draft" | "New" | "Awarded"
 
 export interface RfqLike {
@@ -36,13 +36,20 @@ export function daysToDeadline(rfq: Pick<RfqLike, "deadline">, now: Date): numbe
   return Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${todayOf(now)}T00:00:00Z`)) / 86_400_000)
 }
 
-export function rfqStage(rfq: RfqLike, now: Date): RfqStage {
+/**
+ * The prototype's RFST: a direct award reads «إسناد مباشر»; an open round is
+ * «مفتوحة للتقديم» while its prices are sealed (or nothing came in yet) and
+ * «جاهز للمقارنة» once offers are visible — a round without the seal, or one a
+ * manager closed early. `sealed` undefined keeps the deadline-only reading.
+ */
+export function rfqStage(rfq: RfqLike, now: Date, sealed?: boolean): RfqStage {
   if (rfq.status === "Draft") return "draft"
-  if (rfq.status === "Awarded") return "awarded"
+  if (rfq.status === "Awarded") return rfq.directAward ? "direct" : "awarded"
   if (rfq.status === "Cancelled") return "cancelled"
+  const offers = rfq.offersCount ?? 0
   const days = daysToDeadline(rfq, now)
-  if (days === null || days >= 0) return "open"
-  return (rfq.offersCount ?? 0) > 0 ? "compare" : "closed_empty"
+  if (days === null || days >= 0) return sealed === false && offers > 0 ? "compare" : "open"
+  return offers > 0 ? "compare" : "closed_empty"
 }
 
 /** The tone of the stage — the card's top edge and its pill share it. */
@@ -52,6 +59,7 @@ export const STAGE_TONE: Record<RfqStage, "mute" | "info" | "warn" | "bad" | "ok
   compare: "warn",
   closed_empty: "bad",
   awarded: "ok",
+  direct: "ok",
   cancelled: "mute",
 }
 
@@ -60,7 +68,7 @@ export type DeadlinePill = { kind: "passed" } | { kind: "soon"; days: number } |
 /** The deadline's pill: passed (red) while it still matters, or two days or less left (amber). */
 export function deadlinePill(rfq: RfqLike, now: Date): DeadlinePill {
   const stage = rfqStage(rfq, now)
-  if (stage === "draft" || stage === "awarded" || stage === "cancelled" || rfq.directAward) return null
+  if (stage === "draft" || stage === "awarded" || stage === "direct" || stage === "cancelled" || rfq.directAward) return null
   const days = daysToDeadline(rfq, now)
   if (days === null) return null
   if (days < 0) return { kind: "passed" }
@@ -231,4 +239,71 @@ export function poInScope(po: { preparedById: string; category?: string | null }
   if (!isBuyer(actor)) return true
   if (po.preparedById === actor.uid) return true
   return Boolean(categories?.length && po.category && categories.includes(po.category))
+}
+
+// ---------------------------------------------------------------------------
+// The whole list (R-33): every org RFQ is loaded so the chips, the option
+// counts and «n من m» count all of them; only the rendering is paged.
+// ---------------------------------------------------------------------------
+
+export const RFQ_PAGE_SIZE = 24
+
+const tsOf = (v: unknown): number => {
+  if (!v) return 0
+  if (typeof v === "string" || typeof v === "number") return new Date(v).getTime() || 0
+  const o = v as { toDate?: () => Date; seconds?: number }
+  if (typeof o.toDate === "function") return o.toDate().getTime()
+  if (typeof o.seconds === "number") return o.seconds * 1000
+  return 0
+}
+
+/** Newest first, the id breaking ties — the same order on every render. */
+export function sortRfqs<T extends { id: string; createdAt?: unknown }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => tsOf(b.createdAt) - tsOf(a.createdAt) || a.id.localeCompare(b.id))
+}
+
+export function rfqPage<T>(rows: T[], pages: number, size = RFQ_PAGE_SIZE): { shown: T[]; hasMore: boolean } {
+  const n = Math.max(1, pages) * size
+  return { shown: rows.slice(0, n), hasMore: rows.length > n }
+}
+
+// ---------------------------------------------------------------------------
+// Bulk acts on the list (R-12): only a draft is deleted; a published RFQ is
+// withdrawn with «ألغِ الطلب» and a reason on its own page. Publishing keeps
+// the draft's audience — a private draft stays private.
+// ---------------------------------------------------------------------------
+
+export interface BulkRfqLike {
+  id: string
+  status?: string | null
+  visibility?: string | null
+}
+
+export function bulkDeleteSplit<T extends BulkRfqLike>(rows: T[]): { drafts: T[]; toCancel: T[]; skipped: T[] } {
+  return {
+    drafts: rows.filter((r) => r.status === "Draft"),
+    toCancel: rows.filter((r) => r.status === "New"),
+    skipped: rows.filter((r) => r.status !== "Draft" && r.status !== "New"),
+  }
+}
+
+export function bulkPublishPatch(rfq: BulkRfqLike, at: string): { status: "New"; visibility: "public" | "private"; publishedAt: string } | null {
+  if (rfq.status !== "Draft") return null
+  return { status: "New", visibility: rfq.visibility === "private" ? "private" : "public", publishedAt: at }
+}
+
+/** The RFQ page's tab from `?tab=` — the card's «الاستفسارات» opens the queries. */
+export type RfqPageTab = "list" | "compare" | "inquiries" | "details"
+const TAB_ALIASES: Record<string, RfqPageTab> = { list: "list", offers: "list", off: "list", compare: "compare", cmp: "compare", inquiries: "inquiries", queries: "inquiries", qa: "inquiries", details: "details", det: "details" }
+export const rfqPageTab = (param: string | null | undefined): RfqPageTab => TAB_ALIASES[(param || "").toLowerCase()] ?? "list"
+
+/** Every file the RFQ carries: the form's attachments, then the legacy single PDF — each once. */
+export function rfqFiles(rfq: { attachments?: Array<{ url?: string | null; name?: string | null } | string> | null; pdfUrl?: string | null }): Array<{ url: string; name: string | null }> {
+  const out: Array<{ url: string; name: string | null }> = []
+  for (const a of rfq.attachments || []) {
+    const url = typeof a === "string" ? a : a?.url || ""
+    if (url && !out.some((f) => f.url === url)) out.push({ url, name: typeof a === "string" ? null : a?.name || null })
+  }
+  if (rfq.pdfUrl && !out.some((f) => f.url === rfq.pdfUrl)) out.push({ url: rfq.pdfUrl, name: null })
+  return out
 }

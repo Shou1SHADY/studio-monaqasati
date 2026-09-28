@@ -9,6 +9,7 @@
 // (folded name + unit), so a receipt and a request always meet the same line.
 // Moves are appended, never edited except for their approval state. Pure.
 
+import type { PmAttachment } from "./attachments"
 import { materialKey } from "../procurement/prices"
 
 export const PM_STORE = "pmStore"
@@ -16,8 +17,13 @@ export const PM_STORE = "pmStore"
 /** op opening balance · rc received on the project · rx inbound without a document
  * (approved) · use declared use (approved) · ret returned to the main store · xo
  * moved to another project · xi moved in from another project · loss loss or
- * damage (approved) · sret back to the supplier. */
-export const MOVE_TYPES = ["op", "rc", "rx", "use", "ret", "xo", "xi", "loss", "sret"] as const
+ * damage (approved) · sret back to the supplier. iss issued into a
+ * subcontractor's custody · back returned from it · cnt a physical count at his
+ * place — custody moves: the material stays ours and the balance does not move. */
+export const MOVE_TYPES = ["op", "rc", "rx", "use", "ret", "xo", "xi", "loss", "sret", "iss", "back", "cnt"] as const
+export const CUSTODY_MOVES = ["iss", "back", "cnt"] as const
+export type CustodyMoveType = (typeof CUSTODY_MOVES)[number]
+export const isCustodyMove = (t: MoveType): t is CustodyMoveType => (CUSTODY_MOVES as readonly string[]).includes(t)
 export type MoveType = (typeof MOVE_TYPES)[number]
 export type MoveState = "wait" | "ok" | "rej" | "done"
 
@@ -61,6 +67,33 @@ export interface StoreMove {
   apprOn?: string | null
   /** Approved by the person who logged it — the owner only, flagged. */
   self?: boolean | null
+  /** Photos / receipts / the signed count sheet. */
+  files?: PmAttachment[]
+  /** ret: Inventory's confirmation that the stock is back in the main store. */
+  invBy?: string | null
+  invByName?: string | null
+  invOn?: string | null
+  /** iss / back / cnt: the subcontractor (`partyKey`) and his name as registered. */
+  sub?: string | null
+  subName?: string | null
+  /** back: booked by a recovery — an accounting return, not material coming back. */
+  recovery?: boolean | null
+}
+
+/** The value of a subcontractor's waste, deducted from his next certificate
+ * (`certSeq` null = awaiting deduction). */
+export interface StoreRecovery {
+  sub: string
+  subName?: string | null
+  q: number
+  rate: number
+  double: boolean
+  amount: number
+  on: string
+  by: string
+  byName?: string | null
+  note?: string | null
+  certSeq: number | null
 }
 
 /** The material's rate on one BOQ item: `r` per unit of the item (null =
@@ -83,6 +116,7 @@ export interface PmStoreLine {
   unit: string
   rates: Record<string, ItemRate>
   moves: StoreMove[]
+  recoveries?: StoreRecovery[]
 }
 
 export interface StoreItem {
@@ -276,12 +310,16 @@ export const approvable = (m: StoreMove) => (m.t === "loss" || m.t === "use" || 
 export type MoveDecision = "ok" | "rej" | "sup"
 export type DecideRefusal = "not_waiting" | "self" | "sup_not_loss"
 
-/** Approving a logged move: the store approver, never the person who logged it
- * (the owner may, flagged). "On the supplier" turns a loss (not theft) into a
+/** A return to a main store waits for Inventory to confirm the stock is back. */
+export const returnWaiting = (m: StoreMove) => m.t === "ret" && m.st === "wait"
+
+/** Approving a logged move: the store approver, never the person who logged it —
+ * unless the company allows self-approval (Settings, `pmSettings.selfApproval`),
+ * and then it is flagged. "On the supplier" turns a loss (not theft) into a
  * return to the supplier. */
-export function decideRefusal(m: StoreMove, decision: MoveDecision, actorUid: string, isOwner: boolean): DecideRefusal | null {
+export function decideRefusal(m: StoreMove, decision: MoveDecision, actorUid: string, selfAllowed: boolean): DecideRefusal | null {
   if (!approvable(m)) return "not_waiting"
-  if (m.by === actorUid && !isOwner) return "self"
+  if (m.by === actorUid && !selfAllowed) return "self"
   if (decision === "sup" && (m.t !== "loss" || m.why === "theft")) return "sup_not_loss"
   return null
 }
@@ -312,5 +350,5 @@ export function withRate(x: Pick<PmStoreLine, "rates">, itemId: string, r: numbe
 
 /** A stored ledger line with its lists defaulted (a fresh line has none yet). */
 export function storeLineOf(id: string, d: Partial<Omit<PmStoreLine, "id">>): PmStoreLine {
-  return { id, key: d.key ?? "", name: d.name ?? "", unit: d.unit ?? "", rates: d.rates ?? {}, moves: d.moves ?? [] }
+  return { id, key: d.key ?? "", name: d.name ?? "", unit: d.unit ?? "", rates: d.rates ?? {}, moves: d.moves ?? [], recoveries: d.recoveries ?? [] }
 }

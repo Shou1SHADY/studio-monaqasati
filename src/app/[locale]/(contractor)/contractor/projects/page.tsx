@@ -5,7 +5,8 @@
 // multi-select filters with their chip bar, a search by name · number · client ·
 // region with «N من M», cards or a table for projects in play, and the archive's
 // dense table of frozen figures with its sort, CSV and paging. Only projects the
-// viewer may see are listed (pmSeesProject via usePmVisibleProjects).
+// viewer may see are listed (pmSeesProject via usePmVisibleProjects), and money
+// orders or leaves the page only for a holder of money (sorts, CSV columns).
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
@@ -20,6 +21,7 @@ import { ModuleHeader, type ModuleKpi } from "@/components/module-ui/ModuleHeade
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { PmProjectCard } from "@/components/pm/PmProjectCard"
 import { PmArchiveTable, PmFilterBar, PmFilterDropdown, PmPortfolioTable } from "@/components/pm/PmPortfolioViews"
+import { PmTodayRedCount } from "@/components/pm/PmPortfolioToday"
 import { PmSeatChip } from "@/components/pm/PmSeatChip"
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
@@ -34,8 +36,9 @@ import { lifecycleOf } from "@/lib/pm/lifecycle"
 import {
   activeFilters,
   ARCHIVE_PAGE,
-  ARCHIVE_SORTS,
+  archiveCsvHead,
   archiveCsvRows,
+  archiveSortsFor,
   archiveKpis,
   filterOptions,
   filtersFor,
@@ -111,7 +114,9 @@ export default function ProjectsListPage() {
   const { data: allProjects, isLoading: projectsLoading } = useCollection(projectsQuery)
   const orgProjects = useMemo(() => (allProjects || []) as unknown as PortfolioProject[], [allProjects])
   const { visible: typedProjects, isLoading: visibilityLoading } = usePmVisibleProjects(orgProjects)
-  const rail = usePmRail()
+  const [todayRed, setTodayRed] = useState<number | undefined>(undefined)
+  const onTodayRed = useCallback((n: number) => setTodayRed(n), [])
+  const rail = usePmRail(todayRed)
 
   const rows = useMemo<Array<PortfolioRow & { createdMs: number }>>(
     () =>
@@ -137,10 +142,13 @@ export default function ProjectsListPage() {
   const arch = st === "arch"
   const keys = filtersFor(st)
   const filtered = portfolioList(rows, { st, sel, q })
+  const archSorts = archiveSortsFor(money)
+  const archSortShown: ArchiveSort = archSorts.includes(archSort) ? archSort : "d"
+  const sortShown: SortOption = !money && (sortBy === "budget_desc" || sortBy === "budget_asc") ? "newest" : sortBy
   const list = arch
-    ? sortArchive(filtered, archSort)
+    ? sortArchive(filtered, archSortShown)
     : filtered.slice().sort((a, b) => {
-        switch (sortBy) {
+        switch (sortShown) {
           case "oldest":
             return a.createdMs - b.createdMs
           case "budget_desc":
@@ -155,7 +163,9 @@ export default function ProjectsListPage() {
       })
   const listProjects = list.map((r) => byId.get(r.id)).filter((p): p is PortfolioProject => Boolean(p))
 
-  const kindLabel = (k: string | null) => (k && ["bld", "infra", "road", "ind", "mep", "mnt", "own"].includes(k) ? tShared(`pm_kind_${k}`) : k || "—")
+  // A pre-PM project keeps its old type key (proj_type_buildings…): read, never printed raw.
+  const kindLabel = (k: string | null) =>
+    k && ["bld", "infra", "road", "ind", "mep", "mnt", "own"].includes(k) ? tShared(`pm_kind_${k}`) : k && k.startsWith("proj_type_") && t.has(k) ? t(k) : k || "—"
   const managerLabel = (r: PortfolioRow) => r.managerName || "—"
   const managerNames = useMemo(() => new Map(rows.map((r) => [r.managerId ?? "", r.managerName ?? "—"])), [rows])
   const optionLabel = (k: PortfolioFilter, v: string) => (k === "kind" ? kindLabel(v) : k === "pm" ? managerNames.get(v) || "—" : v)
@@ -171,8 +181,8 @@ export default function ProjectsListPage() {
   }
 
   const exportCsv = () => {
-    const head = ["no", "project", "client", "kind", "region", "contract", "cost", "margin", "actual_days", "contract_days", "closed", "manager"].map((h) => tPm(`list.csv.${h}`))
-    const csv = toCsv([head, ...archiveCsvRows(list, { kind: kindLabel, manager: managerLabel })])
+    const head = archiveCsvHead(money).map((h) => tPm(`list.csv.${h}`))
+    const csv = toCsv([head, ...archiveCsvRows(list, { kind: kindLabel, manager: managerLabel }, money)])
     try {
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }))
       const a = document.createElement("a")
@@ -228,18 +238,23 @@ export default function ProjectsListPage() {
   const sortOptions: { value: SortOption; label: string }[] = [
     { value: "newest", label: t("proj_sort_newest") },
     { value: "oldest", label: t("proj_sort_oldest") },
-    { value: "budget_desc", label: t("proj_sort_budget_desc") },
-    { value: "budget_asc", label: t("proj_sort_budget_asc") },
+    ...(money
+      ? [
+          { value: "budget_desc" as const, label: t("proj_sort_budget_desc") },
+          { value: "budget_asc" as const, label: t("proj_sort_budget_asc") },
+        ]
+      : []),
     { value: "name_asc", label: t("proj_sort_name") },
   ]
 
   return (
     <PortalLayout>
       <div className="space-y-5">
+        <PmTodayRedCount onCount={onTodayRed} />
         <ModuleHeader
           status={<PmSeatChip />}
           icon={FolderKanban}
-          title={t("proj_title")}
+          title={tPm("list.title")}
           description={census}
           actions={
             canCreate && (
@@ -251,18 +266,18 @@ export default function ProjectsListPage() {
               </Button>
             )
           }
-          kpisLabel={t("proj_title")}
+          kpisLabel={tPm("list.title")}
           kpis={kpis}
           tabs={rail.tabs}
           activeTab="projects"
-          tabsLabel={t("proj_title")}
+          tabsLabel={tPm("list.title")}
         />
 
         <ProcChipGroup
           items={PORTFOLIO_STATES.map((c) => ({ id: c, label: c === "all" ? tPm("list.chip_all") : tPm(`list.chip.${c}`), count: counts[c] }))}
           active={st}
           onPick={pickState}
-          label={t("proj_title")}
+          label={tPm("list.title")}
         />
 
         <div className="flex flex-wrap items-center gap-2">
@@ -283,13 +298,13 @@ export default function ProjectsListPage() {
           ))}
           <div className="ms-auto flex flex-wrap items-center gap-2">
             {arch ? (
-              <Select value={archSort} onValueChange={(v) => setArchSort(v as ArchiveSort)}>
+              <Select value={archSortShown} onValueChange={(v) => setArchSort(v as ArchiveSort)}>
                 <SelectTrigger className="h-10 w-auto gap-1.5 rounded-xl" aria-label={tPm("list.sort_label")}>
                   <ArrowDownUp size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ARCHIVE_SORTS.map((s) => (
+                  {archSorts.map((s) => (
                     <SelectItem key={s} value={s}>
                       {tPm(`list.sort.${s}`)}
                     </SelectItem>
@@ -297,7 +312,7 @@ export default function ProjectsListPage() {
                 </SelectContent>
               </Select>
             ) : (
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+              <Select value={sortShown} onValueChange={(v) => setSortBy(v as SortOption)}>
                 <SelectTrigger className="h-10 w-auto gap-1.5 rounded-xl" aria-label={tPm("list.sort_label")}>
                   <ArrowDownUp size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
                   <SelectValue />
@@ -355,7 +370,7 @@ export default function ProjectsListPage() {
           <EmptyState
             icon={FolderOpen}
             title={t("proj_empty")}
-            description={t("proj_empty_desc")}
+            description={tPm("list.empty_desc")}
             action={
               canCreate && (
                 <Button asChild variant="outline" className="gap-2">

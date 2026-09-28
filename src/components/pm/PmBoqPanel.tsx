@@ -14,6 +14,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
 import { AlertTriangle, CircleDollarSign, Flame, ListTree, Loader2, Plus, Search, TableProperties } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BoqItemSupply } from "./BoqItemSupply"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -74,8 +75,11 @@ export function PmBoqPanel({
   access,
   actor,
   actualCost,
+  orgId,
 }: {
   projectId: string
+  /** The org — the item drawer reads the store ledger and the org's price history. */
+  orgId?: string | null
   /** The contract value the handover carried from CRM (the project's budget). */
   contractValue: number
   access: PmAccess
@@ -108,7 +112,9 @@ export function PmBoqPanel({
   const groups = useMemo(() => groupLines(shown, bySection), [shown, bySection])
   const totals = boqTotals(shown)
   const up = unpricedNote(lines)
-  const canPrice = money && !access.ctx.archived && access.allowed("item.price")
+  // The row's «سعّره» is the approver's (prototype: money && approve); the write
+  // itself still accepts prep, as the prototype's handler does.
+  const canPrice = money && !access.ctx.archived && access.allowed("item.price") && access.has("approve")
   const canImport = !access.ctx.archived && access.allowed("boq.import")
   const open = lines.find((b) => b.id === openId) ?? null
   const cols = money ? 6 : 3
@@ -252,7 +258,7 @@ export function PmBoqPanel({
       </div>
       {money && totals.estimated && <FormHint>{t("boq.cost_estimated")}</FormHint>}
 
-      <ItemDrawer projectId={projectId} line={open} money={money} onClose={() => setOpenId(null)} />
+      <ItemDrawer projectId={projectId} orgId={orgId ?? null} line={open} lines={lines} money={money} onClose={() => setOpenId(null)} />
       {pricing && <PriceDialog projectId={projectId} line={pricing} access={access} actor={actor} onClose={() => setPricing(null)} />}
     </div>
   )
@@ -398,7 +404,7 @@ function BoqGroupRows({
   )
 }
 
-function ItemDrawer({ projectId, line, money, onClose }: { projectId: string; line: PmBoqLine | null; money: boolean; onClose: () => void }) {
+function ItemDrawer({ projectId, orgId, line, lines, money, onClose }: { projectId: string; orgId: string | null; line: PmBoqLine | null; lines: PmBoqLine[]; money: boolean; onClose: () => void }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -530,6 +536,12 @@ function ItemDrawer({ projectId, line, money, onClose }: { projectId: string; li
               ))
             )}
           </DrawerSection>
+          <BoqItemSupply
+            projectId={projectId}
+            orgId={orgId}
+            item={{ id: line.id, code: line.code, description: line.description, unit: line.unit, quantity: line.quantity, executed: line.executed }}
+            items={lines.map((x) => ({ id: x.id, code: x.code, description: x.description, unit: x.unit, quantity: x.quantity, executed: x.executed }))}
+          />
           {vos.length > 0 && (
             <DrawerSection title={t("boq.d.variations")} count={vos.length}>
               {vos.map((v) => (
@@ -735,7 +747,12 @@ function ImportDialog({
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="boq-raw">{t("boq.paste_here")}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label htmlFor="boq-raw">{t("boq.paste_here")}</Label>
+              <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => setRaw(t("boq.sample"))} disabled={busy}>
+                {t("boq.fill_sample")}
+              </Button>
+            </div>
             <Textarea id="boq-raw" value={raw} onChange={(e) => setRaw(e.target.value)} className="h-40 font-mono text-xs" placeholder="02-01-01	…	m3	18400	24	18.5" disabled={busy} dir="auto" />
           </div>
           {rows.length > 0 && (

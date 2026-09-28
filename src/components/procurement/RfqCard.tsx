@@ -25,6 +25,7 @@ export const STAGE_EDGE: Record<RfqStage, string> = {
   compare: "border-t-warning",
   closed_empty: "border-t-destructive",
   awarded: "border-t-success",
+  direct: "border-t-success",
   cancelled: "border-t-border",
 }
 
@@ -145,7 +146,7 @@ export function RfqCard(p: RfqCardProps) {
   const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const { rfq } = p
-  const stage = rfqStage(rfq, p.now)
+  const stage = rfqStage(rfq, p.now, p.sealed)
   const tag = deadlineTag(rfq, p.now)
   const offers = rfq.offersCount ?? 0
   const queries = useRfqInquiryCounts(stage === "draft" ? null : rfq.id)
@@ -160,9 +161,9 @@ export function RfqCard(p: RfqCardProps) {
         </div>
 
         <h3 className="text-base font-black leading-snug text-foreground">
-          <button type="button" onClick={p.onGlance} className="rounded-sm text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
+          <Link href={p.offersHref} className="rounded-sm text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
             {rfq.title}
-          </button>
+          </Link>
         </h3>
 
         <div className="flex flex-wrap gap-1.5">

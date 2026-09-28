@@ -225,10 +225,11 @@ describe("SHELL-01 · the tab rail is gated like the sidebar", () => {
     expect(visibleProcTabs(canOf("po.expedite")).map((t) => t.id)).toEqual(["today", "orders", "receipts", "suppliers", "reports", "settings"])
   })
 
-  it("a receiver opens Today and Goods received only; a buyer gets the requests without the RFQ list", () => {
+  it("a receiver opens Today and Goods received only; the manager and the buyer source — requests and RFQs (prototype TABS: r !== 'exp')", () => {
     expect(visibleProcTabs(canOf("deliveries.confirm")).map((t) => t.id)).toEqual(["today", "receipts"])
-    expect(visibleProcTabs(canOf("po.approve")).map((t) => t.id)).toEqual(["today", "orders", "receipts", "suppliers", "reports", "settings"])
-    expect(visibleProcTabs(canOf("offers.accept")).map((t) => t.id)).toEqual(["today", "requests", "orders", "receipts", "suppliers", "reports", "settings"])
+    expect(visibleProcTabs(canOf("po.approve")).map((t) => t.id)).toEqual(["today", "requests", "rfqs", "orders", "receipts", "suppliers", "reports", "settings"])
+    expect(visibleProcTabs(canOf("offers.accept")).map((t) => t.id)).toEqual(["today", "requests", "rfqs", "orders", "receipts", "suppliers", "reports", "settings"])
+    expect(visibleProcTabs(canOf("rfq.manage")).map((t) => t.id)).toEqual(["today", "requests", "rfqs"])
   })
 
   it("nobody outside Procurement sees a tab", () => {

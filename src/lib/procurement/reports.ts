@@ -19,11 +19,14 @@
 // Payment timing (report 7): due = the supplier's date (or the last receipt,
 // for what already arrived) + the payment terms. Terms are read from our
 // supplier record first, then the offer's credit days, then a "30 days"
-// written on the order. An advance the offer asked for is due now while
-// nothing has arrived on the order — Finance does not tell us when it paid
-// one, and a supplier who shipped was paid whatever he asked for up front.
+// written on the order. The advance is the order's own (carried from the
+// offer at award, else the offer's): due now while nothing has arrived, until
+// Finance records it paid on the order (`financePayments`, R-24); a paid
+// advance comes off what is still to be delivered, and what Finance paid
+// against invoices comes off what is still owed for received goods.
 
 import { acceptedValue, addDays, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
+import { advanceState, asX, paidTotal } from "./po-extras"
 import { materialKey } from "./prices"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { PurchaseOrder } from "./types"
@@ -133,10 +136,10 @@ export const REPORT_PERIOD_PRESETS = ["30", "90", "year", "all", "custom"] as co
 export type ReportPeriodPreset = (typeof REPORT_PERIOD_PRESETS)[number]
 
 export function presetPeriod(preset: ReportPeriodPreset, now: Date, custom?: Period | null): Period {
-  const today = todayOf(now)
   if (preset === "30") return lastDays(30, now)
   if (preset === "90") return lastDays(90, now)
-  if (preset === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today }
+  // «سنة» is the last 365 days, as the prototype reads it — not the calendar year to date.
+  if (preset === "year") return lastDays(365, now)
   if (preset === "all") return { from: null, to: null }
   return { from: custom?.from || null, to: custom?.to || null }
 }
@@ -464,6 +467,8 @@ export const EXCEPTION_KINDS = [
   "cash_expense",
   "manual_offer",
   "early_close",
+  "self_issued",
+  "variance_accepted",
 ] as const
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number]
 
@@ -496,7 +501,14 @@ export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): 
     else if (po.basis === "direct" && !po.agreementId) out.push({ ...base, kind: "direct", params: { reason: po.awardReasonText || po.awardReasonCode || "" } })
     if (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText)) out.push({ ...base, kind: "non_lowest", params: { reasonCode: po.awardReasonCode || "other", reason: po.awardReasonText || "" } })
     if (po.shortCompetition && po.basis === "rfq") out.push({ ...base, kind: "short_competition", params: { count: po.offersCount } })
-    if (po.approvedById && po.approvedById === po.preparedById) out.push({ ...base, kind: "self_approval", params: {}, day: dayOf(po.approvedAt) || base.day })
+    const px = asX(po)
+    // A buyer's own order under his limit is listed as that, not as a self-approval.
+    if (px.selfIssued) out.push({ ...base, kind: "self_issued", params: {}, day: dayOf(po.approvedAt) || base.day })
+    else if (po.approvedById && po.approvedById === po.preparedById) out.push({ ...base, kind: "self_approval", params: {}, day: dayOf(po.approvedAt) || base.day })
+    // Procurement accepted an invoice's new price on a price hold (prototype `varAcc`).
+    for (const h of px.financeHolds || []) {
+      if (h.reason === "price" && h.decision === "new_price") out.push({ ...base, kind: "variance_accepted", params: { invoice: h.invoiceNo }, byName: h.decidedByName || base.byName, day: dayOf(h.decidedAt) || base.day })
+    }
     if (po.noOfficialQuote && !po.agreementId) out.push({ ...base, kind: "no_official_quote", params: {} })
     if (po.offerId && offerById.get(po.offerId)?.isManualOffer) out.push({ ...base, kind: "awarded_manual_offer", params: {} })
     if (po.status === "closed" && po.closedShort) out.push({ ...base, kind: "closed_short", params: { reason: po.closeReason || "" }, day: dayOf(po.closedAt) || base.day })
@@ -564,7 +576,8 @@ const TERMS_DAYS = /(\d{1,3})\s*(?:يوم|أيام|days?\b)/i
 /** Our supplier record first, then the offer's credit days, then days written on the order. */
 export function orderTerms(po: PurchaseOrder, w: ReportWorld | ProcWorld): OrderTerms {
   const offer = po.offerId ? (w.offers as ReportOfferFact[]).find((o) => o.id === po.offerId) : undefined
-  const advancePercent = Math.min(100, Math.max(0, Number(offer?.advancePercent) || 0))
+  const own = asX(po).advancePercent
+  const advancePercent = Math.min(100, Math.max(0, Number(own != null ? own : offer?.advancePercent) || 0))
   const recorded = (w as ReportWorld).supplierTermsDays?.[po.supplierOrgId]
   if (recorded != null && Number.isFinite(recorded)) return { days: Math.max(0, recorded), advancePercent, source: "supplier" }
   if (offer?.creditDays != null && Number.isFinite(offer.creditDays)) return { days: Math.max(0, Math.round(offer.creditDays)), advancePercent, source: "offer" }
@@ -618,18 +631,24 @@ export function openCommitments(w: ReportWorld | ProcWorld, now: Date): Commitme
       rows.push({ ...base, part, dueDate, daysToDue, value: round2(value), bucket: bucketOf(daysToDue) })
     }
     const st = poStatus(po)
+    const px = asX(po)
+    const advState = advanceState({ ...px, advancePercent: terms.advancePercent })
+    const advanceValue = terms.advancePercent > 0 ? round2((poValue(po) * terms.advancePercent) / 100) : 0
+    const advancePaid = advState === "paid" ? round2((px.financePayments || []).filter((p) => p.kind === "adv").reduce((a, p) => a + (Number(p.amount) || 0), 0)) : 0
+    const invoicePaid = round2(paidTotal(px) - advancePaid)
     if (poLive(po)) {
+      // Not paid yet: due now — unless goods already came (the supplier shipped, whatever he was paid up front).
       const nothingArrived = !po.lines.some((l) => Number(l.accepted) > 0)
-      const advance = terms.advancePercent > 0 && nothingArrived ? round2((poValue(po) * terms.advancePercent) / 100) : 0
-      push("advance", advance, today)
-      push("undelivered", Math.max(0, poOpenValue(po) - advance), po.promisedDate ? addDays(po.promisedDate, terms.days) : null)
+      const advanceDue = (advState === "requested" || advState === "pending") && nothingArrived ? advanceValue : 0
+      push("advance", advanceDue, today)
+      push("undelivered", Math.max(0, poOpenValue(po) - advanceDue - advancePaid), po.promisedDate ? addDays(po.promisedDate, terms.days) : null)
     }
     if (st === "part_received" || st === "received") {
       const accepted = acceptedValue(po)
       if (accepted == null) receivedUnknown++
       else {
         const last = poFacts(po, w.receipts).lastReceiptDay
-        push("received", accepted, last ? addDays(last, terms.days) : null)
+        push("received", Math.max(0, accepted - invoicePaid), last ? addDays(last, terms.days) : null)
       }
     }
   }

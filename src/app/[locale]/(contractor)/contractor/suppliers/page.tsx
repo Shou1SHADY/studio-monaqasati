@@ -3,6 +3,10 @@
 // Procurement › Suppliers (PRD 3.0 §7.2, prototype vSup). Four segments: our
 // suppliers (with the invitations we sent), the platform directory, and — for
 // those who see prices only — the price agreements and the price history.
+// The manager and the buyer manage the file (add, invite, favour); the
+// expediter reads; so does the owner of a company with a procurement team. A
+// buyer's list is his categories' material suppliers plus every service
+// company and subcontractor (the prototype's `supScope`).
 // `?segment=` opens one directly (the Today queue links to the agreements) and
 // is refused silently for a price segment the viewer may not see; `?supplier=`,
 // `?agreement=` and `?material=` open a drawer, so a notification or a Today
@@ -30,15 +34,27 @@ import {
 import { EmptyState } from "@/components/module-ui/EmptyState"
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { usePermissions } from "@/hooks/usePermissions"
+import { useProcTeam } from "@/hooks/useProcTeam"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useSupplierDirectory, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
 import { matchesSearch } from "@/lib/search-text"
-import { displayCategory } from "@/lib/constants"
+import { CATEGORIES_DATA, displayCategory } from "@/lib/constants"
 import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
 import { poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
-import { makeOrBuyKeys, ordersOfSupplier, rfqInviteFacts, segmentFromParam, visibleSupplierSegments, type SupplierTabSegment } from "@/lib/procurement/supplier-file"
+import {
+  OPEN_WITH_SUPPLIER,
+  canManageSuppliers,
+  canRenewAgreements,
+  canSignAgreements,
+  makeOrBuyKeys,
+  ordersOfSupplier,
+  rfqInviteFacts,
+  segmentFromParam,
+  supplierInScope,
+  visibleSupplierSegments,
+  type SupplierTabSegment,
+} from "@/lib/procurement/supplier-file"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { OurSuppliersTable, type SupplierRow } from "@/components/procurement/OurSuppliersTable"
 import { SupplierDirectory } from "@/components/procurement/SupplierDirectory"
@@ -48,8 +64,6 @@ import { SupplierInvitations, type InvitationDoc } from "@/components/procuremen
 import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
-
-const OPEN_WITH_SUPPLIER = new Set(["sent", "accepted", "in_delivery", "part_received"])
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
@@ -80,14 +94,16 @@ export default function SuppliersPage() {
   const { user } = useUser()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const { can } = usePermissions()
-  const canManage = can("suppliers.manage")
   const searchParams = useSearchParams()
 
   const world = useProcurementWorld()
   const { orders, deliveries, rfqs, offers, actor, orgId, orgName } = world
+  const team = useProcTeam(orgId, actor)
+  const ownerHasTeam = team.ownerHasTeam
+  const canManage = canManageSuppliers(actor, ownerHasTeam)
   const { agreements, history, ready: pricesReady } = useProcurementPrices(orgId)
-  const mayEditAgreements = actor.isOwner || actor.canPrepare || actor.canApprove
+  const mayEditAgreements = canSignAgreements(actor, ownerHasTeam)
+  const mayRenewAgreements = canRenewAgreements(actor, ownerHasTeam)
 
   const userDocRef = useMemoFirebase(() => (firestore && user ? doc(firestore, "users", user.uid) : null), [firestore, user])
   const { data: profile } = useDoc<{ favoriteSuppliers?: string[] }>(userDocRef)
@@ -140,7 +156,7 @@ export default function SuppliersPage() {
 
   const mineRows = useMemo<SupplierRow[]>(() => {
     const rows = suppliers
-      .filter((s) => s.isMine)
+      .filter((s) => s.isMine && supplierInScope(s, team.viewerCategories, CATEGORIES_DATA))
       .map((s) => {
         const list = ordersOfSupplier(orders, s.orgId)
         return {
@@ -150,7 +166,7 @@ export default function SuppliersPage() {
         }
       })
     return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
-  }, [suppliers, orders, deliveries, rfqs, offers, now])
+  }, [suppliers, orders, deliveries, rfqs, offers, now, team.viewerCategories])
   const shownMine = mineRows.filter((s) => matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))]))
 
   const fileSupplier = suppliers.find((s) => s.orgId === fileId) || null
@@ -216,8 +232,8 @@ export default function SuppliersPage() {
     <PortalLayout>
       <div className="space-y-6">
         <ProcurementHeader
-          title={tC("suppliers_page_title")}
-          description={tC("suppliers_page_desc")}
+          title={t("page.title")}
+          description={t("page.subtitle")}
           action={
             canManage && (
               <Button className="gap-2 bg-module text-module-foreground hover:bg-module/90" onClick={() => setShowInvite(true)}>
@@ -262,6 +278,8 @@ export default function SuppliersPage() {
               locale={locale}
               suppliers={mineRows.map((s) => ({ id: s.orgId, name: s.name }))}
               mayEdit={mayEditAgreements}
+              mayRenew={mayRenewAgreements}
+              ownerHasTeam={ownerHasTeam}
               fmtDate={fmtDate}
               focusId={agreementId}
               onFocusChange={(id) => openAgreement(id)}
@@ -300,7 +318,7 @@ export default function SuppliersPage() {
                 <EmptyState
                   icon={Briefcase}
                   title={tC("suppliers_no_suppliers")}
-                  description={tC("suppliers_no_suppliers_desc")}
+                  description={t("page.empty_desc")}
                   action={
                     canManage && (
                       <Button variant="outline" className="gap-2" onClick={() => setShowInvite(true)}>
@@ -329,6 +347,7 @@ export default function SuppliersPage() {
         actor={actor}
         orgId={orgId}
         canManage={canManage}
+        ownerHasTeam={ownerHasTeam}
         now={now}
         onToggleFavorite={toggleFavorite}
         onRemove={setRemoveTarget}
@@ -341,6 +360,7 @@ export default function SuppliersPage() {
         actor={actor}
         orgId={orgId}
         canManage={canManage}
+        ownerHasTeam={ownerHasTeam}
         onOpenOurs={(id) => {
           setDirId(null)
           pickSegment("mine")

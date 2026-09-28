@@ -25,7 +25,6 @@ const facts = (over: Partial<DeskFacts> = {}): DeskFacts => ({
   onHand: () => null,
   makeable: () => false,
   mfgRequests: {},
-  mfgWindowHours: 24,
   ...over,
 })
 

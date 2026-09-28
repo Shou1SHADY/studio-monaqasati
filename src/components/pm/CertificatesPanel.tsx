@@ -28,9 +28,11 @@ import {
   certificateTotals,
   collectedAmount,
   collectionFigures,
+  isCutReason,
   lateDays,
   PM_CERTIFICATES,
   unbilledValue,
+  unreclaimedCuts,
   voClaimAmount,
   voClaimable,
   type ClaimableVariation,
@@ -70,6 +72,7 @@ export function CertificatesPanel({
   access,
   actor,
   onItemsChanged,
+  startPreparing,
 }: {
   projectId: string
   projectName?: string
@@ -77,7 +80,7 @@ export function CertificatesPanel({
   lifecycle: string
   startOn?: string | null
   contractValue: number
-  totals: { retentionHeld?: number; advanceRecovered?: number; cutPool?: number }
+  totals: { retentionHeld?: number; advanceRecovered?: number; cutPool?: number; retentionHalfReleased?: boolean }
   retentionReleased?: boolean
   items: CertItem[]
   /** The `collect` section is on: the collection side panel shows beside the list. */
@@ -86,11 +89,13 @@ export function CertificatesPanel({
   access: PmAccess
   actor: CertificateActor
   onItemsChanged?: () => void
+  /** Opened from «أعِدّ مستخلصاً» (the head or the ipc decision): the form is open on arrival. */
+  startPreparing?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
-  const [preparing, setPreparing] = useState(false)
+  const [preparing, setPreparing] = useState(() => Boolean(startPreparing))
   const [openSeq, setOpenSeq] = useState<number | null>(null)
   const [certifying, setCertifying] = useState<PmCertificate | null>(null)
   const money = access.has("money")
@@ -111,8 +116,8 @@ export function CertificatesPanel({
   const periods = useMemo(() => certificatePeriods(certs, startOn ?? null), [certs, startOn])
   const sum = useMemo(() => certificateTotals(certs), [certs])
   const coll = useMemo(
-    () => collectionFigures({ certs, today, contractValue, advance: terms.advance, started: lifecycle !== "plan", retentionReleased: Boolean(retentionReleased) }),
-    [certs, today, contractValue, terms.advance, lifecycle, retentionReleased]
+    () => collectionFigures({ certs, today, contractValue, advance: terms.advance, started: lifecycle !== "plan", retentionReleased: Boolean(retentionReleased), retentionHalfReleased: totals.retentionHalfReleased === true }),
+    [certs, today, contractValue, terms.advance, lifecycle, retentionReleased, totals.retentionHalfReleased]
   )
   const subRetention = useMemo(() => subTotals(subSummaries((subData ?? []) as unknown as PmSubcontract[])).retention, [subData])
 
@@ -283,7 +288,7 @@ export function CertificatesPanel({
           held={held}
           recovered={recovered}
           cutPool={cutPool}
-          cutFrom={certs.filter((c) => (c.cut ?? 0) > 0).map((c) => ({ no: certificateNo(c.seq), reason: c.cutReason ?? "" }))}
+          cutFrom={unreclaimedCuts(certs).map((c) => ({ no: certificateNo(c.seq), reason: isCutReason(c.cutReason) ? t(`ipc.cut_reasons.${c.cutReason}`) : c.cutReason ?? "" }))}
           periodFrom={certs.find((c) => c.status !== "void")?.prepOn ?? startOn ?? null}
           onSaved={onItemsChanged}
         />

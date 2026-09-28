@@ -29,7 +29,7 @@ import {
   barWidth,
   effectiveCrExpiry,
   effectiveVat,
-  isProcManager,
+  canVouchSuppliers,
   isUnverified,
   ordersOfSupplier,
   ourRatings,
@@ -77,6 +77,7 @@ export function SupplierFileDrawer({
   actor,
   orgId,
   canManage,
+  ownerHasTeam = false,
   now,
   onToggleFavorite,
   onRemove,
@@ -92,6 +93,8 @@ export function SupplierFileDrawer({
   actor: ProcActor
   orgId: string
   canManage: boolean
+  /** The owner of a company with a procurement team reads: no verify, no edit. */
+  ownerHasTeam?: boolean
   now: Date
   onToggleFavorite: (s: PlatformSupplier) => void
   onRemove: (s: PlatformSupplier) => void
@@ -106,7 +109,7 @@ export function SupplierFileDrawer({
   const [editing, setEditing] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const today = todayOf(now)
-  const manager = isProcManager(actor)
+  const manager = canVouchSuppliers(actor, ownerHasTeam)
 
   const mine = useMemo(() => (supplier ? ordersOfSupplier(orders, supplier.orgId) : []), [orders, supplier])
   const rated = useMemo(() => (supplier ? ourRatings(orders, supplier.orgId) : []), [orders, supplier])
@@ -124,7 +127,7 @@ export function SupplierFileDrawer({
     if (!firestore) return
     setVerifying(true)
     try {
-      await verifySupplier(firestore, actor, orgId, supplier.orgId, supplier.profileVat, now)
+      await verifySupplier(firestore, actor, orgId, supplier.orgId, supplier.profileVat, now, ownerHasTeam)
       toast({ title: t("toast.verified") })
     } catch (err) {
       const code = err instanceof SupplierWriteError ? err.code : "generic"
@@ -402,7 +405,7 @@ export function SupplierFileDrawer({
           </div>
         </SheetContent>
       </Sheet>
-      <SupplierRecordDialog open={editing} onOpenChange={setEditing} supplier={supplier} actor={actor} orgId={orgId} />
+      <SupplierRecordDialog open={editing} onOpenChange={setEditing} supplier={supplier} actor={actor} orgId={orgId} ownerHasTeam={ownerHasTeam} />
     </>
   )
 }

@@ -1,3 +1,4 @@
+import { SAUDI_VAT_RE } from "@/lib/procurement/rfq-form"
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
@@ -51,6 +52,8 @@ const fieldsSchema = z.object({
   executionDurationUnit: z.string().trim().max(20).optional().or(z.literal("")),
   website: z.string().trim().max(300).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
+  // R-10: without it Finance cannot accept his invoice — asked, never required.
+  vatNumber: z.string().trim().regex(SAUDI_VAT_RE, "Invalid VAT number").optional().or(z.literal("")),
 })
 
 function errorResponse(message: string, code: string, status: number) {
@@ -96,6 +99,7 @@ export async function POST(
       "executionDurationUnit",
       "website",
       "message",
+      "vatNumber",
       "priceBasis",
       "validUntil",
       "advancePercent",
@@ -206,6 +210,7 @@ export async function POST(
         name: data.contactName,
         email: data.email,
         phone: data.phone,
+        vatNumber: data.vatNumber || null,
       },
       guestMessage: data.message || null,
       shareLinkId: linkId,

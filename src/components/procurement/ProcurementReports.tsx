@@ -14,6 +14,8 @@ import type { ReactNode } from "react"
 import { useCallback, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
+import { collection, query, where } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { Download, Info, Loader2, Lock, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -83,6 +85,11 @@ export function ProcurementReports() {
   const today = todayOf(now)
 
   const { orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords } = loaded
+  const firestore = useFirestore()
+  const projectsQ = useMemoFirebase(() => (firestore && loaded.orgId ? query(collection(firestore, "projects"), where("organizationId", "==", loaded.orgId)) : null), [firestore, loaded.orgId])
+  const { data: projectDocs } = useCollection<{ pm?: { no?: string | null } | null }>(projectsQ)
+  // The project's own number (PM 1.0 `pm.no`, PJ-yyyy/NNN) beside its name, as the prototype lists them.
+  const projectNo = useMemo(() => new Map((projectDocs || []).map((p) => [p.id, p.pm?.no || ""])), [projectDocs])
   const world = useMemo(
     () =>
       reportWorld(toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), {
@@ -100,7 +107,11 @@ export function ProcurementReports() {
   const report = resolveReport(params.get("report"), sees)
   const setReport = useCallback((id: ReportId) => router.replace(`${PROC_REPORTS_HREF}?report=${id}`), [router])
 
-  const [preset, setPreset] = useState<ReportPeriodPreset>("90")
+  // A link may name the period (Today's drift tile counts the last 30 days: `?period=30`).
+  const [preset, setPreset] = useState<ReportPeriodPreset>(() => {
+    const asked = params.get("period")
+    return (REPORT_PERIOD_PRESETS as readonly string[]).includes(asked || "") && asked !== "custom" ? (asked as ReportPeriodPreset) : "90"
+  })
   const [customFrom, setCustomFrom] = useState(() => lastDays(90, now).from || "")
   const [customTo, setCustomTo] = useState(today)
   const period = useMemo(() => presetPeriod(preset, now, { from: customFrom, to: customTo }), [preset, now, customFrom, customTo])
@@ -116,7 +127,12 @@ export function ProcurementReports() {
   const commit = useMemo(() => (report === "commitments" ? openCommitments(world, now) : null), [report, world, now])
 
   const docNo = (n: string) => displayDocNumber(n, locale)
-  const requester = (r: ProjectSpendRow) => (r.kind === "project" ? r.projectName || r.projectId || "" : t(`requester.${r.kind}`))
+  const requester = (r: ProjectSpendRow) => {
+    if (r.kind !== "project") return t(`requester.${r.kind}`)
+    const no = r.projectId ? projectNo.get(r.projectId) : ""
+    const name = r.projectName || r.projectId || ""
+    return no ? `${displayDocNumber(no, locale)} · ${name}` : name
+  }
   const excText = (kind: string, p: Record<string, string | number>) => {
     const text = tProc(`exception.${kind}`, p)
     return kind === "early_close" && p.reason ? `${text} — ${p.reason}` : text
@@ -160,6 +176,8 @@ export function ProcurementReports() {
 
   return (
     <div className="space-y-6">
+      {/* The printed report is the report: the portal's header and sidebar stay on screen. */}
+      <style media="print">{`header, [data-sidebar], [data-mobile], nav { display: none !important; } main { padding: 0 !important; margin: 0 !important; }`}</style>
       <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
 
       {!sees && (

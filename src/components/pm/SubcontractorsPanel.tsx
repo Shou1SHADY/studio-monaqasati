@@ -4,6 +4,8 @@
 // summary per subcontractor, the registered contracts, the custody
 // reconciliation, and the sub certificates. Amounts show only to `money`
 // holders; the site engineer sees scope and progress. Paid is Finance's figure.
+// Custody comes from the project store ledger (issue / return / count moves with
+// his party key); custody lines recorded before the ledger still show, marked.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -25,11 +27,11 @@ import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import { useSupplyWorld } from "@/hooks/useSupplyWorld"
 import { PmAccessError } from "@/lib/pm/access"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
 import { matchesSearch } from "@/lib/search-text"
 import {
-  custodyBlocks,
   custodyFigures,
   custodyNo,
   DEFAULT_SUB_RETENTION,
@@ -37,8 +39,12 @@ import {
   letQty,
   lineCap,
   lineKey,
+  ledgerCustodyRows,
+  ledgerRecoveryDue,
   moveBlocks,
   pmApprovalLimit,
+  rateVsEstimate,
+  subEstimate,
   PM_SUB_CERTIFICATES,
   PM_SUB_CUSTODY,
   PM_SUBCONTRACTS,
@@ -55,13 +61,14 @@ import {
   subcontractValue,
   subSummaries,
   subTotals,
+  type LedgerCustodyRow,
   type PmSubcontract,
   type PmSubCertificate,
   type PmSubCustody,
 } from "@/lib/pm/subcontract"
+import type { PmStoreLine } from "@/lib/pm/store"
 import {
   approveSubCertificate,
-  openCustody,
   PmSubError,
   prepareSubCertificate,
   recordCustodyMove,
@@ -69,7 +76,10 @@ import {
   registerSubcontract,
   type SubActor,
 } from "@/lib/pm/subcontract-writes"
+import type { PmAttachment } from "@/lib/pm/attachments"
 import { cn } from "@/lib/utils"
+import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { SubStoreMoveDialog, SubStoreRecoverDialog } from "./SubCustodyDialogs"
 
 export interface SubItem {
   id: string
@@ -79,6 +89,8 @@ export interface SubItem {
   quantity: number
   executed: number
   division: string
+  /** Our estimated unit cost (`boqItems.estCost`), when the item has one. */
+  estCost?: number
 }
 
 type SupplierDoc = { id: string; companyName?: string; name?: string; email?: string }
@@ -86,15 +98,18 @@ type SupplierDoc = { id: string; companyName?: string; name?: string; email?: st
 const num = (s: string) => (s.trim() === "" ? Number.NaN : Number(s))
 const qty = (n: number) => (Math.round(n * 100) / 100).toLocaleString("en-US")
 
-export function SubcontractorsPanel({ projectId, items, access, actor }: { projectId: string; items: SubItem[]; access: PmAccess; actor: SubActor }) {
+export function SubcontractorsPanel({ projectId, orgId, items, access, actor }: { projectId: string; orgId?: string | null; items: SubItem[]; access: PmAccess; actor: SubActor }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
   const [busy, setBusy] = useState<string | null>(null)
-  const [dialog, setDialog] = useState<null | "register" | "cert" | "custody">(null)
+  const [dialog, setDialog] = useState<null | "register" | "cert">(null)
   const [moveOf, setMoveOf] = useState<{ c: PmSubCustody; t: "iss" | "back" | "cnt" } | null>(null)
   const [recoverOf, setRecoverOf] = useState<PmSubCustody | null>(null)
+  const [ledMove, setLedMove] = useState<{ t: "iss" | "back" | "cnt"; storeId?: string; partyKey?: string } | null>(null)
+  const [ledRecover, setLedRecover] = useState<LedgerCustodyRow | null>(null)
+  const world = useSupplyWorld(projectId, orgId)
 
   const cq = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId])
   const sq = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUB_CERTIFICATES) : null), [firestore, projectId])
@@ -156,15 +171,16 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
           <EmptyState icon={Users} title={t("subs.empty")} description={t("subs.empty_desc")} />
         </Panel>
         {dialog === "register" && firestore && (
-          <RegisterDialog items={items} contracts={contracts} money={money} limit={limit} busy={busy} onClose={() => setDialog(null)} onSave={(input) => run("register", () => registerSubcontract(firestore, access.ctx, projectId, actor, input), t("subs.registered"))} />
+          <RegisterDialog projectId={projectId} orgId={orgId} items={items} contracts={contracts} money={money} limit={limit} busy={busy} onClose={() => setDialog(null)} onSave={(input) => run("register", () => registerSubcontract(firestore, access.ctx, projectId, actor, input), t("subs.registered"))} />
         )}
       </>
     )
   }
 
   const gapRows = custody.map((c) => ({ c, f: custodyFigures(c, itemOf(c.itemId)?.executed ?? c.executedAtStart) }))
-  const bad = gapRows.filter((r) => r.f.gap !== null && r.f.gap > 0.005).length
-  const due = rows.map((r) => ({ r, v: recoveryDue(custody, r.partyKey) })).filter((x) => x.v > 0)
+  const ledRows = ledgerCustodyRows(world.stores, items, contracts, (x) => world.costOf(x))
+  const bad = gapRows.filter((r) => r.f.gap !== null && r.f.gap > 0.005).length + ledRows.filter((r) => r.gap !== null && r.gap > 0.005).length
+  const due = rows.map((r) => ({ r, v: recoveryDue(custody, r.partyKey) + ledgerRecoveryDue(world.stores, r.partyKey) })).filter((x) => x.v > 0)
 
   return (
     <div className="space-y-4">
@@ -274,6 +290,7 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <AttachmentTag files={c.files} />
                   <StatusPill tone="mute">{t("subs.retention_pill", { rate: pmPct(c.retention) })}</StatusPill>
                   {money && (
                     <b className="text-xs tabular-nums" dir="ltr">
@@ -303,10 +320,10 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
       <Panel
         title={t("subs.recon.title")}
         icon={Boxes}
-        count={gapRows.length}
+        count={gapRows.length + ledRows.length}
         actions={
           canStore ? (
-            <Button size="sm" variant="outline" onClick={() => setDialog("custody")}>
+            <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "iss" })}>
               <Plus size={15} className="me-1.5" aria-hidden="true" />
               {t("subs.recon.issue")}
             </Button>
@@ -315,7 +332,7 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
         bodyClassName="p-0"
       >
         <p className={cn("px-4 pt-3 text-xs", bad ? "text-destructive" : "text-muted-foreground")}>{t("subs.recon.sub")}</p>
-        {gapRows.length === 0 ? (
+        {gapRows.length + ledRows.length === 0 ? (
           <div className="p-4">
             <EmptyState icon={Boxes} title={t("subs.recon.empty")} />
           </div>
@@ -335,6 +352,83 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
                 </tr>
               </thead>
               <tbody>
+                {ledRows.map((r) => {
+                  const short = r.gap !== null && r.gap > 0.005
+                  return (
+                    <tr key={`${r.storeId}:${r.partyKey}`} className="border-b last:border-0">
+                      <td className="px-4 py-2.5">
+                        <p className="font-bold" dir="auto">
+                          {r.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground" dir="auto">
+                          {r.line.name} · {r.line.unit}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
+                        {qty(r.issued)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
+                        {qty(r.theoretical)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
+                        {qty(r.allowed)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
+                        {qty(r.book)}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {r.count ? (
+                          <>
+                            <span className="tabular-nums" dir="ltr">
+                              {qty(r.count.q)}
+                            </span>
+                            <p className="text-xs text-muted-foreground">{pmDate(r.count.on, locale)}</p>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className={cn("px-3 py-2.5 text-center text-xs font-semibold", r.gap === null ? "text-muted-foreground" : short ? "text-destructive" : "text-success")}>
+                        {r.gap === null ? (
+                          t("subs.recon.needs_count")
+                        ) : short ? (
+                          <>
+                            <span dir="ltr">−{qty(r.gap)}</span>
+                            {money && r.gapValue > 0 && (
+                              <p className="font-normal" dir="ltr">
+                                {pmMoney(r.gapValue)}
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          t("subs.recon.matched")
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {canStore && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => setLedMove({ t: "cnt", storeId: r.storeId, partyKey: r.partyKey })}>
+                                {r.count ? t("subs.recon.recount") : t("subs.recon.count")}
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setLedMove({ t: "iss", storeId: r.storeId, partyKey: r.partyKey })} aria-label={t("subs.recon.issue_more")}>
+                                <Plus size={14} aria-hidden="true" />
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setLedMove({ t: "back", storeId: r.storeId, partyKey: r.partyKey })} aria-label={t("subs.recon.return")} disabled={r.issued <= 0}>
+                                <Undo2 size={14} aria-hidden="true" />
+                              </Button>
+                            </>
+                          )}
+                          {canSub && short && (
+                            <Button size="sm" variant="destructive" onClick={() => setLedRecover(r)}>
+                              {t("subs.recon.recover")}
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
                 {gapRows.map(({ c, f }) => {
                   const short = f.gap !== null && f.gap > 0.005
                   return (
@@ -346,6 +440,9 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
                         <p className="text-xs text-muted-foreground" dir="auto">
                           {c.material} · {c.unit} · {c.code || itemName(c.itemId)}
                         </p>
+                        <StatusPill tone="mute" className="mt-0.5">
+                          {t("subs.led.earlier")}
+                        </StatusPill>
                       </td>
                       <td className="px-3 py-2.5 text-center tabular-nums" dir="ltr">
                         {qty(f.issued)}
@@ -495,7 +592,7 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
       </Panel>
 
       {firestore && dialog === "register" && (
-        <RegisterDialog items={items} contracts={contracts} money={money} limit={limit} busy={busy} onClose={() => setDialog(null)} onSave={(input) => run("register", () => registerSubcontract(firestore, access.ctx, projectId, actor, input), t("subs.registered"))} />
+        <RegisterDialog projectId={projectId} orgId={orgId} items={items} contracts={contracts} money={money} limit={limit} busy={busy} onClose={() => setDialog(null)} onSave={(input) => run("register", () => registerSubcontract(firestore, access.ctx, projectId, actor, input), t("subs.registered"))} />
       )}
       {firestore && dialog === "cert" && (
         <CertDialog
@@ -503,22 +600,12 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
           contracts={contracts}
           certs={certs}
           custody={custody}
+          ledger={world.stores}
           money={money}
           busy={busy}
           archived={access.ctx.archived}
           onClose={() => setDialog(null)}
           onSave={(input) => run("cert", () => prepareSubCertificate(firestore, access.ctx, projectId, actor, input), t("subs.certs.prepared"))}
-        />
-      )}
-      {firestore && dialog === "custody" && (
-        <CustodyDialog
-          items={items}
-          contracts={contracts}
-          money={money}
-          busy={busy}
-          archived={access.ctx.archived}
-          onClose={() => setDialog(null)}
-          onSave={(input) => run("custody", () => openCustody(firestore, access.ctx, projectId, actor, input), t("subs.recon.issued"))}
         />
       )}
       {firestore && moveOf && (
@@ -530,6 +617,35 @@ export function SubcontractorsPanel({ projectId, items, access, actor }: { proje
           archived={access.ctx.archived}
           onClose={() => setMoveOf(null)}
           onSave={(input) => run("move", () => recordCustodyMove(firestore, access.ctx, projectId, actor, moveOf.c.seq, { ...input, t: moveOf.t }), t(`subs.recon.saved_${moveOf.t}`))}
+        />
+      )}
+      {ledMove && (
+        <SubStoreMoveDialog
+          projectId={projectId}
+          orgId={orgId}
+          kind={ledMove.t}
+          lines={world.stores}
+          items={items}
+          contracts={contracts}
+          storeId={ledMove.storeId}
+          partyKey={ledMove.partyKey}
+          access={access}
+          actor={actor}
+          onClose={() => setLedMove(null)}
+        />
+      )}
+      {ledRecover && (
+        <SubStoreRecoverDialog
+          projectId={projectId}
+          line={ledRecover.line}
+          partyKey={ledRecover.partyKey}
+          name={ledRecover.name}
+          gap={ledRecover.gap}
+          unitCost={world.costOf(ledRecover.line)}
+          money={money}
+          access={access}
+          actor={actor}
+          onClose={() => setLedRecover(null)}
         />
       )}
       {firestore && recoverOf && (
@@ -567,6 +683,8 @@ function Footer({ onClose, busy, disabled, onSave, label, tone }: { onClose: () 
 type Picked = Record<string, { q: string; r: string }>
 
 function RegisterDialog({
+  projectId,
+  orgId,
   items,
   contracts,
   money,
@@ -575,6 +693,8 @@ function RegisterDialog({
   onClose,
   onSave,
 }: {
+  projectId: string
+  orgId?: string | null
   items: SubItem[]
   contracts: PmSubcontract[]
   money: boolean
@@ -593,6 +713,7 @@ function RegisterDialog({
   const [note, setNote] = useState("")
   const [picked, setPicked] = useState<Picked>({})
   const [search, setSearch] = useState("")
+  const [files, setFiles] = useState<PmAttachment[]>([])
 
   const supQ = useMemoFirebase(() => (firestore ? query(collection(firestore, "users"), where("role", "==", "Supplier")) : null), [firestore])
   const { data: supData } = useCollection(supQ)
@@ -609,6 +730,7 @@ function RegisterDialog({
     return { itemId, qty: Number(v.q) || 0, rate: Number(v.r) || 0, free: i ? free(i) : null }
   })
   const value = subcontractValue(lines.filter((l) => l.qty > 0 && l.rate > 0))
+  const est = subEstimate(lines.map((l) => ({ ...l, estCost: items.find((i) => i.id === l.itemId)?.estCost ?? 0 })))
   const retNum = num(ret)
   const blocks = subcontractBlocks({ archived: false, partyName: name, lines, retentionPct: retNum, startOn, endOn: endOn || null, limit })
 
@@ -722,6 +844,17 @@ function RegisterDialog({
                             {pmMoney(lineValue)}
                           </span>
                         )}
+                        {money && (i.estCost ?? 0) > 0 && (
+                          <span className="basis-full text-[11px] text-muted-foreground">
+                            {t("subs.form.est_unit", { v: pmMoney(i.estCost ?? 0) })}
+                            {(() => {
+                              const d = rateVsEstimate(Number(on.r) || 0, i.estCost ?? 0)
+                              return d === null ? null : (
+                                <b className={cn("ms-1", d > 0 ? "text-destructive" : "text-success")}>{d > 0 ? t("subs.form.above_est", { pct: Math.round(d) }) : t("subs.form.below_est", { pct: Math.round(-d) })}</b>
+                              )
+                            })()}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">{t("subs.form.tap")}</span>
@@ -736,9 +869,20 @@ function RegisterDialog({
             <Label htmlFor="sc-note">{t("subs.form.note")}</Label>
             <Input id="sc-note" dir="auto" value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("subs.form.note_ph")} />
           </div>
+          <PmFilesField orgId={orgId} folder={`projects/${projectId}/subcontracts`} value={files} onChange={setFiles} label={t("subs.form.signed")} hint={t("subs.form.signed_hint")} />
           {money && (
             <div className="rounded-xl border px-3">
               <KeyValueRow label={t("subs.form.value")} value={pmMoney(value)} ltr strong />
+              {est.known > 0 && (
+                <>
+                  <KeyValueRow label={t("subs.form.est_scope")} value={pmMoney(est.estimate)} ltr />
+                  <KeyValueRow
+                    label={est.diff > 0 ? t("subs.form.eats_margin") : t("subs.form.adds_margin")}
+                    value={<span className={est.diff > 0 ? "text-destructive" : "text-success"}>{pmMoney(Math.abs(est.diff))}</span>}
+                    ltr
+                  />
+                </>
+              )}
             </div>
           )}
           {blocks.includes("over_limit") ? (
@@ -752,7 +896,7 @@ function RegisterDialog({
           disabled={blocks.length > 0}
           label={t("subs.form.save")}
           onSave={async () => {
-            const ok = await onSave({ party: { name, supplierId: supplierId || null }, retentionPct: retNum, startOn, endOn: endOn || null, note: note || null, lines: lines.map(({ itemId, qty: q, rate }) => ({ itemId, qty: q, rate })) })
+            const ok = await onSave({ party: { name, supplierId: supplierId || null }, retentionPct: retNum, startOn, endOn: endOn || null, note: note || null, lines: lines.map(({ itemId, qty: q, rate }) => ({ itemId, qty: q, rate })), files })
             if (ok) onClose()
           }}
         />
@@ -766,6 +910,7 @@ function CertDialog({
   contracts,
   certs,
   custody,
+  ledger,
   money,
   busy,
   archived,
@@ -776,6 +921,7 @@ function CertDialog({
   contracts: PmSubcontract[]
   certs: PmSubCertificate[]
   custody: PmSubCustody[]
+  ledger: Array<Pick<PmStoreLine, "recoveries">>
   money: boolean
   busy: string | null
   archived: boolean
@@ -799,7 +945,7 @@ function CertDialog({
     if (v.trim() !== "") percents[k] = Number(v)
   })
   const prepared = subCertificateLines(mine, percents, caps)
-  const recovery = recoveryDue(custody, key)
+  const recovery = recoveryDue(custody, key) + ledgerRecoveryDue(ledger, key)
   const amounts = subCertificateAmounts(prepared.lines, recovery)
   const pending = certs.some((c) => c.partyKey === key && c.status === "int")
   const blocks = subCertBlocks({ archived, gross: amounts.gross, over: prepared.over.length, below: prepared.below.length, pending })
@@ -896,134 +1042,6 @@ function CertDialog({
           label={t("subs.certs.save")}
           onSave={async () => {
             const ok = await onSave({ partyKey: key, percents })
-            if (ok) onClose()
-          }}
-        />
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function CustodyDialog({
-  items,
-  contracts,
-  money,
-  busy,
-  archived,
-  onClose,
-  onSave,
-}: {
-  items: SubItem[]
-  contracts: PmSubcontract[]
-  money: boolean
-  busy: string | null
-  archived: boolean
-  onClose: () => void
-  onSave: SaveFn<Parameters<typeof openCustody>[4]>
-}) {
-  const t = useTranslations("Portal.PM")
-  const [seq, setSeq] = useState(contracts[0] ? String(contracts[0].seq) : "")
-  const contract = contracts.find((c) => String(c.seq) === seq) ?? null
-  const [itemId, setItemId] = useState(contract?.lines[0]?.itemId ?? "")
-  const [material, setMaterial] = useState("")
-  const [unit, setUnit] = useState("")
-  const [cost, setCost] = useState("")
-  const [perUnit, setPerUnit] = useState("")
-  const [waste, setWaste] = useState("0")
-  const [q, setQ] = useState("")
-  const [day, setDay] = useState(todayDay())
-  const [note, setNote] = useState("")
-  const costNum = cost.trim() === "" ? 0 : Number(cost)
-  const blocks = [
-    ...custodyBlocks({ archived, contract: Boolean(contract), itemInContract: Boolean(contract?.lines.some((l) => l.itemId === itemId)), material, unit, perUnit: num(perUnit), unitCost: costNum, waste: num(waste) }),
-    ...moveBlocks({ archived: false, kind: "iss", q: num(q), issued: 0, day, today: todayDay() }),
-  ]
-  const itemLabel = (id: string) => {
-    const i = items.find((x) => x.id === id)
-    return i ? `${i.code} · ${i.description}` : id
-  }
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t("subs.recon.issue")}</DialogTitle>
-          <DialogDescription>{t("subs.recon.issue_desc")}</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>{t("subs.recon.contract")}</Label>
-            <SearchableSelect
-              value={seq}
-              onChange={(v) => {
-                setSeq(v)
-                setItemId(contracts.find((c) => String(c.seq) === v)?.lines[0]?.itemId ?? "")
-              }}
-              options={contracts.map((c) => ({ value: String(c.seq), label: `${t("subs.contract_no", { no: subcontractNo(c.seq) })} — ${c.party.name}` }))}
-              placeholder={t("subs.recon.contract")}
-              searchPlaceholder={t("subs.form.search_supplier")}
-              noResultsText={t("subs.form.no_items")}
-              ariaLabel={t("subs.recon.contract")}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>{t("subs.recon.item")}</Label>
-            <SearchableSelect
-              value={itemId}
-              onChange={setItemId}
-              options={(contract?.lines ?? []).map((l) => ({ value: l.itemId, label: itemLabel(l.itemId) }))}
-              placeholder={t("subs.recon.item")}
-              searchPlaceholder={t("subs.form.search_item")}
-              noResultsText={t("subs.form.no_items")}
-              ariaLabel={t("subs.recon.item")}
-            />
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-mat">{t("subs.recon.material")} *</Label>
-              <Input id="cu-mat" dir="auto" value={material} onChange={(e) => setMaterial(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-unit">{t("subs.recon.unit")} *</Label>
-              <Input id="cu-unit" dir="auto" value={unit} onChange={(e) => setUnit(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-rate">{t("subs.recon.per_unit")} *</Label>
-              <Input id="cu-rate" dir="ltr" type="number" min={0} step={0.001} value={perUnit} onChange={(e) => setPerUnit(e.target.value)} />
-              <p className="text-xs text-muted-foreground">{t("subs.recon.per_unit_hint")}</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-waste">{t("subs.recon.waste")}</Label>
-              <Input id="cu-waste" dir="ltr" type="number" min={0} max={100} step={0.5} value={waste} onChange={(e) => setWaste(e.target.value)} />
-            </div>
-            {money && (
-              <div className="space-y-1.5">
-                <Label htmlFor="cu-cost">{t("subs.recon.unit_cost")}</Label>
-                <Input id="cu-cost" dir="ltr" type="number" min={0} step={0.01} value={cost} onChange={(e) => setCost(e.target.value)} />
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-q">{t("subs.recon.qty")} *</Label>
-              <Input id="cu-q" dir="ltr" type="number" min={0} step={0.01} value={q} onChange={(e) => setQ(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cu-day">{t("subs.recon.day")}</Label>
-              <Input id="cu-day" dir="ltr" type="date" value={day} onChange={(e) => setDay(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cu-note">{t("subs.form.note")}</Label>
-            <Input id="cu-note" dir="auto" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          <BlockingReasons title={t("cannot_save")} reasons={blocks.filter((b) => b !== "archived").map((b) => t(`subs.block.${b}`))} />
-        </div>
-        <Footer
-          onClose={onClose}
-          busy={busy !== null}
-          disabled={blocks.length > 0}
-          label={t("subs.recon.issue_save")}
-          onSave={async () => {
-            if (!contract) return
-            const ok = await onSave({ subcontractSeq: contract.seq, itemId, material, unit, unitCost: costNum, perUnit: num(perUnit), waste: num(waste), issueQty: num(q), day, note: note || null })
             if (ok) onClose()
           }}
         />

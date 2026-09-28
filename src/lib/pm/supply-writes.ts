@@ -8,8 +8,11 @@
 // `purchaseRequests` so Procurement's needs desk keeps reading them; their
 // `items` are rewritten from the lines on every decision.
 
+import { requestPmStopInTx } from "../procurement/po-extra-writes"
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, where, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, PmAccessError, pmCan, type PmContext } from "./access"
+import { cleanAttachments, type PmAttachment } from "./attachments"
+import { readSelfApproval } from "./info-writes"
 import { eventDocId, PM_EVENTS } from "./events"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
@@ -20,6 +23,7 @@ import {
   decidedMove,
   decideRefusal,
   moveBlocks,
+  returnWaiting,
   newMove,
   PM_STORE,
   r2,
@@ -47,7 +51,9 @@ import {
   pettyBlocks,
   pettyNo,
   plantBlocks,
+  plantHireable,
   plantNo,
+  plantReplyBlocks,
   PM_PETTY,
   PM_PLANT,
   procurementItems,
@@ -64,7 +70,9 @@ import {
   type CloseWhy,
   type LineDraft,
   type PlantCategory,
+  type PlantReplyKind,
   type PlantWhy,
+  type PmPlantRequest,
   type ReqLine,
 } from "./supply"
 
@@ -80,7 +88,7 @@ export interface SupplyActor {
   name: string | null
 }
 
-type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; plantCount?: number; voCount?: number }
+type PmCounters = { no?: string; mrCount?: number; grnCount?: number; pettyCount?: number; plantCount?: number; plantReqCount?: number; voCount?: number }
 type ProjectData = { organizationId?: string; name?: string; status?: string; projectManagerId?: string | null; pm?: PmCounters & Record<string, unknown> }
 
 const num = (v: unknown) => {
@@ -380,6 +388,20 @@ export async function stopLine(firestore: Firestore, ctx: PmContext, projectId: 
     const next = stoppedLine(line, { on: todayDay(), by: actor.uid, byName: actor.name, why, whyNote: why === "oth" ? whyNote?.trim() || null : null })
     kind = next.cl?.t === "short" ? "short" : "cancel"
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
+    // P-19: with an order out, Procurement is asked to cancel the rest with the supplier —
+    // the order is read (and flagged) before this transaction writes anything.
+    // A legacy award has no order document — then there is nothing to flag.
+    if (request.poId) {
+      await requestPmStopInTx(tx, firestore, request.poId, { name: line.name, unit: line.unit, boqItemId: line.itemId }, {
+        reason: whyNote?.trim() || why || "stop",
+        byName: actor.name || "",
+        at: new Date().toISOString(),
+        projectId,
+        requestId,
+      }).catch((err: unknown) => {
+        if ((err as { code?: string })?.code !== "order_missing") throw err
+      })
+    }
     tx.update(ref, { pm: true, lines, items: procurementItems({ lines }), updatedAt: serverTimestamp() })
   })
   return kind
@@ -391,6 +413,9 @@ export interface ReceiveInput {
   dn: string | null
   note: string | null
   short: boolean
+  files?: PmAttachment[] | null
+  /** The project keeps a store (section `store`); without one a receipt is expensed to site overheads. */
+  withStore?: boolean
 }
 
 /** The project-side receipt: the site confirms what arrived from the delivery
@@ -411,13 +436,14 @@ export async function receiveOnProject(firestore: Firestore, ctx: PmContext, pro
     const day = todayDay()
     const acc = r3(Math.max(0, input.acc))
     const rej = r3(Math.max(0, input.rej))
-    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short }, day, actor.uid)
+    const files = cleanAttachments(input.files)
+    const next = receivedLine(line, { grn, q: acc, rej, on: day, by: actor.uid, byName: actor.name, dn: input.dn?.trim() || null, note: input.note?.trim() || null, short: input.short, ...(files.length ? { files } : {}) }, day, actor.uid)
     let storeWrite: { ref: ReturnType<typeof doc>; line: PmStoreLine } | null = null
-    if (acc > 0 && line.itemId) {
+    if (acc > 0 && line.itemId && input.withStore !== false) {
       const id = storeIdOf(line.key)
       const got = await readStore(tx, firestore, projectId, id)
       const base: PmStoreLine = got.line ?? { id, key: line.key, name: line.name, unit: line.unit, rates: {}, moves: [] }
-      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: request.poNumber || null }
+      const move: StoreMove = { t: "rc", q: acc, on: day, by: actor.uid, byName: actor.name, itemId: line.itemId, code: line.code, reqId: requestId, reqSeq: request.seq ?? null, grn, dn: input.dn?.trim() || null, rej: rej || null, source: request.poNumber || null, ...(files.length ? { files } : {}) }
       storeWrite = { ref: got.ref, line: { ...base, moves: [...base.moves, move] } }
     }
     const lines = request.lines.map((l, i) => (i === lineIndex ? next : l))
@@ -458,6 +484,24 @@ export interface MoveInput {
   fromProjectId?: string | null
   fromProjectName?: string | null
   note?: string | null
+  files?: PmAttachment[] | null
+}
+
+/** A boundary event to another module (the prototype's emit): returns to
+ * Inventory (prj:RET), supplier returns to Procurement (prj:SRET), a cash
+ * inbound with no order to Procurement (prj:NOPO). Create-only outbox. */
+function outbox(tx: Transaction, firestore: Firestore, e: { key: string; kind: string; project: ProjectData; projectId: string; projectNo: string; amount: number; params: Record<string, string | number>; by: string }) {
+  tx.set(doc(firestore, PM_EVENTS, eventDocId(e.key)), {
+    key: e.key,
+    kind: e.kind,
+    organizationId: e.project.organizationId ?? "",
+    projectId: e.projectId,
+    projectNo: e.projectNo,
+    amount: e.amount,
+    params: e.params,
+    by: e.by,
+    at: new Date().toISOString(),
+  })
 }
 
 /** Log a move on a material: declared use, return to a main store, move to
@@ -465,7 +509,7 @@ export interface MoveInput {
  * without a document. Balance-checked against what is on the project now. */
 export async function logStoreMove(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, storeId: string, input: MoveInput): Promise<void> {
   await runTransaction(firestore, async (tx) => {
-    const { project } = await readProject(tx, firestore, projectId)
+    const { project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "store.move")
     const { ref, line } = await readStore(tx, firestore, projectId, storeId)
@@ -493,8 +537,14 @@ export async function logStoreMove(firestore: Firestore, ctx: PmContext, project
       })
     )
     const day = todayDay()
-    const move = newMove({ ...input, on: day, by: actor.uid, byName: actor.name, code: item?.code ?? null })
+    const files = cleanAttachments(input.files)
+    const move: StoreMove = { ...newMove({ ...input, on: day, by: actor.uid, byName: actor.name, code: item?.code ?? null }), ...(files.length ? { files } : {}) }
     const moves = [...line.moves, move]
+    const projectNo = pm.no ?? projectId
+    if (move.t === "ret")
+      outbox(tx, firestore, { key: `prj:RET:${projectNo}:${storeId}:${moves.length - 1}`, kind: "RET", project, projectId, projectNo, amount: 0, params: { material: line.name, unit: line.unit, qty: move.q, warehouseId: move.warehouseId ?? "", warehouse: move.warehouseName ?? "", project: project.name ?? "" }, by: actor.uid })
+    if (move.t === "sret")
+      outbox(tx, firestore, { key: `prj:SRET:${projectNo}:${storeId}:${moves.length - 1}`, kind: "SRET", project, projectId, projectNo, amount: 0, params: { material: line.name, unit: line.unit, qty: move.q, why: "nc", note: move.note ?? "", project: project.name ?? "" }, by: actor.uid })
     if (input.t === "xo" && input.toProjectId) {
       const other = await tx.get(doc(firestore, "projects", input.toProjectId))
       const od = other.exists() ? (other.data() as ProjectData) : null
@@ -518,12 +568,18 @@ export async function decideStoreMove(firestore: Firestore, ctx: PmContext, proj
     const { ref, line } = await readStore(tx, firestore, projectId, storeId)
     const move = line?.moves[index]
     if (!line || !move) throw new PmSupplyError("missing")
-    const refusal = decideRefusal(move, decision, actor.uid, fresh.ceiling.has("admin"))
+    const selfAllowed = await readSelfApproval(tx, firestore, project.organizationId)
+    const refusal = decideRefusal(move, decision, actor.uid, selfAllowed)
     if (refusal === "self") refuse("self_approval", "store.approve")
     if (refusal) throw new PmSupplyError("blocked", [refusal])
     const day = todayDay()
     const next = decidedMove(move, decision, actor, day)
     tx.update(ref, { moves: line.moves.map((m, i) => (i === index ? next : m)), updatedAt: serverTimestamp() })
+    const no = pm.no ?? projectId
+    if (decision === "sup")
+      outbox(tx, firestore, { key: `prj:SRET:${no}:${storeId}:${index}`, kind: "SRET", project, projectId, projectNo: no, amount: costHint != null ? r2(costHint * move.q) : 0, params: { material: line.name, unit: line.unit, qty: move.q, why: move.why ?? "", note: move.note ?? "", project: project.name ?? "" }, by: actor.uid })
+    if (decision === "ok" && move.t === "rx" && move.from === "cash")
+      outbox(tx, firestore, { key: `prj:NOPO:${no}:${storeId}:${index}`, kind: "NOPO", project, projectId, projectNo: no, amount: costHint != null ? r2(costHint * move.q) : 0, params: { material: line.name, unit: line.unit, qty: move.q, note: move.note ?? "", project: project.name ?? "" }, by: actor.uid })
     if (decision === "ok" && move.t === "loss") {
       const projectNo = pm.no ?? projectId
       const key = `prj:LOSS:${projectNo}:${storeId}:${index}`
@@ -576,11 +632,25 @@ export async function confirmMoveIn(firestore: Firestore, ctx: PmContext, projec
   })
 }
 
+/** Inventory confirms a return is back in its main store (the keeper's act, from
+ * Inventory's desk): the move closes, and the stock is Inventory's again. */
+export async function confirmStoreReturn(firestore: Firestore, projectId: string, actor: SupplyActor, storeId: string, index: number): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    await readProject(tx, firestore, projectId)
+    const { ref, line } = await readStore(tx, firestore, projectId, storeId)
+    const move = line?.moves[index]
+    if (!line || !move) throw new PmSupplyError("missing")
+    if (!returnWaiting(move)) throw new PmSupplyError("blocked", ["not_waiting"])
+    const day = todayDay()
+    tx.update(ref, { moves: line.moves.map((m, i) => (i === index ? { ...m, st: "done", invBy: actor.uid, invByName: actor.name, invOn: day } : m)), updatedAt: serverTimestamp() })
+  })
+}
+
 // ── Direct purchases ─────────────────────────────────────────────────────────
 
 /** A site purchase under the cap, with its receipt number. It reaches Finance as
  * a project cost (prj:CASH). Above the per-purchase cap it is a normal request. */
-export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: { what: string; supplier: string; amount: number; receipt: string | null; day: string }): Promise<number> {
+export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, input: { what: string; supplier: string; amount: number; receipt: string | null; day: string; files?: PmAttachment[] | null }): Promise<number> {
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
@@ -595,6 +665,7 @@ export async function logDirectPurchase(firestore: Firestore, ctx: PmContext, pr
       supplier: input.supplier.trim(),
       amount: r2(input.amount),
       receipt: input.receipt?.trim() || null,
+      files: cleanAttachments(input.files),
       day: input.day,
       by: actor.uid,
       byName: actor.name,
@@ -644,7 +715,9 @@ export async function requestPlant(firestore: Firestore, ctx: PmContext, project
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "plant.request")
     blocked(plantBlocks({ archived: fresh.archived, ...input }))
-    const seq = (pm.plantCount ?? 0) + 1
+    // Requests draw their own counter; before it existed they shared `plantCount`
+    // with the units on site, so it starts from there and never reuses a number.
+    const seq = (pm.plantReqCount ?? pm.plantCount ?? 0) + 1
     const self = pmCan(fresh, "approve")
     const day = todayDay()
     tx.set(doc(firestore, "projects", projectId, PM_PLANT, plantNo(seq)), {
@@ -669,7 +742,7 @@ export async function requestPlant(firestore: Firestore, ctx: PmContext, project
       organizationId: project.organizationId ?? null,
       createdAt: serverTimestamp(),
     })
-    tx.update(ref, { pm: { ...pm, plantCount: seq }, updatedAt: serverTimestamp() })
+    tx.update(ref, { pm: { ...pm, plantReqCount: seq }, updatedAt: serverTimestamp() })
     out = { seq, status: self ? "go" : "wait" }
   })
   return out
@@ -688,3 +761,61 @@ export async function decidePlant(firestore: Firestore, ctx: PmContext, projectI
   })
 }
 
+
+async function readPlantRequest(tx: Transaction, firestore: Firestore, projectId: string, seq: number) {
+  const ref = doc(firestore, "projects", projectId, PM_PLANT, plantNo(seq))
+  const snap = await tx.get(ref)
+  if (!snap.exists()) throw new PmSupplyError("missing")
+  return { ref, r: { id: snap.id, ...(snap.data() as Omit<PmPlantRequest, "id">) } }
+}
+
+/** Record what the plant desk answered (allocated · busy until · alternative ·
+ * none) — the site's record of the reply until the desk has its own screen. */
+export async function recordPlantReply(
+  firestore: Firestore,
+  ctx: PmContext,
+  projectId: string,
+  actor: SupplyActor,
+  seq: number,
+  input: { k: PlantReplyKind | null; unit?: string | null; free?: string | null; text?: string | null; on: string }
+): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const { project } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "plant.request")
+    const { ref, r } = await readPlantRequest(tx, firestore, projectId, seq)
+    blocked(plantReplyBlocks({ archived: fresh.archived, r, ...input, today: todayDay() }))
+    tx.update(ref, {
+      rep: { k: input.k, unit: input.k === "alloc" ? input.unit?.trim() || null : null, free: input.k === "late" ? input.free || null : null, text: input.text?.trim() || null, on: input.on, by: actor.uid, byName: actor.name },
+      updatedAt: serverTimestamp(),
+    })
+  })
+}
+
+/** «استأجر بدلها»: the fleet cannot serve it — the approver sends it to
+ * Procurement as a timed hire (prj:EQH), dated from and to as asked. */
+export async function hirePlantInstead(firestore: Firestore, ctx: PmContext, projectId: string, actor: SupplyActor, seq: number): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const { project, pm } = await readProject(tx, firestore, projectId)
+    const fresh = withFreshState(ctx, project)
+    assertPm(fresh, "request.decide")
+    const { ref, r } = await readPlantRequest(tx, firestore, projectId, seq)
+    if (fresh.archived) blocked(["archived"])
+    if (!plantHireable(r)) blocked(["not_hireable"])
+    const day = todayDay()
+    tx.update(ref, { rep: { k: "hire", unit: null, free: null, text: r.rep?.k ?? null, on: day, by: actor.uid, byName: actor.name }, updatedAt: serverTimestamp() })
+    const projectNo = pm.no ?? projectId
+    const key = `prj:EQH:${projectNo}:${plantNo(seq)}`
+    tx.set(doc(firestore, PM_EVENTS, eventDocId(key)), {
+      key,
+      kind: "EQH",
+      organizationId: project.organizationId ?? "",
+      projectId,
+      projectNo,
+      amount: 0,
+      params: { request: plantNo(seq), what: r.what, category: r.category, qty: r.qty, from: r.from, to: r.to, operator: r.operator, reply: r.rep?.k ?? "" },
+      by: actor.uid,
+      at: new Date().toISOString(),
+    })
+  })
+}

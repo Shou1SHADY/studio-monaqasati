@@ -1,13 +1,22 @@
 "use client"
 
 // Today on a PM 1.0 project (PRD §12, DEC-01): every decision its data raises,
-// reddest first, each with the tab where it is solved.
+// reddest first, each with the tab where it is solved — and, where the
+// prototype opens the work itself (prepare the IPC), the page is told the kind.
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
 import {
   Activity,
   AlertTriangle,
+  ArrowLeftRight,
+  Ban,
+  Box,
+  PackageCheck,
+  PackageX,
+  ShoppingCart,
+  Truck,
+  Wrench,
   Banknote,
   CalendarClock,
   CheckCircle2,
@@ -22,6 +31,7 @@ import {
   Mail,
   PauseCircle,
   Ruler,
+  Scale,
   SearchX,
   ShieldAlert,
   TestTube,
@@ -71,6 +81,25 @@ export const DECISION_ICON: Record<DecisionKind, LucideIcon> = {
   obstacle_blocking: HardHat,
   obstacle_unprotected: Gavel,
   cvr_stale: Activity,
+  req_waiting: ShoppingCart,
+  req_stop: PackageX,
+  req_incoming: Truck,
+  store_move: AlertTriangle,
+  store_incoming: ArrowLeftRight,
+  store_close: Box,
+  store_negative: AlertTriangle,
+  change_held: ArrowLeftRight,
+  change_rejected: AlertTriangle,
+  need_short: PackageCheck,
+  eqp_waiting: Truck,
+  eqp_receive: Truck,
+  eqp_idle: Clock,
+  eqp_overdue: AlertTriangle,
+  eqp_offhire: Wrench,
+  eqp_licence: Ban,
+  rerate: Ruler,
+  eqp_hire: Truck,
+  po_budget: Scale,
 }
 
 /** One decision row: the kind's own action, filled when it is red (the prototype's rule). */
@@ -95,7 +124,7 @@ export function DecisionItem({ d, money, onOpen, project }: { d: PmDecision; mon
   )
 }
 
-export function DecisionList({ decisions, money, onOpen, limit }: { decisions: PmDecision[]; money: boolean; onOpen: (tab: DecisionTab) => void; limit?: number }) {
+export function DecisionList({ decisions, money, onOpen, limit }: { decisions: PmDecision[]; money: boolean; onOpen: (tab: DecisionTab, kind: DecisionKind) => void; limit?: number }) {
   const t = useTranslations("Portal.PM")
   const [all, setAll] = useState(false)
   const shown = limit && !all ? decisions.slice(0, limit) : decisions
@@ -103,7 +132,7 @@ export function DecisionList({ decisions, money, onOpen, limit }: { decisions: P
     <>
       <ul className="divide-y">
         {shown.map((d) => (
-          <DecisionItem key={d.kind} d={d} money={money} onOpen={() => onOpen(d.tab)} />
+          <DecisionItem key={d.kind} d={d} money={money} onOpen={() => onOpen(d.tab, d.kind)} />
         ))}
       </ul>
       {limit && decisions.length > limit && (
@@ -126,15 +155,16 @@ export function DecisionSubline({ decisions }: { decisions: PmDecision[] }) {
   return <p className="border-b px-4 py-2 text-xs text-muted-foreground">{parts.join(" · ")}</p>
 }
 
-export function PmTodayPanel({ projectId, project, access, onOpen }: { projectId: string; project: PmDecisionProject; access: PmAccess; onOpen: (tab: DecisionTab) => void }) {
+export function PmTodayPanel({ projectId, project, access, onOpen }: { projectId: string; project: PmDecisionProject; access: PmAccess; onOpen: (tab: DecisionTab, kind: DecisionKind) => void }) {
   const t = useTranslations("Portal.PM")
   const { decisions } = usePmDecisions(projectId, project, access)
+  const red = decisions.some((d) => d.severity === "red")
   return (
-    <Panel title={t("dec.title")} icon={AlertTriangle} count={decisions.length || undefined} bodyClassName="p-0">
+    <Panel title={t("dec.panel_title")} icon={AlertTriangle} count={decisions.length || undefined} countTone={red ? "bad" : "mute"} bodyClassName="p-0">
       <DecisionSubline decisions={decisions} />
       {decisions.length === 0 ? (
         <div className="p-4">
-          <EmptyState icon={CheckCircle2} title={t("dec.none")} description={t("dec.none_desc")} />
+          <EmptyState icon={CheckCircle2} title={t("dec.none_today")} description={t("dec.none_desc")} />
         </div>
       ) : (
         <DecisionList decisions={decisions} money={access.has("money")} onOpen={onOpen} limit={5} />

@@ -97,6 +97,8 @@ export interface PmActivity {
   itemIds: string[]
   /** The activity that must finish first, when there is one. */
   pred: string | null
+  /** Needs a live work permit before it can start (the look-ahead's permit constraint). */
+  permit?: boolean | null
   by: string
   byName?: string | null
   at: string

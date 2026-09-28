@@ -33,6 +33,11 @@ export type ProcEventKind =
   | "po_closed" // → preparer
   | "po_cancelled" // → preparer, the supplier if it had reached him, Finance if it was a commitment
   | "po_rated" // → the supplier's user (when published)
+  | "po_hold_decided" // → Finance: Procurement answered a held invoice
+  | "po_budget_referred" // → the project's managers + owner: an overrun waits for their decision
+  | "po_budget_decided" // → preparer + approvers: Projects accepted the overrun or asked to renegotiate
+  | "receipt_manual" // → Finance: goods recorded by hand (with or without an order)
+  | "receipt_expensed" // → Finance: a no-PO receipt Procurement ruled a cash expense
 
 export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_awaiting_approval",
@@ -50,6 +55,11 @@ export const PROC_EVENT_KINDS: ProcEventKind[] = [
   "po_closed",
   "po_cancelled",
   "po_rated",
+  "po_hold_decided",
+  "po_budget_referred",
+  "po_budget_decided",
+  "receipt_manual",
+  "receipt_expensed",
 ]
 
 /** Who is told: a role, named users, or the org owner. */
@@ -158,6 +168,26 @@ export const PROC_EVENT_COPY_AR: Record<ProcEventKind, { title: string; message:
     title: "تقييم على أمر الشراء {number}",
     message: "قيّمت {company} تنفيذك لأمر الشراء {number}: {stars} من 5 — ونُشر التقييم دون اسم على المنصة.",
   },
+  po_hold_decided: {
+    title: "قرار المشتريات في فاتورة موقوفة — {number}",
+    message: "قرّر {actor} في الفاتورة {invoice} على أمر الشراء {number}: {decision}. {note}",
+  },
+  po_budget_referred: {
+    title: "أمر شراء يتجاوز موازنة البند — {number}",
+    message: "أمر الشراء {number} من {supplier} لمشروع {project} يتجاوز موازنة البند بـ {over}. القرار لمدير المشروع: اقبل التجاوز أو اطلب إعادة التفاوض.",
+  },
+  po_budget_decided: {
+    title: "قرار مدير المشروع في موازنة {number}",
+    message: "{actor}: {decision} — أمر الشراء {number}. {note}",
+  },
+  receipt_manual: {
+    title: "سند استلام يدوي — {receipt}",
+    message: "سجّل {actor} استلاماً يدوياً {receipt} من {supplier}{order}. راجعه عند المطابقة والفوترة.",
+  },
+  receipt_expensed: {
+    title: "استلام بلا أمر شراء صار مصروفاً نقدياً — {receipt}",
+    message: "قرّر {actor} أن الاستلام {receipt} من {supplier} مصروف نقدي بلا أمر شراء. سجّل الفاتورة مصروفاً.",
+  },
 }
 
 /** `@key` params the messages name, with their Arabic text. */
@@ -170,6 +200,19 @@ export const PROC_EVENT_PARAM_COPY_AR: Record<string, string> = {
   pn_po_ceiling_unknown: "غير محدّد (أمر بمبلغ إجمالي)",
   pn_po_reminder_ask_accept: "لم يُقبل بعد — اقبله وحدّد موعد التسليم.",
   pn_po_reminder_ask_deliver: "التسليم مستحق — أخبرنا بموعد الوصول.",
+  pn_po_budget_accepted: "قبل تجاوز الموازنة — يمضي الأمر إلى اعتماده",
+  pn_po_budget_renegotiate: "طلب إعادة التفاوض على السعر",
+  pn_po_hold_po_price: "يلتزم بسعر الأمر — طلبنا فاتورة مصححة",
+  pn_po_hold_credit: "طلبنا من المورد إشعاراً دائناً بالفرق",
+  pn_po_hold_new_price: "اتُّفق على السعر الجديد — يُعدَّل الأمر",
+  pn_po_hold_supply: "يُستكمل التوريد ثم تُفوتر",
+  pn_po_hold_grn: "السند لم يُسجَّل بعد — نتابع المستلم",
+  pn_po_hold_ack: "أبلغنا المالية أننا نتابع",
+  pn_po_hold_newinv: "طلبنا فاتورة مصححة تحمل رقم الأمر والرقم الضريبي",
+  pn_po_hold_cancel: "تُلغى الفاتورة ويُعيد المورد إصدارها على الأمر الصحيح",
+  pn_po_hold_letter: "أرسلنا خطاباً بنكياً باسم المورد نفسه إلى المالية",
+  pn_po_hold_fix: "صحّحنا سجل المورد عندنا وأبلغنا المالية",
+  pn_po_hold_stop: "نوقف الدفع حتى يصحّح المورد حسابه",
 }
 
 const substitute = (template: string, params: EventParams) =>
@@ -268,7 +311,6 @@ const ONCE_PER_ORDER: ReadonlySet<ProcEventKind> = new Set<ProcEventKind>([
   "po_ready_to_send",
   "po_sent",
   "po_supplier_accepted",
-  "po_remainder_cancelled",
   "po_closed",
   "po_cancelled",
   "po_rated",

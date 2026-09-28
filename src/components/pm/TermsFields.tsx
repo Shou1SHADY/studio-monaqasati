@@ -31,6 +31,7 @@ export function TermsFields({
   contractValue,
   payerChangedFrom,
   hint,
+  financeAdvance,
 }: {
   value: ContractTerms
   onChange: <K extends keyof ContractTerms>(k: K, v: ContractTerms[K]) => void
@@ -44,6 +45,9 @@ export function TermsFields({
   payerChangedFrom?: ContractTerms["payer"]
   /** An addendum's per-term consequence (the prototype's amdHint). */
   hint?: (k: TermKey) => string | undefined
+  /** The advance Finance already holds (prj:ADV was sent) — changing it warns
+   * that the change does not reach Finance as that term. Null: not sent. */
+  financeAdvance?: number | null
 }) {
   const t = useTranslations("Portal.PM")
   const ct = contractValue
@@ -72,6 +76,7 @@ export function TermsFields({
       </Label>
       <Input id={`${idPrefix}-${key}`} type="number" min="0" max="100" step="any" inputMode="decimal" dir="ltr" value={Number.isNaN(value[key]) ? "" : toPct(value[key])} onChange={(e) => onChange(key, fromPct(e.target.value))} disabled={disabled} />
       {pctHint(key)}
+      {key === "advance" && financeAdvance != null && Number.isFinite(value.advance) && Math.abs(value.advance - financeAdvance) > 1e-9 && <FormHint tone="warn">{t("terms.hint.adv_sent")}</FormHint>}
       {extra(key)}
     </div>
   )

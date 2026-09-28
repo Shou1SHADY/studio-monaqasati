@@ -254,3 +254,40 @@ export function checkBreakdown(products: PricedProduct[], typed: Record<number, 
   sum = round2(sum)
   return { lines, sum, missing, ok: missing.length === 0 && Math.abs(sum - round2(total)) <= BREAKDOWN_TOLERANCE }
 }
+
+// ---------------------------------------------------------------------------
+// «أفضل سعر» (R-16) and the guest supplier at the award (R-10)
+// ---------------------------------------------------------------------------
+
+export interface OrderableOffer extends PickableOffer {
+  isGuestOffer?: boolean | null
+}
+
+/** Does the offer quote every line? Whole-request pricing is one lot: yes. */
+export function coversAllLines(rfq: PricedRfq | null | undefined, offer: PickableOffer): boolean {
+  if (awardMode(rfq) === "whole") return true
+  const products = pricedProducts(rfq)
+  const rates = ratesByOffer(rfq, [offer]).get(offer.id)
+  return products.every((p) => rates?.get(p.rfqProductIndex) != null)
+}
+
+/**
+ * The prototype's `isBestO`: among the live offers that price EVERY line (a
+ * partial offer's lower total is not a better price), the lowest total — and
+ * only when at least two such offers compete and that supplier can be given an
+ * order (`canOrder`: a registered supplier needs a VAT number and a verified
+ * record; a guest is judged at the award, not here).
+ */
+export function bestOfferIds(rfq: PricedRfq | null | undefined, offers: OrderableOffer[], canOrder: (o: OrderableOffer) => boolean): Set<string> {
+  const full = competingOffers(offers).filter((o) => o.status !== "مقبول" && coversAllLines(rfq, o) && offerTotal(o) != null)
+  if (full.length < 2) return new Set()
+  const min = Math.min(...full.map((o) => offerTotal(o) as number))
+  return new Set(full.filter((o) => offerTotal(o) === min && canOrder(o)).map((o) => o.id))
+}
+
+/** A guest has no supplier record: its order would carry no VAT number and
+ * could not be verified. The award waits until he registers — or the buyer
+ * accepts, in so many words, to award an unregistered guest. */
+export function guestAwardRefusal(picked: OrderableOffer[], acceptedGuest: boolean): "guest_unregistered" | null {
+  return picked.some((o) => o.isGuestOffer) && !acceptedGuest ? "guest_unregistered" : null
+}

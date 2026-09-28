@@ -8,8 +8,8 @@
 
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
-import { collection, query, where } from "firebase/firestore"
-import { AlertTriangle, ArrowLeftRight, Box, Check, CircleDollarSign, Plus, Ruler, Truck, Undo2 } from "lucide-react"
+import { collection, doc, query, where } from "firebase/firestore"
+import { AlertTriangle, ArrowLeftRight, Box, Check, CircleDollarSign, HardHat, Plus, Ruler, Truck, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -21,12 +21,15 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
+import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useSupplyWorld, type SupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmCan } from "@/lib/pm/access"
+import type { PmAttachment } from "@/lib/pm/attachments"
+import { PM_SETTINGS } from "@/lib/pm/info-writes"
 import { pmDate, pmMoney, pmPct } from "@/lib/pm/format"
 import {
+  isCustodyMove,
   itemProgress,
   itemUse,
   LOSS_WHY,
@@ -53,10 +56,13 @@ import {
   type StoreMove,
   type StoreState,
 } from "@/lib/pm/store"
+import { engineerHold, PM_SUBCONTRACTS, type PmSubcontract } from "@/lib/pm/subcontract"
 import { lineOut, linePhase, receivable, reqNo, type PmMaterialRequest } from "@/lib/pm/supply"
 import { confirmMoveIn, decideStoreMove, logStoreMove, setMaterialRate, type SupplyActor } from "@/lib/pm/supply-writes"
 import { cn } from "@/lib/utils"
 import { ChoiceChips, FormHint } from "./ContractBits"
+import { AttachmentTag, PmFilesField } from "./PmAttachments"
+import { SubStoreMoveDialog } from "./SubCustodyDialogs"
 import { qty, ReceiveDialog, StopLineDialog, useLocaleDir, useSupplyRun, type SupplyItem } from "./SupplyDialogs"
 
 const ST_TONE: Record<StoreState, PillTone> = { open: "info", close: "warn", done: "ok", zero: "mute", neg: "bad", pend: "warn" }
@@ -224,7 +230,7 @@ export function ProjectStorePanel({
           setStop(d)
         }}
       />
-      {rcv && <ReceiveDialog projectId={projectId} access={access} actor={actor} request={rcv.request} index={rcv.index} onClose={() => setRcv(null)} />}
+      {rcv && <ReceiveDialog projectId={projectId} orgId={orgId} access={access} actor={actor} request={rcv.request} index={rcv.index} onClose={() => setRcv(null)} />}
       {stop && <StopLineDialog projectId={projectId} access={access} actor={actor} request={stop.request} index={stop.index} onClose={() => setStop(null)} />}
     </>
   )
@@ -325,6 +331,13 @@ function LedgerDrawer({
   const { busy, run } = useSupplyRun()
   const [move, setMove] = useState<MoveDialogState | null>(null)
   const [rate, setRate] = useState<string | null>(null)
+  const [issue, setIssue] = useState(false)
+  const scQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_SUBCONTRACTS) : null), [firestore, projectId])
+  const setQ = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: orgSettings } = useDoc<{ selfApproval?: boolean }>(setQ)
+  const selfAllowed = orgSettings?.selfApproval === true
+  const { data: scData } = useCollection(scQ)
+  const contracts = useMemo(() => (scData ?? []) as unknown as PmSubcontract[], [scData])
   if (!x) return <Sheet open={false} />
   const st = storeState(x, items)
   const rc = storeReceived(x)
@@ -338,7 +351,6 @@ function LedgerDrawer({
   const can = !access.ctx.archived && access.allowed("store.move")
   const canApprove = !access.ctx.archived && access.allowed("store.approve")
   const canRate = !access.ctx.archived && access.allowed("item.rate.set")
-  const owner = access.ctx.ceiling.has("admin")
   const cost = world.costOf(x)
   const unrated = items.some((i) => !ratedOn(x, i.id))
   const way = world.requests.flatMap((r) => (r.status === "approved" ? r.lines.map((l, index) => ({ r, l, index })) : [])).filter(({ l }) => l.key === x.key && !l.cl && lineOut(l) > 0)
@@ -459,7 +471,7 @@ function LedgerDrawer({
                     locale={locale}
                     canApprove={canApprove}
                     canMove={can}
-                    mine={m.by === actor.uid && !owner}
+                    mine={m.by === actor.uid && !selfAllowed}
                     busy={busy}
                     onDecide={(d) => firestore && void run(`d${i}${d}`, () => decideStoreMove(firestore, access.ctx, projectId, actor, x.id, i, d, cost), t(`store.mv_done.${d === "ok" ? (m.t === "loss" ? "loss_ok" : m.t === "use" ? "use_ok" : "rx_ok") : d}`, { code: m.code ?? "" }))}
                     onConfirm={() => firestore && void run(`x${i}`, () => confirmMoveIn(firestore, access.ctx, projectId, actor, x.id, i, cost), t("store.mv_done.xi"))}
@@ -468,6 +480,12 @@ function LedgerDrawer({
             </DrawerSection>
             {can && (
               <div className="flex flex-wrap gap-2 border-t pt-3">
+                {contracts.length > 0 && engineerHold(x, items, contracts) > 0.005 && (
+                  <Button size="sm" variant="outline" onClick={() => setIssue(true)}>
+                    <HardHat size={14} className="me-1.5" aria-hidden="true" />
+                    {t("store.mv.iss")}
+                  </Button>
+                )}
                 {bal > 0.005 && unrated && (
                   <Button size="sm" variant="outline" onClick={() => setMove({ t: "use" })}>
                     <Check size={14} className="me-1.5" aria-hidden="true" />
@@ -503,6 +521,7 @@ function LedgerDrawer({
       </Sheet>
       {move && <MoveDialog projectId={projectId} orgId={orgId} x={x} items={items} access={access} actor={actor} initial={move.t} onClose={() => setMove(null)} />}
       {rate && <RateDialog projectId={projectId} x={x} item={items.find((i) => i.id === rate)} access={access} onClose={() => setRate(null)} />}
+      {issue && <SubStoreMoveDialog projectId={projectId} orgId={orgId} kind="iss" lines={world.stores} items={items} contracts={contracts} storeId={x.id} access={access} actor={actor} onClose={() => setIssue(false)} />}
     </>
   )
 }
@@ -522,6 +541,7 @@ function Stat({ label, value, sub, bad }: { label: string; value: string; sub: s
 function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfirm }: { m: StoreMove; locale: string; canApprove: boolean; canMove: boolean; mine: boolean; busy: string | null; onDecide: (d: "ok" | "rej" | "sup") => void; onConfirm: () => void }) {
   const t = useTranslations("Portal.PM")
   const plus = PLUS.has(m.t)
+  const custody = isCustodyMove(m.t)
   const approvable = (m.t === "loss" || m.t === "use" || m.t === "rx") && m.st === "wait"
   const note = m.note ? ` — ${m.note}` : ""
   const det =
@@ -537,7 +557,9 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
               ? m.otherProjectName ?? ""
               : m.t === "loss" || m.t === "sret"
                 ? `${m.why ? t(`store.loss_why.${m.why}`) : ""}${m.sup ? ` · ${t("store.mv_det.on_supplier")}` : ""}${note}`
-                : ""
+                : custody
+                  ? `${m.subName ?? ""}${m.recovery ? ` · ${t("store.mv_det.recovery")}` : ""}${note}`
+                  : ""
   const waitLabel = m.st === "wait" ? (approvable ? t("store.w.approval") : m.t === "xi" ? t("store.w.xi") : m.t === "xo" ? t("store.w.xo") : m.t === "sret" ? t("store.w.sret") : t("store.w.inv")) : null
   return (
     <div className="flex flex-wrap items-center gap-2 border-b py-2 last:border-0">
@@ -551,10 +573,12 @@ function MoveRow({ m, locale, canApprove, canMove, mine, busy, onDecide, onConfi
           {det && ` · ${det}`}
           {m.apprName && ` · ${t("store.mv_det.appr", { name: m.apprName })}`}
           {m.self && ` · ${t("store.mv_det.self")}`}
+          {m.t === "ret" && m.st === "done" && ` · ${t("store.mv_det.inv_ok", { name: m.invByName || "—" })}`}
         </p>
       </div>
-      <b className={cn("shrink-0 tabular-nums", m.st === "rej" ? "text-muted-foreground" : plus ? "text-success" : "text-foreground")} dir="ltr">
-        {plus ? "+" : "−"}
+      <AttachmentTag files={m.files} />
+      <b className={cn("shrink-0 tabular-nums", m.st === "rej" || custody ? "text-muted-foreground" : plus ? "text-success" : "text-foreground")} dir="ltr">
+        {custody ? "" : plus ? "+" : "−"}
         {qty(m.q)}
       </b>
       {approvable && canApprove && (mine ? (
@@ -598,6 +622,7 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
   const [from, setFrom] = useState<RxFrom | null>(null)
   const [fp, setFp] = useState<string | null>(null)
   const [note, setNote] = useState("")
+  const [files, setFiles] = useState<PmAttachment[]>([])
   const bal = Math.max(0, storeBalance(x, items))
   const unrated = items.filter((i) => !ratedOn(x, i.id))
   const modes = MOVES.filter((k) => k === "rx" || (bal > 0.005 && (k !== "use" || unrated.length)))
@@ -606,7 +631,8 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
   const { data: wData } = useCollection(wq)
   const { data: pData } = useCollection(pq)
   const warehouses = ((wData ?? []) as Array<{ id: string; name?: string; projectId?: string | null }>).filter((w) => !w.projectId)
-  const projects = ((pData ?? []) as Array<{ id: string; name?: string; pm?: { lifecycle?: string } | null }>).filter((p) => p.id !== projectId && p.pm && p.pm.lifecycle !== "closed" && p.pm.lifecycle !== "done")
+  const projects = ((pData ?? []) as Array<{ id: string; name?: string; pm?: { lifecycle?: string } | null; enabledSections?: string[] }>).filter((p) => p.id !== projectId && p.pm && p.pm.lifecycle !== "closed" && p.pm.lifecycle !== "done")
+  const xoProjects = projects.filter((p) => (p.enabledSections ?? []).includes("store"))
   const qn = Number(q)
   const blocks = moveBlocks({ archived: access.ctx.archived, t: m, q: qn, balance: bal, itemId: itemId || null, itemRated: false, warehouseId: wh, toProjectId: tp, why, from, note })
   const it = items.find((i) => i.id === itemId)
@@ -629,6 +655,7 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
           fromProjectId: fp,
           fromProjectName: projects.find((p) => p.id === fp)?.name ?? null,
           note,
+          files,
         }),
       () => t(`store.mv_logged.${m === "loss" && why === "nc" ? "nc" : m}`, { q: qty(qn), unit: x.unit, code: it?.code ?? "", to: projects.find((p) => p.id === tp)?.name ?? warehouses.find((w) => w.id === wh)?.name ?? "" })
     )
@@ -678,7 +705,7 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
           {m === "xo" && (
             <div className="space-y-1.5">
               <Label>{t("store.mv.to_project")} *</Label>
-              {projects.length ? <ChoiceChips label={t("store.mv.to_project")} options={projects.map((p) => ({ id: p.id, label: p.name || p.id }))} value={tp} onChange={setTp} /> : <FormHint>{t("store.mv.no_project")}</FormHint>}
+              {xoProjects.length ? <ChoiceChips label={t("store.mv.to_project")} options={xoProjects.map((p) => ({ id: p.id, label: p.name || p.id }))} value={tp} onChange={setTp} /> : <FormHint>{t("store.mv.no_project")}</FormHint>}
               <FormHint>{t("store.mv.xo_hint")}</FormHint>
             </div>
           )}
@@ -712,6 +739,16 @@ function MoveDialog({ projectId, orgId, x, items, access, actor, initial, onClos
                 <Input id="mv-rxnote" dir="auto" placeholder={t("store.mv.rx_ph")} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
             </>
+          )}
+          {m !== "use" && (
+            <PmFilesField
+              orgId={orgId}
+              folder={`projects/${projectId}/store`}
+              value={files}
+              onChange={setFiles}
+              label={m === "loss" ? t("store.mv.files_loss") : m === "rx" ? t("store.mv.files_rx") : t("store.mv.files_out")}
+              hint={m === "loss" ? t("store.mv.files_loss_hint") : m === "rx" ? t("store.mv.files_rx_hint") : t("store.mv.files_out_hint")}
+            />
           )}
         </div>
         <DialogFooter>

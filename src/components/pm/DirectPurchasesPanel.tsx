@@ -17,16 +17,18 @@ import { Callout } from "@/components/module-ui/Callout"
 import { Panel } from "@/components/module-ui/Panel"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
+import type { PmAttachment } from "@/lib/pm/attachments"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { PETTY_CAP, pettyBlocks, pettyMonth, PM_PETTY, type PmPetty } from "@/lib/pm/supply"
 import { logDirectPurchase, type SupplyActor } from "@/lib/pm/supply-writes"
 import { cn } from "@/lib/utils"
 import { FormHint } from "./ContractBits"
+import { AttachmentTag, PmFilesField } from "./PmAttachments"
 import { useLocaleDir, useSupplyRun } from "./SupplyDialogs"
 
 const n0 = (n: number) => Math.round(n).toLocaleString("en-US")
 
-export function DirectPurchasesPanel({ projectId, access, actor }: { projectId: string; access: PmAccess; actor: SupplyActor }) {
+export function DirectPurchasesPanel({ projectId, orgId, access, actor }: { projectId: string; orgId?: string | null; access: PmAccess; actor: SupplyActor }) {
   const t = useTranslations("Portal.PM")
   const { locale } = useLocaleDir()
   const firestore = useFirestore()
@@ -91,6 +93,7 @@ export function DirectPurchasesPanel({ projectId, access, actor }: { projectId: 
                     {x.supplier} · {pmDate(x.day, locale)} · {x.byName || "—"} · {x.receipt ? t("petty.receipt", { no: x.receipt }) : <span className="text-warning">{t("petty.no_receipt")}</span>}
                   </p>
                 </div>
+                <AttachmentTag files={x.files} />
                 {money && (
                   <b className="shrink-0 tabular-nums" dir="ltr">
                     {pmMoney(x.amount)}
@@ -102,12 +105,12 @@ export function DirectPurchasesPanel({ projectId, access, actor }: { projectId: 
         )}
         <p className="border-t px-4 py-2 text-xs text-muted-foreground">{t("petty.foot")}</p>
       </Panel>
-      {open && <PettyDialog projectId={projectId} access={access} actor={actor} month={month} onClose={() => setOpen(false)} />}
+      {open && <PettyDialog projectId={projectId} orgId={orgId} access={access} actor={actor} month={month} onClose={() => setOpen(false)} />}
     </>
   )
 }
 
-function PettyDialog({ projectId, access, actor, month, onClose }: { projectId: string; access: PmAccess; actor: SupplyActor; month: number; onClose: () => void }) {
+function PettyDialog({ projectId, orgId, access, actor, month, onClose }: { projectId: string; orgId?: string | null; access: PmAccess; actor: SupplyActor; month: number; onClose: () => void }) {
   const t = useTranslations("Portal.PM")
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
@@ -117,6 +120,7 @@ function PettyDialog({ projectId, access, actor, month, onClose }: { projectId: 
   const [amount, setAmount] = useState("")
   const [receipt, setReceipt] = useState("")
   const [day, setDay] = useState(today)
+  const [files, setFiles] = useState<PmAttachment[]>([])
   const amt = Number(amount) || 0
   const blocks = pettyBlocks({ archived: access.ctx.archived, what, supplier, amount: amt, day, today })
   const overOne = amt > PETTY_CAP.one
@@ -124,7 +128,7 @@ function PettyDialog({ projectId, access, actor, month, onClose }: { projectId: 
 
   const save = async () => {
     if (!firestore) return
-    const done = await run("petty", () => logDirectPurchase(firestore, access.ctx, projectId, actor, { what, supplier, amount: amt, receipt, day }), t("petty.logged", { amount: n0(amt) }))
+    const done = await run("petty", () => logDirectPurchase(firestore, access.ctx, projectId, actor, { what, supplier, amount: amt, receipt, day, files }), t("petty.logged", { amount: n0(amt) }))
     if (done) onClose()
   }
 
@@ -160,6 +164,7 @@ function PettyDialog({ projectId, access, actor, month, onClose }: { projectId: 
               <Input id="pt-day" type="date" dir="ltr" max={today} value={day} onChange={(e) => setDay(e.target.value)} />
             </div>
           </div>
+          <PmFilesField orgId={orgId} folder={`projects/${projectId}/petty`} value={files} onChange={setFiles} label={t("petty.form.photo")} hint={t("petty.form.photo_hint")} />
           {overMonth && <Callout tone="warn">{t("petty.form.over_month", { spent: n0(month), month: n0(PETTY_CAP.month) })}</Callout>}
         </div>
         <DialogFooter>

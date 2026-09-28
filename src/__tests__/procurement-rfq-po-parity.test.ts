@@ -28,6 +28,7 @@ import {
   advanceNumber,
   advanceState,
   awaitsPmBudget,
+  pmBudgetAsk,
   budgetOverrun,
   buyerSelfIssueLimit,
   dateMissesNeed,
@@ -230,8 +231,10 @@ describe("revision, transit, Projects' cancel (R-28, R-29)", () => {
     expect(lineInTransit(po(), line({ accepted: 4 }), [d])).toBe(6)
   })
   it("Projects' cancel request is open while something is still to arrive", () => {
-    expect(pmCancelOpen({ ...line(), pmCancel: { reason: "closed" } })).toBe(true)
-    expect(pmCancelOpen({ ...line({ cancelled: 10 }), pmCancel: { reason: "closed" } })).toBe(false)
+    const asked = po({ pmCancels: { l1: { reason: "closed" } } })
+    expect(pmCancelOpen(asked, line())).toBe(true)
+    expect(pmCancelOpen(asked, line({ cancelled: 10 }))).toBe(false)
+    expect(pmCancelOpen(po(), line())).toBe(false)
   })
 })
 
@@ -244,11 +247,12 @@ describe("who may act (R-26) and the buyer's self-issue (R-32)", () => {
     expect(poActs(po(), actor({ uid: "u1", canApprove: true })).acts).toBe(true)
   })
   it("a buyer issues his own order at or under the limit, nothing blocking", () => {
-    const small = po({ totalExVat: 1_800 })
+    const small = po({ totalExVat: 1_800, basis: "direct" })
     expect(buyerSelfIssueLimit(null)).toBe(2_000)
     expect(buyerSelfIssueLimit({ buyerSelfIssueLimit: 5_000 })).toBe(5_000)
     expect(selfIssueRefusal(small, actor(), 2_000, 0)).toBeNull()
-    expect(selfIssueRefusal(po(), actor(), 2_000, 0)).toBe("over_limit")
+    expect(selfIssueRefusal(po({ basis: "direct" }), actor(), 2_000, 0)).toBe("over_limit")
+    expect(selfIssueRefusal(po({ totalExVat: 1_800 }), actor(), 2_000, 0)).toBe("not_direct")
     expect(selfIssueRefusal(small, actor({ uid: "u3" }), 2_000, 0)).toBe("not_preparer")
     expect(selfIssueRefusal(small, actor(), 2_000, 1)).toBe("blocked")
     expect(selfIssueRefusal({ ...small, returnedReason: "fix" }, actor(), 2_000, 0)).toBe("returned")
@@ -262,8 +266,13 @@ describe("Projects' gates (R-25)", () => {
     expect(budgetOverrun(mine, items, [])).toEqual([{ itemId: "b1", over: 1_000 }])
     const other = po({ id: "po2", status: "accepted", lines: [line({ boqItemId: "b1", quantity: 1 })] }) as PurchaseOrder
     expect(budgetOverrun(mine, items, [other])).toEqual([{ itemId: "b1", over: 2_000 }])
-    expect(awaitsPmBudget(mine, budgetOverrun(mine, items, []))).toBe(true)
-    expect(awaitsPmBudget({ ...mine, pmBudget: { state: "accepted" } }, budgetOverrun(mine, items, []))).toBe(false)
+    // An overrun nobody referred does not wait (no dead end); a referred one waits until answered.
+    expect(awaitsPmBudget(mine)).toBe(false)
+    expect(pmBudgetAsk(mine, budgetOverrun(mine, items, []))).toBe(true)
+    expect(awaitsPmBudget({ ...mine, pmBudget: { state: "pending" } })).toBe(true)
+    expect(awaitsPmBudget({ ...mine, pmBudget: { state: "renegotiate" } })).toBe(true)
+    expect(awaitsPmBudget({ ...mine, pmBudget: { state: "accepted" } })).toBe(false)
+    expect(pmBudgetAsk({ ...mine, pmBudget: { state: "accepted" } }, budgetOverrun(mine, items, []))).toBe(false)
   })
   it("a line whose item needs an approved sample blocks", () => {
     expect(samplePending(mine, items).map((i) => i.id)).toEqual(["b1"])

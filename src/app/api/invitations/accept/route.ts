@@ -3,11 +3,17 @@ import { z } from "zod"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
+import { SUPPLIER_RECORDS, invitedSupplierRecord, supplierRecordId } from "@/lib/procurement/supplier-file"
 
 // Called right after a newly registered supplier signs up through an
 // invitation link. Creates the contractor–supplier connection server-side so
 // it works even when the supplier registered with a different email address
 // than the one the invitation was sent to (the token is the capability).
+// A supplier who joins through our invitation lands in our suppliers
+// UNVERIFIED (`supplierRecords`, source "invite"): his VAT number and terms
+// are to be completed, the manager is asked to vouch for him, and no order
+// is approved for him before that (prototype 2016-2019). A record we already
+// keep is left as it is.
 
 const bodySchema = z.object({
   token: z.string().regex(/^[a-f0-9]{64}$/),
@@ -214,6 +220,25 @@ export async function POST(req: NextRequest) {
         updatedAt: FieldValue.serverTimestamp(),
       })
     }
+
+    const recordRef = db.collection(SUPPLIER_RECORDS).doc(supplierRecordId(inv.contractorOrgId as string, supplierOrgId))
+    await db
+      .runTransaction(async (tx) => {
+        if ((await tx.get(recordRef)).exists) return
+        tx.set(
+          recordRef,
+          invitedSupplierRecord({
+            organizationId: inv.contractorOrgId as string,
+            supplierOrgId,
+            supplierName: (resolvedProfile.companyName as string) || (resolvedProfile.name as string) || (inv.companyName as string) || "",
+            vat: (resolvedProfile.taxNumber as string | undefined) ?? null,
+            invitedById: (inv.invitedBy as string | undefined) ?? null,
+            invitedByName: (inv.invitedByName as string | undefined) ?? null,
+            at: new Date().toISOString(),
+          })
+        )
+      })
+      .catch((err) => console.error("Failed to write the invited supplier's record:", err))
 
     await invitationRef.update({
       status: "accepted",

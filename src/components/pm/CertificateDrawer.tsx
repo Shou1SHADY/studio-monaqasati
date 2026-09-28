@@ -5,9 +5,12 @@
 // preparer never approves — a recorded self-approval is flagged), the
 // consultant's certification with any deduction, and what Finance did with it.
 // Internal approval, withdrawal and recording the certification start here.
+// The preparer approves his own only when the owner has allowed self-approval
+// (pmSettings.selfApproval) — then it is recorded as an exception.
 
 import { useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { doc } from "firebase/firestore"
 import { BadgeCheck, Calculator, Check, ClipboardCheck, Info, Link2, Loader2, Lock, Receipt, ShieldCheck, Undo2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -16,13 +19,14 @@ import { DrawerSection } from "@/components/module-ui/DrawerSection"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useFirestore } from "@/firebase"
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { mayApproveCertificate, PmAccessError, pmCan } from "@/lib/pm/access"
-import { CERTIFICATE_CHECKS, CERTIFICATE_STATUSES, certificateNo, type CertificateStatus, collectedAmount, collectedShare, daysBetween, lateDays } from "@/lib/pm/certificate"
+import { CERTIFICATE_CHECKS, CERTIFICATE_STATUSES, certificateNo, type CertificateStatus, collectedAmount, collectedShare, daysBetween, isCutReason, lateDays } from "@/lib/pm/certificate"
 import { approveCertificate, PmCertificateError, withdrawCertificate, type CertificateActor, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { pmDate, pmMoney, pmPct, todayDay } from "@/lib/pm/format"
+import { PM_SETTINGS, type PmOrgSettings } from "@/lib/pm/info-writes"
 import { cn } from "@/lib/utils"
 
 export const CERT_TONE: Record<CertificateStatus, PillTone> = { int: "warn", sub: "info", appr: "module", part: "warn", paid: "ok", void: "mute" }
@@ -57,6 +61,12 @@ export function CertificateDrawer({
   const { toast } = useToast()
   const [busy, setBusy] = useState<"approve" | "withdraw" | null>(null)
   const today = todayDay()
+  const projectRef = useMemoFirebase(() => (firestore ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
+  const { data: projectDoc } = useDoc<{ organizationId?: string }>(projectRef)
+  const orgId = projectDoc?.organizationId ?? null
+  const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PM_SETTINGS, orgId) : null), [firestore, orgId])
+  const { data: settings } = useDoc<PmOrgSettings>(settingsRef)
+  const selfApproval = settings?.selfApproval === true
 
   const act = async (c: PmCertificate, how: "approve" | "withdraw") => {
     if (!firestore) return
@@ -64,7 +74,12 @@ export function CertificateDrawer({
     try {
       if (how === "approve") {
         await approveCertificate(firestore, access.ctx, projectId, actor, c.seq)
-        toast({ title: t("ipc.approved", { no: certificateNo(c.seq) }) })
+        toast({
+          title:
+            c.prep === actor.uid
+              ? t("ipc.approved_self", { no: certificateNo(c.seq), who: actor.name || "—", date: pmDate(today, locale) })
+              : t("ipc.approved_net", { no: certificateNo(c.seq), net: pmMoney(c.net) }),
+        })
       } else {
         await withdrawCertificate(firestore, access.ctx, projectId, actor, c.seq)
         toast({ title: t("ipc.withdrawn", { no: certificateNo(c.seq) }) })
@@ -85,7 +100,7 @@ export function CertificateDrawer({
   const late = c ? lateDays(c, today) : 0
   const share = c ? collectedShare(c) : 0
   const isPreparer = c?.prep === access.uid
-  const mayApprove = Boolean(c) && open && c!.status === "int" && mayApproveCertificate(access.ctx, access.uid ?? "", c!.prep)
+  const mayApprove = Boolean(c) && open && c!.status === "int" && mayApproveCertificate(access.ctx, access.uid ?? "", c!.prep, selfApproval)
   const mayWithdraw = Boolean(c) && open && c!.status === "int" && (isPreparer ? pmCan(access.ctx, "prep") || pmCan(access.ctx, "approve") : pmCan(access.ctx, "approve"))
   const canCertify = open && access.allowed("certificate.certify")
   const reclaimed = c ? certs.some((x) => x.seq > c.seq && x.status !== "void" && (x.cutsIncluded ?? 0) > 0) : false
@@ -235,7 +250,11 @@ export function CertificateDrawer({
                   <KeyValueRow label={`${t("money.dr.certified")}${c.consultantRef ? ` · ${c.consultantRef}` : ""}`} value={pmMoney(c.certified ?? c.gross)} ltr strong />
                   {(c.cut ?? 0) > 0 && (
                     <>
-                      <KeyValueRow label={<span className="font-bold text-destructive">{t("money.dr.cut", { reason: c.cutReason || "—" })}</span>} value={<span className="font-bold text-destructive">{`− ${pmMoney(c.cut ?? 0)}`}</span>} ltr />
+                      <KeyValueRow
+                        label={<span className="font-bold text-destructive">{t("money.dr.cut", { reason: isCutReason(c.cutReason) ? t(`ipc.cut_reasons.${c.cutReason}`) : c.cutReason || "—" })}</span>}
+                        value={<span className="font-bold text-destructive">{`− ${pmMoney(c.cut ?? 0)}`}</span>}
+                        ltr
+                      />
                       <p className="text-xs text-muted-foreground">{reclaimed ? t("money.dr.reclaimed") : t("money.dr.back_to_unbilled")}</p>
                     </>
                   )}

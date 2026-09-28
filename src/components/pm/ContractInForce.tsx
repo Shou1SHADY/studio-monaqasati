@@ -5,6 +5,8 @@
 // and what it was; "Original as signed" is the frozen original, read-only;
 // "Record" lists signed and withdrawn addenda, newest first. A draft awaiting
 // signature is an amber decision with its age for whoever signs or drafted it.
+// The original view carries the value and duration as signed; under "nobody
+// pays" the payment terms do not exist in either view.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -31,14 +33,30 @@ import { FileLinks } from "./ContractBits"
 import { useTermMeaning } from "./TermMeaning"
 import { TermsCashPanel } from "./TermsCashPanel"
 import type { AddendumActor } from "@/lib/pm/addendum-writes"
-import { pmDate, todayDay } from "@/lib/pm/format"
-import type { ContractTerms } from "@/lib/pm/terms"
+import { pmDate, pmPct, todayDay } from "@/lib/pm/format"
+import type { AdvanceChange } from "@/lib/pm/project-writes"
+import type { ContractTerms, TermKey } from "@/lib/pm/terms"
 import { DraftAddendumDialog } from "./DraftAddendumDialog"
 import { SignAddendumDialog } from "./SignAddendumDialog"
 import { TermChangeList } from "./TermChangeList"
 import { WithdrawAddendumDialog } from "./WithdrawAddendumDialog"
 
 type View = "force" | "original" | "record"
+
+const PAID_ONLY: readonly TermKey[] = ["advance", "advanceRecovery", "retention", "retentionCap", "retentionRelease", "paymentDays", "consultantDays"]
+const shownFor = (terms: ContractTerms) => ADDENDUM_TERMS.filter((k) => terms.payer !== "none" || !PAID_ONLY.includes(k))
+
+/** The advLog warning — the advance changed before start after Finance received it (prototype termsMain). */
+export function AdvanceLogNote({ log }: { log: AdvanceChange[] | null | undefined }) {
+  const t = useTranslations("Portal.PM")
+  const last = log?.[0]
+  if (!last) return null
+  return (
+    <Callout tone="warn" className="mt-3">
+      {t("terms.adv_log", { from: pmPct(last.from), to: pmPct(last.to) })}
+    </Callout>
+  )
+}
 
 export function ContractInForce({
   projectId,
@@ -51,6 +69,8 @@ export function ContractInForce({
   actor,
   orgId = "",
   durationDays = 0,
+  advanceRecovered = 0,
+  advLog = null,
 }: {
   projectId: string
   original: ContractTerms
@@ -63,6 +83,8 @@ export function ContractInForce({
   actor: AddendumActor
   orgId?: string
   durationDays?: number
+  advanceRecovered?: number
+  advLog?: AdvanceChange[] | null
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -94,6 +116,7 @@ export function ContractInForce({
     contractValue: liveValue,
     retentionHeld,
     money: access.has("money"),
+    advanceRecovered,
   })
   const record = useMemo(
     () =>
@@ -236,7 +259,7 @@ export function ContractInForce({
                 : t("terms.duration_note")
             }
           />
-          {ADDENDUM_TERMS.filter((k) => terms.payer !== "none" || !["advance", "advanceRecovery", "retention", "retentionCap", "retentionRelease", "paymentDays", "consultantDays"].includes(k)).map(
+          {shownFor(terms).map(
             (k) => {
               const by = marks[k]
               const m = meaning(k, terms)
@@ -252,6 +275,7 @@ export function ContractInForce({
                       ? t("amend.mark", {
                           no: addendumNo(by.seq),
                           was: text(k, originalOf(k)),
+                          date: pmDate(by.signedOn, locale),
                         })
                       : undefined
                   }
@@ -260,6 +284,7 @@ export function ContractInForce({
             },
           )}
           <TermRow label={t("terms.vat")} value="15%" note={t("terms.vat_note")} />
+          <AdvanceLogNote log={advLog} />
         </div>
       )}
 
@@ -269,7 +294,9 @@ export function ContractInForce({
             <Lock size={13} aria-hidden="true" />
             {t("amend.original_note")}
           </p>
-          {ADDENDUM_TERMS.map((k) => (
+          <TermRow label={t("terms.contract_value")} value={access.has("money") ? pmMoney(contractValue) : "•••"} note={t("amend.orig_value_note")} />
+          <TermRow label={t("terms.duration")} value={t("days", { count: durationDays })} note={t("amend.orig_duration_note", { date: pmDate(startedAt?.slice(0, 10), locale) })} />
+          {shownFor(original).map((k) => (
             <KeyValueRow key={k} label={t(`terms.${k}` as "terms.save")} value={text(k, original[k])} />
           ))}
         </div>

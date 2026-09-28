@@ -15,16 +15,18 @@ import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
+import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
-import { defectsEnd, finalBlocks, progressOf, provisionalBlocks, PROVISIONAL_AT, retentionClaimable, type Acceptances } from "@/lib/pm/acceptance"
+import { defectsEnd, defectsLeft, finalBlocks, progressOf, provisionalBlocks, PROVISIONAL_AT, retentionClaimable, type Acceptances } from "@/lib/pm/acceptance"
 import { PmAcceptanceError, recordFinal, recordProvisional, type AcceptanceActor } from "@/lib/pm/acceptance-writes"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { isOpenPunch, PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
 import type { ContractTerms } from "@/lib/pm/terms"
+import { cn } from "@/lib/utils"
 
 export function HandoverPanel({
   projectId,
@@ -65,6 +67,8 @@ export function HandoverPanel({
   const finB = finalBlocks({ archived, lifecycle, acceptances, openPunch })
   const dlpEnd = acceptances.prov ? defectsEnd(acceptances.prov.on, terms.defectsDays) : null
   const dlpOver = dlpEnd ? dlpEnd <= todayDay() : false
+  const left = dlpEnd ? defectsLeft(dlpEnd, todayDay()) : null
+  const sent = <SourceBadge module="payments" label={t("hnd.sent_finance")} className="ms-1.5" />
 
   const run = async (which: "prov" | "final") => {
     if (!firestore) return
@@ -95,9 +99,31 @@ export function HandoverPanel({
           <KeyValueRow label={t("hnd.progress", { at: PROVISIONAL_AT })} value={progress === null ? "—" : `${progress}%`} ltr />
           {acceptances.prov ? (
             <>
-              <KeyValueRow label={t("hnd.recorded")} value={t("hnd.by_on", { who: acceptances.prov.byName || "—", date: pmDate(acceptances.prov.on, locale) })} />
-              {seesTerms && <KeyValueRow label={t("hnd.dlp_end", { days: terms.defectsDays })} value={pmDate(dlpEnd, locale)} />}
+              <KeyValueRow
+                label={t("hnd.recorded")}
+                value={
+                  <span>
+                    {t("hnd.by_on", { who: acceptances.prov.byName || "—", date: pmDate(acceptances.prov.on, locale) })}
+                    {sent}
+                  </span>
+                }
+              />
+              <KeyValueRow
+                label={t("hnd.dlp_end", { days: terms.defectsDays })}
+                value={
+                  <span>
+                    {pmDate(dlpEnd, locale)}
+                    {left !== null && (
+                      <span className={cn("ms-1.5 text-xs", left <= 0 ? "font-bold text-warning" : "text-muted-foreground")}>
+                        · {left <= 0 ? t("hnd.dlp_ended", { count: -left }) : t("hnd.dlp_left", { count: left })}
+                      </span>
+                    )}
+                  </span>
+                }
+              />
             </>
+          ) : !canProv ? (
+            <p className="mt-2 text-xs text-muted-foreground">{t("hnd.not_recorded")}</p>
           ) : (
             canProv && (
               <div className="mt-3 space-y-2">
@@ -118,7 +144,17 @@ export function HandoverPanel({
           </h4>
           <KeyValueRow label={t("hnd.open_punch")} value={String(openPunch)} ltr />
           {acceptances.final ? (
-            <KeyValueRow label={t("hnd.recorded")} value={t("hnd.by_on", { who: acceptances.final.byName || "—", date: pmDate(acceptances.final.on, locale) })} />
+            <KeyValueRow
+              label={t("hnd.recorded")}
+              value={
+                <span>
+                  {t("hnd.by_on", { who: acceptances.final.byName || "—", date: pmDate(acceptances.final.on, locale) })}
+                  {sent}
+                </span>
+              }
+            />
+          ) : !canFinal ? (
+            <p className="mt-2 text-xs text-muted-foreground">{t(acceptances.prov ? "hnd.by_manager" : "hnd.not_recorded")}</p>
           ) : (
             canFinal && (
               <div className="mt-3 space-y-2">
@@ -135,13 +171,16 @@ export function HandoverPanel({
         </section>
       </div>
 
-      {access.has("money") && retentionHeld > 0 && (
+      {access.has("client") && access.has("money") && retentionHeld > 0 && (
         <div className="mt-4 rounded-xl border p-3">
           <KeyValueRow label={t("hnd.ret_held")} value={pmMoney(retentionHeld)} ltr />
           <KeyValueRow label={t("hnd.ret_claimable", { rule: t(`terms.opt.retentionRelease.${terms.retentionRelease}`) })} value={pmMoney(retentionClaimable(retentionHeld, terms.retentionRelease, acceptances))} ltr strong />
           <p className="mt-1 text-xs text-muted-foreground">{t("hnd.ret_note")}</p>
         </div>
       )}
+      <Callout tone="info" className="mt-4">
+        {t("hnd.event_note")}
+      </Callout>
     </Panel>
   )
 }

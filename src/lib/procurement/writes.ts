@@ -9,9 +9,11 @@
 // the approver — those come from `./po` on every read. What is stored is what
 // somebody decided, with their name and the time.
 
-import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
-import type { Translator } from "../mfg-events"
+import { addDoc, collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
+import { loadTeam, resolveRecipients, type Translator } from "../mfg-events"
 import { emitProcEvent, procLinks, sarText } from "./events"
+import { approvalGateBlocks, gateItemIds, noticeReachesReceiver } from "./policy-enforce"
+import { poActs, type BoqGateItem, type PurchaseOrderX } from "./po-extras"
 import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
 import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
 import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
@@ -106,6 +108,15 @@ export type ProcWriteErrorCode =
   | "nothing_picked"
   | "breakdown_mismatch"
   | "offer_taken"
+  // Projects' gates, re-run at approval (R-25).
+  | "pm_budget_pending"
+  | "sample_pending"
+  // Who acts on an order (R-26): the owner reads others' orders; a buyer acts on his own.
+  | "owner_read_only"
+  | "not_your_order"
+  | "not_your_rfq"
+  | "guest_unregistered"
+  | "nothing_to_refer"
 
 export class ProcWriteError extends Error {
   constructor(
@@ -135,6 +146,14 @@ const entry = (actor: Pick<ProcActor, "uid" | "name">, action: PoLogEntry["actio
   note: extra?.note ?? null,
   params: extra?.params ?? null,
 })
+
+/** R-26: the owner reads somebody else's order (he approves and returns it, nothing
+ * more); a buyer acts on the orders he prepared. Everyone else as their permissions say. */
+export function assertActs(po: Pick<PurchaseOrder, "preparedById">, actor: ProcActor): void {
+  const a = poActs(po, actor)
+  if (a.ownerReadOnly) throw new ProcWriteError("owner_read_only")
+  if (a.notMine) throw new ProcWriteError("not_your_order")
+}
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const assertDay = (d: string) => {
@@ -410,6 +429,8 @@ export interface AwardRfqInput {
   /** Total pricing: the unit prices came from the supplier's breakdown. */
   breakdown: boolean
   policies: ProcurementPolicies
+  /** The preparer ticked that a guest supplier gets this order unregistered (R-10). */
+  acceptedGuest?: boolean
 }
 
 /** One supplier's order out of a split award — pure, so the dialog and the tests see the document. */
@@ -498,6 +519,7 @@ export async function awardRfq(
 ): Promise<Array<{ id: string; docNumber: string; offerId: string }>> {
   if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
   if (!input.groups.length) throw new ProcWriteError("nothing_picked")
+  if (input.groups.some((g) => g.offer.isGuestOffer) && !input.acceptedGuest) throw new ProcWriteError("guest_unregistered")
   const now = opts.now ?? new Date()
   const at = now.toISOString()
   const drafts = input.groups.map((g) => draftSplitOrder(actor, input, g, now))
@@ -507,8 +529,10 @@ export async function awardRfq(
   const result = await runTransaction(firestore, async (tx) => {
     const rfqSnap = await tx.get(rfqRef)
     if (!rfqSnap.exists()) throw new ProcWriteError("rfq_missing")
-    const rfqData = rfqSnap.data() as { status?: string; log?: RfqLogEntry[] }
+    const rfqData = rfqSnap.data() as { status?: string; log?: RfqLogEntry[]; createdByUserId?: string | null; contractorId?: string | null }
     if (rfqData.status !== "New") throw new ProcWriteError("rfq_not_open")
+    // A buyer awards only the RFQs he raised; the manager and the owner award any.
+    if (!actor.isOwner && !actor.canApprove && (rfqData.createdByUserId || rfqData.contractorId || "") !== actor.uid) throw new ProcWriteError("not_your_rfq")
     for (const ref of offerRefs) {
       const snap = await tx.get(ref)
       if (!snap.exists()) throw new ProcWriteError("offer_missing")
@@ -568,6 +592,40 @@ export async function awardRfq(
 // Approval
 // ---------------------------------------------------------------------------
 
+/** The BOQ lines the order names, read in the approval's transaction. A line
+ * that cannot be read (deleted, or its project gone) gates nothing. */
+export async function readGateItems(tx: Transaction, firestore: Firestore, po: Pick<PurchaseOrder, "projectId" | "lines">): Promise<BoqGateItem[]> {
+  const ids = gateItemIds(po)
+  if (!ids.length || !po.projectId) return []
+  const out: BoqGateItem[] = []
+  for (const id of ids) {
+    try {
+      const snap = await tx.get(doc(firestore, "projects", po.projectId, "boqItems", id))
+      if (snap.exists()) out.push({ ...(snap.data() as Omit<BoqGateItem, "id">), id })
+    } catch {
+      // unreadable: the gate cannot be judged from here — the screen showed it
+    }
+  }
+  return out
+}
+
+/** With the notice routed to both, the people who receive for this order are
+ * stamped on it at approval: the supplier writing the notice cannot read our
+ * team, and copies them from the order. Best-effort — none = forwarded as before. */
+async function noticeReceivers(firestore: Firestore, ref: DocumentReference): Promise<string[] | null> {
+  try {
+    const snap = await getDoc(ref)
+    if (!snap.exists()) return null
+    const po = snap.data() as PurchaseOrder
+    const spec = po.projectId ? { projectPermission: "deliveries.confirm" as const, projectId: po.projectId } : { permission: "deliveries.confirm" as const }
+    const team = await loadTeam(firestore, po.organizationId, [spec])
+    return resolveRecipients(team, [spec], "")
+  } catch (err) {
+    console.warn("notice receivers not resolved:", (err as { code?: string })?.code || err)
+    return null
+  }
+}
+
 /** Approve: the approver signs in his own name, never his own order (the
  * owner excepted, flagged `selfApproved`), within the routing and the limit,
  * and only when no fact blocks it. */
@@ -580,7 +638,12 @@ export async function approvePurchaseOrder(
 ): Promise<PurchaseOrder> {
   const now = opts.now ?? new Date()
   const at = now.toISOString()
-  const po = await transition(firestore, poId, (po) => {
+  const ref = orderRef(firestore, poId)
+  const receivers = noticeReachesReceiver(input.policies) ? await noticeReceivers(firestore, ref) : null
+  const po = await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new ProcWriteError("order_missing")
+    const po = { ...(snap.data() as Omit<PurchaseOrder, "id">), id: snap.id } as PurchaseOrder
     const refusal = approvalRefusal(po, actor, input.policies)
     if (refusal) {
       const map: Record<string, ProcWriteErrorCode> = { not_awaiting: "wrong_state", no_permission: "no_permission", own_order: "own_order", owner_only_retroactive: "owner_only", above_limit: "above_limit" }
@@ -590,23 +653,34 @@ export async function approvePurchaseOrder(
       const blocks = poBlocks(po, { ...input.blocks, policies: input.policies, now })
       if (blocks.length) throw new ProcWriteError("blocked", { codes: blocks.map((b) => b.code).join(",") })
     }
+    const gates = approvalGateBlocks(po as PurchaseOrderX, await readGateItems(tx, firestore, po), input.blocks?.otherOrders ?? [])
+    if (gates.length) throw new ProcWriteError(gates[0].code, gates[0].params)
     const self = po.preparedById === actor.uid
     // A retroactive order regularises goods that already arrived: there is
     // nothing to send and nobody to wait for, so approval lands it where the
     // receipt left it — accepted, recorded by the buyer.
     const retro = po.basis === "retroactive"
-    return {
-      patch: {
-        status: retro ? "accepted" : "approved",
-        approvedById: actor.uid,
-        approvedByName: actor.name,
-        approvedAt: at,
-        returnedReason: null,
-        ...(retro ? { supplierAcceptedAt: at, acceptanceRecordedBy: "buyer" as const } : {}),
-      },
-      log: entry(actor, "approved", at, { params: self ? { selfApproved: 1 } : null }),
+    const patch: Partial<PurchaseOrder> & { noticeCopyTo?: string[] } = {
+      status: retro ? "accepted" : "approved",
+      approvedById: actor.uid,
+      approvedByName: actor.name,
+      approvedAt: at,
+      returnedReason: null,
+      ...(retro ? { supplierAcceptedAt: at, acceptanceRecordedBy: "buyer" as const } : {}),
+      ...(receivers && !retro ? { noticeCopyTo: receivers } : {}),
     }
+    const log = entry(actor, "approved", at, { params: self ? { selfApproved: 1 } : null })
+    const next: PurchaseOrder = { ...po, ...patch, log: [...(po.log || []), log] }
+    tx.update(ref, { ...patch, log: next.log, updatedAt: serverTimestamp() })
+    return next
   })
+  return afterApproval(firestore, actor, po, input.policies, opts, at)
+}
+
+/** What an approval sets off, whoever approved (an approver, or a buyer under
+ * his self-issue limit): Finance's commitment, the receivers' heads-up, the
+ * price history, and the order on its way to the supplier. */
+export async function afterApproval(firestore: Firestore, actor: ProcActor, po: PurchaseOrder, policies: ProcurementPolicies, opts: WriteOpts, at: string): Promise<PurchaseOrder> {
   const amount = sarText(poValue(po), opts.locale)
   const events = [
     emitProcEvent(firestore, actor, {
@@ -643,9 +717,9 @@ export async function approvePurchaseOrder(
   // his portal the moment it is approved, sent in the approver's name. When it
   // cannot go that way (a guest, the policy off, or the send failed), whoever
   // may send it is told to — the order never sits approved and forgotten.
-  if (input.policies.sendOnApproval && !po.isGuestSupplier && po.supplierUserId) {
+  if (policies.sendOnApproval && !po.isGuestSupplier && po.supplierUserId) {
     try {
-      return await sendPurchaseOrder(firestore, actor, po.id, "portal", opts)
+      return await sendOrder(firestore, actor, po.id, "portal", opts, false)
     } catch (err) {
       console.warn("order approved but not sent on the portal:", (err as { code?: string })?.code || err)
     }
@@ -738,9 +812,16 @@ const canExpedite = (actor: ProcActor) => actor.isOwner || actor.canExpedite || 
  * and e-mail the screen opens the message and this only RECORDS the fact
  * (channel, time, sender) — PRD §10.7. The acceptance clock starts here. */
 export async function sendPurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, channel: PoSendChannel, opts: WriteOpts = {}): Promise<PurchaseOrder> {
+  return sendOrder(firestore, actor, poId, channel, opts, true)
+}
+
+/** `checkActs` is off only for the send that rides the approval (policy
+ * sendOnApproval): the approver sends it in his name whoever prepared it. */
+async function sendOrder(firestore: Firestore, actor: ProcActor, poId: string, channel: PoSendChannel, opts: WriteOpts, checkActs: boolean): Promise<PurchaseOrder> {
   if (!canExpedite(actor)) throw new ProcWriteError("no_permission")
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
+    if (checkActs) assertActs(po, actor)
     if (!canSend(po)) throw new ProcWriteError("wrong_state")
     return { patch: { status: "sent", sentAt: at, sentById: actor.uid, sentByName: actor.name, sentChannel: channel }, log: entry(actor, "sent", at, { params: { channel } }) }
   })
@@ -787,6 +868,7 @@ export async function recordSupplierAcceptance(
   assertDay(input.promisedDate)
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (!canRecordAcceptance(po)) throw new ProcWriteError("wrong_state")
     return {
       patch: { status: "accepted", supplierAcceptedAt: at, promisedDate: input.promisedDate, acceptanceRecordedBy: input.by },
@@ -836,6 +918,7 @@ export async function updatePromisedDate(firestore: Firestore, actor: ProcActor,
   const at = (opts.now ?? new Date()).toISOString()
   const note = input.note?.trim() || null
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (!canUpdateDate(po)) throw new ProcWriteError("wrong_state")
     return { patch: { promisedDate: input.date }, log: entry(actor, "date_updated", at, { note, params: { from: po.promisedDate || "", date: input.date } }) }
   })
@@ -857,6 +940,7 @@ export async function remindSupplier(firestore: Firestore, actor: ProcActor, poI
   if (!canExpedite(actor)) throw new ProcWriteError("no_permission")
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (po.status !== "sent" && !canUpdateDate(po)) throw new ProcWriteError("wrong_state")
     const until = reminderCooldownUntil(po, opts.now ?? new Date())
     if (until) throw new ProcWriteError("reminded_recently")
@@ -892,6 +976,7 @@ export async function cancelRemainder(firestore: Firestore, actor: ProcActor, po
   let cancelled = 0
   let line: PoLine | undefined
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (!canCancelRemainder(po)) throw new ProcWriteError("wrong_state")
     line = po.lines.find((l) => l.id === input.lineId)
     if (!line) throw new ProcWriteError("line_missing")
@@ -967,6 +1052,7 @@ export async function decideReject(
   if (input.decision === "discount" && !(Number.isFinite(discountPrice) && (discountPrice as number) > 0)) throw new ProcWriteError("price_missing")
   let line: PoLine | undefined
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
     line = po.lines.find((l) => l.id === input.lineId)
     if (!line) throw new ProcWriteError("line_missing")
@@ -1081,6 +1167,7 @@ export async function closePurchaseOrder(firestore: Firestore, actor: ProcActor,
   const at = (opts.now ?? new Date()).toISOString()
   const reason = input.reason?.trim() || null
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
     if (!canClose(po, reason)) throw new ProcWriteError("reason_required")
     const short = closeIsShort(po)
@@ -1105,6 +1192,7 @@ export async function cancelPurchaseOrder(firestore: Firestore, actor: ProcActor
   const text = requireText(reason)
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (po.status === "cancelled") throw new ProcWriteError("already_cancelled")
     if (po.status === "closed") throw new ProcWriteError("wrong_state")
     if (po.lines.some((l) => l.accepted > 0 || l.held > 0)) throw new ProcWriteError("has_receipts")
@@ -1159,9 +1247,10 @@ export function buildRating(po: PurchaseOrder, receipts: ReceiptFact[], input: R
  * average refreshed) — anonymously: the review names no reviewer.
  */
 export async function ratePurchaseOrder(firestore: Firestore, actor: ProcActor, poId: string, input: RatingInput & { receipts: ReceiptFact[] }, opts: WriteOpts = {}): Promise<PurchaseOrder> {
-  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  if (!actor.isOwner && !actor.canPrepare && !actor.canApprove) throw new ProcWriteError("no_permission")
   const at = (opts.now ?? new Date()).toISOString()
   const po = await transition(firestore, poId, (po) => {
+    assertActs(po, actor)
     if (!canRate(po, input.receipts)) throw new ProcWriteError("cannot_rate")
     const rating = buildRating(po, input.receipts, input, actor, at)
     return { patch: { rating }, log: entry(actor, "rated", at, { params: { conformity: rating.conformity, cooperation: rating.cooperation, published: rating.publishAnonymously ? 1 : 0 } }) }

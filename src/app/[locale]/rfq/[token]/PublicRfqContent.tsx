@@ -1,5 +1,6 @@
 "use client"
 
+import { SAUDI_VAT_RE } from "@/lib/procurement/rfq-form"
 import { useState, useEffect, useRef } from "react"
 import { EMPTY_OFFER_TERMS, OfferTermsFields, type OfferTermsValue } from "@/components/procurement/OfferTermsFields"
 import { parseOfferTerms } from "@/lib/procurement/offer-terms"
@@ -93,6 +94,7 @@ const offerSchema = z.object({
   executionDuration: z.string().trim().max(10).optional().or(z.literal("")),
   website: z.string().trim().max(300).optional().or(z.literal("")),
   message: z.string().trim().max(2000).optional().or(z.literal("")),
+  vatNumber: z.string().trim().regex(SAUDI_VAT_RE).optional().or(z.literal("")),
 })
 
 type OfferFormValues = z.infer<typeof offerSchema>
@@ -130,7 +132,7 @@ export function PublicRfqContent() {
     formState: { errors, isSubmitting },
   } = useForm<OfferFormValues>({
     resolver: zodResolver(offerSchema),
-    defaultValues: { deliveryLocation: "", deliveryDate: "", executionDuration: "", website: "", message: "" },
+    defaultValues: { deliveryLocation: "", deliveryDate: "", executionDuration: "", website: "", message: "", vatNumber: "" },
   })
 
   useEffect(() => {
@@ -222,6 +224,7 @@ export function PublicRfqContent() {
         form.set("executionDurationUnit", executionDurationUnit)
       }
       if (values.website) form.set("website", values.website)
+      if (values.vatNumber) form.set("vatNumber", values.vatNumber)
       if (values.message) form.set("message", values.message)
       if (pdfFile) form.set("pdf", pdfFile)
 
@@ -653,6 +656,21 @@ export function PublicRfqContent() {
                           />
                           {errors.phone && <p className="text-xs text-destructive">{t("invalid_phone")}</p>}
                         </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="vatNumber" className="text-sm font-semibold flex items-center gap-1.5">
+                          <Building2 size={13} className="text-primary" />
+                          {t("vat_number")}
+                        </Label>
+                        <Input
+                          id="vatNumber"
+                          inputMode="numeric"
+                          {...register("vatNumber")}
+                          placeholder="3XXXXXXXXXXXXX3"
+                          dir="ltr"
+                          className={cn("h-11 rounded-xl border-2 border-input focus:border-primary text-left", errors.vatNumber && "border-destructive")}
+                        />
+                        {errors.vatNumber ? <p className="text-xs text-destructive">{t("invalid_vat_number")}</p> : <p className="text-xs text-muted-foreground">{t("vat_number_hint")}</p>}
                       </div>
                     </div>
 

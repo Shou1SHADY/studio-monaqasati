@@ -1,15 +1,17 @@
 // Procurement's two decisions on a project's request that do not wait for the
 // other module (the prototype's «امضِ بالشراء» and «يُشترى — بلا سؤال»):
-// buy after Inventory's one-day check window lapsed — the shortfall only or
+// buy after Inventory's check window (policy `replyWindowDays`) lapsed — the shortfall only or
 // the whole quantity — or buy instead of asking our workshop. Written ONCE on
 // the request (`procDecision`); the rules allow only that field, and a proceed
-// only on a pending request older than the window. The need then shows on the
+// only on a pending request older than the window, read from the org's
+// policies inside the transaction (the rules read the same document). The need then shows on the
 // desk as Purchasing's move and is answered with an RFQ or an order as usual.
 
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
-import { STOCK_WINDOW_HOURS } from "./need-desk"
 import type { ProcDecision } from "./needs"
-import type { ProcActor } from "./types"
+import { resolvePolicies, type ResolvedPolicies } from "./policies"
+import { replyLapsed } from "./policy-enforce"
+import { PROCUREMENT_SETTINGS, type ProcActor } from "./types"
 import { ProcWriteError } from "./writes"
 
 export interface NeedDecisionInput {
@@ -31,6 +33,10 @@ export async function recordNeedDecision(firestore: Firestore, actor: ProcActor,
   const now = opts.now ?? new Date()
   const ref = doc(firestore, "projects", input.projectId, "purchaseRequests", input.requestId)
   await runTransaction(firestore, async (tx) => {
+    const project = await tx.get(doc(firestore, "projects", input.projectId))
+    const orgId = project.exists() ? String((project.data() as { organizationId?: string }).organizationId || "") : ""
+    const settings = orgId ? await tx.get(doc(firestore, PROCUREMENT_SETTINGS, orgId)) : null
+    const policies = resolvePolicies(settings?.exists() ? (settings.data() as Partial<ResolvedPolicies>) : null)
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new ProcWriteError("line_missing")
     const pr = snap.data() as { status?: string; procDecision?: unknown; rfqId?: string | null; poId?: string | null; mfgRequestId?: string | null; createdAt?: unknown }
@@ -39,7 +45,7 @@ export async function recordNeedDecision(firestore: Firestore, actor: ProcActor,
       if (pr.status !== "approved" || pr.mfgRequestId) throw new ProcWriteError("need_not_waiting")
     } else {
       const at = createdMs(pr.createdAt)
-      if (pr.status !== "pending" || at == null || now.getTime() - at <= STOCK_WINDOW_HOURS * 3_600_000) throw new ProcWriteError("need_not_waiting")
+      if (pr.status !== "pending" || !replyLapsed(at, now, policies)) throw new ProcWriteError("need_not_waiting", { days: policies.replyWindowDays })
     }
     const decision: ProcDecision = { kind: input.kind, at: now.toISOString(), byName: actor.name }
     if (input.kind === "proceed_short") decision.cover = (input.cover || []).map((n) => Math.max(0, Number(n) || 0))

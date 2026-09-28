@@ -11,8 +11,8 @@ import { listCollection, readDoc, resetFakeDb, seed, fakeFirestore } from "@/tes
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmAllowed, pmCeiling, type PmContext } from "@/lib/pm/access"
 import { todayDay } from "@/lib/pm/format"
-import { assignBlocks, defaultTicked, offFromTicked, orderSeats, removeBlocks } from "@/lib/pm/team"
-import { assignSeat, PmTeamError, removeSeat } from "@/lib/pm/team-writes"
+import { assignBlocks, defaultTicked, offFromTicked, orderSeats, PM_HANDED_OVER, removeBlocks } from "@/lib/pm/team"
+import { assignSeat, removeSeat } from "@/lib/pm/team-writes"
 
 const db = fakeFirestore as unknown as Firestore
 const owner: PmContext = { ceiling: pmCeiling({ owner: true, permissions: [] }), seat: null, archived: false }
@@ -36,9 +36,10 @@ describe("the pure rules", () => {
     expect(assignBlocks({ uid: "u", role: "other", roleName: " ", current: null, projectManagerId: "pm1", admin: true })).toEqual(["unnamed_other"])
   })
 
-  it("only the owner appoints the PM or moves someone off it, and never a second one (RL-07, INV-11)", () => {
+  it("only the owner appoints the PM or moves someone off it; a new PM replaces the old one in one step (RL-07, INV-11)", () => {
     expect(assignBlocks({ uid: "u", role: "pm", current: null, projectManagerId: null, admin: false })).toEqual(["pm_owner_only"])
-    expect(assignBlocks({ uid: "u", role: "pm", current: null, projectManagerId: "pm1", admin: true })).toEqual(["pm_taken"])
+    expect(assignBlocks({ uid: "u", role: "pm", current: null, projectManagerId: "pm1", admin: true })).toEqual([])
+    expect(assignBlocks({ uid: "u", role: "pm", current: null, projectManagerId: "pm1", admin: false })).toEqual(["pm_owner_only"])
     expect(assignBlocks({ uid: "pm1", role: "site", current: { role: "pm" }, projectManagerId: "pm1", admin: false })).toEqual(["pm_owner_only"])
     expect(assignBlocks({ uid: "u", role: "pm", current: null, projectManagerId: null, admin: true })).toEqual([])
   })
@@ -103,12 +104,19 @@ describe("the writes", () => {
     expect(readDoc("projects/p1")).toMatchObject({ projectManagerId: null })
   })
 
-  it("the owner appoints a new PM only once the seat is free, and the project names them", async () => {
+  it("the owner replaces the PM in one step: the old seat closes «handed over», the project names the new one", async () => {
     seedProject()
-    await expect(assignSeat(db, owner, "p1", ownerActor, { uid: "pm2", name: "Fahad", role: "pm", off: [], groupId: null })).rejects.toBeInstanceOf(PmTeamError)
-    await removeSeat(db, owner, "p1", ownerActor, "pm1", { exitDate: todayDay(), reason: "reassigned" })
     await assignSeat(db, owner, "p1", ownerActor, { uid: "pm2", name: "Fahad", role: "pm", off: [], groupId: null })
     expect(readDoc("projects/p1")).toMatchObject({ projectManagerId: "pm2", projectManagerName: "Fahad" })
+    expect(readDoc("projects/p1/members/pm1")).toMatchObject({ to: todayDay(), why: PM_HANDED_OVER, byOut: "owner" })
+    expect(readDoc("projects/p1/members/pm2")).toMatchObject({ pmRole: "pm", from: todayDay(), to: null })
+  })
+
+  it("a seat's first day is today or earlier — never later", async () => {
+    seedProject()
+    await expect(assignSeat(db, owner, "p1", ownerActor, { uid: "x", name: "X", role: "site", off: [], groupId: null, from: "2999-01-01" })).rejects.toMatchObject({ blocks: ["future_from"] })
+    await assignSeat(db, owner, "p1", ownerActor, { uid: "x", name: "X", role: "site", off: [], groupId: null, from: "2026-01-05" })
+    expect(readDoc("projects/p1/members/x")).toMatchObject({ from: "2026-01-05" })
   })
 
   it("nothing changes on an archived project, not even for the owner (RL-04)", async () => {

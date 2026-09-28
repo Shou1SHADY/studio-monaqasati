@@ -7,7 +7,10 @@
 // price must not become an order), the last price we paid only as a hint.
 // Above the direct-order cap it is a single-source exception and says why.
 // One or several need lines; the order is born awaiting approval, each need
-// is told its number, and the order opens.
+// is told its number, and the order opens. The supplier list is the lines'
+// material suppliers (no service company, no subcontractor), a lapsed CR or an
+// unvouched supplier said beside his name. A line whose sample is still with
+// the consultant may be PREPARED — the approval is what waits for it.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -27,6 +30,8 @@ import { lastPaid, type PriceAgreement, type PriceHistoryEntry } from "@/lib/pro
 import type { NeedRow } from "@/lib/procurement/need-desk"
 import { linkNeed } from "@/lib/procurement/needs-writes"
 import { addDays, supplierKey, todayOf } from "@/lib/procurement/po"
+import { buyerSelfIssueLimit } from "@/lib/procurement/po-extras"
+import { directSupplierOptions } from "@/lib/procurement/supplier-file"
 import type { ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { sarLtr } from "@/lib/riyal"
@@ -52,8 +57,8 @@ export function DirectOrderDialog({
   agreement: PriceAgreement | null
   history: PriceHistoryEntry[]
   orders: PurchaseOrder[]
-  supplierRecords: Array<{ supplierOrgId: string; supplierName: string }>
-  policies: ProcurementPolicies
+  supplierRecords: Array<{ supplierOrgId: string; supplierName: string; kind?: string | null; crExpiry?: string | null; verified?: boolean | null }>
+  policies: ProcurementPolicies & { buyerSelfIssueLimit?: number }
   actor: ProcActor
   orgId: string
   onClose: () => void
@@ -66,15 +71,10 @@ export function DirectOrderDialog({
   const { toast } = useToast()
   const today = todayOf(new Date())
 
-  const suppliers = useMemo(() => {
-    const seen = new Map<string, { key: string; orgId: string | null; userId: string | null; name: string }>()
-    for (const r of supplierRecords) seen.set(r.supplierOrgId, { key: r.supplierOrgId, orgId: r.supplierOrgId, userId: r.supplierOrgId, name: r.supplierName })
-    for (const o of orders) {
-      const key = o.isGuestSupplier ? supplierKey(o) : o.supplierOrgId
-      if (!seen.has(key)) seen.set(key, { key, orgId: o.isGuestSupplier ? null : o.supplierOrgId, userId: o.supplierUserId, name: o.supplierName })
-    }
-    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name))
-  }, [orders, supplierRecords])
+  const suppliers = useMemo(
+    () => directSupplierOptions({ records: supplierRecords, orders, keyOf: (o) => (o.isGuestSupplier ? supplierKey(o) : o.supplierOrgId), categories: rows.map((r) => r.category).filter((c): c is string => Boolean(c)), today }),
+    [orders, supplierRecords, rows, today]
+  )
   const lastOf = (r: NeedRow) => lastPaid(history, r.name, r.unit)
   const [supplierPick, setSupplierPick] = useState(() => {
     const first = rows.map(lastOf).find(Boolean)
@@ -88,7 +88,8 @@ export function DirectOrderDialog({
     const d = needDays[0] ? addDays(needDays[0], -1) : addDays(today, 3)
     return d < addDays(today, 1) ? addDays(today, 1) : d
   })
-  const [callOffs, setCallOffs] = useState(false)
+  // Straight to a site, an agreement order is called off by the site (the prototype's default); to a store, one delivery.
+  const [callOffs, setCallOffs] = useState(() => mode === "agreement" && rows.some((r) => Boolean(r.need.projectId)))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -101,8 +102,10 @@ export function DirectOrderDialog({
   const total = directTotal(priced)
   const single = isSingleSource(check)
   const samplePending = rows.find((r) => r.samplePending)
-  const refusal = samplePending ? { code: "sample", params: { item: samplePending.name } } : directOrderRefusal(check)
+  const refusal = directOrderRefusal(check)
   const ownerApproves = total > policies.managerApprovalLimit || actor.canApprove || actor.isOwner
+  const selfLimit = buyerSelfIssueLimit(policies)
+  const selfIssue = mode === "direct" && !actor.isOwner && !actor.canApprove && actor.canPrepare && total > 0 && total <= selfLimit
 
   const place = async () => {
     if (!firestore || refusal || busy) return
@@ -146,7 +149,7 @@ export function DirectOrderDialog({
     }
   }
 
-  const refusalText = !refusal ? "" : refusal.code === "sample" ? t("nd_sample_block", refusal.params) : refusal.code === "reason_required" ? t("dor_why_pick") : tProc(`err_${refusal.code}`, refusal.params)
+  const refusalText = !refusal ? "" : refusal.code === "reason_required" ? t("dor_why_pick") : tProc(`err_${refusal.code}`, refusal.params)
 
   return (
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
@@ -177,6 +180,7 @@ export function DirectOrderDialog({
                     {suppliers.map((s) => (
                       <SelectItem key={s.key} value={s.key}>
                         {s.name}
+                        {s.crExpired ? ` — ${t("dor_cr_expired")}` : s.unverified ? ` — ${t("dor_unverified")}` : ""}
                       </SelectItem>
                     ))}
                     <SelectItem value={OTHER}>{t("dor_other_supplier")}</SelectItem>
@@ -303,7 +307,7 @@ export function DirectOrderDialog({
               )}
               <li className="flex gap-1.5">
                 <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
-                <span>{t(ownerApproves ? "dor_effect_owner" : "dor_effect_manager")}</span>
+                <span>{selfIssue ? t("dor_effect_self", { limit: money(selfLimit) }) : t(ownerApproves ? "dor_effect_owner" : "dor_effect_manager")}</span>
               </li>
               <li className="flex gap-1.5">
                 <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
@@ -312,6 +316,7 @@ export function DirectOrderDialog({
             </ul>
           </div>
 
+          {samplePending && <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">{t("nd_sample_pending_block")}</p>}
           {(refusal || error) && <p className="text-xs text-destructive">{error || refusalText}</p>}
         </div>
 

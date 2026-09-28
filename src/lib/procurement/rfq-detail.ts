@@ -11,6 +11,7 @@
 
 import { addDays, todayOf } from "./po"
 import type { ProcActor } from "./types"
+import { runsRfqs, type RfqRunner } from "./rfq-access"
 
 export const RFQ_CANCELLED = "Cancelled"
 
@@ -34,7 +35,7 @@ export interface RfqEarlyClose {
   originalDeadline: string | null
 }
 
-export const RFQ_LOG_ACTIONS = ["awarded", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "extended"] as const
+export const RFQ_LOG_ACTIONS = ["awarded", "closed_early", "cancelled", "offer_excluded", "query_answered", "reduction_round", "offer_recorded", "guest_registered", "guest_invited", "extended", "document_printed"] as const
 export type RfqLogAction = (typeof RFQ_LOG_ACTIONS)[number]
 
 export interface RfqLogEntry {
@@ -59,11 +60,11 @@ export function rfqLog(entries: RfqLogEntry[] | null | undefined): RfqLogEntry[]
 // Who may do what on the page
 // ---------------------------------------------------------------------------
 
-/** «أغلِق الآن وافتح الأسعار» is the manager's: po.approve or the owner. */
-export const canCloseEarly = (actor: Pick<ProcActor, "isOwner" | "canApprove">): boolean => actor.isOwner || actor.canApprove
+/** «أغلِق الآن وافتح الأسعار» is the manager's: po.approve, or the owner without staff. */
+export const canCloseEarly = (actor: Omit<RfqRunner, "uid">): boolean => runsRfqs({ ...actor, uid: "" }) && (actor.isOwner || actor.canApprove)
 
-/** Cancelling, excluding, answering: whoever runs the RFQ (offers.accept) or the owner. */
-export const canRunRfq = (actor: Pick<ProcActor, "isOwner" | "canPrepare">): boolean => actor.isOwner || actor.canPrepare
+/** Cancelling, excluding, answering, extending: whoever runs RFQs (`rfq-access.ts`). */
+export const canRunRfq = (actor: Omit<RfqRunner, "uid">): boolean => runsRfqs({ ...actor, uid: "" })
 
 export interface RfqStateLike {
   status?: string | null

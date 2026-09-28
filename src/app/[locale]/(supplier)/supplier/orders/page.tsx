@@ -36,6 +36,7 @@ import { displayPoNumber } from "@/lib/procurement/format"
 import { isLumpSum, poStatus, poValue } from "@/lib/procurement/po"
 import { PURCHASE_ORDERS, type PoStatus, type PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError, supplierAcceptPurchaseOrder } from "@/lib/procurement/writes"
+import { noticeAudience } from "@/lib/procurement/policy-enforce"
 import {
   DELIVERY_WINDOWS,
   SUPPLIER_SEGMENTS,
@@ -676,7 +677,8 @@ export default function SupplierOrdersPage() {
             const created = await addDoc(collection(firestore, "deliveries"), docData)
             const at = new Date().toISOString()
             await Promise.all(
-              noticeRecipients(noticePo, offer?.contractorId).map((uid) =>
+              // noticeRouting `both`: the receivers stamped on the order at approval hear of it with us.
+              noticeAudience(noticeRecipients(noticePo, offer?.contractorId), noticePo as { noticeCopyTo?: unknown }).map((uid) =>
                 addDoc(collection(firestore, "users", uid, "notifications"), buildDeliveryNoticeNotification(noticePo, uid, created.id, at)).catch(() => undefined)
               )
             )

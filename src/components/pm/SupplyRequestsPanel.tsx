@@ -18,13 +18,17 @@ import { EmptyState } from "@/components/module-ui/EmptyState"
 import { Panel } from "@/components/module-ui/Panel"
 import { SourceBadge } from "@/components/module-ui/SourceBadge"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useFirestore } from "@/firebase"
+import { collection } from "firebase/firestore"
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { useSupplyWorld, type SupplyWorld } from "@/hooks/useSupplyWorld"
 import { pmCan } from "@/lib/pm/access"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { storeBalance, storeIdOf, storeState } from "@/lib/pm/store"
+import { pmApprovalLimit } from "@/lib/pm/subcontract"
+import { PM_VARIATIONS, voNo, type PmVariation } from "@/lib/pm/variation"
 import {
+  changeOptions,
   approvalChecks,
   approveBlocks,
   daysBetween,
@@ -144,7 +148,7 @@ export function SupplyRequestsPanel({
           </div>
         </details>
       )}
-      {withPlant && <PlantRequestsPanel projectId={projectId} access={access} actor={actor} />}
+      {withPlant && <PlantRequestsPanel projectId={projectId} orgId={orgId} access={access} actor={actor} />}
     </div>
   )
 
@@ -211,7 +215,7 @@ export function SupplyRequestsPanel({
         onOpenStore={onOpenStore}
       />
       {composer && <NewRequestDialog projectId={projectId} access={access} actor={actor} items={items} world={world} startOn={startOn} seed={composer.seed} onClose={() => setComposer(null)} />}
-      {lineDialog?.kind === "rcv" && <ReceiveDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
+      {lineDialog?.kind === "rcv" && <ReceiveDialog projectId={projectId} orgId={orgId} withStore={withStore} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {lineDialog?.kind === "stop" && <StopLineDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {lineDialog?.kind === "own" && <ChangeOnClientDialog projectId={projectId} access={access} actor={actor} request={lineDialog.request} index={lineDialog.index} onClose={() => setLineDialog(null)} />}
       {rejecting && <RejectRequestDialog projectId={projectId} access={access} actor={actor} request={rejecting} onClose={() => setRejecting(null)} />}
@@ -399,6 +403,10 @@ function RequestDrawer({
   const firestore = useFirestore()
   const { busy, run } = useSupplyRun()
   const today = todayDay()
+  const hasOwn = Boolean(r?.lines.some((l) => l.chg?.voSeq))
+  const voQ = useMemoFirebase(() => (firestore && hasOwn ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId, hasOwn])
+  const { data: voData } = useCollection(voQ)
+  const vos = (voData ?? []) as unknown as PmVariation[]
   if (!r) return <Sheet open={false} />
   const st = reqState(r)
   const prop = r.status === "pending"
@@ -450,6 +458,8 @@ function RequestDrawer({
                   startOn={startOn}
                   approver={approver}
                   money={access.has("money")}
+                  voStatus={l.chg?.voSeq ? vos.find((v) => v.id === voNo(l.chg?.voSeq ?? 0))?.status ?? null : null}
+                  limit={pmApprovalLimit(access.ctx.ceiling)}
                   canClose={canClose}
                   canRcv={canRcv}
                   busy={busy}
@@ -551,6 +561,8 @@ function DrawerLine({
   startOn,
   approver,
   money,
+  voStatus,
+  limit,
   canClose,
   canRcv,
   busy,
@@ -567,6 +579,10 @@ function DrawerLine({
   startOn: string | null
   approver: boolean
   money: boolean
+  /** The status of the variation a change "on the client" is linked to. */
+  voStatus: string | null
+  /** The decider's riyal limit — «على حسابنا» above it is the owner's. */
+  limit: number
   canClose: boolean
   canRcv: boolean
   busy: string | null
@@ -590,8 +606,10 @@ function DrawerLine({
   const over = need !== null && l.qty > need * 1.05 ? l.qty - need : 0
   const heldLive = l.chg?.st === "wait" && !prop
   const since = r.approvedOn ? Math.max(0, daysBetween(r.approvedOn, today)) : 0
-  const est = l.chg && world.history.length ? lastPaid(world.history, l.name, l.unit) : null
+  const last = world.history.length ? lastPaid(world.history, l.name, l.unit) : null
+  const est = l.chg ? last : null
   const canChg = approver && (r.status === "pending" || reqState(r) === "go")
+  const opts = changeOptions({ line: l, voStatus, estimate: est ? est.price * l.qty : null, limit })
 
   return (
     <div className="space-y-1.5 rounded-lg border p-3">
@@ -615,8 +633,15 @@ function DrawerLine({
         </div>
         <b className="shrink-0 text-sm tabular-nums" dir="ltr">
           {qty(l.qty)} <span className="text-xs font-normal">{l.unit}</span>
+          {money && last && !l.chg && <span className="block text-[11px] font-normal text-muted-foreground">{t("sup.line_cost", { amount: pmMoney(last.price * l.qty) })}</span>}
         </b>
       </div>
+      {l.inv && (
+        <p className={cn("rounded-md px-2 py-1 text-xs", l.inv.k === "issue" ? "bg-success/10 text-success" : "bg-warning/10 text-warning")} dir="auto">
+          <b>{t("sup.inv.title")}</b> {l.inv.k === "issue" ? t("sup.inv.issue", { q: qty(l.inv.q ?? 0), unit: l.unit }) : t("sup.inv.none", { why: l.inv.why ?? "—" })}
+          {l.inv.byName ? ` · ${l.inv.byName}` : ""}
+        </p>
+      )}
       {l.chg ? (
         <div className="space-y-1.5 rounded-md border border-warning/30 bg-warning/5 p-2 text-xs">
           <p>
@@ -628,7 +653,7 @@ function DrawerLine({
             canChg ? (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  <Button size="sm" variant="outline" className="h-7" disabled={busy !== null} onClick={onUs}>
+                  <Button size="sm" variant="outline" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
                     {t("sup.chg.us")}
                   </Button>
                   <Button size="sm" className="h-7" onClick={() => onLine({ kind: "own", request: r, index })}>
@@ -639,6 +664,7 @@ function DrawerLine({
                   </Button>
                 </div>
                 <p className="text-muted-foreground">{t("sup.chg.hint")}</p>
+                {opts.usOverLimit && <p className="font-semibold text-warning">{t("sup.chg.over_limit")}</p>}
               </>
             ) : (
               <p className="text-muted-foreground">{t("sup.chg.await")}</p>
@@ -647,15 +673,31 @@ function DrawerLine({
             <p>
               <b>{t("sup.chg.decision")}</b> {t(`sup.chg.st.${l.chg.st}`)}
               {l.chg.voSeq ? ` · ${t("vo.no", { no: String(l.chg.voSeq).padStart(2, "0") })}` : ""}
+              {l.chg.voSeq && voStatus ? (
+                <StatusPill tone={voStatus === "appr" ? "ok" : voStatus === "rej" ? "bad" : voStatus === "wait" ? "warn" : "mute"} className="ms-1">
+                  {t(`vo.status.${voStatus}`)}
+                </StatusPill>
+              ) : null}
               {l.chg.ref ? ` · ${t("sup.chg.instruction", { ref: l.chg.ref })}` : l.chg.st === "own" ? <span className="text-warning"> · {t("sup.chg.no_instruction")}</span> : null}
               {l.chg.byName ? ` · ${l.chg.byName}` : ""}
             </p>
           )}
-          {l.chg.st === "own" && canChg && !l.cl && (
-            <div className="flex flex-wrap gap-1.5">
-              <Button size="sm" variant="outline" className="h-7" disabled={busy !== null} onClick={onUs}>
-                {t("sup.chg.us_after")}
-              </Button>
+          {opts.clientRejected && !l.cl && (
+            <div className="space-y-1.5 rounded-md border border-destructive/30 bg-destructive/5 p-2">
+              <p className="font-bold text-destructive">{t("sup.chg.client_rejected", { no: voNo(l.chg.voSeq ?? 0) })}</p>
+              {canChg && (
+                <div className="flex flex-wrap gap-1.5">
+                  <Button size="sm" variant="outline" className="h-7" disabled={busy !== null || opts.usOverLimit} onClick={onUs}>
+                    {t("sup.chg.us_after")}
+                  </Button>
+                  {canClose && lineOut(l) > 0 && (
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => onLine({ kind: "stop", request: r, index })}>
+                      {t("sup.stop.title")}
+                    </Button>
+                  )}
+                </div>
+              )}
+              {opts.usOverLimit && <p className="font-semibold text-warning">{t("sup.chg.over_limit")}</p>}
             </div>
           )}
         </div>

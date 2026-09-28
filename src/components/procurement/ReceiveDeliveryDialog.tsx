@@ -32,6 +32,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { SignaturePad } from "@/components/SignaturePad"
 import { cn } from "@/lib/utils"
+import { receiveRight } from "@/lib/procurement/policy-enforce"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { HOLD_REASON_CODES, RECEIPT_CHECKS, REJECT_REASON_CODES, lineToArrive, round2 } from "@/lib/procurement/po"
 import { acceptedOf, overReceiptRefusal, varianceVsNotice } from "@/lib/procurement/receipts"
@@ -262,7 +263,9 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
 
   const supplierName = po?.supplierName || delivery?.supplierName || "—"
   const canSubmit = !saving && Boolean(watch("receiverName")?.trim()) && (legacy || errors.length === 0)
-  const selfReceive = Boolean(po && po.preparedById === actor.uid)
+  // Under `buyerReceives` the buyer records it himself — never blocked, always flagged.
+  const noReceiver = receiveRight(actor, policies) === "buyer"
+  const selfReceive = noReceiver || Boolean(po && po.preparedById === actor.uid)
 
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
@@ -317,7 +320,7 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
             {selfReceive && (
               <p className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive">
                 <ShieldAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-                <span>{t("receive.selfReceive")}</span>
+                <span>{noReceiver ? t("receive.selfReceive") : t("receive.selfReceiveOwn")}</span>
               </p>
             )}
 

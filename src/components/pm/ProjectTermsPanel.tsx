@@ -5,28 +5,33 @@
 // lacked. "Start work" freezes it as signed; after that the terms are never
 // edited here again: the contract in force is the original + signed addenda,
 // and any change is an addendum on top (ContractInForce). Shown only to holders
-// of money or approve — never to the site engineer (AMD-10).
+// of money or approve — never to the site engineer (AMD-10). An advance changed
+// before start after Finance received it is warned about in the form, logged,
+// and shown on the contract until Finance applies it.
 
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Loader2, Play, ScrollText } from "lucide-react"
+import { doc } from "firebase/firestore"
+import { FileSignature, Loader2, Play, ScrollText, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BlockingReasons } from "@/components/module-ui/BlockingReasons"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
+import { EmptyState } from "@/components/module-ui/EmptyState"
 import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useFirestore } from "@/firebase"
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { PmAccessError } from "@/lib/pm/access"
 import type { AddendumActor } from "@/lib/pm/addendum-writes"
+import { eventDocId, PM_EVENTS } from "@/lib/pm/events"
 import { displayDocNumber } from "@/lib/sales-numbering"
 import { pmDate } from "@/lib/pm/format"
 import { lifecycleOf, plannedEnd, startBlocks, type PmLifecycle } from "@/lib/pm/lifecycle"
-import { PmProjectError, savePlanTerms, startProject } from "@/lib/pm/project-writes"
+import { PmProjectError, savePlanTerms, startProject, type AdvanceChange } from "@/lib/pm/project-writes"
 import { defaultTerms, termProblems, termsEditable, type ContractTerms } from "@/lib/pm/terms"
-import { ContractInForce } from "./ContractInForce"
+import { AdvanceLogNote, ContractInForce } from "./ContractInForce"
 import { TermsCashPanel } from "./TermsCashPanel"
 import { TermsFields } from "./TermsFields"
 
@@ -49,8 +54,13 @@ export interface PmProjectBlock {
   addendaCount?: number
   signedCount?: number
   retentionHeld?: number
+  advanceRecovered?: number
   ipcCount?: number
+  advLog?: AdvanceChange[]
+  termsByName?: string | null
+  termsOn?: string | null
 }
+
 
 export function ProjectTermsPanel({
   projectId,
@@ -84,6 +94,11 @@ export function ProjectTermsPanel({
 
   useEffect(() => setDraft(pm.terms ?? defaultTerms()), [pm.terms])
 
+  // Finance holds the advance once prj:ADV was sent at handover.
+  const advRef = useMemoFirebase(() => (firestore && pm.no ? doc(firestore, PM_EVENTS, eventDocId(`prj:ADV:${pm.no}`)) : null), [firestore, pm.no])
+  const { data: advEvent } = useDoc(advRef)
+  const financeAdvance = advEvent ? stored.advance : null
+
   // Completing the original: money + (all | approve); Start: approve (PRD §4).
   const editable = access.allowed("terms.complete") && termsEditable(lifecycle)
   const canStart = access.allowed("project.start")
@@ -101,8 +116,8 @@ export function ProjectTermsPanel({
     if (!firestore || problems.length) return
     setBusy("save")
     try {
-      await savePlanTerms(firestore, access.ctx, projectId, draft)
-      toast({ title: t("terms.saved") })
+      const r = await savePlanTerms(firestore, access.ctx, projectId, draft, actor)
+      toast({ title: t(r.advanceChanged ? "terms.saved_adv" : "terms.saved") })
     } catch (err) {
       console.error(err)
       toast({
@@ -132,8 +147,9 @@ export function ProjectTermsPanel({
   }
 
   return (
+    <div className="space-y-4">
     <Panel
-      title={t(lifecycle === "plan" ? "terms.title" : "amend.title")}
+      title={t(lifecycle === "plan" ? "terms.title_plan" : "terms.title_force")}
       icon={ScrollText}
       actions={
         <>
@@ -146,6 +162,7 @@ export function ProjectTermsPanel({
         </>
       }
     >
+      <p className="-mt-1 mb-3 text-xs text-muted-foreground">{t(lifecycle === "plan" ? "terms.sub_plan" : "terms.sub_force")}</p>
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <KeyValueRow label={t("field.start_on")} value={pmDate(pm.startOn, locale)} />
         <KeyValueRow label={t("field.duration")} value={pm.durationDays ? t("days", { count: pm.durationDays }) : "—"} />
@@ -164,19 +181,29 @@ export function ProjectTermsPanel({
           actor={actor}
           orgId={orgId}
           durationDays={pm.durationDays ?? 0}
+          advanceRecovered={pm.advanceRecovered ?? 0}
+          advLog={pm.advLog ?? null}
         />
       ) : (
         <>
           <Callout tone="info" className="mb-4">
             {t("terms.plan_note")}
           </Callout>
+          {editable && (
+            <div role="note" className="mb-4 flex gap-2.5 rounded-xl border bg-muted/40 px-3.5 py-3 text-sm leading-relaxed">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0 text-module" aria-hidden="true" />
+              <span>{t("terms.no_copy")}</span>
+            </div>
+          )}
           <TermsFields
             value={draft}
             onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
             disabled={!editable || busy !== null}
             contractValue={access.has("money") ? (project.budget ?? 0) : undefined}
             payerChangedFrom={stored.payer}
+            financeAdvance={financeAdvance}
           />
+          <AdvanceLogNote log={pm.advLog} />
           {editable && (
             <div className="mt-4 space-y-3">
               <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
@@ -202,6 +229,13 @@ export function ProjectTermsPanel({
           )}
         </>
       )}
+      {pm.termsByName && pm.termsOn && <p className="mt-3 text-xs text-muted-foreground">{t("terms.last_completed", { who: pm.termsByName, date: pmDate(pm.termsOn, locale) })}</p>}
     </Panel>
+    {lifecycle === "plan" && (
+      <Panel title={t("amend.view_record")} icon={FileSignature}>
+        <EmptyState icon={FileSignature} title={t("amend.record_starts_title")} description={t("amend.record_starts")} />
+      </Panel>
+    )}
+    </div>
   )
 }

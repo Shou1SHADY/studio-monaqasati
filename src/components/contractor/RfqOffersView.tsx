@@ -22,8 +22,8 @@ import { resolvePolicies } from "@/lib/procurement/policies"
 import { offerRates, pricedProducts } from "@/lib/procurement/offer-pricing"
 import { lastPaid } from "@/lib/procurement/prices"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
-import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ProcActor, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
-import { lowestOffer, offerPrice, poBlocks, poStatus, supplierScore } from "@/lib/procurement/po"
+import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type AwardReasonCode, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
+import { poBlocks, poStatus, supplierScore } from "@/lib/procurement/po"
 import { awardDisclosed } from "@/lib/procurement/supplier"
 import { createPurchaseOrderFromAward, type AwardOfferLike, type RfqLike } from "@/lib/procurement/writes"
 import { procLinks } from "@/lib/procurement/events"
@@ -36,15 +36,31 @@ import {
   supplierFactsFromProfile,
   type OfferAwardReason,
 } from "@/lib/procurement/award"
-import { awardMode, offerTotal, pickOffer, ratesByOffer, type Picks } from "@/lib/procurement/rfq-award"
+import { awardMode, bestOfferIds, offerTotal, pickOffer, ratesByOffer, type OrderableOffer, type Picks } from "@/lib/procurement/rfq-award"
 import { rfqNotes } from "@/lib/procurement/rfq-notes"
-import { answerRecipients, canAskReductionRound, canCancelRfq, canCloseEarly, canRunRfq, invitedRows, priceTrail, unansweredCount, type InquiryLike } from "@/lib/procurement/rfq-detail"
+import { answerRecipients, canAskReductionRound, canCancelRfq, invitedRows, priceTrail, unansweredCount, type InquiryLike } from "@/lib/procurement/rfq-detail"
+import { actsOnRfq, awardsOnRfq, closesRfqEarly, ownerReadsRfqs, rfqMine, runsRfqs } from "@/lib/procurement/rfq-access"
+import { daysToDeadline, rfqPageTab, rfqStage } from "@/lib/procurement/rfq-view"
+import { useRfqRunner } from "@/hooks/useRfqRunner"
+import { useSearchParams } from "next/navigation"
+import { RfqNumber, RfqStagePill } from "@/components/procurement/RfqCard"
+import { RfqGuestLinkPanel } from "@/components/procurement/rfq/RfqGuestLinkPanel"
+import { RfqRegisterGuestDialog, type GuestToRegister } from "@/components/procurement/rfq/RfqRegisterGuestDialog"
+import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
+import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
+import { printRfq, rfqPrintModel } from "@/components/procurement/RfqPrint"
+import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
+import { displayDocNumber } from "@/lib/procurement/format"
+import { leadDaysOf } from "@/components/procurement/rfq/RfqComparison"
+import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
+import { logRfqDocument } from "@/lib/procurement/rfq-writes"
 import { RfqManualOfferDialog } from "@/components/procurement/rfq/RfqManualOfferDialog"
 import { answerQuery } from "@/lib/procurement/rfq-writes"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { RfqComparison } from "@/components/procurement/rfq/RfqComparison"
 import { RfqAwardDialog, type AwardDone } from "@/components/procurement/rfq/RfqAwardDialog"
 import { CancelRfqDialog, CloseNowDialog, ExcludeOfferDialog, ReductionRoundDialog } from "@/components/procurement/rfq/RfqActionDialogs"
-import { RfqDetailsPanel, RfqInvitedList } from "@/components/procurement/rfq/RfqDetailsPanel"
+import { RfqDetailsPanel, RfqDraftPanel, RfqInvitedList } from "@/components/procurement/rfq/RfqDetailsPanel"
 import type { RfqOfferView, RfqView } from "@/components/procurement/rfq/rfqOfferView"
 import { Callout } from "@/components/module-ui/Callout"
 import { StatusPill } from "@/components/module-ui/StatusPill"
@@ -64,7 +80,6 @@ import {
   Truck,
   Package,
   Phone,
-  ArrowDown,
   Box,
   File,
   Send,
@@ -81,7 +96,7 @@ import {
 } from "lucide-react"
 import { useCollection, useDoc, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { usePermissions } from "@/hooks/usePermissions"
-import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, orderBy, doc, updateDoc, setDoc, getDoc, addDoc, deleteDoc, arrayRemove, serverTimestamp } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Link } from "@/i18n/routing"
 import { logFinanceAudit } from "@/lib/finance-audit"
@@ -136,13 +151,21 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const [openingChat, setOpeningChat] = useState<string | null>(null)
   const [sampleRequestOffer, setSampleRequestOffer] = useState<any | null>(null)
   const [raisingOrderId, setRaisingOrderId] = useState<string | null>(null)
-  const [reductionOffer, setReductionOffer] = useState<any | null>(null)
-  const [reductionNote, setReductionNote] = useState("")
-  const [targetPrice, setTargetPrice] = useState("")
   const [reviewOffer, setReviewOffer] = useState<any | null>(null)
   // The comparison's picks (rfqProductIndex → offer) — the award is made from them.
   const [picks, setPicks] = useState<Picks>({})
-  const [tab, setTab] = useState("list")
+  // The card's «الاستفسارات (n)» lands on the queries (`?tab=inquiries`).
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const [tab, setTab] = useState<string>(() => rfqPageTab(tabParam))
+  useEffect(() => {
+    if (tabParam) setTab(rfqPageTab(tabParam))
+  }, [tabParam])
+  const [shareOpen, setShareOpen] = useState(false)
+  const [extendTarget, setExtendTarget] = useState<ExtendTarget | null>(null)
+  const [registerGuest, setRegisterGuest] = useState<GuestToRegister | null>(null)
+  const [draftDeleteOpen, setDraftDeleteOpen] = useState(false)
+  const [deletingDraft, setDeletingDraft] = useState(false)
   const [awardOpen, setAwardOpen] = useState(false)
   const [excludeTarget, setExcludeTarget] = useState<{ id: string; name: string; total: number | null; raw: any } | null>(null)
   const [closeNowOpen, setCloseNowOpen] = useState(false)
@@ -228,8 +251,6 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   const { data: rfq, isLoading: isRfqLoading } = useDoc(rfqDocRef)
   // Project-scoped permission check (falls back to the default group for standalone RFQs)
   const { can } = usePermissions((rfq as { projectId?: string } | null)?.projectId || undefined)
-  // Admins manage offers directly on RFQs Mdmak posted as a contractor (no real org/team to grant offers.accept).
-  const canDecide = can("offers.accept") || profile?.role === "Admin"
   const canConfirmDelivery = can("deliveries.confirm")
 
   const { data: offers, isLoading: isOffersLoading } = useCollection(offersQuery)
@@ -239,20 +260,34 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
   // org's policies, and the facts about the supplier an approval will check.
   const tRfqd = useTranslations("Portal.Procurement.rfqd")
   const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor((rfq as { projectId?: string } | null)?.projectId || undefined)
+  // One gate for running this RFQ (rfq-access.ts): the manager runs every RFQ,
+  // a buyer his own, the owner only while the org has no procurement staff.
+  // An Admin decides on RFQs Mdmak posted as a contractor (no team to grant him).
+  const { runner } = useRfqRunner((rfq as { projectId?: string } | null)?.projectId || undefined)
+  const isPlatformAdmin = profile?.role === "Admin"
+  const rfqAuthor = (rfq || {}) as { createdByUserId?: string | null; contractorId?: string | null }
+  const acts = isPlatformAdmin || actsOnRfq(rfqAuthor, runner)
+  const canDecide = isPlatformAdmin || awardsOnRfq(rfqAuthor, runner)
+  const closes = closesRfqEarly(rfqAuthor, runner)
+  const ownerReads = ownerReadsRfqs(runner)
+  const notMine = !isPlatformAdmin && runsRfqs(runner) && !rfqMine(rfqAuthor, runner)
+  const writeActor: RfqWriteActor = { ...runner, canPrepare: runner.canPrepare || isPlatformAdmin }
   const policiesRef = useMemoFirebase(() => (firestore && procOrgId ? doc(firestore, PROCUREMENT_SETTINGS, procOrgId) : null), [firestore, procOrgId])
   const { data: policiesDoc } = useDoc(policiesRef)
   const policies = useMemo<ProcurementPolicies>(() => resolvePolicies(policiesDoc as Partial<ProcurementPolicies> | null), [policiesDoc])
   // The suppliers the picks would award — what each order's approval will check.
   const [supplierFacts, setSupplierFacts] = useState<Record<string, SupplierFacts>>({})
+  // Every live offer's supplier: the award checks them, and so does «أفضل سعر»
+  // and the card's «لا يصدر له أمر قبل استكمال سجلّه».
   const pickedSupplierIds = useMemo(() => {
     const ids = new Set<string>()
-    for (const offerId of Object.values(picks)) {
-      const o = (offers || []).find((x: any) => x.id === offerId)
-      const id = o ? awardSupplierOrgId(o) : null
+    for (const o of (offers || []) as any[]) {
+      if (o.status === "مرفوض") continue
+      const id = awardSupplierOrgId(o)
       if (id) ids.add(id)
     }
     return [...ids].sort().join(",")
-  }, [picks, offers])
+  }, [offers])
   useEffect(() => {
     if (!firestore || !pickedSupplierIds) return
     const missing = pickedSupplierIds.split(",").filter((id) => !supplierFacts[id])
@@ -277,6 +312,11 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     }
   }, [firestore, pickedSupplierIds, supplierFacts])
   const { history: priceHistory } = useProcurementPrices(procOrgId)
+  const tProc = useTranslations("Portal.Procurement")
+  const tx = useTranslations("Portal.Procurement.rfqx")
+  const linksQuery = useMemoFirebase(() => (firestore && procOrgId ? query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", procOrgId), where("status", "==", "active")) : null), [firestore, procOrgId])
+  const { data: supplierLinks } = useCollection(linksQuery)
+  const supplierOptions = useSupplierRecipientOptions((supplierLinks || []) as any[], ((profile as { favoriteSuppliers?: string[] } | null)?.favoriteSuppliers) || [], t("suppliers_registered_supplier"))
 
   // The org's orders and receipts: this RFQ's orders (details tab) and each
   // supplier's on-time record (the comparison's notes).
@@ -554,7 +594,7 @@ export function RfqOffersView({ rfqId }: { rfqId: string }) {
     // An Admin deciding on an Mdmak-posted RFQ may award here without a team
     // permission; the order's rules ask for membership, so his attempt is
     // refused cleanly and the award still stands.
-    const actor = { ...procActor, canPrepare: procActor.canPrepare || canDecide }
+    const actor = { ...procActor, canPrepare: procActor.canPrepare || isPlatformAdmin }
     return createPurchaseOrderFromAward(
       firestore,
       actor,
@@ -638,31 +678,6 @@ ${t("offers_notif_reduction_note", { note })}`
     }
     // Guests get the same news by WhatsApp/email instead of an inbox.
     if (!skipGuest) queueGuestNotify(offer, eventForDecision(decision, Boolean(offer?.isGuestOffer)), { note, targetPrice: requestedPrice })
-  }
-
-  const handleDecision = async (offerId: string, decision: "مطلوب تخفيض", note?: string, requestedPrice?: string) => {
-    if (!firestore || !user) return
-    setProcessingId(offerId)
-    const offer = offers?.find((o: any) => o.id === offerId)
-    try {
-      await updateDoc(doc(firestore, "offers", offerId), {
-        status: decision,
-        decidedByUserId: user.uid,
-        decidedByUserName: profile?.name || user.email || "عضو الإدارة",
-        decidedAt: new Date().toISOString(),
-        readAt: null,
-        ...(requestedPrice ? { targetPrice: Number(requestedPrice) } : {}),
-        reductionNote: note || null,
-      })
-    } catch (error: any) {
-      console.error("❌ updateDoc offer failed:", error?.code, error?.message)
-      toast({ title: t("offers_toast_error"), description: t("offers_toast_error_desc", { message: error?.code || error?.message }), variant: "destructive" })
-      setProcessingId(null)
-      return
-    }
-    await notifyDecision(offer, decision, note, requestedPrice)
-    toast({ title: t("offers_toast_reduction_title"), description: t("offers_toast_reduction_desc") })
-    setProcessingId(null)
   }
 
   const onExcluded = (offerId: string) => {
@@ -831,15 +846,13 @@ ${t("offers_notif_reduction_note", { note })}`
     }
   }
 
-  // "Best price" is honest (PRD §6.2): the lowest LIVE price — a rejected
-  // offer's figure is out of the running — compared as a number, so an
-  // Mdmak offer stored as 1000 and a web offer stored as "1000" are the same price.
+  // «أفضل سعر» (R-16, `bestOfferIds`): the lowest total among live offers that
+  // price EVERY line, when two or more compete and that supplier can be given
+  // an order — a partial offer's smaller total is not a better price.
   // Prices stay the suppliers' own until the deadline when the org asked for a
   // sealed round (§5.1-4) — or until a manager closes it early. The cards still
   // show who quoted, when, with what attachment; the figure is behind a lock.
   const sealed = offersSealed(rfq as { deadline?: string | null; status?: string | null; closedEarly?: { at?: string } | null } | null, policies, new Date())
-  const lowestLive = sealed ? null : lowestOffer(competingOffers((offers || []) as any[]))
-  const lowestLivePrice = lowestLive ? offerPrice(lowestLive) : null
   // An expediter sees dates and quantities, never an amount (R-03).
   const seesPrices = procActor.seesPrices || profile?.role === "Admin"
   const showPrices = seesPrices && !sealed
@@ -847,7 +860,52 @@ ${t("offers_notif_reduction_note", { note })}`
   const offerViews = (offers || []) as unknown as RfqOfferView[]
   const liveOffers = competingOffers(offerViews)
   const rfqOpen = (rfq as { status?: string } | null)?.status === "New"
-  const canPick = (canDecide || canRunRfq(procActor)) && rfqOpen && !sealed
+  const canPick = canDecide && rfqOpen && !sealed
+  // «يصدر له أمر»: a registered supplier needs a VAT number and a verified
+  // record (unknown facts are not held against him); a guest is judged at the award.
+  const canOrder = (o: OrderableOffer) => {
+    if (o.isGuestOffer) return true
+    const id = awardSupplierOrgId(o as RfqOfferView)
+    const f = id ? supplierFacts[id] : null
+    return !f || (f.hasVatNumber !== false && f.verified !== false)
+  }
+  const bestIds = sealed || !rfqOpen ? new Set<string>() : bestOfferIds(rfqView, offerViews as OrderableOffer[], canOrder)
+  const guestOffers = offerViews.filter((o) => o.isGuestOffer).length
+  const daysLeft = rfqView ? daysToDeadline(rfqView, new Date()) : null
+  const deadlinePassed = daysLeft !== null && daysLeft < 0
+  const stage = rfqView ? rfqStage(rfqView, new Date(), sealed) : null
+  const extendable = acts && rfqOpen && !rfqView?.directAward && (!deadlinePassed || offerViews.length === 0 || !policies.sealOffersUntilDeadline)
+  const printDoc = () => {
+    if (!rfqView) return
+    const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
+    const number = rfqView.rfqNumber ? displayDocNumber(rfqView.rfqNumber, locale) : `#${rfqId.slice(0, 6)}`
+    const model = rfqPrintModel(rfqView as unknown as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procOrgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfqView.city || "", locale))
+    if (!printRfq(model, locale, (k, params) => tProc(`rfqpo.print.${k}`, params))) {
+      toast({ title: tProc("rfqpo.popup_blocked"), variant: "destructive" })
+      return
+    }
+    if (firestore && acts) void logRfqDocument(firestore, writeActor, rfqId).catch((err) => console.warn("print not logged:", (err as { code?: string })?.code || err))
+  }
+  const editHref = projectId ? `/contractor/projects/${projectId}/tenders/new?edit=${rfqId}` : `/contractor/rfqs/new?edit=${rfqId}`
+  const deleteDraft = async () => {
+    if (!firestore || !rfq || (rfq as { status?: string }).status !== "Draft") return
+    setDeletingDraft(true)
+    try {
+      if (projectId) {
+        await releaseBoqDrawsForRfq(firestore, projectId, rfqId)
+        await updateDoc(doc(firestore, "projects", projectId), { rfqIds: arrayRemove(rfqId) })
+      }
+      await deleteDoc(doc(firestore, "rfqs", rfqId))
+      toast({ title: t("rfq_delete_success") })
+      router.push("/contractor/rfqs")
+    } catch (err) {
+      console.error("draft not deleted:", (err as { code?: string })?.code || err)
+      toast({ title: t("rfq_delete_failed"), variant: "destructive" })
+    } finally {
+      setDeletingDraft(false)
+      setDraftDeleteOpen(false)
+    }
+  }
   const productCount = pricedProducts(rfqView).length
   const ratesMap = rfqView ? ratesByOffer(rfqView, liveOffers) : new Map<string, Map<number, number>>()
   const notes = useMemo(() => {
@@ -927,6 +985,7 @@ ${t("offers_notif_reduction_note", { note })}`
                   <div className="bg-white/10 backdrop-blur-sm border border-white/10 rounded-2xl px-5 py-3 text-center min-w-[84px]">
                     <p className="text-[10px] font-bold text-white/50 mb-1">{t("offers_total")}</p>
                     <p className="text-3xl font-black text-white leading-none">{offers?.length || 0}</p>
+                    {guestOffers > 0 && <p className="mt-1 text-[10px] font-semibold text-violet-200">{tx("header.guests", { count: guestOffers })}</p>}
                   </div>
                   <div className="bg-success/20 backdrop-blur-sm border border-success/20 rounded-2xl px-5 py-3 text-center min-w-[84px]">
                     <p className="text-[10px] font-bold text-success/70 mb-1">{t("offers_accepted_count")}</p>
@@ -953,12 +1012,20 @@ ${t("offers_notif_reduction_note", { note })}`
                   <MapPin size={13} className="shrink-0" />
                   <span>{displayCity(rfq.city, locale)}{rfq.district ? ` · ${displayCity(rfq.district, locale)}` : ''}</span>
                 </div>
-                {rfq.deadline && (
-                  <div className="flex items-center gap-1.5 bg-red-500/20 text-red-300 rounded-lg px-2.5 py-1 text-xs font-medium">
+                {stage && (
+                  <span className="rounded-full bg-white px-0.5 py-0.5">
+                    <RfqStagePill stage={stage} sealed={sealed} />
+                  </span>
+                )}
+                {rfq.directAward ? (
+                  <span className="text-xs">{tProc("rfqpo.list.direct_no_deadline")}</span>
+                ) : rfq.deadline ? (
+                  <div className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium", deadlinePassed ? "bg-red-500/20 text-red-300" : "bg-amber-500/20 text-amber-200")} suppressHydrationWarning>
                     <Calendar size={12} className="shrink-0" />
                     {t("offers_deadline_label", { date: fmtDate(rfq.deadline, locale) })}
+                    {rfqOpen && daysLeft !== null && <span>· {deadlinePassed ? t("rfqv_passed") : tProc("rfqpo.list.left", { days: daysLeft })}</span>}
                   </div>
-                )}
+                ) : null}
                 {rfq.products && rfq.products.length > 0 && (
                   <div className="flex items-center gap-1.5">
                     <Package size={13} className="shrink-0" />
@@ -984,20 +1051,30 @@ ${t("offers_notif_reduction_note", { note })}`
                     {t("offers_warranty_required_badge")}
                   </div>
                 )}
-                <div className="ms-auto font-mono text-white/25 text-[11px] bg-white/5 border border-white/5 px-2 py-1 rounded-lg hidden sm:block">
-                  #{rfqId.substring(0, 10)}
-                </div>
+                {rfq.createdByUserName && <span className="text-xs">{t("rfqv_by")} <b className="text-white/80">{rfq.createdByUserName}</b></span>}
+                <span className="ms-auto">
+                  <RfqNumber rfq={{ id: rfqId, rfqNumber: (rfq as { rfqNumber?: string | null }).rfqNumber ?? null }} />
+                </span>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Tabs ── */}
+        {ownerReads && <Callout tone="info">{tx("owner_reads")}</Callout>}
+        {notMine && <Callout tone="info">{tx("not_mine", { name: (rfq as { createdByUserName?: string } | null)?.createdByUserName || "—" })}</Callout>}
+
+        {rfqView && (rfq as { status?: string } | null)?.status === "Draft" ? (
+          <RfqDraftPanel rfq={rfqView} projectName={(project as { name?: string } | null)?.name || null} editHref={editHref} canAct={acts} deleting={deletingDraft} onDelete={() => setDraftDeleteOpen(true)} />
+        ) : (
+        /* ── Tabs ── */
         <Tabs value={tab} onValueChange={setTab} className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="font-bold text-lg text-slate-800">{t("offers_title")}</h3>
             <TabsList className="bg-slate-100/50 border border-slate-200">
-              <TabsTrigger value="list" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">{t("offers_tab_list")}</TabsTrigger>
+              <TabsTrigger value="list" className="gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                {t("offers_tab_list")}
+                {(offers || []).length > 0 && <span className="rounded-full bg-muted px-1.5 text-[10px] font-bold tabular-nums text-muted-foreground">{(offers || []).length}</span>}
+              </TabsTrigger>
               <TabsTrigger value="compare" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">{t("offers_tab_compare")}</TabsTrigger>
               <TabsTrigger value="inquiries" className="gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-sm">
                 {t("offers_tab_inquiries")}
@@ -1025,14 +1102,16 @@ ${t("offers_notif_reduction_note", { note })}`
                 <CardContent className="p-16 flex flex-col items-center text-center text-muted-foreground gap-3">
                   <TrendingUp size={48} className="opacity-20" />
                   <p className="font-bold text-lg">{t("offers_no_data")}</p>
-                  <p className="text-sm">{t("offers_no_data_desc")}</p>
+                  <p className="text-sm">{rfqOpen && deadlinePassed ? tx("offers.expired_empty") : t("offers_no_data_desc")}</p>
                 </CardContent>
               </Card>
             ) : (
               <>
               {sealed && <Callout tone="info">{tRfqd("list.sealed_banner", { date: fmtDate(rfq?.deadline, locale) })}</Callout>}
               {offers.map((offer: any) => {
-                const isBestOffer = offer.status !== "مرفوض" && lowestLivePrice != null && offerPrice(offer) === lowestLivePrice;
+                const isBestOffer = bestIds.has(offer.id);
+                const lead = leadDaysOf(offer)
+                const orderable = canOrder(offer)
                 const isMdmak = !!offer.isFromMdmak;
                 const quotedLines = ratesMap.get(offer.id)?.size ?? 0
                 const partial = awardMode(rfqView) === "lines" && productCount > 1 && quotedLines > 0 && quotedLines < productCount
@@ -1097,10 +1176,10 @@ ${t("offers_notif_reduction_note", { note })}`
                                     {t("offers_guest_badge")}
                                   </span>
                                 )}
-                                {offer.isGuestOffer && offer.status === "قيد المراجعة" && (
+                                {rfqOpen && !sealed && offer.status !== "مرفوض" && (offer.isGuestOffer || !orderable) && (
                                   <p className="text-[11px] text-amber-700 mt-0.5 flex items-center gap-1">
                                     <AlertTriangle size={10} className="shrink-0" />
-                                    {t("offers_guest_order_caveat")}
+                                    {offer.isGuestOffer ? tx("card.guest_register_first") : tx("card.record_incomplete")}
                                   </p>
                                 )}
                                 {offer.status === "مرفوض" && offer.exclusion?.code && (
@@ -1115,7 +1194,16 @@ ${t("offers_notif_reduction_note", { note })}`
                                   </p>
                                 )}
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                  {offer.isManualOffer && <StatusPill tone="mute" className="text-[10px]">{tRfqd("list.recorded_by", { name: offer.recordedByName || "—" })}</StatusPill>}
+                                  {offer.isManualOffer ? (
+                                    <StatusPill tone="mute" className="text-[10px]">{tRfqd("list.recorded_by", { name: offer.recordedByName || "—" })}</StatusPill>
+                                  ) : offer.directAward ? (
+                                    <StatusPill tone="ok" className="text-[10px]">{tx("card.origin_direct")}</StatusPill>
+                                  ) : !offer.isGuestOffer && !isMdmak ? (
+                                    <StatusPill tone="mute" className="text-[10px]">{tx("card.origin_platform")}</StatusPill>
+                                  ) : null}
+                                  {offer.recordedEarly && <StatusPill tone="warn" className="text-[10px]">{tx("cmp.before_close")}</StatusPill>}
+                                  {lead != null && <StatusPill tone="mute" className="text-[10px]">{tRfqd("cmp.lead_days", { days: lead })}</StatusPill>}
+                                  {offer.sampleStatus === "مطلوبة" && <StatusPill tone="info" className="text-[10px]">{tx("card.sample_requested")}</StatusPill>}
                                   {offer.offerPdfUrl ? (
                                     <StatusPill tone="ok" className="text-[10px]">{tRfqd("list.official_quote")}</StatusPill>
                                   ) : (
@@ -1138,6 +1226,29 @@ ${t("offers_notif_reduction_note", { note })}`
                                       <a href={`tel:${offer.guestContact.phone}`} className="text-xs text-blue-600 hover:underline" dir="ltr">
                                         {offer.guestContact.phone}
                                       </a>
+                                    )}
+                                    {offer.guestContact.vatNumber ? (
+                                      <span className="text-xs text-muted-foreground" dir="ltr">{tx("card.vat", { vat: offer.guestContact.vatNumber })}</span>
+                                    ) : (
+                                      <span className="text-xs font-semibold text-warning">{tx("card.no_vat")}</span>
+                                    )}
+                                    {offer.guestInvite?.at && <span className="text-xs text-muted-foreground">{tx("card.invited", { date: fmtDate(offer.guestInvite.at, locale) })}</span>}
+                                    {acts && rfqOpen && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setRegisterGuest({
+                                            offerId: offer.id,
+                                            name: offer.companyName || offer.supplierName || offer.guestContact?.name || "",
+                                            phone: offer.guestContact?.phone || null,
+                                            email: offer.guestContact?.email || null,
+                                            vatNumber: offer.guestContact?.vatNumber || null,
+                                          })
+                                        }
+                                        className="inline-flex items-center gap-1 rounded text-xs font-bold text-module hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                      >
+                                        {tx("card.register")}
+                                      </button>
                                     )}
                                     {guestEventForOffer(offer) && (
                                       <button
@@ -1351,10 +1462,11 @@ ${t("offers_notif_reduction_note", { note })}`
                         </div>
 
                         {/* Action Buttons - Pending */}
-                        {offer.status === "قيد المراجعة" && canDecide && (
+                        {offer.status === "قيد المراجعة" && acts && (
                           <div className="bg-slate-50/60 p-5 grid grid-cols-1 sm:grid-cols-2 md:flex md:flex-col items-center justify-center gap-2.5 md:border-s border-t md:border-t-0 min-w-[190px] border-slate-100">
                             {!sealed && rfqOpen && (
                             <>
+                            {canDecide && (
                             <Button
                               onClick={() => acceptOffer(offer)}
                               disabled={processingId === offer.id}
@@ -1364,16 +1476,7 @@ ${t("offers_notif_reduction_note", { note })}`
                               {processingId === offer.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
                               {t("offers_accept")}
                             </Button>
-                            <Button
-                              onClick={() => setReductionOffer(offer)}
-                              disabled={processingId === offer.id}
-                              variant="outline"
-                              className="w-full gap-2 rounded-full border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:border-amber-500 hover:text-amber-800 transition-all font-medium"
-                              size="sm"
-                            >
-                              <ArrowDown size={14} />
-                              {t("offers_request_reduction")}
-                            </Button>
+                            )}
                             <Button
                               onClick={() => setExcludeTarget({ id: offer.id, name: offer.companyName || offer.supplierName || t("offers_registered_supplier"), total: offerTotal(offer), raw: offer })}
                               disabled={processingId === offer.id}
@@ -1569,8 +1672,11 @@ ${t("offers_notif_reduction_note", { note })}`
               })}
               </>
             )}
+            {rfqView && rfqOpen && !rfqView.directAward && !deadlinePassed && (
+              <RfqGuestLinkPanel rfqId={rfqId} canShare={acts} onShare={() => setShareOpen(true)} />
+            )}
             {rfqView && !isLoading && (
-              <RfqInvitedList rfq={rfqView} offers={offerViews} guestOffers={offerViews.filter((o) => o.isGuestOffer).length} />
+              <RfqInvitedList rfq={rfqView} offers={offerViews} guestOffers={guestOffers} />
             )}
           </TabsContent>
 
@@ -1587,9 +1693,9 @@ ${t("offers_notif_reduction_note", { note })}`
                 sealedUntil={fmtDate(rfq?.deadline, locale)}
                 notes={notes}
                 onAward={() => setAwardOpen(true)}
-                canCloseEarly={canCloseEarly(procActor) && rfqOpen}
+                canCloseEarly={closes && rfqOpen}
                 onCloseEarly={() => setCloseNowOpen(true)}
-                round={!canPick ? "none" : canAskReductionRound(rfqView, liveOffers.length, sealed) ? "can" : rfqView.reductionRound ? "done" : "none"}
+                round={canAskReductionRound(rfqView, liveOffers.length, sealed) ? (acts ? "can" : "none") : rfqView.reductionRound ? "done" : "none"}
                 onAskRound={() => setRoundOpen(true)}
               />
             )}
@@ -1601,8 +1707,8 @@ ${t("offers_notif_reduction_note", { note })}`
               rfqTitle={rfq?.title || ""}
               inquiries={(inquiries || []) as InquiryDoc[]}
               isLoading={inquiriesLoading}
-              canAnswer={canDecide || canRunRfq(procActor)}
-              actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+              canAnswer={acts}
+              actor={writeActor}
               recipientsFor={(inq) => answerRecipients(rfq || {}, offerViews, inq, user?.uid || "")}
             />
           </TabsContent>
@@ -1613,13 +1719,28 @@ ${t("offers_notif_reduction_note", { note })}`
                 rfq={rfqView}
                 orders={rfqOrders}
                 showPrices={seesPrices}
-                canCancel={(canDecide || canRunRfq(procActor)) && canCancelRfq(rfqView)}
+                canCancel={acts && canCancelRfq(rfqView)}
                 onCancel={() => setCancelOpen(true)}
-                onRecordOffer={(canDecide || canRunRfq(procActor)) && rfqOpen ? () => setManualOpen(true) : null}
+                onRecordOffer={acts && rfqOpen ? () => setManualOpen(true) : null}
+                onExtend={
+                  extendable
+                    ? () =>
+                        setExtendTarget({
+                          id: rfqId,
+                          title: rfqView.title || "",
+                          passed: deadlinePassed,
+                          invited: [...(rfqView.allowedSupplierOrgIds || []), ...(rfqView.invitedSupplierOrgIds || [])],
+                        })
+                    : null
+                }
+                extendLabel={deadlinePassed && offerViews.length === 0 ? tProc("rfqpo.list.republish") : t("rfqv_edit_open")}
+                onPrint={printDoc}
+                projectName={(project as { name?: string } | null)?.name || null}
               />
             )}
           </TabsContent>
         </Tabs>
+        )}
       </div>
 
       {rfqView && (
@@ -1630,7 +1751,7 @@ ${t("offers_notif_reduction_note", { note })}`
           projectName={(project as { name?: string } | null)?.name || null}
           offers={offerViews}
           picks={picks}
-          actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+          actor={writeActor}
           policies={policies}
           orgName={procOrgName || activeCompanyName || null}
           blocksFor={blocksFor}
@@ -1643,7 +1764,7 @@ ${t("offers_notif_reduction_note", { note })}`
         onOpenChange={(o) => !o && setExcludeTarget(null)}
         rfqId={rfqId}
         offer={excludeTarget}
-        actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+        actor={writeActor}
         showPrice={showPrices}
         onDone={onExcluded}
       />
@@ -1651,7 +1772,7 @@ ${t("offers_notif_reduction_note", { note })}`
         open={closeNowOpen}
         onOpenChange={setCloseNowOpen}
         rfqId={rfqId}
-        actor={procActor}
+        actor={writeActor}
         offered={offerViews.length}
         invited={((rfq as { allowedSupplierOrgIds?: string[] } | null)?.allowedSupplierOrgIds || []).length}
         onDone={() => {
@@ -1669,7 +1790,7 @@ ${t("offers_notif_reduction_note", { note })}`
           products={pricedProducts(rfqView)}
           lastPriceOf={(p) => lastPaid(priceHistory, p.name, p.unit)?.price ?? null}
           offerIds={liveOffers.filter((o) => o.status !== "مقبول").map((o) => o.id)}
-          actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+          actor={writeActor}
           onDone={(reached, message) => {
             setRoundOpen(false)
             for (const id of reached) {
@@ -1687,7 +1808,7 @@ ${t("offers_notif_reduction_note", { note })}`
           rfq={rfqView}
           pendingInvitees={invitedRows(rfqView, offerViews).filter((r) => !r.offered).map((r) => r.orgId)}
           sealed={sealed}
-          actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+          actor={writeActor}
           onDone={() => {
             setManualOpen(false)
             toast({ title: tRfqd("manual.done") })
@@ -1698,7 +1819,7 @@ ${t("offers_notif_reduction_note", { note })}`
         open={cancelOpen}
         onOpenChange={setCancelOpen}
         rfqId={rfqId}
-        actor={{ ...procActor, canPrepare: procActor.canPrepare || canDecide }}
+        actor={writeActor}
         onDone={() => {
           setCancelOpen(false)
           toast({ title: tRfqd("cancel.done") })
@@ -1742,79 +1863,6 @@ ${t("offers_notif_reduction_note", { note })}`
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Price Reduction Dialog */}
-      <Dialog open={!!reductionOffer} onOpenChange={(open) => {
-        if (!open) {
-          setReductionOffer(null);
-          setReductionNote("");
-        }
-      }}>
-        <DialogContent className="sm:max-w-md" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader className="text-start sm:text-start">
-            <DialogTitle>{t("offers_request_reduction")}</DialogTitle>
-            <DialogDescription className="text-start mt-2 text-slate-600">
-              {t("offers_reduction_dialog_desc", { supplier: reductionOffer?.supplierName || reductionOffer?.companyName || t("offers_registered_supplier") })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="flex items-center justify-between bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
-              <span className="text-sm font-medium text-amber-800">{t("offers_proposed_price")}</span>
-              <span className="font-bold text-lg text-amber-700">{showPrices ? `${reductionOffer?.price ?? ""} ${t("offers_currency_sar")}` : "—"}</span>
-            </div>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                {t("offers_target_price_label")} ({t("offers_currency_sar")}) <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
-              </label>
-              <input
-                type="number"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50"
-                placeholder={t("offers_target_price_placeholder")}
-                value={targetPrice}
-                onChange={(e) => setTargetPrice(e.target.value)}
-              />
-            </div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              {t("offers_reduction_note_label")} <span className="text-muted-foreground text-xs font-normal">({t("optional")})</span>
-            </label>
-            <textarea
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 min-h-[100px] resize-y"
-              placeholder={t("offers_reduction_note_placeholder")}
-              value={reductionNote}
-              onChange={(e) => setReductionNote(e.target.value)}
-            />
-          </div>
-          <DialogFooter className={cn("flex flex-row gap-2", locale === 'ar' ? "flex-row-reverse justify-start" : "justify-end")}>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setReductionOffer(null);
-                setReductionNote("");
-                setTargetPrice("");
-              }}
-              disabled={!!processingId}
-            >
-              {t("cancel")}
-            </Button>
-            <Button
-              className="bg-amber-500 hover:bg-amber-600 text-white"
-              onClick={async () => {
-                if (reductionOffer) {
-                  await handleDecision(reductionOffer.id, "مطلوب تخفيض", reductionNote, targetPrice);
-                  setReductionOffer(null);
-                  setReductionNote("");
-                  setTargetPrice("");
-                }
-              }}
-              disabled={!!processingId}
-            >
-              {processingId === reductionOffer?.id ? <Loader2 size={14} className="animate-spin ms-2" /> : <ArrowDown size={14} className="ms-2" />}
-              {t("offers_send_request")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
 
       {/* Confirm Delivery Dialog */}
       <Dialog open={!!confirmDeliveryDoc} onOpenChange={(open) => { if (!open) { setConfirmDeliveryDoc(null); setReceiverName("") } }}>
@@ -1877,6 +1925,26 @@ ${t("offers_notif_reduction_note", { note })}`
       {/* Guest supplier notification — pushes the workflow step out to a
           share-link supplier on WhatsApp or email */}
       <GuestNotifyDialog target={guestNotify} onClose={() => setGuestNotify(null)} />
+      <ShareRfqLinkDialog rfq={shareOpen && rfq ? { id: rfqId, title: (rfq as { title?: string }).title } : null} isOpen={shareOpen} onClose={() => setShareOpen(false)} />
+      <RfqExtendDialog target={extendTarget} actor={writeActor} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
+      <RfqRegisterGuestDialog guest={registerGuest} rfqId={rfqId} rfqTitle={(rfq as { title?: string } | null)?.title || ""} orgName={procOrgName || activeCompanyName || ""} actor={writeActor} onOpenChange={(o) => !o && setRegisterGuest(null)} />
+      <Dialog open={draftDeleteOpen} onOpenChange={(o) => !deletingDraft && setDraftDeleteOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader className="text-start">
+            <DialogTitle>{t("rfq_delete_confirm_title")}</DialogTitle>
+            <DialogDescription>{t("rfq_delete_confirm_desc", { title: (rfq as { title?: string } | null)?.title || "" })}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setDraftDeleteOpen(false)} disabled={deletingDraft}>
+              {t("cancel")}
+            </Button>
+            <Button onClick={deleteDraft} disabled={deletingDraft} className="gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {deletingDraft && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
+              {t("rfq_delete_tender")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PortalLayout>
   )
 }
@@ -1908,7 +1976,7 @@ function InquiriesSection({
   inquiries: InquiryDoc[]
   isLoading: boolean
   canAnswer: boolean
-  actor: ProcActor
+  actor: RfqWriteActor
   recipientsFor: (inquiry: InquiryDoc) => string[]
 }) {
   const t = useTranslations("Portal.Contractor")

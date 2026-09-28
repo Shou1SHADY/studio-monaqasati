@@ -18,10 +18,12 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { Link } from "@/i18n/routing"
 import { JOURNAL_ENTRIES } from "@/lib/accounting/journal"
 import { isAccountingEnabled } from "@/lib/accounting/post"
+import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import { PM_EVENTS, type PmEvent } from "@/lib/pm/events"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { openReturns, PM_HANDOVERS, type PmHandover } from "@/lib/pm/handover"
-import { crmWaitRows, financeWaitRows, poWaitRows, requestWaitRows, waitingView, WAIT_CAP, WAIT_LATE_DAYS, type WaitModule, type WaitRow } from "@/lib/pm/pulse"
+import { crmWaitRows, financeWaitRows, poWaitRows, requestWaitRows, storeWaitRows, waitingView, WAIT_CAP, WAIT_LATE_DAYS, type WaitModule, type WaitRow } from "@/lib/pm/pulse"
+import { PM_STORE, storeLineOf, type PmStoreLine } from "@/lib/pm/store"
 import { PURCHASE_REQUESTS, requestOf } from "@/lib/pm/supply"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { poStatus } from "@/lib/procurement/po"
@@ -71,21 +73,27 @@ export function WaitingOnOthers({
   const { data: poData } = useCollection(poQ)
   const reqQ = useMemoFirebase(() => (firestore && single ? collection(firestore, "projects", single, PURCHASE_REQUESTS) : null), [firestore, single])
   const { data: reqData } = useCollection(reqQ)
+  const storeQ = useMemoFirebase(() => (firestore && single ? collection(firestore, "projects", single, PM_STORE) : null), [firestore, single])
+  const { data: storeData } = useCollection(storeQ)
   const [booksOn, setBooksOn] = useState(false)
   useEffect(() => {
     if (!firestore || !organizationId || !finance) return
     void isAccountingEnabled(firestore, organizationId).then(setBooksOn).catch(() => setBooksOn(false))
   }, [firestore, organizationId, finance])
+  // Finance's rows show with Accounting off too: the events still go out, and
+  // the certificate's own state says whether it still waits (it is read for that).
   const evQ = useMemoFirebase(
     () =>
-      firestore && organizationId && finance && booksOn
+      firestore && organizationId && finance
         ? single
           ? query(collection(firestore, PM_EVENTS), where("organizationId", "==", organizationId), where("projectId", "==", single))
           : query(collection(firestore, PM_EVENTS), where("organizationId", "==", organizationId))
         : null,
-    [firestore, organizationId, finance, booksOn, single]
+    [firestore, organizationId, finance, single]
   )
   const { data: evData } = useCollection(evQ)
+  const certQ = useMemoFirebase(() => (firestore && single && finance && money && !booksOn ? collection(firestore, "projects", single, PM_CERTIFICATES) : null), [firestore, single, finance, money, booksOn])
+  const { data: certData } = useCollection(certQ)
   const jQ = useMemoFirebase(
     () => (firestore && organizationId && finance && booksOn ? query(collection(firestore, JOURNAL_ENTRIES), where("organizationId", "==", organizationId), where("sourceType", "in", ["ipc_claim", "retention_release"])) : null),
     [firestore, organizationId, finance, booksOn]
@@ -104,18 +112,22 @@ export function WaitingOnOthers({
       .filter((po) => !["received", "closed", "cancelled"].includes(poStatus(po)))
     out.push(...poWaitRows(pos.map((po) => ({ ...po, docNumber: displayPoNumber(po.docNumber, locale) })), today))
     if (single) out.push(...requestWaitRows(((reqData ?? []) as Array<Record<string, unknown> & { id: string }>).map(requestOf), single, today))
-    if (finance && booksOn) {
+    if (single) out.push(...storeWaitRows(((storeData ?? []) as Array<Partial<PmStoreLine> & { id: string }>).map((d) => storeLineOf(d.id, d)), single, today))
+    if (finance && (booksOn || single)) {
       const events = ((evData ?? []) as unknown as PmEvent[]).filter((e) => nameOf.has(e.projectId))
       const posted = new Set(((jData ?? []) as Array<{ sourceId?: string }>).map((e) => e.sourceId || ""))
       const released = new Set(projects.filter((p) => p.retentionReleased).map((p) => p.id))
-      out.push(...financeWaitRows({ events, posted, released, today }))
+      const open = booksOn
+        ? undefined
+        : new Set(((certData ?? []) as Array<{ seq?: number; status?: string }>).filter((c) => c.status === "appr" || c.status === "part").map((c) => `${single}:${c.seq ?? 0}`))
+      out.push(...financeWaitRows({ events, posted, released, open, booksOff: !booksOn, today }))
     }
     if (crm) {
       const files = openReturns((hoData ?? []) as unknown as PmHandover[]).filter((h) => crm.owner || h.to === crm.uid)
       out.push(...crmWaitRows(files, today))
     }
     return out
-  }, [poData, reqData, evData, jData, hoData, nameOf, projects, single, finance, booksOn, crm, locale, today])
+  }, [poData, reqData, storeData, evData, jData, certData, hoData, nameOf, projects, single, finance, booksOn, crm, locale, today])
 
   if (!rows.length) return null
   const view = waitingView(rows, showAll, cap)
@@ -127,7 +139,7 @@ export function WaitingOnOthers({
   }
   const sub = (r: WaitRow) => {
     const p = r.sub.params
-    const text = r.sub.kind === "po_promised" || r.sub.kind === "sent_on" ? t(`wait.sub.${r.sub.kind}`, { ...p, date: pmDate(String(p.date), locale) }) : t(`wait.sub.${r.sub.kind}`, p)
+    const text = r.sub.kind === "po_promised" || r.sub.kind === "sent_on" || r.sub.kind === "books_off" ? t(`wait.sub.${r.sub.kind}`, { ...p, date: pmDate(String(p.date), locale) }) : t(`wait.sub.${r.sub.kind}`, p)
     const project = !single && r.projectId ? nameOf.get(r.projectId) : null
     return project ? `${project} · ${text}` : text
   }

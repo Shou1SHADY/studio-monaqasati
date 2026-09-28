@@ -33,10 +33,13 @@ export const offFromTicked = (role: PmProjectRole, ticked: readonly PmDuty[]): P
 /** The duties a new seat starts with ticked: the template — except `other`, which starts empty. */
 export const defaultTicked = (role: PmProjectRole): PmDuty[] => (role === "other" ? [] : [...PM_ROLE_TEMPLATES[role]])
 
-export type AssignBlock = "no_person" | "unnamed_other" | "pm_owner_only" | "pm_taken"
+export type AssignBlock = "no_person" | "unnamed_other" | "pm_owner_only" | "future_from"
 
 /** What stops an assignment (or a role change on a live seat). `admin` is the
- * owner's key: only it appoints the project manager or moves someone off that role. */
+ * owner's key: only it appoints the project manager or moves someone off that
+ * role. Appointing a new manager where there is one replaces him in the same
+ * step (`replacedManager`) — the project is never left managerless in between.
+ * The seat opens at once, so its "from" day is today or earlier. */
 export function assignBlocks(input: {
   uid: string | null
   role: PmProjectRole
@@ -45,14 +48,31 @@ export function assignBlocks(input: {
   current: Pick<PmSeat, "role"> | null
   projectManagerId: string | null | undefined
   admin: boolean
+  from?: string | null
+  today?: string
 }): AssignBlock[] {
   const out: AssignBlock[] = []
   if (!input.uid) out.push("no_person")
   if (input.role === "other" && !input.roleName?.trim()) out.push("unnamed_other")
   const touchesPm = input.role === "pm" || input.current?.role === "pm"
   if (touchesPm && !input.admin) out.push("pm_owner_only")
-  if (input.role === "pm" && input.projectManagerId && input.projectManagerId !== input.uid) out.push("pm_taken")
+  if (input.from && input.today && input.from > input.today) out.push("future_from")
   return out
+}
+
+/** The manager this assignment hands the project over from, if any. */
+export const replacedManager = (input: { uid: string; role: PmProjectRole; projectManagerId: string | null | undefined }): string | null =>
+  input.role === "pm" && input.projectManagerId && input.projectManagerId !== input.uid ? input.projectManagerId : null
+
+/** The reason stored on the outgoing manager's seat (shown translated). */
+export const PM_HANDED_OVER = "pm_replaced"
+
+/** A person's riyal approval limit, from the system — a project role never
+ * changes it (prototype ROLES.appr): the owner has none, `po.approve` holds the
+ * manager's limit, anyone else approves nothing. */
+export function approvalLimitOf(input: { owner: boolean; permissions: readonly string[] }, managerLimit: number): "any" | number | null {
+  if (input.owner || input.permissions.includes("*")) return "any"
+  return input.permissions.includes("po.approve") ? managerLimit : null
 }
 
 export type RemoveBlock = "not_on_team" | "no_reason" | "no_date" | "future_date" | "pm_owner_only"

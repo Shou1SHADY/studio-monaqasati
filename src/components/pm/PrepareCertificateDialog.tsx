@@ -128,7 +128,7 @@ export function PrepareCertificateDialog({
     setBusy(true)
     try {
       const r = await prepareCertificate(firestore, access.ctx, projectId, actor, { itemIds: [...chosen], voIds: [...vos], includeCuts: cuts, checks: [...checks] })
-      toast({ title: t("ipc.prepared", { no: certificateNo(r.seq) }) })
+      toast({ title: t("ipc.prepared_net", { no: certificateNo(r.seq), net: pmMoney(r.amounts.net) }) })
       onSaved?.()
       onOpenChange(false)
     } catch (err) {

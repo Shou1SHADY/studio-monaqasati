@@ -78,16 +78,14 @@ import {
   KeyRound,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
+import { PROC_TAB_GATES } from "@/lib/procurement/tab-gates"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
 
 /** Manufacturing's desk tabs belong to the manager, the cost controller and management. */
 const MFG_DESK_ROLES: PermissionId[] = ["manufacturing.manage", "manufacturing.cost", "manufacturing.view"]
 
-/** Procurement's Today opens for anyone holding any of the module's
- * permissions (PRD 3.0 §7.2) — the queue itself shows each role its own rows. */
-const PROC_ANY_ROLE: PermissionId[] = ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"]
-/** The orders list: whoever sees prices, plus the expediter (dates and quantities only). */
-const PROC_ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.approve", "po.expedite"]
+// Procurement's entries are gated exactly like the rail's tabs: one list in
+// `src/lib/procurement/tab-gates.ts`.
 
 /** The five HR roles' permissions (HR 1.0, src/lib/hr/access.ts). */
 const HR_ROLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.supervisor", "hr.management"]
@@ -192,23 +190,23 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_procurement",
         items: [
-          { titleKey: "contractor_proc_today", href: "/contractor/rfqs/today", icon: Sunrise, requiredAnyPermission: PROC_ANY_ROLE },
+          { titleKey: "contractor_proc_today", href: "/contractor/rfqs/today", icon: Sunrise, requiredAnyPermission: PROC_TAB_GATES.today },
           {
             titleKey: "contractor_rfqs",
             href: "/contractor/rfqs",
             icon: FileText,
-            requiredPermission: "rfq.manage",
+            requiredAnyPermission: PROC_TAB_GATES.rfqs,
             children: [
               { titleKey: "contractor_new_rfq", href: "/contractor/rfqs/new", icon: FilePlus, requiredPermission: "rfq.create" },
-              { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredPermission: "rfq.manage" },
+              { titleKey: "contractor_purchase_requests", href: "/contractor/rfqs/requests", icon: Inbox, requiredAnyPermission: PROC_TAB_GATES.requests },
             ],
           },
-          { titleKey: "contractor_purchase_orders", href: "/contractor/rfqs/orders", icon: ClipboardList, requiredAnyPermission: PROC_ORDER_ROLES },
-          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredPermission: "deliveries.confirm" },
+          { titleKey: "contractor_purchase_orders", href: "/contractor/rfqs/orders", icon: ClipboardList, requiredAnyPermission: PROC_TAB_GATES.orders },
+          { titleKey: "contractor_goods_received", href: "/contractor/goods-received", icon: PackageCheck, requiredAnyPermission: PROC_TAB_GATES.receipts },
           { titleKey: "contractor_catalog", href: "/contractor/catalog", icon: ShoppingBasket, requiredPermission: "rfq.manage", comingSoon: CATALOG_COMING_SOON },
-          { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredPermission: "suppliers.manage" },
-          { titleKey: "contractor_proc_reports", href: "/contractor/rfqs/reports", icon: BarChart3, requiredAnyPermission: ["offers.view", "offers.accept"] },
-          { titleKey: "contractor_proc_settings", href: "/contractor/rfqs/settings", icon: Settings2, requiredPermission: "po.approve" },
+          { titleKey: "contractor_browse_suppliers", href: "/contractor/suppliers", icon: Users, requiredAnyPermission: PROC_TAB_GATES.suppliers },
+          { titleKey: "contractor_proc_reports", href: "/contractor/rfqs/reports", icon: BarChart3, requiredAnyPermission: PROC_TAB_GATES.reports },
+          { titleKey: "contractor_proc_settings", href: "/contractor/rfqs/settings", icon: Settings2, requiredAnyPermission: PROC_TAB_GATES.settings },
         ],
       },
     ],
@@ -448,7 +446,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "project-management",
     labelKey: "component_project_management",
     descKey: "component_project_management_desc",
-    homeHref: "/contractor/projects",
+    homeHref: "/contractor/projects/today",
     icon: LayoutDashboard,
     accentToken: "pm",
     displayOrder: 2,
@@ -463,7 +461,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
             icon: FolderOpen,
             requiredPermission: "projects.view",
             children: [
-              { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "projects.edit" },
+              { titleKey: "contractor_new_project", href: "/contractor/projects/new", icon: PlusCircle, requiredPermission: "pm.manage" },
               // PM 1.0 (HO-01): handover files from CRM, addressed to a manager.
               { titleKey: "contractor_pm_inbox", href: "/contractor/projects/inbox", icon: Inbox },
               // PM 1.0 (DEC-01): every open project's computed decisions in one list.

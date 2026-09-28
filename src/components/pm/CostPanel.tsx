@@ -68,9 +68,9 @@ export function CostPanel({
 
   const costItems = useMemo<CostItem[]>(() => items.map((i) => ({ ...i, estCost: i.estCost ?? 0 })), [items])
   const { costs, unassigned } = useMemo(() => {
-    const r = itemCosts({ items: costItems, pos: world.pos, issues: world.issues, projectWarehouseId, subcontracts: world.subcontracts })
+    const r = itemCosts({ items: costItems, pos: world.pos, issues: world.issues, projectWarehouseId, subcontracts: world.subcontracts, direct: world.direct })
     return { costs: r.items, unassigned: r.unassigned }
-  }, [costItems, world.pos, world.issues, world.subcontracts, projectWarehouseId])
+  }, [costItems, world.pos, world.issues, world.subcontracts, world.direct, projectWarehouseId])
   const rows = useMemo(() => sectionRows(costItems, costs), [costItems, costs])
   const total = useMemo(() => projectCost({ items: costItems, costs, unassigned, variations: world.variations, baseValue, penalty: 0 }), [costItems, costs, unassigned, world.variations, baseValue])
   const leaks = useMemo(() => bleeding(costItems, costs), [costItems, costs])

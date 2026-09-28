@@ -141,21 +141,21 @@ describe("renewing one", () => {
 
   it("keeps every price when none is typed", async () => {
     const { id } = await createPriceAgreement(db, buyer, twoLines, { now: NOW })
-    const a = await renewPriceAgreement(db, buyer, id, { until: "2027-12-31", prices: { [materialKey("حديد 12مم", "طن")]: "" } }, { now: NOW })
+    const a = await renewPriceAgreement(db, approver, id, { until: "2027-12-31", prices: { [materialKey("حديد 12مم", "طن")]: "" } }, { now: NOW })
     expect(a.lines.map((l) => l.price)).toEqual([2780, 15.2])
     expect(a.log?.[1]).toMatchObject({ params: { repriced: 0 } })
   })
 
   it("refuses a new end date that is not in the future", async () => {
     const { id } = await createPriceAgreement(db, buyer, twoLines, { now: NOW })
-    await expect(renewPriceAgreement(db, buyer, id, { until: "2026-09-22" }, { now: NOW })).rejects.toMatchObject({ code: "date_invalid" })
-    await expect(renewPriceAgreement(db, buyer, id, { until: "2026-09-01" }, { now: NOW })).rejects.toMatchObject({ code: "date_invalid" })
+    await expect(renewPriceAgreement(db, approver, id, { until: "2026-09-22" }, { now: NOW })).rejects.toMatchObject({ code: "date_invalid" })
+    await expect(renewPriceAgreement(db, approver, id, { until: "2026-09-01" }, { now: NOW })).rejects.toMatchObject({ code: "date_invalid" })
     expect(readDoc<PriceAgreement>(`${PRICE_AGREEMENTS}/${id}`)?.until).toBe("2027-03-31")
   })
 
   it("brings a lapsed one back, and writes nothing to the price history", async () => {
     const { id } = await createPriceAgreement(db, buyer, { ...twoLines, until: "2026-09-22" }, { now: NOW })
-    const a = await renewPriceAgreement(db, buyer, id, { until: "2027-06-30" }, { now: NOW })
+    const a = await renewPriceAgreement(db, approver, id, { until: "2027-06-30" }, { now: NOW })
     expect(a.endedAt).toBeNull()
     // Nobody has bought anything at the new price yet.
     expect(history()).toHaveLength(0)
@@ -164,7 +164,12 @@ describe("renewing one", () => {
   it("refuses a stranger and a missing agreement", async () => {
     const { id } = await createPriceAgreement(db, buyer, twoLines, { now: NOW })
     await expect(renewPriceAgreement(db, bystander, id, { until: "2027-12-31" }, { now: NOW })).rejects.toMatchObject({ code: "no_permission" })
-    await expect(renewPriceAgreement(db, buyer, "nope", { until: "2027-12-31" }, { now: NOW })).rejects.toMatchObject({ code: "order_missing" })
+    // Renewing is the manager's (prototype «جدّد» — CAN('all')): a buyer signs, never renews or ends.
+    await expect(renewPriceAgreement(db, buyer, id, { until: "2027-12-31" }, { now: NOW })).rejects.toMatchObject({ code: "no_permission" })
+    await expect(endPriceAgreement(db, buyer, id, "x", { now: NOW })).rejects.toMatchObject({ code: "no_permission" })
+    // The owner of a company with a procurement team reads.
+    await expect(renewPriceAgreement(db, actorOf({ uid: ORG, isOwner: true, canApprove: true }), id, { until: "2027-12-31" }, { now: NOW, ownerHasTeam: true })).rejects.toMatchObject({ code: "no_permission" })
+    await expect(renewPriceAgreement(db, approver, "nope", { until: "2027-12-31" }, { now: NOW })).rejects.toMatchObject({ code: "order_missing" })
   })
 })
 
@@ -178,20 +183,20 @@ describe("ending one early", () => {
 
   it("cancels one that has not started — it must not switch itself on (UAT, 23 Sep)", async () => {
     const { id } = await createPriceAgreement(db, buyer, { ...input, from: "2026-10-15", until: "2027-03-31" }, { now: NOW })
-    const a = await endPriceAgreement(db, buyer, id, "الصفقة لم تتم", { now: NOW })
+    const a = await endPriceAgreement(db, approver, id, "الصفقة لم تتم", { now: NOW })
     expect(a.endedAt).toBe(NOW.toISOString())
   })
 
   it("has nothing to end once its date has passed", async () => {
     const { id } = await createPriceAgreement(db, buyer, { ...input, from: "2026-09-01", until: "2026-09-30" }, { now: NOW })
-    await expect(endPriceAgreement(db, buyer, id, "late", { now: new Date("2026-10-05T09:00:00Z") })).rejects.toMatchObject({ code: "wrong_state" })
+    await expect(endPriceAgreement(db, approver, id, "late", { now: new Date("2026-10-05T09:00:00Z") })).rejects.toMatchObject({ code: "wrong_state" })
   })
 
   it("needs a reason, and cannot end twice", async () => {
     const { id } = await createPriceAgreement(db, buyer, input, { now: NOW })
-    await expect(endPriceAgreement(db, buyer, id, "  ", { now: NOW })).rejects.toMatchObject({ code: "reason_required" })
-    await endPriceAgreement(db, buyer, id, "سبب", { now: NOW })
-    await expect(endPriceAgreement(db, buyer, id, "again", { now: NOW })).rejects.toMatchObject({ code: "wrong_state" })
+    await expect(endPriceAgreement(db, approver, id, "  ", { now: NOW })).rejects.toMatchObject({ code: "reason_required" })
+    await endPriceAgreement(db, approver, id, "سبب", { now: NOW })
+    await expect(endPriceAgreement(db, approver, id, "again", { now: NOW })).rejects.toMatchObject({ code: "wrong_state" })
   })
 })
 

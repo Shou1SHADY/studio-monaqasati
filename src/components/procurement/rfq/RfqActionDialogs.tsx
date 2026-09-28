@@ -23,7 +23,7 @@ import type { PricedProduct } from "@/lib/procurement/offer-pricing"
 import { addDays, todayOf } from "@/lib/procurement/po"
 import { RFQ_CANCEL_CODES, reductionTargets, type RfqCancelCode } from "@/lib/procurement/rfq-detail"
 import { cancelRfq, closeRfqNow, excludeOffer, requestReductionRound } from "@/lib/procurement/rfq-writes"
-import type { ProcActor } from "@/lib/procurement/types"
+import type { RfqWriteActor } from "@/lib/procurement/rfq-access"
 import { ProcWriteError } from "@/lib/procurement/writes"
 import { cn } from "@/lib/utils"
 
@@ -98,7 +98,7 @@ function Shell({ open, onOpenChange, title, sub, children, error, busy, submitLa
   )
 }
 
-export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invited, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: ProcActor; offered: number; invited: number; onDone: () => void }) {
+export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invited, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; offered: number; invited: number; onDone: () => void }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const firestore = useFirestore()
   const refusalText = useRefusalText()
@@ -132,7 +132,7 @@ export function CloseNowDialog({ open, onOpenChange, rfqId, actor, offered, invi
   )
 }
 
-export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: ProcActor; onDone: () => void }) {
+export function CancelRfqDialog({ open, onOpenChange, rfqId, actor, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; rfqId: string; actor: RfqWriteActor; onDone: () => void }) {
   const t = useTranslations("Portal.Procurement.rfqd")
   const firestore = useFirestore()
   const refusalText = useRefusalText()
@@ -179,7 +179,7 @@ export function ExcludeOfferDialog({
   onOpenChange: (o: boolean) => void
   rfqId: string
   offer: { id: string; name: string; total: number | null } | null
-  actor: ProcActor
+  actor: RfqWriteActor
   showPrice: boolean
   onDone: (offerId: string) => void
 }) {
@@ -256,7 +256,7 @@ export function ReductionRoundDialog({
   products: PricedProduct[]
   lastPriceOf: (p: PricedProduct) => number | null
   offerIds: string[]
-  actor: ProcActor
+  actor: RfqWriteActor
   onDone: (reached: string[], message: string) => void
 }) {
   const t = useTranslations("Portal.Procurement.rfqd")

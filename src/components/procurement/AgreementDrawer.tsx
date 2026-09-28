@@ -16,6 +16,10 @@ import { AGREEMENT_EXPIRY_WINDOW_DAYS, agreementDaysLeft, agreementState, lastPa
 import { ordersOnAgreement } from "@/lib/procurement/supplier-file"
 import type { PurchaseOrder } from "@/lib/procurement/types"
 import { Money, useDateText } from "./PoBits"
+import { sarLtr } from "@/lib/riyal"
+
+/** A unit price, as the prototype's R2: two decimals, the riyal sign on its left. */
+const priceText = (n: number) => sarLtr(Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
 
 export function AgreementDrawer({
   agreement,
@@ -69,11 +73,11 @@ export function AgreementDrawer({
                 <div key={i} className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2 text-sm">
                   <span>
                     <b dir="auto">{l.name}</b>
-                    {last && <span className="block text-[11px] text-muted-foreground">{t("agreements.lastElsewhere", { price: last.price, supplier: last.supplierName || "—" })}</span>}
+                    {last && <span className="block text-[11px] text-muted-foreground">{t("agreements.lastElsewhere", { price: priceText(last.price), supplier: last.supplierName || "—" })}</span>}
                   </span>
                   <span className="shrink-0">
                     <b className="tabular-nums" dir="ltr">
-                      {l.price}
+                      {priceText(l.price)}
                     </b>{" "}
                     / {l.unit}
                   </span>

@@ -197,6 +197,17 @@ describe("writes", () => {
     expect(reqState(after)).toBe("shut")
   })
 
+  it("stopping a line with an order out asks Procurement to cancel the rest (P-19)", async () => {
+    await createMaterialRequest(db, site, "p1", siteActor, { title: "", needBy: null, notes: null, lines: [{ itemId: "i1", name: "Cement", unit: "bag", qty: 100 }] })
+    await approveMaterialRequest(db, pm, "p1", pmActor, "01")
+    seed("purchaseOrders/po1", { organizationId: "org", status: "accepted", projectId: "p1", lines: [{ id: "L1", name: "Cement", unit: "bag", quantity: 100, unitPrice: 20, accepted: 30, rejected: 0, held: 0, cancelled: 0 }], log: [] })
+    seed(`${P}/purchaseRequests/01`, { ...(readDoc<Record<string, unknown>>(`${P}/purchaseRequests/01`) as Record<string, unknown>), poId: "po1", poNumber: "PO-2026/001" })
+    await stopLine(db, pm, "p1", pmActor, "01", 0, "need", null)
+    const po = readDoc<{ pmCancels?: Record<string, { projectId: string; requestId: string }>; pmCancelKey?: string }>("purchaseOrders/po1")
+    expect(po?.pmCancelKey).toBe("L1")
+    expect(po?.pmCancels?.L1).toMatchObject({ projectId: "p1", requestId: "01" })
+  })
+
   it("a change on the client opens a draft variation; the requester withdraws a pending request", async () => {
     await createMaterialRequest(db, site, "p1", siteActor, { title: "Mesh", needBy: null, notes: null, lines: [{ itemId: "i1", name: "Mesh", unit: "m2", qty: 60, why: "consultant" }] })
     const { voSeq } = await decideChange(db, pm, "p1", pmActor, "01", 0, { st: "own", voSeq: null, ref: "SI-17" })

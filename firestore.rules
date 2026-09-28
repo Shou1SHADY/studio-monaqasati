@@ -60,6 +60,11 @@ service cloud.firestore {
     function hasOrgPermission(perm) {
       return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
     }
+    // The prototype's CAN('sup'): the procurement manager (po.approve) and the buyer
+    // (offers.accept) — not suppliers.manage alone (the seeded expediter holds it).
+    function procSupplierManager() {
+      return hasOrgPermission('offers.accept') || hasOrgPermission('po.approve');
+    }
 
     function hasProjectPermission(projectId, perm) {
       return isOrgOwner()
@@ -77,6 +82,21 @@ service cloud.firestore {
         && (get(/databases/$(database)/documents/pmHandovers/$(hid)).data.to == request.auth.uid || isOrgOwner())
         && get(/databases/$(database)/documents/pmHandovers/$(hid)).data.status == 'wait'
         && get(/databases/$(database)/documents/pmHandovers/$(hid)).data.organizationId == getOrganizationId()
+        && request.resource.data.get('contractorId', '') == request.auth.uid
+        && request.resource.data.get('projectManagerId', '') is string
+        && request.resource.data.get('projectManagerId', '').size() > 0;
+    }
+
+    // A PM 1.0 project created by hand (pmfixA): planning state, flagged `pm.manual`.
+    function createsManualPmProject() {
+      let pm = request.resource.data.get('pm', {});
+      return pmCeilingHas('create')
+        && pm.get('manual', false) == true
+        && pm.get('lifecycle', '') == 'plan'
+        && pm.get('original', null) == null
+        && pm.get('startedAt', null) == null
+        && pm.get('no', '') is string && pm.get('no', '').size() > 0
+        && !('pmHandoverId' in request.resource.data)
         && request.resource.data.get('contractorId', '') == request.auth.uid
         && request.resource.data.get('projectManagerId', '') is string
         && request.resource.data.get('projectManagerId', '').size() > 0;
@@ -201,8 +221,25 @@ service cloud.firestore {
     function hasOfferDecisionPermission(offerData) {
       return (('rfqId' in offerData) && offerData.rfqId != null && offerData.rfqId is string
               && exists(/databases/$(database)/documents/rfqs/$(offerData.rfqId)))
-        ? hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(offerData.rfqId)).data, 'offers.accept')
-        : hasOrgPermission('offers.accept');
+        ? actsOnRfq(get(/databases/$(database)/documents/rfqs/$(offerData.rfqId)).data)
+        : (hasOrgPermission('offers.accept') || hasOrgPermission('po.approve') || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create'));
+    }
+
+    // Runs RFQs (rfq-access.ts runsRfqs): the manager, a buyer, supply chain.
+    function runsRfq(rfqData) {
+      return hasRfqPermission(rfqData, 'offers.accept')
+        || hasRfqPermission(rfqData, 'po.approve')
+        || hasRfqPermission(rfqData, 'rfq.manage')
+        || hasRfqPermission(rfqData, 'rfq.create');
+    }
+
+    // Acts on THIS RFQ (rfq-access.ts actsOnRfq): a buyer (no po.approve) on the
+    // RFQs he raised; the manager and the owner on every one.
+    function actsOnRfq(rfqData) {
+      return runsRfq(rfqData)
+        && (isOrgOwner()
+            || hasRfqPermission(rfqData, 'po.approve')
+            || rfqData.get('createdByUserId', rfqData.get('contractorId', '')) == request.auth.uid);
     }
 
     // --- Collection Rules ---
@@ -220,6 +257,16 @@ service cloud.firestore {
       // doc addressed to the caller's email, which acts as the authorization).
       // Without this, anyone could write organizationId and join any org.
       allow update: if isAdmin()
+        || (
+          // The owner or a purchasing manager sets a member's purchasing categories — that field only.
+          isSignedIn()
+          && request.auth.uid != userId
+          && resource.data.organizationId == getOrganizationId()
+          && (getUserData().organizationRole == 'owner' || hasOrgPermission('po.approve'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['procurementCategories', 'updatedAt'])
+          && request.resource.data.procurementCategories is list
+          && request.resource.data.procurementCategories.size() <= 30
+        )
         || (isOwner(userId)
         // Supplier specializations and coverage cities go live only through
         // admin approval: suppliers submit pendingSpecializations /
@@ -235,7 +282,7 @@ service cloud.firestore {
           // switching back to the primary company restores. Self-writes to them
           // are only allowed via the dedicated branches below.
           !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole'])
+            .hasAny(['organizationId', 'organizationRole', 'defaultGroupId', 'role', 'primaryRole', 'procurementCategories'])
           || (
             request.auth.token.email is string
             && exists(/databases/$(database)/documents/invitations/$(request.auth.token.email))
@@ -403,7 +450,7 @@ service cloud.firestore {
           isSignedIn()
           && resource.data.organizationId == getOrganizationId()
           && rfqSameProject()
-          && hasRfqPermission(resource.data, 'offers.accept')
+          && hasRfqPermission(resource.data, 'offers.accept') && actsOnRfq(resource.data)
           && resource.data.get('status', '') == 'New'
           && request.resource.data.status == 'Awarded'
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -415,7 +462,7 @@ service cloud.firestore {
           isSignedIn()
           && resource.data.organizationId == getOrganizationId()
           && rfqSameProject()
-          && hasRfqPermission(resource.data, 'offers.accept')
+          && actsOnRfq(resource.data)
           && resource.data.get('status', '') in ['New', 'Draft']
           && request.resource.data.status == 'Cancelled'
           && request.resource.data.cancellation.code in ['need', 'spec', 'reissue']
@@ -449,7 +496,7 @@ service cloud.firestore {
           isSignedIn()
           && resource.data.organizationId == getOrganizationId()
           && rfqSameProject()
-          && hasRfqPermission(resource.data, 'offers.accept')
+          && actsOnRfq(resource.data)
           && resource.data.get('status', '') == 'New'
           && resource.data.get('reductionRound', null) == null
           && request.resource.data.reductionRound.byId == request.auth.uid
@@ -464,14 +511,14 @@ service cloud.firestore {
           isSignedIn()
           && resource.data.organizationId == getOrganizationId()
           && rfqSameProject()
-          && hasRfqPermission(resource.data, 'offers.accept')
+          && actsOnRfq(resource.data)
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['log', 'offersCount', 'updatedAt'])
           && request.resource.data.get('offersCount', 0) in [resource.data.get('offersCount', 0), resource.data.get('offersCount', 0) + 1]
           && rfqLogAppendsOne()
         )
         || (isSignedIn()
             && resource.data.organizationId == getOrganizationId()
-            && (isOrgOwner() || hasOrgPermission('offers.accept'))
+            && actsOnRfq(resource.data)
             && resource.data.status == 'New'
             && resource.data.get('directAward', false) != true
             && request.resource.data.status == 'New'
@@ -483,11 +530,15 @@ service cloud.firestore {
           isSignedIn()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offersCount'])
         );
+      // Only a draft is ever deleted; a published RFQ is cancelled with a reason (R-12).
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
+            && resource.data.get('status', '') == 'Draft'
             && (hasRfqPermission(resource.data, 'rfq.manage')
-                || hasRfqPermission(resource.data, 'projects.publish')))
-        || (isSignedIn() && resource.data.contractorId == request.auth.uid);
+                || hasRfqPermission(resource.data, 'projects.publish')
+                || actsOnRfq(resource.data)))
+        || (isSignedIn() && resource.data.contractorId == request.auth.uid
+            && resource.data.get('status', '') == 'Draft');
 
       // Subcollection: inquiries (questions from suppliers about the RFQ)
       match /inquiries/{inquiryId} {
@@ -536,7 +587,7 @@ service cloud.firestore {
             && request.resource.data.rfqId is string
             && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.organizationId == getOrganizationId()
             && get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data.status == 'New'
-            && hasRfqPermission(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data, 'offers.accept'));
+            && actsOnRfq(get(/databases/$(database)/documents/rfqs/$(request.resource.data.rfqId)).data));
       // Supplier can update their own offer; contractor-side updates (accept /
       // reject / reduction / sample requests) additionally require the
       // offers.accept permission (org owners always have it).
@@ -627,7 +678,7 @@ service cloud.firestore {
         resource.data.invitedBy == request.auth.uid ||
         (resource.data.get('type', '') == 'supplier_invite'
           && isOrgMember(resource.data.get('contractorOrgId', ''))
-          && hasOrgPermission('suppliers.manage')
+          && procSupplierManager()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sentChannel', 'sentAt']))
       );
       allow delete: if isSignedIn() && (
@@ -740,16 +791,17 @@ service cloud.firestore {
             && (request.resource.data.requestedBy == "supplier" || request.resource.data.requestedBy == "contractor"))
           || (request.resource.data.contractorOrgId == getOrganizationId()
               && request.resource.data.requestedBy == "contractor_favorite"
-              && request.resource.data.status == "active")
+              && request.resource.data.status == "active"
+              && procSupplierManager())
           // «أضِفه إلى مورّدينا» from the platform directory
           || (request.resource.data.contractorOrgId == getOrganizationId()
               && request.resource.data.requestedBy == "contractor_directory"
               && request.resource.data.status == "active"
-              && hasOrgPermission('suppliers.manage'))
+              && procSupplierManager())
         );
       // Contractors can accept/reject (update status); suppliers can cancel their own request
       allow update: if isSignedIn() && (
-        (resource.data.contractorOrgId == getOrganizationId() && hasOrgPermission('suppliers.manage')) ||
+        (resource.data.contractorOrgId == getOrganizationId() && (hasOrgPermission('suppliers.manage') || procSupplierManager())) ||
         (resource.data.supplierOrgId == getOrganizationId() && resource.data.requestedBy == "supplier") ||
         isAdmin()
       );
@@ -767,13 +819,16 @@ service cloud.firestore {
       allow list: if isSignedIn();
       // A CRM handover creates the project too — that path is gated by
       // crm.close and is only allowed to write a project that names its deal.
+      // A manual project is a PM 1.0 project, created only with the PM `create` key
+      // (owner / '*' / pm.manage); a legacy create may not carry a `pm` block (G-28).
       allow create: if isContractor()
         && request.resource.data.organizationId == getOrganizationId()
-        && (hasOrgPermission('projects.edit')
+        && ((hasOrgPermission('projects.edit') && pmCeilingHas('create') && !('pm' in request.resource.data))
             || (hasOrgPermission('crm.close')
                 && ('sourceOpportunityId' in request.resource.data)
                 && request.resource.data.sourceOpportunityId is string)
-            || acceptsPmHandover());
+            || acceptsPmHandover()
+            || createsManualPmProject());
       // Editing needs projects.edit; publishing flows also update the project
       // doc (linked rfqIds), so projects.publish qualifies too. The project
       // manager named in a pending handover may answer it — and touch nothing
@@ -810,7 +865,7 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'qa')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount', 'ncrCount']))
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['wirCount', 'punchCount', 'ncrCount', 'itpCount']))
                 // …whoever drafts claims numbers them — `pm.claimCount`; a grant with
                 // days draws the next programme revision (`pm.programmeRev`, approve).
                 || (('pm' in resource.data)
@@ -858,7 +913,7 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'req')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['mrCount', 'pettyCount', 'plantCount']))
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['mrCount', 'pettyCount', 'plantCount', 'plantReqCount']))
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'rcv')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
@@ -894,8 +949,9 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && hasOrgPermission('invoices.manage')
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
-                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['retentionReleased'])
-                    && request.resource.data.pm.retentionReleased == true)
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['retentionReleased', 'retentionHalfReleased'])
+                    && request.resource.data.pm.get('retentionReleased', false) in [true, resource.data.pm.get('retentionReleased', false)]
+                    && request.resource.data.pm.get('retentionHalfReleased', false) in [true, resource.data.pm.get('retentionHalfReleased', false)])
                 // …and the sections, switched by approve and logged in pm.secLog (SEC-04).
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'approve')
@@ -909,8 +965,11 @@ service cloud.firestore {
                 || resource.data.pm.get('original', null) == null
                 || (request.resource.data.get('pm', {}).get('original', null) == resource.data.pm.original
                     && request.resource.data.get('pm', {}).get('terms', null) == resource.data.pm.get('terms', null))));
+      // A PM 1.0 project is closed and archived, never deleted: its frozen contract,
+      // certificates and outbox events outlive it. Only an admin removes one.
       allow delete: if isAdmin()
         || (isSignedIn() && resource.data.organizationId == getOrganizationId()
+            && !('pm' in resource.data)
             && hasProjectPermission(projectId, 'projects.delete'));
 
       // BOQ items subcollection — same org as the project.
@@ -1079,6 +1138,17 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(projectId)).data.pm.get('lifecycle', '') == 'plan'
           && request.resource.data.userId == memberId
           && request.resource.data.viaHandover == true
+          && ((request.resource.data.get('pmRole', '') == 'pm'
+               && get(/databases/$(database)/documents/projects/$(projectId)).data.get('projectManagerId', '') == memberId)
+              || request.resource.data.get('pmRole', '') == 'site');
+        // …and whoever created a manual project seats its manager and a site engineer.
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.get('pm', {}).get('manual', false) == true
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.get('contractorId', '') == request.auth.uid
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.pm.get('lifecycle', '') == 'plan'
+          && request.resource.data.userId == memberId
+          && request.resource.data.viaManual == true
           && ((request.resource.data.get('pmRole', '') == 'pm'
                && get(/databases/$(database)/documents/projects/$(projectId)).data.get('projectManagerId', '') == memberId)
               || request.resource.data.get('pmRole', '') == 'site');
@@ -1380,7 +1450,7 @@ service cloud.firestore {
           && projectOpen(projectId)
           && pmDuty(projectId, 'approve')
           && request.resource.data.to > request.resource.data.from
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'from', 'to', 'itemIds', 'pred', 'updatedAt']);
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'from', 'to', 'itemIds', 'pred', 'permit', 'updatedAt']);
 
         allow delete: if isAdmin();
       }
@@ -1660,7 +1730,18 @@ service cloud.firestore {
               || (request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys().hasOnly(['key', 'name', 'unit', 'rates', 'moves', 'organizationId', 'updatedAt'])
                   && request.resource.data.moves.size() == (resource == null ? 0 : resource.data.moves.size()) + 1
                   && request.resource.data.moves[request.resource.data.moves.size() - 1].t == 'xi'
-                  && request.resource.data.moves[request.resource.data.moves.size() - 1].st == 'wait'));
+                  && request.resource.data.moves[request.resource.data.moves.size() - 1].st == 'wait')
+              // E-25: the QS records a recovery and the sub certificate marks it deducted.
+              || (pmDuty(projectId, 'sub')
+                  && resource != null
+                  && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['recoveries', 'moves', 'updatedAt'])
+                  && request.resource.data.moves.size() >= resource.data.moves.size()
+                  && request.resource.data.recoveries is list)
+              // Inventory confirms a return is back in its main store — one move wait → done.
+              || ((hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))
+                  && resource != null
+                  && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['moves', 'updatedAt'])
+                  && request.resource.data.moves.size() == resource.data.moves.size()));
 
         allow delete: if false;
       }
@@ -1703,7 +1784,127 @@ service cloud.firestore {
           && resource.data.status == 'wait'
           && request.resource.data.status in ['go', 'rej']
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedByName', 'decidedOn', 'updatedAt']);
+        // The site records the plant desk's reply (there is no desk module yet): once,
+        // on an approved request.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'req')
+          && resource.data.status == 'go'
+          && resource.data.get('rep', null) == null
+          && request.resource.data.rep.k in ['alloc', 'late', 'alt', 'none']
+          && request.resource.data.rep.by == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rep', 'updatedAt']);
+        // «استأجر بدلها»: busy or none → a timed hire, by the approver (with prj:EQH).
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'approve')
+          && resource.data.status == 'go'
+          && resource.data.get('got', null) == null
+          && resource.data.get('rep', {}).get('k', '') in ['late', 'none']
+          && request.resource.data.rep.k == 'hire'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rep', 'updatedAt']);
+        // Received on site (the same write creates the pmPlant unit): once, when
+        // allocated, an alternative, or hired.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'req')
+          && resource.data.status == 'go'
+          && resource.data.get('got', null) == null
+          && resource.data.get('rep', {}).get('k', '') in ['alloc', 'alt', 'hire']
+          && request.resource.data.got.by == request.auth.uid
+          && request.resource.data.got.plantSeq is int
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['got', 'updatedAt']);
         allow delete: if false;
+      }
+
+      // PM 1.0 inspection & test plan — `pmItp/{NN}` (`pm.itpCount`), written by
+      // quality. "Done" is counted from the inspections, never stored. Never
+      // edited or deleted: the plan is what the consultant was promised.
+      match /pmItp/{rowId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'qa')
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.need is int && request.resource.data.need >= 1
+          && request.resource.data.test is string && request.resource.data.test.size() > 0;
+
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 weekly plan (WWP-03…05) — `pmWeeks/{weekStart}`: one plan a week,
+      // committed and closed by measure | approve (`weeklyPlan.manage`). Closing
+      // is the only update: open → done, every task with done or a reason.
+      match /pmWeeks/{week} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+          && request.resource.data.week == week
+          && request.resource.data.status == 'open'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.tasks is list && request.resource.data.tasks.size() > 0;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (pmDuty(projectId, 'measure') || pmDuty(projectId, 'approve'))
+          && resource.data.status == 'open'
+          && request.resource.data.status == 'done'
+          && request.resource.data.closedBy == request.auth.uid
+          && request.resource.data.tasks.size() == resource.data.tasks.size()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'tasks', 'closedOn', 'closedBy', 'closedByName', 'updatedAt']);
+
+        allow delete: if isAdmin();
+      }
+
+      // PM 1.0 plant on site (EQP-08…15, WF-14) — `pmPlant/{NN}` (`pm.plantCount`).
+      // Received, off-hired and handed back by `req`; the day log is `daily`
+      // (one key per day, never after the unit went back). use → req → back;
+      // the desk's confirmation (offNo/offOk) is recorded once, while `req`.
+      match /pmPlant/{plantId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId();
+
+        allow create: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && pmDuty(projectId, 'req')
+          && request.resource.data.status == 'use'
+          && request.resource.data.by == request.auth.uid
+          && request.resource.data.seq is int
+          && request.resource.data.qty is int && request.resource.data.qty >= 1
+          && request.resource.data.name is string && request.resource.data.name.size() > 0;
+
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && resource.data.status != 'back'
+          && ((pmDuty(projectId, 'daily')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['days', 'updatedAt']))
+              || (pmDuty(projectId, 'req') && resource.data.status == 'use' && request.resource.data.status == 'req'
+                && request.resource.data.offReq.by == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'offReq', 'updatedAt']))
+              || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) == null
+                && request.resource.data.offOk.by == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['offNo', 'offOk', 'updatedAt']))
+              || (pmDuty(projectId, 'req') && resource.data.status == 'req' && resource.data.get('offOk', null) != null
+                && request.resource.data.status == 'back'
+                && request.resource.data.back.by == request.auth.uid
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'back', 'updatedAt'])));
+
+        allow delete: if isAdmin();
       }
 
       match /pmNcrs/{ncrId} {
@@ -1911,7 +2112,7 @@ service cloud.firestore {
             || (request.resource.data.procDecision.kind in ['proceed_short', 'proceed_full']
               && resource.data.status == 'pending'
               && resource.data.createdAt is timestamp
-              && request.time > resource.data.createdAt + duration.value(1, 'd'))
+              && request.time > resource.data.createdAt + duration.value(procReplyWindowDays(), 'd'))
           );
 
         allow delete: if isAdmin();
@@ -2007,8 +2208,10 @@ service cloud.firestore {
           && request.resource.data.confirmedByUserId == request.auth.uid
           // A manual receipt is Procurement's (S-13): whoever prepares orders, or the owner.
           && (hasOrgPermission('deliveries.confirm')
+              || (procBuyerReceives() && hasOrgPermission('offers.accept')
+                  && request.resource.data.get('selfReceived', false) == true)
               || (request.resource.data.get('source', '') == 'manual'
-                  && (isOrgOwner() || hasOrgPermission('offers.accept'))))
+                  && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))))
           && !('supplierOrgId' in request.resource.data)
           && !('supplierId' in request.resource.data)
           && !('offerId' in request.resource.data)
@@ -2041,7 +2244,7 @@ service cloud.firestore {
       // regularised, never touching the identity fields (S-26).
       allow update: if isSignedIn()
         && resource.data.contractorOrgId == getOrganizationId()
-        && (isOrgOwner() || hasOrgPermission('offers.accept'))
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
         && resource.data.get('source', '') == 'manual'
         && resource.data.get('poId', null) == null
         && resource.data.get('offerId', null) == null
@@ -2050,6 +2253,25 @@ service cloud.firestore {
              'poId', 'poNumber', 'lines', 'postedNet', 'regularisation',
              'regularisedAt', 'regularisedById', 'regularisedByName', 'updatedAt'])
         && (request.resource.data.get('regularisation', null) in [null, 'expense']);
+      // Under `buyerReceives` the buyer confirms a pending notice (flagged); a receipt
+      // recorded without the notice trims / closes that order's pending notice.
+      allow update: if isSignedIn()
+        && resource.data.contractorOrgId == getOrganizationId()
+        && hasOrgPermission('offers.accept')
+        && procBuyerReceives()
+        && resource.data.status == 'pending_confirmation'
+        && request.resource.data.status == 'confirmed'
+        && request.resource.data.get('selfReceived', false) == true
+        && request.resource.data.confirmedByUserId == request.auth.uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['supplierOrgId', 'supplierId', 'offerId', 'rfqId', 'contractorOrgId']);
+
+      allow update: if isSignedIn()
+        && resource.data.contractorOrgId == getOrganizationId()
+        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && resource.data.status == 'pending_confirmation'
+        && request.resource.data.status == 'pending_confirmation'
+        && resource.data.get('closedByReceipt', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lines', 'closedByReceipt', 'updatedAt']);
       allow delete: if isAdmin();
     }
 
@@ -2104,6 +2326,30 @@ service cloud.firestore {
     function poFrom() { return resource.data.get('status', ''); }
     function poTo() { return request.resource.data.get('status', ''); }
     function poChanged() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // The org's operating policies (procurementSettings/{orgId}, §6.4); absent = PRD reference.
+    function procSettingsPath() {
+      return /databases/$(database)/documents/procurementSettings/$(getOrganizationId());
+    }
+    // A firm with no separate receiver: whoever prepares orders records the receipt, flagged.
+    function procBuyerReceives() {
+      return exists(procSettingsPath()) && get(procSettingsPath()).data.get('buyerReceives', false) == true;
+    }
+    // Inventory's / the workshop's reply window, in whole days (reference 1).
+    function procReplyWindowDays() {
+      return exists(procSettingsPath()) ? int(get(procSettingsPath()).data.get('replyWindowDays', 1)) : 1;
+    }
+    // A buyer (prepares, does not approve, not the owner) acts on the orders HE prepared (R-26).
+    // The owner's read-only stance is enforced in the writes only: the send that rides an
+    // approval (sendOnApproval) is written in the approver's — possibly the owner's — name.
+    function poMineOrNotBuyer() {
+      return isOrgOwner() || hasOrgPermission('po.approve') || !hasOrgPermission('offers.accept')
+        || resource.data.get('preparedById', '') == request.auth.uid;
+    }
+    // Projects' budget decision is asked for and not yet given (R-25) — no approval, no self-issue.
+    function poPmBudgetClear() {
+      return resource.data.get('pmBudget', null) == null
+        || !(resource.data.pmBudget.get('state', '') in ['pending', 'renegotiate']);
+    }
     // What no update may rewrite: where it came from, who prepared it, what it is worth.
     function poIdentityUntouched() {
       return !poChanged().hasAny(['organizationId', 'docNumber', 'preparedById', 'preparedByName', 'offerId', 'rfqId',
@@ -2121,6 +2367,11 @@ service cloud.firestore {
     }
     // A retroactive order (goods already here) is approved straight into
     // `accepted` — there is nothing to send and nobody to wait for.
+    // The manager's approval limit, read from the org's policies (reference 150,000).
+    function poManagerLimit() {
+      let path = /databases/$(database)/documents/procurementSettings/$(resource.data.organizationId);
+      return exists(path) ? get(path).data.get('managerApprovalLimit', 150000) : 150000;
+    }
     function poApproves() {
       return poFrom() == 'awaiting_approval'
         && (poTo() == 'approved'
@@ -2130,9 +2381,11 @@ service cloud.firestore {
         && request.resource.data.get('approvedById', '') == request.auth.uid
         && (isOrgOwner() || resource.data.get('preparedById', '') != request.auth.uid)
         && (isOrgOwner() || resource.data.get('approverKind', 'owner') == 'manager')
+        && (isOrgOwner() || resource.data.get('totalExVat', 0) <= poManagerLimit())
         && (isOrgOwner() || resource.data.get('basis', '') != 'retroactive')
+        && poPmBudgetClear()
         && poChanged().hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'returnedReason',
-                                'supplierAcceptedAt', 'acceptanceRecordedBy', 'log', 'updatedAt']);
+                                'supplierAcceptedAt', 'acceptanceRecordedBy', 'noticeCopyTo', 'log', 'updatedAt']);
     }
     // Returned = still awaiting approval, with the approver's reason on it.
     function poReturns() {
@@ -2156,6 +2409,7 @@ service cloud.firestore {
              && request.resource.data.get('sentById', '') == request.auth.uid)
             || (poFrom() == 'sent' && poTo() in ['sent', 'accepted'])
             || (poFrom() == 'accepted' && poTo() == 'accepted'))
+        && poMineOrNotBuyer()
         && poChanged().hasOnly(['status', 'sentAt', 'sentById', 'sentByName', 'sentChannel', 'supplierAcceptedAt',
                                 'promisedDate', 'acceptanceRecordedBy', 'log', 'updatedAt']);
     }
@@ -2165,6 +2419,7 @@ service cloud.firestore {
       return poDecider()
         && ((poFrom() == 'accepted' && poTo() in ['accepted', 'closed'])
             || (poFrom() in ['awaiting_approval', 'approved', 'sent', 'accepted'] && poTo() == 'cancelled'))
+        && poMineOrNotBuyer()
         && poChanged().hasOnly(['status', 'lines', 'closedAt', 'closedShort', 'closeReason', 'cancelledReason', 'cancelFees', 'log', 'updatedAt']);
     }
     // The gate: whoever confirms deliveries moves the counters (and releases
@@ -2188,7 +2443,8 @@ service cloud.firestore {
         && resource.data.get('preparedById', '') == request.auth.uid
         && request.resource.data.get('approvedById', '') == request.auth.uid
         && request.resource.data.get('selfIssued', false) == true
-        && resource.data.get('basis', '') != 'retroactive'
+        && resource.data.get('basis', '') == 'direct'
+        && poPmBudgetClear()
         && resource.data.get('returnedReason', null) == null
         && resource.data.get('totalExVat', 0) <= poSelfIssueLimit()
         && poChanged().hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'selfIssued', 'log', 'updatedAt']);
@@ -2198,7 +2454,8 @@ service cloud.firestore {
     function poDecidesHold() {
       return poDecider()
         && poTo() == poFrom()
-        && poChanged().hasOnly(['financeHolds', 'updatedAt']);
+        && poMineOrNotBuyer()
+        && poChanged().hasOnly(['financeHolds', 'log', 'updatedAt']);
     }
     // R-21 / R-24: Finance writes back what it paid (the advance included) and
     // what it held — on an approved order, never changing its state.
@@ -2209,8 +2466,52 @@ service cloud.firestore {
         && poChanged().hasOnly(['financePayments', 'financeHolds', 'updatedAt']);
     }
 
+    // R-25: Procurement refers an overrun to the project's manager — once; the order then waits.
+    function poRefersBudget() {
+      return poDecider() && poMineOrNotBuyer()
+        && poFrom() == 'awaiting_approval' && poTo() == 'awaiting_approval'
+        && resource.data.get('pmBudget', null) == null
+        && request.resource.data.pmBudget.state == 'pending'
+        && poChanged().hasOnly(['pmBudget', 'log', 'updatedAt']);
+    }
+    // R-25: the project answers — a holder of `approve` on that PM project (or the owner).
+    function poPmDecidesBudget() {
+      return resource.data.get('projectId', '') is string && resource.data.get('projectId', '') != ''
+        && (isOrgOwner() || pmDuty(resource.data.projectId, 'approve'))
+        && poFrom() == 'awaiting_approval' && poTo() == 'awaiting_approval'
+        && resource.data.get('pmBudget', null) != null
+        && resource.data.pmBudget.get('state', '') == 'pending'
+        && request.resource.data.pmBudget.state in ['accepted', 'renegotiate']
+        && request.resource.data.pmBudget.byName is string
+        && (request.resource.data.pmBudget.state == 'accepted'
+            || (request.resource.data.pmBudget.get('note', '') is string && request.resource.data.pmBudget.get('note', '').size() > 0))
+        && poChanged().hasOnly(['pmBudget', 'log', 'updatedAt']);
+    }
+    // R-29 / P-19: Projects asks to stop what has not arrived of ONE line — written in the PM's
+    // stopLine transaction (requestPmStopInTx). `pmCancelKey` names the line so the rule can
+    // check that exactly that entry changed. By a holder of `approve` on the project, or the
+    // requester (duty `req`) of the material request the entry names. Nothing is cancelled —
+    // Procurement cancels with the supplier.
+    function poPmStops() {
+      let key = request.resource.data.get('pmCancelKey', '');
+      let entry = request.resource.data.pmCancels[key];
+      let projectId = resource.data.get('projectId', '');
+      return key is string && key != ''
+        && poTo() == poFrom() && poFrom() in ['approved', 'sent', 'accepted']
+        && poChanged().hasOnly(['pmCancels', 'pmCancelKey', 'updatedAt'])
+        && request.resource.data.pmCancels.diff(resource.data.get('pmCancels', {})).affectedKeys().hasOnly([key])
+        && entry.reason is string && entry.reason.size() > 0
+        && entry.byName is string
+        && projectId is string && projectId != '' && entry.projectId == projectId
+        && (pmDuty(projectId, 'approve')
+            || (pmDuty(projectId, 'req')
+                && entry.requestId is string
+                && get(/databases/$(database)/documents/projects/$(projectId)/purchaseRequests/$(entry.requestId)).data.get('requestedByUserId', '') == request.auth.uid));
+    }
+
     function poRates() {
-      return (isOrgOwner() || hasOrgPermission('offers.accept'))
+      return (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && poMineOrNotBuyer()
         && poTo() == poFrom() && poFrom() in ['accepted', 'closed']
         && resource.data.get('rating', null) == null
         && request.resource.data.get('rating', null) != null
@@ -2248,7 +2549,8 @@ service cloud.firestore {
       allow update: if isSignedIn() && poIdentityUntouched() && (isAdmin()
         || (isOrgMember(resource.data.organizationId)
             && (poApproves() || poReturns() || poResubmits() || poExpedites() || poDecides() || poReceives() || poRates()
-                || poSelfIssues() || poDecidesHold() || poFinance()))
+                || poSelfIssues() || poDecidesHold() || poFinance()
+                || poRefersBudget() || poPmDecidesBudget() || poPmStops()))
         || poSupplierAccepts());
       // Orders are records other documents point at — only an admin removes one.
       allow delete: if isAdmin();
@@ -2290,9 +2592,14 @@ service cloud.firestore {
 
     match /procurementSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      // The limits that bound the approver himself (his approval limit, the buyer's
+      // self-issue limit, the direct cap, Inventory's tolerance) are the owner's alone.
       allow create, update: if isSignedIn() && isOrgMember(orgId)
         && request.resource.data.get('organizationId', orgId) == orgId
-        && (isOrgOwner() || hasOrgPermission('po.approve'));
+        && (isOrgOwner()
+            || (hasOrgPermission('po.approve')
+                && !request.resource.data.diff(resource == null ? {} : resource.data).affectedKeys()
+                      .hasAny(['managerApprovalLimit', 'buyerSelfIssueLimit', 'directPurchaseCap', 'overReceiptTolerancePercent'])));
       allow delete: if isAdmin();
     }
 
@@ -2342,7 +2649,7 @@ service cloud.firestore {
         && isOrgMember(request.resource.data.organizationId)
         && recordId == request.resource.data.organizationId + '__' + request.resource.data.supplierOrgId
         && (
-          (hasOrgPermission('suppliers.manage')
+          (procSupplierManager()
             && request.resource.data.get('verified', null) == false
             && request.resource.data.get('source', '') == 'directory'
             && request.resource.data.get('addedById', '') == request.auth.uid)
@@ -2373,7 +2680,7 @@ service cloud.firestore {
       // Renewing moves the end date and the prices; the supplier, the number and
       // the org it belongs to are what the history points at, so they are frozen.
       allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
-        && (isOrgOwner() || hasOrgPermission('offers.accept') || hasOrgPermission('po.approve'))
+        && (isOrgOwner() || hasOrgPermission('po.approve'))
         && request.resource.data.organizationId == resource.data.organizationId
         && request.resource.data.docNumber == resource.data.docNumber
         && request.resource.data.supplierOrgId == resource.data.supplierOrgId

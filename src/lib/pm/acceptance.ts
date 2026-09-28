@@ -59,6 +59,11 @@ export function finalBlocks(input: { archived: boolean; lifecycle: string; accep
 
 /** The day the defects-liability period ends — from the provisional handover and
  * the contract term in force. */
+/** Days left in the defects period on `today` — negative once it has ended (prototype «تبقّى / انتهت منذ»). */
+export function defectsLeft(end: string, today: string): number {
+  return Math.round((Date.parse(`${end.slice(0, 10)}T00:00:00Z`) - Date.parse(`${today.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
+}
+
 export function defectsEnd(provOn: string, defectsDays: number): string {
   const d = new Date(`${provOn}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + defectsDays)

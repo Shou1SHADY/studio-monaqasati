@@ -378,7 +378,7 @@ export function VariationsPanel({
                     )}
                     {canDecide && open.status === "wait" && (
                       <>
-                        <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" onClick={() => setDecide({ vo: open, approve: true, text: "", on: today, file: null })}>
+                        <Button size="sm" className="bg-success text-success-foreground hover:bg-success/90" onClick={() => setDecide({ vo: open, approve: true, text: open.instructionNo ?? "", on: today, file: null })}>
                           <Check size={14} className="me-1.5" aria-hidden="true" />
                           {t("vo.approve")}
                         </Button>

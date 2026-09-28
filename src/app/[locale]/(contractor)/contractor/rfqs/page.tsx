@@ -9,7 +9,9 @@ import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { offersSealed } from "@/lib/procurement/award"
-import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, estimateAtLastPrice, inRfqSegment, optionCount, passesFilters, rfqCategories, rfqInScope, rfqProjectKey, segmentCounts, type DeadlineFilter, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, bulkDeleteSplit, bulkPublishPatch, estimateAtLastPrice, inRfqSegment, optionCount, passesFilters, rfqCategories, rfqInScope, rfqPage, rfqProjectKey, segmentCounts, sortRfqs, type DeadlineFilter, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { actsOnRfq, ownerReadsRfqs, runsRfqs } from "@/lib/procurement/rfq-access"
+import { useRfqRunner } from "@/hooks/useRfqRunner"
 import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
 import { printRfq, rfqPrintModel } from "@/components/procurement/RfqPrint"
 import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
@@ -34,7 +36,7 @@ import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { MfgPurchaseRequestsPanel } from "@/components/contractor/MfgPurchaseRequestsPanel"
 import { RfqOffersSheet, type SheetRfq } from "@/components/contractor/RfqOffersSheet"
 import { Link } from "@/i18n/routing"
-import { useCollectionPaginated, useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
+import { useFirestore, useUser, useMemoFirebase, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, deleteDoc, arrayRemove } from "firebase/firestore"
 import { releaseBoqDrawsForRfq } from "@/lib/boq-draws"
 import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
@@ -66,6 +68,7 @@ export default function ContractorRfqsPage() {
   const setFilter = (key: RfqFilterKey, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value === "all" ? null : value }))
     setSelectedRfqs([])
+    setPages(1)
   }
   const t = useTranslations("Portal.Contractor")
   const tp = useTranslations("Portal.Procurement")
@@ -74,7 +77,14 @@ export default function ContractorRfqsPage() {
   const { toast } = useToast()
   const { user, isUserLoading } = useUser()
   const { can } = usePermissions()
-  const canManageRfqs = can("rfq.manage")
+  // One gate for running RFQs (rfq-access.ts): whoever runs them, the owner
+  // only without staff, a buyer on his own RFQs only.
+  const { runner } = useRfqRunner()
+  const runs = runsRfqs(runner)
+  const ownerReads = ownerReadsRfqs(runner)
+  const actsOn = (rfq: RfqRow) => actsOnRfq(rfq, runner)
+  const canCreate = runs && (can("rfq.create") || can("projects.publish"))
+  const [pages, setPages] = useState(1)
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
   const filtersOn = Object.values(filters).some(Boolean)
@@ -83,6 +93,7 @@ export default function ContractorRfqsPage() {
     setSearchQuery("")
     setFilters({})
     setSelectedRfqs([])
+    setPages(1)
   }
 
   useEffect(() => {
@@ -103,9 +114,9 @@ const handleBatchPublish = async () => {
       return
     }
 
-    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id));
+    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id) && actsOn(rfq));
     const eligible = candidates.filter((rfq: any) => rfq.status === "Draft");
-    const skipped = candidates.length - eligible.length;
+    const skipped = selectedRfqs.length - eligible.length;
     if (eligible.length === 0) {
       toast({ title: t("rfq_bulk_publish_none_eligible"), variant: "destructive" });
       return
@@ -114,14 +125,15 @@ const handleBatchPublish = async () => {
     setIsPublishing(true);
     let published = 0;
     const failedIds: string[] = [];
+    const publicIds: string[] = [];
     for (const rfq of eligible) {
+      // A private draft stays private: publishing never widens its audience.
+      const patch = bulkPublishPatch(rfq, new Date().toISOString())
+      if (!patch) continue
       try {
-        await updateDoc(doc(firestore, "rfqs", rfq.id), {
-          status: "New",
-          visibility: "public",
-          publishedAt: new Date().toISOString()
-        });
+        await updateDoc(doc(firestore, "rfqs", rfq.id), patch);
         published++;
+        if (patch.visibility === "public") publicIds.push(rfq.id)
       } catch (error) {
         console.error(error)
         failedIds.push(rfq.id)
@@ -133,7 +145,7 @@ const handleBatchPublish = async () => {
         + (failedIds.length > 0 ? t("rfq_bulk_publish_failed_suffix", { failed: failedIds.length }) : ""),
       variant: failedIds.length > 0 ? "destructive" : undefined,
     });
-    void notifyFavoriteSuppliersOfPublish(user, eligible.map((r: any) => r.id).filter((id: string) => !failedIds.includes(id)))
+    void notifyFavoriteSuppliersOfPublish(user, publicIds)
     // Keep failed items selected so the user can retry; drop everything else.
     setSelectedRfqs(failedIds);
     setIsPublishing(false);
@@ -146,17 +158,19 @@ const handleBatchPublish = async () => {
   };
 
   const selectAll = () => {
-    const allIds = filteredRfqs.map((rfq: any) => rfq.id);
+    const allIds = filteredRfqs.filter((rfq: any) => actsOn(rfq)).map((rfq: any) => rfq.id);
     setSelectedRfqs(prev => prev.length === allIds.length ? [] : allIds);
   };
 
   const handleBatchDelete = async () => {
     if (isBulkDeleting || !firestore) return
-    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id));
-    const eligible = candidates.filter((rfq: any) => canEditOrDelete(rfq));
-    const skipped = candidates.length - eligible.length;
+    const candidates = filteredRfqs.filter((rfq: any) => selectedRfqs.includes(rfq.id) && actsOn(rfq));
+    // Only a draft is deleted. A published RFQ may already hold offers: it is
+    // withdrawn with «ألغِ الطلب» and a reason on its own page, never erased.
+    const { drafts: eligible, toCancel } = bulkDeleteSplit(candidates as RfqRow[])
+    const skipped = selectedRfqs.length - eligible.length;
     if (eligible.length === 0) {
-      toast({ title: t("rfq_bulk_delete_none_eligible"), variant: "destructive" });
+      toast({ title: t("rfq_bulk_delete_none_eligible"), description: toCancel.length ? tp("rfqx.bulk.cancel_instead", { count: toCancel.length }) : undefined, variant: "destructive" });
       setShowBulkDeleteDialog(false)
       return
     }
@@ -181,7 +195,8 @@ const handleBatchPublish = async () => {
     toast({
       title: t("rfq_delete_success"),
       description: t("rfq_bulk_delete_result", { deleted, skipped })
-        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : ""),
+        + (failedIds.length > 0 ? t("rfq_bulk_delete_failed_suffix", { failed: failedIds.length }) : "")
+        + (toCancel.length > 0 ? ` — ${tp("rfqx.bulk.cancel_instead", { count: toCancel.length })}` : ""),
       variant: failedIds.length > 0 ? "destructive" : undefined,
     })
     // Keep failed items selected so the user can retry; drop everything else.
@@ -191,7 +206,7 @@ const handleBatchPublish = async () => {
   };
 
   const handleDelete = async () => {
-    if (!firestore || !deleteTarget) return
+    if (!firestore || !deleteTarget || deleteTarget.status !== "Draft") return
     setIsDeleting(true)
     try {
       // Hand the tender's BOQ draws back before deleting it — matches the
@@ -221,8 +236,9 @@ const handleBatchPublish = async () => {
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null;
     
-    // Every filter is applied below, not in the query: each chip and each
-    // option counts what it would leave (the prototype's list, R-33/R-35).
+    // The org's whole RFQ set (the same query the procurement world listens
+    // to, so the SDK shares one listener): every chip, option count and
+    // «n من m» counts ALL of them (R-33/R-35); only the cards are paged below.
     return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
   }, [firestore, user, isUserLoading, profile?.organizationId])
 
@@ -284,9 +300,8 @@ const handleBatchPublish = async () => {
     if (!printRfq(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params))) toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
   }
 
-  const { data: rfqs, isLoading: isCollectionLoading, hasMore, loadMore, error } = useCollectionPaginated(rfqsQuery)
+  const { data: rfqs, isLoading: isCollectionLoading, error } = useCollection(rfqsQuery)
   const isLoading = isUserLoading || (isCollectionLoading && !rfqs && !error)
-  const isLoadingMore = isCollectionLoading && !!rfqs
 
   // Every status is loaded so the chips can count; the chip filters here. A
   // search looks in every status: whoever types a tender's name does not know
@@ -295,25 +310,15 @@ const handleBatchPublish = async () => {
   const buyerCategories = ((profile as { procurementCategories?: string[] } | null)?.procurementCategories) || null
   const allRfqs = ((rfqs || []) as RfqRow[]).filter((r) => rfqInScope(r, procWorld.actor, buyerCategories))
   const counts = segmentCounts(allRfqs, filters, now)
-  const filteredRfqs = (allRfqs as any[]).filter((rfq: any) => {
+  const filteredRfqs = sortRfqs((allRfqs as any[]).filter((rfq: any) => {
     if (!searching && !inRfqSegment(rfq, segment)) return false
     if (!passesFilters(rfq, filters, now)) return false
     if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, projectLabel(rfq), directSupplierOf(rfq), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
       return false
     }
     return true
-  }).sort((a: any, b: any) => {
-    const getTs = (ts: any): number => {
-      if (!ts) return 0
-      if (typeof ts === 'string' || typeof ts === 'number') return new Date(ts).getTime()
-      if (typeof ts === 'object' && 'toDate' in ts) return ts.toDate().getTime()
-      if (typeof ts === 'object' && 'seconds' in ts) return ts.seconds * 1000
-      return 0
-    }
-    return getTs(b.createdAt) - getTs(a.createdAt)
-  })
-
-
+  }))
+  const { shown: shownRfqs, hasMore } = rfqPage(filteredRfqs, pages)
 
   const projectKeys = Array.from(new Set(allRfqs.map((r) => rfqProjectKey(r))))
   const filterOptions: Record<RfqFilterKey, Array<{ value: string; label: string }>> = {
@@ -341,9 +346,7 @@ const handleBatchPublish = async () => {
     return true
   }
 
-  const canDelete = (rfq: any) => rfq.status === "Draft"
-
-  const canEditOrDelete = canEdit
+  const canDelete = (rfq: any) => rfq.status === "Draft" && actsOn(rfq)
 
   const glanceHref = glanceRfq ? (glanceRfq.projectId ? `/contractor/projects/${glanceRfq.projectId}/tenders/${glanceRfq.id}/offers` : `/contractor/rfqs/${glanceRfq.id}/offers`) : ""
 
@@ -355,22 +358,24 @@ const handleBatchPublish = async () => {
           title={t("rfqv_title")}
           description={t("rfqv_desc")}
           action={
-            can("rfq.create") && (
+            canCreate ? (
               <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
                 <Link href="/contractor/rfqs/new">
                   <Send size={16} aria-hidden="true" />
                   {t("rfqv_new")}
                 </Link>
               </Button>
-            )
+            ) : ownerReads ? (
+              <span className="text-xs font-semibold text-muted-foreground">{tp("rfqx.owner_reads")}</span>
+            ) : null
           }
         />
 
         {/* Manufacturing's material shortfalls and supplier claims — Procurement acts on them here (MAT-05) */}
         <MfgPurchaseRequestsPanel
-          canStartRfq={can("rfq.manage") || can("rfq.create")}
-          canMarkArrived={can("rfq.manage") || can("warehouses.manage")}
-          canClaim={can("rfq.manage") || can("rfq.create")}
+          canStartRfq={canCreate}
+          canMarkArrived={!ownerReads && (can("rfq.manage") || can("warehouses.manage"))}
+          canClaim={canCreate}
         />
 
         {/* Status chips with their counts · the view toggle (the prototype's list head). */}
@@ -387,6 +392,7 @@ const handleBatchPublish = async () => {
                     setSearchQuery("")
                     setSegment(chip)
                     setSelectedRfqs([])
+                    setPages(1)
                   }}
                   className={cn(
                     "inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors",
@@ -403,7 +409,10 @@ const handleBatchPublish = async () => {
           <div className="flex items-center gap-2">
             <div className="relative">
               <Search className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} aria-hidden="true" />
-              <Input placeholder={t("rfq_search_placeholder")} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-9 w-full rounded-xl bg-card ps-9 sm:w-60" aria-label={t("rfq_search_placeholder")} />
+              <Input placeholder={t("rfq_search_placeholder")} value={searchQuery} onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setPages(1)
+              }} className="h-9 w-full rounded-xl bg-card ps-9 sm:w-60" aria-label={t("rfq_search_placeholder")} />
             </div>
             <div className="flex items-center rounded-xl border bg-card p-1">
               {(["grid", "list"] as const).map((mode) => (
@@ -455,7 +464,7 @@ const handleBatchPublish = async () => {
         </div>
 
         {/* Bulk actions — the list view carries the selection. */}
-        {selectedRfqs.length > 0 && canManageRfqs && (
+        {selectedRfqs.length > 0 && runs && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-module/30 bg-module/5 px-3 py-2">
             {filteredRfqs.some((r: any) => selectedRfqs.includes(r.id) && r.status === "Draft") && (
               <Button onClick={handleBatchPublish} disabled={isPublishing} size="sm" className="gap-2 rounded-lg bg-module text-module-foreground hover:bg-module/90">
@@ -488,10 +497,16 @@ const handleBatchPublish = async () => {
         )}
         {!isLoading && !error && filteredRfqs.length === 0 && (
           <div className="space-y-4 rounded-2xl border border-dashed bg-card p-16 text-center">
-            <p className="text-muted-foreground">{hasActiveFilters ? t("rfq_no_matching") : t("rfq_no_tenders")}</p>
+            <p className="font-bold text-foreground">{tp("rfqx.empty.title")}</p>
+            <p className="text-muted-foreground">{hasActiveFilters ? tp("rfqx.empty.filtered") : tp("rfqx.empty.none")}</p>
+            {hasActiveFilters && (
+              <Button type="button" variant="outline" className="rounded-xl" onClick={clearFilters}>
+                {t("rfq_clear_filters")}
+              </Button>
+            )}
             {!hasActiveFilters && (
               <div className="flex flex-wrap items-center justify-center gap-3">
-                {can("rfq.create") && (
+                {canCreate && (
                   <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
                     <Link href="/contractor/rfqs/new">
                       <Send size={16} />
@@ -500,7 +515,7 @@ const handleBatchPublish = async () => {
                   </Button>
                 )}
                 <Button asChild variant="outline" className="rounded-xl">
-                  <Link href="/contractor/projects">{t("rfq_go_to_projects")}</Link>
+                  <Link href="/contractor/rfqs/requests">{tp("rfqx.empty.incoming")}</Link>
                 </Button>
               </div>
             )}
@@ -509,7 +524,7 @@ const handleBatchPublish = async () => {
 
         {!isLoading && filteredRfqs.length > 0 && viewMode === "grid" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {filteredRfqs.map((rfq: any) => {
+            {shownRfqs.map((rfq: any) => {
               const offersHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`
               const editHref = rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/new?edit=${rfq.id}` : `/contractor/rfqs/new?edit=${rfq.id}`
               return (
@@ -522,7 +537,7 @@ const handleBatchPublish = async () => {
                   offersHref={offersHref}
                   editHref={editHref}
                   directSupplier={directSupplierOf(rfq)}
-                  canManage={canManageRfqs && canEdit(rfq)}
+                  canManage={actsOn(rfq) && canEdit(rfq)}
                   canDelete={canDelete(rfq)}
                   onGlance={() => setGlanceRfq(rfq)}
                   onShare={() => setShareTarget(rfq)}
@@ -544,7 +559,7 @@ const handleBatchPublish = async () => {
 
         {!isLoading && filteredRfqs.length > 0 && viewMode === "list" && (
           <RfqTable
-            rows={filteredRfqs.map((rfq: any) => ({
+            rows={shownRfqs.map((rfq: any) => ({
               rfq,
               projectLabel: projectLabel(rfq),
               sealed: offersSealed(rfq, procWorld.policies, now),
@@ -554,16 +569,17 @@ const handleBatchPublish = async () => {
             now={now}
             seesPrices={procWorld.actor.seesPrices}
             selected={selectedRfqs}
+            selectable={(rfq) => actsOn(rfq)}
+            hrefOf={(rfq) => (rfq.projectId ? `/contractor/projects/${rfq.projectId}/tenders/${rfq.id}/offers` : `/contractor/rfqs/${rfq.id}/offers`)}
             onToggle={toggleSelectRfq}
             onToggleAll={selectAll}
             onGlance={(rfq) => setGlanceRfq(rfq as SheetRfq)}
           />
         )}
 
-        {hasMore && filteredRfqs.length > 0 && (
+        {hasMore && (
           <div className="p-2 text-center">
-            <Button onClick={loadMore} disabled={isLoadingMore} variant="outline" className="rounded-xl font-bold">
-              {isLoadingMore && <Loader2 className="me-2 animate-spin" size={16} />}
+            <Button onClick={() => setPages((n) => n + 1)} variant="outline" className="rounded-xl font-bold">
               {t("rfq_load_more")}
             </Button>
           </div>
@@ -576,7 +592,7 @@ const handleBatchPublish = async () => {
         onClose={() => setShareTarget(null)}
       />
 
-      <RfqExtendDialog target={extendTarget} actor={procWorld.actor} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
+      <RfqExtendDialog target={extendTarget} actor={runner} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

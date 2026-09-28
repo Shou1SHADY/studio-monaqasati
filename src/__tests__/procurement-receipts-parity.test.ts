@@ -118,6 +118,12 @@ describe("the desk: filters, pills, shipments, receivers", () => {
     const early = order({ promisedDate: "2026-10-30" })
     expect(incomingPill(incomingRows([notice("2026-09-21", { forwardedTo: fw })], [early], NOW)[0], 1)).toEqual({ kind: "passed_no_receipt" })
     expect(incomingPill(incomingRows([notice("2026-09-28", { forwardedTo: fw })], [early], NOW)[0], 1)).toEqual({ kind: "in_days", days: 6 })
+    // Unforwarded before the window: still ours to forward (blue) — the prototype shows it on every one.
+    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], 1)).toEqual({ kind: "to_forward", tone: "info" })
+    // Routed to both at once: nothing waits on us.
+    expect(incomingPill(incomingRows([notice("2026-09-28")], [early], NOW)[0], 1, "both")).toEqual({ kind: "in_days", days: 6 })
+    // A notice a receipt already took is no longer on the way.
+    expect(incomingRows([notice("2026-09-28", { closedByReceipt: { deliveryId: "d2", docNumber: "GR-2026/002" } })], [], NOW)).toEqual([])
     const due = incomingRows([], [order({ promisedDate: "2026-09-18" })], NOW)[0]
     expect(incomingPill(due, 1)).toEqual({ kind: "due_late", days: 4 })
   })

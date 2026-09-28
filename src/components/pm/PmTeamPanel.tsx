@@ -7,6 +7,9 @@
 // folded list with their dates and the reason. A project with no manager says
 // so in red: only the owner approves on it until one is appointed. Beside it,
 // how a person's access here is computed — assignment narrows, never grants.
+// Each person also carries his riyal approval limit (seen by holders of money)
+// and «no prices» when his system role sees no amounts — both the system's,
+// never changed from a project.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
@@ -15,14 +18,18 @@ import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { Panel } from "@/components/module-ui/Panel"
 import { StatusPill } from "@/components/module-ui/StatusPill"
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase"
-import { collection } from "firebase/firestore"
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { collection, doc } from "firebase/firestore"
+import { EyeOff } from "lucide-react"
 import { legacyAwareRole, usePermissions } from "@/hooks/usePermissions"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import { effectiveDuties, mayManageTeam, pmCeiling, PM_ROLE_TEMPLATES, seatActive, seatFromMember, type PmDuty, type PmSeat } from "@/lib/pm/access"
-import { pmDate, todayDay } from "@/lib/pm/format"
-import { orderSeats, type SeatLogEntry } from "@/lib/pm/team"
+import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
+import { approvalLimitOf, orderSeats, PM_HANDED_OVER, type SeatLogEntry } from "@/lib/pm/team"
+import { resolvePolicies } from "@/lib/procurement/policies"
+import { PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
+import type { TeamGroup } from "@/lib/permissions"
 import { AssignSeatDialog, type SeatCandidate } from "./AssignSeatDialog"
 import { RemoveSeatDialog } from "./RemoveSeatDialog"
 
@@ -34,10 +41,11 @@ export function PmTeamPanel({
   access,
 }: {
   projectId: string
-  project: { organizationId?: string; projectManagerId?: string | null }
+  project: { organizationId?: string; projectManagerId?: string | null; projectManagerName?: string | null }
   access: PmAccess
 }) {
   const t = useTranslations("Portal.PM")
+  const tShared = useTranslations("Portal.Shared")
   const locale = useLocale()
   const firestore = useFirestore()
   const { user } = useUser()
@@ -64,6 +72,31 @@ export function PmTeamPanel({
     }
   }, [groups, orgMembers])
   const groupOf = (uid: string) => ((orgMembers.find((x) => x.id === uid)?.defaultGroupId as string | undefined) ?? null)
+  const settingsRef = useMemoFirebase(() => (firestore && project.organizationId ? doc(firestore, PROCUREMENT_SETTINGS, project.organizationId) : null), [firestore, project.organizationId])
+  const { data: procSettings } = useDoc(settingsRef)
+  const managerLimit = resolvePolicies(procSettings as Partial<ProcurementPolicies> | null).managerApprovalLimit
+  const limitOf = (uid: string) => {
+    const m = orgMembers.find((x) => x.id === uid) as Record<string, unknown> | undefined
+    const g = groups.find((x) => x.id === ((m?.defaultGroupId as string) ?? ""))
+    return approvalLimitOf({ owner: legacyAwareRole(m) === "owner", permissions: (g?.permissions as string[] | undefined) ?? [] }, managerLimit)
+  }
+  const systemRoleOf = (uid: string) => {
+    const g = groups.find((x) => x.id === groupOf(uid)) as TeamGroup | undefined
+    return g ? (g.key ? tShared(`team_group_${g.key}` as "team_group_viewer") : g.name) : null
+  }
+  const money = access.has("money")
+  const limitPill = (uid: string) => {
+    const l = limitOf(uid)
+    if (!money || l === null) return null
+    return <StatusPill tone="mute">{t("team.limit_pill", { limit: l === "any" ? t("team.limit_none") : pmMoney(l) })}</StatusPill>
+  }
+  const noPrices = (uid: string) =>
+    ceilingOf(uid).has("money") ? null : (
+      <StatusPill tone="info">
+        <EyeOff size={11} className="me-1 inline" aria-hidden="true" />
+        {t("team.no_prices")}
+      </StatusPill>
+    )
 
   const rows: MemberRow[] = useMemo(() => {
     const list = (members ?? []).map((m) => {
@@ -80,8 +113,8 @@ export function PmTeamPanel({
   const admin = access.ctx.ceiling.has("admin")
   const candidates: SeatCandidate[] = orgMembers
     .filter((m) => !liveIds.has(m.id) && legacyAwareRole(m) !== "owner")
-    .map((m) => ({ uid: m.id, name: nameOf(m.id), groupId: groupOf(m.id), ceiling: ceilingOf(m.id) }))
-  const candidateFor = (uid: string): SeatCandidate[] => [{ uid, name: nameOf(uid), groupId: groupOf(uid), ceiling: ceilingOf(uid) }]
+    .map((m) => ({ uid: m.id, name: nameOf(m.id), groupId: groupOf(m.id), ceiling: ceilingOf(m.id), systemRole: systemRoleOf(m.id), limit: limitOf(m.id) }))
+  const candidateFor = (uid: string): SeatCandidate[] => [{ uid, name: nameOf(uid), groupId: groupOf(uid), ceiling: ceilingOf(uid), systemRole: systemRoleOf(uid), limit: limitOf(uid) }]
   const actor = { uid: user?.uid ?? "", name: (profile?.name as string) || user?.email || null }
 
   const logLine = (e: SeatLogEntry) => {
@@ -151,6 +184,8 @@ export function PmTeamPanel({
                       <StatusPill tone={s.role === "pm" ? "module" : "mute"}>{s.role === "other" && s.roleName ? s.roleName : t(`role.${s.role}`)}</StatusPill>
                       {s.role === "other" && <StatusPill tone="mute">{t("team.custom_role")}</StatusPill>}
                       {r.id === user?.uid && <StatusPill tone="info">{t("team.you")}</StatusPill>}
+                      {limitPill(r.id)}
+                      {noPrices(r.id)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {t("team.since", { date: pmDate(s.from, locale) })}
@@ -243,7 +278,7 @@ export function PmTeamPanel({
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {s.role === "other" && s.roleName ? s.roleName : t(`role.${s.role}`)} · {pmDate(s.from, locale)} — {pmDate(s.to, locale)}
-                      {s.why && ` · ${s.why}`}
+                      {s.why && ` · ${s.why === PM_HANDED_OVER ? t("team.pm_handed_over") : s.why}`}
                       {r.byOut && ` · ${nameOf(r.byOut)}`}
                     </p>
                   </li>
@@ -269,6 +304,7 @@ export function PmTeamPanel({
         }}
         projectId={projectId}
         projectManagerId={project.projectManagerId ?? null}
+        projectManagerName={project.projectManagerName ?? (project.projectManagerId ? nameOf(project.projectManagerId) : null)}
         access={access}
         actor={actor}
         candidates={editing ? candidateFor(editing.uid) : candidates}
@@ -307,6 +343,72 @@ function PermHelp({ cut }: { cut: Array<{ name: string; off: PmDuty[] }> }) {
         <Callout tone="warn" className="mt-2.5">
           {t("team.help.cut", { count: cut.length, list: cut.map((c) => `${c.name} (${c.off.map((d) => t(`duty.${d}`)).join("، ")})`).join(" · ") })}
         </Callout>
+      )}
+    </Panel>
+  )
+}
+
+/** File › Contract details: the project's team at a glance (the prototype's
+ * fileTeam) — role here, the system role, the riyal approval limit (holders of
+ * money) and «no prices» for a person whose system role sees no amounts. */
+export function PmTeamRoster({ projectId, project, access }: { projectId: string; project: { organizationId?: string; projectManagerId?: string | null }; access: PmAccess }) {
+  const t = useTranslations("Portal.PM")
+  const firestore = useFirestore()
+  const { groups } = usePermissions()
+  const { orgMembers } = useOrgMembers(project.organizationId)
+  const today = todayDay()
+  const membersQuery = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, "members") : null), [firestore, projectId])
+  const { data: members } = useCollection(membersQuery)
+  const settingsRef = useMemoFirebase(() => (firestore && project.organizationId ? doc(firestore, PROCUREMENT_SETTINGS, project.organizationId) : null), [firestore, project.organizationId])
+  const { data: procSettings } = useDoc(settingsRef)
+  const managerLimit = resolvePolicies(procSettings as Partial<ProcurementPolicies> | null).managerApprovalLimit
+  const money = access.has("money")
+
+  const people = useMemo(() => {
+    const seats = (members ?? []).map((m) => seatFromMember(m as Record<string, unknown>, m.id)).filter((s): s is PmSeat => Boolean(s && seatActive(s, today)))
+    return orderSeats(seats, today).map((s) => {
+      const m = orgMembers.find((x) => x.id === s.uid) as Record<string, unknown> | undefined
+      const perms = (groups.find((g) => g.id === ((m?.defaultGroupId as string) ?? ""))?.permissions as string[] | undefined) ?? []
+      const owner = legacyAwareRole(m) === "owner"
+      return {
+        seat: s,
+        name: (m?.name as string) || (m?.email as string) || s.uid,
+        limit: approvalLimitOf({ owner, permissions: perms }, managerLimit),
+        prices: pmCeiling({ owner, permissions: perms }).has("money"),
+      }
+    })
+  }, [members, orgMembers, groups, managerLimit, today])
+
+  return (
+    <Panel title={t("team.roster_title")} icon={Users}>
+      <p className="mb-2 text-xs text-muted-foreground">{t("team.roster_sub")}</p>
+      {people.length === 0 ? (
+        <p className="py-3 text-center text-sm text-muted-foreground">{t("team.nobody")}</p>
+      ) : (
+        <ul className="divide-y">
+          {people.map((p) => (
+            <li key={p.seat.uid} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold" dir="auto">
+                  {p.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {p.seat.role === "other" && p.seat.roleName ? p.seat.roleName : t(`role.${p.seat.role}`)}
+                  {p.seat.uid === project.projectManagerId && ` · ${t("team.manager_here")}`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {money && p.limit !== null && <StatusPill tone="mute">{t("team.limit_pill", { limit: p.limit === "any" ? t("team.limit_none") : pmMoney(p.limit) })}</StatusPill>}
+                {!p.prices && (
+                  <StatusPill tone="info">
+                    <EyeOff size={11} className="me-1 inline" aria-hidden="true" />
+                    {t("team.no_prices")}
+                  </StatusPill>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </Panel>
   )

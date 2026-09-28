@@ -9,7 +9,7 @@ import { useTranslations } from "next-intl"
 import { pmMoney, pmPct } from "@/lib/pm/format"
 import type { ContractTerms, TermKey } from "@/lib/pm/terms"
 
-export function useTermMeaning({ contractValue, retentionHeld, money }: { contractValue: number; retentionHeld: number; money: boolean }) {
+export function useTermMeaning({ contractValue, retentionHeld, money, advanceRecovered }: { contractValue: number; retentionHeld: number; money: boolean; advanceRecovered?: number }) {
   const t = useTranslations("Portal.PM")
   const amount = useCallback((n: number) => (money ? pmMoney(n) : "•••"), [money])
   return useCallback(
@@ -20,7 +20,13 @@ export function useTermMeaning({ contractValue, retentionHeld, money }: { contra
         case "basis":
           return { note: t(`terms.mean.basis.${terms.basis}`), warn: terms.basis === "lump" ? t("terms.warn.lump") : undefined }
         case "advance":
-          return terms.advance > 0 ? { note: t("terms.mean.advance", { amount: amount(contractValue * terms.advance) }) } : { warn: t("terms.warn.no_advance") }
+          if (!(terms.advance > 0)) return { warn: t("terms.warn.no_advance") }
+          return {
+            note:
+              advanceRecovered === undefined
+                ? t("terms.mean.advance", { amount: amount(contractValue * terms.advance) })
+                : `${t("terms.mean.advance", { amount: amount(contractValue * terms.advance) })} · ${t("terms.mean.advance_left", { amount: amount(Math.max(0, contractValue * terms.advance - advanceRecovered)) })}`,
+          }
         case "retention":
           return {
             note: t("terms.mean.retention", { held: amount(retentionHeld) }),
@@ -44,6 +50,6 @@ export function useTermMeaning({ contractValue, retentionHeld, money }: { contra
           return {}
       }
     },
-    [t, amount, contractValue, retentionHeld]
+    [t, amount, contractValue, retentionHeld, advanceRecovered]
   )
 }
