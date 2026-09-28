@@ -9,6 +9,7 @@
  * set I18N_FRAGMENTS=<dir of *.ar.json/*.en.json> to overlay it.
  */
 
+import { DEFAULT_RESOLVED_POLICIES } from "@/lib/procurement/policies"
 import { fireEvent, render, screen } from "@testing-library/react"
 import fs from "fs"
 import path from "path"
@@ -156,6 +157,13 @@ jest.mock("@/hooks/useProcurementWorld", () => ({ useProcurementWorld: () => moc
 let mockAgreements: PriceAgreement[] = []
 jest.mock("@/hooks/useProcurementPrices", () => ({ useProcurementPrices: () => ({ agreements: mockAgreements, history: [], ready: true }) }))
 
+// The needs desk has its own tests (procurement-need-desk.test.ts); here it is empty.
+jest.mock("@/hooks/useProcurementNeeds", () => ({
+  useProcurementNeeds: () => ({ loading: false, rows: [], needs: [], buyers: [], viewerCategories: null, ownerHasTeam: false, mfgByKey: new Map(), mfgRequests: {}, products: [], mfgSettings: {}, stockLoading: false, onHand: () => null }),
+}))
+jest.mock("@/hooks/useRfqQueries", () => ({ useRfqQueries: () => [] }))
+jest.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }))
+
 import { ProcurementToday } from "@/components/procurement/ProcurementToday"
 
 // ---------------------------------------------------------------------------
@@ -208,19 +216,19 @@ const canOf = (...perms: PermissionId[]): Can => (p) => perms.includes(p)
 // ---------------------------------------------------------------------------
 
 describe("SHELL-01 · the tab rail is gated like the sidebar", () => {
-  it("is the PRD's eight tabs, in order, for the owner", () => {
-    expect(visibleProcTabs(() => true).map((t) => t.id)).toEqual(["today", "rfqs", "requests", "orders", "receipts", "suppliers", "reports", "settings"])
-    expect(PROC_TABS.map((t) => t.href)).toEqual(["/contractor/rfqs/today", "/contractor/rfqs", "/contractor/rfqs/requests", "/contractor/rfqs/orders", "/contractor/goods-received", "/contractor/suppliers", "/contractor/rfqs/reports", "/contractor/rfqs/settings"])
+  it("is the prototype's eight tabs, in its order, for the owner", () => {
+    expect(visibleProcTabs(() => true).map((t) => t.id)).toEqual(["today", "requests", "rfqs", "orders", "receipts", "suppliers", "reports", "settings"])
+    expect(PROC_TABS.map((t) => t.href)).toEqual(["/contractor/rfqs/today", "/contractor/rfqs/requests", "/contractor/rfqs", "/contractor/rfqs/orders", "/contractor/goods-received", "/contractor/suppliers", "/contractor/rfqs/reports", "/contractor/rfqs/settings"])
   })
 
-  it("an expediter opens Today and Orders — never reports or settings", () => {
-    expect(visibleProcTabs(canOf("po.expedite")).map((t) => t.id)).toEqual(["today", "orders"])
+  it("an expediter follows orders and receipts and reads suppliers, reports and boundaries — no requests, no RFQs", () => {
+    expect(visibleProcTabs(canOf("po.expedite")).map((t) => t.id)).toEqual(["today", "orders", "receipts", "suppliers", "reports", "settings"])
   })
 
-  it("a receiver opens Today and Goods received only; an approver gets settings", () => {
+  it("a receiver opens Today and Goods received only; a buyer gets the requests without the RFQ list", () => {
     expect(visibleProcTabs(canOf("deliveries.confirm")).map((t) => t.id)).toEqual(["today", "receipts"])
-    expect(visibleProcTabs(canOf("po.approve")).map((t) => t.id)).toEqual(["today", "orders", "settings"])
-    expect(visibleProcTabs(canOf("offers.view")).map((t) => t.id)).toEqual(["today", "orders", "reports"])
+    expect(visibleProcTabs(canOf("po.approve")).map((t) => t.id)).toEqual(["today", "orders", "receipts", "suppliers", "reports", "settings"])
+    expect(visibleProcTabs(canOf("offers.accept")).map((t) => t.id)).toEqual(["today", "requests", "orders", "receipts", "suppliers", "reports", "settings"])
   })
 
   it("nobody outside Procurement sees a tab", () => {
@@ -314,8 +322,9 @@ const loaded = (over: Partial<ProcurementWorld> = {}): ProcurementWorld => ({
   deliveries: [],
   rfqs: [],
   offers: [],
-  policies: DEFAULT_POLICIES,
+  policies: DEFAULT_RESOLVED_POLICIES,
   supplierFacts: new Map(),
+  supplierRecords: [],
   actor: MANAGER,
   orgId: "org",
   orgName: "Org",
@@ -385,9 +394,9 @@ describe("SHELL-06 · Today renders over a fake world", () => {
     expect(waitsPanel.querySelectorAll("a")).toHaveLength(0)
     expect(waitsPanel.textContent).toContain(locale === "ar" ? "ط.ش-2026/019" : "PO-2026/019")
     expect(waitsPanel.textContent).toContain(locale === "ar" ? "ط.ش-2026/020" : "PO-2026/020")
-    // Arriving this week: the notice on PO-2026/007, linked to the receipt.
+    // Arriving this week: listed by order (P-28) — the notice on PO-2026/007 opens its order.
     const arriving = container.querySelectorAll("section")[2]
-    expect(arriving.querySelector("a")?.getAttribute("href")).toBe("/contractor/goods-received?tab=incoming&delivery=n1")
+    expect(arriving.querySelector("a")?.getAttribute("href")).toBe("/contractor/rfqs/orders?po=g")
   })
 
   it("the group chips filter the list and show counts", () => {

@@ -1,53 +1,22 @@
 "use client"
 
-import { useTranslations, useLocale } from 'next-intl'
+// Procurement › Suppliers (PRD 3.0 §7.2, prototype vSup). Four segments: our
+// suppliers (with the invitations we sent), the platform directory, and — for
+// those who see prices only — the price agreements and the price history.
+// `?segment=` opens one directly (the Today queue links to the agreements) and
+// is refused silently for a price segment the viewer may not see; `?supplier=`,
+// `?agreement=` and `?material=` open a drawer, so a notification or a Today
+// row can land on the record itself.
+
+import { useMemo, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
+import { useSearchParams } from "next/navigation"
+import { addDoc, arrayRemove, arrayUnion, collection, doc, query, serverTimestamp, updateDoc, where } from "firebase/firestore"
+import { Briefcase, Loader2, Search, Send, UserPlus, X } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
-import { cn } from "@/lib/utils"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import {
-  Search,
-  MapPin,
-  Star,
-  ShieldCheck,
-  Filter,
-  ChevronLeft,
-  Briefcase,
-  Loader2,
-  X,
-  Heart,
-  FolderOpen,
-  Mail,
-  Send,
-  XCircle,
-  Calendar,
-  UserPlus,
-  LayoutGrid,
-  Rows3,
-} from "lucide-react"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger
-} from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription
-} from "@/components/ui/dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,316 +27,150 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase"
-import { collection, query, where, doc, addDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore"
-import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { EmptyState } from "@/components/module-ui/EmptyState"
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { usePermissions } from "@/hooks/usePermissions"
-import { useCompanyNamesForMembers } from "@/hooks/useActiveCompanyName"
-import { useIdentityOverlays } from "@/hooks/useIdentityOverlays"
-import { stripIdentityFields } from "@/lib/identity-fields"
-import { displayCategory, displayCity } from "@/lib/constants"
-import { useProcActor } from "@/hooks/useProcActor"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
+import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useSupplierDirectory, type PlatformSupplier } from "@/hooks/useSupplierDirectory"
+import { matchesSearch } from "@/lib/search-text"
+import { displayCategory } from "@/lib/constants"
+import { MFG_PRODUCTS } from "@/lib/manufacturing-engine"
+import { poStatus, supplierScore, todayOf } from "@/lib/procurement/po"
+import { makeOrBuyKeys, ordersOfSupplier, rfqInviteFacts, segmentFromParam, visibleSupplierSegments, type SupplierTabSegment } from "@/lib/procurement/supplier-file"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { OurSuppliersTable, type SupplierRow } from "@/components/procurement/OurSuppliersTable"
+import { SupplierDirectory } from "@/components/procurement/SupplierDirectory"
+import { SupplierFileDrawer } from "@/components/procurement/SupplierFileDrawer"
+import { DirectoryDrawer } from "@/components/procurement/DirectoryDrawer"
+import { SupplierInvitations, type InvitationDoc } from "@/components/procurement/SupplierInvitations"
+import { InviteSupplierDialog } from "@/components/procurement/InviteSupplierDialog"
 import { PriceAgreementsView } from "@/components/procurement/PriceAgreementsView"
 import { PriceHistoryView } from "@/components/procurement/PriceHistoryView"
-import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
-import { StatusPill, type PillTone } from "@/components/module-ui/StatusPill"
-import { useProcurementWorld } from "@/hooks/useProcurementWorld"
-import { poStatus, supplierScore, type SupplierScore } from "@/lib/procurement/po"
-
-/** What the table shows of a supplier's record with us (PRD 3.0 §7.2): computed from its orders, never typed. */
-type SupplierRecord = SupplierScore & { open: number }
 
 const OPEN_WITH_SUPPLIER = new Set(["sent", "accepted", "in_delivery", "part_received"])
-
-function docsState(s: { taxNumber?: unknown; legalDocuments?: { cr?: { expiryDate?: unknown } } }, today: string): "ok" | "cr_expired" | "no_vat" | "unknown" {
-  const cr = typeof s.legalDocuments?.cr?.expiryDate === "string" ? s.legalDocuments.cr.expiryDate.slice(0, 10) : null
-  if (cr && cr < today) return "cr_expired"
-  if (!String(s.taxNumber ?? "").trim()) return cr ? "no_vat" : "unknown"
-  return "ok"
-}
-
-const DOCS_TONE: Record<ReturnType<typeof docsState>, PillTone> = { ok: "ok", cr_expired: "bad", no_vat: "warn", unknown: "mute" }
 
 function fmtDate(val: unknown, locale: string) {
   if (!val) return "–"
   const d =
-    val && typeof val === "object" && "toDate" in val && typeof (val as { toDate: () => Date }).toDate === "function"
+    typeof val === "object" && val !== null && "toDate" in val && typeof (val as { toDate: () => Date }).toDate === "function"
       ? (val as { toDate: () => Date }).toDate()
       : new Date(val as string | number)
-  return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
+  return d.toLocaleDateString(locale === "ar" ? "ar-SA-u-nu-latn" : "en-US", { year: "numeric", month: "short", day: "numeric" })
 }
- 
-const VIEW_MODE_KEY = "contractor_suppliers_view_mode"
 
-export default function SuppliersDirectory() {
-  const t = useTranslations("Portal.Contractor")
+/** Keeps the drawer params in the address bar without a navigation. */
+function replaceParams(update: (params: URLSearchParams) => void) {
+  try {
+    const url = new URL(window.location.href)
+    update(url.searchParams)
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`)
+  } catch {
+    /* not in a browser */
+  }
+}
+
+export default function SuppliersPage() {
+  const t = useTranslations("Portal.ProcSuppliers")
+  const tC = useTranslations("Portal.Contractor")
   const locale = useLocale()
-
-  const { user, isUserLoading } = useUser()
+  const [now] = useState(() => new Date())
+  const today = todayOf(now)
+  const { user } = useUser()
   const firestore = useFirestore()
   const { toast } = useToast()
-  const [selectedSupplier, setSelectedSupplier] = useState<any>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterCity, setFilterCity] = useState<string>("all")
-  const [filterSpecialization, setFilterSpecialization] = useState<string>("all")
-  const [showFilters, setShowFilters] = useState(false)
-  const [showInviteDialog, setShowInviteDialog] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState("")
-  const [inviteCompanyName, setInviteCompanyName] = useState("")
-  const [isSendingInvite, setIsSendingInvite] = useState(false)
-  const [removeTarget, setRemoveTarget] = useState<{ id: string; supplierName?: string } | null>(null)
-  // 22 Sep review: the platform's suppliers and the company's own are two
-  // different questions; and a guide of many suppliers wants a table.
-  // PRD 3.0 SS7.2: the Suppliers tab has four segments. The first two scope the
-  // directory; the last two are Procurement's own price records. `?segment=` opens
-  // one directly — the Today queue's renewal reminder links straight to the
-  // agreements, and a reminder that lands on the wrong segment is not a link.
-  const searchParams = useSearchParams()
-  const [scope, setScope] = useState<"mine" | "platform" | "agreements" | "history">(() => {
-    const asked = searchParams?.get("segment")
-    return asked === "agreements" || asked === "history" || asked === "platform" ? asked : "mine"
-  })
-  const [viewMode, setViewModeState] = useState<"grid" | "table">("table")
-  // Read after mount: the server renders the table, and the first client render
-  // must match it.
-  useEffect(() => {
-    try {
-      if (window.localStorage.getItem(VIEW_MODE_KEY) === "grid") setViewModeState("grid")
-    } catch {
-      /* private browsing */
-    }
-  }, [])
-  const setViewMode = (m: "grid" | "table") => {
-    setViewModeState(m)
-    try {
-      window.localStorage.setItem(VIEW_MODE_KEY, m)
-    } catch {
-      /* private browsing */
-    }
-  }
-  const [isRemoving, setIsRemoving] = useState(false)
-  const userDocRef = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return doc(firestore, "users", user!.uid)
-  }, [firestore, user, isUserLoading])
-  const { data: profile } = useDoc(userDocRef)
-
   const { can } = usePermissions()
-  const canManageSuppliers = can("suppliers.manage")
+  const canManage = can("suppliers.manage")
+  const searchParams = useSearchParams()
 
-  // Procurement's own price records (PRD SS4 `AGR` / `PH`). Signing or renewing an
-  // agreement commits the company to a price, so it asks the hand that awards or
-  // approves an order, not the one that keeps the supplier list.
-  const { actor, orgId: procOrgId } = useProcActor()
-  const { agreements, history, ready: pricesReady } = useProcurementPrices(procOrgId)
+  const world = useProcurementWorld()
+  const { orders, deliveries, rfqs, offers, actor, orgId, orgName } = world
+  const { agreements, history, ready: pricesReady } = useProcurementPrices(orgId)
   const mayEditAgreements = actor.isOwner || actor.canPrepare || actor.canApprove
-  // Each supplier's record with us, from our own orders and receipts.
-  const { orders: procOrders, deliveries: procDeliveries } = useProcurementWorld()
-  const recordByOrg = new Map<string, SupplierRecord>()
-  {
-    const now = new Date()
-    const bySupplier = new Map<string, typeof procOrders>()
-    for (const o of procOrders) {
-      if (!o.supplierOrgId) continue
-      bySupplier.set(o.supplierOrgId, [...(bySupplier.get(o.supplierOrgId) || []), o])
+
+  const userDocRef = useMemoFirebase(() => (firestore && user ? doc(firestore, "users", user.uid) : null), [firestore, user])
+  const { data: profile } = useDoc<{ favoriteSuppliers?: string[] }>(userDocRef)
+  const favoriteIds = useMemo(() => profile?.favoriteSuppliers || [], [profile?.favoriteSuppliers])
+  const { suppliers, loading } = useSupplierDirectory(orgId, favoriteIds, offers)
+
+  const invitationsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "invitations"), where("contractorOrgId", "==", orgId)) : null), [firestore, orgId])
+  const { data: invitationDocs } = useCollection<Omit<InvitationDoc, "id">>(invitationsQ)
+  const invitations = useMemo(() => ((invitationDocs || []) as InvitationDoc[]).filter((i) => i.type === "supplier_invite"), [invitationDocs])
+  const pendingInvitations = invitations.filter((i) => i.status === "pending").length
+
+  const productsQ = useMemoFirebase(() => (firestore && orgId && actor.seesPrices ? query(collection(firestore, MFG_PRODUCTS), where("organizationId", "==", orgId)) : null), [firestore, orgId, actor.seesPrices])
+  const { data: productDocs } = useCollection<{ name?: string }>(productsQ)
+  const makeOrBuy = useMemo(() => makeOrBuyKeys((productDocs || []).map((p) => p.name)), [productDocs])
+
+  const [asked, setAsked] = useState<string | null>(() => searchParams?.get("segment") || null)
+  const segment = segmentFromParam(asked, actor.seesPrices)
+  const pickSegment = (s: SupplierTabSegment) => {
+    setAsked(s)
+    replaceParams((p) => (s === "mine" ? p.delete("segment") : p.set("segment", s)))
+  }
+
+  const [fileId, setFileId] = useState<string | null>(() => searchParams?.get("supplier") || null)
+  const [dirId, setDirId] = useState<string | null>(null)
+  const [agreementId, setAgreementId] = useState<string | null>(() => searchParams?.get("agreement") || null)
+  const [materialKeyParam, setMaterialKeyParam] = useState<string | null>(() => searchParams?.get("material") || null)
+  const openFile = (id: string | null) => {
+    setFileId(id)
+    replaceParams((p) => (id ? p.set("supplier", id) : p.delete("supplier")))
+  }
+  const openAgreement = (id: string | null) => {
+    setAgreementId(id)
+    if (id) {
+      setFileId(null)
+      setAsked("agreements")
     }
-    bySupplier.forEach((list, id) => {
-      recordByOrg.set(id, { ...supplierScore(list, procDeliveries, now), open: list.filter((o) => OPEN_WITH_SUPPLIER.has(poStatus(o))).length })
+    replaceParams((p) => {
+      p.delete("supplier")
+      if (id) {
+        p.set("segment", "agreements")
+        p.set("agreement", id)
+      } else p.delete("agreement")
     })
   }
-  /** The two segments that list suppliers; the other two are price records. */
-  const directory = scope === "mine" || scope === "platform"
 
-  const suppliersQuery = useMemoFirebase(() => {
-    if (!firestore) return null
-    return query(collection(firestore, "users"), where("role", "==", "Supplier"))
-  }, [firestore])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [showInvite, setShowInvite] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<PlatformSupplier | null>(null)
+  const [removing, setRemoving] = useState(false)
 
-  const { data: fbSuppliers, isLoading: suppliersLoading } = useCollection(suppliersQuery)
-  const supplierCompanyNames = useCompanyNamesForMembers((fbSuppliers || []) as any[])
-  // A supplier account that's switched into a secondary company (added via
-  // the company-switcher) has that company's identity fields on
-  // organizations/{id}, not on its own users/{id} doc — see useIdentityOverlays.
-  const supplierIdentityOverlays = useIdentityOverlays((fbSuppliers || []) as { id: string; organizationId?: string; organizationRole?: string }[])
-
-  // Fetch contractor's RFQs
-  const rfqsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user!.uid))
-  }, [firestore, user, isUserLoading, profile?.organizationId])
-  
-  const { data: myRfqs } = useCollection(rfqsQuery)
-  const myRfqIds = myRfqs?.map((r: any) => r.id) || []
-
-  // Suppliers this contractor has an active connection with (invited/accepted via My Suppliers)
-  const myOrgId = profile?.organizationId || user?.uid
-  const linksQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore || !myOrgId) return null
-    return query(
-      collection(firestore, "contractorSupplierLinks"),
-      where("contractorOrgId", "==", myOrgId)
-    )
-  }, [firestore, user, isUserLoading, myOrgId])
-  const { data: supplierLinks, isLoading: linksLoading } = useCollection(linksQuery)
-  const connectedSupplierOrgIds = (supplierLinks || [])
-    .filter((l: any) => l.status === "active")
-    .map((l: any) => l.supplierOrgId)
-    .filter(Boolean)
-
-  // Invitations this contractor has sent (to track pending/accepted/declined status)
-  const invitationsQuery = useMemoFirebase(() => {
-    if (isUserLoading || !user || !firestore) return null
-    return query(collection(firestore, "invitations"), where("invitedBy", "==", user.uid))
-  }, [firestore, user, isUserLoading])
-  const { data: allInvitations } = useCollection(invitationsQuery)
-  const sentInvitations = (allInvitations || []).filter(
-    (inv: any) => inv.type === "supplier_invite"
-  )
-
-  const handleSendInvitation = async () => {
-    if (!user || !myOrgId) return
-    const email = inviteEmail.trim().toLowerCase()
-    if (!email) {
-      toast({ title: t("my_sup_invite_empty_email"), variant: "destructive" })
-      return
-    }
-    setIsSendingInvite(true)
-    try {
-      const idToken = await user.getIdToken()
-      const res = await fetch("/api/invitations/send", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ email, companyName: inviteCompanyName.trim() || undefined }),
+  const mineRows = useMemo<SupplierRow[]>(() => {
+    const rows = suppliers
+      .filter((s) => s.isMine)
+      .map((s) => {
+        const list = ordersOfSupplier(orders, s.orgId)
+        return {
+          ...s,
+          score: supplierScore(list, deliveries, now, rfqInviteFacts(s.orgId, s.memberIds, rfqs, offers)),
+          open: list.filter((o) => OPEN_WITH_SUPPLIER.has(poStatus(o))).length,
+        }
       })
-      const data = await res.json().catch(() => null)
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.message || "Failed to send invitation")
-      }
-      toast({
-        title: t("my_sup_invite_success"),
-        description: data.data?.emailSent
-          ? t("my_sup_invite_email_sent_desc")
-          : t("my_sup_invite_email_skipped_desc"),
-      })
-      setInviteEmail("")
-      setInviteCompanyName("")
-      setShowInviteDialog(false)
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("my_sup_invite_error"), variant: "destructive" })
-    } finally {
-      setIsSendingInvite(false)
-    }
-  }
+    return [...rows.filter((r) => r.isFavorite), ...rows.filter((r) => !r.isFavorite)]
+  }, [suppliers, orders, deliveries, rfqs, offers, now])
+  const shownMine = mineRows.filter((s) => matchesSearch(searchQuery, [s.name, s.city, ...s.categories, ...s.categories.map((c) => displayCategory(c, locale))]))
 
-  const handleRemoveConnection = async (linkId: string) => {
-    if (!firestore) return
-    setIsRemoving(true)
+  const fileSupplier = suppliers.find((s) => s.orgId === fileId) || null
+  const fileRow = mineRows.find((s) => s.orgId === fileId) || null
+  const fileInvited = fileSupplier ? rfqInviteFacts(fileSupplier.orgId, fileSupplier.memberIds, rfqs, offers).invited : 0
+  const dirSupplier = suppliers.find((s) => s.orgId === dirId) || null
+
+  const toggleFavorite = async (supplier: PlatformSupplier) => {
+    if (!userDocRef || !firestore || !orgId) return
+    const isExplicit = supplier.isExplicitFavorite
+    const stored = [supplier.orgId, ...supplier.memberIds].filter((id) => favoriteIds.includes(id))
     try {
-      await updateDoc(doc(firestore, "contractorSupplierLinks", linkId), { status: "rejected" })
-      toast({ title: t("my_sup_toast_removed") })
-    } catch (err) {
-      console.error(err)
-      toast({ title: t("generic_error_title"), variant: "destructive" })
-    } finally {
-      setIsRemoving(false)
-      setRemoveTarget(null)
-    }
-  }
-
-  // Fetch accepted offers for these RFQs
-  const acceptedOffersQuery = useMemoFirebase(() => {
-    if (!firestore || myRfqIds.length === 0) return null
-    // We fetch all offers for these RFQs and filter locally to avoid complex composite indexes
-    return query(
-      collection(firestore, "offers"),
-      where("rfqId", "in", myRfqIds.slice(0, 30)) // Firestore 'in' is limited to 30 elements
-    )
-  }, [firestore, myRfqIds.join(",")])
-  
-  const { data: offersData } = useCollection(acceptedOffersQuery)
-  
-  // Fetch supplier reviews when a supplier is selected (for detail modal)
-  const supplierReviewsQuery = useMemoFirebase(() => {
-    if (!firestore || !selectedSupplier) return null
-    return query(
-      collection(firestore, "reviews"),
-      where("revieweeId", "==", selectedSupplier.id)
-    )
-  }, [firestore, selectedSupplier])
-  const { data: supplierReviews } = useCollection(supplierReviewsQuery)
-
-  // Fetch ALL supplier reviews to compute live averages for the cards
-  const allSupplierReviewsQuery = useMemoFirebase(() => {
-    if (!firestore) return null
-    return query(
-      collection(firestore, "reviews"),
-      where("revieweeRole", "==", "Supplier")
-    )
-  }, [firestore])
-  const { data: allSupplierReviews } = useCollection(allSupplierReviewsQuery)
-
-  // A supplier "company" can have several logged-in accounts (the owner + invited
-  // team members). Reviews and directory listings both used to key off the
-  // individual account that happened to submit/fulfil an offer, so a company's
-  // reputation and presence in the directory were split across its team instead
-  // of being one entry. canonicalOrgIdByUserId maps every individual account to
-  // its company's canonical id (the owner's own uid) so both can be aggregated.
-  const canonicalOrgIdByUserId = new Map<string, string>()
-  ;(fbSuppliers || []).forEach((s: any) => {
-    canonicalOrgIdByUserId.set(s.id, s.organizationId || s.id)
-  })
-  const suppliersByOrg = new Map<string, any[]>()
-  ;(fbSuppliers || []).forEach((s: any) => {
-    const orgId = s.organizationId || s.id
-    if (!suppliersByOrg.has(orgId)) suppliersByOrg.set(orgId, [])
-    suppliersByOrg.get(orgId)!.push(s)
-  })
-
-  // Ratings aggregated by canonical org id — this also correctly combines reviews
-  // written before this fix (against an individual team member) with ones written
-  // after it (against the company), since both resolve through the same map.
-  const supplierRatingsMap = (allSupplierReviews || []).reduce((acc: Record<string, { sum: number; count: number }>, r: any) => {
-    if (!r.revieweeId) return acc
-    const orgId = canonicalOrgIdByUserId.get(r.revieweeId) || r.revieweeId
-    if (!acc[orgId]) acc[orgId] = { sum: 0, count: 0 }
-    acc[orgId].sum += r.rating || 0
-    acc[orgId].count += 1
-    return acc
-  }, {})
-
-  // Compute set of supplier IDs that have an accepted offer
-  const implicitFavoriteIds = offersData
-    ?.filter((o: any) => o.status === "مقبول")
-    .map((o: any) => o.supplierId) || []
-  const explicitFavoriteIds = profile?.favoriteSuppliers || []
-  const favoriteSupplierIds = new Set([...implicitFavoriteIds, ...explicitFavoriteIds])
-
-  const toggleFavorite = async (e: React.MouseEvent, supplier: any) => {
-    e.stopPropagation();
-    if (!userDocRef || !profile || !myOrgId) return;
-    const supplierId = supplier.id
-    const isExplicit = explicitFavoriteIds.includes(supplierId);
-    try {
-      // Marking a not-yet-connected supplier as favorite auto-connects them immediately
-      // (skips the invite-and-wait flow) — favoriting is treated as "I already work with them."
-      const isConnected = connectedSupplierOrgIds.includes(supplier.id) || connectedSupplierOrgIds.includes(supplier.organizationId)
-      if (!isExplicit && !isConnected && firestore) {
+      // Marking a not-yet-connected supplier as favourite connects him at once —
+      // favouriting is "I already work with them".
+      if (!isExplicit && !supplier.linkId) {
         await addDoc(collection(firestore, "contractorSupplierLinks"), {
-          contractorOrgId: myOrgId,
-          supplierOrgId: supplier.organizationId || supplier.id,
-          supplierName: supplier.name || supplier.companyName || "",
-          supplierCategories: supplier.specializations || [],
+          contractorOrgId: orgId,
+          supplierOrgId: supplier.orgId,
+          supplierName: supplier.name,
+          supplierCategories: supplier.categories,
           status: "active",
           requestedBy: "contractor_favorite",
           requestedAt: serverTimestamp(),
@@ -375,846 +178,192 @@ export default function SuppliersDirectory() {
           updatedAt: serverTimestamp(),
         })
       }
-      await updateDoc(userDocRef!, {
-        favoriteSuppliers: isExplicit ? arrayRemove(supplierId) : arrayUnion(supplierId)
-      });
+      await updateDoc(userDocRef, { favoriteSuppliers: isExplicit ? arrayRemove(...stored) : arrayUnion(supplier.orgId) })
       toast({
-        title: isExplicit ? t("suppliers_fav_removed") : t("suppliers_fav_added"),
-        description: isExplicit ? t("suppliers_fav_removed_desc") : (!isConnected ? t("suppliers_fav_added_connected_desc") : t("suppliers_fav_added_desc")),
-      });
-    } catch (err) {
-      console.error("Failed to toggle favorite:", err);
-      toast({
-        title: t("offers_toast_error"),
-        description: t("suppliers_fav_error"),
-        variant: "destructive"
-      });
+        title: isExplicit ? tC("suppliers_fav_removed") : tC("suppliers_fav_added"),
+        description: isExplicit ? tC("suppliers_fav_removed_desc") : supplier.linkId ? tC("suppliers_fav_added_desc") : tC("suppliers_fav_added_connected_desc"),
+      })
+    } catch {
+      toast({ title: tC("generic_error_title"), description: tC("suppliers_fav_error"), variant: "destructive" })
     }
   }
-  
-  const isLoading = suppliersLoading || isUserLoading || linksLoading;
 
-  // Only show suppliers this contractor has actually invited and connected with — matches the
-  // active contractorSupplierLinks docs (the only way a link is ever created is a supplier
-  // accepting this contractor's email invitation, so "active link" already means "invited by us").
-  const knownSupplierIds = new Set(connectedSupplierOrgIds)
-  const linkIdBySupplierOrgId = new Map(
-    (supplierLinks || [])
-      .filter((l: any) => l.status === "active")
-      .map((l: any) => [l.supplierOrgId, l.id])
-  )
-
-  const allCities = [...new Set([
-    ...((fbSuppliers || []).map((s: any) => s.city).filter(Boolean) || []),
-    ...((fbSuppliers || []).flatMap((s: any) => s.coverageCities || []).filter(Boolean) || [])
-  ])].sort()
-
-  const allSpecializations = [...new Set(
-    (fbSuppliers || []).flatMap((s: any) => s.specializations || []).filter(Boolean) || []
-  )].sort()
-
-  // One card per company, not per logged-in account. Pick the org owner's own
-  // doc as the base (it's the account that goes through onboarding, so its
-  // fields are the most likely to be filled in); fall back to the first team
-  // member with a non-empty value for any field the owner left blank.
-  const displaySuppliers = (fbSuppliers || []).length > 0 ? Array.from(suppliersByOrg.entries())
-    .map(([orgId, members]) => {
-      const rawOwner = members.find((m) => !m.organizationRole || m.organizationRole === "owner") || members[0]
-      const ownerOverlay = supplierIdentityOverlays.get(rawOwner.id)
-      const owner = ownerOverlay ? { ...stripIdentityFields(rawOwner), ...ownerOverlay } : rawOwner
-      const memberIds = members.map((m) => m.id)
-      const pick = (field: string) => owner[field] || members.find((m) => m[field])?.[field]
-      const ratings = supplierRatingsMap[orgId]
-      return {
-        ...owner,
-        id: orgId,
-        name: supplierCompanyNames.get(owner.id) || owner.companyName || owner.name || t("suppliers_registered_supplier"),
-        city: pick("city") || pick("location") || t("suppliers_not_set"),
-        coverageCities: pick("coverageCities") || [],
-        specializations: pick("specializations") || [],
-        certificates: pick("certificates") || [],
-        rating: ratings ? parseFloat((ratings.sum / ratings.count).toFixed(1)) : (owner.rating || 0),
-        reviewsCount: ratings?.count ?? (owner.reviewsCount || 0),
-        isFavorite: memberIds.some((id) => favoriteSupplierIds.has(id)) || favoriteSupplierIds.has(orgId),
-        isExplicitFavorite: memberIds.some((id) => explicitFavoriteIds.includes(id)) || explicitFavoriteIds.includes(orgId),
-        isConnected: knownSupplierIds.has(orgId) || memberIds.some((id) => knownSupplierIds.has(id)),
-        linkId: linkIdBySupplierOrgId.get(orgId) || memberIds.map((id) => linkIdBySupplierOrgId.get(id)).find(Boolean),
-      }
-    })
-    .filter((s: any) => {
-      // Search query filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const nameMatch = s.name?.toLowerCase().includes(q);
-        const cityMatch = s.city?.toLowerCase().includes(q);
-        const specMatch = s.specializations?.some((spec: string) => spec.toLowerCase().includes(q));
-        if (!nameMatch && !cityMatch && !specMatch) return false;
-      }
-      // City filter
-      if (filterCity !== "all") {
-        const cityMatch = s.city === filterCity || s.coverageCities?.includes(filterCity);
-        if (!cityMatch) return false;
-      }
-      // Specialization filter
-      if (filterSpecialization !== "all") {
-        const specMatch = s.specializations?.includes(filterSpecialization);
-        if (!specMatch) return false;
-      }
-      return true;
-    }) : []
-
-  const hasActiveFilters = filterCity !== "all" || filterSpecialization !== "all"
-  const clearFilters = () => {
-    setFilterCity("all")
-    setFilterSpecialization("all")
+  const removeConnection = async () => {
+    if (!firestore || !removeTarget?.linkId) return
+    setRemoving(true)
+    try {
+      await updateDoc(doc(firestore, "contractorSupplierLinks", removeTarget.linkId), { status: "rejected" })
+      toast({ title: tC("my_sup_toast_removed") })
+      openFile(null)
+    } catch {
+      toast({ title: tC("generic_error_title"), variant: "destructive" })
+    } finally {
+      setRemoving(false)
+      setRemoveTarget(null)
+    }
   }
 
-  // "My suppliers": the ones this company works with — connected, or marked
-  // preferred (which includes any it has awarded). "Platform": everyone.
-  const isMine = (s: any) => Boolean(s.isConnected || s.isFavorite)
-  const mineCount = displaySuppliers.filter(isMine).length
-  const scopedSuppliers = scope === "mine" ? displaySuppliers.filter(isMine) : displaySuppliers
-  const preferredSuppliers = scopedSuppliers.filter((s: any) => s.isFavorite)
-  const otherSuppliers = scopedSuppliers.filter((s: any) => !s.isFavorite)
+  const segments = visibleSupplierSegments(actor.seesPrices)
+  const counts: Record<SupplierTabSegment, number | undefined> = { mine: mineRows.length, platform: suppliers.length, agreements: agreements.length, history: undefined }
+  const spinner = (
+    <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
+      <Loader2 className="mb-4 animate-spin" size={32} aria-hidden="true" />
+      <p>{t("loading")}</p>
+    </div>
+  )
 
   return (
     <PortalLayout>
       <div className="space-y-6">
         <ProcurementHeader
-          title={t("suppliers_page_title")}
-          description={t("suppliers_page_desc")}
+          title={tC("suppliers_page_title")}
+          description={tC("suppliers_page_desc")}
           action={
-            canManageSuppliers && (<Button className="gap-2 bg-module text-module-foreground hover:bg-module/90" onClick={() => setShowInviteDialog(true)}>
-              <Send size={16} className="rtl-flip" aria-hidden="true" />
-              {t("suppliers_invite_platform")}
-              {sentInvitations.filter((inv: any) => inv.status === "pending").length > 0 && (
-                <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-4">
-                  {sentInvitations.filter((inv: any) => inv.status === "pending").length}
-                </Badge>
-              )}
-            </Button>)
+            canManage && (
+              <Button className="gap-2 bg-module text-module-foreground hover:bg-module/90" onClick={() => setShowInvite(true)}>
+                <Send size={16} className="rtl-flip" aria-hidden="true" />
+                {tC("suppliers_invite_platform")}
+                {pendingInvitations > 0 && <span className="rounded-full bg-warning px-1.5 text-[10px] font-bold text-white">{pendingInvitations}</span>}
+              </Button>
+            )
           }
         />
+
         <div className="flex flex-wrap items-center gap-2">
-            {directory && (<>
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute top-1/2 -translate-y-1/2 start-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-              <Input 
-                placeholder={t("suppliers_search")}
-                aria-label={t("suppliers_search")}
-                className="ps-10 pe-8"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <ProcChipGroup items={segments.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))} active={segment} onPick={pickSegment} label={tC("suppliers_scope_label")} />
+          {segment === "mine" && (
+            <div className="relative ms-auto w-full sm:w-72">
+              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input placeholder={tC("suppliers_search")} aria-label={tC("suppliers_search")} className="pe-8 ps-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  aria-label={t("suppliers_search_clear")}
-                  className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-slate-400 hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={tC("suppliers_search_clear")}
+                  className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <X size={14} />
+                  <X size={14} aria-hidden="true" />
                 </button>
               )}
             </div>
-            <Popover open={showFilters} onOpenChange={setShowFilters}>
-              <PopoverTrigger asChild>
-                <Button variant={hasActiveFilters ? "default" : "outline"} className="gap-2 relative">
-                  <Filter size={18} />
-                  {t("suppliers_filter")}
-                  {hasActiveFilters && (
-                    <span className="absolute -top-1 -start-1 h-4 w-4 bg-primary text-white text-[10px] rounded-full flex items-center justify-center">
-                      {(filterCity !== "all" ? 1 : 0) + (filterSpecialization !== "all" ? 1 : 0)}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-sm">{t("suppliers_filter_title")}</h4>
-                    {hasActiveFilters && (
-                      <button 
-                        onClick={() => { clearFilters(); setShowFilters(false) }}
-                        className="text-xs text-destructive hover:underline font-medium"
-                      >
-                        {t("suppliers_clear_all")}
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* City Filter */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600">{t("suppliers_filter_city")}</label>
-                    <Select value={filterCity} onValueChange={setFilterCity}>
-                      <SelectTrigger className="w-full h-9 text-sm">
-                        <SelectValue placeholder={t("suppliers_all_cities")} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-72 overflow-y-auto">
-                        <SelectItem value="all">{t("suppliers_all_cities")}</SelectItem>
-                        {allCities.map((city: string) => (
-                          <SelectItem key={city} value={city}>{displayCity(city, locale)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Specialization Filter */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-600">{t("suppliers_filter_spec")}</label>
-                    <Select value={filterSpecialization} onValueChange={setFilterSpecialization}>
-                      <SelectTrigger className="w-full h-9 text-sm">
-                        <SelectValue placeholder={t("suppliers_all_specs")} />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-72 overflow-y-auto">
-                        <SelectItem value="all">{t("suppliers_all_specs")}</SelectItem>
-                        {allSpecializations.map((spec: string) => (
-                          <SelectItem key={spec} value={spec}>{displayCategory(spec, locale)}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button 
-                    className="w-full" 
-                    size="sm"
-                    onClick={() => setShowFilters(false)}
-                  >
-                    {t("suppliers_apply_filters")}
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-            </>)}
-            <ProcChipGroup
-              items={(["mine", "platform", "agreements", "history"] as const).map((sc) => ({
-                id: sc,
-                label:
-                  sc === "mine"
-                    ? t("suppliers_scope_mine", { count: mineCount })
-                    : sc === "platform"
-                      ? t("suppliers_scope_platform", { count: displaySuppliers.length })
-                      : sc === "agreements"
-                        ? t("suppliers_scope_agreements", { count: agreements.length })
-                        : t("suppliers_scope_history"),
-              }))}
-              active={scope}
-              onPick={setScope}
-              label={t("suppliers_scope_label")}
-            />
-            {directory && (
-            <div className="ms-auto flex rounded-lg border p-0.5" role="group" aria-label={t("suppliers_view_label")}>
-              <button type="button" aria-pressed={viewMode === "grid"} aria-label={t("suppliers_view_grid")} onClick={() => setViewMode("grid")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "grid" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
-                <LayoutGrid size={16} aria-hidden="true" />
-              </button>
-              <button type="button" aria-pressed={viewMode === "table"} aria-label={t("suppliers_view_table")} onClick={() => setViewMode("table")} className={cn("grid h-9 w-9 place-items-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", viewMode === "table" ? "bg-module/10 text-module" : "text-muted-foreground hover:bg-muted")}>
-                <Rows3 size={16} aria-hidden="true" />
-                </button>
-            </div>
-            )}
+          )}
         </div>
 
-        {scope === "mine" && sentInvitations.length > 0 && (
-          <section className="overflow-hidden rounded-2xl border bg-card" aria-labelledby="sup-invitations">
-            <header className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
-              <h2 id="sup-invitations" className="text-sm font-black text-foreground">{t("suppliers_inv_title")}</h2>
-              <span className="rounded-full bg-muted px-2 text-xs font-bold tabular-nums text-muted-foreground">{sentInvitations.filter((inv: any) => inv.status === "pending").length}</span>
-              <p className="text-xs text-muted-foreground">{t("suppliers_inv_desc")}</p>
-            </header>
-            <ul className="divide-y">
-              {sentInvitations.slice(0, 6).map((inv: any) => (
-                <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-foreground" dir="auto">{inv.companyName || inv.email}</p>
-                    <p className="truncate text-xs text-muted-foreground" dir="auto">
-                      {[inv.companyName ? inv.email : null, t("suppliers_inv_sent", { date: fmtDate(inv.createdAt, locale) })].filter(Boolean).join(" · ")}
-                    </p>
-                  </div>
-                  <StatusPill tone={inv.status === "accepted" ? "ok" : inv.status === "declined" ? "bad" : "warn"}>
-                    {inv.status === "accepted" ? t("suppliers_inv_joined") : inv.status === "declined" ? t("my_sup_inv_declined") : t("suppliers_inv_not_yet")}
-                  </StatusPill>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {scope === "agreements" || scope === "history" ? (
+        {segment === "agreements" ? (
           !pricesReady ? (
-            <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
-              <Loader2 className="animate-spin mb-4" size={32} />
-              <p>{t("suppliers_loading")}</p>
-            </div>
-          ) : scope === "agreements" ? (
+            spinner
+          ) : (
             <PriceAgreementsView
               agreements={agreements}
               history={history}
+              orders={orders}
               actor={actor}
-              orgId={procOrgId}
+              orgId={orgId}
               locale={locale}
-              suppliers={displaySuppliers.filter(isMine).map((sup: any) => ({ id: sup.organizationId || sup.id, name: sup.companyName || sup.name || "" }))}
+              suppliers={mineRows.map((s) => ({ id: s.orgId, name: s.name }))}
               mayEdit={mayEditAgreements}
               fmtDate={fmtDate}
+              focusId={agreementId}
+              onFocusChange={(id) => openAgreement(id)}
             />
-          ) : (
-            <PriceHistoryView history={history} locale={locale} fmtDate={fmtDate} />
           )
-        ) : isLoading ? (
-          <div className="flex flex-col items-center justify-center p-20 text-muted-foreground">
-            <Loader2 className="animate-spin mb-4" size={32} />
-            <p>{t("suppliers_loading")}</p>
-          </div>
-        ) : scopedSuppliers.length === 0 ? (
-          <div className="text-center p-20 bg-slate-50 rounded-xl border border-dashed text-muted-foreground">
-            {searchQuery ? (
-              <>
-                <Search size={48} className="mx-auto mb-4 opacity-20" />
-                <p className="font-bold text-lg">{t("suppliers_no_search_results")}</p>
-                <p className="text-sm mt-1">{t("suppliers_no_search_results_desc")}</p>
-              </>
-            ) : (
-              <>
-                <Briefcase size={48} className="mx-auto mb-4 opacity-20" />
-                <p className="font-bold text-lg">{t("suppliers_no_suppliers")}</p>
-                <p className="text-sm mt-1">{t("suppliers_no_suppliers_desc")}</p>
-                {canManageSuppliers && <Button variant="outline" className="mt-4 gap-2" onClick={() => setShowInviteDialog(true)}>
-                  <UserPlus size={16} />
-                  {t("my_sup_invite_tab")}
-                </Button>}
-              </>
-            )}
-          </div>
-        ) : viewMode === "table" ? (
-          <SupplierTable
-            suppliers={[...preferredSuppliers, ...otherSuppliers]}
-            locale={locale}
-            t={t}
-            onOpen={setSelectedSupplier}
-            onToggleFavorite={toggleFavorite}
-            records={recordByOrg}
-          />
+        ) : segment === "history" ? (
+          !pricesReady ? (
+            spinner
+          ) : (
+            <PriceHistoryView
+              history={history}
+              orders={orders}
+              receipts={deliveries}
+              agreements={agreements}
+              makeOrBuy={makeOrBuy}
+              locale={locale}
+              fmtDate={fmtDate}
+              focusKey={materialKeyParam}
+              onFocusChange={(key) => {
+                setMaterialKeyParam(key)
+                replaceParams((p) => (key ? p.set("material", key) : p.delete("material")))
+              }}
+            />
+          )
+        ) : loading ? (
+          spinner
+        ) : segment === "platform" ? (
+          <SupplierDirectory suppliers={suppliers} onOpen={setDirId} />
         ) : (
-          <div className="space-y-0">
-            {preferredSuppliers.length > 0 && (
-              <div className="flex items-center gap-3 mb-4">
-                <Star size={20} className="text-amber-500 fill-amber-500 shrink-0" />
-                <div>
-                  <h2 className="text-lg font-bold leading-tight">{t("suppliers_preferred_section")}</h2>
-                  <p className="text-xs text-muted-foreground">{t("suppliers_preferred_section_desc")}</p>
-                </div>
-              </div>
-            )}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[...preferredSuppliers, ...(preferredSuppliers.length > 0 && otherSuppliers.length > 0 ? [{ id: "__divider__", isDivider: true }] : []), ...otherSuppliers].map((supplier: any) =>
-              supplier.isDivider ? (
-                <div key="__divider__" className="col-span-full flex items-center gap-3 py-2 text-sm font-semibold text-muted-foreground">
-                  <div className="flex-1 border-t" />
-                  <span>{t("suppliers_all_section")}</span>
-                  <div className="flex-1 border-t" />
-                </div>
+          <div className="space-y-4">
+            <SupplierInvitations invitations={invitations} canManage={canManage} orgName={orgName} now={now} />
+            {shownMine.length === 0 ? (
+              searchQuery ? (
+                <EmptyState icon={Search} title={tC("suppliers_no_search_results")} description={tC("suppliers_no_search_results_desc")} />
               ) : (
-              <Card key={supplier.id} className={`hover:shadow-md transition-shadow overflow-hidden group flex flex-col ${supplier.isFavorite ? 'border-amber-200 bg-amber-50/10' : 'border-slate-100'}`}>
-                <CardContent className="p-4 flex-1 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="h-11 w-11 rounded-xl bg-muted flex items-center justify-center text-muted-foreground group-hover:bg-module/10 group-hover:text-module transition-colors">
-                      <Briefcase size={22} aria-hidden="true" />
-                    </div>
-                    <div className={cn("flex flex-col gap-1", locale === 'ar' ? 'items-end' : 'items-start')}>
-                      <div className="flex items-center gap-1.5">
-                        {supplier.linkId && canManageSuppliers && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setRemoveTarget({ id: supplier.linkId, supplierName: supplier.name })
-                            }}
-                            className="h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm bg-white text-slate-300 hover:text-destructive hover:bg-destructive/5 border border-slate-100"
-                            title={t("my_sup_remove")}
-                          >
-                            <XCircle size={16} />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => toggleFavorite(e, supplier)}
-                          className={`h-8 w-8 rounded-full flex items-center justify-center transition-all shadow-sm ${supplier.isExplicitFavorite ? 'bg-amber-100 text-amber-500' : 'bg-white text-slate-300 hover:text-amber-400 hover:bg-amber-50'} border border-slate-100`}
-                          title={supplier.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
-                        >
-                          <Heart size={16} className={supplier.isExplicitFavorite ? "fill-amber-500" : ""} />
-                        </button>
-                      </div>
-
-                      {supplier.certificates?.length > 0 && (
-                        <Badge className="bg-module/10 text-module border-none px-2 py-0.5 h-6">
-                          <ShieldCheck size={14} className="me-1" aria-hidden="true" />
-                          {t("suppliers_cert_count", { count: supplier.certificates.length })}
-                        </Badge>
-                      )}
-                      {supplier.isFavorite && (
-                        <Badge variant="outline" className="border-amber-200 text-amber-600 bg-amber-50 px-2 py-0.5 h-6">
-                          <Star size={10} className="fill-amber-500 me-1" aria-hidden="true" />
-                          {t("suppliers_fav_badge")}
-                        </Badge>
-                      )}
-                      {!supplier.isConnected && (
-                        <Badge variant="outline" className="border-slate-200 text-slate-500 bg-slate-50 px-2 py-0.5 h-6">
-                          {t("suppliers_not_connected_badge")}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-base text-foreground">{supplier.name}</h3>
-                    <div className="flex items-center gap-1 mt-1">
-                      {supplier.rating > 0 ? (
-                        <>
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star
-                              key={star}
-                              size={13}
-                              className={star <= Math.round(supplier.rating) ? "fill-amber-400 text-amber-400" : "text-slate-200 fill-slate-200"}
-                            />
-                          ))}
-                          <span className="text-sm font-bold text-slate-700 ms-1">{supplier.rating}</span>
-                          <span className="text-[10px] text-muted-foreground">{t("suppliers_review_count", { count: supplier.reviewsCount || 0 })}</span>
-                        </>
-                      ) : (
-                        <>
-                          {[1, 2, 3, 4, 5].map((star) => (
-                            <Star key={star} size={13} className="text-slate-200 fill-slate-200" />
-                          ))}
-                          <span className="text-[10px] text-muted-foreground ms-1">{t("suppliers_no_reviews")}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-1 mt-2">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin size={14} className="text-primary" />
-                        <span className="font-medium">{displayCity(supplier.city, locale)}</span>
-                        <span className="text-[10px] bg-slate-100 px-1.5 rounded-sm">{t("suppliers_hq")}</span>
-                      </div>
-                      {supplier.coverageCities?.length > 0 && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                          <MapPin size={12} className="text-accent" />
-                          <div className="flex flex-wrap gap-1">
-                            {supplier.coverageCities.slice(0, 2).map((city: string) => (
-                              <span key={city} className="bg-accent/10 text-accent px-1.5 py-0.5 rounded text-[10px]">{displayCity(city, locale)}</span>
-                            ))}
-                            {supplier.coverageCities.length > 2 && (
-                              <span className="text-accent">+{supplier.coverageCities.length - 2}</span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Certificates badges */}
-                  {supplier.certificates?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-2">
-                      {supplier.certificates.slice(0, 3).map((cert: any) => (
-                        <Badge key={cert.id} className="bg-success/10 text-success border-none text-[10px] px-2 font-normal gap-1">
-                          <ShieldCheck size={10} />
-                          {cert.name}
-                        </Badge>
-                      ))}
-                      {supplier.certificates.length > 3 && (
-                        <Badge variant="outline" className="text-[10px] px-2 text-slate-500">
-                          +{supplier.certificates.length - 3}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Specializations */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {supplier.specializations?.length > 0 ? (
-                      supplier.specializations.slice(0, 3).map((spec: string) => (
-                        <Badge key={spec} variant="secondary" className="text-[10px] bg-slate-100 text-slate-600 px-2 font-normal">
-                          {displayCategory(spec, locale)}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-400">{t("suppliers_no_specs")}</span>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter className="p-0 border-t">
-                  <Button 
-                    variant="ghost" 
-                    className="w-full h-10 rounded-none hover:bg-module hover:text-module-foreground transition-colors gap-2"
-                    onClick={() => setSelectedSupplier(supplier)}
-                  >
-                    {t("suppliers_view_profile")}
-                    {locale === 'ar' ? <ChevronLeft size={16} /> : <ChevronLeft size={16} className="rotate-180" />}
-                  </Button>
-                </CardFooter>
-              </Card>
+                <EmptyState
+                  icon={Briefcase}
+                  title={tC("suppliers_no_suppliers")}
+                  description={tC("suppliers_no_suppliers_desc")}
+                  action={
+                    canManage && (
+                      <Button variant="outline" className="gap-2" onClick={() => setShowInvite(true)}>
+                        <UserPlus size={16} aria-hidden="true" />
+                        {tC("suppliers_invite_platform")}
+                      </Button>
+                    )
+                  }
+                />
               )
+            ) : (
+              <OurSuppliersTable rows={shownMine} today={today} onOpen={openFile} />
             )}
-          </div>
           </div>
         )}
       </div>
 
-      <Dialog open={!!selectedSupplier} onOpenChange={(open) => !open && setSelectedSupplier(null)}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Briefcase className="text-primary" />
-              {t("suppliers_dialog_title", { name: selectedSupplier?.name || "" })}
-            </DialogTitle>
-            <DialogDescription>
-              {t("suppliers_dialog_desc")}
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedSupplier && (
-            <div className="space-y-6 py-4">
-              <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">{t("suppliers_coverage")}</h4>
-                <div className="flex flex-wrap gap-2">
-                  <Badge className="bg-accent text-white flex items-center gap-1.5 px-3 py-1">
-                    <MapPin size={14} />
-                    {t("suppliers_hq")}: {displayCity(selectedSupplier.city, locale)}
-                  </Badge>
-                  {selectedSupplier.coverageCities?.map((city: string) => (
-                    <Badge key={city} variant="outline" className="border-accent/30 text-accent bg-accent/5 flex items-center gap-1.5 px-3 py-1">
-                      <MapPin size={14} />
-                      {displayCity(city, locale)}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+      <SupplierFileDrawer
+        supplier={fileSupplier}
+        open={Boolean(fileSupplier)}
+        onOpenChange={(o) => !o && openFile(null)}
+        score={fileRow?.score || null}
+        invited={fileInvited}
+        orders={orders}
+        agreements={agreements}
+        actor={actor}
+        orgId={orgId}
+        canManage={canManage}
+        now={now}
+        onToggleFavorite={toggleFavorite}
+        onRemove={setRemoveTarget}
+        onOpenAgreement={openAgreement}
+      />
+      <DirectoryDrawer
+        supplier={dirSupplier}
+        open={Boolean(dirSupplier)}
+        onOpenChange={(o) => !o && setDirId(null)}
+        actor={actor}
+        orgId={orgId}
+        canManage={canManage}
+        onOpenOurs={(id) => {
+          setDirId(null)
+          pickSegment("mine")
+          openFile(id)
+        }}
+      />
+      <InviteSupplierDialog open={showInvite} onOpenChange={setShowInvite} orgName={orgName} />
 
-              <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">{t("suppliers_specs")}</h4>
-                <div className="flex flex-wrap gap-2">
-                  {selectedSupplier.specializations?.length ? selectedSupplier.specializations.map((spec: string) => (
-                    <Badge key={spec} className="bg-primary/10 text-primary border-none">{spec}</Badge>
-                  )) : (
-                    <span className="text-sm text-slate-500">{t("suppliers_no_specs_registered")}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <h4 className="font-bold text-slate-800">{t("suppliers_about")}</h4>
-                <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                  {selectedSupplier.description || t("suppliers_no_description")}
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                  <FolderOpen size={18} className="text-primary" />
-                  {t("suppliers_projects")}
-                </h4>
-                {selectedSupplier.projects?.length > 0 ? (
-                  <div className="grid gap-3">
-                    {selectedSupplier.projects.map((project: any) => (
-                      <div key={project.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                        <p className="font-bold text-sm text-slate-800">{project.name}</p>
-                        {project.description && (
-                          <p className="text-xs text-slate-600 mt-1 leading-relaxed">{project.description}</p>
-                        )}
-                        {project.images?.length > 0 && (
-                          <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
-                            {project.images.map((img: string, idx: number) => (
-                              <img
-                                key={idx}
-                                src={img}
-                                alt={`${project.name} ${idx + 1}`}
-                                className="h-20 w-28 object-cover rounded-lg border border-slate-200 shrink-0 hover:scale-105 transition-transform cursor-pointer"
-                                onClick={() => window.open(img, '_blank')}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
-                    {t("suppliers_no_projects")}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                  <ShieldCheck size={18} className="text-success" />
-                  {t("suppliers_certificates")}
-                </h4>
-                {selectedSupplier.certificates?.length > 0 ? (
-                  <div className="grid gap-3">
-                    {selectedSupplier.certificates.map((cert: any) => (
-                      <div key={cert.id} className="p-3 bg-white border border-slate-200 rounded-lg flex items-start justify-between shadow-sm">
-                        <div>
-                          <p className="font-bold text-sm text-slate-800">{cert.name}</p>
-                          <p className="text-xs text-slate-500 mt-1">{t("suppliers_cert_issuer")}: {cert.issuer}</p>
-                          {(cert.issueDate || cert.expiryDate) && (
-                            <p className="text-[10px] text-slate-400 mt-1">
-                              {t("suppliers_cert_valid_until")}: {cert.expiryDate || t("suppliers_unknown")}
-                            </p>
-                          )}
-                        </div>
-                        {cert.documentUrl && (
-                          <a 
-                            href={cert.documentUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-full font-medium transition-colors"
-                          >
-                            {t("suppliers_view_doc")}
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
-                    {t("suppliers_no_certificates")}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Star size={18} className="text-amber-400 fill-amber-400" />
-                  {t("suppliers_reviews_title", { count: supplierReviews?.length || 0 })}
-                </h4>
-                {(supplierReviews?.length ?? 0) > 0 ? (
-                  <div className="grid gap-3">
-                    {supplierReviews!.map((review: any) => (
-                      <div key={review.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="font-bold text-sm text-slate-800">{t("suppliers_anonymous_reviewer")}</p>
-                          <div className="flex items-center gap-1">
-                            <span className="text-sm font-bold text-amber-600">{review.rating}</span>
-                            <Star size={12} className="fill-amber-400 text-amber-400" />
-                          </div>
-                        </div>
-                        {review.comment && (
-                          <p className="text-xs text-slate-600 leading-relaxed bg-white p-3 rounded-lg border border-slate-100">
-                            "{review.comment}"
-                          </p>
-                        )}
-                        <p className="text-[10px] text-slate-400 text-end">
-                          {new Date(review.createdAt).toLocaleDateString(locale)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-sm text-slate-500 p-4 border border-dashed rounded-lg text-center bg-slate-50">
-                    {t("suppliers_no_reviews_registered")}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" dir={locale === 'ar' ? 'rtl' : 'ltr'}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Mail size={20} className="text-accent" />
-              {t("my_sup_invite_tab")}
-            </DialogTitle>
-            <DialogDescription>{t("my_sup_invite_success_desc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="invite-email">{t("my_sup_invite_email_label")} <span className="text-destructive">*</span></Label>
-              <Input
-                id="invite-email"
-                type="email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder={t("my_sup_invite_email_placeholder")}
-                disabled={isSendingInvite}
-                dir="ltr"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invite-company">{t("my_sup_invite_name_label")}</Label>
-              <Input
-                id="invite-company"
-                value={inviteCompanyName}
-                onChange={(e) => setInviteCompanyName(e.target.value)}
-                placeholder={t("my_sup_invite_name_placeholder")}
-                disabled={isSendingInvite}
-              />
-            </div>
-            <Button
-              className="w-full gap-2"
-              onClick={handleSendInvitation}
-              disabled={isSendingInvite || !inviteEmail.trim()}
-            >
-              {isSendingInvite ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-              {t("my_sup_invite_btn")}
-            </Button>
-
-            {sentInvitations.length > 0 && (
-              <div className="pt-2">
-                <p className="font-bold text-sm text-slate-700 mb-2">{t("my_sup_sent_invitations")}</p>
-                <div className="space-y-2 max-h-56 overflow-y-auto">
-                  {sentInvitations.map((inv: any) => (
-                    <div key={inv.id} className="p-3 rounded-lg border border-slate-200/60 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-semibold text-slate-800 truncate text-sm">{inv.companyName || inv.email}</p>
-                        {inv.companyName && (
-                          <p className="text-xs text-muted-foreground truncate">{inv.email}</p>
-                        )}
-                        <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
-                          <Calendar size={10} />
-                          {fmtDate(inv.createdAt, locale)}
-                        </p>
-                      </div>
-                      <Badge className={cn(
-                        "shrink-0 text-[11px] font-semibold",
-                        inv.status === "accepted"
-                          ? "bg-success/10 text-success border-success/20"
-                          : inv.status === "declined"
-                          ? "bg-destructive/10 text-destructive border-destructive/20"
-                          : "bg-amber-100 text-amber-700 border-amber-200"
-                      )}>
-                        {inv.status === "accepted"
-                          ? t("my_sup_inv_accepted")
-                          : inv.status === "declined"
-                          ? t("my_sup_inv_declined")
-                          : t("my_sup_inv_pending")}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
+      <AlertDialog open={Boolean(removeTarget)} onOpenChange={(o) => !o && setRemoveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("my_sup_remove_confirm_title")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("my_sup_remove_confirm_desc", { supplier: removeTarget?.supplierName || "—" })}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{tC("my_sup_remove_confirm_title")}</AlertDialogTitle>
+            <AlertDialogDescription>{tC("my_sup_remove_confirm_desc", { supplier: removeTarget?.name || "—" })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              disabled={isRemoving}
-              onClick={() => {
-                if (removeTarget) handleRemoveConnection(removeTarget.id)
-              }}
-            >
-              {isRemoving ? <Loader2 className="animate-spin" size={14} /> : null}
-              {t("my_sup_remove")}
+            <AlertDialogCancel>{tC("cancel")}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" disabled={removing} onClick={removeConnection}>
+              {removing && <Loader2 className="animate-spin" size={14} aria-hidden="true" />}
+              {tC("my_sup_remove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </PortalLayout>
-  )
-}
-
-/** The same suppliers as the cards, one row each — for scanning many. */
-function SupplierTable({
-  suppliers,
-  locale,
-  t,
-  onOpen,
-  onToggleFavorite,
-  records,
-}: {
-  suppliers: any[]
-  locale: string
-  t: ReturnType<typeof useTranslations>
-  onOpen: (supplier: any) => void
-  onToggleFavorite: (e: React.MouseEvent, supplier: any) => void
-  records: Map<string, SupplierRecord>
-}) {
-  const today = new Date().toISOString().slice(0, 10)
-  return (
-    <div className="overflow-x-auto rounded-2xl border bg-card">
-      <table className="w-full min-w-[820px] text-sm">
-        <thead className="border-b text-xs text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_supplier")}</th>
-            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_supplies")}</th>
-            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_on_time")}</th>
-            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_rejected")}</th>
-            <th scope="col" className="px-4 py-3 text-start font-semibold">{t("suppliers_col_status")}</th>
-            <th scope="col" className="px-4 py-3"><span className="sr-only">{t("suppliers_view_profile")}</span></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {suppliers.map((s) => {
-            const rec = records.get(s.organizationId || s.id) || records.get(s.id)
-            const onTime = rec?.onTimePercent ?? null
-            const docs = docsState(s, today)
-            return (
-              <tr key={s.id} className="cursor-pointer hover:bg-muted/40" onClick={() => onOpen(s)}>
-                <td className="px-4 py-3 align-middle">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={(e) => onToggleFavorite(e, s)}
-                      aria-label={s.isExplicitFavorite ? t("suppliers_remove_fav") : t("suppliers_add_fav")}
-                      aria-pressed={Boolean(s.isExplicitFavorite)}
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <Heart size={15} className={s.isExplicitFavorite ? "fill-amber-500 text-amber-500" : ""} aria-hidden="true" />
-                    </button>
-                    <div className="min-w-0">
-                      <p className="truncate font-bold text-foreground" dir="auto">{s.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">{displayCity(s.city, locale)}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 align-middle text-foreground">
-                  {(s.specializations || []).length ? (
-                    <span className="line-clamp-2">{(s.specializations || []).slice(0, 3).map((spec: string) => displayCategory(spec, locale)).join(locale === "ar" ? "، " : ", ")}</span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  {onTime === null ? (
-                    <span className="text-xs text-muted-foreground">{t("suppliers_no_record")}</span>
-                  ) : (
-                    <>
-                      <p className={cn("font-black tabular-nums", onTime >= 90 ? "text-success" : onTime >= 75 ? "text-amber-600" : "text-destructive")} dir="ltr">
-                        {onTime}%
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">{t("suppliers_of_orders", { count: rec?.orders ?? 0 })}</p>
-                    </>
-                  )}
-                </td>
-                <td className="px-4 py-3 align-middle tabular-nums" dir="ltr">
-                  {rec?.rejectPercent == null ? <span className="text-muted-foreground">—</span> : `${rec.rejectPercent}%`}
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  <div className="flex flex-col items-start gap-1">
-                    <StatusPill tone={DOCS_TONE[docs]}>{t(`suppliers_docs_${docs}`)}</StatusPill>
-                    {rec && rec.open > 0 && <span className="text-[11px] text-muted-foreground">{t("suppliers_open_orders", { count: rec.open })}</span>}
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-end align-middle">
-                  <Button variant="ghost" size="sm" className="h-8 text-xs text-module hover:bg-module/10" onClick={(e) => { e.stopPropagation(); onOpen(s) }}>
-                    {t("suppliers_view_profile")}
-                  </Button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
   )
 }

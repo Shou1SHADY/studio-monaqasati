@@ -4,19 +4,21 @@
 // one gate, and freezes the snapshot. Both doors call this — there is no other
 // way to close a PM project.
 
-import { collection, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import type { Acceptances } from "./acceptance"
 import { readContract } from "./addendum-writes"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
-import { archiveSnapshot, closeBlocks, closeoutRows, type CloseInput } from "./closeout"
+import { archiveSnapshot, closeBlocks, closeoutRows, subDues, type CloseInput } from "./closeout"
+import { PM_LETTERS, type PmLetter } from "./correspondence"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { measuredItem } from "./measurement-writes"
 import { withFreshState } from "./project-writes"
 import { PM_NCRS, type PmNcr } from "./ncr"
 import { PM_PUNCH, type PunchItem } from "./punch"
+import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "./variation"
 import { hasClientSide } from "./terms"
 
@@ -37,15 +39,26 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Everything the gate needs from the project's collections, read now. */
+/** Everything the gate needs from the project's collections, read now. The
+ * store row joins when the store section is on; the subcontractor row when the
+ * section is on or a subcontract exists (SC-04). */
 export async function readCloseFacts(firestore: Firestore, projectId: string) {
-  const [items, punch, certs, ncrs, vos] = await Promise.all([
-    getDocs(collection(firestore, "projects", projectId, "boqItems")),
-    getDocs(collection(firestore, "projects", projectId, PM_PUNCH)),
-    getDocs(collection(firestore, "projects", projectId, PM_CERTIFICATES)),
-    getDocs(collection(firestore, "projects", projectId, PM_NCRS)),
-    getDocs(collection(firestore, "projects", projectId, PM_VARIATIONS)),
+  const pSnap = await getDoc(doc(firestore, "projects", projectId))
+  const project = (pSnap.exists() ? pSnap.data() : {}) as { enabledSections?: string[]; warehouseId?: string | null }
+  const sections = project.enabledSections ?? []
+  const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name))
+  const [items, punch, certs, ncrs, vos, subs, subCerts, letters, store] = await Promise.all([
+    col("boqItems"),
+    col(PM_PUNCH),
+    col(PM_CERTIFICATES),
+    col(PM_NCRS),
+    col(PM_VARIATIONS),
+    col(PM_SUBCONTRACTS),
+    col(PM_SUB_CERTIFICATES),
+    col(PM_LETTERS),
+    sections.includes("store") && project.warehouseId ? getDocs(collection(firestore, "warehouses", project.warehouseId, "inventoryItems")) : Promise.resolve(null),
   ])
+  const contracts = subs.docs.map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
   return {
     items: items.docs.map((d) => {
       const data = d.data() as Record<string, unknown>
@@ -55,6 +68,9 @@ export async function readCloseFacts(firestore: Firestore, projectId: string) {
     certificates: certs.docs.map((d) => d.data() as PmCertificate),
     ncrs: ncrs.docs.map((d) => d.data() as PmNcr),
     variations: vos.docs.map((d) => d.data() as PmVariation),
+    storeLines: sections.includes("store") ? (store?.docs ?? []).filter((d) => num((d.data() as { quantity?: unknown }).quantity) > 0).length : null,
+    subs: sections.includes("subs") || contracts.length ? subDues(contracts, subCerts.docs.map((d) => d.data() as PmSubCertificate)) : null,
+    letters: letters.docs.map((d) => d.data() as PmLetter),
   }
 }
 
@@ -79,6 +95,9 @@ export async function closeAndArchive(firestore: Firestore, ctx: PmContext, proj
       certificates: facts.certificates,
       retentionHeld: block.retentionHeld ?? 0,
       retentionReleased: block.retentionReleased === true,
+      storeLines: facts.storeLines,
+      subs: facts.subs,
+      letters: facts.letters,
       today,
     }
     const blocked = closeBlocks(closeoutRows(input))

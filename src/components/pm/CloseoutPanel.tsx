@@ -1,20 +1,23 @@
 "use client"
 
-// File › Closeout on a PM 1.0 project (WF-26, ARC-01, CST-04). The closeout
-// list — every row must hold — and the one "Close & archive" gate; once
-// archived, the final snapshot, frozen and never recomputed. Rows that depend
-// on Finance (collection, retention release) wait for Finance and carry no
-// button here (WAIT-01).
+// File › Closeout on a PM 1.0 project (WF-26, ARC-01, CST-04, SC-04). A project
+// ends with its last document, not its last pour: the closeout list — every row
+// must hold, each row opens the screen that settles it — and the one "Close &
+// archive" gate; once archived, the final snapshot, frozen and never
+// recomputed. Rows that depend on Finance (collection, retention release,
+// paying a subcontractor) wait for Finance and carry no button here (WAIT-01).
+// Below, what the project taught — numbers, not opinions.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
-import { Archive, CheckCircle2, CircleAlert, Loader2, Lock } from "lucide-react"
+import { Archive, BookOpen, CheckCircle2, Clock, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Callout } from "@/components/module-ui/Callout"
 import { KeyValueRow } from "@/components/module-ui/KeyValueRow"
 import { Panel } from "@/components/module-ui/Panel"
+import { StatusPill } from "@/components/module-ui/StatusPill"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import type { PmAccess } from "@/hooks/usePmAccess"
@@ -22,16 +25,30 @@ import { PmAccessError } from "@/lib/pm/access"
 import type { Acceptances } from "@/lib/pm/acceptance"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
-import { closeBlocks, closeoutRows, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
+import { CLOSE_ROW_TAB, closeBlocks, closeoutRows, projectLessons, subDues, type ArchiveSnapshot, type CloseRow } from "@/lib/pm/closeout"
 import { closeAndArchive, PmCloseError, type CloseActor } from "@/lib/pm/closeout-writes"
+import { PM_LETTERS, type PmLetter } from "@/lib/pm/correspondence"
 import { pmDate, pmMoney, todayDay } from "@/lib/pm/format"
 import { PM_NCRS, type PmNcr } from "@/lib/pm/ncr"
 import { PM_PUNCH, type PunchItem } from "@/lib/pm/punch"
+import { PM_OBSTACLES, type PmObstacle } from "@/lib/pm/site"
+import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "@/lib/pm/subcontract"
 import { PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 
 const MONEY_ROWS = new Set<CloseRow["key"]>(["unbilled", "in_progress", "overdue", "retention"])
-const FINANCE_ROWS = new Set<CloseRow["key"]>(["overdue", "retention"])
+const AMOUNT_ROWS = new Set<CloseRow["key"]>(["unbilled", "overdue", "retention"])
+const FINANCE_ROWS = new Set<CloseRow["key"]>(["overdue", "retention", "subs"])
+
+type PmBlock = {
+  acceptances?: Acceptances
+  cutPool?: number
+  retentionHeld?: number
+  retentionReleased?: boolean
+  fin?: ArchiveSnapshot | null
+  closedOn?: string | null
+  closedByName?: string | null
+}
 
 export function CloseoutPanel({
   projectId,
@@ -41,14 +58,24 @@ export function CloseoutPanel({
   items,
   access,
   actor,
+  sections,
+  warehouseId,
+  managerName,
+  onOpen,
 }: {
   projectId: string
   lifecycle: string
   hasClient: boolean
-  pm: { acceptances?: Acceptances; cutPool?: number; retentionHeld?: number; retentionReleased?: boolean; fin?: ArchiveSnapshot | null; closedOn?: string | null; closedByName?: string | null }
+  pm: PmBlock
   items: Array<{ rate: number; executed: number; billed: number }>
   access: PmAccess
   actor: CloseActor
+  /** The project's enabled sections: the store and subcontractor rows follow them. */
+  sections?: string[]
+  warehouseId?: string | null
+  managerName?: string | null
+  /** Opens the screen that settles a row (a project tab key). */
+  onOpen?: (tab: string) => void
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -57,37 +84,68 @@ export function CloseoutPanel({
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const money = access.has("money")
+  const storeOn = (sections ?? []).includes("store")
+  const subsOn = (sections ?? []).includes("subs")
 
-  const punchQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_PUNCH) : null), [firestore, projectId])
+  const sub = (name: string, on = true) => (firestore && on ? collection(firestore, "projects", projectId, name) : null)
+  const punchQ = useMemoFirebase(() => sub(PM_PUNCH), [firestore, projectId])
   const { data: punch } = useCollection(punchQ)
-  const certQ = useMemoFirebase(() => (firestore && money ? collection(firestore, "projects", projectId, PM_CERTIFICATES) : null), [firestore, projectId, money])
+  const certQ = useMemoFirebase(() => sub(PM_CERTIFICATES, money), [firestore, projectId, money])
   const { data: certs } = useCollection(certQ)
-  const ncrQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_NCRS) : null), [firestore, projectId])
+  const ncrQ = useMemoFirebase(() => sub(PM_NCRS), [firestore, projectId])
   const { data: ncrs } = useCollection(ncrQ)
-  const voQ = useMemoFirebase(() => (firestore ? collection(firestore, "projects", projectId, PM_VARIATIONS) : null), [firestore, projectId])
+  const voQ = useMemoFirebase(() => sub(PM_VARIATIONS), [firestore, projectId])
   const { data: vos } = useCollection(voQ)
-
-  const rows = useMemo(
-    () =>
-      closeoutRows({
-        hasClient,
-        acceptances: pm.acceptances ?? {},
-        punch: (punch ?? []) as unknown as PunchItem[],
-        ncrs: (ncrs ?? []) as unknown as PmNcr[],
-        variations: (vos ?? []) as unknown as PmVariation[],
-        items,
-        cutPool: pm.cutPool ?? 0,
-        certificates: (certs ?? []) as unknown as PmCertificate[],
-        retentionHeld: pm.retentionHeld ?? 0,
-        retentionReleased: pm.retentionReleased === true,
-        today: todayDay(),
-      }),
-    [hasClient, pm, punch, items, certs, ncrs, vos]
+  const scQ = useMemoFirebase(() => sub(PM_SUBCONTRACTS), [firestore, projectId])
+  const { data: contracts } = useCollection(scQ)
+  const scCertQ = useMemoFirebase(() => sub(PM_SUB_CERTIFICATES), [firestore, projectId])
+  const { data: subCerts } = useCollection(scCertQ)
+  const letterQ = useMemoFirebase(() => sub(PM_LETTERS), [firestore, projectId])
+  const { data: letters } = useCollection(letterQ)
+  const obsQ = useMemoFirebase(() => sub(PM_OBSTACLES), [firestore, projectId])
+  const { data: obstacles } = useCollection(obsQ)
+  const seatQ = useMemoFirebase(() => sub("members"), [firestore, projectId])
+  const { data: members } = useCollection(seatQ)
+  const storeQ = useMemoFirebase(
+    () => (firestore && storeOn && warehouseId ? collection(firestore, "warehouses", warehouseId, "inventoryItems") : null),
+    [firestore, storeOn, warehouseId]
   )
+  const { data: stock } = useCollection(storeQ)
+
+  const rows = useMemo(() => {
+    const scList = (contracts ?? []) as unknown as PmSubcontract[]
+    return closeoutRows({
+      hasClient,
+      acceptances: pm.acceptances ?? {},
+      punch: (punch ?? []) as unknown as PunchItem[],
+      ncrs: (ncrs ?? []) as unknown as PmNcr[],
+      variations: (vos ?? []) as unknown as PmVariation[],
+      items,
+      cutPool: pm.cutPool ?? 0,
+      certificates: (certs ?? []) as unknown as PmCertificate[],
+      retentionHeld: pm.retentionHeld ?? 0,
+      retentionReleased: pm.retentionReleased === true,
+      storeLines: storeOn ? (stock ?? []).filter((s) => (Number((s as { quantity?: unknown }).quantity) || 0) > 0).length : null,
+      subs: subsOn || scList.length ? subDues(scList, (subCerts ?? []) as unknown as PmSubCertificate[]) : null,
+      letters: (letters ?? []) as unknown as PmLetter[],
+      today: todayDay(),
+    })
+  }, [hasClient, pm, punch, items, certs, ncrs, vos, contracts, subCerts, letters, stock, storeOn, subsOn])
   const blocked = closeBlocks(rows)
   // Without money the certificates are not read — their rows are not shown rather than shown wrong.
   const shown = money ? rows : rows.filter((r) => !MONEY_ROWS.has(r.key))
+  const left = shown.filter((r) => !r.ok)
   const canClose = access.allowed("project.close") && lifecycle === "done"
+
+  const lessons = useMemo(
+    () =>
+      projectLessons({
+        ncrs: (ncrs ?? []) as unknown as PmNcr[],
+        obstacles: (obstacles ?? []) as unknown as PmObstacle[],
+        seats: (members ?? []).filter((m) => typeof (m as { pmRole?: unknown }).pmRole === "string").length,
+      }),
+    [ncrs, obstacles, members]
+  )
 
   const close = async () => {
     if (!firestore) return
@@ -105,74 +163,183 @@ export function CloseoutPanel({
     }
   }
 
+  const sentence = (r: CloseRow): string => {
+    if (r.ok) {
+      if (r.key === "prov") return pmDate(pm.acceptances?.prov?.on, locale)
+      if (r.key === "final") return pmDate(pm.acceptances?.final?.on, locale)
+      return t(`close.ok.${r.key}`)
+    }
+    if (r.key === "final") return pm.acceptances?.prov?.on ? t("close.why.final_from", { date: pmDate(pm.acceptances.prov.on, locale) }) : t("close.why.final")
+    if (r.key === "subs") {
+      const parts: string[] = []
+      if ((r.n ?? 0) > 0.5) parts.push(money ? t("close.why.subs", { amount: pmMoney(r.n ?? 0) }) : t("close.why.subs_hidden"))
+      if ((r.m ?? 0) > 0) parts.push(t("close.why.subs_pending", { count: r.m ?? 0 }))
+      return parts.join(" · ")
+    }
+    if (AMOUNT_ROWS.has(r.key)) return t(`close.why.${r.key}`, { amount: pmMoney(r.n ?? 0) })
+    return t(`close.why.${r.key}`, { count: r.n ?? 0 })
+  }
+
+  const lessonsPanel = <LessonsPanel lessons={lessons} money={money} />
+
   if (lifecycle === "closed" && pm.fin) {
     const f = pm.fin
     return (
-      <Panel title={t("close.archived_title")} icon={Lock}>
-        <Callout tone="info" className="mb-4">
-          {t("close.archived_note", { date: pmDate(pm.closedOn, locale), who: pm.closedByName || "—" })}
-        </Callout>
-        <div className="grid gap-x-6 sm:grid-cols-2">
-          {money && <KeyValueRow label={t("close.snap.contract")} value={pmMoney(f.contractValue)} ltr />}
-          {money && <KeyValueRow label={t("close.snap.earned")} value={pmMoney(f.earned)} ltr />}
-          {money && <KeyValueRow label={t("close.snap.certified")} value={pmMoney(f.certified)} ltr />}
-          {money && <KeyValueRow label={t("close.snap.retention")} value={pmMoney(f.retentionHeld)} ltr />}
-          <KeyValueRow label={t("close.snap.contract_days")} value={f.contractDays === null ? "—" : t("days", { count: f.contractDays })} />
-          <KeyValueRow label={t("close.snap.actual_days")} value={f.actualDays === null ? "—" : t("days", { count: f.actualDays })} />
-          <KeyValueRow label={t("close.snap.delay")} value={f.delayDays === null ? "—" : t("days", { count: f.delayDays })} />
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">{t("close.snap.cost_note")}</p>
-      </Panel>
+      <div className="space-y-4">
+        <Panel title={t("close.archived_title")} icon={Lock}>
+          <Callout tone="info" className="mb-4">
+            {t("close.archived_note", { date: pmDate(pm.closedOn, locale), who: pm.closedByName || "—" })}
+          </Callout>
+          <div className="grid gap-x-6 sm:grid-cols-2">
+            {money && <KeyValueRow label={t("close.snap.contract")} value={pmMoney(f.contractValue)} ltr />}
+            {money && <KeyValueRow label={t("close.snap.earned")} value={pmMoney(f.earned)} ltr />}
+            {money && <KeyValueRow label={t("close.snap.certified")} value={pmMoney(f.certified)} ltr />}
+            {money && <KeyValueRow label={t("close.snap.retention")} value={pmMoney(f.retentionHeld)} ltr />}
+            {money && <KeyValueRow label={t("close.snap.advance")} value={pmMoney(f.advanceRecovered)} ltr />}
+            <KeyValueRow
+              label={t("close.snap.duration")}
+              value={
+                <span className="inline-flex items-center gap-2">
+                  <span dir="ltr">
+                    {f.actualDays ?? "—"} / {f.contractDays ?? "—"}
+                  </span>
+                  {f.delayDays !== null &&
+                    (f.delayDays > 0 ? <StatusPill tone="bad">{t("close.snap.late", { count: f.delayDays })}</StatusPill> : <StatusPill tone="ok">{t("close.snap.on_time")}</StatusPill>)}
+                </span>
+              }
+            />
+            <KeyValueRow label={t("close.snap.contract_days")} value={f.contractDays === null ? "—" : t("days", { count: f.contractDays })} />
+            <KeyValueRow label={t("close.snap.actual_days")} value={f.actualDays === null ? "—" : t("days", { count: f.actualDays })} />
+            <KeyValueRow label={t("close.snap.closed_on")} value={pmDate(f.closedOn, locale)} />
+            <KeyValueRow label={t("close.snap.manager")} value={<span dir="auto">{managerName || "—"}</span>} />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{t("close.snap.cost_note")}</p>
+        </Panel>
+        {lessonsPanel}
+      </div>
     )
   }
 
   return (
-    <Panel title={t("close.title")} icon={Archive}>
-      <ul className="space-y-1.5">
-        {shown.map((r) => (
-          <li key={r.key} className={cn("flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm", r.ok ? "border-success/20" : "border-destructive/25 bg-destructive/5")}>
-            {r.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" /> : <CircleAlert size={16} className="mt-0.5 shrink-0 text-destructive" aria-hidden="true" />}
-            <div className="min-w-0">
-              <p className="font-semibold">{t(`close.row.${r.key}`)}</p>
-              {!r.ok && (
-                <p className="text-xs text-muted-foreground">
-                  {r.key === "in_progress" ? t("close.why.in_progress", { count: r.n ?? 0 }) : MONEY_ROWS.has(r.key) ? t(`close.why.${r.key}`, { amount: pmMoney(r.n ?? 0) }) : t(`close.why.${r.key}`, { count: r.n ?? 0 })}
-                  {FINANCE_ROWS.has(r.key) && ` ${t("close.waits_finance")}`}
-                </p>
-              )}
+    <div className="space-y-4">
+      <Panel
+        title={
+          <span className="inline-flex items-center gap-2">
+            {t("close.title_full")}
+            <StatusPill tone={left.length ? "warn" : "ok"}>
+              <span dir="ltr">
+                {shown.length - left.length}/{shown.length}
+              </span>
+            </StatusPill>
+          </span>
+        }
+        icon={Archive}
+      >
+        <p className="mb-3 text-xs text-muted-foreground">{t("close.sub")}</p>
+        <ul className="space-y-1.5">
+          {shown.map((r) => {
+            const tab = CLOSE_ROW_TAB[r.key]
+            const body = (
+              <>
+                {r.ok ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" /> : <Clock size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />}
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{t(`close.row.${r.key}`)}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {sentence(r)}
+                    {!r.ok && FINANCE_ROWS.has(r.key) && ` ${t("close.waits_finance")}`}
+                  </span>
+                </span>
+                {!r.ok && <StatusPill tone="warn">{t("close.pending")}</StatusPill>}
+              </>
+            )
+            const cls = cn("flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-start text-sm", r.ok ? "border-success/20" : "border-warning/30 bg-warning/5")
+            return (
+              <li key={r.key}>
+                {onOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(tab)}
+                    className={cn(cls, "transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2")}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  <div className={cls}>{body}</div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        {!money && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
+        <div className="mt-3">
+          {blocked.length > 0 ? (
+            <Callout tone="warn">{t("close.left_note", { count: blocked.length })}</Callout>
+          ) : (
+            <div role="note" className="flex gap-2.5 rounded-xl border border-success/25 bg-success/5 px-3.5 py-3 text-sm leading-relaxed">
+              <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+              <span>{t("close.all_clear")}</span>
             </div>
-          </li>
-        ))}
-      </ul>
-      {!money && hasClient && <p className="mt-2 text-xs text-muted-foreground">{t("close.money_hidden")}</p>}
-      {access.allowed("project.close") && (
-        <div className="mt-4 space-y-2">
-          {lifecycle !== "done" && <Callout tone="info">{t("close.not_done")}</Callout>}
-          <Button variant="destructive" onClick={() => setConfirming(true)} disabled={!canClose || blocked.length > 0}>
-            <Archive size={16} className="me-1.5" aria-hidden="true" />
-            {t("close.button")}
-          </Button>
-          {blocked.length > 0 && <p className="text-xs text-muted-foreground">{t("close.blocked", { count: blocked.length })}</p>}
+          )}
         </div>
-      )}
-
-      <Dialog open={confirming} onOpenChange={setConfirming}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("close.confirm_title")}</DialogTitle>
-            <DialogDescription>{t("close.confirm_desc")}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(false)} disabled={busy}>
-              {t("cancel")}
-            </Button>
-            <Button variant="destructive" onClick={() => void close()} disabled={busy}>
-              {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
+        {access.allowed("project.close") && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button variant={blocked.length ? "outline" : "default"} onClick={() => setConfirming(true)} disabled={!canClose || blocked.length > 0}>
+              <Archive size={16} className="me-1.5" aria-hidden="true" />
               {t("close.button")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <span className="text-xs text-muted-foreground">{lifecycle !== "done" ? t("close.not_done") : t("close.archive_hint")}</span>
+          </div>
+        )}
+
+        <Dialog open={confirming} onOpenChange={setConfirming}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{t("close.confirm_title")}</DialogTitle>
+              <DialogDescription>{t("close.confirm_desc")}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirming(false)} disabled={busy}>
+                {t("cancel")}
+              </Button>
+              <Button variant="destructive" onClick={() => void close()} disabled={busy}>
+                {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
+                {t("close.button")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Panel>
+      {lessonsPanel}
+    </div>
+  )
+}
+
+function LessonsPanel({ lessons, money }: { lessons: ReturnType<typeof projectLessons>; money: boolean }) {
+  const t = useTranslations("Portal.PM")
+  const card = (tone: string, title: string, body: string) => (
+    <div className={cn("rounded-xl border px-3.5 py-3 text-sm leading-relaxed", tone)}>
+      <p className="font-bold">{title}</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{body}</p>
+    </div>
+  )
+  return (
+    <Panel title={t("close.lessons.title")} icon={BookOpen}>
+      <p className="mb-3 text-xs text-muted-foreground">{t("close.lessons.sub")}</p>
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {money &&
+          card(
+            "border-destructive/25 bg-destructive/5",
+            t("close.lessons.rework", { amount: pmMoney(lessons.rework) }),
+            t("close.lessons.rework_note", { count: lessons.ncrs })
+          )}
+        {card(
+          "border-cta/20 bg-cta/5",
+          t("close.lessons.obstacles", { count: lessons.obstaclesClosed }),
+          lessons.avgResponseDays === null ? t("close.lessons.obstacles_note") : t("close.lessons.obstacles_avg", { count: lessons.avgResponseDays })
+        )}
+        {card("border-success/25 bg-success/5", t("close.lessons.team", { count: lessons.team }), t("close.lessons.team_note"))}
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{t("close.lessons.loss_note")}</p>
     </Panel>
   )
 }

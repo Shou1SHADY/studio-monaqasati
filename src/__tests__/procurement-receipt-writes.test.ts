@@ -339,18 +339,21 @@ describe("the other doors", () => {
   })
 
   it("a manual receipt with no order is numbered, flagged manual, posts nothing, lands stock only in a chosen warehouse, and can be booked as an expense", async () => {
-    const r = await createManualReceipt(db, gate, { organizationId: ORG, supplierName: "محل الحي", deliveryDate: "2026-09-22", receiverName: "سلمى", reason: "شراء نقدي", warehouseId: "wh-p1", items: [{ name: "زوايا حديد", quantity: 20, unit: "حبة", unitPrice: 12 }] }, { now: NOW })
+    const r = await createManualReceipt(db, buyer, { organizationId: ORG, supplierName: "محل الحي", deliveryDate: "2026-09-22", receiverName: "سلمى", reason: "شراء نقدي", warehouseId: "wh-p1", items: [{ name: "زوايا حديد", quantity: 20, unit: "حبة", unitPrice: 12 }] }, { now: NOW })
     expect(r).toMatchObject({ docNumber: "GR-2026/001", stockLanded: true })
     const d = readDoc<Record<string, unknown>>(`deliveries/${r.deliveryId}`) as Record<string, unknown>
-    expect(d).toMatchObject({ source: "manual", status: "confirmed", contractorId: "gate", supplierName: "محل الحي", receiptNote: "شراء نقدي", landedWarehouseId: "wh-p1", postedNet: null })
+    expect(d).toMatchObject({ source: "manual", status: "confirmed", supplierName: "محل الحي", receiptNote: "شراء نقدي", landedWarehouseId: "wh-p1", postedNet: null, contractorId: "buyer" })
     for (const forbidden of ["offerId", "rfqId", "supplierOrgId", "supplierId", "poId"]) expect(d).not.toHaveProperty(forbidden)
     expect(d.lines).toEqual([expect.objectContaining({ name: "زوايا حديد", counted: 20, accepted: 20 })])
     expect(mocked(receiveDelivery)).toHaveBeenCalledWith(expect.objectContaining({ warehouseId: "wh-p1", items: [{ name: "زوايا حديد", unit: "حبة", quantity: 20, unitCost: 12 }] }))
     expect(mocked(onGoodsReceived)).not.toHaveBeenCalled()
-    await markReceiptAsExpense(db, gate, r.deliveryId)
+    await expect(markReceiptAsExpense(db, gate, r.deliveryId)).rejects.toMatchObject({ code: "no_permission" })
+    await markReceiptAsExpense(db, buyer, r.deliveryId)
     expect(readDoc<{ regularisation: string }>(`deliveries/${r.deliveryId}`)?.regularisation).toBe("expense")
+    await expect(markReceiptAsExpense(db, buyer, r.deliveryId)).rejects.toMatchObject({ code: "not_no_po" })
     await expect(markReceiptAsExpense(db, nobody, r.deliveryId)).rejects.toBeInstanceOf(ProcWriteError)
-    await expect(createManualReceipt(db, gate, { organizationId: ORG, supplierName: "", deliveryDate: "2026-09-22", receiverName: "س", items: [] }, { now: NOW })).rejects.toMatchObject({ code: "reason_required" })
+    await expect(createManualReceipt(db, gate, { organizationId: ORG, supplierName: "x", deliveryDate: "2026-09-22", receiverName: "س", items: [{ name: "a", quantity: 1, unit: "u" }] }, { now: NOW })).rejects.toMatchObject({ code: "no_permission" })
+    await expect(createManualReceipt(db, buyer, { organizationId: ORG, supplierName: "", deliveryDate: "2026-09-22", receiverName: "س", items: [] }, { now: NOW })).rejects.toMatchObject({ code: "reason_required" })
   })
 })
 

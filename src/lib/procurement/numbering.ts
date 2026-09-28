@@ -6,7 +6,8 @@
 // buyers can never hold the same one. The stored number stays Latin; the
 // Arabic prefix is a display matter (`format.ts`).
 
-import type { Firestore, Transaction } from "firebase/firestore"
+import { doc, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
+import { MFG_COUNTERS } from "../manufacturing-engine"
 import { drawYearlyDocNumber, formatYearlyDocNumber } from "../sales-numbering"
 import type { ProcDocType } from "./format"
 
@@ -24,4 +25,25 @@ export async function drawProcDocNumber(
   year = new Date().getUTCFullYear()
 ): Promise<string> {
   return drawYearlyDocNumber(firestore, tx, organizationId, type, year)
+}
+
+/**
+ * Several numbers of one type in ONE transaction (a split award prepares an
+ * order per supplier at once). A transaction may not read a document after
+ * writing it, so the sequence is read once and bumped by the count.
+ */
+export async function drawProcDocNumbers(
+  firestore: Firestore,
+  tx: Transaction,
+  organizationId: string,
+  type: ProcDocType,
+  count: number,
+  year = new Date().getUTCFullYear()
+): Promise<string[]> {
+  const ref = doc(firestore, MFG_COUNTERS, `${organizationId}__${type}__${year}`)
+  const snap = await tx.get(ref)
+  const last = snap.exists() ? Number(snap.data().last) || 0 : 0
+  if (count <= 0) return []
+  tx.set(ref, { organizationId, type, year, last: last + count, updatedAt: serverTimestamp() })
+  return Array.from({ length: count }, (_, k) => formatYearlyDocNumber(type, year, last + k + 1))
 }

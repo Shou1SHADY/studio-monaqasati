@@ -9,6 +9,7 @@
 import { TODAY_KEYS, todayKpis, todayTasks, todayWaits, type OfferFact, type ProcWorld, type RfqFact } from "@/lib/procurement/today"
 import { DEFAULT_POLICIES, type PoLine, type ProcActor, type PurchaseOrder, type ReceiptFact } from "@/lib/procurement/types"
 import { AGREEMENT_EXPIRY_WINDOW_DAYS, type PriceAgreement } from "@/lib/procurement/prices"
+import type { NeedRow } from "@/lib/procurement/need-desk"
 
 const NOW = new Date("2026-09-22T08:00:00Z")
 
@@ -128,7 +129,7 @@ describe("T5c–T5e · send, not accepted, late — the chasing tasks", () => {
       rfqs: [rfq({ status: "Draft" })],
     })
     const t = todayTasks(w, EXPEDITER, NOW)
-    expect(t.map((x) => x.kind).sort()).toEqual(["late", "not_accepted", "notice_incoming", "send"])
+    expect(t.map((x) => x.kind).sort()).toEqual(["late", "not_accepted", "notice_forward", "send"])
     expect(t.every((x) => x.amount === null)).toBe(true)
     expect(todayKpis(w, EXPEDITER, NOW).tiles.every((k) => k.unit === "count")).toBe(true)
   })
@@ -182,9 +183,9 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
         receipt({ id: "a" }),
         receipt({ id: "b", docNumber: "GR-2026/032" }),
         receipt({ id: "old", confirmedAt: "2026-09-20T08:00:00Z" }),
-        receipt({ id: "n1", status: "pending_confirmation", deliveryDate: "2026-09-24", confirmedAt: null }),
-        receipt({ id: "n2", status: "pending_confirmation", deliveryDate: "2026-09-20", confirmedAt: null }),
-        receipt({ id: "n3", status: "pending_confirmation", deliveryDate: "2026-10-02", confirmedAt: null }),
+        receipt({ id: "n1", status: "pending_confirmation", deliveryDate: "2026-09-24", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
+        receipt({ id: "n2", status: "pending_confirmation", deliveryDate: "2026-09-20", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
+        receipt({ id: "n3", status: "pending_confirmation", deliveryDate: "2026-10-02", confirmedAt: null, forwardedTo: { name: "ماجد" } }),
       ],
     })
     const t = todayTasks(w, MANAGER, NOW)
@@ -211,7 +212,7 @@ describe("T6/T8/T9/T11 · receipts and notices", () => {
       ],
     })
     const t = todayTasks(w, MANAGER, NOW)
-    expect(t.map((x) => [x.kind, x.id, x.priority])).toEqual([["receipt_no_po", "nopo:m1", 3]])
+    expect(t.map((x) => [x.kind, x.id, x.priority, x.severity])).toEqual([["receipt_no_po", "nopo:m1", 1, "amber"]])
     expect(kinds(w, EXPEDITER)).toEqual([])
   })
 })
@@ -297,9 +298,10 @@ describe("KPIs — three per role", () => {
     expect(k.tiles[1]).toMatchObject({ noteKey: "kpi.committed.note_late", noteParams: { amount: 28000, count: 1 }, tone: "bad" })
     // The rebar orders repeat one price: zero drift, but they widen the base (2,500 over 587,800).
     expect(k.tiles[2]).toMatchObject({ noteKey: "kpi.drift.note_up", noteParams: { percent: 0.43 }, tone: "warn" })
-    // With Manufacturing's requests loaded, the first tile counts the open ones.
-    const k2 = todayKpis({ ...w, mfgPurchaseRequests: [{ id: "a", status: "sent" }, { id: "b", status: "ordered" }, { id: "c", status: "sent" }] }, MANAGER, NOW)
-    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 2, labelKey: "kpi.needs.label_requests", href: "/contractor/rfqs/requests" })
+    // With the needs desk loaded, the first tile counts the lines still to source and those past their last order day.
+    const row = (key: string, state: NeedRow["state"], lastOrderIn: number | null) => ({ key, state, lastOrderIn, category: null }) as NeedRow
+    const k2 = todayKpis({ ...w, needDesk: { rows: [row("a", "open", -2), row("b", "late", 3), row("c", "rfq", null)], buyers: [], viewerCategories: null } }, MANAGER, NOW)
+    expect(k2.tiles[0]).toMatchObject({ id: "needs", value: 2, labelKey: "kpi.needs.label_requests", noteKey: "kpi.needs.note_overdue", noteParams: { count: 1 }, tone: "bad", href: "/contractor/rfqs/requests?seg=act" })
   })
 
   it("owner: awaiting my approval · what Finance will need · late orders", () => {
@@ -370,7 +372,8 @@ describe("SS4 `AGR` · an agreement about to end", () => {
   it("is shown to whoever could renew it, and to nobody else", () => {
     const w = world({ agreements: [agreement()] })
     expect(kinds(w, OWNER)).toContain("agreement_expiring")
-    expect(kinds(w, BUYER)).toContain("agreement_expiring")
+    // P-24: the manager renews; a buyer does not.
+    expect(kinds(w, BUYER)).not.toContain("agreement_expiring")
     // The expediter chases dates and the store receives; neither signs a price.
     expect(kinds(w, EXPEDITER)).not.toContain("agreement_expiring")
     expect(kinds(w, RECEIVER)).not.toContain("agreement_expiring")
@@ -383,7 +386,16 @@ describe("SS4 `AGR` · an agreement about to end", () => {
 
 describe("§5.2-3b · a notice nobody has been told to receive", () => {
   const pending = (over: Partial<ReceiptFact> = {}) => receipt({ id: "n1", status: "pending_confirmation", confirmedAt: null, deliveryDate: "2026-09-23", ...over })
-  const noticeTask = (w: ProcWorld) => todayTasks(w, MANAGER, NOW).find((t) => t.kind === "notice_incoming" || t.kind === "notice_overdue")
+  // Seen by somebody who does not chase (the forward task is the chaser's — P-20).
+  const noticeTask = (w: ProcWorld) => todayTasks(w, { ...MANAGER, canExpedite: false }, NOW).find((t) => t.kind === "notice_incoming" || t.kind === "notice_overdue")
+
+  it("the chaser gets «حوّل للمستلم»: amber inside the window, red on the day, blue while far — and it leads to the forward dialog", () => {
+    const fwd = (over: Partial<ReceiptFact>) => todayTasks(world({ receipts: [pending(over)] }), MANAGER, NOW).find((t) => t.kind === "notice_forward")
+    expect(fwd({})).toMatchObject({ severity: "amber", priority: 0, actionKey: "actions.forward", href: "/contractor/goods-received?tab=incoming&delivery=n1&forward=1" })
+    expect(fwd({ deliveryDate: "2026-09-22" })).toMatchObject({ severity: "red", priority: 0 })
+    expect(fwd({ deliveryDate: "2026-09-30" })).toMatchObject({ severity: "blue", priority: 2 })
+    expect(fwd({ forwardedTo: { name: "ماجد" } })).toBeUndefined()
+  })
 
   it("says so, and turns amber inside the forwarding window", () => {
     const t = noticeTask(world({ receipts: [pending()] }))

@@ -18,6 +18,7 @@ export interface UploadedFile {
 
 export function MfgFileField({
   orgId,
+  area = "manufacturing",
   folder,
   value,
   onChange,
@@ -27,6 +28,8 @@ export function MfgFileField({
   required,
 }: {
   orgId: string
+  /** The module's folder under the org — Project Management reuses this field with "pm". */
+  area?: string
   /** e.g. `workOrders/{id}/survey` */
   folder: string
   value: UploadedFile | null
@@ -53,7 +56,7 @@ export function MfgFileField({
     setError(null)
     try {
       const safe = file.name.replace(/[^\w.\-؀-ۿ]+/g, "_")
-      const fileRef = ref(storage, `organizations/${orgId}/manufacturing/${folder}/${Date.now()}_${safe}`)
+      const fileRef = ref(storage, `organizations/${orgId}/${area}/${folder}/${Date.now()}_${safe}`)
       await uploadBytes(fileRef, file, { contentType: file.type })
       onChange({ url: await getDownloadURL(fileRef), name: file.name })
     } catch (err) {

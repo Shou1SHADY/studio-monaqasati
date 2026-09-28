@@ -57,6 +57,7 @@ describe("the rail's counts", () => {
       orders: [order("sent"), order("accepted"), order("accepted", 4), order("closed"), order("cancelled")],
       now,
     })
-    expect(c).toEqual({ today: 19, requests: 13, rfqs: 2, orders: 3, receipts: 2 })
+    // P-06: an RFQ closed and awaiting award still counts; receipts = live notices + orders due within 3 days (none here).
+    expect(c).toEqual({ today: 19, requests: 13, rfqs: 3, orders: 3, receipts: 0 })
   })
 })

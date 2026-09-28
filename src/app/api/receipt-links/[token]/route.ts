@@ -30,6 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         rfqTitle: (delivery.rfqTitle as string) || "",
         deliveryDate: (delivery.deliveryDate as string) || null,
         forwardedBy: link.createdByName,
+        note: link.note || null,
         expiresAt: link.expiresAt,
         lines: lines.map((l) => ({ poLineId: l.poLineId, name: l.name, unit: l.unit })),
       },

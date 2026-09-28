@@ -3,15 +3,19 @@
 // The manual goods receipt (PRD 3.0 §7.4 `manrc`): a purchase made outside the
 // platform, or goods that arrived with no order — typed by hand, flagged
 // "recorded manually by Procurement", listed in the exceptions. Optionally
-// against a live order: then it is an arrival with no notice on that order
+// against a live order of a supplier registered with us (pick the supplier,
+// then one of his orders): then it is an arrival with no notice on that order
 // (its lines, counted here; the order's counters move) and never a "no PO"
 // receipt. Without an order it enters the No-PO segment and waits to be
 // regularised; Finance holds its invoice until then. Posts nothing itself.
+// Procurement's form (S-13): whoever prepares orders, or the owner. A photo of
+// the shop invoice rides with it; unit prices are asked only of a price role.
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { FileText, Loader2, PenLine, Plus, PlusCircle, Trash2, Warehouse } from "lucide-react"
-import { useFirestore } from "@/firebase"
+import { FileText, Loader2, Paperclip, PenLine, Plus, PlusCircle, Trash2, Warehouse } from "lucide-react"
+import { getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage"
+import { useFirestore, useStorage } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -20,9 +24,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { SignaturePad } from "@/components/SignaturePad"
+import { cn } from "@/lib/utils"
 import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { lineToArrive, poStatus } from "@/lib/procurement/po"
 import { ReceiptValidationError, createArrivalWithoutNotice, createManualReceipt } from "@/lib/procurement/receipt-writes"
+import { registeredSuppliers } from "@/lib/procurement/receipt-regularise"
 import type { DeliveryLine, ProcActor, ProcurementPolicies, PurchaseOrder } from "@/lib/procurement/types"
 import { ProcWriteError } from "@/lib/procurement/writes"
 
@@ -56,11 +62,15 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
+  const storage = useStorage()
   const { toast } = useToast()
   const today = new Date().toISOString().slice(0, 10)
   const [saving, setSaving] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
 
   const [supplierName, setSupplierName] = useState("")
+  const [supplierOrgId, setSupplierOrgId] = useState("")
   const [poId, setPoId] = useState("")
   const [deliveryDate, setDeliveryDate] = useState(today)
   const [driverName, setDriverName] = useState("")
@@ -79,7 +89,8 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
   const [supplierSig, setSupplierSig] = useState<string | null>(null)
   const [contractorSig, setContractorSig] = useState<string | null>(null)
 
-  const live = useMemo(() => receivableOrders(orders), [orders])
+  const registered = useMemo(() => registeredSuppliers(orders), [orders])
+  const live = useMemo(() => (supplierOrgId ? receivableOrders(orders).filter((o) => o.supplierOrgId === supplierOrgId) : []), [orders, supplierOrgId])
   const po = useMemo(() => live.find((o) => o.id === poId) || null, [live, poId])
   const warehouseProjects = useMemo(() => projects.filter((p) => p.warehouseId === warehouseId), [projects, warehouseId])
 
@@ -89,11 +100,14 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
   }, [warehouseProjects.map((p) => p.id).join(",")])
 
   useEffect(() => {
-    if (po) setSupplierName(po.supplierName)
-  }, [po])
+    if (!live.some((o) => o.id === poId)) setPoId("")
+  }, [live, poId])
 
   const reset = () => {
     setSupplierName("")
+    setSupplierOrgId("")
+    setFile(null)
+    if (fileRef.current) fileRef.current.value = ""
     setPoId("")
     setDeliveryDate(today)
     setDriverName("")
@@ -115,8 +129,21 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
 
   const update = (rowId: string, patch: Partial<ItemRow>) => setRows((prev) => prev.map((r) => (r.rowId === rowId ? { ...r, ...patch } : r)))
 
+  // The invoice photo goes up first so the receipt is born with it — a
+  // receipt is never edited after recording.
+  const uploadInvoice = async (): Promise<string[]> => {
+    if (!file || !storage) return []
+    const r = storageRef(storage, `deliveries/manual/${orgId}/${Date.now()}_${file.name}`)
+    await uploadBytes(r, file)
+    return [await getDownloadURL(r)]
+  }
+
   const save = async () => {
     if (!firestore || !orgId) return
+    if (!supplierName.trim()) {
+      toast({ title: t("manual.errSupplier"), variant: "destructive" })
+      return
+    }
     setSaving(true)
     try {
       const opts = { copy: tShared as unknown as import("@/lib/mfg-events").Translator, locale: locale as "ar" | "en", centralWarehouseCopy: { name: tc("wh_central_name"), location: tc("wh_central_location"), description: tc("wh_central_desc") } }
@@ -128,10 +155,11 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
           toast({ title: tc("goods_manual_validation_error"), variant: "destructive" })
           return
         }
+        const attachmentUrls = await uploadInvoice()
         const r = await createArrivalWithoutNotice(
           firestore,
           actor,
-          { po, lines, receiverName, deliveryDate, driverName, paperNoteNumber, note: [reason.trim(), notes.trim()].filter(Boolean).join(" — ") || null, landedWarehouseId: warehouseId || null, policies, alreadyPostedNet: alreadyPostedNet(po), projectName: projectName(po.projectId), manual: true, checklist: [] },
+          { po, lines, receiverName, deliveryDate, driverName, paperNoteNumber, note: [reason.trim(), notes.trim()].filter(Boolean).join(" — ") || null, landedWarehouseId: warehouseId || null, policies, alreadyPostedNet: alreadyPostedNet(po), projectName: projectName(po.projectId), manual: true, checklist: attachmentUrls.length ? ["delivery_note"] : [], attachmentUrls },
           opts
         )
         toast({ title: t("manual.doneOnOrder", { number: displayReceiptNumber(r.docNumber, locale), po: displayPoNumber(po.docNumber, locale) }), description: r.stockLanded ? undefined : t("toast.noStock"), variant: r.stockLanded ? undefined : "destructive" })
@@ -139,11 +167,12 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
         onDone(r.deliveryId, "log")
         return
       }
-      const items = rows.filter((r) => r.itemName.trim() && Number(r.quantity) > 0).map((r) => ({ name: r.itemName, quantity: Number(r.quantity), unit: r.unit || t("manual.unitDefault"), unitPrice: r.unitPrice.trim() ? Number(r.unitPrice) : null, inventoryItemId: r.inventoryItemId || null }))
+      const items = rows.filter((r) => r.itemName.trim() && Number(r.quantity) > 0).map((r) => ({ name: r.itemName, quantity: Number(r.quantity), unit: r.unit || t("manual.unitDefault"), unitPrice: actor.seesPrices && r.unitPrice.trim() ? Number(r.unitPrice) : null, inventoryItemId: r.inventoryItemId || null }))
       if (!supplierName.trim() || !deliveryDate || deliveryDate > today || !receiverName.trim() || !items.length) {
         toast({ title: tc("goods_manual_validation_error"), variant: "destructive" })
         return
       }
+      const attachmentUrls = await uploadInvoice()
       const r = await createManualReceipt(firestore, actor, {
         organizationId: orgId,
         supplierName,
@@ -162,6 +191,8 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
         contractorVatNumber: contractorVat,
         supplierSignatureData: supplierSig,
         contractorSignatureData: contractorSig,
+        supplierGuessOrgId: supplierOrgId || null,
+        attachmentUrls,
       })
       toast({ title: t("manual.doneNoPo", { number: displayReceiptNumber(r.docNumber, locale) }), description: t("manual.doneNoPoDesc") })
       reset()
@@ -197,26 +228,43 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="manual-po">{t("manual.againstPo")}</Label>
-              <Select value={poId || "__none__"} onValueChange={(v) => setPoId(v === "__none__" ? "" : v)}>
-                <SelectTrigger id="manual-po">
+              <Label htmlFor="manual-supplier">{t("manual.supplierAsInvoiced")} *</Label>
+              <Input id="manual-supplier" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder={t("manual.supplierPlaceholder")} dir="auto" />
+              <p className="text-[11px] text-muted-foreground">{t("manual.supplierHint")}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-registered">{t("manual.registered")}</Label>
+              <Select value={supplierOrgId || "__none__"} onValueChange={(v) => setSupplierOrgId(v === "__none__" ? "" : v)}>
+                <SelectTrigger id="manual-registered">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">{t("manual.noPoOption")}</SelectItem>
-                  {live.map((o) => (
-                    <SelectItem key={o.id} value={o.id}>
-                      {displayPoNumber(o.docNumber, locale)} · {o.supplierName} · {o.lines.filter((l) => lineToArrive(l) > 0).map((l) => l.name).join("، ")}
-                    </SelectItem>
+                  <SelectItem value="__none__">{t("manual.offPlatform")}</SelectItem>
+                  {registered.map((s) => (
+                    <SelectItem key={s.orgId} value={s.orgId}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {po && <p className="text-xs text-muted-foreground">{t("manual.poHint", { po: displayPoNumber(po.docNumber, locale) })}</p>}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="manual-supplier">{t("manual.supplierAsInvoiced")} *</Label>
-              <Input id="manual-supplier" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder={tc("goods_manual_supplier_placeholder")} disabled={Boolean(po)} dir="auto" />
-            </div>
+            {supplierOrgId && live.length > 0 && (
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-po">{t("manual.againstPo")}</Label>
+                <Select value={poId || "__none__"} onValueChange={(v) => setPoId(v === "__none__" ? "" : v)}>
+                  <SelectTrigger id="manual-po">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">{t("manual.noPoOption")}</SelectItem>
+                    {live.map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {displayPoNumber(o.docNumber, locale)} · {o.lines.filter((l) => lineToArrive(l) > 0).map((l) => l.name).join("، ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {po && <p className="text-xs text-muted-foreground sm:col-span-2">{t("manual.poHint", { po: displayPoNumber(po.docNumber, locale) })}</p>}
             <div className="space-y-1.5">
               <Label htmlFor="manual-date">{tc("goods_manual_delivery_date")} *</Label>
               <input id="manual-date" type="date" value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} max={today} dir="ltr" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
@@ -297,7 +345,7 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
               </div>
               <div className="space-y-2">
                 {rows.map((row, i) => (
-                  <div key={row.rowId} className="grid grid-cols-2 gap-2 rounded-md border p-2 sm:grid-cols-[2.2fr_1fr_1fr_1fr_auto]">
+                  <div key={row.rowId} className={cn("grid grid-cols-2 gap-2 rounded-md border p-2", actor.seesPrices ? "sm:grid-cols-[2.2fr_1fr_1fr_1fr_auto]" : "sm:grid-cols-[2.2fr_1fr_1fr_auto]")}>
                     <div className="col-span-2 sm:col-span-1">
                       <Label htmlFor={`mi-name-${i}`} className="text-[11px]">{t("manual.lineDesc")}</Label>
                       <Input id={`mi-name-${i}`} value={row.itemName} onChange={(e) => update(row.rowId, { itemName: e.target.value })} placeholder={t("manual.lineDescPlaceholder")} className="h-9 text-sm" dir="auto" />
@@ -310,10 +358,12 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
                       <Label htmlFor={`mi-unit-${i}`} className="text-[11px]">{tc("goods_manual_item_unit")}</Label>
                       <Input id={`mi-unit-${i}`} value={row.unit} onChange={(e) => update(row.rowId, { unit: e.target.value })} placeholder={t("manual.unitPlaceholder")} className="h-9 text-sm" dir="auto" />
                     </div>
-                    <div>
-                      <Label htmlFor={`mi-price-${i}`} className="text-[11px]">{t("manual.unitPrice")}</Label>
-                      <Input id={`mi-price-${i}`} inputMode="decimal" value={row.unitPrice} onChange={(e) => update(row.rowId, { unitPrice: e.target.value })} placeholder="—" dir="ltr" className="h-9 text-sm tabular-nums" />
-                    </div>
+                    {actor.seesPrices && (
+                      <div>
+                        <Label htmlFor={`mi-price-${i}`} className="text-[11px]">{t("manual.unitPrice")}</Label>
+                        <Input id={`mi-price-${i}`} inputMode="decimal" value={row.unitPrice} onChange={(e) => update(row.rowId, { unitPrice: e.target.value })} placeholder="—" dir="ltr" className="h-9 text-sm tabular-nums" />
+                      </div>
+                    )}
                     <div className="flex items-end justify-end">
                       {rows.length > 1 && (
                         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-destructive/60 hover:text-destructive" aria-label={t("manual.removeLine")} onClick={() => setRows((p) => p.filter((r) => r.rowId !== row.rowId))}>
@@ -327,6 +377,16 @@ export function ManualReceiptDialog({ open, onOpenChange, actor, orgId, orders, 
             </div>
           )}
 
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-file">{t("manual.photo")}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input ref={fileRef} id="manual-file" type="file" accept="image/*,.pdf" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5" onClick={() => fileRef.current?.click()}>
+                <Paperclip size={14} aria-hidden="true" />
+                {file ? <bdi className="max-w-[14rem] truncate">{file.name}</bdi> : t("manual.chooseFile")}
+              </Button>
+            </div>
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="manual-reason">{t("manual.reason")}</Label>
             <Textarea id="manual-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("manual.reasonPlaceholder")} dir="auto" />

@@ -13,9 +13,10 @@ import {
 } from "@/lib/receipt-links"
 
 // Procurement forwards a delivery to whoever will receive it (22 Sep review).
-// Only someone who may confirm deliveries for this company may do so; the
-// link replaces any earlier open link for the same delivery, so exactly one
-// person can sign for it.
+// Only someone who follows deliveries up (expedites, prepares or approves
+// orders) or confirms them for this company may do so; the link replaces any
+// earlier open link for the same delivery, so exactly one person can sign for
+// it. Procurement's note to the receiver rides on the link.
 
 const fail = (message: string, code: string, status: number) =>
   NextResponse.json({ error: true, message, code }, { status })
@@ -39,7 +40,10 @@ export async function POST(req: NextRequest) {
     const db = getAdminFirestore()
     const caller = await callerOf(db, uid)
     if (!caller) return fail("No profile", "FORBIDDEN", 403)
-    if (!caller.can("deliveries.confirm")) return fail("Forwarding a receipt needs delivery confirmation rights", "FORBIDDEN", 403)
+    // Forwarding is Procurement's follow-up (the expediter's, S-12); whoever
+    // receives may still hand a delivery on to someone else at the place.
+    const mayForward = ["deliveries.confirm", "po.expedite", "offers.accept", "po.approve"] as const
+    if (!mayForward.some((p) => caller.can(p))) return fail("Forwarding a receipt needs the expediting or receiving permission", "FORBIDDEN", 403)
 
     const deliveryRef = db.collection("deliveries").doc(parsed.data.deliveryId)
     const delivery = (await deliveryRef.get()).data()
@@ -71,6 +75,7 @@ export async function POST(req: NextRequest) {
       createdByName: caller.name,
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + LINK_TTL_MS).toISOString(),
+      note: parsed.data.note?.trim() || null,
     }
 
     const batch = db.batch()
@@ -84,6 +89,7 @@ export async function POST(req: NextRequest) {
         phoneMasked: maskPhone(receiver.phone),
         byName: caller.name,
         at: link.createdAt,
+        note: link.note,
       },
     })
     await batch.commit()

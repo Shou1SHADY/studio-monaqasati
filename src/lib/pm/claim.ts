@@ -17,12 +17,18 @@ export const CLAIM_KINDS = ["time", "cost", "both"] as const
 export type ClaimKind = (typeof CLAIM_KINDS)[number]
 export const CLAIM_RESPONSES = ["appr", "part", "rej"] as const
 export type ClaimResponse = (typeof CLAIM_RESPONSES)[number]
+/** Who caused the event — the party the claim is against. "oth" is stated (RSN-01). */
+export const CLAIM_CAUSES = ["emp", "cons", "force", "oth"] as const
+export type ClaimCause = (typeof CLAIM_CAUSES)[number]
 
 export interface PmClaim {
   id: string
   seq: number
   kind: ClaimKind
+  /** What happened — the claim's title (the prototype's "الواقعة"). */
   cause: string
+  causedBy?: ClaimCause | null
+  causedByText?: string | null
   /** The day of the event — the notice deadline runs from it. */
   eventOn: string
   daysAsked: number
@@ -32,9 +38,11 @@ export interface PmClaim {
   byName?: string | null
   noticeOn?: string | null
   submittedOn?: string | null
-  response?: { on: string; by: string; byName?: string | null; days: number; amount: number } | null
+  response?: { on: string; by: string; byName?: string | null; days: number; amount: number; ref?: string | null } | null
   /** The programme revision these granted days issued. */
   revision?: number | null
+  /** The obstacle or RFI that evidences it (`pmObstacles/{id}`, WF-19 → WF-07). */
+  obstacleId?: string | null
 }
 
 export const claimNo = (seq: number) => String(seq).padStart(2, "0")
@@ -51,27 +59,61 @@ export const noticeDeadline = (eventOn: string, terms: Pick<ContractTerms, "clai
 export const noticeLate = (c: Pick<PmClaim, "status" | "eventOn">, terms: Pick<ContractTerms, "claimNoticeDays">, today: string) =>
   c.status === "draft" && today > noticeDeadline(c.eventOn, terms)
 
-export type ClaimBlock = "archived" | "not_started" | "no_cause" | "event_date" | "no_days" | "no_amount"
+/** Whole days from one `YYYY-MM-DD` to another. */
+export const daysFrom = (from: string, to: string) => Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
 
-export function claimBlocks(input: { archived: boolean; lifecycle: string; kind: ClaimKind; cause: string; eventOn: string; daysAsked: number; amountAsked: number; today: string }): ClaimBlock[] {
+/** A draft inside its notice period: days left to give notice (null otherwise). */
+export const noticeDaysLeft = (c: Pick<PmClaim, "status" | "eventOn">, terms: Pick<ContractTerms, "claimNoticeDays">, today: string) =>
+  c.status === "draft" && !noticeLate(c, terms, today) ? daysFrom(today, noticeDeadline(c.eventOn, terms)) : null
+
+/** Notice given: how many days after the event it went. */
+export const noticeAfter = (c: Pick<PmClaim, "eventOn" | "noticeOn">) => (c.noticeOn ? daysFrom(c.eventOn, c.noticeOn) : null)
+
+/** Open: not yet answered. */
+export const openClaims = <T extends Pick<PmClaim, "status">>(claims: T[]) => claims.filter((c) => c.status === "draft" || c.status === "notice" || c.status === "sub")
+
+/** `no_obstacle`: the linked obstacle no longer exists — checked by the write.
+ * Only what happened and when are required to log a claim: the days (and the
+ * amount) are not invented — they are estimated at submission (C-24). */
+export type ClaimBlock = "archived" | "not_started" | "no_cause" | "cause_text" | "event_date" | "bad_days" | "bad_amount_asked" | "no_obstacle"
+
+export function claimBlocks(input: {
+  archived: boolean
+  lifecycle: string
+  kind: ClaimKind
+  cause: string
+  eventOn: string
+  daysAsked: number
+  amountAsked: number
+  today: string
+  causedBy?: ClaimCause | null
+  causedByText?: string | null
+}): ClaimBlock[] {
   const out: ClaimBlock[] = []
   if (input.archived) out.push("archived")
   if (input.lifecycle === "plan") out.push("not_started")
   if (!input.cause.trim()) out.push("no_cause")
+  if (input.causedBy === "oth" && !input.causedByText?.trim()) out.push("cause_text")
   if (!input.eventOn || input.eventOn > input.today) out.push("event_date")
-  if (input.kind !== "cost" && !(Number.isInteger(input.daysAsked) && input.daysAsked > 0)) out.push("no_days")
-  if (input.kind !== "time" && !(Number.isFinite(input.amountAsked) && input.amountAsked > 0)) out.push("no_amount")
+  if (!(Number.isInteger(input.daysAsked) && input.daysAsked >= 0)) out.push("bad_days")
+  if (!(Number.isFinite(input.amountAsked) && input.amountAsked >= 0)) out.push("bad_amount_asked")
   return out
 }
 
-export type ClaimStepBlock = "archived" | "wrong_state"
+export type ClaimStepBlock = "archived" | "wrong_state" | "no_days" | "no_amount"
 
 const NEXT: Record<"notice" | "submit", ClaimStatus> = { notice: "draft", submit: "notice" }
 
-export function claimStepBlocks(input: { archived: boolean; status: ClaimStatus; step: "notice" | "submit" }): ClaimStepBlock[] {
+/** Notice, then the detailed submission — which is where the days (a time
+ * claim) and the amount (a cost claim) become required. */
+export function claimStepBlocks(input: { archived: boolean; status: ClaimStatus; step: "notice" | "submit"; kind?: ClaimKind; daysAsked?: number; amountAsked?: number }): ClaimStepBlock[] {
   const out: ClaimStepBlock[] = []
   if (input.archived) out.push("archived")
   if (input.status !== NEXT[input.step]) out.push("wrong_state")
+  if (input.step === "submit" && input.kind) {
+    if (input.kind !== "cost" && !(Number.isInteger(input.daysAsked) && (input.daysAsked ?? 0) > 0)) out.push("no_days")
+    if (input.kind !== "time" && !(Number.isFinite(input.amountAsked) && (input.amountAsked ?? 0) > 0)) out.push("no_amount")
+  }
   return out
 }
 
@@ -106,17 +148,30 @@ export interface DelayInput {
   contractValue: number
   damages: ContractTerms["damages"]
   today: string
+  /** The planned curve's shape F(x) = 1 − (1 − x)^k (programme.ts `curveK`); 1 = linear. */
+  curveK?: number
 }
 
 /** §8: days = (planned − actual)% × effective duration; damages = min(cap ×
  * contract, rate × contract × full weeks). None in planning, none before start,
- * none without a priced BOQ to measure progress on. Planned is linear in time. */
+ * none without a priced BOQ to measure progress on. Planned is linear in time
+ * unless a curve shape is given (calibrated from the activities). */
 export function delayAndDamages(input: DelayInput): { planned: number; delayDays: number; damages: number } | null {
   if (input.lifecycle === "plan" || !input.startOn || input.effectiveDays <= 0 || input.progress === null || input.today < input.startOn) return null
   const elapsed = (Date.parse(`${input.today}T00:00:00Z`) - Date.parse(`${input.startOn.slice(0, 10)}T00:00:00Z`)) / 86_400_000
-  const planned = Math.min(1, Math.max(0, elapsed / input.effectiveDays))
+  const x = Math.min(1, Math.max(0, elapsed / input.effectiveDays))
+  const planned = 1 - Math.pow(1 - x, input.curveK ?? 1)
   const delayDays = Math.max(0, Math.round((planned - input.progress / 100) * input.effectiveDays))
   const d = input.damages
   const damages = d.on ? Math.round(Math.min(d.cap * input.contractValue, d.weeklyRate * input.contractValue * Math.floor(delayDays / 7)) * 100) / 100 : 0
   return { planned: Math.round(planned * 1000) / 10, delayDays, damages }
+}
+
+/** What an extension claim is worth to you: the damages it removes if granted
+ * as asked (the prototype's "تُسقط N ر.س غرامة"). */
+export function penaltyAvoided(c: Pick<PmClaim, "kind" | "daysAsked">, input: DelayInput): number {
+  if (c.kind === "cost" || !(c.daysAsked > 0)) return 0
+  const now = delayAndDamages(input)
+  const after = delayAndDamages({ ...input, effectiveDays: input.effectiveDays + c.daysAsked })
+  return now && after ? Math.max(0, Math.round((now.damages - after.damages) * 100) / 100) : 0
 }

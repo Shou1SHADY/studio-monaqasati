@@ -3,12 +3,14 @@
 // The small forms an order's next step opens: a reason (return, cancel the
 // remainder, close short, cancel the order), a date (record the supplier's
 // acceptance, update his date), and the decision on a rejected quantity.
+// The reject decision carries its terms: the replacement's date as the
+// supplier committed to it, or the discounted unit price (required).
 // Each one validates with zod, shows what will happen, and hands the value
 // to the drawer — which runs the domain write and translates its refusal.
 
 import { useEffect } from "react"
 import { useTranslations } from "next-intl"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Loader2 } from "lucide-react"
@@ -229,28 +231,51 @@ export function DateDialog({
 // The decision on a rejected quantity (§5.2-8)
 // ---------------------------------------------------------------------------
 
+export interface RejectDecisionValue {
+  decision: RejectDecision
+  note: string | null
+  /** `YYYY-MM-DD` on `replace` — optional. */
+  replaceBy: string | null
+  /** Unit price excl. VAT on `discount` — required. */
+  discountPrice: number | null
+}
+
 export function RejectDecisionDialog({
   open,
   onOpenChange,
   line,
+  now,
   onSubmit,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   line: PoLine | null
-  onSubmit: Submit<{ decision: RejectDecision; note: string | null }>
+  now?: Date
+  onSubmit: Submit<RejectDecisionValue>
 }) {
   const t = useTranslations("Portal.ProcOrders")
   const tProc = useTranslations("Portal.Procurement")
-  const schema = z.object({ decision: z.enum(REJECT_DECISIONS), note: z.string().trim().optional() })
-  const form = useForm<z.infer<typeof schema>>({ resolver: zodResolver(schema), defaultValues: { decision: "replace", note: "" } })
+  const today = todayOf(now ?? new Date())
+  const schema = z
+    .object({
+      decision: z.enum(REJECT_DECISIONS),
+      note: z.string().trim().optional(),
+      replaceBy: z.string().optional(),
+      discountPrice: z.string().optional(),
+    })
+    .superRefine((v, ctx) => {
+      if (v.decision === "replace" && v.replaceBy && v.replaceBy < today) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["replaceBy"], message: t("form.date_past") })
+      if (v.decision === "discount" && !(Number(v.discountPrice) > 0)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountPrice"], message: t("reject.discount_required") })
+    })
+  type Values = z.infer<typeof schema>
+  const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { decision: "replace", note: "", replaceBy: "", discountPrice: "" } })
   useEffect(() => {
-    if (open) form.reset({ decision: "replace", note: "" })
+    if (open) form.reset({ decision: "replace", note: "", replaceBy: "", discountPrice: "" })
   }, [open, form])
-  const decision = form.watch("decision")
+  const decision = useWatch({ control: form.control, name: "decision" })
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-md">
         <DialogHeader className="text-start">
           <DialogTitle>{t("reject.title")}</DialogTitle>
           <DialogDescription>{t("reject.desc")}</DialogDescription>
@@ -260,7 +285,13 @@ export function RejectDecisionDialog({
             <form
               className="space-y-4"
               onSubmit={form.handleSubmit(async (v) => {
-                if (await onSubmit({ decision: v.decision, note: v.note?.trim() || null })) onOpenChange(false)
+                const value: RejectDecisionValue = {
+                  decision: v.decision,
+                  note: v.note?.trim() || null,
+                  replaceBy: v.decision === "replace" && v.replaceBy ? v.replaceBy : null,
+                  discountPrice: v.decision === "discount" ? Number(v.discountPrice) : null,
+                }
+                if (await onSubmit(value)) onOpenChange(false)
               })}
             >
               <p className="rounded-lg border px-3 py-2 text-sm">
@@ -290,20 +321,52 @@ export function RejectDecisionDialog({
                   </FormItem>
                 )}
               />
+              {decision === "replace" && (
+                <FormField
+                  control={form.control}
+                  name="replaceBy"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("reject.replace_by")}</FormLabel>
+                      <FormControl>
+                        <Input type="date" min={today} dir="ltr" {...field} />
+                      </FormControl>
+                      <p className="text-[11px] text-muted-foreground">{t("reject.replace_by_hint")}</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {decision === "discount" && (
+                <FormField
+                  control={form.control}
+                  name="discountPrice"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t("reject.discount_price")}</FormLabel>
+                      <FormControl>
+                        <Input type="number" inputMode="decimal" min={0} step="any" dir="ltr" className="tabular-nums" {...field} />
+                      </FormControl>
+                      <p className="text-[11px] text-muted-foreground">{t("reject.discount_price_hint")}</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <FormField
                 control={form.control}
                 name="note"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{decision === "discount" ? t("reject.note_discount") : t("reject.note")}</FormLabel>
+                    <FormLabel>{t("reject.note")}</FormLabel>
                     <FormControl>
-                      <Input placeholder={decision === "discount" ? t("reject.note_discount_ph") : t("reject.note_ph")} dir="auto" {...field} />
+                      <Input placeholder={t("reject.note_ph")} dir="auto" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Effects items={[t("reject.effect_always")]} />
+              <Effects items={[t(`reject.effect_${decision}`), t("reject.effect_always")]} />
               <DialogFooter className="gap-2 sm:gap-2">
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   {t("form.cancel")}

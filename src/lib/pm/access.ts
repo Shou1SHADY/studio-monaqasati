@@ -166,6 +166,7 @@ type Req = { all?: PmKey[]; any?: PmKey[] }
 /** Every guarded action (PRD §4, 117 prototype actions grouped by what they do). */
 export const PM_GUARD = {
   "measurement.write": { all: ["measure"] },
+  "obstacle.record": { any: ["daily", "approve"] },
   "item.rate.set": { all: ["measure", "money"] },
   "daily.write": { all: ["daily"] },
   "qa.record": { all: ["qa"] },

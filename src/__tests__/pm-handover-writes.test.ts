@@ -48,7 +48,8 @@ async function send(over: Partial<Parameters<typeof sendHandoverFile>[1]> = {}) 
   })
 }
 const file = (id: string) => readDoc<PmHandover>(`${PM_HANDOVERS}/${id}`) as PmHandover
-const accept = (id: string, actor = pm) => acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], groupId: "g-pm" })
+const accept = (id: string, actor: { uid: string; name: string; owner?: boolean } = pm) =>
+  acceptHandover(db, actor, id, { kind: "bld", location: null, enabledSections: ["contract", "procure"], manager: { uid: actor.uid, name: actor.name, groupId: "g-pm" } })
 
 const pmCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.manage"] }), seat: { uid: "pm1", role: "pm" }, archived: false }
 const siteCtx: PmContext = { ceiling: pmCeiling({ owner: false, permissions: ["pm.site"] }), seat: { uid: "se1", role: "site" }, archived: false }
@@ -126,6 +127,38 @@ describe("return and reassign (HO-03, HO-04)", () => {
     await expect(accept(id, pm)).rejects.toMatchObject({ code: "not_yours" })
     await accept(id, other)
     expect(file(id).status).toBe("acc")
+  })
+})
+
+describe("the acceptance wizard's choices and the owner (G-31, G-35, G-37)", () => {
+  it("the owner may answer any waiting file — reassign it, or accept it naming another manager", async () => {
+    const owner = { uid: ORG, name: "Owner", owner: true }
+    const id = await send()
+    await reassignHandover(db, owner, id, { to: "pm2", toName: "Fahad", reason: "load", reasonText: "Fahad has capacity" })
+    expect(file(id).reassigns?.[0]).toMatchObject({ by: ORG, reasonText: "Fahad has capacity" })
+    const { projectId } = await acceptHandover(db, owner, id, {
+      kind: "bld",
+      location: null,
+      enabledSections: ["contract", "procure", "receive", "store"],
+      manager: { uid: "pm2", name: "Fahad", groupId: "g-pm" },
+      siteEngineer: { uid: "se1", name: "Omar", groupId: "g-site" },
+      note: " Access road not ready ",
+      store: { name: "Store Al-Yasmin", centralWarehouseId: "central_x" },
+    })
+    const project = readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>
+    expect(project).toMatchObject({ projectManagerId: "pm2", projectManagerName: "Fahad", contractorId: ORG, pm: { acceptNote: "Access road not ready" } })
+    expect(readDoc(`projects/${projectId}/members/pm2`)).toMatchObject({ pmRole: "pm", viaHandover: true, groupId: "g-pm", addedBy: ORG })
+    expect(readDoc(`projects/${projectId}/members/se1`)).toMatchObject({ pmRole: "site", viaHandover: true, groupId: "g-site" })
+    expect(readDoc(`warehouses/${project.warehouseId}`)).toMatchObject({ projectId, name: "Store Al-Yasmin", centralWarehouseId: "central_x", organizationId: ORG })
+    expect(file(id)).toMatchObject({ status: "acc", acceptedBy: ORG, acceptNote: "Access road not ready" })
+    expect(readDoc("crmOpportunities/o1")).toMatchObject({ projectManagerId: "pm2", handoverStatus: "accepted" })
+  })
+
+  it("no store section, no store; no manager, no project", async () => {
+    const { projectId } = await accept(await send())
+    expect((readDoc<Record<string, any>>(`projects/${projectId}`) as Record<string, any>).warehouseId).toBeUndefined()
+    const id = await send()
+    await expect(acceptHandover(db, pm, id, { kind: "bld", location: null, enabledSections: [], manager: { uid: "", name: null, groupId: null } })).rejects.toMatchObject({ code: "invalid" })
   })
 })
 

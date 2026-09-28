@@ -6,6 +6,8 @@
 
 import { doc, runTransaction, serverTimestamp, writeBatch, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { cleanAttachments, type PmAttachment } from "./attachments"
+import { todayDay } from "./format"
 import { canReinspect, PM_INSPECTIONS, requestBlocks, resultBlocks, wirNo, type PmInspection, type WirAttempt, type WirParty, type WirResult } from "./inspection"
 import { withFreshState } from "./project-writes"
 
@@ -38,6 +40,7 @@ export interface RequestInput {
   party: WirParty
   partyText?: string | null
   on: string
+  files?: PmAttachment[] | null
 }
 
 /** Request an inspection. The line waits for it — unless it already passed one. */
@@ -53,7 +56,7 @@ export async function requestInspection(firestore: Firestore, ctx: PmContext, pr
     if (blocks.length) throw new PmInspectionError("blocked", blocks)
     seq = (pm.wirCount ?? 0) + 1
     const data = item.data() as { itemNo?: string; pmWir?: string | null }
-    const first: WirAttempt = { n: 1, on: input.on, result: null, note: null, by: actor.uid, byName: actor.name, rBy: null, rByName: null, rAt: null }
+    const first: WirAttempt = { n: 1, on: input.on, result: null, note: null, by: actor.uid, byName: actor.name, rBy: null, rByName: null, rAt: null, files: cleanAttachments(input.files) }
     const inspection: Omit<PmInspection, "id"> = {
       seq,
       itemId: input.itemId,
@@ -78,18 +81,22 @@ async function readInspection(tx: Transaction, firestore: Firestore, projectId: 
   return { ref, inspection: { id: snap.id, ...(snap.data() as Omit<PmInspection, "id">) } }
 }
 
-/** Record the result of the current attempt: one of three, never none (WIR-03). */
-export async function recordResult(firestore: Firestore, ctx: PmContext, projectId: string, actor: InspectionActor, seq: number, input: { result: WirResult | null; note?: string | null }): Promise<void> {
+/** Record the result of the current attempt: one of three, never none (WIR-03).
+ * `on` is the day on the signed form; `files` the form itself. */
+export async function recordResult(firestore: Firestore, ctx: PmContext, projectId: string, actor: InspectionActor, seq: number, input: { result: WirResult | null; note?: string | null; on?: string | null; files?: PmAttachment[] | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "qa.record")
     const { ref, inspection } = await readInspection(tx, firestore, projectId, seq)
-    const blocks = resultBlocks({ archived: fresh.archived, status: inspection.status, result: input.result })
+    const today = todayDay()
+    const blocks = resultBlocks({ archived: fresh.archived, status: inspection.status, result: input.result, note: input.note, on: input.on === undefined ? undefined : input.on, today })
     if (blocks.length) throw new PmInspectionError("blocked", blocks)
     const result = input.result as WirResult
     const attempts = inspection.attempts.map((a, i) =>
-      i === inspection.attempts.length - 1 ? { ...a, result, note: input.note?.trim() || null, rBy: actor.uid, rByName: actor.name, rAt: new Date().toISOString() } : a
+      i === inspection.attempts.length - 1
+        ? { ...a, result, note: input.note?.trim() || null, rBy: actor.uid, rByName: actor.name, rAt: new Date().toISOString(), rOn: input.on || today, rFiles: cleanAttachments(input.files) }
+        : a
     )
     tx.update(ref, { status: result, attempts, updatedAt: serverTimestamp() })
     tx.update(doc(firestore, "projects", projectId, "boqItems", inspection.itemId), { pmWir: result, updatedAt: serverTimestamp() })
@@ -97,14 +104,14 @@ export async function recordResult(firestore: Firestore, ctx: PmContext, project
 }
 
 /** A failed inspection is booked again as the next numbered attempt (WIR-02). */
-export async function reinspect(firestore: Firestore, ctx: PmContext, projectId: string, actor: InspectionActor, seq: number, input: { on: string }): Promise<void> {
+export async function reinspect(firestore: Firestore, ctx: PmContext, projectId: string, actor: InspectionActor, seq: number, input: { on: string; files?: PmAttachment[] | null }): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "qa.record")
     const { ref, inspection } = await readInspection(tx, firestore, projectId, seq)
     if (fresh.archived || !canReinspect(inspection.status) || !input.on) throw new PmInspectionError("blocked", [fresh.archived ? "archived" : !input.on ? "no_date" : "not_failed"])
-    const next: WirAttempt = { n: inspection.attempts.length + 1, on: input.on, result: null, note: null, by: actor.uid, byName: actor.name, rBy: null, rByName: null, rAt: null }
+    const next: WirAttempt = { n: inspection.attempts.length + 1, on: input.on, result: null, note: null, by: actor.uid, byName: actor.name, rBy: null, rByName: null, rAt: null, files: cleanAttachments(input.files) }
     tx.update(ref, { status: "open", attempts: [...inspection.attempts, next], updatedAt: serverTimestamp() })
     tx.update(doc(firestore, "projects", projectId, "boqItems", inspection.itemId), { pmWir: "open", updatedAt: serverTimestamp() })
   })

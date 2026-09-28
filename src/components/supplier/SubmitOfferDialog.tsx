@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { EMPTY_OFFER_TERMS, OfferTermsFields, type OfferTermsValue } from "@/components/procurement/OfferTermsFields"
+import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { useRouter } from "@/i18n/routing"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -108,6 +110,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
   const [tempLocation, setTempLocation] = useState<{lat: number, lng: number} | null>(null)
   const [executionDuration, setExecutionDuration] = useState("")
   const [executionDurationUnit, setExecutionDurationUnit] = useState("أيام")
+  const [terms, setTerms] = useState<OfferTermsValue>(EMPTY_OFFER_TERMS)
+  const tTerms = useTranslations("Portal.Procurement")
   const [offerPdfFile, setOfferPdfFile] = useState<File | null>(null)
   const [offerPdfUrl, setOfferPdfUrl] = useState<string | null>(null)
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
@@ -138,6 +142,7 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
     setTempLocation(null)
     setExecutionDuration("")
     setExecutionDurationUnit("أيام")
+    setTerms(EMPTY_OFFER_TERMS)
     setOfferPdfFile(null)
     setOfferPdfUrl(null)
     setOfferPdfStoragePath(null)
@@ -296,9 +301,16 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
       }
     }
 
+    const parsedTerms = parseOfferTerms(terms, new Date().toISOString().slice(0, 10))
+    if (parsedTerms.error) {
+      toast({ title: t("offer_incomplete_data"), description: tTerms(`rfqpo.terms.err_${parsedTerms.error}`), variant: "destructive" })
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const offerData: any = {
+        ...parsedTerms.terms,
         supplierId: user.uid,
         organizationId: profile?.organizationId || user.uid,
         supplierName: activeCompanyName || "مورد",
@@ -751,6 +763,8 @@ export function SubmitOfferDialog({ selectedRfq, isOpen, onClose, onSuccess }: S
                 </div>
               </div>
             )}
+
+            <OfferTermsFields value={terms} onChange={setTerms} idPrefix="submit-offer-terms" />
 
             {/* PDF Upload */}
             <div className="space-y-3">

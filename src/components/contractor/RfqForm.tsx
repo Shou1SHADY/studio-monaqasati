@@ -54,6 +54,12 @@ import { REQUIRE_COMPLETE_PROFILE } from "@/lib/app-env"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import { ProductRowEditor, type ProductRow, makeEmptyProductRow } from "@/components/shared/ProductRowEditor"
 import { SupplierRecipientsPicker, useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
+import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useProcurementPrices } from "@/hooks/useProcurementPrices"
+import { useOpenNeeds } from "@/hooks/useOpenNeeds"
+import { lastPaid } from "@/lib/procurement/prices"
+import { addDays, supplierScore } from "@/lib/procurement/po"
+import type { Need } from "@/lib/procurement/needs"
 
 interface ValidationError {
   field: string
@@ -111,7 +117,6 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // Direct award: one supplier, an agreed price, no offer round at all — the
   // RFQ is born Awarded with an accepted offer.
   const [directSupplierOrgId, setDirectSupplierOrgId] = useState("")
-  const [directPrice, setDirectPrice] = useState("")
   // PRD 3.0: a direct award yields a purchase order awaiting approval — who
   // prepares it and the org's policies (routing, competition threshold).
   const { actor: procActor, orgId: procOrgId, orgName: procOrgName } = useProcActor(projectId)
@@ -170,6 +175,34 @@ export function RfqForm({ projectId }: { projectId?: string }) {
 
   const [isUploadingPdf, setIsUploadingPdf] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
+  // Several PDFs (R-37); `pdfUrl` stays the first one for every older reader.
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string; path: string }>>([])
+
+  // «من الاحتياج المفتوح» (R-19): lines picked from the open needs keep their
+  // need-by date and their source, per product row.
+  const tp = useTranslations("Portal.Procurement")
+  const procWorld = useProcurementWorld()
+  const { history: priceHistory } = useProcurementPrices(procWorld.orgId || null)
+  const openNeeds = useOpenNeeds(procWorld, !isEditing)
+  const [pickedNeeds, setPickedNeeds] = useState<Record<string, Need>>({})
+  // Direct award (R-17): the agreed unit price of every line, and why one
+  // supplier when the total passes the no-competition cap.
+  const [directLinePrices, setDirectLinePrices] = useState<Record<string, string>>({})
+  const [directReason, setDirectReason] = useState<"" | "sole" | "match" | "urgent">("")
+  // The private list's facts (R-37): on-time from our orders, an expired CR.
+  const supplierFacts = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10)
+    const bySupplier = new Map<string, typeof procWorld.orders>()
+    for (const o of procWorld.orders) bySupplier.set(o.supplierOrgId, [...(bySupplier.get(o.supplierOrgId) || []), o])
+    const out = new Map<string, { onTime: number | null; crExpired: boolean }>()
+    const ids = new Set([...bySupplier.keys(), ...procWorld.supplierFacts.keys()])
+    const now = new Date()
+    ids.forEach((id) => {
+      const cr = procWorld.supplierFacts.get(id)?.crExpiry
+      out.set(id, { onTime: supplierScore(bySupplier.get(id) || [], procWorld.deliveries, now).onTimePercent, crExpired: Boolean(cr && cr < today) })
+    })
+    return out
+  }, [procWorld.orders, procWorld.deliveries, procWorld.supplierFacts])
 
   useEffect(() => {
     if (!editId || !firestore || !user) return
@@ -218,6 +251,13 @@ export function RfqForm({ projectId }: { projectId?: string }) {
             pdfUrl: data.pdfUrl || null,
             pdfStoragePath: data.pdfStoragePath || null
           })
+          setAttachments(
+            Array.isArray(data.attachments) && data.attachments.length
+              ? data.attachments
+              : data.pdfUrl
+                ? [{ name: "PDF", url: data.pdfUrl, path: data.pdfStoragePath || "" }]
+                : []
+          )
           setVisibilityMode(data.visibility === "private" ? "private" : "public")
           setPricingMode(data.pricingMode === "line" ? "line" : "total")
           // An empty list on an existing RFQ means it predates this picker, so
@@ -384,42 +424,72 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // GEMINI_API_KEY/GOOGLE_API_KEY set on the server is invisible here and would never enable this.
   const isAiEnabled = !!process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
+  const syncFirstPdf = (list: Array<{ name: string; url: string; path: string }>) =>
+    setFormData((prev) => ({ ...prev, pdfUrl: list[0]?.url ?? null, pdfStoragePath: list[0]?.path ?? null }))
+
   const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.type !== "application/pdf") {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    if (files.some((f) => f.type !== "application/pdf")) {
       toast({ title: t("newrfq_upload_error"), variant: "destructive" })
       return
     }
     setIsUploadingPdf(true)
     try {
       if (!storage) throw new Error("Storage not initialized")
-      const storagePath = `rfqs/pdfs/${Date.now()}-${file.name}`
-      const fileRef = ref(storage, storagePath)
-      await uploadBytes(fileRef, file)
-      const downloadUrl = await getDownloadURL(fileRef)
-      setFormData(prev => ({ ...prev, pdfUrl: downloadUrl, pdfStoragePath: storagePath }))
+      const added: Array<{ name: string; url: string; path: string }> = []
+      for (const file of files) {
+        const storagePath = `rfqs/pdfs/${Date.now()}-${file.name}`
+        const fileRef = ref(storage, storagePath)
+        await uploadBytes(fileRef, file)
+        added.push({ name: file.name, url: await getDownloadURL(fileRef), path: storagePath })
+      }
+      setAttachments((prev) => {
+        const next = [...prev, ...added]
+        syncFirstPdf(next)
+        return next
+      })
       toast({ title: t("newrfq_upload_success"), description: t("newrfq_upload_success_desc") })
     } catch (error) {
       console.error("PDF upload failed:", error)
       toast({ title: t("newrfq_incomplete_data"), description: t("newrfq_upload_failed"), variant: "destructive" })
     } finally {
       setIsUploadingPdf(false)
+      if (pdfInputRef.current) pdfInputRef.current.value = ""
     }
   }
 
-  const removePdf = async () => {
-    if (formData.pdfStoragePath && storage) {
+  const removePdf = async (path: string) => {
+    if (path && storage) {
       try {
-        const fileRef = ref(storage, formData.pdfStoragePath)
-        await deleteObject(fileRef)
+        await deleteObject(ref(storage, path))
       } catch (error) {
         console.warn("Could not delete PDF from storage:", error)
       }
     }
-    setFormData(prev => ({ ...prev, pdfUrl: null, pdfStoragePath: null }))
-    if (pdfInputRef.current) pdfInputRef.current.value = ""
+    setAttachments((prev) => {
+      const next = prev.filter((a) => a.path !== path)
+      syncFirstPdf(next)
+      return next
+    })
   }
+
+  // ── Open needs, direct prices, the deadline's warning ──
+  const productName = (p: ProductRow) => ((p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category || p.description || "").trim()
+  const pickNeed = (n: Need) => {
+    const stamp = Date.now()
+    const rows = n.lines.map((l, idx) => ({ ...makeEmptyProductRow(`need-${stamp}-${idx}`), quantity: String(l.quantity), unit: l.unit, description: l.name, otherSubCategory: l.name }))
+    setProducts((prev) => [...prev.filter((p) => p.quantity.trim() || p.unit.trim() || p.description.trim() || p.category), ...rows])
+    setPickedNeeds((prev) => ({ ...prev, ...Object.fromEntries(rows.map((r) => [r.id, n])) }))
+  }
+  const liveNeeds = Object.entries(pickedNeeds).filter(([rowId]) => products.some((p) => p.id === rowId))
+  const pickedKeys = new Set(liveNeeds.map(([, n]) => n.key))
+  const needChoices = openNeeds.filter((n) => !pickedKeys.has(n.key) && (!purchaseSource || JSON.stringify(n.source) !== JSON.stringify(purchaseSource))).slice(0, 8)
+  const needByOf = (rowId: string) => pickedNeeds[rowId]?.needBy || null
+  const earliestNeed = liveNeeds.map(([, n]) => n.needBy).filter((d): d is string => Boolean(d)).sort()[0] || null
+  const latestDeadline = earliestNeed ? addDays(earliestNeed, -policies.awardCycleDays) : null
+  const directTotal = products.filter(productComplete).reduce((sum, p) => sum + toAmount(p.quantity) * (Number(directLinePrices[p.id]) || 0), 0)
+  const directOverCap = directTotal > policies.directPurchaseCap
 
   const clearError = (field: string) => {
     setValidationErrors(prev => prev.filter(e => e.field !== field))
@@ -571,8 +641,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         toast({ title: t("newrfq_direct_no_draft"), variant: "destructive" })
         return
       }
-      if (!directSupplierOrgId || !(Number(directPrice) > 0)) {
-        toast({ title: t("newrfq_direct_missing"), variant: "destructive" })
+      if (!directSupplierOrgId || validProducts.some((p) => !(Number(directLinePrices[p.id]) > 0))) {
+        toast({ title: t("newrfq_direct_missing"), description: tp("rfqpo.form.direct_prices_required"), variant: "destructive" })
+        return
+      }
+      if (directOverCap && !directReason) {
+        toast({ title: tp("rfqpo.form.direct_reason_required"), variant: "destructive" })
         return
       }
       if (new Set(validProducts.map(p => p.category)).size > 1) {
@@ -617,6 +691,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         notes: formData.notes,
         pdfUrl: formData.pdfUrl,
         pdfStoragePath: formData.pdfStoragePath,
+        attachments,
         status: status,
         pricingMode,
         visibility: visibilityMode,
@@ -682,8 +757,12 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           description: p.description,
           category: p.category,
           subCategory: p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory,
-          requiresWarranty: !!p.requiresWarranty
+          requiresWarranty: !!p.requiresWarranty,
+          ...(needByOf(p.id) ? { needBy: needByOf(p.id) } : {}),
         })),
+        ...(catProducts.some((p) => needByOf(p.id)) ? { needBy: catProducts.map((p) => needByOf(p.id)).filter((d): d is string => Boolean(d)).sort()[0] } : {}),
+        ...(catProducts.some((p) => pickedNeeds[p.id]) ? { needSources: Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id].source])).values()) } : {}),
+        attachments,
         deadline: formData.deadline,
         estimatedBudget: formData.estimatedBudget
           ? Number(formData.estimatedBudget.replace(/\./g, ""))
@@ -713,8 +792,18 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Awaited (not fire-and-forget) so a failed write is caught before we tell the user it worked.
       // Skipped entirely for standalone RFQs (no project to sync into).
       try {
-        const ref = await addDoc(rfqsRef, purchaseSource ? { ...rfqData, purchaseSource } : rfqData)
+        const catNeeds = Array.from(new Map(catProducts.filter((p) => pickedNeeds[p.id]).map((p) => [pickedNeeds[p.id].key, pickedNeeds[p.id]])).values())
+        const source = purchaseSource ?? (catNeeds.length === 1 ? catNeeds[0].source : null)
+        const ref = await addDoc(rfqsRef, source ? { ...rfqData, purchaseSource: source } : rfqData)
         createdRfqIds.push(ref.id)
+        // Each picked need is told which RFQ it became (its own home records it).
+        for (const n of catNeeds) {
+          try {
+            await linkNeed(firestore, n.source, { rfqId: ref.id, rfqNumber: null }, (profile as { name?: string } | null)?.name || user?.email || "")
+          } catch (linkErr) {
+            console.error("need ↔ RFQ link failed:", linkErr)
+          }
+        }
         if (purchaseSource && createdRfqIds.length === 1) {
           try {
             await linkNeed(firestore, purchaseSource, { rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null }, (profile as { name?: string } | null)?.name || user?.email || "")
@@ -761,6 +850,8 @@ export function RfqForm({ projectId }: { projectId?: string }) {
         pdfUrl: null,
         pdfStoragePath: null
       })
+      setAttachments([])
+      setPickedNeeds({})
       setProducts([{ id: "1", quantity: "", unit: "", description: "", category: "", subCategory: "" }])
       setStep(1)
       setIsSubmitting(false)
@@ -783,7 +874,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           supplierUserId = (orgSnap.data()?.ownerUserId as string) || directSupplierOrgId
         }
         const contractorOrgId = (profile as Record<string, string>)?.organizationId || user.uid
-        const price = String(Number(directPrice))
+        const price = String(Math.round(directTotal * 100) / 100)
 
         const offerRef = await addDoc(collection(firestore, "offers"), {
           directAward: true,
@@ -799,6 +890,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
           contractorId: user.uid,
           contractorOrgId,
           price,
+          lines: validProducts.map((p, idx) => ({ rfqProductIndex: idx, unitPrice: Number(directLinePrices[p.id]) })),
           deliveryLocation: formData.city,
           deliveryBatches: [{ location: formData.city, deliveryDate: formData.deadline, price, quantity: "" }],
           status: "مقبول",
@@ -842,9 +934,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 products: groupedProducts[categories[0]]?.map((p) => ({ name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category, quantity: Number(p.quantity), unitOfMeasure: p.unit })) || null,
                 purchaseSource: purchaseSource ?? null,
               },
-              offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول" },
+              offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول", lines: validProducts.map((p, idx) => ({ rfqProductIndex: idx, unitPrice: Number(directLinePrices[p.id]) })) },
               offers: [{ ...directOffer, status: "مقبول" }],
-              awardReason: null,
+              awardReason: directReason ? { code: "other", text: tp(`rfqpo.form.direct_reason_${directReason}`) } : null,
               policies,
             },
             { copy: tShared, locale: locale === "en" ? "en" : "ar", orgName: procOrgName || null }
@@ -996,6 +1088,36 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     t={t}
                     onFieldTouched={(id, field) => clearError(`product_${id}_${field}`)}
                   />
+                  {liveNeeds.length > 0 && (
+                    <ul className="mt-3 space-y-1 rounded-xl border bg-muted/30 p-3 text-xs">
+                      {liveNeeds.map(([rowId, n]) => (
+                        <li key={rowId} className="text-muted-foreground" dir="auto">
+                          <span className="font-semibold text-foreground">{products.find((p) => p.id === rowId)?.description}</span> · {n.refLabel}
+                          {n.context ? ` · ${n.context}` : ""}
+                          {n.needBy ? ` · ${tp("rfqpo.form.needed_by", { date: n.needBy })}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {!isEditing && needChoices.length > 0 && (
+                    <div className="mt-5 space-y-2">
+                      <p className="text-sm font-bold text-foreground">{tp("rfqpo.form.from_needs")}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {needChoices.map((n) => (
+                          <button
+                            key={n.key}
+                            type="button"
+                            onClick={() => pickNeed(n)}
+                            className="rounded-full border border-dashed border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            ＋ {n.lines.map((l) => `${l.name} ${l.quantity.toLocaleString("en-US")} ${l.unit}`).join("، ")}
+                            {n.needBy ? ` · ${tp("rfqpo.form.needed_by", { date: n.needBy })}` : ""}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{tp("rfqpo.form.from_needs_hint")}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1024,51 +1146,42 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                     </div>
                     <Label className="text-base font-bold text-slate-700">{t("newrfq_pdf_files")}</Label>
                   </div>
-                  {formData.pdfUrl ? (
-                    <div className="flex items-center gap-4 p-5 bg-blue-50/50 border border-blue-200/50 rounded-2xl">
-                      <div className="h-12 w-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                        <File size={24} className="text-blue-600" />
-                      </div>
-                      <div className="flex-1">
-                        <span className="text-sm font-semibold text-blue-800">{t("newrfq_pdf_attached")}</span>
-                        <p className="text-xs text-blue-600/70 mt-0.5">{t("newrfq_pdf_attached_desc")}</p>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={removePdf}
-                        className="text-red-500 hover:bg-red-50 hover:text-red-600 cursor-pointer rounded-lg"
-                      >
+                  {attachments.map((a) => (
+                    <div key={a.path || a.url} className="flex items-center gap-4 rounded-2xl border border-cta/20 bg-cta/5 p-4">
+                      <File size={20} className="shrink-0 text-cta" aria-hidden="true" />
+                      <a href={a.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground hover:underline" dir="auto">
+                        {a.name}
+                      </a>
+                      <Button variant="ghost" size="sm" onClick={() => removePdf(a.path)} className="rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={tp("rfqpo.form.remove_file")}>
                         <Trash2 size={16} />
                       </Button>
                     </div>
-                  ) : (
-                    <div className="relative">
-                      <input
-                        ref={pdfInputRef}
-                        type="file"
-                        accept=".pdf"
-                        onChange={handlePdfUpload}
-                        disabled={isUploadingPdf}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <div className="flex items-center justify-center gap-3 h-28 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 text-slate-500 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group">
-                        {isUploadingPdf ? (
-                          <Loader2 size={24} className="animate-spin text-primary" />
-                        ) : (
-                          <>
-                            <div className="h-12 w-12 rounded-xl bg-slate-100 group-hover:bg-primary/10 flex items-center justify-center transition-colors">
-                              <Upload size={20} className="text-slate-400 group-hover:text-primary transition-colors" />
-                            </div>
-                            <div className="text-start">
-                              <span className="text-sm font-semibold text-slate-700 block">{t("newrfq_click_upload_pdf")}</span>
-                              <span className="text-xs text-slate-400">{t("newrfq_pdf_technical_desc")}</span>
-                            </div>
-                          </>
-                        )}
-                      </div>
+                  ))}
+                  <div className="relative">
+                    <input
+                      ref={pdfInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      multiple
+                      onChange={handlePdfUpload}
+                      disabled={isUploadingPdf}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+                      aria-label={t("newrfq_click_upload_pdf")}
+                    />
+                    <div className="group flex h-28 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-muted/30 text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/5">
+                      {isUploadingPdf ? (
+                        <Loader2 size={24} className="animate-spin text-primary" />
+                      ) : (
+                        <>
+                          <Upload size={20} className="text-muted-foreground transition-colors group-hover:text-primary" />
+                          <div className="text-start">
+                            <span className="block text-sm font-semibold text-foreground">{t("newrfq_click_upload_pdf")}</span>
+                            <span className="text-xs text-muted-foreground">{tp("rfqpo.form.pdf_many")}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1169,6 +1282,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         {t("newrfq_deadline_display", { date: new Date(formData.deadline).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) })}
                       </p>
                     )}
+                    {formData.deadline && latestDeadline && formData.deadline > latestDeadline ? (
+                      <p className="text-xs font-semibold text-destructive">{tp("rfqpo.form.deadline_misses", { date: latestDeadline })}</p>
+                    ) : policies.sealOffersUntilDeadline ? (
+                      <p className="text-xs text-muted-foreground">{tp("rfqpo.form.sealed_until")}</p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-3">
@@ -1187,6 +1305,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       className="h-12 rounded-xl border-slate-200"
                       dir="ltr"
                     />
+                    <p className="text-xs text-muted-foreground">{tp("rfqpo.form.budget_hint")}</p>
                   </div>
                 </div>
 
@@ -1268,6 +1387,9 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                         ? t("newrfq_visibility_private_desc")
                         : t("newrfq_visibility_public_desc")}
                   </p>
+                  {visibilityMode === "public" && (
+                    <p className="mt-2 text-xs text-cta">{tp("rfqpo.form.public_reach", { cats: Array.from(new Set(products.map((p) => p.category).filter(Boolean))).join("، ") || "—" })}</p>
+                  )}
 
                   {visibilityMode !== "public" && supplierOptions.length === 0 && (
                     <p className="text-xs text-amber-700 mt-2 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200 w-fit">
@@ -1290,17 +1412,66 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                           size="md"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="direct-price">{t("newrfq_direct_price_label")} *</Label>
-                        <Input
-                          id="direct-price"
-                          inputMode="numeric"
-                          dir="ltr"
-                          className="h-10 rounded-xl border-slate-200"
-                          value={directPrice}
-                          onChange={(e) => setDirectPrice(e.target.value.replace(/[^\d.]/g, ""))}
-                        />
+                    </div>
+                  )}
+                  {visibilityMode === "direct" && supplierOptions.length > 0 && (
+                    <div className="mt-4 space-y-3">
+                      <div className="overflow-hidden rounded-xl border bg-card">
+                        <p className="border-b bg-muted/40 px-3 py-2 text-xs font-bold">{tp("rfqpo.form.direct_unit_price")}</p>
+                        {products.filter(productComplete).map((p) => {
+                          const last = lastPaid(priceHistory, productName(p), p.unit)
+                          return (
+                            <div key={p.id} className="flex items-center justify-between gap-3 border-b px-3 py-2 last:border-b-0">
+                              <div className="min-w-0 text-sm">
+                                <p className="truncate font-semibold" dir="auto">
+                                  {productName(p)}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  <span dir="ltr">{toAmount(p.quantity).toLocaleString("en-US")}</span> {p.unit}
+                                  {last ? ` · ${tp("rfqpo.form.last_price", { price: last.price.toLocaleString("en-US") })}` : ""}
+                                </p>
+                              </div>
+                              <Input
+                                inputMode="decimal"
+                                dir="ltr"
+                                aria-label={`${tp("rfqpo.form.direct_unit_price")} — ${productName(p)}`}
+                                className="h-9 w-28 shrink-0 rounded-lg tabular-nums"
+                                value={directLinePrices[p.id] || ""}
+                                onChange={(e) => setDirectLinePrices((prev) => ({ ...prev, [p.id]: e.target.value.replace(/[^\d.]/g, "") }))}
+                              />
+                            </div>
+                          )
+                        })}
+                        <div className="flex items-center justify-between bg-muted/30 px-3 py-2 text-sm font-bold">
+                          <span>{tp("rfqpo.form.total")}</span>
+                          <span dir="ltr" className="tabular-nums">
+                            {directTotal.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       </div>
+                      {directOverCap && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-warning">{tp("rfqpo.form.direct_over_cap", { cap: policies.directPurchaseCap.toLocaleString("en-US") })}</p>
+                          <div className="flex flex-wrap gap-2" role="radiogroup">
+                            {(["sole", "match", "urgent"] as const).map((r) => (
+                              <button
+                                key={r}
+                                type="button"
+                                role="radio"
+                                aria-checked={directReason === r}
+                                onClick={() => setDirectReason(r)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                  directReason === r ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                {tp(`rfqpo.form.direct_reason_${r}`)}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">{tp("rfqpo.form.direct_reason_hint")}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                   {/* Addressing a private RFQ. Defaults to every connected
@@ -1313,9 +1484,17 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                       options={supplierOptions}
                       selected={selectedRecipients}
                       onChange={setPrivateRecipients}
+                      facts={supplierFacts}
                     />
                   )}
+                  {visibilityMode === "private" && <p className="mt-2 text-xs text-muted-foreground">{tp("rfqpo.form.guest_link_after")}</p>}
                 </div>
+
+                <ul className="space-y-1 rounded-xl bg-muted/50 p-4 text-xs text-muted-foreground">
+                  {(visibilityMode === "direct" ? ["direct_1", "direct_2"] : ["publish_1", "publish_2", "publish_3"]).map((k) => (
+                    <li key={k}>• {tp(`rfqpo.form.effect_${k}`, { count: visibilityMode === "private" ? selectedRecipients.length : 0 })}</li>
+                  ))}
+                </ul>
               </div>
             )}
 

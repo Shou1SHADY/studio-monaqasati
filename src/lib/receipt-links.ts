@@ -50,6 +50,8 @@ export interface ReceiptLink {
   createdAt: string
   expiresAt: string
   signedAt?: string | null
+  /** Procurement's note to the receiver, shown on the link as "Note from Procurement". */
+  note?: string | null
 }
 
 export interface ReceiverReportLine {
@@ -85,6 +87,7 @@ export const createBody = z.object({
     z.object({ kind: z.literal("user"), userId: z.string().min(1).max(128), phone: z.string().max(30).optional() }),
     z.object({ kind: z.literal("person"), name: z.string().trim().min(2).max(120), phone: z.string().min(5).max(30) }),
   ]),
+  note: z.string().trim().max(500).nullable().optional(),
 })
 
 export const signBody = z.object({

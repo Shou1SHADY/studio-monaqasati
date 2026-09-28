@@ -7,9 +7,10 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, pmCan, type PmContext } from "./access"
+import { cleanAttachments, type PmAttachment } from "./attachments"
 import type { GateFields } from "./inspection"
 import { lifecycleOf } from "./lifecycle"
-import { applySheet, PM_SHEETS, sheetBlocks, sheetNo, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
+import { applySheet, PM_SHEETS, sheetBlocks, sheetNo, sheetWriteBlocks, type MeasuredItem, type PmSheet, type SheetLine } from "./measurement"
 import { goLive, withFreshState } from "./project-writes"
 import type { ContractTerms } from "./terms"
 
@@ -75,6 +76,7 @@ export interface WriteSheetInput {
   day: string
   lines: SheetLine[]
   note?: string | null
+  files?: PmAttachment[] | null
 }
 
 /** Write a measurement sheet. It waits for the PM — unless the writer holds
@@ -89,7 +91,7 @@ export async function writeSheet(firestore: Firestore, ctx: PmContext, projectId
     assertPm(fresh, "measurement.write")
     const lines = input.lines.filter((l) => l.qty !== 0).map((l) => ({ itemId: l.itemId, code: l.code ?? null, qty: l.qty, approved: null }))
     const items = await readItems(tx, firestore, projectId, lines.map((l) => l.itemId))
-    const blocks = sheetBlocks({ archived: fresh.archived, lines, items })
+    const blocks = sheetWriteBlocks({ archived: fresh.archived, basis: pm.terms?.basis ?? "rem", lines, items })
     if (blocks.length) throw new PmSheetError("blocked", blocks)
 
     seq = (pm.sheetCount ?? 0) + 1
@@ -115,6 +117,7 @@ export async function writeSheet(firestore: Firestore, ctx: PmContext, projectId
       byName: actor.name,
       lines: stored,
       note: input.note?.trim() || null,
+      files: cleanAttachments(input.files),
       okBy: self ? actor.uid : null,
       okByName: self ? actor.name : null,
       okAt: self ? now : null,

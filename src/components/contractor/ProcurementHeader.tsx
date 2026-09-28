@@ -9,11 +9,17 @@
 // goods received · suppliers · reports · settings. Which tabs a member sees
 // is decided in `src/lib/procurement/shell.ts`, so a test can read it; the
 // numbers come from `useProcurementShell`, derived on every read.
+//
+// The search is the prototype's: `/` focuses it, Enter jumps to the incoming
+// requests (an expediter's to the orders) on "all", and the target page reads
+// `?search=` — changing tab drops it.
 
 import type { ElementType, ReactNode } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Lock } from "lucide-react"
-import { Link, usePathname } from "@/i18n/routing"
+import { Lock, Search, X } from "lucide-react"
+import { Link, usePathname, useRouter } from "@/i18n/routing"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useProcurementShell } from "@/hooks/useProcurementShell"
 import { activeProcTab, visibleProcTabs } from "@/lib/procurement/shell"
@@ -46,7 +52,6 @@ const compact = (n: number) => {
 }
 
 export function ProcurementHeader({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  const tNav = useTranslations("Portal.Sidebar")
   const tShared = useTranslations("Portal.Shared")
   const tToday = useTranslations("Portal.ProcToday")
   const pathname = usePathname()
@@ -54,6 +59,7 @@ export function ProcurementHeader({ title, description, action }: { title: strin
   const tabs = visibleProcTabs(can)
   const active = activeProcTab(tabs, pathname)
   const shell = useProcurementShell()
+  const searchTarget = tabs.find((x) => x.id === (shell.role === "expediter" ? "orders" : "requests")) ?? tabs.find((x) => x.id === "orders")
 
   const kpis: ProcurementKpi[] = (shell.kpis?.tiles ?? []).map((k) => ({
     id: k.id,
@@ -63,22 +69,38 @@ export function ProcurementHeader({ title, description, action }: { title: strin
     tone: k.tone,
     href: k.href,
   }))
+  const limit = sarLtr((typeof shell.approvalLimit === "number" ? shell.approvalLimit : 0).toLocaleString("en-US"))
   const authority =
-    shell.approvalLimit === "any"
-      ? tShared("proc_authority_any")
-      : typeof shell.approvalLimit === "number"
-        ? tShared("proc_authority_limit", { limit: sarLtr(shell.approvalLimit.toLocaleString("en-US")) })
-        : null
+    shell.role === "owner"
+      ? tShared("proc_authority_owner")
+      : shell.role === "owner_solo"
+        ? tShared("proc_authority_any")
+        : shell.role === "manager"
+          ? tShared("proc_authority_limit", { limit })
+          : shell.role === "buyer"
+            ? tShared(shell.categories ? "proc_authority_buyer_cats" : "proc_authority_buyer", { cats: (shell.categories || []).join("، ") })
+            : shell.role === "expediter"
+              ? tShared("proc_authority_expediter")
+              : null
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
+          <p className="text-xs font-bold text-module">
+            {tShared("proc_module_name")} <span className="font-semibold text-muted-foreground">· {tShared("proc_module_sub")}</span>
+          </p>
           <h1 className="text-2xl font-black text-foreground">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {searchTarget && (
+            <Suspense fallback={null}>
+              <ProcSearch targetHref={searchTarget.href} />
+            </Suspense>
+          )}
         {(authority || action) && (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <>
             {authority && (
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">
                 <Lock size={12} aria-hidden="true" />
@@ -86,8 +108,9 @@ export function ProcurementHeader({ title, description, action }: { title: strin
               </span>
             )}
             {action}
-          </div>
+          </>
         )}
+        </div>
       </div>
 
       {kpis.length > 0 && (
@@ -126,7 +149,7 @@ export function ProcurementHeader({ title, description, action }: { title: strin
                       isActive ? "border-module text-module" : "border-transparent text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    {tNav(tab.labelKey)}
+                    {tShared(tab.railKey)}
                     {count !== undefined && count > 0 && (
                       <span className={cn("min-w-5 rounded-full px-1.5 text-center text-[11px] tabular-nums leading-5", isActive ? "bg-module/10 text-module" : "bg-muted text-muted-foreground")}>{count}</span>
                     )}
@@ -138,5 +161,69 @@ export function ProcurementHeader({ title, description, action }: { title: strin
         </nav>
       )}
     </div>
+  )
+}
+
+/** Reads `?search=` — inside its own Suspense boundary, so a statically
+ * rendered page never has to wait on the URL. */
+function ProcSearch({ targetHref }: { targetHref: string }) {
+  const tShared = useTranslations("Portal.Shared")
+  const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const urlSearch = searchParams.get("search") || ""
+  const [term, setTerm] = useState(urlSearch)
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => setTerm(urlSearch), [urlSearch])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return
+      const el = e.target as HTMLElement | null
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return
+      e.preventDefault()
+      inputRef.current?.focus()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
+  const run = (value: string) => {
+    const q = value.trim()
+    const href = q ? `${targetHref}?${new URLSearchParams({ search: q, seg: "all" }).toString()}` : targetHref
+    if (pathname === targetHref) router.replace(href)
+    else router.push(href)
+  }
+  return (
+    <form
+      role="search"
+      className="relative w-full sm:w-64"
+      onSubmit={(e) => {
+        e.preventDefault()
+        run(term)
+      }}
+    >
+      <Search size={14} className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+      <input
+        ref={inputRef}
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+        placeholder={tShared("proc_search_ph")}
+        aria-label={tShared("proc_search_ph")}
+        aria-keyshortcuts="/"
+        className="h-10 w-full rounded-lg border bg-card pe-9 ps-9 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+      {term && (
+        <button
+          type="button"
+          onClick={() => {
+            setTerm("")
+            if (urlSearch) run("")
+          }}
+          aria-label={tShared("so_search_clear")}
+          className="absolute end-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      )}
+    </form>
   )
 }

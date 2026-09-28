@@ -23,6 +23,8 @@ export interface SealableRfq {
   /** `YYYY-MM-DD` as the RFQ form writes it. */
   deadline?: string | null
   status?: string | null
+  /** A manager closed the round before its date («أغلِق الآن وافتح الأسعار»). */
+  closedEarly?: { at?: string | null } | null
 }
 
 /**
@@ -37,15 +39,17 @@ export interface SealableRfq {
  * timestamps, because the deadline is stored as a date with no time — inventing
  * a midnight would be the "number that lies" of §6.2.
  *
- * Three things open an RFQ whatever the policy says: no deadline (there is no
- * moment to open at), a deadline already past, and an award already made —
- * hiding the decision after the fact hides the record rather than protecting it.
+ * Several things open an RFQ whatever the policy says: no deadline (there is no
+ * moment to open at), a deadline already past, a manager's early close (logged
+ * with his reason), a cancellation, and an award already made — hiding the
+ * decision after the fact hides the record rather than protecting it.
  */
 export function offersSealed(rfq: SealableRfq | null | undefined, policies: ProcurementPolicies, now: Date): boolean {
   if (!policies.sealOffersUntilDeadline) return false
   const day = dayOf(rfq?.deadline)
   if (!day) return false
-  if (rfq?.status === "Awarded") return false
+  if (rfq?.status === "Awarded" || rfq?.status === "Cancelled") return false
+  if (rfq?.closedEarly) return false
   return todayOf(now) <= day
 }
 
@@ -192,8 +196,11 @@ export function supplierFactsFromProfile(orgId: string, data: { taxNumber?: stri
 // Rejecting with a reason — the status stays `مرفوض`; the reason rides beside it
 // ---------------------------------------------------------------------------
 
-export const EXCLUSION_CODES = ["price", "terms", "incomplete", "not_qualified", "other"] as const
-export type ExclusionCode = (typeof EXCLUSION_CODES)[number]
+/** The prototype's five reasons (R-41). The earlier set (price · terms ·
+ * not_qualified) is still stored on older offers and still rendered. */
+export const EXCLUSION_CODES = ["spec", "lead", "incomplete", "documents", "other"] as const
+export const LEGACY_EXCLUSION_CODES = ["price", "terms", "not_qualified"] as const
+export type ExclusionCode = (typeof EXCLUSION_CODES)[number] | (typeof LEGACY_EXCLUSION_CODES)[number]
 
 export interface OfferExclusion {
   code: ExclusionCode
@@ -202,11 +209,12 @@ export interface OfferExclusion {
   at: string
 }
 
-export const isExclusionCode = (v: unknown): v is ExclusionCode => typeof v === "string" && (EXCLUSION_CODES as readonly string[]).includes(v)
+export const isExclusionCode = (v: unknown): v is ExclusionCode => typeof v === "string" && ([...EXCLUSION_CODES, ...LEGACY_EXCLUSION_CODES] as readonly string[]).includes(v)
 
 /** The payload stored on the offer as `exclusion` — null when no reason was given
  * (a plain rejection, exactly as before). */
 export function buildExclusion(input: { code?: string | null; note?: string | null; byId: string; at?: string }): OfferExclusion | null {
-  if (!isExclusionCode(input.code)) return null
-  return { code: input.code, note: input.note?.trim() || null, byId: input.byId, at: input.at || new Date().toISOString() }
+  const code = EXCLUSION_CODES.find((c) => c === input.code)
+  if (!code) return null
+  return { code, note: input.note?.trim() || null, byId: input.byId, at: input.at || new Date().toISOString() }
 }

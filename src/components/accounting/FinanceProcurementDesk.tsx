@@ -13,7 +13,7 @@
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { ClipboardCheck, Loader2, Lock, Send } from "lucide-react"
+import { Banknote, ClipboardCheck, Loader2, Lock, PauseCircle, Send } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
@@ -21,11 +21,13 @@ import { approvalRefusal, poStatus, poValue } from "@/lib/procurement/po"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { formatSar } from "@/lib/crm"
 import type { PurchaseOrder } from "@/lib/procurement/types"
+import { advanceAmount, advanceState, asX, openHolds } from "@/lib/procurement/po-extras"
 import type { CrmPortal } from "@/components/crm/CrmShell"
 import { AccountingShell } from "./AccountingShell"
 
 export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
   const t = useTranslations("Portal.Shared")
+  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const world = useProcurementWorld()
   const { orders, actor, policies, loading } = world
@@ -36,6 +38,9 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
   const awaiting = useMemo(() => orders.filter((po) => poStatus(po) === "awaiting_approval").sort(byNewest), [orders])
   const toSend = useMemo(() => orders.filter((po) => poStatus(po) === "approved").sort(byNewest), [orders])
   const mine = awaiting.filter((po) => approvalRefusal(po, actor, policies) === null)
+  // What Procurement sends Finance after approval (R-24, R-21): advances to pay, invoices held.
+  const advances = useMemo(() => orders.filter((po) => advanceState(asX(po)) === "requested").sort(byNewest), [orders])
+  const held = useMemo(() => orders.filter((po) => openHolds(asX(po)).length > 0).sort(byNewest), [orders])
   const openOrder = orders.find((po) => po.id === openId) || null
   const mayApproveAny = actor.isOwner || actor.canApprove
 
@@ -68,6 +73,22 @@ export function FinanceProcurementDesk({ portal }: { portal: CrmPortal }) {
                 }}
                 t={t}
               />
+            )}
+          </Section>
+
+          <Section icon={Banknote} title={tp("rfqpo.desk.advances_title")} sub={tp("rfqpo.desk.advances_sub")} count={advances.length}>
+            {advances.length === 0 ? (
+              <Empty>{tp("rfqpo.desk.advances_empty")}</Empty>
+            ) : (
+              <OrderRows orders={advances} locale={locale} onOpen={setOpenId} note={(po) => tp("rfqpo.desk.advance_note", { pct: Number(asX(po).advancePercent) || 0, amount: formatSar(advanceAmount(asX(po)), locale) })} t={t} />
+            )}
+          </Section>
+
+          <Section icon={PauseCircle} title={tp("rfqpo.desk.held_title")} sub={tp("rfqpo.desk.held_sub")} count={0}>
+            {held.length === 0 ? (
+              <Empty>{tp("rfqpo.desk.held_empty")}</Empty>
+            ) : (
+              <OrderRows orders={held} locale={locale} onOpen={setOpenId} note={(po) => openHolds(asX(po)).map((h) => `${h.invoiceNo} — ${tp(`rfqpo.po.hold.reason.${h.reason}`)}`).join(" · ")} t={t} />
             )}
           </Section>
 

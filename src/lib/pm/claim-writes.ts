@@ -4,10 +4,11 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmAction, type PmContext } from "./access"
-import { claimBlocks, claimNo, claimStepBlocks, PM_CLAIMS, respondBlocks, type ClaimKind, type ClaimResponse, type PmClaim } from "./claim"
+import { claimBlocks, claimNo, claimStepBlocks, PM_CLAIMS, respondBlocks, type ClaimCause, type ClaimKind, type ClaimResponse, type PmClaim } from "./claim"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
+import { PM_OBSTACLES } from "./site"
 
 export class PmClaimError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -38,6 +39,12 @@ export interface ClaimInput {
   eventOn: string
   daysAsked: number
   amountAsked: number
+  /** The obstacle that evidences the claim, when drafted from one. */
+  obstacleId?: string | null
+  causedBy?: ClaimCause | null
+  causedByText?: string | null
+  /** "I sent the notice to the consultant today": logged straight as noticed. */
+  noticeToday?: boolean
 }
 
 export async function draftClaim(firestore: Firestore, ctx: PmContext, projectId: string, actor: ClaimActor, input: ClaimInput): Promise<number> {
@@ -46,7 +53,10 @@ export async function draftClaim(firestore: Firestore, ctx: PmContext, projectId
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "claim.draft")
-    const blocks = claimBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), ...input, today: todayDay() })
+    const obstacleId = input.obstacleId || null
+    const obstacle = obstacleId ? await tx.get(doc(firestore, "projects", projectId, PM_OBSTACLES, obstacleId)) : null
+    const blocks: string[] = claimBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), ...input, today: todayDay() })
+    if (obstacle && !obstacle.exists()) blocks.push("no_obstacle")
     if (blocks.length) throw new PmClaimError("blocked", blocks)
     seq = (pm.claimCount ?? 0) + 1
     const claim: Omit<PmClaim, "id"> = {
@@ -54,15 +64,18 @@ export async function draftClaim(firestore: Firestore, ctx: PmContext, projectId
       kind: input.kind,
       cause: input.cause.trim(),
       eventOn: input.eventOn,
+      causedBy: input.causedBy ?? null,
+      causedByText: input.causedBy === "oth" ? input.causedByText?.trim() || null : null,
       daysAsked: input.kind === "cost" ? 0 : input.daysAsked,
       amountAsked: input.kind === "time" ? 0 : input.amountAsked,
-      status: "draft",
+      status: input.noticeToday ? "notice" : "draft",
       by: actor.uid,
       byName: actor.name,
-      noticeOn: null,
+      noticeOn: input.noticeToday ? todayDay() : null,
       submittedOn: null,
       response: null,
       revision: null,
+      obstacleId,
     }
     tx.set(doc(firestore, "projects", projectId, PM_CLAIMS, claimNo(seq)), { ...claim, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
     tx.update(ref, { pm: { ...pm, claimCount: seq }, updatedAt: serverTimestamp() })
@@ -70,7 +83,7 @@ export async function draftClaim(firestore: Firestore, ctx: PmContext, projectId
   return seq
 }
 
-async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, which: "notice" | "submit") {
+async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, which: "notice" | "submit", detail: { daysAsked?: number; amountAsked?: number } = {}) {
   const action: PmAction = which === "notice" ? "claim.draft" : "claim.submit"
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
@@ -79,16 +92,24 @@ async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq
     const ref = doc(firestore, "projects", projectId, PM_CLAIMS, claimNo(seq))
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new PmClaimError("missing")
-    const blocks = claimStepBlocks({ archived: fresh.archived, status: (snap.data() as PmClaim).status, step: which })
+    const c = snap.data() as PmClaim
+    const daysAsked = detail.daysAsked ?? c.daysAsked
+    const amountAsked = detail.amountAsked ?? c.amountAsked
+    const blocks = claimStepBlocks({ archived: fresh.archived, status: c.status, step: which, kind: c.kind, daysAsked, amountAsked })
     if (blocks.length) throw new PmClaimError("blocked", blocks)
-    tx.update(ref, which === "notice" ? { status: "notice", noticeOn: todayDay(), updatedAt: serverTimestamp() } : { status: "sub", submittedOn: todayDay(), updatedAt: serverTimestamp() })
+    tx.update(
+      ref,
+      which === "notice"
+        ? { status: "notice", noticeOn: todayDay(), updatedAt: serverTimestamp() }
+        : { status: "sub", submittedOn: todayDay(), daysAsked: c.kind === "cost" ? 0 : daysAsked, amountAsked: c.kind === "time" ? 0 : amountAsked, updatedAt: serverTimestamp() }
+    )
   })
 }
 
 /** The notice to the client — its deadline ran from the event. */
 export const sendClaimNotice = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number) => step(firestore, ctx, projectId, seq, "notice")
-/** The detailed submission. */
-export const submitClaim = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number) => step(firestore, ctx, projectId, seq, "submit")
+/** The detailed submission — the days and the amount are fixed here, estimated, never invented earlier. */
+export const submitClaim = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, detail: { daysAsked?: number; amountAsked?: number } = {}) => step(firestore, ctx, projectId, seq, "submit", detail)
 
 /** The client's response (CLM-02). Granted days issue the next programme revision (CLM-03). */
 export async function respondToClaim(
@@ -97,7 +118,7 @@ export async function respondToClaim(
   projectId: string,
   actor: ClaimActor,
   seq: number,
-  input: { response: unknown; days: number | null; amount: number | null }
+  input: { response: unknown; days: number | null; amount: number | null; ref?: string | null }
 ): Promise<{ revision: number | null }> {
   let revision: number | null = null
   await runTransaction(firestore, async (tx) => {
@@ -117,7 +138,7 @@ export async function respondToClaim(
       revision = (pm.programmeRev ?? 0) + 1
       tx.update(pRef, { pm: { ...pm, programmeRev: revision }, updatedAt: serverTimestamp() })
     }
-    tx.update(ref, { status: response, response: { on: todayDay(), by: actor.uid, byName: actor.name, days, amount }, revision, updatedAt: serverTimestamp() })
+    tx.update(ref, { status: response, response: { on: todayDay(), by: actor.uid, byName: actor.name, days, amount, ref: input.ref?.trim() || null }, revision, updatedAt: serverTimestamp() })
   })
   return { revision }
 }

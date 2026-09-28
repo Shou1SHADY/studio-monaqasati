@@ -1,13 +1,14 @@
 "use client"
 
 // التقارير — seven questions over the live record (PRD 3.0 §9): where spend
-// goes, who carries it, who delivers on time, which way prices move, how long
-// a cycle takes and how much competition it had, what left the usual path,
-// and what Finance will be asked for soon. Every table is one pure function
-// in `src/lib/procurement/reports.ts`; this screen picks, formats and
-// exports. Values are commitments EXCLUDING VAT, never costs. A member who
-// may not see money is shown the three reports that carry none — the others
-// are removed, not masked. CSV carries plain numbers and no currency sign.
+// goes and who asked for it, who carries it, who delivers on time, which way
+// prices move, how long a cycle takes and what the competition saved, what
+// left the usual path, and what Finance will be asked for and when. Every
+// table is one pure function in `src/lib/procurement/reports.ts`; this screen
+// picks, formats and exports. Values are commitments EXCLUDING VAT, never
+// costs. A member who may not see money is shown the reports that carry none
+// — the others are removed, not masked — and a money column inside those
+// reads "—". CSV carries plain numbers and no currency sign.
 
 import type { ReactNode } from "react"
 import { useCallback, useMemo, useState } from "react"
@@ -20,11 +21,29 @@ import { Label } from "@/components/ui/label"
 import { Link, useRouter } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
-import { useProcurementWorld } from "@/hooks/useProcurementWorld"
+import { useProcurementWorld, type ProcOffer, type ProcRfq } from "@/hooks/useProcurementWorld"
 import { displayDocNumber } from "@/lib/procurement/format"
 import { todayOf } from "@/lib/procurement/po"
-import { COMMITMENT_BUCKETS, cycleAndCompetition, deliveryPerformance, exceptions, lastDays, openCommitments, priceDrift, spendByProject, spendBySupplier, type Period } from "@/lib/procurement/reports"
-import { csvText, PERIOD_PRESETS, PROC_REPORTS_HREF, REPORT_NEEDS_PRICE, resolveReport, toProcWorld, visibleReports, type PeriodPreset, type ReportId } from "@/lib/procurement/shell"
+import {
+  COMMITMENT_BUCKETS,
+  CONCENTRATION_PERCENT,
+  cycleAndCompetition,
+  deliveryPerformance,
+  exceptions,
+  lastDays,
+  openCommitments,
+  presetPeriod,
+  priceDrift,
+  REPORT_PERIOD_PRESETS,
+  reportWorld,
+  spendByProject,
+  spendBySupplier,
+  type ProjectSpendRow,
+  type RawReportOffer,
+  type RawReportRfq,
+  type ReportPeriodPreset,
+} from "@/lib/procurement/reports"
+import { csvText, PROC_REPORTS_HREF, REPORT_NEEDS_PRICE, resolveReport, toProcWorld, visibleReports, type ReportId } from "@/lib/procurement/shell"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
@@ -63,23 +82,28 @@ export function ProcurementReports() {
   const [now] = useState(() => new Date())
   const today = todayOf(now)
 
-  const { orders, deliveries, rfqs, offers, policies, supplierFacts } = loaded
-  const world = useMemo(() => toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), [orders, deliveries, rfqs, offers, policies, supplierFacts])
+  const { orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords } = loaded
+  const world = useMemo(
+    () =>
+      reportWorld(toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), {
+        // The raw documents carry what the Today world drops: an early close, a
+        // keyed-in offer, the offer's credit days and advance.
+        rfqs: rfqs as Array<ProcRfq & RawReportRfq>,
+        offers: offers as Array<ProcOffer & RawReportOffer>,
+        supplierRecords,
+      }),
+    [orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords]
+  )
 
   const sees = actor.seesPrices
   const reports = visibleReports(sees)
   const report = resolveReport(params.get("report"), sees)
   const setReport = useCallback((id: ReportId) => router.replace(`${PROC_REPORTS_HREF}?report=${id}`), [router])
 
-  const [preset, setPreset] = useState<PeriodPreset>("90")
+  const [preset, setPreset] = useState<ReportPeriodPreset>("90")
   const [customFrom, setCustomFrom] = useState(() => lastDays(90, now).from || "")
   const [customTo, setCustomTo] = useState(today)
-  const period = useMemo<Period>(() => {
-    if (preset === "30") return lastDays(30, now)
-    if (preset === "90") return lastDays(90, now)
-    if (preset === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today }
-    return { from: customFrom || null, to: customTo || null }
-  }, [preset, now, today, customFrom, customTo])
+  const period = useMemo(() => presetPeriod(preset, now, { from: customFrom, to: customTo }), [preset, now, customFrom, customTo])
   const periodFiltered = report !== "commitments"
 
   // Every report is computed lazily — only the one on screen.
@@ -92,13 +116,20 @@ export function ProcurementReports() {
   const commit = useMemo(() => (report === "commitments" ? openCommitments(world, now) : null), [report, world, now])
 
   const docNo = (n: string) => displayDocNumber(n, locale)
+  const requester = (r: ProjectSpendRow) => (r.kind === "project" ? r.projectName || r.projectId || "" : t(`requester.${r.kind}`))
+  const excText = (kind: string, p: Record<string, string | number>) => {
+    const text = tProc(`exception.${kind}`, p)
+    return kind === "early_close" && p.reason ? `${text} — ${p.reason}` : text
+  }
+  const termsText = (days: number, source: string) => (source === "none" ? t("terms.none") : t("terms.days", { count: days }))
+  const bucketsShown = commit ? COMMITMENT_BUCKETS.filter((b) => b !== "noDate" || commit.buckets.noDate.total > 0) : []
 
   const exportCsv = () => {
     let head: string[] = []
     let rows: Array<Array<string | number | null | undefined>> = []
     if (project) {
       head = [t("cols.requester"), t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]
-      rows = project.rows.map((r) => [r.projectName || t("cols.noProject"), r.orders, r.lines, r.ordered, r.receivedUnknown ? null : r.received, r.open])
+      rows = project.rows.map((r) => [requester(r), r.orders, r.lines, r.ordered, r.receivedUnknown ? null : r.received, r.open])
       rows.push([t("total"), project.totals.orders, project.totals.lines, project.totals.ordered, project.totals.received, project.totals.open])
     } else if (supplier) {
       head = [t("cols.supplier"), t("cols.orders"), t("cols.value"), t("cols.share"), t("cols.onTime")]
@@ -112,15 +143,15 @@ export function ProcurementReports() {
       rows = drift.rows.map((r) => [`${r.name} (${r.unit})`, r.docNumber, r.supplierName, r.day, r.previous, r.current, r.quantity, r.impact])
       rows.push([t("total"), null, null, null, null, null, null, drift.totals.impact])
     } else if (cycle) {
-      head = [t("cols.rfq"), t("cols.invited"), t("cols.offers"), t("cols.awarded"), t("cols.days"), t("cols.lowest"), t("cols.awardedValue"), t("cols.competition")]
-      rows = cycle.rows.map((r) => [r.title, r.invitedCount, r.offersCount, r.awarded ? 1 : 0, r.publishToAwardDays, sees ? r.lowestTotal : null, sees ? r.awardedTotal : null, r.shortCompetition ? 1 : 0])
+      head = [t("cols.rfq"), t("cols.invited"), t("cols.offers"), t("cols.awarded"), t("cols.days"), t("cols.lowest"), t("cols.average"), t("cols.awardedValue"), t("cols.saving"), t("cols.competition")]
+      rows = cycle.rows.map((r) => [r.title, r.invitedCount, r.offersCount, r.awarded ? 1 : 0, r.publishToAwardDays, sees ? r.lowestTotal : null, sees ? r.averageOffer : null, sees ? r.awardedTotal : null, sees ? r.saving : null, r.shortCompetition ? 1 : 0])
     } else if (exc) {
       head = [t("cols.day"), t("cols.document"), t("cols.supplier"), t("cols.exception"), t("cols.by"), t("cols.approvedBy")]
-      rows = exc.map((r) => [r.day, r.docNumber, r.supplierName, tProc(`exception.${r.kind}`, r.params), r.byName, r.approvedByName])
+      rows = exc.map((r) => [r.day, r.docNumber, r.supplierName, excText(r.kind, r.params), r.byName, r.approvedByName])
     } else if (commit) {
-      head = [t("cols.po"), t("cols.supplier"), t("cols.promised"), t("cols.dueIn"), t("cols.value"), t("cols.bucket")]
-      rows = commit.rows.map((r) => [r.docNumber, r.supplierName, r.promisedDate, r.daysToDue, r.value, tProc(`commitmentBucket.${r.bucket}`)])
-      rows.push([t("total"), null, null, null, commit.total, null])
+      head = [t("cols.po"), t("cols.supplier"), t("cols.part"), t("cols.terms"), t("cols.dueDate"), t("cols.value"), t("cols.bucket")]
+      rows = commit.rows.map((r) => [r.docNumber, r.supplierName, t(`part.${r.part}`), r.termsSource === "none" ? null : r.termsDays, r.dueDate, r.value, tProc(`commitmentBucket.${r.bucket}`)])
+      rows.push([t("total"), null, null, null, null, commit.totals.total, null])
     }
     downloadCsv(`procurement-${report}.csv`, csvText(head, rows))
   }
@@ -129,10 +160,7 @@ export function ProcurementReports() {
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader
-        title={t("page.title")}
-        description={t("page.subtitle")}
-      />
+      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
 
       {!sees && (
         <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -148,7 +176,7 @@ export function ProcurementReports() {
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           {periodFiltered && (
-            <ProcChipGroup items={PERIOD_PRESETS.map((p) => ({ id: p, label: t(`period.${p}`) }))} active={preset} onPick={setPreset} label={t("period.label")} />
+            <ProcChipGroup items={REPORT_PERIOD_PRESETS.map((p) => ({ id: p, label: t(`period.${p}`) }))} active={preset} onPick={setPreset} label={t("period.label")} />
           )}
           {!loading && (
             <>
@@ -166,7 +194,7 @@ export function ProcurementReports() {
       </div>
 
       {periodFiltered && preset === "custom" && (
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-white p-3">
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-3">
           <div className="grid gap-1">
             <Label htmlFor="proc-rep-from" className="text-[11px]">{t("period.from")}</Label>
             <Input id="proc-rep-from" type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} className="h-9 w-40" />
@@ -184,7 +212,7 @@ export function ProcurementReports() {
         </div>
       ) : (
         <Panel title={t(`report.${report}`)} sub={periodFiltered ? periodLabel : t("period.notApplied")}>
-          {/* 1 · Spend by project */}
+          {/* 1 · Spend by project and requester */}
           {project && (
             <>
               {project.rows.length === 0 ? (
@@ -192,8 +220,16 @@ export function ProcurementReports() {
               ) : (
                 <Table head={[t("cols.requester"), t("cols.orders"), t("cols.lines"), t("cols.ordered"), t("cols.received"), t("cols.open")]}>
                   {project.rows.map((r) => (
-                    <tr key={r.projectId || "none"} className="border-t">
-                      <Td>{r.projectId ? <Link href={`/contractor/projects/${r.projectId}`} className="font-semibold hover:underline">{r.projectName || r.projectId}</Link> : <span className="text-muted-foreground">{t("cols.noProject")}</span>}</Td>
+                    <tr key={r.key} className="border-t">
+                      <Td>
+                        {r.projectId ? (
+                          <Link href={`/contractor/projects/${r.projectId}`} className="font-semibold hover:underline" dir="auto">
+                            {requester(r)}
+                          </Link>
+                        ) : (
+                          <span className="font-semibold">{requester(r)}</span>
+                        )}
+                      </Td>
                       <Td end num>{num(r.orders)}</Td>
                       <Td end num>{num(r.lines)}</Td>
                       <Td end num>{money(r.ordered)}</Td>
@@ -238,10 +274,8 @@ export function ProcurementReports() {
                   <TotalsRow cells={[t("total"), num(supplier.totals.orders), money(supplier.totals.value), "100%", ""]} />
                 </Table>
               )}
-              {supplier.concentration && (
-                <Note tone="warn">{t("concentration", { supplier: supplier.concentration.supplierName, percent: supplier.concentration.sharePercent })}</Note>
-              )}
-              <Note>{t("notes.supplier")}</Note>
+              {supplier.concentration && <Note tone="warn">{t("concentration", { supplier: supplier.concentration.supplierName, percent: supplier.concentration.sharePercent })}</Note>}
+              <Note>{t("notes.supplier", { percent: CONCENTRATION_PERCENT })}</Note>
             </>
           )}
 
@@ -315,13 +349,13 @@ export function ProcurementReports() {
             </>
           )}
 
-          {/* 5 · Cycle time & competition */}
+          {/* 5 · Cycle time & competition — and what the competition saved */}
           {cycle && (
             <>
               {cycle.rows.length === 0 ? (
                 <Empty>{t("empty")}</Empty>
               ) : (
-                <Table head={[t("cols.rfq"), t("cols.invited"), t("cols.offers"), t("cols.days"), t("cols.lowest"), t("cols.awardedValue")]}>
+                <Table head={[t("cols.rfq"), t("cols.invited"), t("cols.offers"), t("cols.days"), t("cols.saving")]}>
                   {cycle.rows.map((r) => (
                     <tr key={r.rfqId} className="border-t">
                       <Td>
@@ -330,18 +364,31 @@ export function ProcurementReports() {
                           {r.shortCompetition && <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[10px] font-bold text-warning">{t("shortCompetition")}</span>}
                           {!r.awarded && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">{t("notAwarded")}</span>}
                         </span>
+                        {sees && r.awarded && r.averageOffer != null && (
+                          <span className="mt-0.5 block text-[11px] text-muted-foreground" dir="auto">
+                            {t("cycle.against", { average: money(r.averageOffer), awarded: money(r.awardedTotal) })}
+                          </span>
+                        )}
                       </Td>
                       <Td end num>{num(r.invitedCount)}</Td>
                       <Td end num>{num(r.offersCount)}</Td>
                       <Td end num>{r.publishToAwardDays == null ? "—" : t("days", { count: r.publishToAwardDays })}</Td>
-                      <Td end num>{sees ? money(r.lowestTotal) : "—"}</Td>
-                      <Td end num>{sees ? money(r.awardedTotal) : "—"}</Td>
+                      <Td end num>{sees && r.saving != null ? <b className={r.saving > 0 ? "text-success" : r.saving < 0 ? "text-warning" : ""}>{signed(r.saving)}</b> : "—"}</Td>
                     </tr>
                   ))}
-                  <TotalsRow cells={[t("cycle.totals", { rfqs: cycle.totals.rfqs, awarded: cycle.totals.awarded, short: cycle.totals.shortCompetition }), "", num(cycle.totals.avgOffers), cycle.totals.avgDays == null ? "—" : t("days", { count: cycle.totals.avgDays }), "", ""]} />
+                  <TotalsRow
+                    cells={[
+                      t("cycle.totals", { rfqs: cycle.totals.rfqs, awarded: cycle.totals.awarded, short: cycle.totals.shortCompetition }),
+                      "",
+                      num(cycle.totals.avgOffers),
+                      cycle.totals.avgDays == null ? "—" : t("days", { count: cycle.totals.avgDays }),
+                      sees ? signed(cycle.totals.saving) : "—",
+                    ]}
+                  />
                 </Table>
               )}
               <Note>{t("notes.cycle", { threshold: policies.competitionThreshold.toLocaleString("en-US"), min: policies.minOffers })}</Note>
+              {sees && <Note>{t("notes.saving")}</Note>}
             </>
           )}
 
@@ -351,62 +398,77 @@ export function ProcurementReports() {
               {exc.length === 0 ? (
                 <Empty>{t("empty")}</Empty>
               ) : (
-                <Table head={[t("cols.document"), t("cols.exception"), t("cols.by"), t("cols.approvedBy"), t("cols.day")]}>
+                <Table head={[t("cols.document"), t("cols.supplier"), t("cols.exception"), t("cols.by"), t("cols.approvedBy"), t("cols.day")]}>
                   {exc.map((r, i) => (
-                    <tr key={`${r.kind}-${r.orderId || r.receiptId}-${i}`} className="border-t">
+                    <tr key={`${r.kind}-${r.orderId || r.receiptId || r.rfqId}-${i}`} className="border-t">
                       <Td>
-                        <Link href={r.href} className="font-mono text-xs font-semibold hover:underline" dir="ltr">{docNo(r.docNumber) || "—"}</Link>
-                        <span className="block text-[11px] text-muted-foreground" dir="auto">{r.supplierName}</span>
+                        <Link href={r.href} className={cn("text-xs font-semibold hover:underline", !r.rfqId || r.orderId ? "font-mono" : "")} dir={r.orderId || r.receiptId ? "ltr" : "auto"}>
+                          {(r.orderId || r.receiptId ? docNo(r.docNumber) : r.docNumber) || "—"}
+                        </Link>
                       </Td>
+                      <Td><span dir="auto">{r.supplierName || "—"}</span></Td>
                       <Td>
                         <span className="me-1.5 inline-block rounded-md bg-module/10 px-1.5 py-0.5 text-[10px] font-bold text-module">{t(`kind.${r.kind}`)}</span>
-                        <span dir="auto">{tProc(`exception.${r.kind}`, r.params)}</span>
+                        <span dir="auto">{excText(r.kind, r.params)}</span>
                       </Td>
                       <Td><span dir="auto">{r.byName || "—"}</span></Td>
                       <Td><span dir="auto">{r.approvedByName || "—"}</span></Td>
                       <Td end num>{fmtDay(r.day, locale)}</Td>
                     </tr>
                   ))}
-                  <TotalsRow cells={[t("exceptionsTotal", { count: exc.length }), "", "", "", ""]} />
+                  <TotalsRow cells={[t("exceptionsTotal", { count: exc.length }), "", "", "", "", ""]} />
                 </Table>
               )}
               <Note>{t("notes.exceptions")}</Note>
             </>
           )}
 
-          {/* 7 · Open commitments by due date */}
+          {/* 7 · Open commitments by payment due */}
           {commit && (
             <>
-              <div className="grid grid-cols-2 gap-px border-b bg-border sm:grid-cols-5">
-                {COMMITMENT_BUCKETS.map((b) => (
-                  <div key={b} className={cn("bg-white px-4 py-3", b === "within7" && commit.buckets[b].count > 0 && "bg-warning/5")}>
-                    <p className="text-[11px] text-muted-foreground">{tProc(`commitmentBucket.${b}`)}</p>
-                    <p className="mt-0.5 text-lg font-black tabular-nums text-foreground" dir="ltr">{money(commit.buckets[b].value)}</p>
-                    <p className="text-[10px] text-muted-foreground">{t("ordersCount", { count: commit.buckets[b].count })}</p>
-                  </div>
+              <Table head={[t("cols.due"), t("cols.advances"), t("cols.receivedUnpaid"), t("cols.undelivered")]}>
+                {bucketsShown.map((b) => (
+                  <tr key={b} className={cn("border-t", b === "within7" && commit.buckets[b].total > 0 && "bg-warning/5")}>
+                    <Td><span className="font-semibold">{tProc(`commitmentBucket.${b}`)}</span></Td>
+                    <Td end num>{money(commit.buckets[b].advance)}</Td>
+                    <Td end num>{money(commit.buckets[b].received)}</Td>
+                    <Td end num>{money(commit.buckets[b].undelivered)}</Td>
+                  </tr>
                 ))}
-              </div>
+                <TotalsRow cells={[t("total"), money(commit.totals.advance), money(commit.totals.received), money(commit.totals.undelivered)]} />
+              </Table>
               {commit.rows.length === 0 ? (
                 <Empty>{t("emptyCommitments")}</Empty>
               ) : (
-                <Table head={[t("cols.po"), t("cols.supplier"), t("cols.promised"), t("cols.dueIn"), t("cols.value")]}>
+                <Table head={[t("cols.po"), t("cols.part"), t("cols.terms"), t("cols.dueDate"), t("cols.value")]} className="border-t">
                   {commit.rows.map((r) => (
-                    <tr key={r.orderId} className="border-t">
-                      <Td><Link href={`/contractor/rfqs/orders?po=${r.orderId}`} className="font-mono text-xs font-semibold hover:underline" dir="ltr">{docNo(r.docNumber)}</Link></Td>
-                      <Td><span dir="auto">{r.supplierName}</span></Td>
-                      <Td end num>{fmtDay(r.promisedDate, locale)}</Td>
+                    <tr key={`${r.orderId}-${r.part}`} className="border-t">
+                      <Td>
+                        <Link href={`/contractor/rfqs/orders?po=${r.orderId}`} className="font-mono text-xs font-semibold hover:underline" dir="ltr">{docNo(r.docNumber)}</Link>
+                        <span className="block text-[11px] text-muted-foreground" dir="auto">{r.supplierName}</span>
+                      </Td>
+                      <Td>
+                        <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-bold", r.part === "advance" ? "bg-warning/10 text-warning" : r.part === "received" ? "bg-success/10 text-success" : "bg-module/10 text-module")}>{t(`part.${r.part}`)}</span>
+                      </Td>
+                      <Td>
+                        <span className="text-xs">{r.part === "advance" ? t("terms.advanceNow") : termsText(r.termsDays, r.termsSource)}</span>
+                        {r.part !== "advance" && r.termsSource !== "none" && <span className="block text-[10px] text-muted-foreground">{t(`terms.source.${r.termsSource}`)}</span>}
+                      </Td>
                       <Td end>
-                        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums", r.daysToDue != null && r.daysToDue < 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
+                        <span className="block tabular-nums" dir="ltr">{fmtDay(r.dueDate, locale)}</span>
+                        <span className={cn("mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums", r.daysToDue != null && r.daysToDue < 0 ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground")}>
                           {r.daysToDue == null ? tProc("commitmentBucket.noDate") : r.daysToDue < 0 ? t("overdueBy", { days: -r.daysToDue }) : t("dueIn", { days: r.daysToDue })}
                         </span>
                       </Td>
                       <Td end num>{money(r.value)}</Td>
                     </tr>
                   ))}
-                  <TotalsRow cells={[t("total"), "", "", "", money(commit.total)]} />
+                  <TotalsRow cells={[t("total"), "", "", "", money(commit.totals.total)]} />
                 </Table>
               )}
+              {commit.receivedUnknown > 0 && <Note>{t("commitReceivedUnknown", { count: commit.receivedUnknown })}</Note>}
               <Note>{t("notes.commitments")}</Note>
+              <Note>{t("notes.commitmentsTerms")}</Note>
             </>
           )}
         </Panel>

@@ -48,6 +48,8 @@ export interface PmAddendum {
   voidByName?: string | null
   voidReason?: WithdrawReason | null
   voidText?: string | null
+  /** The addendum or its draft, and the signed copy when recorded. */
+  files?: Array<{ url: string; name: string }>
 }
 
 /** "01", "02"… — the addendum's number inside the project (and its doc id). */

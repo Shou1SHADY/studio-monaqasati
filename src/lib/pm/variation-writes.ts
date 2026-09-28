@@ -5,7 +5,7 @@ import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction 
 import { assertPm, type PmAction, type PmContext } from "./access"
 import { todayDay } from "./format"
 import { withFreshState } from "./project-writes"
-import { logBlocks, PM_VARIATIONS, stepBlocks, voNo, type PmVariation, type VoSource } from "./variation"
+import { decisionDateBlocks, logBlocks, PM_VARIATIONS, stepBlocks, voNo, type PmVariation, type VoFile, type VoSource } from "./variation"
 
 export class PmVariationError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -38,6 +38,11 @@ export interface LogInput {
   value: number
   cost: number
   executedPct: number
+  /** The day it was asked; defaults to today. */
+  requestedOn?: string | null
+  itemIds?: string[]
+  days?: number
+  files?: VoFile[]
 }
 
 /** Logged the day it is asked (VO-01); it changes no value until approved (VO-02). */
@@ -47,7 +52,9 @@ export async function logVariation(firestore: Firestore, ctx: PmContext, project
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "variation.log")
-    const blocks = logBlocks({ archived: fresh.archived, ...input })
+    const today = todayDay()
+    const requestedOn = input.requestedOn || today
+    const blocks = logBlocks({ archived: fresh.archived, ...input, requestedOn, days: input.days ?? 0, today })
     if (blocks.length) throw new PmVariationError("blocked", blocks)
     seq = (pm.voCount ?? 0) + 1
     const vo: Omit<PmVariation, "id"> = {
@@ -56,7 +63,11 @@ export async function logVariation(firestore: Firestore, ctx: PmContext, project
       source: input.source,
       sourceText: input.source === "oth" ? input.sourceText?.trim() ?? null : null,
       instructionNo: input.instructionNo?.trim() || null,
-      day: todayDay(),
+      day: requestedOn,
+      loggedOn: today,
+      itemIds: input.itemIds ?? [],
+      days: input.days ?? 0,
+      files: input.files ?? [],
       value: input.value,
       cost: input.cost,
       executedPct: input.executedPct,
@@ -95,7 +106,7 @@ async function step(
 }
 
 /** Priced while a draft; the price is fixed once it goes to the client. */
-export const priceVariation = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, input: { value: number; cost: number; instructionNo?: string | null }) =>
+export const priceVariation = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number, input: { value: number; cost: number; instructionNo?: string | null; days?: number; files?: VoFile[] }) =>
   step(
     firestore,
     ctx,
@@ -105,8 +116,15 @@ export const priceVariation = (firestore: Firestore, ctx: PmContext, projectId: 
     (vo, archived) => [
       ...stepBlocks({ archived, status: vo.status, step: "reprice" }),
       ...(Number.isFinite(input.value) && input.value >= 0 && Number.isFinite(input.cost) && input.cost >= 0 ? [] : ["bad_value"]),
+      ...(input.days === undefined || (Number.isInteger(input.days) && input.days >= 0) ? [] : ["bad_days"]),
     ],
-    () => ({ value: input.value, cost: input.cost, instructionNo: input.instructionNo?.trim() || null })
+    (vo) => ({
+      value: input.value,
+      cost: input.cost,
+      instructionNo: input.instructionNo?.trim() || null,
+      ...(input.days !== undefined ? { days: input.days } : {}),
+      ...(input.files?.length ? { files: [...(vo.files ?? []), ...input.files] } : {}),
+    })
   )
 
 /** How much of its work is executed — moves until it is decided, and after approval. */
@@ -119,16 +137,24 @@ export const recordVariationProgress = (firestore: Firestore, ctx: PmContext, pr
 export const submitVariation = (firestore: Firestore, ctx: PmContext, projectId: string, seq: number) =>
   step(firestore, ctx, projectId, seq, "variation.log", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "submit", value: vo.value }), () => ({ status: "wait" }))
 
-/** The written approval (reference optional) — the value enters the contract now. */
-export const approveVariation = (firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, seq: number, ref?: string | null) =>
-  step(firestore, ctx, projectId, seq, "variation.decide", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "approve" }), () => ({
+export interface DecisionInput {
+  /** The day the written answer is dated; defaults to today. */
+  on?: string | null
+  files?: VoFile[]
+}
+
+const decided = (vo: PmVariation, on: string | null | undefined) => decisionDateBlocks({ on: on || todayDay(), requestedOn: vo.day, today: todayDay() })
+
+/** The written approval as it arrived (date, reference, the signed paper) — the value enters the contract now. */
+export const approveVariation = (firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, seq: number, ref?: string | null, input: DecisionInput = {}) =>
+  step(firestore, ctx, projectId, seq, "variation.decide", (vo, archived) => [...stepBlocks({ archived, status: vo.status, step: "approve" }), ...decided(vo, input.on)], () => ({
     status: "appr",
-    decision: { on: todayDay(), by: actor.uid, byName: actor.name, ref: ref?.trim() || null, reason: null },
+    decision: { on: input.on || todayDay(), by: actor.uid, byName: actor.name, ref: ref?.trim() || null, reason: null, files: input.files ?? [] },
   }))
 
-/** The rejection with its reason. */
-export const rejectVariation = (firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, seq: number, reason: string) =>
-  step(firestore, ctx, projectId, seq, "variation.decide", (vo, archived) => stepBlocks({ archived, status: vo.status, step: "reject", reason }), () => ({
+/** The rejection with its reason as it came, dated. */
+export const rejectVariation = (firestore: Firestore, ctx: PmContext, projectId: string, actor: VoActor, seq: number, reason: string, input: DecisionInput = {}) =>
+  step(firestore, ctx, projectId, seq, "variation.decide", (vo, archived) => [...stepBlocks({ archived, status: vo.status, step: "reject", reason }), ...decided(vo, input.on)], () => ({
     status: "rej",
-    decision: { on: todayDay(), by: actor.uid, byName: actor.name, ref: null, reason: reason.trim() },
+    decision: { on: input.on || todayDay(), by: actor.uid, byName: actor.name, ref: null, reason: reason.trim(), files: input.files ?? [] },
   }))

@@ -1,19 +1,124 @@
 // Procurement reports (PRD 3.0 §9) — seven questions over the same world the
-// Today screen reads: where spend goes, who carries it, who delivers on time,
-// which way prices move, how long a cycle takes and how much competition it
-// had, what left the usual path, and what Finance will be asked for soon.
-// Every report is a pure function returning rows and totals; the screen
-// formats, exports and prints. No Firestore, no React, no sentences.
+// Today screen reads: where spend goes and who asked for it, who carries it,
+// who delivers on time, which way prices move, how long a cycle takes and what
+// the competition saved, what left the usual path, and what Finance will be
+// asked for soon. Every report is a pure function returning rows and totals;
+// the screen formats, exports and prints. No Firestore, no React, no sentences.
 //
 // Values are commitments EXCLUDING VAT, not costs: the actual cost of an item
 // is read from Finance's ledger after the invoice. A lump-sum order's part is
 // never invented — where a proportional figure would be a guess the row says
 // "unknown" and the total leaves it out.
+//
+// A few facts the Today world does not carry — an RFQ closed early, an offer
+// keyed in by our staff, an offer's credit days and advance, the payment terms
+// on OUR supplier record — ride on `ReportWorld`, built by `reportWorld()`
+// from the raw documents. Absent, every report still runs: the extra
+// exception kinds are simply not found and the terms fall back to none.
+//
+// Payment timing (report 7): due = the supplier's date (or the last receipt,
+// for what already arrived) + the payment terms. Terms are read from our
+// supplier record first, then the offer's credit days, then a "30 days"
+// written on the order. An advance the offer asked for is due now while
+// nothing has arrived on the order — Finance does not tell us when it paid
+// one, and a supplier who shipped was paid whatever he asked for up front.
 
-import { acceptedValue, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
+import { acceptedValue, addDays, dayOf, daysBetween, daysFromNow, daysLate, isShortCompetition, lowestOffer, offerPrice, poFacts, poLive, poOpenValue, poStatus, poValue, receiptDay, round2, supplierKey, supplierScore, todayOf } from "./po"
 import { materialKey } from "./prices"
 import type { OfferFact, ProcWorld, RfqFact } from "./today"
 import type { PurchaseOrder } from "./types"
+
+export interface RfqEarlyCloseFact {
+  at?: string | null
+  byName?: string | null
+  reason?: string | null
+}
+
+export interface ReportRfqFact extends RfqFact {
+  closedEarly?: RfqEarlyCloseFact | null
+}
+
+export interface ReportOfferFact extends OfferFact {
+  supplierName?: string | null
+  isManualOffer?: boolean | null
+  recordedByName?: string | null
+  createdAt?: string | null
+  creditDays?: number | null
+  advancePercent?: number | null
+}
+
+export interface ReportWorld extends ProcWorld {
+  rfqs: ReportRfqFact[]
+  offers: ReportOfferFact[]
+  /** Our supplier record's payment terms, by supplier org id. */
+  supplierTermsDays?: Record<string, number>
+}
+
+export interface RawReportRfq {
+  id: string
+  closedEarly?: RfqEarlyCloseFact | null
+}
+
+export interface RawReportOffer {
+  id: string
+  supplierName?: string | null
+  companyName?: string | null
+  isManualOffer?: boolean | null
+  recordedByName?: string | null
+  createdAt?: unknown
+  creditDays?: unknown
+  advancePercent?: unknown
+}
+
+export interface RawSupplierTerms {
+  supplierOrgId: string
+  paymentTermsDays?: number | null
+}
+
+const numberOrNull = (v: unknown): number | null => {
+  if (v == null || v === "") return null
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s%]/g, ""))
+  return Number.isFinite(n) && n >= 0 ? n : null
+}
+
+const isoOrNull = (v: unknown): string | null => {
+  if (!v) return null
+  if (typeof v === "string") return v
+  const ts = v as { toDate?: () => Date }
+  return typeof ts.toDate === "function" ? ts.toDate().toISOString() : null
+}
+
+export function reportWorld(base: ProcWorld, raw: { rfqs?: RawReportRfq[] | null; offers?: RawReportOffer[] | null; supplierRecords?: RawSupplierTerms[] | null }): ReportWorld {
+  const rfqById = new Map((raw.rfqs || []).map((r) => [r.id, r]))
+  const offerById = new Map((raw.offers || []).map((o) => [o.id, o]))
+  const supplierTermsDays: Record<string, number> = {}
+  for (const rec of raw.supplierRecords || []) {
+    const d = numberOrNull(rec.paymentTermsDays)
+    if (rec.supplierOrgId && d != null) supplierTermsDays[rec.supplierOrgId] = Math.round(d)
+  }
+  return {
+    ...base,
+    rfqs: base.rfqs.map((r) => {
+      const x = rfqById.get(r.id)
+      return x?.closedEarly ? { ...r, closedEarly: x.closedEarly } : r
+    }),
+    offers: base.offers.map((o) => {
+      const x = offerById.get(o.id)
+      if (!x) return o
+      const advance = numberOrNull(x.advancePercent)
+      return {
+        ...o,
+        supplierName: x.supplierName || x.companyName || null,
+        isManualOffer: x.isManualOffer === true,
+        recordedByName: x.recordedByName || null,
+        createdAt: isoOrNull(x.createdAt),
+        creditDays: numberOrNull(x.creditDays),
+        advancePercent: advance == null ? null : Math.min(100, advance),
+      }
+    }),
+    supplierTermsDays,
+  }
+}
 
 /** `YYYY-MM-DD` bounds on the document's creation day, both inclusive. */
 export interface Period {
@@ -22,6 +127,19 @@ export interface Period {
 }
 
 export const inPeriod = (day: string, p: Period | null | undefined): boolean => Boolean(day) && (!p?.from || day >= p.from) && (!p?.to || day <= p.to)
+
+/** The period segment: the last 30 / 90 days, this year, «منذ البداية», or chosen days. */
+export const REPORT_PERIOD_PRESETS = ["30", "90", "year", "all", "custom"] as const
+export type ReportPeriodPreset = (typeof REPORT_PERIOD_PRESETS)[number]
+
+export function presetPeriod(preset: ReportPeriodPreset, now: Date, custom?: Period | null): Period {
+  const today = todayOf(now)
+  if (preset === "30") return lastDays(30, now)
+  if (preset === "90") return lastDays(90, now)
+  if (preset === "year") return { from: `${today.slice(0, 4)}-01-01`, to: today }
+  if (preset === "all") return { from: null, to: null }
+  return { from: custom?.from || null, to: custom?.to || null }
+}
 
 /** Orders that became commitments: not still awaiting approval, not cancelled. */
 export function committedOrders(w: ProcWorld, period?: Period | null): PurchaseOrder[] {
@@ -34,10 +152,26 @@ export function committedOrders(w: ProcWorld, period?: Period | null): PurchaseO
 const nameKey = (name: string, unit: string) => materialKey(name, unit)
 
 // ---------------------------------------------------------------------------
-// 1 · Spend by project
+// 1 · Spend by project and requester — a project's need under its project;
+// a need with no project under the party that raised it (the workshop's
+// shortfall, Inventory's stock gap), and what a buyer added himself apart.
 // ---------------------------------------------------------------------------
 
+export type RequesterKind = "project" | "workshop" | "inventory" | "buyers"
+export const REQUESTER_KINDS: readonly RequesterKind[] = ["project", "workshop", "inventory", "buyers"]
+
+export function requesterOf(po: Pick<PurchaseOrder, "projectId" | "purchaseSource">): { key: string; kind: RequesterKind; projectId: string | null } {
+  const projectId = po.projectId || po.purchaseSource?.projectId || null
+  if (projectId) return { key: `project:${projectId}`, kind: "project", projectId }
+  const src = po.purchaseSource
+  if (src?.kind === "mfg_purchase" || src?.workOrderId) return { key: "workshop", kind: "workshop", projectId: null }
+  if (src?.kind === "stock_gap") return { key: "inventory", kind: "inventory", projectId: null }
+  return { key: "buyers", kind: "buyers", projectId: null }
+}
+
 export interface ProjectSpendRow {
+  key: string
+  kind: RequesterKind
   projectId: string | null
   projectName: string
   orders: number
@@ -57,8 +191,9 @@ export interface ProjectSpendReport {
 export function spendByProject(w: ProcWorld, period?: Period | null): ProjectSpendReport {
   const by = new Map<string, ProjectSpendRow>()
   for (const po of committedOrders(w, period)) {
-    const key = po.projectId || ""
-    const row = by.get(key) || { projectId: po.projectId || null, projectName: po.projectName || "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0 }
+    const who = requesterOf(po)
+    const key = who.key
+    const row = by.get(key) || { key, kind: who.kind, projectId: who.projectId, projectName: who.kind === "project" ? po.projectName || "" : "", orders: 0, lines: 0, ordered: 0, received: 0, receivedUnknown: false, open: 0 }
     const accepted = acceptedValue(po)
     row.orders++
     row.lines += po.lines.length
@@ -66,7 +201,7 @@ export function spendByProject(w: ProcWorld, period?: Period | null): ProjectSpe
     row.received = round2(row.received + (accepted ?? 0))
     if (accepted == null) row.receivedUnknown = true
     row.open = round2(row.open + poOpenValue(po))
-    if (!row.projectName && po.projectName) row.projectName = po.projectName
+    if (who.kind === "project" && !row.projectName && po.projectName) row.projectName = po.projectName
     by.set(key, row)
   }
   const rows = [...by.values()].sort((a, b) => b.ordered - a.ordered)
@@ -83,10 +218,10 @@ export function spendByProject(w: ProcWorld, period?: Period | null): ProjectSpe
 }
 
 // ---------------------------------------------------------------------------
-// 2 · Spend by supplier — concentration above 30 % is worth a ready alternative
+// 2 · Spend by supplier — one supplier above 35 % is worth a ready alternative
 // ---------------------------------------------------------------------------
 
-export const CONCENTRATION_PERCENT = 30
+export const CONCENTRATION_PERCENT = 35
 
 export interface SupplierSpendRow {
   supplierKey: string
@@ -239,7 +374,9 @@ export function priceDrift(w: ProcWorld, period?: Period | null): DriftReport {
 }
 
 // ---------------------------------------------------------------------------
-// 5 · Cycle time & competition
+// 5 · Cycle time & competition — and what the competition saved: the average
+// of the offers in the running less what we awarded. Two offers or fewer above
+// the threshold is short competition, shown to the approver.
 // ---------------------------------------------------------------------------
 
 export interface CycleRow {
@@ -251,35 +388,46 @@ export interface CycleRow {
   /** Publish → award, in days, when both dates exist. */
   publishToAwardDays: number | null
   lowestTotal: number | null
+  /** Every order laid over the RFQ (a split award has one per supplier). */
   awardedTotal: number | null
+  /** Mean of the priced offers still in the running. */
+  averageOffer: number | null
+  /** averageOffer − awardedTotal; positive = saved. Null until awarded. */
+  saving: number | null
   shortCompetition: boolean
 }
 
 export interface CycleReport {
   rows: CycleRow[]
-  totals: { rfqs: number; awarded: number; avgDays: number | null; avgOffers: number | null; shortCompetition: number }
+  totals: { rfqs: number; awarded: number; avgDays: number | null; avgOffers: number | null; shortCompetition: number; saving: number }
 }
+
+const OFFER_REJECTED = "مرفوض"
 
 export function cycleAndCompetition(w: ProcWorld, period?: Period | null): CycleReport {
   const offersByRfq = new Map<string, OfferFact[]>()
   for (const o of w.offers) offersByRfq.set(o.rfqId, [...(offersByRfq.get(o.rfqId) || []), o])
-  const orderByRfq = new Map<string, PurchaseOrder>()
-  for (const po of w.orders) if (po.rfqId && po.status !== "cancelled") orderByRfq.set(po.rfqId, po)
+  const ordersByRfq = new Map<string, PurchaseOrder[]>()
+  for (const po of w.orders) if (po.rfqId && po.status !== "cancelled") ordersByRfq.set(po.rfqId, [...(ordersByRfq.get(po.rfqId) || []), po])
 
   const rows: CycleRow[] = w.rfqs
     .filter((r: RfqFact) => r.status !== "Draft" && (!r.createdAt || inPeriod(dayOf(r.createdAt), period)))
     .map((r) => {
       const offers = offersByRfq.get(r.id) || []
       const count = offers.length || Number(r.offersCount) || 0
-      const po = orderByRfq.get(r.id)
-      const awarded = r.status === "Awarded" || Boolean(po)
+      const pos = (ordersByRfq.get(r.id) || []).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      const po = pos[0]
+      const awarded = r.status === "Awarded" || pos.length > 0
       const awardDay = dayOf(r.awardedAt) || (po ? dayOf(po.createdAt) : "")
       const publish = dayOf(r.createdAt)
       const best = lowestOffer(offers)
       const lowestTotal = best ? offerPrice(best) : po?.lowestOfferTotal ?? null
-      const awardedTotal = po ? poValue(po) : offers.filter((o) => o.status === "مقبول").map(offerPrice).find((p) => p != null) ?? null
+      const awardedTotal = pos.length ? round2(pos.reduce((s, x) => s + poValue(x), 0)) : offers.filter((o) => o.status === "مقبول").map(offerPrice).find((p) => p != null) ?? null
+      const prices = offers.filter((o) => o.status !== OFFER_REJECTED).map(offerPrice).filter((p): p is number => p != null)
+      const averageOffer = prices.length ? round2(prices.reduce((s, p) => s + p, 0) / prices.length) : null
+      const saving = awarded && awardedTotal != null && averageOffer != null ? round2(averageOffer - awardedTotal) : null
       const short = po ? po.shortCompetition : isShortCompetition(awardedTotal ?? lowestTotal, count, w.policies)
-      return { rfqId: r.id, title: r.title || "", offersCount: count, invitedCount: r.invitedCount ?? null, awarded, publishToAwardDays: awarded && publish && awardDay ? daysBetween(publish, awardDay) : null, lowestTotal, awardedTotal, shortCompetition: short }
+      return { rfqId: r.id, title: r.title || "", offersCount: count, invitedCount: r.invitedCount ?? null, awarded, publishToAwardDays: awarded && publish && awardDay ? daysBetween(publish, awardDay) : null, lowestTotal, awardedTotal, averageOffer, saving, shortCompetition: short }
     })
   const days = rows.map((r) => r.publishToAwardDays).filter((d): d is number => d != null)
   return {
@@ -290,6 +438,7 @@ export function cycleAndCompetition(w: ProcWorld, period?: Period | null): Cycle
       avgDays: days.length ? round2(days.reduce((s, d) => s + d, 0) / days.length) : null,
       avgOffers: rows.length ? round2(rows.reduce((s, r) => s + r.offersCount, 0) / rows.length) : null,
       shortCompetition: rows.filter((r) => r.shortCompetition).length,
+      saving: round2(rows.reduce((s, r) => s + (r.saving ?? 0), 0)),
     },
   }
 }
@@ -299,7 +448,23 @@ export function cycleAndCompetition(w: ProcWorld, period?: Period | null): Cycle
 // violations: what the owner should see monthly.
 // ---------------------------------------------------------------------------
 
-export const EXCEPTION_KINDS = ["retroactive", "direct", "non_lowest", "short_competition", "self_approval", "no_official_quote", "closed_short", "manual_receipt", "no_po", "self_received", "no_notice", "cash_expense"] as const
+export const EXCEPTION_KINDS = [
+  "retroactive",
+  "direct",
+  "non_lowest",
+  "short_competition",
+  "self_approval",
+  "no_official_quote",
+  "awarded_manual_offer",
+  "closed_short",
+  "manual_receipt",
+  "no_po",
+  "self_received",
+  "no_notice",
+  "cash_expense",
+  "manual_offer",
+  "early_close",
+] as const
 export type ExceptionKind = (typeof EXCEPTION_KINDS)[number]
 
 export interface ExceptionRow {
@@ -307,6 +472,7 @@ export interface ExceptionRow {
   docNumber: string
   orderId: string | null
   receiptId: string | null
+  rfqId: string | null
   supplierName: string
   byName: string
   approvedByName: string
@@ -315,20 +481,24 @@ export interface ExceptionRow {
   href: string
 }
 
-export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[] {
+export function exceptions(w: ReportWorld | ProcWorld, period?: Period | null): ExceptionRow[] {
   const out: ExceptionRow[] = []
   const orderById = new Map(w.orders.map((o) => [o.id, o]))
+  const offers = w.offers as ReportOfferFact[]
+  const offerById = new Map(offers.map((o) => [o.id, o]))
   const orderHref = (id: string) => `/contractor/rfqs/orders?po=${id}`
   const receiptHref = (id: string) => `/contractor/goods-received?tab=incoming&delivery=${id}`
+  const rfqHref = (id: string) => `/contractor/rfqs/${id}/offers`
 
   for (const po of committedOrders(w, period)) {
-    const base = { docNumber: po.docNumber, orderId: po.id, receiptId: null, supplierName: po.supplierName, byName: po.preparedByName, approvedByName: po.approvedByName || "", day: dayOf(po.createdAt), href: orderHref(po.id) }
+    const base = { docNumber: po.docNumber, orderId: po.id, receiptId: null, rfqId: po.rfqId, supplierName: po.supplierName, byName: po.preparedByName, approvedByName: po.approvedByName || "", day: dayOf(po.createdAt), href: orderHref(po.id) }
     if (po.basis === "retroactive") out.push({ ...base, kind: "retroactive", params: {} })
     else if (po.basis === "direct" && !po.agreementId) out.push({ ...base, kind: "direct", params: { reason: po.awardReasonText || po.awardReasonCode || "" } })
     if (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText)) out.push({ ...base, kind: "non_lowest", params: { reasonCode: po.awardReasonCode || "other", reason: po.awardReasonText || "" } })
     if (po.shortCompetition && po.basis === "rfq") out.push({ ...base, kind: "short_competition", params: { count: po.offersCount } })
     if (po.approvedById && po.approvedById === po.preparedById) out.push({ ...base, kind: "self_approval", params: {}, day: dayOf(po.approvedAt) || base.day })
     if (po.noOfficialQuote && !po.agreementId) out.push({ ...base, kind: "no_official_quote", params: {} })
+    if (po.offerId && offerById.get(po.offerId)?.isManualOffer) out.push({ ...base, kind: "awarded_manual_offer", params: {} })
     if (po.status === "closed" && po.closedShort) out.push({ ...base, kind: "closed_short", params: { reason: po.closeReason || "" }, day: dayOf(po.closedAt) || base.day })
   }
 
@@ -337,61 +507,143 @@ export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[]
     const day = receiptDay(r)
     if (!inPeriod(day, period)) continue
     const po = r.poId ? orderById.get(r.poId) : undefined
-    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, supplierName: r.supplierName || po?.supplierName || "", byName: r.confirmedByName || "", approvedByName: "", day, href: receiptHref(r.id) }
-    if (r.source === "manual" && !r.poId && !r.offerId) out.push({ ...base, kind: "no_po", params: {} })
+    const base = { docNumber: r.docNumber || r.poNumber || "", orderId: r.poId || null, receiptId: r.id, rfqId: null, supplierName: r.supplierName || po?.supplierName || "", byName: r.confirmedByName || "", approvedByName: po?.approvedByName || "", day, href: receiptHref(r.id) }
+    // A no-order receipt later sent to Finance as an expense is listed once, as
+    // the expense, by whoever sent it: open and expensed are two states of the
+    // same queue, not two exceptions.
+    if (r.regularisation === "expense") out.push({ ...base, kind: "cash_expense", params: {}, byName: r.regularisedByName || r.confirmedByName || "" })
+    else if (r.source === "manual" && !r.poId && !r.offerId) out.push({ ...base, kind: "no_po", params: {} })
     else if (r.source === "manual" && r.poId) out.push({ ...base, kind: "manual_receipt", params: {} })
     if (r.selfReceived) out.push({ ...base, kind: "self_received", params: {}, byName: po?.preparedByName || "" })
-    // Both already stored on the receipt and both off the usual path (PRD SS9):
-    // a truck that arrived with nothing announcing it, and a no-order receipt
-    // sent to Finance as an expense instead of being regularised by an order.
     if (r.noNotice) out.push({ ...base, kind: "no_notice", params: {} })
-    if (r.regularisation === "expense") out.push({ ...base, kind: "cash_expense", params: {}, byName: r.regularisedByName || r.confirmedByName || "" })
+  }
+
+  const rfqs = w.rfqs as ReportRfqFact[]
+  const rfqById = new Map(rfqs.map((r) => [r.id, r]))
+  for (const o of offers) {
+    if (!o.isManualOffer) continue
+    const rfq = rfqById.get(o.rfqId)
+    const day = dayOf(o.createdAt) || dayOf(rfq?.createdAt)
+    if (!inPeriod(day, period)) continue
+    out.push({ kind: "manual_offer", docNumber: rfq?.title || "", orderId: null, receiptId: null, rfqId: o.rfqId, supplierName: o.supplierName || "", byName: o.recordedByName || "", approvedByName: "", day, params: {}, href: rfqHref(o.rfqId) })
+  }
+  for (const r of rfqs) {
+    if (!r.closedEarly) continue
+    const day = dayOf(r.closedEarly.at)
+    if (!inPeriod(day, period)) continue
+    out.push({ kind: "early_close", docNumber: r.title || "", orderId: null, receiptId: null, rfqId: r.id, supplierName: "", byName: r.closedEarly.byName || "", approvedByName: "", day, params: { reason: r.closedEarly.reason || "" }, href: rfqHref(r.id) })
   }
 
   return out.sort((a, b) => b.day.localeCompare(a.day) || a.docNumber.localeCompare(b.docNumber))
 }
 
 // ---------------------------------------------------------------------------
-// 7 · Open commitments by due date — what Finance will be asked for, and when
+// 7 · Open commitments by payment due — what Finance will be asked for, and
+// when. Finance's cash forecast only sees an order once it is invoiced; this
+// fills the gap. Three columns per bucket: advances due, received but unpaid
+// (accepted only — never what was counted or held), committed not delivered.
 // ---------------------------------------------------------------------------
 
 export const COMMITMENT_BUCKETS = ["within7", "within30", "within60", "later", "noDate"] as const
 export type CommitmentBucket = (typeof COMMITMENT_BUCKETS)[number]
 
+export const COMMITMENT_PARTS = ["advance", "received", "undelivered"] as const
+export type CommitmentPart = (typeof COMMITMENT_PARTS)[number]
+
+export type TermsSource = "supplier" | "offer" | "order" | "none"
+
+export interface OrderTerms {
+  days: number
+  advancePercent: number
+  source: TermsSource
+}
+
+// "30 يوماً", "آجل 60 يوم", "net 45 days" — a number of days written on the order.
+const TERMS_DAYS = /(\d{1,3})\s*(?:يوم|أيام|days?\b)/i
+
+/** Our supplier record first, then the offer's credit days, then days written on the order. */
+export function orderTerms(po: PurchaseOrder, w: ReportWorld | ProcWorld): OrderTerms {
+  const offer = po.offerId ? (w.offers as ReportOfferFact[]).find((o) => o.id === po.offerId) : undefined
+  const advancePercent = Math.min(100, Math.max(0, Number(offer?.advancePercent) || 0))
+  const recorded = (w as ReportWorld).supplierTermsDays?.[po.supplierOrgId]
+  if (recorded != null && Number.isFinite(recorded)) return { days: Math.max(0, recorded), advancePercent, source: "supplier" }
+  if (offer?.creditDays != null && Number.isFinite(offer.creditDays)) return { days: Math.max(0, Math.round(offer.creditDays)), advancePercent, source: "offer" }
+  const m = TERMS_DAYS.exec(po.paymentTerms || "")
+  if (m) return { days: Number(m[1]), advancePercent, source: "order" }
+  return { days: 0, advancePercent, source: "none" }
+}
+
 export interface CommitmentRow {
   orderId: string
   docNumber: string
   supplierName: string
-  promisedDate: string | null
-  /** Days to the promise (negative = overdue); null without a date. */
+  part: CommitmentPart
+  termsDays: number
+  termsSource: TermsSource
+  /** `YYYY-MM-DD` — null when the supplier gave no date yet. */
+  dueDate: string | null
+  /** Days to the due date (negative = overdue); null without a date. */
   daysToDue: number | null
   value: number
   bucket: CommitmentBucket
 }
 
+export type CommitmentBucketTotals = Record<CommitmentPart, number> & { total: number }
+
 export interface CommitmentReport {
   rows: CommitmentRow[]
-  buckets: Record<CommitmentBucket, { count: number; value: number }>
-  total: number
+  buckets: Record<CommitmentBucket, CommitmentBucketTotals>
+  totals: CommitmentBucketTotals
+  /** Lump-sum orders with goods accepted but no breakdown: left out of "received". */
+  receivedUnknown: number
 }
 
-/** Live orders by their promised date: the overdue sit in the first week's
- * bucket (Finance will be asked for them first, not never). Not period-filtered. */
-export function openCommitments(w: ProcWorld, now: Date): CommitmentReport {
-  const buckets = Object.fromEntries(COMMITMENT_BUCKETS.map((b) => [b, { count: 0, value: 0 }])) as Record<CommitmentBucket, { count: number; value: number }>
+const bucketOf = (d: number | null): CommitmentBucket => (d == null ? "noDate" : d <= 7 ? "within7" : d <= 30 ? "within30" : d <= 60 ? "within60" : "later")
+
+const emptyTotals = (): CommitmentBucketTotals => ({ advance: 0, received: 0, undelivered: 0, total: 0 })
+
+/** Not period-filtered: what is owed from today on. The overdue sit in the
+ * first week's bucket — Finance will be asked for them first, not never. */
+export function openCommitments(w: ReportWorld | ProcWorld, now: Date): CommitmentReport {
+  const today = todayOf(now)
   const rows: CommitmentRow[] = []
+  let receivedUnknown = 0
   for (const po of w.orders) {
-    if (!poLive(po)) continue
-    const value = poOpenValue(po)
-    if (!(value > 0)) continue
-    const d = daysFromNow(po.promisedDate, now)
-    const bucket: CommitmentBucket = d == null ? "noDate" : d <= 7 ? "within7" : d <= 30 ? "within30" : d <= 60 ? "within60" : "later"
-    rows.push({ orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, promisedDate: po.promisedDate || null, daysToDue: d, value, bucket })
-    buckets[bucket].count++
-    buckets[bucket].value = round2(buckets[bucket].value + value)
+    if (po.status === "awaiting_approval" || po.status === "cancelled" || po.status === "closed") continue
+    const terms = orderTerms(po, w)
+    const base = { orderId: po.id, docNumber: po.docNumber, supplierName: po.supplierName, termsDays: terms.days, termsSource: terms.source }
+    const push = (part: CommitmentPart, value: number, dueDate: string | null) => {
+      if (!(value > 0)) return
+      const daysToDue = dueDate ? daysFromNow(dueDate, now) : null
+      rows.push({ ...base, part, dueDate, daysToDue, value: round2(value), bucket: bucketOf(daysToDue) })
+    }
+    const st = poStatus(po)
+    if (poLive(po)) {
+      const nothingArrived = !po.lines.some((l) => Number(l.accepted) > 0)
+      const advance = terms.advancePercent > 0 && nothingArrived ? round2((poValue(po) * terms.advancePercent) / 100) : 0
+      push("advance", advance, today)
+      push("undelivered", Math.max(0, poOpenValue(po) - advance), po.promisedDate ? addDays(po.promisedDate, terms.days) : null)
+    }
+    if (st === "part_received" || st === "received") {
+      const accepted = acceptedValue(po)
+      if (accepted == null) receivedUnknown++
+      else {
+        const last = poFacts(po, w.receipts).lastReceiptDay
+        push("received", accepted, last ? addDays(last, terms.days) : null)
+      }
+    }
   }
-  rows.sort((a, b) => (a.daysToDue ?? 9999) - (b.daysToDue ?? 9999) || a.docNumber.localeCompare(b.docNumber))
-  return { rows, buckets, total: round2(rows.reduce((s, r) => s + r.value, 0)) }
+  rows.sort((a, b) => (a.daysToDue ?? 99999) - (b.daysToDue ?? 99999) || a.docNumber.localeCompare(b.docNumber) || COMMITMENT_PARTS.indexOf(a.part) - COMMITMENT_PARTS.indexOf(b.part))
+  const buckets = Object.fromEntries(COMMITMENT_BUCKETS.map((b) => [b, emptyTotals()])) as Record<CommitmentBucket, CommitmentBucketTotals>
+  const totals = emptyTotals()
+  for (const r of rows) {
+    const b = buckets[r.bucket]
+    b[r.part] = round2(b[r.part] + r.value)
+    b.total = round2(b.total + r.value)
+    totals[r.part] = round2(totals[r.part] + r.value)
+    totals.total = round2(totals.total + r.value)
+  }
+  return { rows, buckets, totals, receivedUnknown }
 }
 
 /** The period the screen's "last N days" segment means, ending today. */

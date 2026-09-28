@@ -12,7 +12,8 @@
 import { addDoc, collection, doc, getDocs, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, type DocumentReference, type Firestore, type Transaction } from "firebase/firestore"
 import type { Translator } from "../mfg-events"
 import { emitProcEvent, procLinks, sarText } from "./events"
-import { drawProcDocNumber } from "./numbering"
+import { drawProcDocNumber, drawProcDocNumbers } from "./numbering"
+import { rfqLogEntry, type RfqLogEntry } from "./rfq-detail"
 import { PRICE_HISTORY, historyRowsForApproval } from "./prices"
 import { pricedProducts, quotedRatesReconcile } from "./offer-pricing"
 import {
@@ -39,6 +40,7 @@ import {
   round2,
   type BlockContext,
 } from "./po"
+import { orderTermsOf } from "./offer-terms"
 import {
   PURCHASE_ORDERS,
   type AwardReasonCode,
@@ -91,6 +93,19 @@ export type ProcWriteErrorCode =
   | "over_direct_cap"
   | "agreement_not_live"
   | "agreement_line_missing"
+  | "delivery_date_missing"
+  // A decision on a project need (need-decision-writes.ts).
+  | "need_decided"
+  | "need_not_waiting"
+  // Regularising a receipt with no order (receipt-writes.ts).
+  | "not_no_po"
+  | "no_matching_order"
+  // An RFQ's own acts (the split award here, rfq-writes.ts).
+  | "rfq_missing"
+  | "rfq_not_open"
+  | "nothing_picked"
+  | "breakdown_mismatch"
+  | "offer_taken"
 
 export class ProcWriteError extends Error {
   constructor(
@@ -193,6 +208,10 @@ export interface AwardOfferLike {
   lines?: Array<{ rfqProductIndex?: number | null; unitPrice?: number | string | null }> | null
   poId?: string | null
   poNumber?: string | null
+  /** The offer's commercial terms (offer-terms.ts) — carried onto the order. */
+  advancePercent?: number | string | null
+  creditDays?: number | string | null
+  priceBasis?: string | null
 }
 
 const num = (v: unknown): number => {
@@ -285,6 +304,7 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     category: rfq.category ?? null,
     purchaseSource: rfq.purchaseSource ?? null,
     ...supplierOfOffer(offer),
+    ...orderTermsOf(offer),
     lines,
     totalExVat,
     vatRate: 0.15,
@@ -313,7 +333,7 @@ export function draftPurchaseOrder(actor: ProcActor, input: CreateFromAwardInput
     log: [],
   }
   const routed = { ...base, id: "", docNumber: "", approverKind: "manager" as const }
-  return { ...base, approverKind: requiredApprover(routed, policies) }
+  return { ...base, approverKind: requiredApprover(routed, policies, actor.isOwner || actor.canApprove) }
 }
 
 /**
@@ -358,6 +378,189 @@ export async function createPurchaseOrderFromAward(
       copy: opts.copy,
     })
   }
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// The split award (R-01): one order per supplier, each with its picked lines
+// ---------------------------------------------------------------------------
+
+export interface AwardGroupInput {
+  offer: AwardOfferLike
+  /** The picked lines with the unit price the order carries: the quoted rate,
+   * or the breakdown's in total pricing. Empty on an RFQ without products. */
+  lines: Array<{ rfqProductIndex: number; unitPrice: number | null }>
+  total: number
+  /** «مطلوب التسليم قبل», `YYYY-MM-DD`. */
+  requestedDeliveryDate: string | null
+  /** What the cheapest competing rates would have cost for these lines. */
+  lowestForLines: number | null
+  /** Some of these lines passed over a cheaper rate — the reason travels with this order. */
+  offLowest: boolean
+}
+
+export interface AwardRfqInput {
+  rfq: RfqLike
+  /** Every competing offer on the RFQ. */
+  offers: AwardOfferLike[]
+  groups: AwardGroupInput[]
+  /** Lines nobody was awarded — they go back to the needs. */
+  unpicked: number[]
+  awardReason: { code: AwardReasonCode; text?: string | null } | null
+  /** Total pricing: the unit prices came from the supplier's breakdown. */
+  breakdown: boolean
+  policies: ProcurementPolicies
+}
+
+/** One supplier's order out of a split award — pure, so the dialog and the tests see the document. */
+export function draftSplitOrder(actor: ProcActor, input: AwardRfqInput, group: AwardGroupInput, now = new Date()): Omit<PurchaseOrder, "id" | "docNumber"> {
+  const { rfq, offers, policies } = input
+  const products = rfq.products || []
+  const lines: PoLine[] = products.length
+    ? group.lines.map((l) => {
+        const p = products[l.rfqProductIndex] || {}
+        return {
+          id: `l${l.rfqProductIndex + 1}`,
+          name: (p.name || "").trim(),
+          unit: (p.unitOfMeasure || p.unit || "").trim(),
+          quantity: Math.max(0, num(p.quantity)),
+          unitPrice: l.unitPrice == null ? null : round2(l.unitPrice),
+          accepted: 0,
+          rejected: 0,
+          held: 0,
+          cancelled: 0,
+          boqItemId: p.boqItemId ?? null,
+          rfqProductIndex: l.rfqProductIndex,
+        }
+      })
+    : buildPoLines(rfq, group.offer)
+  const totalExVat = round2(group.total)
+  const reason = group.offLowest ? input.awardReason : null
+  const base: Omit<PurchaseOrder, "id" | "docNumber" | "approverKind"> = {
+    organizationId: rfq.organizationId || rfq.contractorId || "",
+    status: "awaiting_approval",
+    basis: rfq.directAward || group.offer.directAward ? "direct" : "rfq",
+    rfqId: rfq.id,
+    rfqTitle: (rfq.title || "").trim(),
+    offerId: group.offer.id,
+    ...orderTermsOf(group.offer),
+    projectId: rfq.projectId ?? null,
+    projectName: rfq.projectName ?? null,
+    category: rfq.category ?? null,
+    purchaseSource: rfq.purchaseSource ?? null,
+    ...supplierOfOffer(group.offer),
+    lines,
+    totalExVat,
+    vatRate: 0.15,
+    paymentTerms: group.offer.paymentTerms ?? null,
+    deliveryLocation: group.offer.deliveryLocation || rfq.city || null,
+    leadTimeDays: offerLeadTimeDays(group.offer),
+    offersCount: offers.length,
+    lowestOfferTotal: group.lowestForLines,
+    awardReasonCode: reason?.code ?? null,
+    awardReasonText: reason?.text?.trim() || null,
+    shortCompetition: isShortCompetition(totalExVat, offers.length, policies),
+    noOfficialQuote: !group.offer.offerPdfUrl,
+    requestedDeliveryDate: group.requestedDeliveryDate || null,
+    preparedById: actor.uid,
+    preparedByName: actor.name,
+    createdAt: now.toISOString(),
+    approvedById: null,
+    approvedByName: null,
+    approvedAt: null,
+    returnedReason: null,
+    sentAt: null,
+    sentChannel: null,
+    supplierAcceptedAt: null,
+    promisedDate: null,
+    acceptanceRecordedBy: null,
+    rating: null,
+    log: [],
+  }
+  const routed = { ...base, id: "", docNumber: "", approverKind: "manager" as const }
+  return { ...base, approverKind: requiredApprover(routed, policies, actor.isOwner || actor.canApprove) }
+}
+
+/**
+ * Award the RFQ from the comparison's picks, in ONE transaction: every picked
+ * offer goes `مقبول` with the lines it won (`awardedLines`, `awardedTotal`) and
+ * gets its own order awaiting approval; the RFQ goes `Awarded`, remembers the
+ * lines nobody won (`unawardedLines` — back to the needs) and logs the award.
+ * The supplier hears nothing yet (22 Sep review): he hears when his order is
+ * approved and sent. Re-reads the RFQ and every offer, so an offer excluded or
+ * awarded meanwhile refuses the whole award rather than half of it.
+ */
+export async function awardRfq(
+  firestore: Firestore,
+  actor: ProcActor,
+  input: AwardRfqInput,
+  opts: WriteOpts = {}
+): Promise<Array<{ id: string; docNumber: string; offerId: string }>> {
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  if (!input.groups.length) throw new ProcWriteError("nothing_picked")
+  const now = opts.now ?? new Date()
+  const at = now.toISOString()
+  const drafts = input.groups.map((g) => draftSplitOrder(actor, input, g, now))
+  const rfqRef = doc(firestore, "rfqs", input.rfq.id)
+  const offerRefs = input.groups.map((g) => doc(firestore, "offers", g.offer.id))
+  const poRefs = input.groups.map(() => doc(collection(firestore, PURCHASE_ORDERS)))
+  const result = await runTransaction(firestore, async (tx) => {
+    const rfqSnap = await tx.get(rfqRef)
+    if (!rfqSnap.exists()) throw new ProcWriteError("rfq_missing")
+    const rfqData = rfqSnap.data() as { status?: string; log?: RfqLogEntry[] }
+    if (rfqData.status !== "New") throw new ProcWriteError("rfq_not_open")
+    for (const ref of offerRefs) {
+      const snap = await tx.get(ref)
+      if (!snap.exists()) throw new ProcWriteError("offer_missing")
+      const o = snap.data() as { status?: string; poId?: string }
+      if (o.poId || o.status === "مرفوض" || o.status === "مقبول") throw new ProcWriteError("offer_taken")
+    }
+    const numbers = await drawProcDocNumbers(firestore, tx, drafts[0].organizationId, "PO", drafts.length, now.getUTCFullYear())
+    drafts.forEach((draft, k) => {
+      const g = input.groups[k]
+      tx.set(poRefs[k], { ...draft, docNumber: numbers[k], log: [entry(actor, "created", at, { params: { basis: draft.basis, number: numbers[k] } })], updatedAt: serverTimestamp() })
+      tx.update(offerRefs[k], {
+        status: "مقبول",
+        decidedByUserId: actor.uid,
+        decidedByUserName: actor.name,
+        decidedAt: at,
+        readAt: null,
+        awaitingOrderApproval: true,
+        ...(g.offLowest && input.awardReason ? { awardReason: { code: input.awardReason.code, text: input.awardReason.text?.trim() || null, byId: actor.uid, at } } : {}),
+        awardedLines: g.lines.map((l) => l.rfqProductIndex),
+        awardedTotal: round2(g.total),
+        ...(input.breakdown ? { breakdown: g.lines.map((l) => ({ rfqProductIndex: l.rfqProductIndex, unitPrice: l.unitPrice })) } : {}),
+        requestedDeliveryDate: g.requestedDeliveryDate || null,
+        poId: poRefs[k].id,
+        poNumber: numbers[k],
+        updatedAt: serverTimestamp(),
+      })
+    })
+    const logEntry = rfqLogEntry(actor, "awarded", at, { params: { orders: numbers.join(" · "), suppliers: drafts.map((d) => d.supplierName).join(" · "), unawarded: input.unpicked.length } })
+    tx.update(rfqRef, {
+      status: "Awarded",
+      awardedAt: at,
+      unawardedLines: input.unpicked,
+      awardSplit: drafts.length > 1,
+      log: [...(rfqData.log || []), logEntry],
+      updatedAt: serverTimestamp(),
+    })
+    return numbers.map((docNumber, k) => ({ id: poRefs[k].id, docNumber, offerId: input.groups[k].offer.id }))
+  })
+  await Promise.all(
+    result.map((r, k) =>
+      emitProcEvent(firestore, actor, {
+        kind: "po_awaiting_approval",
+        organizationId: drafts[k].organizationId,
+        to: [drafts[k].approverKind === "owner" ? { owner: true } : { permission: "po.approve" }],
+        params: { number: r.docNumber, supplier: drafts[k].supplierName, amount: sarText(poValue({ ...drafts[k], id: r.id, docNumber: r.docNumber }), opts.locale), rfq: drafts[k].rfqTitle },
+        poId: r.id,
+        rfqId: drafts[k].rfqId,
+        offerId: drafts[k].offerId,
+        copy: opts.copy,
+      })
+    )
+  )
   return result
 }
 
@@ -711,17 +914,37 @@ export async function cancelRemainder(firestore: Firestore, actor: ProcActor, po
   return po
 }
 
+/** A decided line carries the terms beside the decision: the replacement's
+ * date the supplier committed to, or the discounted unit price. Optional
+ * fields on the stored line — `PoLine` (mirrored into the mobile app) is not
+ * widened for them; `rejectTermsOf` in receipt-desk.ts reads them back. */
+export type RejectTermsLine = PoLine & { rejectReplaceBy?: string | null; rejectDiscountPrice?: number | null }
+
+export interface RejectDecisionTerms {
+  /** `YYYY-MM-DD` — on `replace`, optional ("until the replacement arrives" with no date helps nobody, but it is not refused). */
+  replaceBy?: string | null
+  /** Unit price EXCLUDING VAT — required on `discount`. */
+  discountPrice?: number | null
+}
+
 /**
  * Pure: Procurement's decision on a line's rejected quantity. `replace` keeps
  * it owed by the supplier; `reduce` cancels it (the order shrinks); `discount`
  * keeps the goods — they count as accepted at a price Finance will settle —
  * while `rejected` stays as the gate's record.
  */
-export function applyRejectDecision(lines: PoLine[], lineId: string, decision: RejectDecision, note: string | null, at: string): PoLine[] {
+export function applyRejectDecision(lines: PoLine[], lineId: string, decision: RejectDecision, note: string | null, at: string, terms: RejectDecisionTerms = {}): PoLine[] {
   return lines.map((l) => {
     if (l.id !== lineId) return l
     const q = round2(Math.max(0, l.rejected))
-    const next: PoLine = { ...l, rejectDecision: decision, rejectDecisionNote: note, rejectDecidedAt: at }
+    const next: RejectTermsLine = {
+      ...l,
+      rejectDecision: decision,
+      rejectDecisionNote: note,
+      rejectDecidedAt: at,
+      rejectReplaceBy: decision === "replace" ? terms.replaceBy || null : null,
+      rejectDiscountPrice: decision === "discount" ? round2(Number(terms.discountPrice) || 0) : null,
+    }
     if (decision === "reduce") next.cancelled = round2(l.cancelled + q)
     if (decision === "discount") next.accepted = round2(l.accepted + q)
     return next
@@ -732,21 +955,28 @@ export async function decideReject(
   firestore: Firestore,
   actor: ProcActor,
   poId: string,
-  input: { lineId: string; decision: RejectDecision; note?: string | null },
+  input: { lineId: string; decision: RejectDecision; note?: string | null } & RejectDecisionTerms,
   opts: WriteOpts = {}
 ): Promise<PurchaseOrder> {
   if (!canDecideLines(actor)) throw new ProcWriteError("no_permission")
   const at = (opts.now ?? new Date()).toISOString()
   const note = input.note?.trim() || null
+  const replaceBy = input.decision === "replace" && input.replaceBy ? input.replaceBy : null
+  if (replaceBy) assertDay(replaceBy)
+  const discountPrice = input.decision === "discount" ? Number(input.discountPrice) : null
+  if (input.decision === "discount" && !(Number.isFinite(discountPrice) && (discountPrice as number) > 0)) throw new ProcWriteError("price_missing")
   let line: PoLine | undefined
   const po = await transition(firestore, poId, (po) => {
     if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
     line = po.lines.find((l) => l.id === input.lineId)
     if (!line) throw new ProcWriteError("line_missing")
     if (!(line.rejected > 0)) throw new ProcWriteError("nothing_rejected")
+    const params: Record<string, string | number> = { line: line.name, lineId: line.id, qty: line.rejected, decision: input.decision }
+    if (replaceBy) params.replaceBy = replaceBy
+    if (discountPrice != null) params.price = discountPrice
     return {
-      patch: { lines: applyRejectDecision(po.lines, input.lineId, input.decision, note, at) },
-      log: entry(actor, "reject_decided", at, { note, params: { line: line.name, qty: line.rejected, decision: input.decision } }),
+      patch: { lines: applyRejectDecision(po.lines, input.lineId, input.decision, note, at, { replaceBy, discountPrice }) },
+      log: entry(actor, "reject_decided", at, { note, params }),
     }
   })
   await emitProcEvent(firestore, actor, {
@@ -754,7 +984,7 @@ export async function decideReject(
     organizationId: po.organizationId,
     to: [{ users: [po.supplierUserId] }, { permission: "invoices.manage" }],
     supplier: { userId: po.supplierUserId, orgId: po.supplierOrgId },
-    params: { number: po.docNumber, company: opts.orgName || actor.name, line: line?.name || "", qty: line?.rejected || 0, decision: `@pn_po_decision_${input.decision}`, note: note || "" },
+    params: { number: po.docNumber, company: opts.orgName || actor.name, line: line?.name || "", qty: line?.rejected || 0, decision: `@pn_po_decision_${input.decision}`, note: [replaceBy, note].filter(Boolean).join(" — ") },
     poId: po.id,
     rfqId: po.rfqId,
     offerId: po.offerId,
@@ -1004,9 +1234,9 @@ export interface RetroactiveInput {
  * routed to the owner alone. Its lines are born with what was accepted. */
 export async function retroactivePurchaseOrder(firestore: Firestore, actor: ProcActor, input: RetroactiveInput, opts: WriteOpts = {}): Promise<{ id: string; docNumber: string; deliveryLinked: boolean }> {
   if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
-  // Stamping the receipt is a `deliveries` write, which needs `deliveries.confirm`;
-  // a preparer without it still raises the order — the receipt is linked later.
-  const linkDelivery = Boolean(input.deliveryId) && (actor.isOwner || actor.canReceive)
+  // Regularising is Procurement's act (the prototype's `regul`): whoever
+  // prepares orders stamps the no-PO receipt with the order it now belongs to.
+  const linkDelivery = Boolean(input.deliveryId)
   const reason = requireText(input.reason)
   const now = opts.now ?? new Date()
   const at = now.toISOString()
@@ -1063,7 +1293,7 @@ export async function retroactivePurchaseOrder(firestore: Firestore, actor: Proc
       updatedAt: serverTimestamp(),
     }
     tx.set(poRef, po)
-    if (linkDelivery) tx.update(doc(firestore, "deliveries", input.deliveryId as string), { poId: poRef.id, poNumber: number })
+    if (linkDelivery) tx.update(doc(firestore, "deliveries", input.deliveryId as string), { poId: poRef.id, poNumber: number, regularisedAt: at, regularisedById: actor.uid, regularisedByName: actor.name })
     return number
   })
   await emitProcEvent(firestore, actor, {

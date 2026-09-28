@@ -36,14 +36,14 @@ describe("the rules", () => {
 
 describe("the write", () => {
   it("logs who, what and why, and keeps the data", async () => {
-    await switchSections(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, { next: ["contract", "procure", "store", "receive"], reason: "client_scope", facts: none })
+    await switchSections(db, pm, "p1", { uid: "pm1", name: "Abdullah" }, { next: ["contract", "procure", "store", "receive"], reason: "module", facts: none })
     const p = readDoc<{ enabledSections: string[]; pm: { secLog: Array<Record<string, unknown>> } }>("projects/p1")!
     expect(p.enabledSections).toEqual(["contract", "procure", "store", "receive"])
-    expect(p.pm.secLog[0]).toMatchObject({ off: ["ipc"], on: [], reason: "client_scope", by: "pm1" })
+    expect(p.pm.secLog[0]).toMatchObject({ off: ["ipc"], on: [], reason: "module", by: "pm1" })
   })
 
   it("refuses a switch-off with stock left, and anyone without approve", async () => {
-    await expect(switchSections(db, pm, "p1", { uid: "pm1", name: null }, { next: ["contract", "procure", "ipc"], reason: "not_in_contract", facts: { storeLines: 2, uncollected: 0 } })).rejects.toBeInstanceOf(PmSectionsError)
-    await expect(switchSections(db, site, "p1", { uid: "se1", name: null }, { next: ["contract", "procure"], reason: "not_in_contract", facts: none })).rejects.toBeInstanceOf(PmAccessError)
+    await expect(switchSections(db, pm, "p1", { uid: "pm1", name: null }, { next: ["contract", "procure", "ipc"], reason: "scope", facts: { storeLines: 2, uncollected: 0 } })).rejects.toBeInstanceOf(PmSectionsError)
+    await expect(switchSections(db, site, "p1", { uid: "se1", name: null }, { next: ["contract", "procure"], reason: "scope", facts: none })).rejects.toBeInstanceOf(PmAccessError)
   })
 })

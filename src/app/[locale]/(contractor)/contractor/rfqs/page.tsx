@@ -9,12 +9,15 @@ import { RfqTable } from "@/components/procurement/RfqTable"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
 import { offersSealed } from "@/lib/procurement/award"
-import { chipCounts, estimateAtLastPrice } from "@/lib/procurement/rfq-view"
+import { DEADLINE_FILTERS, GENERAL_STOCK, RFQ_SEGMENTS, WORKSHOP, estimateAtLastPrice, inRfqSegment, optionCount, passesFilters, rfqCategories, rfqInScope, rfqProjectKey, segmentCounts, type DeadlineFilter, type RfqFilterKey, type RfqFilters, type RfqSegment } from "@/lib/procurement/rfq-view"
+import { RfqExtendDialog, type ExtendTarget } from "@/components/procurement/RfqExtendDialog"
+import { printRfq, rfqPrintModel } from "@/components/procurement/RfqPrint"
+import { useSupplierRecipientOptions } from "@/components/contractor/SupplierRecipientsPicker"
+import { displayDocNumber } from "@/lib/procurement/format"
 import { cn } from "@/lib/utils"
 import { matchesSearch } from "@/lib/search-text"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SearchableSelect } from "@/components/contractor/SearchableSelect"
 import {
   AlertDialog,
@@ -26,16 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Search, Loader2, Send, X, Trash2, RotateCw, LayoutGrid, List } from "lucide-react"
+import { Search, Loader2, Send, X, Trash2, LayoutGrid, List } from "lucide-react"
 import { ShareRfqLinkDialog } from "@/components/contractor/ShareRfqLinkDialog"
 import { MfgPurchaseRequestsPanel } from "@/components/contractor/MfgPurchaseRequestsPanel"
 import { RfqOffersSheet, type SheetRfq } from "@/components/contractor/RfqOffersSheet"
@@ -47,6 +41,7 @@ import { notifyFavoriteSuppliersOfPublish } from "@/lib/notify-favorites"
 import { useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { PREDEFINED_CATEGORIES, SAUDI_CITIES, displayCategory, displayCity } from "@/lib/constants"
+import type { RfqRow } from "@/components/procurement/RfqCard"
 import { getIncompletePublishFields } from "@/utils/publish-gate"
 import { usePermissions } from "@/hooks/usePermissions"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
@@ -55,7 +50,7 @@ export default function ContractorRfqsPage() {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const searching = searchQuery.trim().length > 0
-  const [statusFilter, setStatusFilter] = useState<"all" | "Draft" | "New" | "Awarded">("all")
+  const [segment, setSegment] = useState<RfqSegment>("all")
   const [selectedRfqs, setSelectedRfqs] = useState<string[]>([])
   const [isPublishing, setIsPublishing] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
@@ -63,18 +58,17 @@ export default function ContractorRfqsPage() {
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const [republishTarget, setRepublishTarget] = useState<any>(null)
+  const [extendTarget, setExtendTarget] = useState<ExtendTarget | null>(null)
   const [shareTarget, setShareTarget] = useState<any>(null)
   // Offers at a glance: the RFQ whose offers are open side by side (customer review, 27 Sep 2026).
   const [glanceRfq, setGlanceRfq] = useState<SheetRfq | null>(null)
-  const [republishDeadline, setRepublishDeadline] = useState("")
-  const [isRepublishing, setIsRepublishing] = useState(false)
-  const [deadlineFilter, setDeadlineFilter] = useState<"all" | "week" | "month" | "custom">("all")
-  const [customDeadline, setCustomDeadline] = useState("")
-  const [categoryFilter, setCategoryFilter] = useState<string>("all")
-  const [locationFilter, setLocationFilter] = useState<string>("all")
-  const [projectFilter, setProjectFilter] = useState<string>("all")
+  const [filters, setFilters] = useState<RfqFilters>({})
+  const setFilter = (key: RfqFilterKey, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value === "all" ? null : value }))
+    setSelectedRfqs([])
+  }
   const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const firestore = useFirestore()
   const { toast } = useToast()
@@ -83,15 +77,11 @@ export default function ContractorRfqsPage() {
   const canManageRfqs = can("rfq.manage")
   const { profile } = useResolvedProfile(isUserLoading ? null : user?.uid)
 
-  const hasActiveFilters = searchQuery || statusFilter !== "all" || deadlineFilter !== "all" || categoryFilter !== "all" || locationFilter !== "all" || projectFilter !== "all"
+  const filtersOn = Object.values(filters).some(Boolean)
+  const hasActiveFilters = Boolean(searchQuery) || filtersOn
   const clearFilters = () => {
     setSearchQuery("")
-    setStatusFilter("all")
-    setDeadlineFilter("all")
-    setCategoryFilter("all")
-    setLocationFilter("all")
-    setProjectFilter("all")
-    setCustomDeadline("")
+    setFilters({})
     setSelectedRfqs([])
   }
 
@@ -227,54 +217,14 @@ const handleBatchPublish = async () => {
     }
   }
 
-  const handleRepublish = async () => {
-    if (!firestore || !republishTarget || !republishDeadline) return
-    setIsRepublishing(true)
-    try {
-      await updateDoc(doc(firestore, "rfqs", republishTarget.id), {
-        deadline: republishDeadline,
-        status: "New",
-        visibility: "public",
-        publishedAt: new Date().toISOString()
-      })
-      void notifyFavoriteSuppliersOfPublish(user, [republishTarget.id])
-      toast({
-        title: t("rfq_republish_success"),
-      })
-      setRepublishTarget(null)
-      setRepublishDeadline("")
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: t("rfq_republish_failed"),
-        variant: "destructive"
-      })
-    } finally {
-      setIsRepublishing(false)
-    }
-  }
-
   // الإصلاح: منع إرسال الاستعلام حتى يكتمل تحميل حالة المستخدم من Firebase Auth
   const rfqsQuery = useMemoFirebase(() => {
     if (isUserLoading || !user || !firestore) return null;
     
-    let q = query(
-      collection(firestore, "rfqs"),
-      where("organizationId", "==", profile?.organizationId || user.uid)
-    );
-
-    if (categoryFilter !== "all") {
-      q = query(q, where("category", "==", categoryFilter));
-    }
-    if (locationFilter !== "all") {
-      q = query(q, where("city", "==", locationFilter));
-    }
-    if (projectFilter !== "all") {
-      q = query(q, where("projectId", "==", projectFilter));
-    }
-
-    return q;
-  }, [firestore, user, isUserLoading, categoryFilter, locationFilter, projectFilter, profile?.organizationId])
+    // Every filter is applied below, not in the query: each chip and each
+    // option counts what it would leave (the prototype's list, R-33/R-35).
+    return query(collection(firestore, "rfqs"), where("organizationId", "==", profile?.organizationId || user.uid))
+  }, [firestore, user, isUserLoading, profile?.organizationId])
 
   // Projects belonging to this org, used only to populate the project filter dropdown.
   const projectsQuery = useMemoFirebase(() => {
@@ -286,6 +236,12 @@ const handleBatchPublish = async () => {
   }, [firestore, user, isUserLoading, profile?.organizationId])
   const { data: projects } = useCollection(projectsQuery)
   const projectNameOf = (id: string | null | undefined): string | null => (id ? ((projects || []).find((p: any) => p.id === id) as { name?: string } | undefined)?.name ?? null : null)
+  const projectLabel = (rfq: RfqRow): string => {
+    const key = rfqProjectKey(rfq)
+    if (key === GENERAL_STOCK) return tp("rfqpo.list.general_stock")
+    if (key === WORKSHOP) return tp("rfqpo.list.workshop")
+    return projectNameOf(key) || tp("rfqpo.list.project_unknown")
+  }
   // Sealed rounds and the estimate at the last price paid (the prototype's list).
   const procWorld = useProcurementWorld()
   const { history: priceHistory } = useProcurementPrices(procWorld.orgId)
@@ -307,6 +263,26 @@ const handleBatchPublish = async () => {
 
   const { data: acceptedOffers } = useCollection(acceptedOffersQuery)
   const acceptedRfqIds = new Set((acceptedOffers || []).map((o: any) => o.rfqId))
+  const directSupplierOf = (rfq: RfqRow): string | null => {
+    if (!rfq.directAward) return null
+    const o = (acceptedOffers || []).find((x: any) => x.rfqId === rfq.id) as { supplierName?: string; companyName?: string } | undefined
+    return o?.companyName || o?.supplierName || null
+  }
+
+  // Who an extension can still invite: the connected suppliers and favourites (as the form's private list).
+  const linksQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user || !firestore) return null
+    return query(collection(firestore, "contractorSupplierLinks"), where("contractorOrgId", "==", profile?.organizationId || user.uid), where("status", "==", "active"))
+  }, [firestore, user, isUserLoading, profile?.organizationId])
+  const { data: supplierLinks } = useCollection(linksQuery)
+  const supplierOptions = useSupplierRecipientOptions(supplierLinks as any[], ((profile as { favoriteSuppliers?: string[] } | null)?.favoriteSuppliers) || [], t("suppliers_registered_supplier"))
+
+  const printOne = (rfq: RfqRow) => {
+    const p = (profile || {}) as { companyName?: string; name?: string; taxNumber?: string; crNumber?: string }
+    const number = rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`
+    const model = rfqPrintModel(rfq as Parameters<typeof rfqPrintModel>[0], { name: p.companyName || procWorld.orgName || p.name || "", vat: p.taxNumber || null, cr: p.crNumber || null }, number, displayCity(rfq.city || "", locale))
+    if (!printRfq(model, locale, (k, params) => tp(`rfqpo.print.${k}`, params))) toast({ title: tp("rfqpo.popup_blocked"), variant: "destructive" })
+  }
 
   const { data: rfqs, isLoading: isCollectionLoading, hasMore, loadMore, error } = useCollectionPaginated(rfqsQuery)
   const isLoading = isUserLoading || (isCollectionLoading && !rfqs && !error)
@@ -314,33 +290,18 @@ const handleBatchPublish = async () => {
 
   // Every status is loaded so the chips can count; the chip filters here. A
   // search looks in every status: whoever types a tender's name does not know
-  // — and should not need to know — whether it is a draft or awarded.
-  const allRfqs = (rfqs || []) as any[]
-  const counts = chipCounts(allRfqs)
-  const filteredRfqs = allRfqs.filter((rfq: any) => {
-    if (!searching && statusFilter !== "all" && rfq.status !== statusFilter) return false
-    // Search query filter
-    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
+  // — and should not need to know — whether it is a draft or awarded. A buyer
+  // sees his own RFQs and those in his categories (R-18).
+  const buyerCategories = ((profile as { procurementCategories?: string[] } | null)?.procurementCategories) || null
+  const allRfqs = ((rfqs || []) as RfqRow[]).filter((r) => rfqInScope(r, procWorld.actor, buyerCategories))
+  const counts = segmentCounts(allRfqs, filters, now)
+  const filteredRfqs = (allRfqs as any[]).filter((rfq: any) => {
+    if (!searching && !inRfqSegment(rfq, segment)) return false
+    if (!passesFilters(rfq, filters, now)) return false
+    if (searching && !matchesSearch(searchQuery, [rfq.title, rfq.rfqNumber, rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : null, rfq.category, rfq.subCategory, rfq.city, rfq.id, rfq.description, projectLabel(rfq), directSupplierOf(rfq), ...(Array.isArray(rfq.products) ? rfq.products.map((p: { name?: string; description?: string }) => p?.name || p?.description) : [])])) {
       return false
     }
-
-    // Deadline filter
-    if (deadlineFilter !== "all" && rfq.deadline) {
-      const deadline = new Date(rfq.deadline);
-      const now = new Date();
-      if (deadlineFilter === "week") {
-        const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-        if (deadline > weekFromNow) return false;
-      } else if (deadlineFilter === "month") {
-        const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        if (deadline > monthFromNow) return false;
-      } else if (deadlineFilter === "custom" && customDeadline) {
-        const customDate = new Date(customDeadline);
-        if (deadline > customDate) return false;
-      }
-    }
-
-    return true;
+    return true
   }).sort((a: any, b: any) => {
     const getTs = (ts: any): number => {
       if (!ts) return 0
@@ -353,6 +314,26 @@ const handleBatchPublish = async () => {
   })
 
 
+
+  const projectKeys = Array.from(new Set(allRfqs.map((r) => rfqProjectKey(r))))
+  const filterOptions: Record<RfqFilterKey, Array<{ value: string; label: string }>> = {
+    project: [
+      ...projectOptions.map((o: { value: string; label: string }) => o),
+      { value: GENERAL_STOCK, label: tp("rfqpo.list.general_stock") },
+      { value: WORKSHOP, label: tp("rfqpo.list.workshop") },
+      ...projectKeys.filter((k) => k !== GENERAL_STOCK && k !== WORKSHOP && !projectOptions.some((o: { value: string }) => o.value === k)).map((k) => ({ value: k, label: projectNameOf(k) || tp("rfqpo.list.project_unknown") })),
+    ],
+    category: Array.from(new Set([...PREDEFINED_CATEGORIES, ...allRfqs.flatMap((r) => rfqCategories(r))])).map((c) => ({ value: c, label: displayCategory(c, locale) })),
+    city: Array.from(new Set([...SAUDI_CITIES, ...allRfqs.map((r) => r.city || "").filter(Boolean)])).map((c) => ({ value: c, label: displayCity(c, locale) })),
+    deadline: DEADLINE_FILTERS.map((d: DeadlineFilter) => ({ value: d, label: tp(`rfqpo.list.deadline_${d}`) })),
+  }
+  const ALL_LABEL: Record<RfqFilterKey, string> = { project: t("rfq_all_projects"), category: t("rfq_all_categories"), city: t("rfq_all_cities"), deadline: t("rfq_all_deadlines") }
+  // The prototype keeps an option only while it would leave something —
+  // except projects and deadlines, and whatever is picked now.
+  const optionsFor = (key: RfqFilterKey) =>
+    filterOptions[key]
+      .map((o) => ({ ...o, n: optionCount(allRfqs, segment, filters, key, o.value, now) }))
+      .filter((o) => o.n > 0 || key === "project" || key === "deadline" || filters[key] === o.value)
 
   const canEdit = (rfq: any) => {
     if (rfq.status === "Awarded") return false
@@ -395,8 +376,8 @@ const handleBatchPublish = async () => {
         {/* Status chips with their counts · the view toggle (the prototype's list head). */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className={cn("inline-flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1", searching && "opacity-60")} role="group" aria-label={t("rfq_status_filter")}>
-            {(["all", "Draft", "New", "Awarded"] as const).map((chip) => {
-              const on = statusFilter === chip && !searching
+            {RFQ_SEGMENTS.map((chip) => {
+              const on = segment === chip && !searching
               return (
                 <button
                   key={chip}
@@ -404,7 +385,7 @@ const handleBatchPublish = async () => {
                   aria-pressed={on}
                   onClick={() => {
                     setSearchQuery("")
-                    setStatusFilter(chip)
+                    setSegment(chip)
                     setSelectedRfqs([])
                   }}
                   className={cn(
@@ -413,7 +394,7 @@ const handleBatchPublish = async () => {
                     on ? "bg-module/10 text-module" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  {t(`rfqv_chip_${chip}`)}
+                  {t(`rfqv_chip_${({ all: "all", draft: "Draft", open: "New", done: "Awarded" } as const)[chip]}`)}
                   <span className="text-xs tabular-nums">{counts[chip]}</span>
                 </button>
               )
@@ -448,58 +429,19 @@ const handleBatchPublish = async () => {
         {/* Filters · how many are shown */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4 lg:w-auto lg:min-w-[720px]">
-            <SearchableSelect
-              size="md"
-              value={projectFilter}
-              onChange={setProjectFilter}
-              options={[{ value: "all", label: t("rfq_all_projects") }, ...projectOptions]}
-              placeholder={t("rfq_project_filter")}
-              searchPlaceholder={t("rfq_search_project")}
-              noResultsText={t("newrfq_no_results")}
-              ariaLabel={t("rfq_project_filter")}
-            />
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="h-10 rounded-xl bg-card text-sm" aria-label={t("rfq_category_filter")}>
-                <SelectValue placeholder={t("rfq_category_filter")} />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 overflow-y-auto">
-                <SelectItem value="all">{t("rfq_all_categories")}</SelectItem>
-                {PREDEFINED_CATEGORIES.map((cat) => (
-                  <SelectItem key={cat} value={cat}>
-                    {displayCategory(cat, locale)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={locationFilter} onValueChange={setLocationFilter}>
-              <SelectTrigger className="h-10 rounded-xl bg-card text-sm" aria-label={t("rfq_city_filter")}>
-                <SelectValue placeholder={t("rfq_city_filter")} />
-              </SelectTrigger>
-              <SelectContent className="max-h-72 overflow-y-auto">
-                <SelectItem value="all">{t("rfq_all_cities")}</SelectItem>
-                {SAUDI_CITIES.map((city) => (
-                  <SelectItem key={city} value={city}>
-                    {displayCity(city, locale)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex items-start gap-2">
-              <Select value={deadlineFilter} onValueChange={(v) => setDeadlineFilter(v as typeof deadlineFilter)}>
-                <SelectTrigger className="h-10 rounded-xl bg-card text-sm" aria-label={t("rfq_deadline_filter")}>
-                  <SelectValue placeholder={t("rfq_deadline_filter")} />
-                </SelectTrigger>
-                <SelectContent className="max-h-72 overflow-y-auto">
-                  <SelectItem value="all">{t("rfq_all_deadlines")}</SelectItem>
-                  <SelectItem value="week">{t("rfq_within_week")}</SelectItem>
-                  <SelectItem value="month">{t("rfq_within_month")}</SelectItem>
-                  <SelectItem value="custom">{t("rfq_custom_date")}</SelectItem>
-                </SelectContent>
-              </Select>
-              {deadlineFilter === "custom" && (
-                <input type="date" value={customDeadline} onChange={(e) => setCustomDeadline(e.target.value)} aria-label={t("rfq_custom_date")} className="h-10 w-[140px] shrink-0 rounded-xl border border-input bg-card px-3 text-sm" />
-              )}
-            </div>
+            {(["project", "category", "city", "deadline"] as const).map((key) => (
+              <SearchableSelect
+                key={key}
+                size="md"
+                value={filters[key] || "all"}
+                onChange={(v) => setFilter(key, v)}
+                options={[{ value: "all", label: ALL_LABEL[key] }, ...optionsFor(key).map((o) => ({ value: o.value, label: `${o.label} · ${o.n}` }))]}
+                placeholder={ALL_LABEL[key]}
+                searchPlaceholder={ALL_LABEL[key]}
+                noResultsText={t("newrfq_no_results")}
+                ariaLabel={ALL_LABEL[key]}
+              />
+            ))}
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {hasActiveFilters && (
@@ -574,21 +516,26 @@ const handleBatchPublish = async () => {
                 <RfqCard
                   key={rfq.id}
                   rfq={rfq}
-                  projectName={projectNameOf(rfq.projectId)}
+                  projectLabel={projectLabel(rfq)}
                   sealed={offersSealed(rfq, procWorld.policies, now)}
                   now={now}
                   offersHref={offersHref}
                   editHref={editHref}
-                  canManage={canManageRfqs}
-                  canEdit={canEdit(rfq)}
+                  directSupplier={directSupplierOf(rfq)}
+                  canManage={canManageRfqs && canEdit(rfq)}
                   canDelete={canDelete(rfq)}
                   onGlance={() => setGlanceRfq(rfq)}
                   onShare={() => setShareTarget(rfq)}
                   onDelete={() => setDeleteTarget(rfq)}
-                  onRepublish={() => {
-                    setRepublishTarget(rfq)
-                    setRepublishDeadline("")
-                  }}
+                  onPrint={() => printOne(rfq)}
+                  onExtend={() =>
+                    setExtendTarget({
+                      id: rfq.id,
+                      title: rfq.title || "",
+                      passed: Boolean(rfq.deadline) && String(rfq.deadline).slice(0, 10) < new Date().toISOString().slice(0, 10),
+                      invited: [...(rfq.allowedSupplierOrgIds || []), ...(rfq.invitedSupplierOrgIds || [])],
+                    })
+                  }
                 />
               )
             })}
@@ -599,9 +546,10 @@ const handleBatchPublish = async () => {
           <RfqTable
             rows={filteredRfqs.map((rfq: any) => ({
               rfq,
-              projectName: projectNameOf(rfq.projectId),
+              projectLabel: projectLabel(rfq),
               sealed: offersSealed(rfq, procWorld.policies, now),
               estimate: procWorld.actor.seesPrices ? estimateAtLastPrice(rfq, priceHistory) : null,
+              directSupplier: directSupplierOf(rfq),
             }))}
             now={now}
             seesPrices={procWorld.actor.seesPrices}
@@ -628,35 +576,7 @@ const handleBatchPublish = async () => {
         onClose={() => setShareTarget(null)}
       />
 
-      <Dialog open={!!republishTarget} onOpenChange={(open) => { if (!open) { setRepublishTarget(null); setRepublishDeadline("") } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("rfq_republish_title")}</DialogTitle>
-            <DialogDescription>
-              {t("rfq_republish_desc", { title: republishTarget?.title || "" })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t("rfq_republish_deadline_label")}</Label>
-              <input
-                type="date"
-                value={republishDeadline}
-                onChange={e => setRepublishDeadline(e.target.value)}
-                className="h-10 w-full px-3 rounded-xl border border-input bg-background text-sm"
-                min={new Date().toISOString().split('T')[0]}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setRepublishTarget(null); setRepublishDeadline("") }} disabled={isRepublishing}>{t("cancel")}</Button>
-            <Button onClick={handleRepublish} disabled={!republishDeadline || isRepublishing}>
-              {isRepublishing ? <Loader2 className="animate-spin" size={14} /> : <RotateCw size={14} />}
-              {t("rfq_republish_confirm")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RfqExtendDialog target={extendTarget} actor={procWorld.actor} options={supplierOptions} onOpenChange={(o) => !o && setExtendTarget(null)} />
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>

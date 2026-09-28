@@ -1,35 +1,72 @@
-// PM 1.0 — switching a project's sections (PRD WF-23, SEC-01…05, INV-17).
-// Switching on is immediate, with its dependencies. Switching off states a
-// reason ("other" stated) and passes the blockers first: money and custody
-// block — stock in the project store, a certificate not yet collected — while
-// open paperwork only warns. Every switch is logged with who, what, when and
-// why; nothing is deleted, so switching back restores it. Core sections never
-// switch off. By `approve`, never on an archived project.
+// PM 1.0 — switching a project's sections (PRD WF-23, SEC-01…05, INV-17, SC-04).
+// Switching a section off is not hiding a tab: its decisions, alerts and gate
+// go silent while the work on site carries on. So, before it goes: a census of
+// what it holds now (count and riyals), what the system will stop telling you,
+// and the blockers — money and custody block (stock in the project store, an
+// uncollected certificate, a subcontractor still owed or awaiting approval),
+// open paperwork only warns. A reason is mandatory ("other" stated) and every
+// switch is logged with who, what, when and why. Nothing is deleted: switching
+// back restores it. Switching on is immediate, with its dependencies. Core
+// sections never switch off. By `approve`, never on an archived project.
 
-import { collection, doc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
 import { PM_CERTIFICATES } from "./certificate"
 import type { PmCertificate } from "./certificate-writes"
+import { subDues } from "./closeout"
+import { PM_DOCS } from "./documents"
+import { PM_INSPECTIONS } from "./inspection"
 import { withFreshState } from "./project-writes"
-import { SECTION_REGISTRY, type SectionId } from "../project-sections"
+import { isOpenPunch, PM_PUNCH, type PunchStatus } from "./punch"
+import { PM_DAILY, PM_INCIDENTS, PM_OBSTACLES, PM_PERMITS } from "./site"
+import { PM_SUB_CERTIFICATES, PM_SUBCONTRACTS, type PmSubCertificate, type PmSubcontract } from "./subcontract"
+import { PM_VARIATIONS, type VoStatus } from "./variation"
+import { SECTION_IDS, SECTION_REGISTRY, type SectionId } from "../project-sections"
 
-export const SECTION_OFF_REASONS = ["not_in_contract", "client_scope", "subcontracted", "other"] as const
+/** The prototype's reasons (SECWHY): outside the contract · another module
+ * handles it · too small to need it · later · other, stated. */
+export const SECTION_OFF_REASONS = ["scope", "module", "small", "later", "other"] as const
 export type SectionOffReason = (typeof SECTION_OFF_REASONS)[number]
+/** Reasons written before the list was aligned — still read in the log. */
+export const LEGACY_OFF_REASONS = ["not_in_contract", "client_scope", "subcontracted"] as const
 
-export type SectionBlocker = "store_stock" | "uncollected"
+export type SectionBlocker = "store_stock" | "uncollected" | "sub_dues"
 
 export interface SectionFacts {
   /** Lines with stock left in the project's own store. */
   storeLines: number
+  storeValue?: number
   /** Certified certificates Finance has not collected in full. */
   uncollected: number
+  uncollectedAmount?: number
+  certificates?: number
+  subcontracts?: number
+  /** SC-04: certified and not paid, per party above half a riyal. */
+  subDue?: number
+  /** Sub certificates still awaiting approval. */
+  subPending?: number
+  docs?: number
+  daily?: number
+  obstaclesOpen?: number
+  incidents?: number
+  permits?: number
+  variations?: number
+  voWaiting?: number
+  voApproved?: number
+  wirOpen?: number
+  punchOpen?: number
 }
+
+export const NO_FACTS: SectionFacts = { storeLines: 0, uncollected: 0 }
+
+const subOwed = (f: SectionFacts) => (f.subDue ?? 0) > 0.5 || (f.subPending ?? 0) > 0
 
 /** SEC-03: only money and custody block. */
 export function switchOffBlockers(turnedOff: SectionId[], facts: SectionFacts): SectionBlocker[] {
   const out: SectionBlocker[] = []
   if (turnedOff.includes("store") && facts.storeLines > 0) out.push("store_stock")
   if ((turnedOff.includes("ipc") || turnedOff.includes("collect")) && facts.uncollected > 0) out.push("uncollected")
+  if (turnedOff.includes("subs") && subOwed(facts)) out.push("sub_dues")
   return out
 }
 
@@ -41,12 +78,125 @@ export function switchBlocks(input: { archived: boolean; turnedOn: SectionId[]; 
   if (!input.turnedOn.length && !input.turnedOff.length) out.push("no_change")
   if (input.turnedOff.some((id) => SECTION_REGISTRY[id]?.required)) out.push("core")
   if (input.turnedOff.length) {
-    if (!input.reason) out.push("no_reason")
+    if (!input.reason || !(SECTION_OFF_REASONS as readonly string[]).includes(input.reason)) out.push("no_reason")
     else if (input.reason === "other" && !input.reasonText?.trim()) out.push("reason_text")
     out.push(...switchOffBlockers(input.turnedOff, input.facts))
   }
   return out
 }
+
+/** One sentence per blocker, with its count or amount (formSEC «لا يُطفأ الآن»). */
+export interface BlockerDetail {
+  key: SectionBlocker
+  section: SectionId
+  n: number
+  amount: number | null
+}
+
+export function blockerDetails(turnedOff: SectionId[], f: SectionFacts): BlockerDetail[] {
+  const out: BlockerDetail[] = []
+  if (turnedOff.includes("store") && f.storeLines > 0) out.push({ key: "store_stock", section: "store", n: f.storeLines, amount: f.storeValue ?? null })
+  const money = turnedOff.find((id) => id === "ipc" || id === "collect")
+  if (money && f.uncollected > 0) out.push({ key: "uncollected", section: money, n: f.uncollected, amount: f.uncollectedAmount ?? null })
+  if (turnedOff.includes("subs") && subOwed(f)) out.push({ key: "sub_dues", section: "subs", n: f.subPending ?? 0, amount: f.subDue ?? 0 })
+  return out
+}
+
+/** A line of the census: `r` money or custody (blocks), `w` open paperwork (warns). */
+export interface CensusRow {
+  key: string
+  value: number
+  money: boolean
+  level: "" | "w" | "r"
+}
+
+/** What a section holds right now (prototype secCensus), mapped onto our sections. */
+export function sectionCensus(id: SectionId, f: SectionFacts): CensusRow[] {
+  const out: CensusRow[] = []
+  const add = (key: string, value: number | undefined, level: CensusRow["level"] = "", money = false) => {
+    if (value && value > 0) out.push({ key, value, money, level })
+  }
+  if (id === "store") {
+    add("stock_lines", f.storeLines, "r")
+    add("stock_value", f.storeValue, "r", true)
+  }
+  if (id === "ipc") {
+    add("certificates", f.certificates, "r")
+    if ((f.uncollectedAmount ?? 0) > 1) add("uncollected", f.uncollectedAmount, "r", true)
+  }
+  if (id === "collect" && (f.uncollectedAmount ?? 0) > 1) add("uncollected", f.uncollectedAmount, "r", true)
+  if (id === "subs") {
+    add("subcontracts", f.subcontracts, "r")
+    add("sub_due", f.subDue, "r", true)
+    add("sub_pending", f.subPending, "w")
+  }
+  if (id === "vo") {
+    add("variations", f.variations)
+    add("vo_waiting", f.voWaiting, "w")
+    add("vo_approved", f.voApproved, "", true)
+  }
+  if (id === "qa") {
+    add("wir_open", f.wirOpen, "w")
+    add("punch_open", f.punchOpen, "w")
+  }
+  if (id === "hse") {
+    add("incidents", f.incidents)
+    add("permits", f.permits)
+  }
+  if (id === "daily") add("daily", f.daily)
+  if (id === "rfi") add("obstacles_open", f.obstaclesOpen, "w")
+  if (id === "docs") add("docs", f.docs)
+  return out
+}
+
+/** Sections with their own "what goes silent" sentence (SECLOSS); the rest say
+ * their screen and decisions disappear. */
+export const SECTION_LOSS: ReadonlySet<SectionId> = new Set<SectionId>(["docs", "store", "ipc", "collect", "daily", "rfi", "hse", "subs", "vo", "qa", "progress", "receive"])
+
+/** Sections another module owns: we only read them here (the prototype's «يُقرأ من»). */
+export type SectionOwner = "procurement" | "finance" | "manufacturing"
+export const SECTION_OWNER: Partial<Record<SectionId, SectionOwner>> = {
+  procure: "procurement",
+  collect: "finance",
+  invoice: "finance",
+  pay: "finance",
+  mfg: "manufacturing",
+}
+
+export interface SectionLogEntry {
+  on: string[]
+  off: string[]
+  reason?: string | null
+  reasonText?: string | null
+  by: string
+  byName?: string | null
+  at: string
+}
+
+export interface SectionLogRow {
+  id: string
+  on: boolean
+  at: string
+  by: string
+  byName: string | null
+  reason: string | null
+  reasonText: string | null
+}
+
+/** The section log, one row per section switched, newest first (prototype: 8). */
+export function sectionLogRows(log: SectionLogEntry[] | null | undefined, limit = 8): SectionLogRow[] {
+  const rows: SectionLogRow[] = []
+  for (const e of [...(log ?? [])].sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""))) {
+    const base = { at: e.at, by: e.by, byName: e.byName ?? null }
+    for (const id of e.off ?? []) rows.push({ ...base, id, on: false, reason: e.reason ?? null, reasonText: e.reasonText ?? null })
+    for (const id of e.on ?? []) rows.push({ ...base, id, on: true, reason: null, reasonText: null })
+  }
+  return rows.slice(0, limit)
+}
+
+/** Built sections are the toggles; the rest are listed once, "not built yet". */
+export const builtSections = () => SECTION_IDS.filter((id) => SECTION_REGISTRY[id].status === "built")
+export const unbuiltSections = () => SECTION_IDS.filter((id) => SECTION_REGISTRY[id].status !== "built")
 
 export class PmSectionsError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "blocked", readonly blocks: string[] = []) {
@@ -55,17 +205,55 @@ export class PmSectionsError extends Error {
   }
 }
 
-/** What the blockers need, read now: the project store and the certificates. */
+const num = (v: unknown) => {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
+  return Number.isFinite(n) ? n : 0
+}
+
+/** What the census and the blockers need, read now. A collection this reader
+ * may not see counts as empty in the census; the write reads again. */
 export async function readSectionFacts(firestore: Firestore, projectId: string, warehouseId: string | null | undefined): Promise<SectionFacts> {
-  const [certs, store] = await Promise.all([
-    getDocs(collection(firestore, "projects", projectId, PM_CERTIFICATES)).catch(() => null),
+  const col = (name: string) => getDocs(collection(firestore, "projects", projectId, name)).catch(() => null)
+  const [certs, store, subs, subCerts, docs, daily, obstacles, incidents, permits, vos, wirs, punch] = await Promise.all([
+    col(PM_CERTIFICATES),
     warehouseId ? getDocs(collection(firestore, "warehouses", warehouseId, "inventoryItems")).catch(() => null) : Promise.resolve(null),
+    col(PM_SUBCONTRACTS),
+    col(PM_SUB_CERTIFICATES),
+    col(PM_DOCS),
+    col(PM_DAILY),
+    col(PM_OBSTACLES),
+    col(PM_INCIDENTS),
+    col(PM_PERMITS),
+    col(PM_VARIATIONS),
+    col(PM_INSPECTIONS),
+    col(PM_PUNCH),
   ])
-  const uncollected = (certs?.docs ?? [])
-    .map((d) => d.data() as PmCertificate & { collected?: number | null })
-    .filter((c) => (c.status === "appr" || c.status === "part") && (c.collected ?? 0) < 1).length
-  const storeLines = (store?.docs ?? []).filter((d) => (Number((d.data() as { quantity?: number }).quantity) || 0) > 0).length
-  return { storeLines, uncollected }
+  const certList = (certs?.docs ?? []).map((d) => d.data() as PmCertificate & { collected?: number | null })
+  const open = certList.filter((c) => (c.status === "appr" || c.status === "part") && (c.collected ?? 0) < 1)
+  const stock = (store?.docs ?? []).map((d) => d.data() as { quantity?: unknown; unitCost?: unknown }).filter((d) => num(d.quantity) > 0)
+  const contracts = (subs?.docs ?? []).map((d) => ({ ...(d.data() as PmSubcontract), id: d.id }))
+  const dues = subDues(contracts, (subCerts?.docs ?? []).map((d) => d.data() as PmSubCertificate))
+  const voList = (vos?.docs ?? []).map((d) => d.data() as { status: VoStatus; value?: number })
+  return {
+    storeLines: stock.length,
+    storeValue: Math.round(stock.reduce((a, d) => a + num(d.quantity) * num(d.unitCost), 0)),
+    uncollected: open.length,
+    uncollectedAmount: Math.round(open.reduce((a, c) => a + (c.net ?? 0) * (1 - Math.min(1, Math.max(0, c.collected ?? 0))), 0)),
+    certificates: certList.filter((c) => c.status !== "void").length,
+    subcontracts: contracts.length,
+    subDue: dues.due,
+    subPending: dues.pending,
+    docs: docs?.size ?? 0,
+    daily: daily?.size ?? 0,
+    obstaclesOpen: (obstacles?.docs ?? []).filter((d) => !(d.data() as { closeOn?: string | null }).closeOn).length,
+    incidents: incidents?.size ?? 0,
+    permits: permits?.size ?? 0,
+    variations: voList.length,
+    voWaiting: voList.filter((v) => v.status === "wait").length,
+    voApproved: Math.round(voList.filter((v) => v.status === "appr").reduce((a, v) => a + (v.value ?? 0), 0)),
+    wirOpen: (wirs?.docs ?? []).filter((d) => (d.data() as { status?: string }).status === "open").length,
+    punchOpen: (punch?.docs ?? []).filter((d) => isOpenPunch(d.data() as { status: PunchStatus })).length,
+  }
 }
 
 export interface SectionActor {
@@ -73,13 +261,21 @@ export interface SectionActor {
   name: string | null
 }
 
+/** Switch sections. Without `facts` the blockers are read now, right before the
+ * transaction — the confirmation's figures are never trusted for the gate. */
 export async function switchSections(
   firestore: Firestore,
   ctx: PmContext,
   projectId: string,
   actor: SectionActor,
-  input: { next: SectionId[]; reason: SectionOffReason | null; reasonText?: string | null; facts: SectionFacts }
+  input: { next: SectionId[]; reason: SectionOffReason | null; reasonText?: string | null; facts?: SectionFacts }
 ): Promise<void> {
+  let facts = input.facts
+  if (!facts) {
+    const pre = await getDoc(doc(firestore, "projects", projectId))
+    facts = await readSectionFacts(firestore, projectId, (pre.data() as { warehouseId?: string | null } | undefined)?.warehouseId)
+  }
+  const gateFacts = facts
   await runTransaction(firestore, async (tx) => {
     const ref = doc(firestore, "projects", projectId)
     const snap = await tx.get(ref)
@@ -92,7 +288,7 @@ export async function switchSections(
     const after = new Set(input.next)
     const turnedOn = input.next.filter((id) => !before.has(id))
     const turnedOff = [...before].filter((id) => !after.has(id))
-    const blocks = switchBlocks({ archived: fresh.archived, turnedOn, turnedOff, reason: input.reason, reasonText: input.reasonText, facts: input.facts })
+    const blocks = switchBlocks({ archived: fresh.archived, turnedOn, turnedOff, reason: input.reason, reasonText: input.reasonText, facts: gateFacts })
     if (blocks.length) throw new PmSectionsError("blocked", blocks)
     const entry = {
       on: turnedOn,

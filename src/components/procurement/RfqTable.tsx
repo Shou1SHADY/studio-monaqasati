@@ -1,25 +1,42 @@
 "use client"
 
 // The RFQs as a list (the reference prototype's list view): the RFQ with its
-// number, city, products and author under it; the project; the offers; the
-// deadline and its pill; the estimate at the last price we paid (money
-// holders only); the stage. A selection column carries the bulk actions.
+// number, city, products and author under it; the project (or general stock /
+// the workshop); the offers — or a direct award's supplier — with the
+// unanswered queries; the deadline with "n left"; the estimate at the last
+// price we paid ("no estimate" when a line has no history; money holders
+// only); the stage. A selection column carries the bulk actions.
 
 import { useLocale, useTranslations } from "next-intl"
-import { FileText, LayoutGrid, Lock } from "lucide-react"
+import { LayoutGrid } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
-import { RfqStagePill, type RfqRow } from "@/components/procurement/RfqCard"
+import { DeadlineText, OffersTag, RfqStagePill, type RfqRow } from "@/components/procurement/RfqCard"
+import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { displayCity } from "@/lib/constants"
 import { displayDocNumber } from "@/lib/procurement/format"
-import { deadlinePill, productCount, rfqStage } from "@/lib/procurement/rfq-view"
+import { productCount, rfqStage } from "@/lib/procurement/rfq-view"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
 export interface RfqTableRow {
   rfq: RfqRow
-  projectName: string | null
+  projectLabel: string
   sealed: boolean
   estimate: number | null
+  directSupplier: string | null
+}
+
+function OffersCell({ row, onGlance }: { row: RfqTableRow; onGlance: () => void }) {
+  const tp = useTranslations("Portal.Procurement")
+  const q = useRfqInquiryCounts(row.rfq.status === "Draft" ? null : row.rfq.id)
+  return (
+    <>
+      <button type="button" onClick={onGlance} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <OffersTag rfq={row.rfq} sealed={row.sealed} directSupplier={row.directSupplier} />
+      </button>
+      {q.unanswered > 0 && <p className="mt-1 text-[11px] text-warning">{tp("rfqpo.list.unanswered", { count: q.unanswered })}</p>}
+    </>
+  )
 }
 
 export function RfqTable({
@@ -40,6 +57,7 @@ export function RfqTable({
   onGlance: (rfq: RfqRow) => void
 }) {
   const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const all = rows.length > 0 && selected.length === rows.length
 
@@ -55,15 +73,14 @@ export function RfqTable({
             <th className="px-3 py-3 text-start">{t("rfqv_col_project")}</th>
             <th className="px-3 py-3 text-start">{t("rfqv_col_offers")}</th>
             <th className="px-3 py-3 text-start">{t("rfqv_col_deadline")}</th>
-            {seesPrices && <th className="px-3 py-3 text-start">{t("rfqv_col_estimate")}</th>}
+            {seesPrices && <th className="px-3 py-3 text-end">{t("rfqv_col_estimate")}</th>}
             <th className="px-3 py-3 text-start">{t("rfqv_col_status")}</th>
           </tr>
         </thead>
         <tbody className="divide-y">
-          {rows.map(({ rfq, projectName, sealed, estimate }) => {
+          {rows.map((row) => {
+            const { rfq, projectLabel, sealed, estimate } = row
             const stage = rfqStage(rfq, now)
-            const pill = deadlinePill(rfq, now)
-            const offers = rfq.offersCount ?? 0
             const isSelected = selected.includes(rfq.id)
             const meta = [
               rfq.rfqNumber ? displayDocNumber(rfq.rfqNumber, locale) : `#${rfq.id.slice(0, 6)}`,
@@ -77,42 +94,22 @@ export function RfqTable({
                   <Checkbox checked={isSelected} onCheckedChange={() => onToggle(rfq.id)} aria-label={rfq.title} />
                 </td>
                 <td className="max-w-[360px] px-3 py-3">
-                  <button type="button" onClick={() => onGlance(rfq)} className="block max-w-full truncate text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm" dir="auto">
+                  <button type="button" onClick={() => onGlance(rfq)} className="block max-w-full truncate rounded-sm text-start font-bold text-foreground hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
                     {rfq.title}
                   </button>
                   <span className="block truncate text-[11px] text-muted-foreground">{meta.join(" · ")}</span>
                 </td>
                 <td className="px-3 py-3">
-                  {projectName ? (
-                    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-cta/20 bg-cta/5 px-2 py-0.5 text-[11px] font-semibold text-cta">
-                      <LayoutGrid size={12} aria-hidden="true" />
-                      {projectName}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-cta/20 bg-cta/5 px-2 py-0.5 text-[11px] font-semibold text-cta">
+                    <LayoutGrid size={12} aria-hidden="true" />
+                    {projectLabel}
+                  </span>
                 </td>
-                <td className="px-3 py-3">
-                  {stage === "draft" ? (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  ) : (
-                    <button type="button" onClick={() => onGlance(rfq)} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                      <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold", offers > 0 ? "border-success/25 bg-success/5 text-success" : "border-border text-muted-foreground")}>
-                        <FileText size={12} aria-hidden="true" />
-                        {t("rfqv_offers", { count: offers })}
-                        {sealed && offers > 0 && <Lock size={11} aria-label={t("rfqv_sealed")} />}
-                      </span>
-                    </button>
-                  )}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3" suppressHydrationWarning>
-                  <span className="text-foreground">{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long" }) : t("rfq_not_set")}</span>
-                  {pill?.kind === "passed" && <span className="ms-2 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">{t("rfqv_passed")}</span>}
-                  {pill?.kind === "soon" && <span className="ms-2 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">{t("rfqv_soon", { days: pill.days })}</span>}
-                </td>
+                <td className="px-3 py-3">{stage === "draft" ? <span className="text-xs text-muted-foreground">—</span> : <OffersCell row={row} onGlance={() => onGlance(rfq)} />}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-xs">{rfq.directAward ? "—" : <DeadlineText rfq={rfq} now={now} />}</td>
                 {seesPrices && (
-                  <td className="whitespace-nowrap px-3 py-3 tabular-nums" dir="ltr">
-                    {estimate !== null ? sarLtr(Math.round(estimate).toLocaleString("en-US")) : <span className="text-muted-foreground">—</span>}
+                  <td className="whitespace-nowrap px-3 py-3 text-end tabular-nums" dir="ltr">
+                    {estimate !== null ? sarLtr(Math.round(estimate).toLocaleString("en-US")) : <span className="text-xs text-muted-foreground">{tp("rfqpo.list.no_estimate")}</span>}
                   </td>
                 )}
                 <td className="px-3 py-3">

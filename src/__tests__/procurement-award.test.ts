@@ -138,10 +138,15 @@ describe("supplierFactsFromProfile", () => {
 })
 
 describe("exclusion", () => {
-  it("has the five codes", () => {
-    expect([...EXCLUSION_CODES]).toEqual(["price", "terms", "incomplete", "not_qualified", "other"])
+  it("has the prototype's five codes and still reads the earlier ones", () => {
+    expect([...EXCLUSION_CODES]).toEqual(["spec", "lead", "incomplete", "documents", "other"])
+    expect(isExclusionCode("spec")).toBe(true)
     expect(isExclusionCode("terms")).toBe(true)
-    expect(isExclusionCode("spec")).toBe(false)
+    expect(isExclusionCode("nonsense")).toBe(false)
+  })
+  it("writes only the current codes", () => {
+    expect(buildExclusion({ code: "terms", byId: "u1" })).toBeNull()
+    expect(buildExclusion({ code: "lead", byId: "u1", at: "2026-09-22T06:00:00.000Z" })?.code).toBe("lead")
   })
   it("builds the payload written beside `مرفوض`", () => {
     expect(buildExclusion({ code: "incomplete", note: "  two lines unpriced ", byId: "u1", at: "2026-09-22T06:00:00.000Z" })).toEqual({ code: "incomplete", note: "two lines unpriced", byId: "u1", at: "2026-09-22T06:00:00.000Z" })

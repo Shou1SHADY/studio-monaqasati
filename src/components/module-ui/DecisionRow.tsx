@@ -17,6 +17,7 @@ export function DecisionRow({
   title,
   detail,
   age,
+  ageDays,
   amount,
   action,
   className,
@@ -27,6 +28,8 @@ export function DecisionRow({
   detail?: ReactNode
   /** Already worded ("3 days"), shown as a chip. */
   age?: string
+  /** How old the cause is, in days: the chip turns amber after 7, red after 21. */
+  ageDays?: number
   /** Already formatted, isolated left-to-right by the caller's formatter. */
   amount?: ReactNode
   action?: ReactNode
@@ -48,7 +51,16 @@ export function DecisionRow({
         )}
         {(age || amount) && (
           <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-            {age && <span className="rounded-md bg-muted px-1.5 py-0.5 font-semibold text-muted-foreground">{age}</span>}
+            {age && (
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 font-semibold",
+                  (ageDays ?? 0) > 21 ? "bg-destructive/10 text-destructive" : (ageDays ?? 0) > 7 ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground"
+                )}
+              >
+                {age}
+              </span>
+            )}
             {amount && <span className="font-bold tabular-nums text-foreground">{amount}</span>}
           </p>
         )}

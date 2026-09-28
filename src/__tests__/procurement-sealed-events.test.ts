@@ -118,9 +118,11 @@ describe("the exceptions report, on facts the receipt already carried", () => {
     expect(kindsOf(receipt({ source: "manual", regularisation: "expense" }))).toContain("cash_expense")
   })
 
-  it("reports both, and the no-PO kind, on one receipt that is all three", () => {
+  it("reports both on one no-order receipt; once expensed it is no longer 'not regularised' (prototype: open → no-PO, expensed → cash expense)", () => {
     const kinds = kindsOf(receipt({ source: "manual", noNotice: true, regularisation: "expense" }))
-    expect(kinds).toEqual(expect.arrayContaining(["no_po", "no_notice", "cash_expense"]))
+    expect(kinds).toEqual(expect.arrayContaining(["no_notice", "cash_expense"]))
+    expect(kinds).not.toContain("no_po")
+    expect(kindsOf(receipt({ source: "manual", noNotice: true }))).toEqual(expect.arrayContaining(["no_po", "no_notice"]))
   })
 
   it("says nothing about an ordinary receipt", () => {

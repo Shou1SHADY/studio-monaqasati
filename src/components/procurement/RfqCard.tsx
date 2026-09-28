@@ -2,17 +2,21 @@
 
 // One RFQ as a card (the reference prototype's RFQ grid): a coloured top edge
 // and a status pill that say its stage at a glance, its number, its title, the
-// project and category, what it asks and what came back, its city, deadline
-// and author — and the actions its stage allows.
+// project (or general stock / the workshop) and the categories of its lines,
+// what it asks and what came back — offers, or the supplier of a direct award —
+// its unanswered queries, its city, deadline ("n left" always) and author, and
+// the actions its stage allows: complete a draft, view offers and queries,
+// share, print, and extend / re-publish while nobody has seen a price.
 
 import type { ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { Building2, CalendarDays, Eye, FileText, Info, LayoutGrid, Link2, Lock, Package, RotateCw, Send, ShieldCheck, Trash2, User } from "lucide-react"
+import { Building2, CalendarDays, Eye, FileText, Info, LayoutGrid, Link2, Lock, MessageCircleQuestion, Package, Printer, Send, ShieldCheck, Trash2, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Link } from "@/i18n/routing"
+import { useRfqInquiryCounts } from "@/hooks/useRfqInquiryCounts"
 import { displayCategory, displayCity } from "@/lib/constants"
 import { displayDocNumber } from "@/lib/procurement/format"
-import { deadlinePill, productCount, rfqStage, STAGE_TONE, type RfqLike, type RfqStage } from "@/lib/procurement/rfq-view"
+import { deadlineTag, productCount, rfqCategories, rfqStage, STAGE_TONE, type RfqListLike, type RfqStage } from "@/lib/procurement/rfq-view"
 import { cn } from "@/lib/utils"
 
 export const STAGE_EDGE: Record<RfqStage, string> = {
@@ -21,6 +25,7 @@ export const STAGE_EDGE: Record<RfqStage, string> = {
   compare: "border-t-warning",
   closed_empty: "border-t-destructive",
   awarded: "border-t-success",
+  cancelled: "border-t-border",
 }
 
 const PILL: Record<(typeof STAGE_TONE)[RfqStage], string> = {
@@ -31,25 +36,25 @@ const PILL: Record<(typeof STAGE_TONE)[RfqStage], string> = {
   ok: "bg-success/10 text-success",
 }
 
-export type RfqRow = RfqLike & {
-  id: string
+export type RfqRow = RfqListLike & {
   title?: string
   rfqNumber?: string | null
-  category?: string
-  city?: string
   district?: string
   deadline?: string
   createdByUserName?: string
   requiresWarranty?: boolean
-  projectId?: string | null
+  visibility?: string | null
+  allowedSupplierOrgIds?: string[] | null
+  invitedSupplierOrgIds?: string[] | null
 }
 
 export function RfqStagePill({ stage, sealed }: { stage: RfqStage; sealed: boolean }) {
   const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
   return (
     <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold", PILL[STAGE_TONE[stage]])}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
-      {t(stage === "open" && sealed ? "rfqv_stage_open_sealed" : `rfqv_stage_${stage}`)}
+      {stage === "cancelled" ? tp("rfqpo.list.stage_cancelled") : t(stage === "open" && sealed ? "rfqv_stage_open_sealed" : `rfqv_stage_${stage}`)}
     </span>
   )
 }
@@ -63,7 +68,7 @@ export function RfqNumber({ rfq }: { rfq: Pick<RfqRow, "id" | "rfqNumber"> }) {
   )
 }
 
-function Tag({ icon: Icon, tone = "mute", children }: { icon?: typeof LayoutGrid; tone?: "mute" | "info" | "ok" | "warn" | "violet"; children: ReactNode }) {
+export function Tag({ icon: Icon, tone = "mute", children }: { icon?: typeof LayoutGrid; tone?: "mute" | "info" | "ok" | "warn" | "violet"; children: ReactNode }) {
   const TONE = {
     mute: "border-border bg-card text-muted-foreground",
     info: "border-cta/20 bg-cta/5 text-cta",
@@ -79,30 +84,72 @@ function Tag({ icon: Icon, tone = "mute", children }: { icon?: typeof LayoutGrid
   )
 }
 
+/** The offers pill: the supplier of a direct award, else the count (locked while sealed). */
+export function OffersTag({ rfq, sealed, directSupplier }: { rfq: RfqRow; sealed: boolean; directSupplier: string | null }) {
+  const t = useTranslations("Portal.Contractor")
+  const offers = rfq.offersCount ?? 0
+  if (rfq.directAward) return <Tag tone="ok">{directSupplier || t("rfqv_stage_awarded")}</Tag>
+  return (
+    <Tag icon={FileText} tone={offers > 0 ? "ok" : "mute"}>
+      {t("rfqv_offers", { count: offers })}
+      {sealed && offers > 0 && <Lock size={11} aria-label={t("rfqv_sealed")} />}
+    </Tag>
+  )
+}
+
+/** The deadline and its tag: "n left" (amber at two days or less), passed, or none on a direct award. */
+export function DeadlineText({ rfq, now }: { rfq: RfqRow; now: Date }) {
+  const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
+  const locale = useLocale()
+  const tag = deadlineTag(rfq, now)
+  if (tag?.kind === "direct") return <span>{tp("rfqpo.list.direct_no_deadline")}</span>
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2" suppressHydrationWarning>
+      <span>{rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long" }) : t("rfq_not_set")}</span>
+      {tag?.kind === "passed" && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">{t("rfqv_passed")}</span>}
+      {tag?.kind === "left" && <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", tag.urgent ? "bg-warning/10 text-warning" : "bg-muted text-muted-foreground")}>{tp("rfqpo.list.left", { days: tag.days })}</span>}
+    </span>
+  )
+}
+
+export function UnansweredTag({ count }: { count: number }) {
+  const tp = useTranslations("Portal.Procurement")
+  if (!count) return null
+  return (
+    <Tag icon={MessageCircleQuestion} tone="warn">
+      {tp("rfqpo.list.unanswered", { count })}
+    </Tag>
+  )
+}
+
 export interface RfqCardProps {
   rfq: RfqRow
-  projectName: string | null
+  projectLabel: string
   sealed: boolean
   now: Date
   offersHref: string
   editHref: string
+  directSupplier: string | null
   canManage: boolean
-  canEdit: boolean
   canDelete: boolean
   onGlance: () => void
   onShare: () => void
   onDelete: () => void
-  onRepublish: () => void
+  onExtend: () => void
+  onPrint: () => void
 }
 
 export function RfqCard(p: RfqCardProps) {
   const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
   const locale = useLocale()
   const { rfq } = p
   const stage = rfqStage(rfq, p.now)
-  const pill = deadlinePill(rfq, p.now)
+  const tag = deadlineTag(rfq, p.now)
   const offers = rfq.offersCount ?? 0
-  const products = productCount(rfq)
+  const queries = useRfqInquiryCounts(stage === "draft" ? null : rfq.id)
+  const extendable = p.canManage && rfq.status === "New" && !rfq.directAward && (p.sealed || offers === 0)
 
   return (
     <article className={cn("flex flex-col rounded-2xl border border-t-[3px] bg-card shadow-sm transition-shadow hover:shadow-md", STAGE_EDGE[stage])}>
@@ -113,30 +160,28 @@ export function RfqCard(p: RfqCardProps) {
         </div>
 
         <h3 className="text-base font-black leading-snug text-foreground">
-          <button type="button" onClick={p.onGlance} className="text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm" dir="auto">
+          <button type="button" onClick={p.onGlance} className="rounded-sm text-start hover:text-module focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" dir="auto">
             {rfq.title}
           </button>
         </h3>
 
         <div className="flex flex-wrap gap-1.5">
-          {p.projectName && (
-            <Tag icon={LayoutGrid} tone="info">
-              {p.projectName}
-            </Tag>
-          )}
-          {rfq.category && <Tag>{displayCategory(rfq.category, locale)}</Tag>}
+          <Tag icon={LayoutGrid} tone="info">
+            {p.projectLabel}
+          </Tag>
+          {rfqCategories(rfq).map((c) => (
+            <Tag key={c}>{displayCategory(c, locale)}</Tag>
+          ))}
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          <Tag icon={Package}>{t("rfqv_products", { count: products })}</Tag>
+          <Tag icon={Package}>{t("rfqv_products", { count: productCount(rfq) })}</Tag>
           {stage !== "draft" && (
             <button type="button" onClick={p.onGlance} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Tag icon={FileText} tone={offers > 0 ? "ok" : "mute"}>
-                {t("rfqv_offers", { count: offers })}
-                {p.sealed && offers > 0 && <Lock size={11} aria-label={t("rfqv_sealed")} />}
-              </Tag>
+              <OffersTag rfq={rfq} sealed={p.sealed} directSupplier={p.directSupplier} />
             </button>
           )}
+          <UnansweredTag count={queries.unanswered} />
           {rfq.requiresWarranty && (
             <Tag icon={ShieldCheck} tone="warn">
               {t("rfqv_warranty")}
@@ -152,11 +197,10 @@ export function RfqCard(p: RfqCardProps) {
               {rfq.district ? ` — ${displayCity(rfq.district, locale)}` : ""}
             </span>
           </li>
-          <li className="flex flex-wrap items-center gap-2" suppressHydrationWarning>
+          <li className="flex flex-wrap items-center gap-2">
             <CalendarDays size={14} className="shrink-0" aria-hidden="true" />
-            <span>{t("rfqv_deadline", { date: rfq.deadline ? new Date(rfq.deadline).toLocaleDateString(locale === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { day: "numeric", month: "long" }) : t("rfq_not_set") })}</span>
-            {pill?.kind === "passed" && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-semibold text-destructive">{t("rfqv_passed")}</span>}
-            {pill?.kind === "soon" && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning">{t("rfqv_soon", { days: pill.days })}</span>}
+            {tag?.kind === "direct" ? null : <span>{tp("rfqpo.list.deadline_label")}</span>}
+            <DeadlineText rfq={rfq} now={p.now} />
           </li>
           <li className="flex items-center gap-2">
             <User size={14} className="shrink-0" aria-hidden="true" />
@@ -198,24 +242,22 @@ export function RfqCard(p: RfqCardProps) {
                 <Link href={`${p.offersHref}?tab=inquiries`}>
                   <Info size={14} aria-hidden="true" />
                   {t("rfqv_inquiries")}
+                  {queries.total > 0 && <span className="tabular-nums">({queries.total})</span>}
                 </Link>
               </Button>
-              {stage === "open" && (
-                <Button size="sm" variant="outline" className="h-8 w-8 shrink-0 rounded-xl p-0 border border-border bg-card text-xs font-semibold text-muted-foreground shadow-none hover:border-cta/30 hover:bg-card hover:text-foreground" onClick={p.onShare} aria-label={t("rfqv_share")} title={t("rfqv_share")}>
+              {p.canManage && rfq.status === "New" && tag?.kind === "left" && (
+                <Button size="sm" variant="outline" className="h-8 w-8 shrink-0 rounded-xl border border-border bg-card p-0 text-xs font-semibold text-muted-foreground shadow-none hover:border-cta/30 hover:bg-card hover:text-foreground" onClick={p.onShare} aria-label={t("rfqv_share")} title={t("rfqv_share")}>
                   <Link2 size={14} aria-hidden="true" />
                 </Button>
               )}
-            </div>
-            {stage === "open" && p.canManage && p.canEdit && (
-              <Link href={p.editHref} className="block rounded text-center text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                {t("rfqv_edit_open")}
-              </Link>
-            )}
-            {stage === "closed_empty" && p.canManage && p.canEdit && (
-              <Button size="sm" variant="outline" className="h-8 w-full gap-1.5 rounded-xl border border-warning/40 bg-card text-xs font-semibold text-warning shadow-none hover:bg-warning/10 hover:text-warning" onClick={p.onRepublish}>
-                <RotateCw size={14} aria-hidden="true" />
-                {t("rfqv_republish")}
+              <Button size="sm" variant="outline" className="h-8 w-8 shrink-0 rounded-xl border border-border bg-card p-0 text-xs font-semibold text-muted-foreground shadow-none hover:border-cta/30 hover:bg-card hover:text-foreground" onClick={p.onPrint} aria-label={tp("rfqpo.print.button")} title={tp("rfqpo.print.button")}>
+                <Printer size={14} aria-hidden="true" />
               </Button>
+            </div>
+            {extendable && (
+              <button type="button" onClick={p.onExtend} className="block w-full rounded text-center text-xs font-semibold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {tag?.kind === "passed" ? tp("rfqpo.list.republish") : t("rfqv_edit_open")}
+              </button>
             )}
           </>
         )}

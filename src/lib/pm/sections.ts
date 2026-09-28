@@ -29,6 +29,8 @@ const MAP: Record<string, SectionId> = {
   base: "progress",
   sched: "progress",
   match: "invoice",
+  wwp: "wwp",
+  eqp: "eqp",
 }
 
 const PRESET: Record<ProjectKind, string[]> = {

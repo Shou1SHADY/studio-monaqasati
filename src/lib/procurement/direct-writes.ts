@@ -5,7 +5,7 @@
 // receipt then follow the order's ordinary path (`./writes`).
 
 import { collection, doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
-import { directLinePrices, directOrderRefusal, directPoLines, directTotal, type DirectLineInput, type DirectMode } from "./direct"
+import { directLinePrices, directOrderRefusal, directPoLines, directTotal, isSingleSource, type DirectLineInput, type DirectMode, type SingleSourceReason } from "./direct"
 import { emitProcEvent, sarText } from "./events"
 import { drawProcDocNumber } from "./numbering"
 import { requiredApprover } from "./po"
@@ -23,7 +23,13 @@ export interface DirectOrderInput {
   agreementId?: string | null
   /** Direct mode: the supplier. A registered one carries its org and user. */
   supplier?: { orgId?: string | null; userId?: string | null; name: string } | null
+  /** Above the cap: why one supplier (its code, and its sentence for the approver). */
   reason?: string | null
+  reasonCode?: SingleSourceReason | null
+  /** «مطلوب التسليم قبل», `YYYY-MM-DD`. */
+  deliverBy?: string | null
+  /** An agreement order the site calls off in parts, not one delivery. */
+  callOffs?: boolean
   projectId?: string | null
   projectName?: string | null
   purchaseSource?: PurchaseOrder["purchaseSource"]
@@ -45,13 +51,14 @@ export async function createOrderWithoutRfq(firestore: Firestore, actor: ProcAct
       agreement = snap.exists() ? ({ id: snap.id, ...snap.data() } as PriceAgreement) : null
     }
     const supplierName = agreement ? agreement.supplierName : (input.supplier?.name || "").trim()
-    const check = { mode: input.mode, lines: input.lines, supplierName, reason: input.reason || "", agreement, policies: input.policies, today }
+    const check = { mode: input.mode, lines: input.lines, supplierName, reason: input.reason || "", agreement, policies: input.policies, today, deliverBy: input.deliverBy ?? null, requireDeliverBy: input.deliverBy !== undefined }
     const refusal = directOrderRefusal(check)
     if (refusal) throw new ProcWriteError(refusal.code, refusal.params)
     const priced = directLinePrices(check)
     const supplierOrgId = agreement ? agreement.supplierOrgId : input.supplier?.orgId || "guest"
     const number = await drawProcDocNumber(firestore, tx, input.organizationId, "PO", now.getUTCFullYear())
-    const reason = input.mode === "agreement" ? null : (input.reason || "").trim()
+    const singleSource = isSingleSource(check)
+    const reason = singleSource ? (input.reason || "").trim() : null
     const order: Omit<PurchaseOrder, "id"> = {
       organizationId: input.organizationId,
       docNumber: number,
@@ -78,11 +85,12 @@ export async function createOrderWithoutRfq(firestore: Firestore, actor: ProcAct
       lowestOfferTotal: null,
       awardReasonCode: reason ? "other" : null,
       awardReasonText: reason,
-      shortCompetition: false,
+      shortCompetition: singleSource,
       noOfficialQuote: !agreement,
       preparedById: actor.uid,
       preparedByName: actor.name,
       createdAt: at,
+      requestedDeliveryDate: input.deliverBy || null,
       approverKind: "manager",
       approvedById: null,
       approvedAt: null,
@@ -101,8 +109,11 @@ export async function createOrderWithoutRfq(firestore: Firestore, actor: ProcAct
       updatedAt: serverTimestamp(),
     }
     const routed = { ...order, id: poRef.id } as PurchaseOrder
-    order.approverKind = requiredApprover(routed, input.policies)
-    tx.set(poRef, order)
+    order.approverKind = requiredApprover(routed, input.policies, actor.isOwner || actor.canApprove)
+    // Optional facts the order type does not carry yet (read by the exceptions
+    // report and the PO drawer when present): the single-source reason code and
+    // how an agreement order is delivered.
+    tx.set(poRef, { ...order, ...(singleSource && input.reasonCode ? { singleSourceReason: input.reasonCode } : {}), ...(input.mode === "agreement" ? { deliveryMode: input.callOffs ? "calloff" : "once" } : {}) })
     return order
   })
 

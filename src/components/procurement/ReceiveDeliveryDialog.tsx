@@ -297,6 +297,11 @@ export function ReceiveDeliveryDialog(props: ReceiveDeliveryDialogProps) {
                   {delivery.deliveryDate && <span>· {delivery.deliveryDate.slice(0, 10)}</span>}
                 </div>
               )}
+              {delivery?.forwardedTo?.note && (
+                <p className="col-span-2 rounded-md bg-cta/5 px-2 py-1 text-foreground">
+                  <b>{t("forward.noteLabel")}:</b> <span dir="auto">{delivery.forwardedTo.note}</span>
+                </p>
+              )}
               {noNotice && (
                 <p className="col-span-2 flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 font-semibold text-amber-800">
                   <AlertTriangle size={12} aria-hidden="true" />

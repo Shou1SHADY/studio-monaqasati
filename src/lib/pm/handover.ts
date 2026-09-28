@@ -25,9 +25,20 @@ export interface HandoverReassign {
   from: string
   to: string
   reason: ReassignReason
+  /** The stated reason for "other", or the optional note for the next manager. */
   reasonText: string | null
   by: string
   at: string
+}
+
+/** A priced line of the winning bid, when CRM attaches it to the file. */
+export interface HandoverBoqLine {
+  code: string
+  descriptionAr: string
+  descriptionEn?: string | null
+  unit: string
+  quantity: number
+  rate: number
 }
 
 export interface PmHandover {
@@ -62,8 +73,12 @@ export interface PmHandover {
   createdAt: string
   reassigns?: HandoverReassign[]
   returned?: { missing: HandoverMissing[]; note: string | null; by: string; at: string } | null
+  /** The winning bid's priced BOQ, transferred as it is on acceptance. */
+  boq?: HandoverBoqLine[] | null
   projectId?: string | null
   acceptedAt?: string | null
+  acceptedBy?: string | null
+  acceptNote?: string | null
 }
 
 export type AcceptBlock = "no_value" | "no_duration" | "not_signed" | "not_waiting"
@@ -86,11 +101,11 @@ const dayNum = (d: string) => Date.parse(`${d.slice(0, 10)}T00:00:00Z`) / dayMs
 export const handoverAge = (h: Pick<PmHandover, "createdAt">, today: string) => Math.max(0, Math.floor(dayNum(today) - dayNum(h.createdAt)))
 
 /** HO-05: a KPI when the contract starts within three weeks or the file is
- * incomplete; the decision's severity rises with age (red after a week). */
+ * incomplete; the decision is red after a week, or when the contract starts within three weeks. */
 export function handoverFlags(h: PmHandover, today: string): { rush: boolean; incomplete: boolean; severity: "amber" | "red" } {
   const rush = Boolean(h.startOn) && dayNum(h.startOn as string) - dayNum(today) <= 21
   const incomplete = acceptBlocks({ ...h, status: "wait" }).length > 0
-  return { rush, incomplete, severity: handoverAge(h, today) > 7 ? "red" : "amber" }
+  return { rush, incomplete, severity: handoverAge(h, today) > 7 || rush ? "red" : "amber" }
 }
 
 export type ReassignBlock = "same_manager" | "reason_text"
@@ -104,6 +119,74 @@ export function reassignBlocks(h: Pick<PmHandover, "to">, to: string, reason: Re
 
 /** A return must name at least one missing item. */
 export const returnBlocks = (missing: HandoverMissing[]) => (missing.length ? [] : (["nothing_missing"] as const))
+
+/** The addressed manager answers a file; the owner may act on any of them. */
+export const mayActOnHandover = (actor: { uid: string; owner: boolean }, h: Pick<PmHandover, "to">) => actor.owner || h.to === actor.uid
+
+export const handoverBoqCount = (h: Pick<PmHandover, "boq">) => (h.boq ?? []).filter((l) => l.quantity > 0).length
+
+/** What the system already sees missing from a file — offered first when returning it. */
+export const detectedGaps = (h: Pick<PmHandover, "value" | "durationDays" | "signedOn">) => acceptBlocks({ ...h, status: "wait" })
+
+/** Returned files still waiting on CRM: a file CRM has sent again (same deal,
+ * created later) is no longer "returned" — the new one speaks for it. */
+export function openReturns<H extends Pick<PmHandover, "id" | "status" | "opportunityId" | "createdAt">>(files: H[]): H[] {
+  return files.filter((h) => h.status === "ret" && !files.some((x) => x.id !== h.id && x.opportunityId === h.opportunityId && x.createdAt > h.createdAt))
+}
+
+export interface InboxKpis {
+  waiting: number
+  oldest: number
+  rush: number
+  incomplete: number
+}
+
+export function inboxKpis(files: PmHandover[], today: string): InboxKpis {
+  return {
+    waiting: files.length,
+    oldest: files.reduce((a, h) => Math.max(a, handoverAge(h, today)), 0),
+    rush: files.filter((h) => handoverFlags(h, today).rush).length,
+    incomplete: files.filter((h) => handoverFlags(h, today).incomplete).length,
+  }
+}
+
+/** Where the new project's BOQ comes from (the wizard's third step). */
+export const BOQ_SOURCES = ["crm", "xl", "man", "later"] as const
+export type BoqSource = (typeof BOQ_SOURCES)[number]
+
+export const boqSourcesFor = (h: Pick<PmHandover, "boq">): BoqSource[] => (handoverBoqCount(h) > 0 ? ["crm", "xl", "man", "later"] : ["xl", "man", "later"])
+
+export type AcceptStepBlock = "no_boq_source" | "no_manager" | "no_boq_file"
+
+/** Saving waits for a named manager and a chosen BOQ source; an Excel source needs its file. */
+export function acceptStepBlocks(input: { source: BoqSource | null; managerUid: string | null; xlItems: number }): AcceptStepBlock[] {
+  const out: AcceptStepBlock[] = []
+  if (!input.managerUid) out.push("no_manager")
+  if (!input.source) out.push("no_boq_source")
+  if (input.source === "xl" && input.xlItems === 0) out.push("no_boq_file")
+  return out
+}
+
+/** A candidate for a handover: someone who may approve (a project manager or the
+ * owner), with the live projects they already manage — the load a reassignment weighs. */
+export interface HandoverCandidate {
+  uid: string
+  name: string
+  seat: "owner" | "pm"
+  limit: number
+  live: number
+}
+
+export function handoverCandidates(
+  members: Array<{ uid: string; name: string; approves: boolean; owner: boolean; limit: number }>,
+  projects: Array<{ managerId: string | null; lifecycle: string }>,
+  exclude?: string | null
+): HandoverCandidate[] {
+  return members
+    .filter((m) => m.approves && m.uid !== exclude)
+    .map((m) => ({ uid: m.uid, name: m.name, seat: m.owner ? ("owner" as const) : ("pm" as const), limit: m.limit, live: projects.filter((p) => p.managerId === m.uid && p.lifecycle === "live").length }))
+    .sort((a, b) => a.live - b.live || a.name.localeCompare(b.name))
+}
 
 /** Which kinds are internal work — nobody pays, so no certificates (TRM-01). */
 export const isSelfDevelopment = (kind: ProjectKind | null) => kind === "own"

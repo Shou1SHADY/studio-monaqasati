@@ -7,6 +7,8 @@
 // requires inspection cannot be measured until its LAST attempt passed.
 // Pure: no I/O.
 
+import type { PmAttachment } from "./attachments"
+
 /** `projects/{id}/pmInspections/{NN}`, numbered by the project's `pm.wirCount`. */
 export const PM_INSPECTIONS = "pmInspections"
 
@@ -30,6 +32,12 @@ export interface WirAttempt {
   rBy?: string | null
   rByName?: string | null
   rAt?: string | null
+  /** The day the result was given, as on the signed form (defaults to the recording day). */
+  rOn?: string | null
+  /** Readiness photos, a lab report — attached with the request (optional). */
+  files?: PmAttachment[]
+  /** The signed inspection form — attached with the result (optional). */
+  rFiles?: PmAttachment[]
 }
 
 export interface PmInspection {
@@ -60,15 +68,41 @@ export function requestBlocks(input: { archived: boolean; itemId: string | null;
   return out
 }
 
-export type ResultBlock = "no_choice" | "not_open" | "archived"
+export type ResultBlock = "no_choice" | "not_open" | "archived" | "no_note" | "bad_date"
 
-/** A result is one of three — no choice, no save (WIR-03). */
-export function resultBlocks(input: { archived: boolean; status: unknown; result: unknown }): ResultBlock[] {
+/** A result is one of three — no choice, no save (WIR-03). A failure or a
+ * pass with comments carries the inspector's words: a rejection without a
+ * written reason is useless on site and as evidence. The result day is a
+ * real day, never in the future. */
+export function resultBlocks(input: { archived: boolean; status: unknown; result: unknown; note?: string | null; on?: string | null; today?: string }): ResultBlock[] {
   const out: ResultBlock[] = []
   if (input.archived) out.push("archived")
   if (input.status !== "open") out.push("not_open")
   if (!(WIR_RESULTS as readonly unknown[]).includes(input.result)) out.push("no_choice")
+  if (input.note !== undefined && (input.result === "fail" || input.result === "cond") && !input.note?.trim()) out.push("no_note")
+  if (input.on !== undefined && input.today && (!input.on || !/^\d{4}-\d{2}-\d{2}$/.test(input.on) || input.on > input.today)) out.push("bad_date")
   return out
+}
+
+/** The current attempt of a request. */
+export const currentAttempt = (w: Pick<PmInspection, "attempts">): WirAttempt | null => w.attempts[w.attempts.length - 1] ?? null
+
+/** The day the result was given: the form's day, else the day it was recorded. */
+export const resultDay = (a: Pick<WirAttempt, "rOn" | "rAt" | "on">): string => a.rOn || (a.rAt ? a.rAt.slice(0, 10) : a.on)
+
+/** An open request past its booked day: how many days the inspection is overdue («فات منذ»). */
+export function overdueDays(a: Pick<WirAttempt, "on" | "result">, today: string): number {
+  if (a.result || !a.on || a.on >= today) return 0
+  return Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${a.on}T00:00:00Z`)) / 86_400_000))
+}
+
+/** Open or failed — what the panel counts ("{n} open or failed of {total}"). */
+export const isOpenOrFailed = (w: Pick<PmInspection, "status">) => w.status === "open" || w.status === "fail"
+
+/** Items that still need a passed inspection before their measurement can be
+ * approved: they require one, are not complete, and their last attempt did not pass. */
+export function itemsNeedingPass<T extends { gate?: GateFields; quantity: number; executed: number }>(items: T[]): T[] {
+  return items.filter((i) => i.gate?.pmInspect && i.executed < i.quantity && !measurable(i.gate))
 }
 
 /** A failed inspection is re-inspected as the next attempt (WIR-02). */

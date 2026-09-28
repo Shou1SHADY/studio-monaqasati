@@ -61,10 +61,12 @@ export function progressCurve(input: {
   sheets: Array<{ status: string; day: string; lines: Array<{ itemId: string; qty: number; approved?: number | null }> }>
   rateOf: (itemId: string) => number
   today: string
+  /** The curve's shape (`programmeK`); 1 = linear. */
+  k?: number
 }): CurvePoint[] {
   if (!input.startOn || input.effectiveDays <= 0 || input.contractValue <= 0) return []
   const start = input.startOn.slice(0, 10)
-  const planned = (day: string) => r1(Math.min(100, Math.max(0, ((dayNum(day) - dayNum(start)) / input.effectiveDays) * 100)))
+  const planned = (day: string) => r1(planF((dayNum(day) - dayNum(start)) / input.effectiveDays, input.k ?? 1))
   const byDay = new Map<string, number>()
   for (const s of input.sheets) {
     if (s.status !== "ok") continue
@@ -167,5 +169,55 @@ export function activityBlocks(input: { name: string; from: string; to: string; 
       cur = cur.pred ? byId.get(cur.pred) : undefined
     }
   }
+  return out
+}
+
+// ── The planned curve's shape ───────────────────────────────────────────────
+// F(x) = 1 − (1 − x)^k over the duration in force. k is calibrated on the
+// original programme (R01) so that F matches what the activities plan for
+// today, then stretched over the effective duration — an extension moves the
+// whole curve, not just its end. With no activities to calibrate on, k = 1:
+// the straight line PRD §8 reads the delay on.
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+
+/** Planned %, 0…100, at a share x of the duration. */
+export const planF = (x: number, k: number) => 100 * (1 - Math.pow(1 - clamp01(x), k))
+
+/** The shape that makes F(elapsed share) equal the planned % today. */
+export function curveK(plannedToday: number, elapsedShare: number): number {
+  const x0 = Math.min(0.999, elapsedShare)
+  const p0 = plannedToday / 100
+  if (!(x0 > 0) || !(p0 > 0) || p0 >= 1) return 1
+  return Math.max(0.4, Math.min(6, Math.log(1 - p0) / Math.log(1 - x0)))
+}
+
+/** What the activities plan for today, by the value of their items; null when none carries a priced item. */
+export function activitiesPlanned(acts: Array<Pick<PmActivity, "from" | "to" | "itemIds">>, items: Array<{ id: string; quantity: number; rate: number }>, today: string): number | null {
+  let total = 0
+  let planned = 0
+  for (const a of acts) {
+    const v = items.filter((i) => a.itemIds.includes(i.id) && i.rate > 0).reduce((s, i) => s + i.quantity * i.rate, 0)
+    total += v
+    planned += v * (activityPlanned(a, today) / 100)
+  }
+  return total > 0 ? r1((planned / total) * 100) : null
+}
+
+/** k for a project: calibrated on R01 from its activities, else linear. */
+export function programmeK(input: { acts: Array<Pick<PmActivity, "from" | "to" | "itemIds">>; items: Array<{ id: string; quantity: number; rate: number }>; startOn: string | null; durationDays: number; today: string }): number {
+  if (!input.startOn || input.durationDays <= 0) return 1
+  const p0 = activitiesPlanned(input.acts, input.items, input.today)
+  if (p0 === null) return 1
+  return curveK(p0, (dayNum(input.today) - dayNum(input.startOn)) / input.durationDays)
+}
+
+/** A planned line as points (day index → %), for drawing. */
+export function plannedLine(durationDays: number, k: number): Array<[number, number]> {
+  if (durationDays <= 0) return []
+  const step = Math.max(3, Math.round(durationDays / 70))
+  const out: Array<[number, number]> = []
+  for (let t = 0; t < durationDays; t += step) out.push([t, r1(planF(t / durationDays, k))])
+  out.push([durationDays, 100])
   return out
 }

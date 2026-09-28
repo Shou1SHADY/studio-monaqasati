@@ -203,6 +203,12 @@ describe("draftPurchaseOrder — the award's facts", () => {
     expect(big.basis).toBe("direct")
     expect(big.shortCompetition).toBe(true)
   })
+
+  it("an order the purchasing manager prepared goes to the owner, whatever its value", () => {
+    const mgr = actorOf({ uid: "mgr", name: "Hind", canApprove: true })
+    expect(draftPurchaseOrder(mgr, { rfq, offer, offers: [offer], policies: DEFAULT_POLICIES }, NOW).approverKind).toBe("owner")
+    expect(draftPurchaseOrder(buyer, { rfq, offer, offers: [offer], policies: DEFAULT_POLICIES }, NOW).approverKind).toBe("manager")
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -612,10 +618,12 @@ describe("retroactive order", () => {
     expect(po(r.id)).toMatchObject({ basis: "retroactive", approverKind: "owner", status: "awaiting_approval", isGuestSupplier: true, supplierOrgId: "guest", totalExVat: 720 })
     expect(po(r.id).lines[0]).toMatchObject({ id: "l1", quantity: 40, accepted: 40, unitPrice: 18 })
     expect(readDoc<{ poId: string; poNumber: string }>("deliveries/d9")).toMatchObject({ poId: r.id, poNumber: r.docNumber })
-    // A preparer without deliveries.confirm raises the order but leaves the link for later.
-    const r2 = await retroactivePurchaseOrder(db, buyer, { organizationId: ORG, rfqTitle: "x", supplierName: "y", lines: [], totalExVat: 0, deliveryId: "d9", reason: "r" })
-    expect(r2.deliveryLinked).toBe(false)
+    // Regularising is Procurement's: a preparer without deliveries.confirm stamps the receipt too (S-13).
+    seed("deliveries/d10", { contractorOrgId: ORG, status: "confirmed", source: "manual" })
+    const r2 = await retroactivePurchaseOrder(db, buyer, { organizationId: ORG, rfqTitle: "x", supplierName: "y", lines: [], totalExVat: 0, deliveryId: "d10", reason: "r" })
+    expect(r2.deliveryLinked).toBe(true)
     expect(r2.docNumber).toBe("PO-2026/002")
+    expect(readDoc<{ poId: string; regularisedByName: string }>("deliveries/d10")).toMatchObject({ poId: r2.id, regularisedByName: buyer.name })
     // Only the owner approves a retroactive order.
     await expect(approvePurchaseOrder(db, approver, r.id, { policies: MANUAL_SEND })).rejects.toMatchObject({ code: "owner_only" })
   })

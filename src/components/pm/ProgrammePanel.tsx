@@ -10,7 +10,6 @@ import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { collection } from "firebase/firestore"
 import { CalendarClock, CalendarRange, Clock, FileClock, ListChecks, Loader2, Pencil, Plus, TrendingUp } from "lucide-react"
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,8 +36,12 @@ import {
   criticalPath,
   effectiveDuration,
   PM_ACTIVITIES,
+  planF,
+  plannedLine,
+  programmeK,
   programmeRevisions,
   progressCurve,
+  type CurvePoint,
   type ActivityState,
   type PmActivity,
 } from "@/lib/pm/programme"
@@ -48,9 +51,23 @@ import type { ContractTerms } from "@/lib/pm/terms"
 import { approvedValue, PM_VARIATIONS, type PmVariation } from "@/lib/pm/variation"
 import { cn } from "@/lib/utils"
 
-type Item = { id: string; code?: string; description?: string; division?: string; quantity: number; rate: number; executed: number }
+type Item = {
+  id: string
+  code?: string
+  description?: string
+  division?: string
+  quantity: number
+  rate: number
+  executed: number
+}
 
-const STATE_TONE: Record<ActivityState, PillTone> = { done: "ok", run: "info", late: "bad", soon: "mute", idle: "warn" }
+const STATE_TONE: Record<ActivityState, PillTone> = {
+  done: "ok",
+  run: "info",
+  late: "bad",
+  soon: "mute",
+  idle: "warn",
+}
 
 export function ProgrammePanel({
   projectId,
@@ -62,6 +79,7 @@ export function ProgrammePanel({
   items,
   access,
   actor,
+  showActivities = true,
 }: {
   projectId: string
   lifecycle: string
@@ -72,6 +90,8 @@ export function ProgrammePanel({
   items: Item[]
   access: PmAccess
   actor: ActivityActor
+  /** The detailed schedule section (`sched`): activities show only when it is on. */
+  showActivities?: boolean
 }) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
@@ -97,16 +117,53 @@ export function ProgrammePanel({
   const start = startOn ? startOn.slice(0, 10) : null
   const contractValue = baseValue + approvedValue((vos ?? []) as unknown as PmVariation[])
   const progress = progressOf(items)
-  const delay = delayAndDamages({ lifecycle, startOn: start, effectiveDays: effective, progress, contractValue, damages: terms.damages, today })
-  const revisions = programmeRevisions({ durationDays, startOn: start, claims })
+  const actsRaw = useMemo(() => (actData ?? []) as unknown as PmActivity[], [actData])
+  const k = useMemo(() => programmeK({ acts: actsRaw, items, startOn: start, durationDays, today }), [actsRaw, items, start, durationDays, today])
+  const delayBase = {
+    lifecycle,
+    startOn: start,
+    progress,
+    contractValue,
+    damages: terms.damages,
+    today,
+    curveK: k,
+  }
+  const delay = delayAndDamages({ ...delayBase, effectiveDays: effective })
+  const delayOnOriginal = effective > durationDays ? delayAndDamages({ ...delayBase, effectiveDays: durationDays }) : null
+  const revisions = programmeRevisions({
+    durationDays,
+    startOn: start,
+    claims,
+  })
   const current = revisions[revisions.length - 1]
   const rateById = useMemo(() => new Map(items.map((i) => [i.id, i.rate])), [items])
   const curve = useMemo(
-    () => progressCurve({ startOn: start, effectiveDays: effective, contractValue: items.reduce((a, i) => a + (i.rate > 0 ? i.quantity * i.rate : 0), 0), sheets: (sheetData ?? []) as unknown as PmSheet[], rateOf: (id) => rateById.get(id) ?? 0, today }),
-    [start, effective, items, sheetData, rateById, today]
+    () =>
+      progressCurve({
+        startOn: start,
+        effectiveDays: effective,
+        contractValue: items.reduce((a, i) => a + (i.rate > 0 ? i.quantity * i.rate : 0), 0),
+        sheets: (sheetData ?? []) as unknown as PmSheet[],
+        rateOf: (id) => rateById.get(id) ?? 0,
+        today,
+        k,
+      }),
+    [start, effective, items, sheetData, rateById, today, k],
   )
-  const sections = useMemo(() => sectionRows(items.map((i) => ({ division: i.division || "", quantity: i.quantity, rate: i.rate, executed: i.executed })), delay?.planned ?? null), [items, delay?.planned])
-  const acts = useMemo(() => ((actData ?? []) as unknown as PmActivity[]).slice().sort((a, b) => a.from.localeCompare(b.from) || a.seq - b.seq), [actData])
+  const sections = useMemo(
+    () =>
+      sectionRows(
+        items.map((i) => ({
+          division: i.division || "",
+          quantity: i.quantity,
+          rate: i.rate,
+          executed: i.executed,
+        })),
+        delay?.planned ?? null,
+      ),
+    [items, delay?.planned],
+  )
+  const acts = useMemo(() => actsRaw.slice().sort((a, b) => a.from.localeCompare(b.from) || a.seq - b.seq), [actsRaw])
   const critical = useMemo(() => criticalPath(acts), [acts])
   const canManage = !access.ctx.archived && access.allowed("programme.manage")
   const [editing, setEditing] = useState<PmActivity | "new" | null>(null)
@@ -115,7 +172,20 @@ export function ProgrammePanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Tile icon={CalendarClock} label={t("prg.in_force")} value={t("days", { count: effective })} note={start ? t("prg.ends", { rev: `R${current.rev}`, date: pmDate(current.endOn || "", locale), eot: effective - durationDays }) : t("prg.not_started")} />
+        <Tile
+          icon={CalendarClock}
+          label={t("prg.in_force")}
+          value={t("days", { count: effective })}
+          note={
+            start
+              ? t("prg.ends", {
+                  rev: `R${current.rev}`,
+                  date: pmDate(current.endOn || "", locale),
+                  eot: effective - durationDays,
+                })
+              : t("prg.not_started")
+          }
+        />
         <Tile
           icon={TrendingUp}
           label={t("prg.plan_vs_actual")}
@@ -132,31 +202,43 @@ export function ProgrammePanel({
         />
       </div>
 
+      {money && terms.damages.on && delay && delayOnOriginal && delayOnOriginal.damages > delay.damages && (
+        <Callout tone="info" title={t("prg.eot_counts_title")}>
+          {t("prg.eot_counts", {
+            eot: t("days", { count: effective - durationDays }),
+            now: pmMoney(delay.damages),
+            was: pmMoney(delayOnOriginal.damages),
+            diff: pmMoney(delayOnOriginal.damages - delay.damages),
+          })}
+        </Callout>
+      )}
+
       <Panel title={t("prg.curve_title")} icon={TrendingUp}>
-        {curve.length < 2 ? (
+        {curve.length < 2 || lifecycle === "plan" ? (
           <p className="text-sm text-muted-foreground">{t("prg.curve_empty")}</p>
         ) : (
           <>
-            <div className="h-64 w-full" dir="ltr">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={curve} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="day" tickFormatter={(d: string) => pmDate(d, locale)} fontSize={11} />
-                  <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} fontSize={11} width={40} />
-                  <Tooltip formatter={(v: number) => `${v}%`} labelFormatter={(d: string) => pmDate(d, locale)} />
-                  <Line type="linear" dataKey="planned" name={t("prg.planned")} stroke="hsl(var(--muted-foreground))" strokeDasharray="5 4" dot={false} />
-                  <Line type="stepAfter" dataKey="actual" name={t("prg.actual")} stroke="hsl(var(--pm))" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{t("prg.curve_note")}</p>
+            <SCurve
+              points={curve}
+              effective={effective}
+              original={revisions.length > 1 ? durationDays : null}
+              k={k}
+              start={start ?? ""}
+              today={today}
+              planned={delay?.planned ?? null}
+              actual={progress}
+              rev={`R${current.rev}`}
+            />
+            <p className="mt-2 text-xs text-muted-foreground">{k === 1 ? t("prg.curve_note") : t("prg.curve_note_k")}</p>
             <details className="mt-2">
               <summary className="cursor-pointer text-xs font-semibold text-cta">{t("prg.as_table")}</summary>
               <table className="mt-2 w-full text-sm">
                 <thead className="text-xs text-muted-foreground">
                   <tr>
                     <th className="py-1 text-start font-semibold">{t("prg.date")}</th>
-                    <th className="py-1 text-end font-semibold">{t("prg.planned")}</th>
+                    <th className="py-1 text-end font-semibold">
+                      {t("prg.planned")} R{current.rev}
+                    </th>
                     <th className="py-1 text-end font-semibold">{t("prg.actual")}</th>
                   </tr>
                 </thead>
@@ -164,8 +246,12 @@ export function ProgrammePanel({
                   {curve.map((p) => (
                     <tr key={p.day}>
                       <td className="py-1">{pmDate(p.day, locale)}</td>
-                      <td className="py-1 text-end tabular-nums" dir="ltr">{p.planned}%</td>
-                      <td className="py-1 text-end tabular-nums" dir="ltr">{p.actual == null ? "—" : `${p.actual}%`}</td>
+                      <td className="py-1 text-end tabular-nums" dir="ltr">
+                        {p.planned}%
+                      </td>
+                      <td className="py-1 text-end tabular-nums" dir="ltr">
+                        {p.actual == null ? "—" : `${p.actual}%`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -189,7 +275,12 @@ export function ProgrammePanel({
                     <StatusPill tone={i === 0 ? "ok" : "mute"}>{i === 0 ? t("prg.rev_in_force") : t("prg.rev_superseded")}</StatusPill>
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {r.claimSeq == null ? t("prg.rev_original") : t("prg.rev_claim", { no: claimNo(r.claimSeq), days: r.granted })}
+                    {r.claimSeq == null
+                      ? t("prg.rev_original")
+                      : t("prg.rev_claim", {
+                          no: claimNo(r.claimSeq),
+                          days: r.granted,
+                        })}
                     {r.on ? ` · ${pmDate(r.on, locale)}` : ""}
                   </p>
                 </div>
@@ -204,15 +295,29 @@ export function ProgrammePanel({
 
       {sections.length > 0 && (
         <Panel title={t("prg.sections_title")} icon={ListChecks} bodyClassName="p-0">
-          <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("prg.sections_desc", { planned: delay?.planned ?? 0, rev: `R${current.rev}` })}</p>
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+            {t("prg.sections_desc", {
+              planned: delay?.planned ?? 0,
+              rev: `R${current.rev}`,
+            })}
+          </p>
           <ul className="divide-y">
             {sections.map((s) => (
               <li key={s.division} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">{s.division}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold" dir="auto">
+                  {s.division}
+                </span>
                 <div className="h-1.5 w-32 overflow-hidden rounded-full bg-muted sm:w-48">
-                  <div className={cn("h-full rounded-full", s.deviation < -6 ? "bg-destructive" : s.deviation < -2 ? "bg-warning" : "bg-success")} style={{ width: `${Math.min(100, Math.max(0, s.progress))}%` }} />
+                  <div
+                    className={cn("h-full rounded-full", s.deviation < -6 ? "bg-destructive" : s.deviation < -2 ? "bg-warning" : "bg-success")}
+                    style={{
+                      width: `${Math.min(100, Math.max(0, s.progress))}%`,
+                    }}
+                  />
                 </div>
-                <span className="w-12 text-end text-xs font-bold tabular-nums" dir="ltr">{Math.round(s.progress)}%</span>
+                <span className="w-12 text-end text-xs font-bold tabular-nums" dir="ltr">
+                  {Math.round(s.progress)}%
+                </span>
                 <span className={cn("w-10 text-end text-xs font-bold tabular-nums", s.deviation < -4 ? "text-destructive" : s.deviation > 2 ? "text-success" : "text-muted-foreground")} dir="ltr">
                   {s.deviation >= 0 ? "+" : ""}
                   {Math.round(s.deviation)}
@@ -225,28 +330,135 @@ export function ProgrammePanel({
 
       <Callout tone="info">{t("prg.no_edit_note")}</Callout>
 
-      <Panel
-        title={t("prg.acts_title")}
-        icon={CalendarRange}
-        count={acts.length || undefined}
-        actions={
-          canManage ? (
-            <Button size="sm" className="gap-1.5 bg-module text-module-foreground hover:bg-module/90" onClick={() => setEditing("new")}>
-              <Plus size={14} aria-hidden="true" /> {t("prg.act_add")}
-            </Button>
-          ) : undefined
-        }
-        bodyClassName="p-0"
-      >
-        <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("prg.acts_desc")}</p>
-        {acts.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("prg.acts_empty")}</p>
-        ) : (
-          <ActivityRows acts={acts} items={items} critical={critical} today={today} canManage={canManage} onEdit={setEditing} />
-        )}
-      </Panel>
+      {showActivities && (
+        <Panel
+          title={t("prg.acts_title")}
+          icon={CalendarRange}
+          count={acts.length || undefined}
+          actions={
+            canManage ? (
+              <Button size="sm" className="gap-1.5 bg-module text-module-foreground hover:bg-module/90" onClick={() => setEditing("new")}>
+                <Plus size={14} aria-hidden="true" /> {t("prg.act_add")}
+              </Button>
+            ) : undefined
+          }
+          bodyClassName="p-0"
+        >
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground">{t("prg.acts_desc")}</p>
+          {acts.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("prg.acts_empty")}</p>
+          ) : (
+            <ActivityRows acts={acts} items={items} critical={critical} today={today} canManage={canManage} onEdit={setEditing} />
+          )}
+        </Panel>
+      )}
 
       {editing && <ActivityDialog projectId={projectId} access={access} actor={actor} items={items} acts={acts} editing={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
+    </div>
+  )
+}
+
+const W = 640
+const H = 236
+const L = 38
+const R = 14
+const T = 16
+const B = 30
+
+/** Planned (in force, and R01 dashed once extended) against actual, with today's line (the prototype's sCurve). */
+function SCurve({
+  points,
+  effective,
+  original,
+  k,
+  start,
+  today,
+  planned,
+  actual,
+  rev,
+}: {
+  points: CurvePoint[]
+  effective: number
+  original: number | null
+  k: number
+  start: string
+  today: string
+  planned: number | null
+  actual: number | null
+  rev: string
+}) {
+  const t = useTranslations("Portal.PM")
+  const locale = useLocale()
+  const dayOf = (d: string) => Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000)
+  const span = Math.max(effective, original ?? 0) + 6
+  const X = (d: number) => L + (d / span) * (W - L - R)
+  const Y = (v: number) => T + (1 - v / 100) * (H - T - B)
+  const line = (dur: number) =>
+    plannedLine(dur, k)
+      .map(([d, v]) => `${X(d).toFixed(1)},${Y(v).toFixed(1)}`)
+      .join(" ")
+  const act = points.filter((p) => p.actual !== null).map((p) => [dayOf(p.day), p.actual as number] as const)
+  const now = Math.max(0, dayOf(today))
+  const gap = planned !== null && actual !== null ? planned - actual : 0
+  const ticks: number[] = []
+  const stepDays = Math.max(30, Math.round(span / 7 / 30) * 30)
+  for (let d = 0; d <= span; d += stepDays) ticks.push(d)
+  const dayLabel = (d: number) => pmDate(new Date(Date.parse(`${start}T00:00:00Z`) + d * 86_400_000).toISOString().slice(0, 10), locale)
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block h-0.5 w-4 bg-pm" aria-hidden="true" />
+          {t("prg.legend_planned", { rev })}
+        </span>
+        {original !== null && (
+          <span className="flex items-center gap-1.5">
+            <i className="inline-block w-4 border-t-2 border-dashed border-muted-foreground" aria-hidden="true" />
+            {t("prg.legend_r01")}
+          </span>
+        )}
+        <span className="flex items-center gap-1.5">
+          <i className="inline-block h-0.5 w-4 bg-warning" aria-hidden="true" />
+          {t("prg.legend_actual")}
+        </span>
+      </div>
+      <div dir="ltr">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={t("prg.curve_aria")} className="block h-auto w-full">
+          {[0, 25, 50, 75, 100].map((v) => (
+            <g key={v}>
+              <line x1={L} x2={W - R} y1={Y(v)} y2={Y(v)} className="stroke-muted" strokeWidth={1} />
+              <text x={L - 6} y={Y(v) + 3.5} textAnchor="end" fontSize={10} className="fill-muted-foreground">
+                {v}%
+              </text>
+            </g>
+          ))}
+          {ticks.map((d) => (
+            <text key={d} x={X(d)} y={H - 10} textAnchor="middle" fontSize={10} className="fill-muted-foreground">
+              {dayLabel(d)}
+            </text>
+          ))}
+          {original !== null && <polyline points={line(original)} fill="none" className="stroke-muted-foreground" strokeWidth={1.5} strokeDasharray="4 4" />}
+          <polyline points={line(effective)} fill="none" className="stroke-pm" strokeWidth={2} />
+          <polyline points={act.map(([d, v]) => `${X(d).toFixed(1)},${Y(v).toFixed(1)}`).join(" ")} fill="none" className="stroke-warning" strokeWidth={2} />
+          {act.slice(1).map(([d, v]) => (
+            <circle key={`${d}-${v}`} cx={X(d)} cy={Y(v)} r={4} className="fill-warning stroke-background" strokeWidth={2}>
+              <title>{`${dayLabel(d)} · ${t("prg.planned")} ${Math.round(planF(d / effective, k))}% · ${t("prg.actual")} ${v}%`}</title>
+            </circle>
+          ))}
+          <line x1={X(now)} x2={X(now)} y1={T} y2={H - B} className="stroke-foreground/60" strokeWidth={1} strokeDasharray="2 3" />
+          <text x={X(now) + 5} y={T + 9} fontSize={10} fontWeight={700} className="fill-foreground/70">
+            {t("prg.today")}
+          </text>
+          {planned !== null && actual !== null && gap > 1 && (
+            <g>
+              <line x1={X(now)} x2={X(now)} y1={Y(planned)} y2={Y(actual)} className="stroke-foreground" strokeWidth={2} />
+              <text x={X(now) + 6} y={(Y(planned) + Y(actual)) / 2 + 3.5} fontSize={10.5} fontWeight={700} className="fill-foreground">
+                {t("prg.behind_short", { pts: Math.round(gap) })}
+              </text>
+            </g>
+          )}
+        </svg>
+      </div>
     </div>
   )
 }
@@ -265,7 +477,21 @@ function Tile({ icon: Icon, label, value, note, bad }: { icon: typeof Clock; lab
   )
 }
 
-function ActivityRows({ acts, items, critical, today, canManage, onEdit }: { acts: PmActivity[]; items: Item[]; critical: Set<string>; today: string; canManage: boolean; onEdit: (a: PmActivity) => void }) {
+function ActivityRows({
+  acts,
+  items,
+  critical,
+  today,
+  canManage,
+  onEdit,
+}: {
+  acts: PmActivity[]
+  items: Item[]
+  critical: Set<string>
+  today: string
+  canManage: boolean
+  onEdit: (a: PmActivity) => void
+}) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const lo = acts.reduce((m, a) => (a.from < m ? a.from : m), today < acts[0].from ? today : acts[0].from)
@@ -293,20 +519,41 @@ function ActivityRows({ acts, items, critical, today, canManage, onEdit }: { act
               </p>
               <p className="text-xs text-muted-foreground" dir="auto">
                 {pmDate(a.from, locale)} — {pmDate(a.to, locale)}
-                {a.itemIds.length > 0 && ` · ${a.itemIds.map((id) => codeOf.get(id) || "").filter(Boolean).join(" · ")}`}
+                {a.itemIds.length > 0 &&
+                  ` · ${a.itemIds
+                    .map((id) => codeOf.get(id) || "")
+                    .filter(Boolean)
+                    .join(" · ")}`}
               </p>
               <div className="relative mt-2 h-2 rounded-full bg-muted" dir="ltr">
                 <span className="absolute inset-y-0 rounded-full bg-pm/25" style={{ left: `${left}%`, width: `${width}%` }} />
-                <span className="absolute inset-y-0 rounded-full bg-pm" style={{ left: `${left}%`, width: `${width * Math.min(1, (pc ?? 0) / 100)}%` }} />
+                <span
+                  className="absolute inset-y-0 rounded-full bg-pm"
+                  style={{
+                    left: `${left}%`,
+                    width: `${width * Math.min(1, (pc ?? 0) / 100)}%`,
+                  }}
+                />
                 <span className="absolute -inset-y-1 w-px bg-destructive" style={{ left: `${pos(today)}%` }} aria-hidden="true" />
               </div>
-              {st === "late" && <p className="mt-1 text-xs font-semibold text-destructive">{next.length ? t("prg.act_late_blocks", { pts: Math.round(plan - (pc ?? 0)), names: next.map((n) => n.name).join(" · ") }) : t("prg.act_late", { pts: Math.round(plan - (pc ?? 0)) })}</p>}
+              {st === "late" && (
+                <p className="mt-1 text-xs font-semibold text-destructive">
+                  {next.length
+                    ? t("prg.act_late_blocks", {
+                        pts: Math.round(plan - (pc ?? 0)),
+                        names: next.map((n) => n.name).join(" · "),
+                      })
+                    : t("prg.act_late", { pts: Math.round(plan - (pc ?? 0)) })}
+                </p>
+              )}
               {st === "idle" && <p className="mt-1 text-xs font-semibold text-amber-600">{t("prg.act_idle", { date: pmDate(a.from, locale) })}</p>}
               {pc == null && <p className="mt-1 text-xs text-muted-foreground">{t("prg.act_no_items")}</p>}
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <StatusPill tone={STATE_TONE[st]}>{t(`prg.state.${st}`)}</StatusPill>
-              <span className="text-xs font-bold tabular-nums" dir="ltr">{pc == null ? "—" : `${pc}%`}</span>
+              <span className="text-xs font-bold tabular-nums" dir="ltr">
+                {pc == null ? "—" : `${pc}%`}
+              </span>
               <span className="text-[11px] text-muted-foreground">{t("prg.act_plan", { pc: plan })}</span>
               {canManage && (
                 <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => onEdit(a)} aria-label={t("prg.act_edit")}>
@@ -323,7 +570,23 @@ function ActivityRows({ acts, items, critical, today, canManage, onEdit }: { act
 
 const NONE = "__none__"
 
-function ActivityDialog({ projectId, access, actor, items, acts, editing, onClose }: { projectId: string; access: PmAccess; actor: ActivityActor; items: Item[]; acts: PmActivity[]; editing: PmActivity | null; onClose: () => void }) {
+function ActivityDialog({
+  projectId,
+  access,
+  actor,
+  items,
+  acts,
+  editing,
+  onClose,
+}: {
+  projectId: string
+  access: PmAccess
+  actor: ActivityActor
+  items: Item[]
+  acts: PmActivity[]
+  editing: PmActivity | null
+  onClose: () => void
+}) {
   const t = useTranslations("Portal.PM")
   const locale = useLocale()
   const firestore = useFirestore()
@@ -336,21 +599,39 @@ function ActivityDialog({ projectId, access, actor, items, acts, editing, onClos
   const [pred, setPred] = useState<string>(editing?.pred ?? NONE)
   const [filter, setFilter] = useState("")
   const [busy, setBusy] = useState(false)
-  const blocks = activityBlocks({ id: editing?.id ?? null, name, from, to, pred: pred === NONE ? null : pred }, acts)
+  const blocks = activityBlocks(
+    {
+      id: editing?.id ?? null,
+      name,
+      from,
+      to,
+      pred: pred === NONE ? null : pred,
+    },
+    acts,
+  )
   const shown = items.filter((i) => !filter.trim() || `${i.code} ${i.description}`.toLowerCase().includes(filter.trim().toLowerCase()))
 
   const save = async () => {
     if (!firestore || blocks.length) return
     setBusy(true)
     try {
-      const input = { name, from, to, itemIds: picked, pred: pred === NONE ? null : pred }
+      const input = {
+        name,
+        from,
+        to,
+        itemIds: picked,
+        pred: pred === NONE ? null : pred,
+      }
       if (editing) await updateActivity(firestore, access.ctx, projectId, editing.id, input)
       else await addActivity(firestore, access.ctx, projectId, actor, input)
       toast({ title: t("prg.act_saved") })
       onClose()
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmActivityError && err.blocks[0] ? `prg.block.${err.blocks[0]}` : "error.save"), variant: "destructive" })
+      toast({
+        title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmActivityError && err.blocks[0] ? `prg.block.${err.blocks[0]}` : "error.save"),
+        variant: "destructive",
+      })
     } finally {
       setBusy(false)
     }
@@ -404,8 +685,12 @@ function ActivityDialog({ projectId, access, actor, items, acts, editing, onClos
                 <li key={i.id}>
                   <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/40">
                     <input type="checkbox" checked={picked.includes(i.id)} onChange={(e) => setPicked((p) => (e.target.checked ? [...p, i.id] : p.filter((x) => x !== i.id)))} />
-                    <span className="font-mono" dir="ltr">{i.code}</span>
-                    <span className="truncate" dir="auto">{i.description}</span>
+                    <span className="font-mono" dir="ltr">
+                      {i.code}
+                    </span>
+                    <span className="truncate" dir="auto">
+                      {i.description}
+                    </span>
                   </label>
                 </li>
               ))}

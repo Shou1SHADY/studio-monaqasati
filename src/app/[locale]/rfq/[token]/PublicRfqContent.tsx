@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { EMPTY_OFFER_TERMS, OfferTermsFields, type OfferTermsValue } from "@/components/procurement/OfferTermsFields"
+import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { useParams } from "next/navigation"
 import { useTranslations, useLocale } from "next-intl"
 import { useForm } from "react-hook-form"
@@ -98,6 +100,8 @@ type OfferFormValues = z.infer<typeof offerSchema>
 const MAX_PDF_BYTES = 10 * 1024 * 1024
 
 export function PublicRfqContent() {
+  const tTerms = useTranslations("Portal.Procurement")
+  const [terms, setTerms] = useState<OfferTermsValue>(EMPTY_OFFER_TERMS)
   const params = useParams()
   const token = params.token as string
   const t = useTranslations("PublicRfq")
@@ -189,8 +193,14 @@ export function PublicRfqContent() {
       toast({ title: t("invalid_price"), description: t("line_prices_incomplete"), variant: "destructive" })
       return
     }
+    const parsedTerms = parseOfferTerms(terms, new Date().toISOString().slice(0, 10))
+    if (parsedTerms.error) {
+      toast({ title: tTerms(`rfqpo.terms.err_${parsedTerms.error}`), variant: "destructive" })
+      return
+    }
     try {
       const form = new FormData()
+      for (const [k, v] of Object.entries(parsedTerms.terms)) form.set(k, String(v))
       form.set("companyName", values.companyName)
       form.set("contactName", values.contactName)
       form.set("email", values.email)
@@ -754,6 +764,8 @@ export function PublicRfqContent() {
                         </div>
                       </div>
                     </div>
+
+                    <OfferTermsFields value={terms} onChange={setTerms} idPrefix="guest-offer-terms" />
 
                     {/* Delivery */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

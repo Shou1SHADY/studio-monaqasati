@@ -3,23 +3,47 @@
 // — the closeout list plus the open money — and freeze the same final
 // snapshot, never recomputed; the project then leaves every live figure and
 // accepts no change from anyone. (The first door once skipped the money and
-// froze nothing.) Money and custody block; paperwork warns (S-08). Open NCRs
-// and priced variations still undecided join the list; the project store and
-// subcontractors join when those sections are built. Pure: no I/O.
+// froze nothing.) Every row blocks — the prototype's closeRows are the archive
+// gate (archBlock). Open NCRs, priced variations still undecided, stock left in
+// the project store, subcontractor dues (SC-04: any amount certified and not
+// paid, or a sub certificate still awaiting approval) and letters with no reply
+// all join the list. The store and subcontractor rows appear only when the
+// caller passes their facts (the section is on, or something is there). Pure.
 
 import type { Acceptances } from "./acceptance"
 import type { CertificateStatus } from "./certificate"
+import { isLetterOpen } from "./correspondence"
 import { isOpenNcr, type NcrStatus } from "./ncr"
 import { isOpenPunch, type PunchStatus } from "./punch"
+import { awaitingSubCertificates, subSummaries, type PmSubcontract, type SubCertStatus } from "./subcontract"
 import { pricedPending, type VoStatus } from "./variation"
 
-export type CloseRowKey = "punch" | "ncr" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention" | "vo_pending"
+export type CloseRowKey = "punch" | "ncr" | "store" | "prov" | "final" | "unpriced" | "unbilled" | "in_progress" | "overdue" | "retention" | "vo_pending" | "subs" | "corr"
 
 export interface CloseRow {
   key: CloseRowKey
   ok: boolean
   /** A count or an amount for the sentence. */
   n?: number
+  /** subs: sub certificates still awaiting approval. */
+  m?: number
+}
+
+/** The screen that settles each row — the row opens it (prototype `go`). */
+export const CLOSE_ROW_TAB: Record<CloseRowKey, string> = {
+  punch: "pmQa",
+  ncr: "pmQa",
+  store: "pmStore",
+  prov: "pmClose",
+  final: "pmClose",
+  unpriced: "boq",
+  unbilled: "ipc",
+  in_progress: "ipc",
+  overdue: "ipc",
+  retention: "ipc",
+  vo_pending: "pmVo",
+  subs: "pmSubs",
+  corr: "pmCorr",
 }
 
 export interface CloseInput {
@@ -36,10 +60,17 @@ export interface CloseInput {
   retentionHeld: number
   /** Set by Finance when the retention has been released to us. */
   retentionReleased: boolean
+  /** Lines with stock left in the project store; null = the store is not in play. */
+  storeLines?: number | null
+  /** Subcontractor dues; null = no subcontracts and the section is off. */
+  subs?: { due: number; pending: number } | null
+  /** Formal letters — one still open (sent or received, no reply) blocks. */
+  letters?: Array<{ status: "out" | "in" | "rep" | "done" }> | null
   today: string
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100
+const days = (from: string, to: string) => Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
 
 /** The closeout list (WF-26): every row must hold for the project to close. */
 export function closeoutRows(input: CloseInput): CloseRow[] {
@@ -49,11 +80,14 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
   const rows: CloseRow[] = [
     { key: "punch", ok: open === 0, n: open },
     { key: "ncr", ok: openNcr === 0, n: openNcr },
+  ]
+  if (input.storeLines != null) rows.push({ key: "store", ok: input.storeLines === 0, n: input.storeLines })
+  rows.push(
     { key: "prov", ok: Boolean(input.acceptances.prov) },
     { key: "final", ok: Boolean(input.acceptances.final) },
     // Executed but unpriced: closing means giving it up — decided, not slipped past (CON-04).
-    { key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted },
-  ]
+    { key: "unpriced", ok: unpricedExecuted === 0, n: unpricedExecuted }
+  )
   if (input.hasClient) {
     const unbilled = r2(input.items.reduce((a, i) => a + (i.rate > 0 ? Math.max(0, i.executed - i.billed) * i.rate : 0), 0) + input.cutPool)
     const inProgress = input.certificates.filter((c) => c.status === "int" || c.status === "sub").length
@@ -71,7 +105,49 @@ export function closeoutRows(input: CloseInput): CloseRow[] {
     const pending = pricedPending(input.variations ?? [])
     rows.push({ key: "vo_pending", ok: pending.length === 0, n: pending.length })
   }
+  if (input.subs) {
+    const due = r2(Math.max(0, input.subs.due))
+    rows.push({ key: "subs", ok: due <= 0.5 && input.subs.pending === 0, n: due, m: input.subs.pending })
+  }
+  if (input.letters) {
+    const openLetters = input.letters.filter(isLetterOpen).length
+    rows.push({ key: "corr", ok: openLetters === 0, n: openLetters })
+  }
   return rows
+}
+
+/** SC-04: what is still owed to subcontractors — certified and not paid (each
+ * party above half a riyal) — and their certificates still awaiting approval. */
+export function subDues(contracts: PmSubcontract[], certificates: Array<{ status: SubCertStatus }>): { due: number; pending: number } {
+  const due = subSummaries(contracts).reduce((a, s) => a + (s.due > 0.5 ? s.due : 0), 0)
+  return { due: r2(due), pending: awaitingSubCertificates(certificates).length }
+}
+
+/** What the project taught, in numbers not opinions — they feed the next bid.
+ * Material lost waits for the project-store ledger: never an invented number. */
+export interface Lessons {
+  rework: number
+  ncrs: number
+  obstaclesClosed: number
+  /** Average days from opening to closing a closed obstacle; null when none closed. */
+  avgResponseDays: number | null
+  team: number
+}
+
+export function projectLessons(input: {
+  ncrs: Array<{ cost?: number | null }>
+  obstacles: Array<{ openOn: string; closeOn?: string | null }>
+  seats: number
+}): Lessons {
+  const closed = input.obstacles.filter((o) => o.closeOn)
+  const spans = closed.map((o) => Math.max(0, days(o.openOn, o.closeOn as string)))
+  return {
+    rework: r2(input.ncrs.reduce((a, n) => a + (Number(n.cost) || 0), 0)),
+    ncrs: input.ncrs.length,
+    obstaclesClosed: closed.length,
+    avgResponseDays: spans.length ? Math.round(spans.reduce((a, d) => a + d, 0) / spans.length) : null,
+    team: input.seats,
+  }
 }
 
 export const closeBlocks = (rows: CloseRow[]) => rows.filter((r) => !r.ok)
@@ -90,7 +166,6 @@ export interface ArchiveSnapshot {
   closedOn: string
 }
 
-const days = (from: string, to: string) => Math.round((Date.parse(`${to.slice(0, 10)}T00:00:00Z`) - Date.parse(`${from.slice(0, 10)}T00:00:00Z`)) / 86_400_000)
 
 export function archiveSnapshot(input: {
   contractValue: number

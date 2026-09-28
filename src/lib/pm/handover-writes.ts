@@ -11,6 +11,7 @@ import { advanceEvent, eventDocId, PM_EVENTS } from "./events"
 import {
   acceptBlocks,
   isSelfDevelopment,
+  mayActOnHandover,
   PM_HANDOVERS,
   reassignBlocks,
   returnBlocks,
@@ -31,6 +32,8 @@ export class PmHandoverError extends Error {
 export interface PmActor {
   uid: string
   name: string | null
+  /** The org owner may act on any waiting file, not only one addressed to them. */
+  owner?: boolean
 }
 
 type Notice = { title: string; message: string }
@@ -125,7 +128,7 @@ export async function sendHandoverFile(firestore: Firestore, input: SendHandover
 
 function mustAnswer(h: PmHandover | undefined, actor: PmActor): PmHandover {
   if (!h) throw new PmHandoverError("missing")
-  if (h.to !== actor.uid) throw new PmHandoverError("not_yours")
+  if (!mayActOnHandover({ uid: actor.uid, owner: Boolean(actor.owner) }, h)) throw new PmHandoverError("not_yours")
   if (h.status !== "wait") throw new PmHandoverError("not_waiting")
   return h
 }
@@ -177,14 +180,29 @@ export async function returnHandover(
   if (requester && requester !== actor.uid && input.notification) await notify(firestore, requester, { ...input.notification, type: "project_handover_rejected", pmHandoverId: handoverId })
 }
 
+/** A person seated by the acceptance, with their default group copied onto the seat. */
+export interface AcceptSeat {
+  uid: string
+  name: string | null
+  groupId: string | null
+}
+
 export interface AcceptInput {
   kind: ProjectKind
   location: string | null
   enabledSections: string[]
   terms?: ContractTerms
-  /** The accepting manager's default permission group, copied onto their seat. */
-  groupId: string | null
+  /** The project's manager — the acceptor by default; no project is born without one. */
+  manager: AcceptSeat
+  /** Optional: the site engineer, seated with the site role (it narrows, never widens). */
+  siteEngineer?: AcceptSeat | null
+  /** Reservations, assumptions, anything agreed verbally. */
+  note?: string | null
+  /** A site store for the project in Inventory, when the store section is on. */
+  store?: { name: string; centralWarehouseId: string | null } | null
   notification?: Notice
+  /** Told to the named manager when it is not the acceptor. */
+  managerNotification?: Notice
 }
 
 /**
@@ -194,8 +212,11 @@ export interface AcceptInput {
  * The BOQ is written by the wizard right after, as the new-project wizard does.
  */
 export async function acceptHandover(firestore: Firestore, actor: PmActor, handoverId: string, input: AcceptInput): Promise<{ projectId: string; projectNo: string }> {
+  if (!input.manager?.uid) throw new PmHandoverError("invalid")
   const hRef = doc(firestore, PM_HANDOVERS, handoverId)
   const projectRef = doc(collection(firestore, "projects"))
+  const storeRef = input.store ? doc(collection(firestore, "warehouses")) : null
+  const note = input.note?.trim() || null
   let projectNo = ""
   let file: PmHandover | null = null
 
@@ -227,8 +248,9 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
       sourceOpportunityId: h.opportunityId,
       pmHandoverId: h.id,
       contractNumber: h.contractNumber,
-      projectManagerId: actor.uid,
-      projectManagerName: actor.name,
+      projectManagerId: input.manager.uid,
+      projectManagerName: input.manager.name,
+      ...(storeRef ? { warehouseId: storeRef.id } : {}),
       pm: {
         no: projectNo,
         lifecycle: "plan",
@@ -239,29 +261,66 @@ export async function acceptHandover(firestore: Firestore, actor: PmActor, hando
         terms,
         original: null,
         startedAt: null,
+        acceptNote: note,
       },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     })
-    tx.update(hRef, { status: "acc", projectId: projectRef.id, acceptedAt: new Date().toISOString() })
-    tx.update(doc(firestore, CRM_OPPORTUNITIES, h.opportunityId), { projectId: projectRef.id, handoverStatus: "accepted", updatedAt: serverTimestamp() })
+    tx.update(hRef, { status: "acc", projectId: projectRef.id, acceptedAt: new Date().toISOString(), acceptedBy: actor.uid, acceptNote: note })
+    tx.update(doc(firestore, CRM_OPPORTUNITIES, h.opportunityId), {
+      projectId: projectRef.id,
+      handoverStatus: "accepted",
+      projectManagerId: input.manager.uid,
+      projectManagerName: input.manager.name,
+      updatedAt: serverTimestamp(),
+    })
     if (event) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
   })
 
-  // The seat follows the project, as the CRM handover did: a second write so the
-  // rules can read the project that now exists.
-  await setDoc(doc(firestore, "projects", projectRef.id, "members", actor.uid), {
-    userId: actor.uid,
-    groupId: input.groupId,
-    organizationId: (file as PmHandover | null)?.organizationId ?? null,
-    addedBy: actor.uid,
-    viaHandover: true,
-    pmRole: "pm",
-    off: [],
-    from: today(),
-    to: null,
-    createdAt: serverTimestamp(),
-  })
+  // The seats follow the project, as the CRM handover did: separate writes so
+  // the rules can read the project that now exists.
+  const orgId = (file as PmHandover | null)?.organizationId ?? null
+  const seat = (who: AcceptSeat, pmRole: "pm" | "site") =>
+    setDoc(doc(firestore, "projects", projectRef.id, "members", who.uid), {
+      userId: who.uid,
+      groupId: who.groupId,
+      organizationId: orgId,
+      addedBy: actor.uid,
+      viaHandover: true,
+      pmRole,
+      off: [],
+      from: today(),
+      to: null,
+      createdAt: serverTimestamp(),
+    })
+  await seat(input.manager, "pm")
+  if (input.siteEngineer && input.siteEngineer.uid !== input.manager.uid) {
+    try {
+      await seat(input.siteEngineer, "site")
+    } catch (err) {
+      console.error("Failed to seat the site engineer", err)
+    }
+  }
+  if (storeRef && input.store) {
+    try {
+      await setDoc(storeRef, {
+        name: input.store.name,
+        location: input.location ?? (file as PmHandover | null)?.location ?? null,
+        description: null,
+        organizationId: orgId,
+        centralWarehouseId: input.store.centralWarehouseId,
+        projectId: projectRef.id,
+        projectName: (file as PmHandover | null)?.title ?? null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      console.error("Failed to create the site store", err)
+    }
+  }
+  if (input.manager.uid !== actor.uid && input.managerNotification) {
+    await notify(firestore, input.manager.uid, { ...input.managerNotification, type: "project_manager_named", projectId: projectRef.id, link: `/contractor/projects/${projectRef.id}?tab=pmToday` })
+  }
   const requester = (file as PmHandover | null)?.requestedBy
   if (requester && requester !== actor.uid && input.notification) {
     await notify(firestore, requester, { ...input.notification, type: "project_handover_accepted", projectId: projectRef.id, pmHandoverId: handoverId })

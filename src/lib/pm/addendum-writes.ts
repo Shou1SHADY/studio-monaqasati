@@ -76,19 +76,27 @@ export async function readContract(tx: Transaction, firestore: Firestore, projec
 
 const stage = (project: ProjectData) => ({ lifecycle: lifecycleOf(project), archived: Boolean(project.pm) && lifecycleOf(project) === "closed" })
 
+export interface AddendumFile {
+  url: string
+  name: string
+}
+
 export interface DraftInput {
   /** The terms as they should read after this addendum. */
   next: ContractTerms
   reason: AddendumReason
   reasonText?: string | null
   note?: string | null
+  files?: AddendumFile[]
+  /** The approver records it as already signed — draft and signature in one step. */
+  signNow?: { signedOn: string; signatory?: string | null } | null
 }
 
 /** Draft an addendum: "awaiting signature" — the contract in force does not move. */
 export async function draftAddendum(firestore: Firestore, ctx: PmContext, projectId: string, actor: AddendumActor, input: DraftInput): Promise<number> {
   let seq = 0
   await runTransaction(firestore, async (tx) => {
-    const { pRef, project, pm, terms } = await readContract(tx, firestore, projectId)
+    const { pRef, project, pm, terms, addenda } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "addendum.draft")
     const blocks = draftBlocks({
       ...stage(project),
@@ -101,9 +109,24 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
     })
     if (blocks.length) throw new PmAddendumError("blocked", blocks)
     seq = (pm.addendaCount ?? 0) + 1
+    const signNow = input.signNow ?? null
+    if (signNow) {
+      assertPm(withFreshState(ctx, project), "addendum.sign")
+      const sBlocks = signBlocks({
+        ...stage(project),
+        addendum: { status: "draft", day: todayDay(), changes: termChanges(terms, input.next) },
+        terms,
+        signedOn: signNow.signedOn || null,
+        lastSignedOn: lastSignedOn(addenda),
+        today: todayDay(),
+        contractValue: project.budget ?? 0,
+        retentionHeld: pm.retentionHeld ?? 0,
+      })
+      if (sBlocks.length) throw new PmAddendumError("blocked", sBlocks)
+    }
+    const signedSeq = signNow ? (pm.signedCount ?? 0) + 1 : null
     const addendum: Omit<PmAddendum, "id"> = {
       seq,
-      status: "draft",
       day: todayDay(),
       by: actor.uid,
       byName: actor.name,
@@ -111,11 +134,13 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
       reasonText: input.reason === "other" ? input.reasonText?.trim() ?? null : null,
       changes: termChanges(terms, input.next),
       note: input.note?.trim() || null,
-      signedOn: null,
-      signedSeq: null,
-      signedBy: null,
-      signedByName: null,
-      signatory: null,
+      files: input.files ?? [],
+      status: signNow ? "signed" : "draft",
+      signedOn: signNow?.signedOn ?? null,
+      signedSeq,
+      signedBy: signNow ? actor.uid : null,
+      signedByName: signNow ? actor.name : null,
+      signatory: signNow?.signatory?.trim() || null,
       voidOn: null,
       voidBy: null,
       voidByName: null,
@@ -123,7 +148,11 @@ export async function draftAddendum(firestore: Firestore, ctx: PmContext, projec
       voidText: null,
     }
     tx.set(doc(firestore, "projects", projectId, PM_ADDENDA, addendumNo(seq)), { ...addendum, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
-    tx.update(pRef, { pm: { ...pm, addendaCount: seq }, updatedAt: serverTimestamp() })
+    tx.update(pRef, { pm: { ...pm, addendaCount: seq, ...(signedSeq ? { signedCount: signedSeq } : {}) }, updatedAt: serverTimestamp() })
+    if (signNow) {
+      const event = amendmentEvent({ organizationId: project.organizationId ?? "", projectId, projectNo: pm.no ?? projectId, addendum: { seq, changes: addendum.changes }, signedOn: signNow.signedOn, by: actor.uid, at: new Date().toISOString() })
+      if (event) tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
+    }
   })
   return seq
 }
@@ -136,7 +165,7 @@ export async function signAddendum(
   projectId: string,
   actor: AddendumActor,
   seq: number,
-  input: { signedOn: string; signatory?: string | null }
+  input: { signedOn: string; signatory?: string | null; files?: AddendumFile[] }
 ): Promise<void> {
   await runTransaction(firestore, async (tx) => {
     const { pRef, project, pm, addenda, terms } = await readContract(tx, firestore, projectId)
@@ -171,6 +200,7 @@ export async function signAddendum(
       signedBy: actor.uid,
       signedByName: actor.name,
       signatory: input.signatory?.trim() || null,
+      ...(input.files?.length ? { files: [...(a.files ?? []), ...input.files] } : {}),
       updatedAt: serverTimestamp(),
     })
     tx.update(pRef, { pm: { ...pm, signedCount: signedSeq }, updatedAt: serverTimestamp() })

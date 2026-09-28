@@ -13,10 +13,11 @@
 // protects. Stated honestly here so nobody mistakes the mask for a wall.
 
 import { useEffect, useMemo, useState } from "react"
+import { SUPPLIER_RECORDS, supplierFactsWithRecord, type SupplierRecord } from "@/lib/procurement/supplier-file"
 import { collection, doc, getDoc, query, where } from "firebase/firestore"
 import { useCollection, useDoc, useFirestore, useMemoFirebase } from "@/firebase"
 import { useProcActor } from "@/hooks/useProcActor"
-import { resolvePolicies } from "@/lib/procurement/policies"
+import { resolvePolicies, type ResolvedPolicies } from "@/lib/procurement/policies"
 import { PROCUREMENT_SETTINGS, PURCHASE_ORDERS, type ProcActor, type ProcurementPolicies, type PurchaseOrder, type ReceiptFact, type SupplierFacts } from "@/lib/procurement/types"
 
 /** A delivery as stored (supplier notice, guest notice or manual receipt) plus the optional PO fields. */
@@ -67,6 +68,8 @@ export interface ProcOffer {
   poNumber?: string | null
   createdAt?: string | null
   decidedAt?: string | null
+  /** `YYYY-MM-DD` — the offer's validity, when recorded. */
+  validUntil?: string | null
 }
 
 export interface ProcurementWorld {
@@ -74,9 +77,11 @@ export interface ProcurementWorld {
   deliveries: ProcDelivery[]
   rfqs: ProcRfq[]
   offers: ProcOffer[]
-  policies: ProcurementPolicies
+  policies: ResolvedPolicies
   /** By supplier org id — filled lazily for the suppliers the orders name. */
   supplierFacts: Map<string, SupplierFacts>
+  /** Our own record of each supplier (verified, VAT, CR, terms) — it overrides the profile. */
+  supplierRecords: SupplierRecord[]
   actor: ProcActor
   orgId: string
   orgName: string
@@ -102,12 +107,15 @@ export function useProcurementWorld(): ProcurementWorld {
   // those are reached through the RFQ's own offers screen, not from here.
   const offersQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, "offers"), where("contractorOrgId", "==", orgId)) : null), [firestore, orgId])
   const settingsRef = useMemoFirebase(() => (firestore && orgId ? doc(firestore, PROCUREMENT_SETTINGS, orgId) : null), [firestore, orgId])
+  const recordsQ = useMemoFirebase(() => (firestore && orgId ? query(collection(firestore, SUPPLIER_RECORDS), where("organizationId", "==", orgId)) : null), [firestore, orgId])
 
   const { data: ordersData, isLoading: ordersLoading } = useCollection(ordersQ)
   const { data: deliveriesData, isLoading: deliveriesLoading } = useCollection(deliveriesQ)
   const { data: rfqsData, isLoading: rfqsLoading } = useCollection(rfqsQ)
   const { data: offersData } = useCollection(offersQ)
   const { data: settingsData, isLoading: settingsLoading } = useDoc(settingsRef)
+  const { data: recordsData } = useCollection(recordsQ)
+  const supplierRecords = useMemo(() => (recordsData || []) as SupplierRecord[], [recordsData])
 
   const orders = useMemo(() => ((ordersData || []) as PurchaseOrder[]).map((o) => ({ ...o, lines: o.lines || [], log: o.log || [] })), [ordersData])
   const deliveries = useMemo(
@@ -131,7 +139,7 @@ export function useProcurementWorld(): ProcurementWorld {
         .join(","),
     [orders]
   )
-  const [supplierFacts, setSupplierFacts] = useState<Map<string, SupplierFacts>>(() => new Map())
+  const [profileFacts, setSupplierFacts] = useState<Map<string, SupplierFacts>>(() => new Map())
   useEffect(() => {
     if (!firestore || !supplierIds) return
     let cancelled = false
@@ -164,6 +172,17 @@ export function useProcurementWorld(): ProcurementWorld {
     // effect never needs it as a dependency (it is what the effect fills).
   }, [firestore, supplierIds])
 
+  // An approval reads OUR record first: a supplier added from the directory
+  // stays unverified until the manager vouches for him (S-35).
+  const supplierFacts = useMemo(() => {
+    const out = new Map(profileFacts)
+    for (const r of supplierRecords) {
+      const base = out.get(r.supplierOrgId) ?? { orgId: r.supplierOrgId, hasVatNumber: null, verified: null, crExpiry: null }
+      out.set(r.supplierOrgId, supplierFactsWithRecord(base, r))
+    }
+    return out
+  }, [profileFacts, supplierRecords])
+
   return {
     orders,
     deliveries,
@@ -171,6 +190,7 @@ export function useProcurementWorld(): ProcurementWorld {
     offers,
     policies,
     supplierFacts,
+    supplierRecords,
     actor,
     orgId,
     orgName,

@@ -10,7 +10,7 @@ jest.mock("firebase/firestore", () => jest.requireActual<typeof import("@/test-u
 import { fakeFirestore, readDoc, resetFakeDb, seed } from "@/test-utils/fake-firestore"
 import type { Firestore } from "firebase/firestore"
 import { PmAccessError, pmCeiling, type PmContext } from "@/lib/pm/access"
-import { claimBlocks, delayAndDamages, grantedDays, noticeDeadline, noticeLate, programmeRevision, respondBlocks, type PmClaim } from "@/lib/pm/claim"
+import { claimBlocks, claimStepBlocks, delayAndDamages, noticeAfter, noticeDaysLeft, penaltyAvoided, grantedDays, noticeDeadline, noticeLate, programmeRevision, respondBlocks, type PmClaim } from "@/lib/pm/claim"
 import { draftClaim, PmClaimError, respondToClaim, sendClaimNotice, submitClaim } from "@/lib/pm/claim-writes"
 import { defaultTerms } from "@/lib/pm/terms"
 
@@ -36,14 +36,21 @@ describe("the rules", () => {
     expect(noticeLate({ status: "notice", eventOn: "2026-08-01" }, terms, "2026-12-01")).toBe(false)
   })
 
-  it("a claim needs its cause, a past event, and what it asks for; none before start", () => {
-    expect(claimBlocks({ archived: false, lifecycle: "plan", kind: "both", cause: " ", eventOn: "2099-01-01", daysAsked: 0, amountAsked: 0, today: "2026-09-27" })).toEqual([
-      "not_started",
-      "no_cause",
-      "event_date",
-      "no_days",
-      "no_amount",
-    ])
+  it("a claim needs what happened and a past event; none before start — days wait for submission (C-24)", () => {
+    expect(claimBlocks({ archived: false, lifecycle: "plan", kind: "both", cause: " ", eventOn: "2099-01-01", daysAsked: 0, amountAsked: 0, today: "2026-09-27" })).toEqual(["not_started", "no_cause", "event_date"])
+    expect(claimBlocks({ archived: false, lifecycle: "live", kind: "time", cause: "x", eventOn: "2026-09-01", daysAsked: 0, amountAsked: 0, today: "2026-09-27", causedBy: "oth", causedByText: " " })).toEqual(["cause_text"])
+    expect(claimStepBlocks({ archived: false, status: "notice", step: "submit", kind: "both", daysAsked: 0, amountAsked: 0 })).toEqual(["no_days", "no_amount"])
+    expect(claimStepBlocks({ archived: false, status: "notice", step: "submit", kind: "time", daysAsked: 12, amountAsked: 0 })).toEqual([])
+  })
+
+  it("notice helpers and the penalty an extension avoids (C-23, C-25)", () => {
+    expect(noticeDaysLeft({ status: "draft", eventOn: "2026-09-20" }, terms, "2026-09-27")).toBe(21)
+    expect(noticeDaysLeft({ status: "notice", eventOn: "2026-09-20" }, terms, "2026-09-27")).toBeNull()
+    expect(noticeAfter({ eventOn: "2026-09-01", noticeOn: "2026-09-08" })).toBe(7)
+    const input = { lifecycle: "live", startOn: "2026-01-01", effectiveDays: 200, progress: 20, contractValue: 1_000_000, damages: { on: true, weeklyRate: 0.005, cap: 0.1 }, today: "2026-05-11" }
+    expect(penaltyAvoided({ kind: "time", daysAsked: 200 }, input)).toBeGreaterThan(0)
+    expect(penaltyAvoided({ kind: "cost", daysAsked: 200 }, input)).toBe(0)
+    expect(delayAndDamages({ ...input, curveK: 2 })!.planned).toBeGreaterThan(delayAndDamages(input)!.planned)
   })
 
   it("a response is mandatory; days are mandatory unless rejected (CLM-02)", () => {
@@ -69,6 +76,11 @@ describe("the writes", () => {
     expect(claim("01")).toMatchObject({ status: "draft", daysAsked: 30, amountAsked: 0 })
     await sendClaimNotice(db, qs, "p1", seq)
     await expect(submitClaim(db, qs, "p1", seq)).rejects.toBeInstanceOf(PmAccessError)
+    const late = await draftClaim(db, qs, "p1", qsA, { kind: "time", cause: "Rain", eventOn: "2026-09-02", daysAsked: 0, amountAsked: 0, noticeToday: true, causedBy: "force" })
+    expect(claim("02")).toMatchObject({ status: "notice", causedBy: "force", daysAsked: 0 })
+    await expect(submitClaim(db, pm, "p1", late)).rejects.toBeInstanceOf(PmClaimError)
+    await submitClaim(db, pm, "p1", late, { daysAsked: 6 })
+    expect(claim("02")).toMatchObject({ status: "sub", daysAsked: 6 })
     await submitClaim(db, pm, "p1", seq)
     await expect(respondToClaim(db, pm, "p1", pmA, seq, { response: null, days: null, amount: null })).rejects.toBeInstanceOf(PmClaimError)
     const r = await respondToClaim(db, pm, "p1", pmA, seq, { response: "part", days: 20, amount: null })

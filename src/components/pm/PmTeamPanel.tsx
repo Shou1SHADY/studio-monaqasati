@@ -2,14 +2,15 @@
 
 // Settings › Team & permissions on a PM 1.0 project (WF-24, RL-01, RL-05,
 // RL-07, TM-01). Each person shows their project role, the duties they
-// actually hold here (system role ∩ template − removed), and the record of who
-// assigned, changed or removed them and when. Someone who left stays listed,
-// greyed, with the date and the reason. A project with no manager says so in
-// red: only the owner approves on it until one is appointed.
+// actually hold here (system role ∩ template − removed), who assigned them, and
+// the record of who changed or removed them and when. Those who left sit in a
+// folded list with their dates and the reason. A project with no manager says
+// so in red: only the owner approves on it until one is appointed. Beside it,
+// how a person's access here is computed — assignment narrows, never grants.
 
 import { useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import { History, Pencil, UserMinus, UserPlus, Users } from "lucide-react"
+import { CheckCircle2, History, Pencil, ShieldCheck, UserMinus, UserPlus, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Callout } from "@/components/module-ui/Callout"
 import { Panel } from "@/components/module-ui/Panel"
@@ -19,13 +20,13 @@ import { collection } from "firebase/firestore"
 import { legacyAwareRole, usePermissions } from "@/hooks/usePermissions"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import type { PmAccess } from "@/hooks/usePmAccess"
-import { effectiveDuties, mayManageTeam, pmCeiling, PM_ROLE_TEMPLATES, seatActive, seatFromMember, type PmSeat } from "@/lib/pm/access"
+import { effectiveDuties, mayManageTeam, pmCeiling, PM_ROLE_TEMPLATES, seatActive, seatFromMember, type PmDuty, type PmSeat } from "@/lib/pm/access"
 import { pmDate, todayDay } from "@/lib/pm/format"
 import { orderSeats, type SeatLogEntry } from "@/lib/pm/team"
 import { AssignSeatDialog, type SeatCandidate } from "./AssignSeatDialog"
 import { RemoveSeatDialog } from "./RemoveSeatDialog"
 
-type MemberRow = { id: string; seat: (PmSeat & { why?: string | null; log?: SeatLogEntry[] }) | null; legacy: boolean }
+type MemberRow = { id: string; seat: (PmSeat & { why?: string | null; log?: SeatLogEntry[] }) | null; legacy: boolean; addedBy: string | null; byOut: string | null }
 
 export function PmTeamPanel({
   projectId,
@@ -67,7 +68,8 @@ export function PmTeamPanel({
   const rows: MemberRow[] = useMemo(() => {
     const list = (members ?? []).map((m) => {
       const seat = seatFromMember(m as Record<string, unknown>, m.id)
-      return { id: m.id, seat: seat ? { ...seat, why: (m.why as string) ?? null, log: (m.log as SeatLogEntry[]) ?? [] } : null, legacy: !seat }
+      const str = (v: unknown) => (typeof v === "string" && v ? v : null)
+      return { id: m.id, seat: seat ? { ...seat, why: (m.why as string) ?? null, log: (m.log as SeatLogEntry[]) ?? [] } : null, legacy: !seat, addedBy: str(m.addedBy), byOut: str(m.byOut) }
     })
     const seated = orderSeats(list.filter((r) => r.seat).map((r) => ({ ...r.seat!, _row: r })), today).map((s) => s._row)
     return [...seated, ...list.filter((r) => !r.seat)]
@@ -90,76 +92,90 @@ export function PmTeamPanel({
     return t("team.log_assign", { who, when, role: e.role ? t(`role.${e.role}`) : "—" })
   }
 
+  const seated = rows.filter((r) => r.seat)
+  const liveRows = seated.filter((r) => seatActive(r.seat!, today))
+  const leftRows = seated.filter((r) => !seatActive(r.seat!, today))
+  const legacyRows = rows.filter((r) => !r.seat)
+  const assignedBy = (r: MemberRow) => {
+    const first = r.seat?.log?.find((e) => e.act === "assign")
+    if (first) return first.byName || nameOf(first.by)
+    return r.addedBy ? nameOf(r.addedBy) : null
+  }
+  const lastDutyChange = (r: MemberRow) => [...(r.seat?.log ?? [])].reverse().find((e) => e.act === "duties")
+
   return (
-    <Panel
-      title={t("team.title")}
-      icon={Users}
-      count={liveIds.size}
-      actions={
-        canManage && !access.ctx.archived ? (
-          <Button size="sm" onClick={() => setAssignOpen(true)}>
-            <UserPlus size={15} className="me-1.5" aria-hidden="true" />
-            {t("team.assign")}
-          </Button>
-        ) : null
-      }
-    >
-      {!project.projectManagerId && !access.ctx.archived && (
-        <Callout tone="block" className="mb-4" title={t("team.no_pm_title")}>
-          {t("team.no_pm_note")}
-        </Callout>
-      )}
-      <ul className="space-y-2">
-        {rows.map((r) => {
-          const name = nameOf(r.id)
-          if (!r.seat) {
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Panel
+        className="lg:col-span-2"
+        title={
+          <span className="inline-flex items-center gap-2">
+            {t("team.title")}
+            <StatusPill tone={project.projectManagerId ? "mute" : "bad"}>
+              <span dir="ltr">{liveIds.size}</span>
+            </StatusPill>
+          </span>
+        }
+        icon={Users}
+        actions={
+          canManage && !access.ctx.archived ? (
+            <Button size="sm" onClick={() => setAssignOpen(true)}>
+              <UserPlus size={15} className="me-1.5" aria-hidden="true" />
+              {t("team.assign")}
+            </Button>
+          ) : null
+        }
+      >
+        <p className="mb-3 text-xs text-muted-foreground">{t("team.sub")}</p>
+        {!project.projectManagerId && !access.ctx.archived && (
+          <Callout tone="block" className="mb-4" title={t("team.no_pm_title")}>
+            {t("team.no_pm_note")}
+          </Callout>
+        )}
+        <ul className="space-y-2">
+          {liveRows.map((r) => {
+            const s = r.seat!
+            const name = nameOf(r.id)
+            const duties = effectiveDuties(ceilingOf(r.id), s) ?? []
+            const removed = (s.off ?? []).filter((d) => PM_ROLE_TEMPLATES[s.role].includes(d))
+            const mayTouch = canManage && !access.ctx.archived
+            const by = assignedBy(r)
+            const change = lastDutyChange(r)
             return (
-              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed p-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{name}</p>
-                  <p className="text-xs text-muted-foreground">{t("team.legacy_note")}</p>
-                </div>
-                {canManage && !access.ctx.archived && (
-                  <Button size="sm" variant="outline" onClick={() => setEditing({ uid: r.id, role: "site", off: [] })}>
-                    {t("team.give_role")}
-                  </Button>
-                )}
-              </li>
-            )
-          }
-          const s = r.seat
-          const live = seatActive(s, today)
-          const duties = live ? effectiveDuties(ceilingOf(r.id), s) ?? [] : []
-          const removed = (s.off ?? []).filter((d) => PM_ROLE_TEMPLATES[s.role].includes(d))
-          const mayTouch = canManage && !access.ctx.archived && live && (s.role !== "pm" || admin)
-          return (
-            <li key={r.id} className={live ? "rounded-xl border p-3" : "rounded-xl border bg-muted/40 p-3 opacity-75"}>
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 space-y-1">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                    <span className="truncate">{name}</span>
-                    <StatusPill tone={s.role === "pm" ? "module" : "mute"}>{s.role === "other" && s.roleName ? s.roleName : t(`role.${s.role}`)}</StatusPill>
-                    {!live && <StatusPill tone="bad">{t("team.left")}</StatusPill>}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {live ? t("team.since", { date: pmDate(s.from, locale) }) : t("team.left_on", { date: pmDate(s.to, locale), why: s.why || "—" })}
-                  </p>
-                </div>
-                {mayTouch && (
-                  <div className="flex shrink-0 gap-1.5">
-                    <Button size="sm" variant="outline" onClick={() => setEditing(s)} aria-label={t("team.edit_title")}>
-                      <Pencil size={14} aria-hidden="true" />
-                    </Button>
-                    <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoving(s)} aria-label={t("team.remove")}>
-                      <UserMinus size={14} aria-hidden="true" />
-                    </Button>
+              <li key={r.id} className="rounded-xl border p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                      <span className="truncate" dir="auto">
+                        {name}
+                      </span>
+                      <StatusPill tone={s.role === "pm" ? "module" : "mute"}>{s.role === "other" && s.roleName ? s.roleName : t(`role.${s.role}`)}</StatusPill>
+                      {s.role === "other" && <StatusPill tone="mute">{t("team.custom_role")}</StatusPill>}
+                      {r.id === user?.uid && <StatusPill tone="info">{t("team.you")}</StatusPill>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("team.since", { date: pmDate(s.from, locale) })}
+                      {by && ` · ${t("team.assigned_by", { name: by })}`}
+                    </p>
                   </div>
-                )}
-              </div>
-              {live && (
+                  {mayTouch && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      <Button size="sm" variant="outline" onClick={() => setEditing(s)}>
+                        <Pencil size={14} className="me-1" aria-hidden="true" />
+                        {t("team.duties_btn")}
+                      </Button>
+                      {(s.role !== "pm" || admin) && (
+                        <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => setRemoving(s)}>
+                          <UserMinus size={14} className="me-1" aria-hidden="true" />
+                          {t("team.remove_btn")}
+                        </Button>
+                      )}
+                      {s.role === "pm" && !admin && <span className="text-xs text-muted-foreground">{t("team.pm_owner_changes")}</span>}
+                    </div>
+                  )}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {duties.length === 0 ? (
-                    <span className="text-xs font-semibold text-destructive">{t("team.no_duties")}</span>
+                    <span className="text-xs font-semibold text-warning">{t("team.read_only_here")}</span>
                   ) : (
                     duties.map((d) => (
                       <span key={d} className="rounded-full bg-module/10 px-2 py-0.5 text-[11px] font-bold text-module">
@@ -167,26 +183,81 @@ export function PmTeamPanel({
                       </span>
                     ))
                   )}
-                  {removed.length > 0 && <span className="text-[11px] text-muted-foreground">{t("team.removed_duties", { list: removed.map((d) => t(`duty.${d}`)).join("، ") })}</span>}
                 </div>
-              )}
-              {(s.log?.length ?? 0) > 0 && (
-                <details className="mt-2 text-xs text-muted-foreground">
-                  <summary className="flex min-h-8 cursor-pointer items-center gap-1 font-semibold">
-                    <History size={13} aria-hidden="true" />
-                    {t("team.log", { count: s.log!.length })}
-                  </summary>
-                  <ul className="mt-1 space-y-0.5 ps-5">
-                    {[...s.log!].reverse().map((e, i) => (
-                      <li key={`${e.at}-${i}`}>{logLine(e)}</li>
-                    ))}
-                  </ul>
-                </details>
+                {removed.length > 0 && (
+                  <p className="mt-1.5 text-xs text-warning">
+                    {t("team.removed_duties", { list: removed.map((d) => t(`duty.${d}`)).join("، ") })}
+                    {change && ` · ${change.byName || nameOf(change.by)}`}
+                  </p>
+                )}
+                {(s.log?.length ?? 0) > 0 && (
+                  <details className="mt-2 text-xs text-muted-foreground">
+                    <summary className="flex min-h-8 cursor-pointer items-center gap-1 font-semibold">
+                      <History size={13} aria-hidden="true" />
+                      {t("team.log", { count: s.log!.length })}
+                    </summary>
+                    <ul className="mt-1 space-y-0.5 ps-5">
+                      {[...s.log!].reverse().map((e, i) => (
+                        <li key={`${e.at}-${i}`}>{logLine(e)}</li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </li>
+            )
+          })}
+          {legacyRows.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed p-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold" dir="auto">
+                  {nameOf(r.id)}
+                </p>
+                <p className="text-xs text-muted-foreground">{t("team.legacy_note")}</p>
+              </div>
+              {canManage && !access.ctx.archived && (
+                <Button size="sm" variant="outline" onClick={() => setEditing({ uid: r.id, role: "site", off: [] })}>
+                  {t("team.give_role")}
+                </Button>
               )}
             </li>
-          )
-        })}
-      </ul>
+          ))}
+        </ul>
+        {liveRows.length === 0 && legacyRows.length === 0 && <p className="py-4 text-center text-sm text-muted-foreground">{t("team.nobody")}</p>}
+        <p className="mt-4 border-t pt-3 text-xs leading-relaxed text-muted-foreground">{t("team.governance_note")}</p>
+        {leftRows.length > 0 && (
+          <details className="mt-3 rounded-xl border">
+            <summary className="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-semibold">
+              <History size={14} aria-hidden="true" />
+              {t("team.left_title")}
+              <StatusPill tone="mute">
+                <span dir="ltr">{leftRows.length}</span>
+              </StatusPill>
+            </summary>
+            <ul className="divide-y border-t">
+              {leftRows.map((r) => {
+                const s = r.seat!
+                return (
+                  <li key={r.id} className="px-3 py-2">
+                    <p className="text-sm font-semibold" dir="auto">
+                      {nameOf(r.id)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {s.role === "other" && s.roleName ? s.roleName : t(`role.${s.role}`)} · {pmDate(s.from, locale)} — {pmDate(s.to, locale)}
+                      {s.why && ` · ${s.why}`}
+                      {r.byOut && ` · ${nameOf(r.byOut)}`}
+                    </p>
+                  </li>
+                )
+              })}
+            </ul>
+          </details>
+        )}
+      </Panel>
+      <PermHelp
+        cut={liveRows
+          .map((r) => ({ name: nameOf(r.id), off: (r.seat!.off ?? []).filter((d) => PM_ROLE_TEMPLATES[r.seat!.role].includes(d)) }))
+          .filter((x) => x.off.length > 0)}
+      />
 
       <AssignSeatDialog
         open={assignOpen || editing !== null}
@@ -206,6 +277,36 @@ export function PmTeamPanel({
       />
       {removing && (
         <RemoveSeatDialog open onOpenChange={(o) => !o && setRemoving(null)} projectId={projectId} access={access} actor={actor} seat={removing} name={nameOf(removing.uid)} />
+      )}
+    </div>
+  )
+}
+
+function PermHelp({ cut }: { cut: Array<{ name: string; off: PmDuty[] }> }) {
+  const t = useTranslations("Portal.PM")
+  const step = (title: string, body: string) => (
+    <li className="flex gap-2.5">
+      <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" aria-hidden="true" />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="block text-xs text-muted-foreground">{body}</span>
+      </span>
+    </li>
+  )
+  return (
+    <Panel title={t("team.help.title")} icon={ShieldCheck} className="self-start">
+      <ul className="space-y-3">
+        {step(t("team.help.s1"), t("team.help.s1_note"))}
+        {step(t("team.help.s2"), t("team.help.s2_note"))}
+        {step(t("team.help.s3"), t("team.help.s3_note"))}
+      </ul>
+      <Callout tone="info" className="mt-3" title={t("team.help.rule")}>
+        {t("team.help.rule_note")}
+      </Callout>
+      {cut.length > 0 && (
+        <Callout tone="warn" className="mt-2.5">
+          {t("team.help.cut", { count: cut.length, list: cut.map((c) => `${c.name} (${c.off.map((d) => t(`duty.${d}`)).join("، ")})`).join(" · ") })}
+        </Callout>
       )}
     </Panel>
   )

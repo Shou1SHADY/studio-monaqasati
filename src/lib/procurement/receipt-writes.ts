@@ -27,6 +27,7 @@ import { receiveDelivery, type ReceiveDeliveryItem } from "../warehouse-transfer
 import { drawProcDocNumber } from "./numbering"
 import { round2 } from "./po"
 import { acceptedOf, legacyLinesOf, linesForReceipt, receiptErrors, receiptLineErrors, receiptNetValue, type ReceiptError } from "./receipts"
+import { matchReceiptToOrder } from "./receipt-regularise"
 import { PURCHASE_ORDERS, type DeliveryLine, type ProcActor, type ProcurementPolicies, type PurchaseOrder, type ReceiptCheck } from "./types"
 import { applyReceipt, emitReceiptRecorded, ProcWriteError, type WriteOpts } from "./writes"
 
@@ -445,6 +446,8 @@ export interface ArrivalWithoutNoticeInput {
   projectName?: string | null
   /** Procurement typed it into the manual form (flagged `source: manual`) rather than the gate recording an arrival. */
   manual?: boolean
+  /** The invoice or note, uploaded before the write (the manual form's photo). */
+  attachmentUrls?: string[] | null
 }
 
 /**
@@ -454,7 +457,8 @@ export interface ArrivalWithoutNoticeInput {
  * delivery (so nobody impersonates a supplier), and the order names them.
  */
 export async function createArrivalWithoutNotice(firestore: Firestore, actor: ProcActor, input: ArrivalWithoutNoticeInput, opts: ReceiptWriteOpts = {}): Promise<RecordReceiptResult> {
-  if (!actor.isOwner && !actor.canReceive) throw new ProcWriteError("no_permission")
+  // The gate records an arrival; the manual form is Procurement's (S-13).
+  if (!actor.isOwner && !actor.canReceive && !(input.manual && actor.canPrepare)) throw new ProcWriteError("no_permission")
   const receiverName = (input.receiverName || "").trim()
   if (!receiverName) throw new ProcWriteError("reason_required", { field: "receiverName" })
   const orgId = input.po.organizationId
@@ -491,6 +495,7 @@ export async function createArrivalWithoutNotice(firestore: Firestore, actor: Pr
       status: "confirmed",
       noNotice: true,
       ...(input.manual ? { source: "manual" } : {}),
+      ...(input.attachmentUrls?.length ? { attachmentUrls: input.attachmentUrls } : {}),
       receivedByName: receiverName,
       receiverUserId: actor.uid,
       confirmedAt: serverTimestamp(),
@@ -556,6 +561,10 @@ export interface ManualReceiptInput {
   contractorVatNumber?: string | null
   supplierSignatureData?: string | null
   contractorSignatureData?: string | null
+  /** The registered supplier the typed name belongs to, when picked — the regularisation starts from it. */
+  supplierGuessOrgId?: string | null
+  /** The invoice or note, uploaded before the write. */
+  attachmentUrls?: string[] | null
 }
 
 /**
@@ -565,7 +574,8 @@ export interface ManualReceiptInput {
  * once it is regularised or declared a cash expense.
  */
 export async function createManualReceipt(firestore: Firestore, actor: ProcActor, input: ManualReceiptInput, opts: ReceiptWriteOpts = {}): Promise<{ deliveryId: string; docNumber: string; stockLanded: boolean }> {
-  if (!actor.isOwner && !actor.canReceive) throw new ProcWriteError("no_permission")
+  // A purchase made outside the platform is Procurement's to declare (S-13).
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
   const supplierName = input.supplierName.trim()
   const receiverName = input.receiverName.trim()
   const items = input.items.map((it) => ({ ...it, name: it.name.trim(), unit: (it.unit || "").trim(), quantity: num(it.quantity) })).filter((it) => it.name && it.quantity > 0)
@@ -604,6 +614,8 @@ export async function createManualReceipt(firestore: Firestore, actor: ProcActor
       confirmedAt: serverTimestamp(),
       createdAt: serverTimestamp(),
       source: "manual",
+      supplierGuessOrgId: input.supplierGuessOrgId || null,
+      ...(input.attachmentUrls?.length ? { attachmentUrls: input.attachmentUrls } : {}),
       postedNet: null,
     })
     return number
@@ -620,9 +632,86 @@ export async function createManualReceipt(firestore: Firestore, actor: ProcActor
   return { deliveryId: deliveryRef.id, docNumber, stockLanded }
 }
 
-/** The no-PO receipt is booked as a cash expense — a note-only marker Finance reads. */
-export async function markReceiptAsExpense(firestore: Firestore, actor: ProcActor, deliveryId: string): Promise<void> {
-  // A `deliveries` update needs `deliveries.confirm` under the rules — the same door as recording.
-  if (!actor.isOwner && !actor.canReceive) throw new ProcWriteError("no_permission")
-  await updateDoc(doc(firestore, DELIVERIES, deliveryId), { regularisation: "expense", regularisedAt: new Date().toISOString(), regularisedById: actor.uid, regularisedByName: actor.name })
+/** The no-PO receipt is booked as a cash expense — a note-only marker Finance
+ * reads. Only for a receipt Procurement typed by hand, and only once. */
+export async function markReceiptAsExpense(firestore: Firestore, actor: ProcActor, deliveryId: string, opts: { now?: Date } = {}): Promise<void> {
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  const ref = doc(firestore, DELIVERIES, deliveryId)
+  await runTransaction(firestore, async (tx) => {
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new ProcWriteError("order_missing", { doc: "delivery" })
+    const d = snap.data() as { source?: string | null; poId?: string | null; offerId?: string | null; regularisation?: string | null }
+    if (d.source !== "manual" || d.poId || d.offerId || d.regularisation) throw new ProcWriteError("not_no_po")
+    tx.update(ref, { regularisation: "expense", regularisedAt: (opts.now ?? new Date()).toISOString(), regularisedById: actor.uid, regularisedByName: actor.name })
+  })
+}
+
+// ---------------------------------------------------------------------------
+// linkReceiptToOrder — a no-PO receipt counted against an order already open
+// ---------------------------------------------------------------------------
+
+export interface LinkReceiptResult {
+  poNumber: string
+  /** The books heard of it (the goods had landed in a warehouse). */
+  posted: boolean
+}
+
+/**
+ * Tie a receipt that had no order to an order already open for the same
+ * material. ONE transaction reads both, matches every line (all or nothing),
+ * moves the order's counters and stamps the receipt with the order. No new
+ * commitment: the quantity was already ordered. The books hear of it after the
+ * commit when the goods landed in a warehouse, as with any receipt.
+ */
+export async function linkReceiptToOrder(firestore: Firestore, actor: ProcActor, input: { deliveryId: string; poId: string }, opts: ReceiptWriteOpts = {}): Promise<LinkReceiptResult> {
+  if (!actor.isOwner && !actor.canPrepare) throw new ProcWriteError("no_permission")
+  const at = (opts.now ?? new Date()).toISOString()
+  const deliveryRef = doc(firestore, DELIVERIES, input.deliveryId)
+  const poRef = doc(firestore, PURCHASE_ORDERS, input.poId) as DocumentReference
+  type ManualDoc = ReceiptDeliveryLike & { source?: string | null; regularisation?: string | null; docNumber?: string | null; landedWarehouseId?: string | null }
+  const committed = await runTransaction(firestore, async (tx) => {
+    const dSnap = await tx.get(deliveryRef)
+    if (!dSnap.exists()) throw new ProcWriteError("order_missing", { doc: "delivery" })
+    const d: ManualDoc = { ...(dSnap.data() as ManualDoc), id: dSnap.id }
+    if (d.source !== "manual" || d.poId || d.offerId || d.regularisation) throw new ProcWriteError("not_no_po")
+    const pSnap = await tx.get(poRef)
+    if (!pSnap.exists()) throw new ProcWriteError("order_missing")
+    const po: PurchaseOrder = { ...(pSnap.data() as Omit<PurchaseOrder, "id">), id: pSnap.id, lines: (pSnap.data() as PurchaseOrder).lines || [], log: (pSnap.data() as PurchaseOrder).log || [] }
+    if (po.status !== "accepted") throw new ProcWriteError("wrong_state")
+    const lines = matchReceiptToOrder(d.lines && d.lines.length ? d.lines : legacyLinesOf(d), po)
+    if (!lines) throw new ProcWriteError("no_matching_order")
+    const net = receiptNetValue(po, lines, 0)
+    const newLines = applyReceipt(tx, poRef, po, lines, actor, { deliveryId: d.id, docNumber: d.docNumber || null, at })
+    const posts = Boolean(d.landedWarehouseId) && net != null && net > 0
+    tx.update(deliveryRef, {
+      poId: po.id,
+      poNumber: po.docNumber,
+      lines,
+      regularisedAt: at,
+      regularisedById: actor.uid,
+      regularisedByName: actor.name,
+      postedNet: posts ? net : null,
+    })
+    return { po: { ...po, lines: newLines }, net: posts ? net : null, delivery: d }
+  })
+  const { po, net, delivery } = committed
+  let posted = false
+  if (net != null) {
+    try {
+      onGoodsReceived(
+        firestore,
+        { organizationId: po.organizationId, userId: actor.uid, userName: actor.name },
+        { deliveryId: delivery.id, net, supplierId: po.isGuestSupplier ? null : po.supplierOrgId, supplierName: po.supplierName, rfqTitle: po.rfqTitle || null, projectId: po.projectId ?? null, projectName: po.projectName ?? null }
+      )
+      posted = true
+    } catch (err) {
+      console.warn("regularised receipt not posted:", err)
+    }
+  }
+  try {
+    await emitReceiptRecorded(firestore, actor, po, { deliveryId: delivery.id, docNumber: delivery.docNumber || null }, opts)
+  } catch (err) {
+    console.warn("receipt event not delivered:", err)
+  }
+  return { poNumber: po.docNumber, posted }
 }

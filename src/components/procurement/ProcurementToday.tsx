@@ -15,9 +15,11 @@ import { Link } from "@/i18n/routing"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { useProcurementPrices } from "@/hooks/useProcurementPrices"
-import { RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
+import { useProcurementNeeds } from "@/hooks/useProcurementNeeds"
+import { useRfqQueries } from "@/hooks/useRfqQueries"
+import { ORDER_HREF, RECEIPT_HREF, TASK_GROUPS, todayTasks, todayWaits, type Task, type TaskGroup, type TaskSeverity, type Wait } from "@/lib/procurement/today"
 import { displayDocNumber } from "@/lib/procurement/format"
-import { arrivingThisWeek, toProcWorld } from "@/lib/procurement/shell"
+import { arrivingWithinWeek, toProcWorld } from "@/lib/procurement/shell"
 import { sarLtr } from "@/lib/riyal"
 import { cn } from "@/lib/utils"
 
@@ -35,6 +37,8 @@ const MODULE_TAG: Record<Wait["module"], string> = {
   supplier: "bg-violet/10 text-violet",
   finance: "bg-success/10 text-success",
   inventory: "bg-accent/10 text-accent",
+  manufacturing: "bg-warning/10 text-warning",
+  projects: "bg-pm/10 text-pm",
 }
 
 /** A figure with the sign, for a number isolated in `dir="ltr"`. */
@@ -71,14 +75,22 @@ export function ProcurementToday() {
   // One clock per visit: the derivations take time as an input.
   const [now] = useState(() => new Date())
 
-  const { orders, deliveries, rfqs, offers, policies, supplierFacts } = loaded
+  const { orders, deliveries, rfqs, offers, policies, supplierFacts, supplierRecords } = loaded
   // The "agreement about to end" task reads w.agreements, which nothing fed:
   // the world hook does not load them, so the reminder never appeared.
-  const { agreements } = useProcurementPrices(loaded.orgId)
-  const world = useMemo(() => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements }), [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements])
+  const { agreements, history } = useProcurementPrices(loaded.orgId)
+  const needs = useProcurementNeeds(loaded)
+  const openRfqIds = useMemo(() => rfqs.filter((r) => r.status === "New").map((r) => r.id), [rfqs])
+  const rfqQueries = useRfqQueries(openRfqIds)
+  const needDesk = useMemo(() => ({ rows: needs.rows, buyers: needs.buyers, viewerCategories: needs.viewerCategories }), [needs.rows, needs.buyers, needs.viewerCategories])
+  const world = useMemo(
+    () => ({ ...toProcWorld({ orders, deliveries, rfqs, offers, policies, supplierFacts }), agreements, history, supplierRecords, needDesk, rfqQueries, ownerHasTeam: needs.ownerHasTeam }),
+    [orders, deliveries, rfqs, offers, policies, supplierFacts, agreements, history, supplierRecords, needDesk, rfqQueries, needs.ownerHasTeam]
+  )
   const tasks = useMemo(() => todayTasks(world, actor, now), [world, actor, now])
   const waits = useMemo(() => todayWaits(world, actor, now), [world, actor, now])
-  const arriving = useMemo(() => arrivingThisWeek(world, now, RECEIPT_HREF), [world, now])
+  const arriving = useMemo(() => arrivingWithinWeek(world, now, ORDER_HREF, RECEIPT_HREF), [world, now])
+  const firstName = (actor.name || "").replace(/^(أ|م|د)\.\s*/, "").split(/\s+/)[0] || ""
 
   const [group, setGroup] = useState<TaskGroup | "all">("all")
   const [allTasks, setAllTasks] = useState(false)
@@ -98,7 +110,7 @@ export function ProcurementToday() {
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
+      <ProcurementHeader title={firstName ? t("page.greeting", { name: firstName }) : t("page.title")} description={t("page.subtitle")} />
 
       {loading ? (
         <div className="flex items-center justify-center p-16">

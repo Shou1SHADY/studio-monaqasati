@@ -21,6 +21,9 @@ import { Input } from "@/components/ui/input"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { poValue } from "@/lib/procurement/po"
+import { advanceState, asX, openHolds, poRevision } from "@/lib/procurement/po-extras"
+import { poInScope } from "@/lib/procurement/rfq-view"
+import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 
 /** Keeps `?filter=` and `?po=` in the address bar without a navigation. */
 function replaceParams(update: (params: URLSearchParams) => void) {
@@ -37,7 +40,12 @@ export default function PurchaseOrdersPage() {
   const t = useTranslations("Portal.ProcOrders")
   const locale = useLocale()
   const world = useProcurementWorld()
-  const { orders, actor, loading } = world
+  const { actor, loading } = world
+  const tp = useTranslations("Portal.Procurement")
+  // A buyer sees the orders he prepared, and those in his categories (R-18).
+  const { profile } = useResolvedProfile(actor.uid || null)
+  const buyerCategories = ((profile as { procurementCategories?: string[] } | null)?.procurementCategories) || null
+  const orders = useMemo(() => world.orders.filter((o) => poInScope(o, actor, buyerCategories)), [world.orders, actor, buyerCategories])
   const searchParams = useSearchParams()
   const [now] = useState(() => new Date())
 
@@ -68,7 +76,7 @@ export default function PurchaseOrdersPage() {
   useEffect(() => {
     if (poParam) setOpenId(poParam)
   }, [poParam])
-  const openOrder = orders.find((o) => o.id === openId) || null
+  const openOrder = world.orders.find((o) => o.id === openId) || null
   const show = (id: string | null) => {
     setOpenId(id)
     replaceParams((p) => (id ? p.set("po", id) : p.delete("po")))
@@ -162,6 +170,7 @@ export default function PurchaseOrdersPage() {
                         <span dir="ltr" className="font-black tabular-nums">
                           {displayPoNumber(po.docNumber, locale)}
                         </span>
+                        {poRevision(po) > 1 && <span className="ms-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">{tp("rfqpo.po.revision", { n: poRevision(po) })}</span>}
                         <p className="text-xs text-muted-foreground" dir="auto">
                           {po.supplierName}
                           {po.preparedByName ? ` · ${po.preparedByName}` : ""}
@@ -194,6 +203,8 @@ export default function PurchaseOrdersPage() {
                       </td>
                       <td className="px-4 py-3 align-top">
                         <PoStatusPill po={po} now={now} />
+                        {openHolds(asX(po)).length > 0 && <p className="mt-1 text-[11px] text-destructive">{tp("rfqpo.po.row_held")}</p>}
+                        {advanceState(asX(po)) === "requested" && <p className="mt-1 text-[11px] text-muted-foreground">{tp("rfqpo.po.row_advance")}</p>}
                       </td>
                     </tr>
                   ))}

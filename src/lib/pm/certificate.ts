@@ -164,3 +164,147 @@ export function certificateEvent(input: {
     at: input.at,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Approved variations on a certificate (IPC-01: "claimable variations"). Only an
+// approved variation enters, for the share executed since it was last billed;
+// work on an unapproved one is shown as excluded risk, never billed (VO-03).
+// ---------------------------------------------------------------------------
+
+export interface ClaimableVariation {
+  id: string
+  seq: number
+  title: string
+  status: string
+  value: number
+  executedPct: number
+  billedPct?: number
+}
+
+export interface CertificateVoLine {
+  voId: string
+  seq: number
+  title: string
+  value: number
+  /** Billed share before and after this certificate (0…1). */
+  from: number
+  to: number
+  amount: number
+}
+
+export const voClaimable = <T extends ClaimableVariation>(vos: T[]) => vos.filter((v) => v.status === "appr" && v.value > 0 && v.executedPct > (v.billedPct ?? 0) + 0.000005)
+
+export const voClaimAmount = (v: ClaimableVariation) => r2(v.value * Math.max(0, v.executedPct - (v.billedPct ?? 0)))
+
+export function certificateVoLines(vos: ClaimableVariation[], chosen: ReadonlySet<string>): CertificateVoLine[] {
+  return voClaimable(vos)
+    .filter((v) => chosen.has(v.id))
+    .map((v) => ({ voId: v.id, seq: v.seq, title: v.title, value: v.value, from: v.billedPct ?? 0, to: v.executedPct, amount: voClaimAmount(v) }))
+}
+
+/** Work executed on variations nobody approved in writing — kept out of every certificate. */
+export const voRisk = (vos: ClaimableVariation[]) => r2(vos.filter((v) => (v.status === "draft" || v.status === "wait") && v.executedPct > 0).reduce((a, v) => a + v.value * v.executedPct, 0))
+
+/** The pre-submission checklist (form 45): a person ticks these, so they never block. */
+export const CERTIFICATE_CHECKS = ["sig", "ph", "mat"] as const
+export type CertificateCheck = (typeof CERTIFICATE_CHECKS)[number]
+
+// ---------------------------------------------------------------------------
+// Period, collection and totals (IPC-04, CST-05). Collection is Finance's
+// figure (`collected`, a 0…1 share of the net); the project only reads it.
+// ---------------------------------------------------------------------------
+
+export interface CertificateFacts {
+  seq: number
+  status: CertificateStatus
+  gross: number
+  net: number
+  vat: number
+  retention: number
+  recovery: number
+  prepOn: string
+  apprOn?: string | null
+  dueOn?: string | null
+  collected?: number | null
+  periodFrom?: string | null
+  periodTo?: string | null
+}
+
+const dayMs = (d: string) => Date.parse(`${d.slice(0, 10)}T00:00:00Z`)
+export const daysBetween = (from: string, to: string) => Math.round((dayMs(to) - dayMs(from)) / 86_400_000)
+
+export const collectedShare = (c: Pick<CertificateFacts, "status" | "collected">) => (c.status === "paid" ? 1 : Math.min(1, Math.max(0, c.collected ?? 0)))
+
+export const collectedAmount = (c: Pick<CertificateFacts, "status" | "collected" | "net">) => r2(c.net * collectedShare(c))
+
+/** Certified by the consultant: the receivable exists (appr → part → paid). */
+export const isCertified = (c: Pick<CertificateFacts, "status">) => c.status === "appr" || c.status === "part" || c.status === "paid"
+
+/** Days past the payment due date with money still out — 0 when not late. */
+export function lateDays(c: Pick<CertificateFacts, "status" | "collected" | "dueOn">, today: string): number {
+  if (!isCertified(c) || !c.dueOn || collectedShare(c) >= 1) return 0
+  return Math.max(0, daysBetween(c.dueOn, today))
+}
+
+/** Each certificate's period: stored from/to, else from the previous live
+ * certificate (or the start) to the day it was prepared. */
+export function certificatePeriods(certs: CertificateFacts[], startOn: string | null): Map<number, { from: string | null; to: string }> {
+  const out = new Map<number, { from: string | null; to: string }>()
+  let prev: string | null = startOn ? startOn.slice(0, 10) : null
+  for (const c of certs.slice().sort((a, b) => a.seq - b.seq)) {
+    out.set(c.seq, { from: c.periodFrom ?? prev, to: c.periodTo ?? c.prepOn })
+    if (c.status !== "void") prev = c.periodTo ?? c.prepOn
+  }
+  return out
+}
+
+export function certificateTotals(certs: CertificateFacts[]): { gross: number; net: number; collected: number } {
+  const live = certs.filter((c) => c.status !== "void")
+  return {
+    gross: r2(live.reduce((a, c) => a + c.gross, 0)),
+    net: r2(live.reduce((a, c) => a + c.net, 0)),
+    collected: r2(live.reduce((a, c) => a + collectedAmount(c), 0)),
+  }
+}
+
+export interface CollectionFigures {
+  /** Certified and not yet collected. */
+  outstanding: number
+  overdue: number
+  late: Array<{ seq: number; days: number; amount: number }>
+  /** Advance received (once the project started) + collected − the VAT in it (not ours). */
+  cashIn: number
+  advanceTotal: number
+  advanceLeft: number
+  /** Retention the client holds on certified certificates, until Finance releases it. */
+  retentionHeld: number
+}
+
+export function collectionFigures(input: {
+  certs: CertificateFacts[]
+  today: string
+  contractValue: number
+  advance: number
+  started: boolean
+  retentionReleased: boolean
+}): CollectionFigures {
+  const certified = input.certs.filter(isCertified)
+  const outstanding = r2(certified.reduce((a, c) => a + c.net * (1 - collectedShare(c)), 0))
+  const late = certified
+    .map((c) => ({ seq: c.seq, days: lateDays(c, input.today), amount: r2(c.net * (1 - collectedShare(c))) }))
+    .filter((l) => l.days > 0 && l.amount > 0.005)
+    .sort((a, b) => b.days - a.days)
+  const advanceTotal = r2(input.contractValue * input.advance)
+  const recovered = input.certs.filter((c) => c.status !== "void").reduce((a, c) => a + c.recovery, 0)
+  const collected = certified.reduce((a, c) => a + collectedAmount(c), 0)
+  const vatIn = certified.reduce((a, c) => a + c.vat * collectedShare(c), 0)
+  return {
+    outstanding,
+    overdue: r2(late.reduce((a, l) => a + l.amount, 0)),
+    late,
+    cashIn: r2((input.started ? advanceTotal : 0) + collected - vatIn),
+    advanceTotal,
+    advanceLeft: r2(Math.max(0, advanceTotal - recovered)),
+    retentionHeld: input.retentionReleased ? 0 : r2(certified.reduce((a, c) => a + c.retention, 0)),
+  }
+}

@@ -13,6 +13,7 @@ import {
   certificateEvent,
   certificateLines,
   certificateNo,
+  certificateVoLines,
   certifyBlocks,
   dueDate,
   PM_CERTIFICATES,
@@ -20,14 +21,19 @@ import {
   termsSnapshot,
   type Amounts,
   type BillableItem,
+  type CertificateCheck,
   type CertificateLine,
   type CertificateStatus,
   type CertificateTerms,
+  type CertificateVoLine,
+  type ClaimableVariation,
 } from "./certificate"
 import { eventDocId, PM_EVENTS, type PmEvent } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
+import { readSelfApproval } from "./info-writes"
 import { withFreshState } from "./project-writes"
+import { PM_VARIATIONS } from "./variation"
 
 export class PmCertificateError extends Error {
   constructor(readonly code: "missing" | "not_pm_project" | "wrong_state" | "blocked", readonly blocks: string[] = []) {
@@ -46,8 +52,19 @@ export interface PmCertificate extends Amounts {
   seq: number
   status: CertificateStatus
   lines: CertificateLine[]
+  /** Approved variations billed here, each for its share executed since last billed. */
+  voLines?: CertificateVoLine[]
   /** Consultant deductions from earlier certificates re-claimed here. */
   cutsIncluded: number
+  /** The period the certificate covers: the last certificate (or the start) → the day prepared. */
+  periodFrom?: string | null
+  periodTo?: string | null
+  /** The non-blocking checklist the preparer ticked. */
+  checks?: CertificateCheck[]
+  /** Finance's: the collected share of the net (0…1), and each receipt. */
+  collected?: number | null
+  collections?: Array<{ on: string; amount: number; byName?: string | null }>
+  collectedOn?: string | null
   terms: CertificateTerms
   contractValue: number
   prep: string
@@ -70,7 +87,7 @@ export interface PmCertificate extends Amounts {
   submitted?: Amounts | null
 }
 
-type PmTotals = { ipcCount?: number; retentionHeld?: number; advanceRecovered?: number; cutPool?: number }
+type PmTotals = { ipcCount?: number; retentionHeld?: number; advanceRecovered?: number; cutPool?: number; lastIpcOn?: string | null; startOn?: string | null; startedAt?: string | null }
 
 const num = (v: unknown) => {
   const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(/,/g, ""))
@@ -89,6 +106,17 @@ async function readBillable(tx: Transaction, firestore: Firestore, projectId: st
   return out
 }
 
+async function readVariations(tx: Transaction, firestore: Firestore, projectId: string, ids: string[]): Promise<ClaimableVariation[]> {
+  const out: ClaimableVariation[] = []
+  for (const id of [...new Set(ids)]) {
+    const snap = await tx.get(doc(firestore, "projects", projectId, PM_VARIATIONS, id))
+    if (!snap.exists()) continue
+    const d = snap.data() as Record<string, unknown>
+    out.push({ id, seq: num(d.seq), title: String(d.title ?? ""), status: String(d.status ?? ""), value: num(d.value), executedPct: num(d.executedPct), billedPct: num(d.billedPct) })
+  }
+  return out
+}
+
 async function readCertificate(tx: Transaction, firestore: Firestore, projectId: string, seq: number) {
   const ref = doc(firestore, "projects", projectId, PM_CERTIFICATES, certificateNo(seq))
   const snap = await tx.get(ref)
@@ -100,6 +128,9 @@ export interface PrepareInput {
   itemIds: string[]
   /** Re-claim the consultant's earlier deductions (default: yes). */
   includeCuts?: boolean
+  /** Approved variations to bill for their executed share not yet billed. */
+  voIds?: string[]
+  checks?: CertificateCheck[]
 }
 
 /** The QS prepares a certificate: the chosen items' whole unbilled quantity
@@ -112,27 +143,34 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "certificate.prepare")
     const items = await readBillable(tx, firestore, projectId, input.itemIds)
+    const vos = await readVariations(tx, firestore, projectId, input.voIds ?? [])
     const totals = pm as PmTotals
     const lines = certificateLines(items, new Set(input.itemIds))
+    const voLines = certificateVoLines(vos, new Set(input.voIds ?? []))
     const cuts = input.includeCuts === false ? 0 : r2(totals.cutPool ?? 0)
-    const gross = r2(lines.reduce((a, l) => a + l.amount, 0) + cuts)
+    const gross = r2(lines.reduce((a, l) => a + l.amount, 0) + voLines.reduce((a, l) => a + l.amount, 0) + cuts)
     const blocks = prepareBlocks({ archived: fresh.archived, lifecycle: lifecycleOf(project), payer: terms.payer, gross })
     if (blocks.length) throw new PmCertificateError("blocked", blocks)
 
     const contractValue = project.budget ?? 0
     const amounts = certificateAmounts({ gross, terms, contractValue, held: totals.retentionHeld ?? 0, recovered: totals.advanceRecovered ?? 0 })
     const seq = (totals.ipcCount ?? 0) + 1
+    const prepOn = todayDay()
     const cert: Omit<PmCertificate, "id"> = {
       seq,
       status: "int",
       lines,
+      voLines,
       cutsIncluded: cuts,
+      periodFrom: totals.lastIpcOn ?? totals.startOn ?? totals.startedAt?.slice(0, 10) ?? null,
+      periodTo: prepOn,
+      checks: [...new Set(input.checks ?? [])],
       ...amounts,
       terms: termsSnapshot(terms),
       contractValue,
       prep: actor.uid,
       prepName: actor.name,
-      prepOn: todayDay(),
+      prepOn,
       appr: null,
       apprName: null,
       apprOn: null,
@@ -151,11 +189,13 @@ export async function prepareCertificate(firestore: Firestore, ctx: PmContext, p
       const item = items.find((i) => i.id === l.itemId)!
       tx.update(doc(firestore, "projects", projectId, "boqItems", l.itemId), { billedQuantity: r2(item.billed + l.qty), updatedAt: serverTimestamp() })
     }
+    for (const v of voLines) tx.update(doc(firestore, "projects", projectId, PM_VARIATIONS, v.voId), { billedPct: v.to, updatedAt: serverTimestamp() })
     tx.set(doc(firestore, "projects", projectId, PM_CERTIFICATES, certificateNo(seq)), { ...cert, organizationId: project.organizationId ?? null, createdAt: serverTimestamp() })
     tx.update(pRef, {
       pm: {
         ...pm,
         ipcCount: seq,
+        lastIpcOn: cert.prepOn,
         retentionHeld: r2((totals.retentionHeld ?? 0) + amounts.retention),
         advanceRecovered: r2((totals.advanceRecovered ?? 0) + amounts.recovery),
         cutPool: r2((totals.cutPool ?? 0) - cuts),
@@ -173,10 +213,11 @@ export async function approveCertificate(firestore: Firestore, ctx: PmContext, p
   await runTransaction(firestore, async (tx) => {
     const { project } = await readContract(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
+    const selfApprovalAllowed = opts.selfApprovalAllowed || (await readSelfApproval(tx, firestore, (project as { organizationId?: string }).organizationId))
     const { ref, cert } = await readCertificate(tx, firestore, projectId, seq)
     if (cert.status !== "int") throw new PmCertificateError("wrong_state")
-    if (!mayApproveCertificate(fresh, actor.uid, cert.prep, opts.selfApprovalAllowed)) {
-      throw new PmAccessError(fresh.archived ? "archived" : actor.uid === cert.prep && !opts.selfApprovalAllowed ? "self_approval" : "no_duty", "certificate.approve")
+    if (!mayApproveCertificate(fresh, actor.uid, cert.prep, selfApprovalAllowed)) {
+      throw new PmAccessError(fresh.archived ? "archived" : actor.uid === cert.prep && !selfApprovalAllowed ? "self_approval" : "no_duty", "certificate.approve")
     }
     tx.update(ref, { status: "sub", appr: actor.uid, apprName: actor.name, apprOn: todayDay(), selfApp: actor.uid === cert.prep, updatedAt: serverTimestamp() })
   })
@@ -264,9 +305,14 @@ export async function withdrawCertificate(firestore: Firestore, ctx: PmContext, 
     if (!may) throw new PmAccessError(fresh.archived ? "archived" : "no_duty", "certificate.withdraw")
     if (cert.status !== "int") throw new PmCertificateError("wrong_state")
     const items = await readBillable(tx, firestore, projectId, cert.lines.map((l) => l.itemId))
+    const vos = await readVariations(tx, firestore, projectId, (cert.voLines ?? []).map((l) => l.voId))
     for (const l of cert.lines) {
       const item = items.find((i) => i.id === l.itemId)
       if (item) tx.update(doc(firestore, "projects", projectId, "boqItems", l.itemId), { billedQuantity: r2(Math.max(0, item.billed - l.qty)), updatedAt: serverTimestamp() })
+    }
+    for (const l of cert.voLines ?? []) {
+      const vo = vos.find((v) => v.id === l.voId)
+      if (vo) tx.update(doc(firestore, "projects", projectId, PM_VARIATIONS, l.voId), { billedPct: Math.max(0, Math.round(((vo.billedPct ?? 0) - (l.to - l.from)) * 1e6) / 1e6), updatedAt: serverTimestamp() })
     }
     const totals = pm as PmTotals
     tx.update(ref, { status: "void", voidBy: actor.uid, voidByName: actor.name, voidOn: todayDay(), updatedAt: serverTimestamp() })

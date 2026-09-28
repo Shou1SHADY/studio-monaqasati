@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
-import { Check, Loader2 } from "lucide-react"
+import { Check, Loader2, Undo2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Callout } from "@/components/module-ui/Callout"
 import { useFirestore } from "@/firebase"
 import { useToast } from "@/hooks/use-toast"
-import { HANDOVER_MISSING, type HandoverMissing, type PmHandover } from "@/lib/pm/handover"
+import { detectedGaps, HANDOVER_MISSING, type HandoverMissing, type PmHandover } from "@/lib/pm/handover"
 import { returnHandover, type PmActor } from "@/lib/pm/handover-writes"
 import { cn } from "@/lib/utils"
 
@@ -29,6 +30,7 @@ export function ReturnHandoverDialog({ open, onOpenChange, handover, actor }: { 
     }
   }, [open])
 
+  const gaps = detectedGaps(handover)
   const toggle = (m: HandoverMissing) => setMissing((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m]))
 
   const save = async () => {
@@ -52,15 +54,23 @@ export function ReturnHandoverDialog({ open, onOpenChange, handover, actor }: { 
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("return.title")}</DialogTitle>
-          <DialogDescription>{t("return.desc")}</DialogDescription>
+          <DialogDescription dir="auto">{t("return.sub", { project: handover.title })}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {gaps.length > 0 && (
+            <Callout tone="block" title={t("return.detected")}>
+              {gaps.map((g) => t(`accept_block.${g}`)).join(" · ")}
+            </Callout>
+          )}
+          <Callout tone="info">{t("return.intro")}</Callout>
           <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">{t("return.what")}</legend>
+            <legend className="text-sm font-medium">
+              {t("return.what")} <span className="text-destructive">*</span>
+            </legend>
             <div className="grid gap-2">
               {HANDOVER_MISSING.map((m) => {
                 const on = missing.includes(m)
@@ -85,8 +95,8 @@ export function ReturnHandoverDialog({ open, onOpenChange, handover, actor }: { 
             </div>
           </fieldset>
           <div className="space-y-1.5">
-            <Label htmlFor="return-note">{t("return.note")}</Label>
-            <Textarea id="return-note" value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
+            <Label htmlFor="return-note">{t("return.details")}</Label>
+            <Textarea id="return-note" dir="auto" placeholder={t("return.details_ph")} value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
           </div>
         </div>
         <DialogFooter>
@@ -94,8 +104,8 @@ export function ReturnHandoverDialog({ open, onOpenChange, handover, actor }: { 
             {t("cancel")}
           </Button>
           <Button variant="destructive" onClick={() => void save()} disabled={busy || !missing.length}>
-            {busy && <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" />}
-            {t("return.submit")}
+            {busy ? <Loader2 size={16} className="me-2 animate-spin" aria-hidden="true" /> : <Undo2 size={16} className="me-2" aria-hidden="true" />}
+            {missing.length ? t("return.submit_n", { count: missing.length }) : t("return.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

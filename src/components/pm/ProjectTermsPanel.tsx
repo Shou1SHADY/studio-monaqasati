@@ -27,9 +27,16 @@ import { lifecycleOf, plannedEnd, startBlocks, type PmLifecycle } from "@/lib/pm
 import { PmProjectError, savePlanTerms, startProject } from "@/lib/pm/project-writes"
 import { defaultTerms, termProblems, termsEditable, type ContractTerms } from "@/lib/pm/terms"
 import { ContractInForce } from "./ContractInForce"
+import { TermsCashPanel } from "./TermsCashPanel"
 import { TermsFields } from "./TermsFields"
 
-const LIFECYCLE_TONE: Record<PmLifecycle, PillTone> = { plan: "info", live: "ok", hold: "warn", done: "module", closed: "mute" }
+const LIFECYCLE_TONE: Record<PmLifecycle, PillTone> = {
+  plan: "info",
+  live: "ok",
+  hold: "warn",
+  done: "module",
+  closed: "mute",
+}
 
 export interface PmProjectBlock {
   no?: string
@@ -42,6 +49,7 @@ export interface PmProjectBlock {
   addendaCount?: number
   signedCount?: number
   retentionHeld?: number
+  ipcCount?: number
 }
 
 export function ProjectTermsPanel({
@@ -50,9 +58,16 @@ export function ProjectTermsPanel({
   boqItems,
   access,
   actor,
+  orgId = "",
 }: {
+  orgId?: string
   projectId: string
-  project: { pm?: PmProjectBlock | null; status?: string | null; projectManagerId?: string | null; budget?: number | null }
+  project: {
+    pm?: PmProjectBlock | null
+    status?: string | null
+    projectManagerId?: string | null
+    budget?: number | null
+  }
   boqItems: number
   access: PmAccess
   actor: AddendumActor
@@ -74,7 +89,12 @@ export function ProjectTermsPanel({
   const canStart = access.allowed("project.start")
   const problems = termProblems(draft)
   const dirty = JSON.stringify(draft) !== JSON.stringify(stored)
-  const starts = startBlocks({ lifecycle, hasManager: Boolean(project.projectManagerId), boqItems, termProblems: termProblems(stored).length })
+  const starts = startBlocks({
+    lifecycle,
+    hasManager: Boolean(project.projectManagerId),
+    boqItems,
+    termProblems: termProblems(stored).length,
+  })
   const end = useMemo(() => (pm.startOn && pm.durationDays ? plannedEnd(pm.startOn, pm.durationDays) : null), [pm.startOn, pm.durationDays])
 
   const save = async () => {
@@ -85,7 +105,10 @@ export function ProjectTermsPanel({
       toast({ title: t("terms.saved") })
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmProjectError && err.code === "started" ? "terms.already_started" : "error.save"), variant: "destructive" })
+      toast({
+        title: t(err instanceof PmAccessError ? `refused.${err.code}` : err instanceof PmProjectError && err.code === "started" ? "terms.already_started" : "error.save"),
+        variant: "destructive",
+      })
     } finally {
       setBusy(null)
     }
@@ -99,7 +122,10 @@ export function ProjectTermsPanel({
       toast({ title: t("terms.started") })
     } catch (err) {
       console.error(err)
-      toast({ title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"), variant: "destructive" })
+      toast({
+        title: t(err instanceof PmAccessError ? `refused.${err.code}` : "error.save"),
+        variant: "destructive",
+      })
     } finally {
       setBusy(null)
     }
@@ -136,13 +162,21 @@ export function ProjectTermsPanel({
           retentionHeld={pm.retentionHeld ?? 0}
           access={access}
           actor={actor}
+          orgId={orgId}
+          durationDays={pm.durationDays ?? 0}
         />
       ) : (
         <>
           <Callout tone="info" className="mb-4">
             {t("terms.plan_note")}
           </Callout>
-          <TermsFields value={draft} onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))} disabled={!editable || busy !== null} />
+          <TermsFields
+            value={draft}
+            onChange={(k, v) => setDraft((d) => ({ ...d, [k]: v }))}
+            disabled={!editable || busy !== null}
+            contractValue={access.has("money") ? (project.budget ?? 0) : undefined}
+            payerChangedFrom={stored.payer}
+          />
           {editable && (
             <div className="mt-4 space-y-3">
               <BlockingReasons title={t("cannot_save")} reasons={problems.map((p) => t(`terms.problem.${p}`))} />
@@ -159,6 +193,11 @@ export function ProjectTermsPanel({
                 )}
               </div>
               {canStart && <BlockingReasons title={t("cannot_start")} reasons={[...(dirty ? [t("start_block.unsaved")] : []), ...starts.map((b) => t(`start_block.${b}`))]} />}
+            </div>
+          )}
+          {access.has("money") && (
+            <div className="mt-4">
+              <TermsCashPanel terms={draft} contractValue={project.budget ?? 0} />
             </div>
           )}
         </>

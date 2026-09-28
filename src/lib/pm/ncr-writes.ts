@@ -3,6 +3,7 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore, type Transaction } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
+import { cleanAttachments, type PmAttachment } from "./attachments"
 import { todayDay } from "./format"
 import { ncrBlocks, ncrNo, ncrStepBlocks, PM_NCRS, type NcrSeverity, type PmNcr } from "./ncr"
 import { withFreshState } from "./project-writes"
@@ -30,27 +31,42 @@ async function readProject(tx: Transaction, firestore: Firestore, projectId: str
   return { ref, project, pm: project.pm }
 }
 
-export async function raiseNcr(firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, input: { itemId: string; severity: NcrSeverity; root: string; cost: number }): Promise<number> {
+export interface RaiseNcrInput {
+  itemId: string
+  severity: NcrSeverity
+  root: string
+  cost: number
+  /** What went against the specification — required from the screen. */
+  what?: string
+  /** The day it was found (defaults to today). */
+  day?: string
+  files?: PmAttachment[] | null
+}
+
+export async function raiseNcr(firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, input: RaiseNcrInput): Promise<number> {
   let seq = 0
   await runTransaction(firestore, async (tx) => {
     const { ref, project, pm } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
     assertPm(fresh, "qa.record")
     const item = await tx.get(doc(firestore, "projects", projectId, "boqItems", input.itemId))
-    const blocks = ncrBlocks({ archived: fresh.archived, itemId: item.exists() ? input.itemId : null, root: input.root, cost: input.cost })
+    const today = todayDay()
+    const blocks = ncrBlocks({ archived: fresh.archived, itemId: item.exists() ? input.itemId : null, root: input.root, cost: input.cost, what: input.what, day: input.day ?? today, today })
     if (blocks.length) throw new PmNcrError("blocked", blocks)
     seq = (pm.ncrCount ?? 0) + 1
     const ncr: Omit<PmNcr, "id"> = {
       seq,
       itemId: input.itemId,
       code: (item.data() as { itemNo?: string }).itemNo ?? null,
+      what: input.what?.trim() || null,
       severity: input.severity,
       root: input.root.trim(),
       cost: input.cost,
       status: "open",
-      day: todayDay(),
+      day: input.day || today,
       by: actor.uid,
       byName: actor.name,
+      files: cleanAttachments(input.files),
       plan: null,
       accepted: null,
     }
@@ -60,7 +76,9 @@ export async function raiseNcr(firestore: Firestore, ctx: PmContext, projectId: 
   return seq
 }
 
-async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, which: "plan" | "accept", text: string | null, patch: () => Record<string, unknown>) {
+type StepCheck = { text?: string | null; cost?: number | null; day?: string; today?: string }
+
+async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq: number, which: "plan" | "accept", check: StepCheck, patch: () => Record<string, unknown>) {
   await runTransaction(firestore, async (tx) => {
     const { project } = await readProject(tx, firestore, projectId)
     const fresh = withFreshState(ctx, project)
@@ -69,16 +87,25 @@ async function step(firestore: Firestore, ctx: PmContext, projectId: string, seq
     const snap = await tx.get(ref)
     if (!snap.exists()) throw new PmNcrError("missing")
     const ncr = snap.data() as PmNcr
-    const blocks = ncrStepBlocks({ archived: fresh.archived, status: ncr.status, step: which, text })
+    const blocks = ncrStepBlocks({ archived: fresh.archived, status: ncr.status, step: which, ...check, after: which === "accept" ? ncr.plan?.on ?? ncr.day : null })
     if (blocks.length) throw new PmNcrError("blocked", blocks)
     tx.update(ref, { ...patch(), updatedAt: serverTimestamp() })
   })
 }
 
-/** The corrective plan is submitted. */
-export const submitNcrPlan = (firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, seq: number, text: string) =>
-  step(firestore, ctx, projectId, seq, "plan", text, () => ({ status: "plan", plan: { on: todayDay(), by: actor.uid, byName: actor.name, text: text.trim() } }))
+/** The corrective and preventive plan is submitted; money holders may revise the cost with it. */
+export const submitNcrPlan = (firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, seq: number, text: string, opts: { cost?: number | null; files?: PmAttachment[] | null } = {}) =>
+  step(firestore, ctx, projectId, seq, "plan", { text, cost: opts.cost }, () => ({
+    status: "plan",
+    plan: { on: todayDay(), by: actor.uid, byName: actor.name, text: text.trim(), cost: opts.cost ?? null, files: cleanAttachments(opts.files) },
+  }))
 
-/** The consultant accepted the correction — closed. */
-export const acceptNcr = (firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, seq: number) =>
-  step(firestore, ctx, projectId, seq, "accept", null, () => ({ status: "done", accepted: { on: todayDay(), by: actor.uid, byName: actor.name } }))
+/** The consultant accepted the correction — closed, on the consultant's day,
+ * with the actual rework cost when a money holder records it. */
+export const acceptNcr = (firestore: Firestore, ctx: PmContext, projectId: string, actor: NcrActor, seq: number, opts: { on?: string; cost?: number | null; files?: PmAttachment[] | null } = {}) => {
+  const today = todayDay()
+  return step(firestore, ctx, projectId, seq, "accept", { cost: opts.cost, day: opts.on ?? today, today }, () => ({
+    status: "done",
+    accepted: { on: opts.on || today, by: actor.uid, byName: actor.name, cost: opts.cost ?? null, recordedOn: today, files: cleanAttachments(opts.files) },
+  }))
+}

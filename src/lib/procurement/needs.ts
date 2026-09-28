@@ -20,6 +20,24 @@ export interface NeedLine {
   name: string
   unit: string
   quantity: number
+  /** Optional, from the source when it says: the purchasing category (buyer scope). */
+  category?: string
+  /** The line waits on a sample the consultant has not approved yet. */
+  samplePending?: boolean
+  /** Its own need-by date, when it differs from the request's. */
+  needBy?: string
+}
+
+/** What Procurement decided on a project's request without the other module's
+ * answer: bought after Inventory's check window lapsed (`proceed_short` =
+ * only what the stores do not cover, `proceed_full` = all of it), or bought
+ * instead of asking the workshop (`buy`). Written once; `cover` is the stock
+ * relied on per line when proceeding short. */
+export interface ProcDecision {
+  kind: "proceed_short" | "proceed_full" | "buy"
+  at: string
+  byName: string
+  cover?: number[]
 }
 
 export interface Need {
@@ -41,6 +59,8 @@ export interface Need {
   poNumber: string | null
   /** Why it ended: the reason it was sent back, or who received it. */
   endNote: string | null
+  /** How it ended: arrived, sent back to the workshop, refused by the warehouse. */
+  endKind: "arrived" | "sent_back" | "refused" | null
   waitingOn: "warehouse" | "workshop" | null
   projectId: string | null
   projectName: string | null
@@ -49,9 +69,12 @@ export interface Need {
   stock: { onHand: number; min: number } | null
   /** The work order (mfg) or the project (project) it belongs to, for its link. */
   ownerId: string
+  /** The manufacturing request a project need was routed to, if any. */
+  mfgRequestId: string | null
+  decision: ProcDecision | null
 }
 
-const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, waitingOn: null, projectId: null, projectName: null, stock: null }
+const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, endKind: null, waitingOn: null, projectId: null, projectName: null, stock: null, mfgRequestId: null, decision: null }
 
 export const nameKey = (name: string) => foldSearchText(name)
 
@@ -76,6 +99,7 @@ export function mfgNeed(order: { id: string; ref: string; context: string; proje
     poId: r.poId ?? null,
     poNumber: r.poNumber ?? null,
     endNote: r.state === "declined" ? r.declinedReason ?? null : r.state === "arrived" ? r.arrivedBy ?? null : null,
+    endKind: r.state === "declined" ? "sent_back" : r.state === "arrived" ? "arrived" : null,
     projectId: order.projectId ?? null,
     projectName: order.projectName ?? null,
     source: { kind: "mfg_purchase", workOrderId: order.id, purchaseRequestId: r.id },
@@ -88,7 +112,10 @@ export function mfgNeed(order: { id: string; ref: string; context: string; proje
 export interface ProjectRequestDoc {
   id: string
   title?: string
-  items?: Array<{ name?: string; quantity?: string | number; unit?: string }>
+  items?: Array<{ name?: string; quantity?: string | number; unit?: string; category?: string | null; samplePending?: boolean | null; needBy?: string | null }>
+  /** Optional until Projects' requests carry one (PM 1.0 E-26). */
+  needBy?: string | null
+  procDecision?: ProcDecision | null
   notes?: string | null
   status?: "pending" | "approved" | "rejected"
   requestedByUserName?: string
@@ -109,17 +136,25 @@ const iso = (v: unknown): string => {
 
 export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
   const lines = (pr.items || [])
-    .map((i) => ({ name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: Number(i.quantity) || 0 }))
+    .map((i) => {
+      const l: NeedLine = { name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: Number(i.quantity) || 0 }
+      if (i.category) l.category = i.category
+      if (i.samplePending) l.samplePending = true
+      if (i.needBy) l.needBy = i.needBy.slice(0, 10)
+      return l
+    })
     .filter((l) => l.name && l.quantity > 0)
+  const decision = pr.procDecision ?? null
+  const proceeded = decision?.kind === "proceed_short" || decision?.kind === "proceed_full"
   let state: NeedState = "action"
   let waitingOn: Need["waitingOn"] = null
   if (pr.status === "rejected") state = "done"
-  else if (pr.status !== "approved") {
+  else if (pr.status !== "approved" && !(proceeded && pr.status === "pending")) {
     state = "waiting"
     waitingOn = "warehouse"
   } else if (pr.poId) state = "order"
   else if (pr.rfqId) state = "rfq"
-  else if (pr.mfgRequestId) {
+  else if (pr.mfgRequestId && decision?.kind !== "buy") {
     state = "waiting"
     waitingOn = "workshop"
   }
@@ -129,6 +164,7 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     kind: "project",
     state,
     lines,
+    needBy: pr.needBy ? pr.needBy.slice(0, 10) : null,
     requestedBy: pr.requestedByUserName || "",
     at: iso(pr.createdAt),
     refLabel: ref,
@@ -139,11 +175,14 @@ export function projectNeed(project: { id: string; name: string }, pr: ProjectRe
     poId: pr.poId ?? null,
     poNumber: pr.poNumber ?? null,
     endNote: pr.status === "rejected" ? pr.decidedByUserName ?? null : null,
+    endKind: pr.status === "rejected" ? "refused" : null,
     waitingOn,
     projectId: project.id,
     projectName: project.name,
     source: { kind: "project_request", projectId: project.id, purchaseRequestId: pr.id },
     ownerId: project.id,
+    mfgRequestId: pr.mfgRequestId ?? null,
+    decision,
   }
 }
 

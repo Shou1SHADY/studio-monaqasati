@@ -5,7 +5,7 @@
  */
 
 import { gapQuantity, mfgNeed, needCounts, needSourceParam, parseNeedSource, projectNeed, stockNeeds, type ProjectRequestDoc } from "@/lib/procurement/needs"
-import { directOrderRefusal, directLinePrices, directTotal } from "@/lib/procurement/direct"
+import { directOrderRefusal, directLinePrices, directTotal, isSingleSource } from "@/lib/procurement/direct"
 import { DEFAULT_POLICIES, type PurchaseOrder } from "@/lib/procurement/types"
 import { splitSiblings } from "@/lib/procurement/po"
 import type { PurchaseRequestRecord } from "@/lib/manufacturing-engine"
@@ -97,13 +97,21 @@ describe("an order without an RFQ", () => {
     expect(directOrderRefusal({ ...base, mode: "agreement", lines, agreement: { ...ag, until: "2026-09-01" } })?.code).toBe("agreement_not_live")
     expect(directOrderRefusal({ ...base, mode: "agreement", lines: [...lines, { name: "Sand", unit: "m3", quantity: 1, unitPrice: null }], agreement: ag })).toEqual({ code: "agreement_line_missing", params: { item: "Sand" } })
   })
-  it("a direct purchase needs a supplier, a price on every line, a reason, and stays under the cap", () => {
+  it("a direct purchase needs a supplier and a price on every line; a reason only above the cap (single source)", () => {
     const lines = [{ name: "Epoxy", unit: "can", quantity: 10, unitPrice: 120 }]
     expect(directOrderRefusal({ ...base, mode: "direct", lines })?.code).toBe("order_supplier_missing")
     expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines: [{ ...lines[0], unitPrice: null }] })?.code).toBe("price_missing")
-    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines })?.code).toBe("reason_required")
-    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", reason: "urgent", lines })).toBeNull()
-    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", reason: "urgent", lines: [{ ...lines[0], quantity: 50 }] })).toEqual({ code: "over_direct_cap", params: { total: 6000, cap: 5000 } })
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines })).toBeNull()
+    const big = [{ ...lines[0], quantity: 50 }]
+    expect(isSingleSource({ mode: "direct", lines: big, agreement: null, policies: DEFAULT_POLICIES })).toBe(true)
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines: big })?.code).toBe("reason_required")
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", reason: "sole", lines: big })).toBeNull()
+  })
+  it("asks for a deliver-by date that is not in the past, when the caller requires one", () => {
+    const lines = [{ name: "Epoxy", unit: "can", quantity: 1, unitPrice: 10 }]
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines, requireDeliverBy: true, deliverBy: "" })?.code).toBe("delivery_date_missing")
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines, requireDeliverBy: true, deliverBy: "2026-09-01" })?.code).toBe("delivery_date_missing")
+    expect(directOrderRefusal({ ...base, mode: "direct", supplierName: "X", lines, requireDeliverBy: true, deliverBy: "2026-10-01" })).toBeNull()
   })
 })
 

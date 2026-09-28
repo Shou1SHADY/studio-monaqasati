@@ -1,24 +1,31 @@
 "use client"
 
-// Procurement forwards a delivery to whoever will receive it (22 Sep review):
-// a team member, or a name and mobile number for someone with no account. The
-// server makes a single-use link and texts the code to that mobile when the
-// receiver asks for it; here, Procurement copies the link or sends it by
-// WhatsApp. Forwarding again replaces the earlier link.
+// Procurement forwards a delivery to whoever will receive it (22 Sep review,
+// prototype `fwd`): a team member, or a name and mobile number for someone
+// with no account. The review says what is coming, where, who receives at that
+// place and whose order it is; a note to the receiver rides on the link and is
+// shown there as "Note from Procurement". The server makes a single-use link
+// and texts the code to that mobile when the receiver asks for it; here,
+// Procurement copies the link or sends it by WhatsApp. Forwarding again
+// replaces the earlier link. Nothing forwards itself on a timer (S-14): the
+// product runs no scheduler, so the desk flags the notice instead.
 
 import { useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { Check, Copy, Loader2, MessageCircle, Send } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase"
+import { useUser } from "@/firebase"
 import { useOrgMembers } from "@/hooks/useOrgMembers"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
+import { displayPoNumber } from "@/lib/procurement/format"
+import type { DeskDelivery } from "@/lib/procurement/receipt-desk"
 import { receiversForPlace } from "@/lib/procurement/receivers"
+import type { PurchaseOrder } from "@/lib/procurement/types"
 import { cn } from "@/lib/utils"
-import { doc } from "firebase/firestore"
 
 // The register first: a delivery goes to a PERSON AT A PLACE, and the register
 // knows both. The other two modes stay for whoever is not in it yet.
@@ -27,39 +34,43 @@ type Mode = "register" | "user" | "person"
 export function ForwardReceiptDialog({
   open,
   onOpenChange,
-  deliveryId,
-  supplierName,
+  delivery,
+  po,
   orgId,
-  projectId,
+  placeWarehouseId,
+  placeName,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  deliveryId: string
-  supplierName: string
+  delivery: DeskDelivery
+  po: PurchaseOrder | null
   orgId: string
-  /** The order's project, when it has one: its warehouse is where this would land. */
-  projectId?: string | null
+  /** Where this delivery would land (the project's warehouse, else the central
+   * one, as `resolveLandingWarehouse` decides), so the register offers the
+   * people named for that place first. */
+  placeWarehouseId: string | null
+  placeName: string
 }) {
   const t = useTranslations("Portal.ProcReceipts")
   const tRcv = useTranslations("Portal.ProcReceivers")
+  const tp = useTranslations("Portal.Procurement")
+  const locale = useLocale()
   const { user } = useUser()
-  const firestore = useFirestore()
   const { orgMembers } = useOrgMembers(orgId)
   const { receivers } = useProcReceivers(orgId)
-
-  // Where this delivery would land, so the register can offer the people named
-  // for that place first: the project's own warehouse, else the central one —
-  // the same order `resolveLandingWarehouse` uses when the receipt is recorded.
-  const projectRef = useMemoFirebase(() => (firestore && projectId ? doc(firestore, "projects", projectId) : null), [firestore, projectId])
-  const { data: project } = useDoc<{ warehouseId?: string | null }>(projectRef)
-  const placeWarehouseId = (projectId ? project?.warehouseId : null) || (orgId ? `central_${orgId}` : null)
+  const deliveryId = delivery.id
+  const supplierName = delivery.supplierName || po?.supplierName || ""
   const choices = receiversForPlace(receivers, placeWarehouseId)
+  const atPlace = choices.filter((c) => c.atThisPlace)
+  const lines = (delivery.lines || []).map((l) => `${l.noticeQuantity} ${l.unit} ${l.name}`)
+  const day = (delivery.deliveryDate || "").slice(0, 10)
 
   const [mode, setMode] = useState<Mode>("register")
   const [receiverId, setReceiverId] = useState("")
   const [userId, setUserId] = useState("")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
+  const [note, setNote] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ url: string; phoneMasked: string } | null>(null)
@@ -81,6 +92,7 @@ export function ForwardReceiptDialog({
       setError(null)
       setCopied(false)
       setReceiverId("")
+      setNote("")
     }
     onOpenChange(o)
   }
@@ -104,7 +116,7 @@ export function ForwardReceiptDialog({
       const res = await fetch("/api/receipt-links", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ deliveryId, receiver }),
+        body: JSON.stringify({ deliveryId, receiver, note: note.trim() || null }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
@@ -160,6 +172,30 @@ export function ForwardReceiptDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            <div className="space-y-1 rounded-lg border bg-muted/20 p-3 text-xs">
+              <p className="text-sm font-bold" dir="auto">
+                {supplierName}
+                {po && <span className="font-medium text-muted-foreground"> · {displayPoNumber(po.docNumber, locale)}</span>}
+              </p>
+              <p className="text-muted-foreground" dir="auto">
+                {lines.join(" · ") || delivery.rfqTitle || "—"}
+                {day && <> — {t("forward.arrives", { date: day })}</>}
+                {delivery.deliveryWindow && <> {tp(`deliveryWindow.${delivery.deliveryWindow}` as "deliveryWindow.morning")}</>}
+                {delivery.deliveryPersonName && <> · {delivery.deliveryPersonName}</>}
+              </p>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+                <dt className="text-muted-foreground">{t("forward.place")}</dt>
+                <dd dir="auto">{placeName}</dd>
+                <dt className="text-muted-foreground">{t("forward.placeReceivers")}</dt>
+                <dd dir="auto">{atPlace.length ? atPlace.map((c) => `${c.name} — ${c.title}`).join("، ") : t("incoming.noReceiver")}</dd>
+                {po && (
+                  <>
+                    <dt className="text-muted-foreground">{tp("doc.PO")}</dt>
+                    <dd dir="auto">{t("forward.orderOwner", { number: displayPoNumber(po.docNumber, locale), name: po.preparedByName })}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
             <div className="grid grid-cols-3 gap-1 rounded-lg border p-1" role="group" aria-label={t("forward.title")}>
               {(["register", "user", "person"] as const).map((m) => (
                 <button
@@ -244,6 +280,18 @@ export function ForwardReceiptDialog({
                 </div>
               </div>
             )}
+            <div className="space-y-1">
+              <Label htmlFor="fw-note" className="text-xs">{t("forward.noteToReceiver")}</Label>
+              <Textarea id="fw-note" rows={2} maxLength={500} dir="auto" placeholder={t("forward.notePlaceholder")} value={note} onChange={(e) => setNote(e.target.value)} />
+            </div>
+            <ul className="space-y-1 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">
+              {[mode === "person" || (mode === "register" && chosen && !chosen.userId) ? t("forward.effectLink") : t("forward.effectMember"), t("forward.effectTrail"), t("forward.effectNoTimer")].map((x) => (
+                <li key={x} className="flex gap-2">
+                  <span aria-hidden="true">•</span>
+                  <span>{x}</span>
+                </li>
+              ))}
+            </ul>
             <p className="text-xs text-muted-foreground">{t("forward.codeNote")}</p>
             {error && <p className="text-xs text-destructive" role="alert">{error}</p>}
           </div>

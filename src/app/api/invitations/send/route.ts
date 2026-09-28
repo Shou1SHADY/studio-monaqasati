@@ -6,15 +6,32 @@ import { getAdminAuth, getAdminFirestore } from "@/lib/firebaseAdmin"
 import { sendEmail, buildSupplierInviteEmail, buildTeamInviteEmail } from "@/lib/email"
 import { resolveIdentityAdmin } from "@/lib/org-identity-admin"
 
-const bodySchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  type: z.enum(["supplier_invite", "team_invite"]).default("supplier_invite"),
-  // supplier_invite: invitee company name; team_invite: invitee person name
-  companyName: z.string().trim().max(200).optional(),
-  name: z.string().trim().max(200).optional(),
-  // team_invite only: default permission group for the new member
-  groupId: z.string().trim().max(100).optional(),
-})
+const bodySchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().optional(),
+    type: z.enum(["supplier_invite", "team_invite"]).default("supplier_invite"),
+    // supplier_invite: invitee company name; team_invite: invitee person name
+    companyName: z.string().trim().max(200).optional(),
+    name: z.string().trim().max(200).optional(),
+    // team_invite only: default permission group for the new member
+    groupId: z.string().trim().max(100).optional(),
+    // supplier_invite only: the contact mobile, what he supplies, the sender's
+    // note, and how the invitation leaves — WhatsApp opens the sender's own
+    // chat (the platform sends nothing), e-mail is sent from here.
+    phone: z.string().trim().max(30).optional(),
+    category: z.string().trim().max(120).optional(),
+    message: z.string().trim().max(1000).optional(),
+    channel: z.enum(["wa", "email"]).default("email"),
+  })
+  .superRefine((v, ctx) => {
+    if (v.type === "team_invite") {
+      if (!v.email) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["email"], message: "A valid email address is required" })
+      return
+    }
+    if (!v.companyName) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["companyName"], message: "The company name is required" })
+    if (v.channel === "wa" && (v.phone || "").replace(/\D/g, "").length < 9) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["phone"], message: "A mobile number is required for WhatsApp" })
+    if (v.channel === "email" && !v.email) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["email"], message: "A valid email address is required" })
+  })
 
 function errorResponse(message: string, code: string, status: number) {
   return NextResponse.json({ error: true, message, code }, { status })
@@ -38,11 +55,12 @@ export async function POST(req: NextRequest) {
     const json = await req.json().catch(() => null)
     const parsed = bodySchema.safeParse(json)
     if (!parsed.success) {
-      return errorResponse("A valid email address is required", "INVALID_INPUT", 400)
+      return errorResponse(parsed.error.issues[0]?.message || "Invalid input", "INVALID_INPUT", 400)
     }
-    const { email, type, companyName, name, groupId } = parsed.data
+    const { type, companyName, name, groupId, phone, category, message, channel } = parsed.data
+    const email = parsed.data.email || ""
 
-    if (decoded.email && email === decoded.email.toLowerCase()) {
+    if (email && decoded.email && email === decoded.email.toLowerCase()) {
       return errorResponse("You cannot invite your own email address", "SELF_INVITE", 400)
     }
 
@@ -62,11 +80,13 @@ export async function POST(req: NextRequest) {
 
     // --- Existing account? (also needed for team-invite validation below) ---
     let targetUid: string | null = null
-    try {
-      const targetUser = await getAdminAuth().getUserByEmail(email)
-      targetUid = targetUser.uid
-    } catch {
-      targetUid = null
+    if (email) {
+      try {
+        const targetUser = await getAdminAuth().getUserByEmail(email)
+        targetUid = targetUser.uid
+      } catch {
+        targetUid = null
+      }
     }
     const isExistingUser = targetUid !== null
 
@@ -203,11 +223,11 @@ export async function POST(req: NextRequest) {
     const contractorOrgId = senderOrgId
     const contractorName = senderOrgName
 
-    // --- Reuse an existing pending invitation to the same email (resend the email) ---
+    // --- Reuse an existing pending invitation to the same contact ---
     const existing = await db
       .collection("invitations")
       .where("contractorOrgId", "==", contractorOrgId)
-      .where("email", "==", email)
+      .where(email ? "email" : "phone", "==", email || phone)
       .where("type", "==", "supplier_invite")
       .where("status", "==", "pending")
       .limit(1)
@@ -225,14 +245,20 @@ export async function POST(req: NextRequest) {
     } else {
       inviteToken = randomBytes(32).toString("hex")
       invitationRef = await db.collection("invitations").add({
-        email,
+        email: email || null,
+        phone: phone || null,
         companyName: companyName || null,
+        category: category || null,
+        message: message || null,
+        channel,
         invitedBy: decoded.uid,
+        invitedByName: (sender.name as string) || senderOrgName,
         contractorOrgId,
         contractorName,
         status: "pending",
         type: "supplier_invite",
         inviteToken,
+        sentChannel: null,
         createdAt: FieldValue.serverTimestamp(),
       })
     }
@@ -257,6 +283,17 @@ export async function POST(req: NextRequest) {
 
     const inviteUrl = isExistingUser ? `${baseUrl}/login` : `${baseUrl}/register?invite=${inviteToken}`
 
+    // WhatsApp: the sender's own chat opens with the link; the platform sends nothing.
+    if (channel === "wa") {
+      await invitationRef
+        .update({ sentChannel: "wa", sentAt: FieldValue.serverTimestamp() })
+        .catch((err) => console.error("Failed to record sentChannel:", err))
+      return NextResponse.json({
+        success: true,
+        data: { invitationId: invitationRef.id, emailSent: false, isExistingUser, joinUrl: inviteUrl },
+      })
+    }
+
     const { subject, html } = buildSupplierInviteEmail({
       contractorName,
       companyName,
@@ -267,7 +304,7 @@ export async function POST(req: NextRequest) {
 
     if (result.sent) {
       await invitationRef
-        .update({ emailSentAt: FieldValue.serverTimestamp() })
+        .update({ emailSentAt: FieldValue.serverTimestamp(), sentChannel: "email", sentAt: FieldValue.serverTimestamp() })
         .catch((err) => console.error("Failed to record emailSentAt:", err))
     }
 
@@ -277,6 +314,7 @@ export async function POST(req: NextRequest) {
         invitationId: invitationRef.id,
         emailSent: result.sent,
         isExistingUser,
+        joinUrl: inviteUrl,
       },
     })
   } catch (err) {

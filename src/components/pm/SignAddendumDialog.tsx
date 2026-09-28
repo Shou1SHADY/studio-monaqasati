@@ -10,6 +10,7 @@ import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { MfgFileField, type UploadedFile } from "@/components/manufacturing/MfgFileField"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,7 +39,9 @@ export function SignAddendumDialog({
   lastSigned,
   contractValue,
   retentionHeld,
+  orgId = "",
 }: {
+  orgId?: string
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
@@ -58,12 +61,14 @@ export function SignAddendumDialog({
   const today = todayDay()
   const [signedOn, setSignedOn] = useState(today)
   const [signatory, setSignatory] = useState("")
+  const [file, setFile] = useState<UploadedFile | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (open) {
       setSignedOn(todayDay())
       setSignatory("")
+      setFile(null)
     }
   }, [open])
 
@@ -82,7 +87,7 @@ export function SignAddendumDialog({
     if (!firestore || blocks.length) return
     setBusy(true)
     try {
-      await signAddendum(firestore, access.ctx, projectId, actor, addendum.seq, { signedOn, signatory })
+      await signAddendum(firestore, access.ctx, projectId, actor, addendum.seq, { signedOn, signatory, files: file ? [file] : [] })
       toast({ title: t("amend.signed", { no: addendumNo(addendum.seq) }) })
       onOpenChange(false)
     } catch (err) {
@@ -123,6 +128,7 @@ export function SignAddendumDialog({
               <Input id="amd-signatory" value={signatory} onChange={(e) => setSignatory(e.target.value)} disabled={busy} />
             </div>
           </div>
+          <MfgFileField orgId={orgId} area="pm" folder={`projects/${projectId}/addenda`} value={file} onChange={setFile} label={t("amend.signed_file")} hint={t("amend.signed_file_hint")} />
           <BlockingReasons title={t("cannot_save")} reasons={blocks.map(blockText)} />
         </div>
         <DialogFooter>

@@ -20,6 +20,8 @@ export interface ProcTabDef {
   href: string
   /** In `Portal.Sidebar`. */
   labelKey: string
+  /** The rail's own wording, in `Portal.Shared` (the prototype's tab names). */
+  railKey: string
   /** Shown when the viewer holds ANY of these; the owner passes every check. */
   anyOf: PermissionId[]
 }
@@ -35,15 +37,18 @@ export const PROC_ORDERS_HREF = "/contractor/rfqs/orders"
 export const PROC_REPORTS_HREF = "/contractor/rfqs/reports"
 export const PROC_SETTINGS_HREF = "/contractor/rfqs/settings"
 
+// The prototype's rail: Today · incoming requests · RFQs · orders · receipts ·
+// suppliers · reports · boundaries. The expediter (no prices) follows orders
+// and receipts and reads suppliers, the price-free reports and the boundaries.
 export const PROC_TABS: ProcTabDef[] = [
-  { id: "today", href: PROC_TODAY_HREF, labelKey: "contractor_proc_today", anyOf: PROCUREMENT_PERMISSIONS },
-  { id: "rfqs", href: "/contractor/rfqs", labelKey: "contractor_rfqs", anyOf: ["rfq.manage"] },
-  { id: "requests", href: "/contractor/rfqs/requests", labelKey: "contractor_purchase_requests", anyOf: ["rfq.manage"] },
-  { id: "orders", href: PROC_ORDERS_HREF, labelKey: "contractor_purchase_orders", anyOf: ["offers.view", "offers.accept", "po.approve", "po.expedite"] },
-  { id: "receipts", href: "/contractor/goods-received", labelKey: "contractor_goods_received", anyOf: ["deliveries.confirm"] },
-  { id: "suppliers", href: "/contractor/suppliers", labelKey: "contractor_browse_suppliers", anyOf: ["suppliers.manage"] },
-  { id: "reports", href: PROC_REPORTS_HREF, labelKey: "contractor_proc_reports", anyOf: ["offers.view", "offers.accept"] },
-  { id: "settings", href: PROC_SETTINGS_HREF, labelKey: "contractor_proc_settings", anyOf: ["po.approve"] },
+  { id: "today", href: PROC_TODAY_HREF, labelKey: "contractor_proc_today", railKey: "proc_tab_today", anyOf: PROCUREMENT_PERMISSIONS },
+  { id: "requests", href: "/contractor/rfqs/requests", labelKey: "contractor_purchase_requests", railKey: "proc_tab_requests", anyOf: ["rfq.manage", "offers.accept"] },
+  { id: "rfqs", href: "/contractor/rfqs", labelKey: "contractor_rfqs", railKey: "proc_tab_rfqs", anyOf: ["rfq.manage"] },
+  { id: "orders", href: PROC_ORDERS_HREF, labelKey: "contractor_purchase_orders", railKey: "proc_tab_orders", anyOf: ["offers.view", "offers.accept", "po.approve", "po.expedite"] },
+  { id: "receipts", href: "/contractor/goods-received", labelKey: "contractor_goods_received", railKey: "proc_tab_receipts", anyOf: ["deliveries.confirm", "po.expedite", "offers.accept", "po.approve"] },
+  { id: "suppliers", href: "/contractor/suppliers", labelKey: "contractor_browse_suppliers", railKey: "proc_tab_suppliers", anyOf: ["suppliers.manage", "offers.view", "offers.accept", "po.approve", "po.expedite"] },
+  { id: "reports", href: PROC_REPORTS_HREF, labelKey: "contractor_proc_reports", railKey: "proc_tab_reports", anyOf: ["offers.view", "offers.accept", "po.approve", "po.expedite"] },
+  { id: "settings", href: PROC_SETTINGS_HREF, labelKey: "contractor_proc_settings", railKey: "proc_tab_settings", anyOf: ["po.approve", "offers.view", "offers.accept", "po.expedite"] },
 ]
 
 export type Can = (permission: PermissionId) => boolean
@@ -70,6 +75,7 @@ export function activeProcTab<T extends { href: string }>(tabs: T[], pathname: s
 export interface LoadedRfq {
   id: string
   status?: string | null
+  products?: Array<{ name?: string; quantity?: number | string | null; unit?: string | null; unitOfMeasure?: string | null }> | null
   deadline?: string | null
   title?: string | null
   offersCount?: number | null
@@ -90,6 +96,7 @@ export interface LoadedOffer {
   organizationId?: string | null
   offerPdfUrl?: string | null
   poId?: string | null
+  validUntil?: string | null
 }
 
 export interface LoadedWorld {
@@ -121,10 +128,11 @@ export function toProcWorld(w: LoadedWorld): ProcWorld {
     createdAt: isoOf(r.createdAt),
     awardedAt: r.awardedAt ?? null,
     invitedCount: r.invitedSupplierOrgIds?.length || null,
+    products: (r.products || []).map((p) => ({ name: p.name, quantity: p.quantity ?? null, unit: p.unit || p.unitOfMeasure || null })),
   }))
   const offers: OfferFact[] = w.offers
     .filter((o) => Boolean(o.rfqId))
-    .map((o) => ({ id: o.id, rfqId: o.rfqId as string, status: o.status ?? null, price: o.price ?? null, supplierOrgId: o.supplierOrgId ?? o.organizationId ?? null, offerPdfUrl: o.offerPdfUrl ?? null, poId: o.poId ?? null }))
+    .map((o) => ({ id: o.id, rfqId: o.rfqId as string, status: o.status ?? null, price: o.price ?? null, supplierOrgId: o.supplierOrgId ?? o.organizationId ?? null, offerPdfUrl: o.offerPdfUrl ?? null, poId: o.poId ?? null, ...(o.validUntil ? { validUntil: o.validUntil } : {}) }))
   return {
     orders: w.orders,
     receipts: w.deliveries,
@@ -267,22 +275,67 @@ export function csvText(head: Array<string | number | null>, rows: Array<Array<s
 
 export type ProcTabCounts = Partial<Record<ProcTabId, number>>
 
-/** Today = the decisions; requests = incoming lines still to act on; RFQs =
- * the open ones; orders = the live ones; receipts = orders still being
- * delivered. The other tabs carry no count. */
+/** The prototype's TABS(): Today = the decisions; requests = lines still
+ * Purchasing's to act on; RFQs = open ones, closed-and-awaiting-award
+ * included; orders = approved, sent, in delivery, part received; receipts =
+ * the live notices plus the orders due within three days with none. */
+export const RECEIPTS_DUE_DAYS = 3
+
 export function procTabCounts(input: {
   tasks: number
   incomingRequests: number
   rfqs: Array<{ status?: string | null; deadline?: string | null }>
   orders: PurchaseOrder[]
+  receipts?: ReceiptFact[]
   now: Date
 }): ProcTabCounts {
-  const today = dayOf(input.now.toISOString()) ?? ""
-  const openRfqs = input.rfqs.filter((r) => r.status === "New" && (!r.deadline || (dayOf(r.deadline) ?? "") >= today)).length
-  const live = input.orders.filter((o) => o.status !== "closed" && o.status !== "cancelled")
-  const inbound = input.orders.filter((o) => {
+  const openRfqs = input.rfqs.filter((r) => r.status === "New").length
+  const live = input.orders.filter((o) => ["approved", "sent", "in_delivery", "part_received"].includes(poStatus(o)))
+  const notices = (input.receipts || []).filter((r) => r.status === "pending_confirmation")
+  const noticed = new Set(notices.map((r) => r.poId).filter(Boolean))
+  const due = input.orders.filter((o) => {
     const s = poStatus(o)
-    return s === "in_delivery" || s === "part_received"
+    const d = daysFromNow(o.promisedDate, input.now)
+    return (s === "in_delivery" || s === "part_received") && !noticed.has(o.id) && d != null && d <= RECEIPTS_DUE_DAYS
   })
-  return { today: input.tasks, requests: input.incomingRequests, rfqs: openRfqs, orders: live.length, receipts: inbound.length }
+  return { today: input.tasks, requests: input.incomingRequests, rfqs: openRfqs, orders: live.length, receipts: notices.length + due.length }
+}
+
+/** The viewer's authority, as the head of every page says it (the prototype's ROLES.d). */
+export type ProcRole = "owner" | "owner_solo" | "manager" | "buyer" | "expediter" | "receiver"
+
+export function procRole(actor: { isOwner: boolean; canApprove: boolean; canPrepare: boolean; canExpedite: boolean; canReceive: boolean; seesPrices: boolean }, ownerHasTeam: boolean): ProcRole | null {
+  if (actor.isOwner) return ownerHasTeam ? "owner" : "owner_solo"
+  if (actor.canApprove) return "manager"
+  if (actor.canPrepare) return "buyer"
+  if (actor.canExpedite && !actor.seesPrices) return "expediter"
+  if (actor.canReceive) return "receiver"
+  return null
+}
+
+/** The prototype's «يصل خلال 7 أيام»: every order in delivery due within the
+ * week (by the supplier's notice when he sent one, else his promise), overdue
+ * first, each opening its ORDER; plus a notice that names no order. */
+export function arrivingWithinWeek(w: ProcWorld, now: Date, orderHref: (id: string) => string, receiptHref: (id: string) => string): ArrivingRow[] {
+  const out: ArrivingRow[] = []
+  const noticeOf = new Map<string, ReceiptFact>()
+  for (const r of w.receipts) if (r.status === "pending_confirmation" && r.poId && r.deliveryDate) noticeOf.set(r.poId, r)
+  for (const po of w.orders) {
+    const s = poStatus(po)
+    if (s !== "in_delivery" && s !== "part_received") continue
+    const open = po.lines.filter((l) => lineOutstanding(l) > 0)
+    if (!open.length) continue
+    const notice = noticeOf.get(po.id)
+    const date = notice?.deliveryDate ? dayOf(notice.deliveryDate) : po.promisedDate || ""
+    const d = daysFromNow(date, now)
+    if (d == null || d > ARRIVING_WINDOW_DAYS) continue
+    out.push({ id: po.id, supplierName: po.supplierName, number: po.docNumber, date, inDays: d, lines: open.map((l) => `${l.name} ${lineOutstanding(l)} ${l.unit}`).join(" · "), href: orderHref(po.id) })
+  }
+  const listed = new Set(out.map((r) => r.id))
+  for (const row of arrivingThisWeek(w, now, receiptHref)) {
+    const r = w.receipts.find((x) => x.id === row.id)
+    if (r?.poId && (listed.has(r.poId) || w.orders.some((o) => o.id === r.poId))) continue
+    out.push(row)
+  }
+  return out.sort((a, b) => a.inDays - b.inDays || a.supplierName.localeCompare(b.supplierName))
 }

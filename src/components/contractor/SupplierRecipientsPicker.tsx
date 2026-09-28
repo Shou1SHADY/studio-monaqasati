@@ -129,6 +129,7 @@ export function SupplierRecipientsPicker({
   disabled,
   id = "rfq-recipients",
   className,
+  facts,
 }: {
   options: SupplierOption[]
   selected: string[]
@@ -136,8 +137,11 @@ export function SupplierRecipientsPicker({
   disabled?: boolean
   id?: string
   className?: string
+  /** Per supplier: his on-time share (null = no record) and an expired CR — no order will be approved for him. */
+  facts?: Map<string, { onTime: number | null; crExpired: boolean }>
 }) {
   const t = useTranslations("Portal.Contractor")
+  const tp = useTranslations("Portal.Procurement")
   if (options.length === 0) return null
 
   const allSelected = selected.length === options.length
@@ -180,7 +184,15 @@ export function SupplierRecipientsPicker({
                 onChange={() => toggle(option.orgId)}
                 className="h-4 w-4 shrink-0 rounded border-slate-300 text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               />
-              <span className="text-sm font-semibold text-foreground truncate flex-1">{option.name}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-foreground">{option.name}</span>
+                {facts && (
+                  <span className="block text-[11px] text-muted-foreground">
+                    {facts.get(option.orgId)?.onTime == null ? tp("rfqpo.form.no_record") : tp("rfqpo.form.on_time", { pct: facts.get(option.orgId)?.onTime ?? 0 })}
+                    {facts.get(option.orgId)?.crExpired && <span className="text-destructive"> · {tp("rfqpo.form.cr_expired")}</span>}
+                  </span>
+                )}
+              </span>
               {option.isFavorite && (
                 <span className="shrink-0 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 flex items-center gap-1">
                   <Heart size={9} className="fill-amber-500 text-amber-500" />

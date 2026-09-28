@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { randomUUID } from "crypto"
 import { z } from "zod"
+import { parseOfferTerms } from "@/lib/procurement/offer-terms"
 import { guestOfferPrice, type PricedRfq } from "@/lib/procurement/offer-pricing"
 import { FieldValue } from "firebase-admin/firestore"
 import { getAdminFirestore, getAdminStorage, getStorageBucketName } from "@/lib/firebaseAdmin"
@@ -95,6 +96,10 @@ export async function POST(
       "executionDurationUnit",
       "website",
       "message",
+      "priceBasis",
+      "validUntil",
+      "advancePercent",
+      "creditDays",
     ]) {
       const v = form.get(key)
       if (typeof v === "string") raw[key] = v
@@ -209,6 +214,10 @@ export async function POST(
       guestChannel: normalizeGuestChannel(link.channel),
       createdAt: nowIso,
     }
+    // The offer's commercial terms (R-16) — the same parser as the portal's dialog.
+    const parsedTerms = parseOfferTerms({ priceBasis: raw.priceBasis, validUntil: raw.validUntil, advancePercent: raw.advancePercent, creditDays: raw.creditDays }, new Date().toISOString().slice(0, 10))
+    if (parsedTerms.error) return errorResponse("Invalid offer terms", "INVALID_INPUT", 400)
+    Object.assign(offerData, parsedTerms.terms)
     if (data.executionDuration) {
       offerData.executionDuration = data.executionDuration
       offerData.executionDurationUnit = data.executionDurationUnit || "أيام"

@@ -27,6 +27,7 @@ interface LinkData {
   rfqTitle: string
   deliveryDate: string | null
   forwardedBy: string
+  note?: string | null
   lines: Array<{ poLineId: string; name: string; unit: string }>
 }
 
@@ -218,6 +219,11 @@ export function ReceiveLinkContent() {
           {data.rfqTitle}
         </p>
         <p className="pt-1 text-sm text-foreground">{t("intro", { name: data.forwardedBy })}</p>
+        {data.note && (
+          <p className="mt-2 rounded-lg border border-cta/30 bg-cta/5 p-3 text-sm leading-relaxed text-foreground">
+            <b>{t("procurement_note")}:</b> <span dir="auto">{data.note}</span>
+          </p>
+        )}
       </header>
 
       <section className="space-y-2" aria-labelledby="lines-h">

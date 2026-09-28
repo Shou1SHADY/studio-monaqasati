@@ -185,9 +185,11 @@ export function isReceived(po: PurchaseOrder): boolean {
 // ---------------------------------------------------------------------------
 
 /** Who the order is routed to. The owner takes anything above the manager's
- * limit and every retroactive order; a solo company's owner takes his own. */
-export function requiredApprover(po: PurchaseOrder, policies: ProcurementPolicies, preparerIsOwnerSolo = false): "manager" | "owner" {
-  if (po.basis === "retroactive" || preparerIsOwnerSolo) return "owner"
+ * limit, every retroactive order, and any order prepared by someone who could
+ * approve it — the purchasing manager never approves their own (prototype:
+ * `v > mgrLimit || role === 'mgr'`). */
+export function requiredApprover(po: PurchaseOrder, policies: ProcurementPolicies, preparerApproves = false): "manager" | "owner" {
+  if (po.basis === "retroactive" || preparerApproves) return "owner"
   return poValue(po) > policies.managerApprovalLimit ? "owner" : "manager"
 }
 

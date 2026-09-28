@@ -187,6 +187,9 @@ export interface PurchaseOrder {
   sentByName?: string | null
   sentChannel?: PoSendChannel | null
   supplierAcceptedAt?: string | null
+  /** What we asked for at the award («مطلوب التسليم قبل»), `YYYY-MM-DD` — the
+   * supplier's promise may differ; this is the need we told him. */
+  requestedDeliveryDate?: string | null
   /** The supplier's committed delivery date, `YYYY-MM-DD`. */
   promisedDate?: string | null
   /** Who recorded the acceptance: the supplier in the portal, or us for them. */

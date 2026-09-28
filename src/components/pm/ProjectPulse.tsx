@@ -1,23 +1,24 @@
 "use client"
 
-// A PM 1.0 project's Pulse (the prototype's first tab): what needs a decision,
-// the money path — what the contract is worth, what was executed, billed and
-// collected against what was committed, invoiced and paid — and what we are
-// waiting on from other modules, with no button, because the act is theirs.
+// A PM 1.0 project's Pulse (the prototype's first tab): a note when there is
+// no BOQ or no item has a rate, what needs a decision (five, then "show more"),
+// the money trail; and beside them the divisions furthest from their plan, what
+// we are waiting on from other modules (no button — the act is theirs) and the
+// project log.
 
+import { useMemo } from "react"
 import { useTranslations } from "next-intl"
-import { Wallet } from "lucide-react"
-import { Panel } from "@/components/module-ui/Panel"
+import { Callout } from "@/components/module-ui/Callout"
 import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
+import { PulseMoneyTrail, type TrailProject } from "@/components/pm/PulseMoneyTrail"
 import { WaitingOnOthers } from "@/components/pm/WaitingOnOthers"
 import { ProjectLogPanel, SectionsBehindPanel } from "@/components/pm/PulseExtras"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
-import { useProjectMoneyFlow } from "@/hooks/useProjectMoneyFlow"
 import type { DecisionTab } from "@/lib/pm/decisions"
-import { pmMoney } from "@/lib/pm/format"
+import { boqNote } from "@/lib/pm/pulse"
 
-const r2 = (n: number) => Math.round(n * 100) / 100
+export type PulseProject = PmDecisionProject & TrailProject & { name?: string; location?: string; warehouseId?: string | null; pm?: (PmDecisionProject["pm"] & { retentionReleased?: boolean; cutPool?: number }) | null }
 
 export function ProjectPulse({
   projectId,
@@ -26,62 +27,52 @@ export function ProjectPulse({
   items,
   access,
   onOpen,
+  sections,
 }: {
   projectId: string
   organizationId: string
-  project: PmDecisionProject
-  items: Array<{ division?: string; quantity: number; rate: number; executed: number }>
+  project: PulseProject
+  items: Array<{ id?: string; division?: string; quantity: number; rate: number; executed: number }>
   access: PmAccess
   onOpen: (tab: DecisionTab) => void
+  /** The project's switched-on sections; the trail needs billing or cost, the programme button its tab. */
+  sections?: readonly string[]
 }) {
   const t = useTranslations("Portal.PM")
   const money = access.has("money")
-  const flow = useProjectMoneyFlow(money ? projectId : null)
-  const executed = r2(items.reduce((a, i) => a + (i.rate > 0 ? i.executed * i.rate : 0), 0))
-
-  const path = [
-    [
-      { label: t("pulse.path_contract"), value: flow.budget ?? 0 },
-      { label: t("pulse.path_executed"), value: executed },
-      { label: t("pulse.path_billed"), value: flow.claimed || 0 },
-      { label: t("pulse.path_collected"), value: flow.collected || 0 },
-    ],
-    [
-      { label: t("pulse.path_committed"), value: flow.committed || 0 },
-      { label: t("pulse.path_invoiced"), value: flow.invoiced || 0 },
-      { label: t("pulse.path_paid"), value: flow.paid || 0 },
-    ],
-  ]
+  const note = boqNote(items.length, items.filter((i) => !(i.rate > 0)).length)
+  const has = (s: string) => !sections || sections.includes(s)
+  const trailProject = useMemo(() => ({ ...project, organizationId }), [project, organizationId])
+  const open = (tab: string) => onOpen(tab as DecisionTab)
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-      <div className="space-y-4">
-        <PmTodayPanel projectId={projectId} project={project} access={access} onOpen={onOpen} />
-        {money && (
-          <Panel title={t("pulse.path_title")} icon={Wallet}>
-            <p className="-mt-1 mb-3 text-xs text-muted-foreground">{t("pulse.path_desc")}</p>
-            <div className="space-y-3">
-              {path.map((row, i) => (
-                <ol key={i} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-4">
-                  {row.map((cell) => (
-                    <li key={cell.label} className="min-w-0">
-                      <p className="text-[11px] font-semibold text-muted-foreground">{cell.label}</p>
-                      <p className="truncate text-sm font-black tabular-nums text-foreground" dir="ltr">
-                        {pmMoney(cell.value)}
-                      </p>
-                    </li>
-                  ))}
-                </ol>
-              ))}
-            </div>
-          </Panel>
-        )}
-      </div>
-
-      <div className="space-y-4">
-        <SectionsBehindPanel project={project} items={items} />
-        <WaitingOnOthers organizationId={organizationId} projects={[{ id: projectId }]} />
-        <ProjectLogPanel projectId={projectId} project={project} money={money} seesTerms={money || access.has("approve")} />
+    <div className="space-y-4">
+      {note === "all_unpriced" && (
+        <Callout tone="warn" title={t("pulse.note_unpriced_title", { count: items.length })}>
+          {t("pulse.note_unpriced_body")}
+        </Callout>
+      )}
+      {note === "no_boq" && (
+        <Callout tone="warn" title={t("pulse.note_no_boq_title")}>
+          {t("pulse.note_no_boq_body")}
+        </Callout>
+      )}
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+        <div className="space-y-4">
+          <PmTodayPanel projectId={projectId} project={project} access={access} onOpen={onOpen} />
+          <PulseMoneyTrail projectId={projectId} project={trailProject} access={access} ipcOn={has("ipc")} costOn={has("cost")} />
+        </div>
+        <div className="space-y-4">
+          <SectionsBehindPanel projectId={projectId} project={project} items={items} onProgramme={project.pm?.terms ? () => open("pmProgramme") : undefined} />
+          <WaitingOnOthers
+            organizationId={organizationId}
+            projects={[{ id: projectId, name: project.name, retentionReleased: project.pm?.retentionReleased }]}
+            finance={access.has("client")}
+            money={money}
+            onOpenTab={open}
+          />
+          <ProjectLogPanel projectId={projectId} project={trailProject} money={money} seesTerms={money || access.has("approve")} />
+        </div>
       </div>
     </div>
   )
