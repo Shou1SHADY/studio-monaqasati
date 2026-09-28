@@ -139,6 +139,35 @@ service cloud.firestore {
               : pmCeilingHas('all'));
     }
 
+    // HR 1.0 (PRD §3–4, RL-01…03) — the caller's HR role comes from his DEFAULT
+    // group: `employees.manage` HR manager · `hr.gov` government relations ·
+    // `hr.payroll` payroll officer · `hr.supervisor` workplace supervisor ·
+    // `hr.management` management. The owner and a '*' group hold every role.
+    // Mirrors src/lib/hr/access.ts.
+    function hrRole(perm) {
+      return isOrgOwner() || groupGrants(memberDefaultGroupId(), perm);
+    }
+    function hrManager() { return hrRole('employees.manage'); }
+    // RL-03: pay is seen by the HR manager, payroll and management — never by
+    // government relations or a supervisor (the employee reads his own, see employeePay).
+    function hrSeesPay() {
+      return hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management');
+    }
+    function hrStaff() {
+      return hrRole('employees.manage') || hrRole('hr.gov') || hrRole('hr.payroll')
+        || hrRole('hr.supervisor') || hrRole('hr.management');
+    }
+    // Finance's hand in HR (AD-03): an advance above the HR limit.
+    function hrFinance() {
+      return isOrgOwner() || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.post');
+    }
+    // A workplace supervisor acts on his own workplaces only (the site names him).
+    function hrSupervises(siteId) {
+      return hrRole('hr.supervisor')
+        && exists(/databases/$(database)/documents/hrSites/$(siteId))
+        && get(/databases/$(database)/documents/hrSites/$(siteId)).data.get('supervisorUserId', '') == request.auth.uid;
+    }
+
     // The project manager of a PM 1.0 project (one born from a handover file).
     function isPmProjectManager(projectId) {
       let p = get(/databases/$(database)/documents/projects/$(projectId)).data;
@@ -1554,6 +1583,25 @@ service cloud.firestore {
 
     // Procurement policies (§6.4) — one document per org, read by every
     // member, set by the owner or an approver. Absent = the PRD's reference values.
+    // HR 1.0 settings (ST-01…06) — one document per org: features, policies,
+    // establishment. Read by every member (tabs follow the features); written by
+    // the HR manager.
+    match /hrSettings/{orgId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
+      allow create, update: if isSignedIn() && isOrgMember(orgId)
+        && request.resource.data.get('organizationId', orgId) == orgId
+        && hrManager();
+      // A visa arrival recorded by government relations uses one visa — the
+      // count goes down by exactly one and nothing else changes.
+      allow update: if isSignedIn() && isOrgMember(orgId) && hrRole('hr.gov')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['establishment'])
+        && request.resource.data.establishment.diff(resource.data.establishment).affectedKeys().hasOnly(['visas'])
+        && resource.data.establishment.get('visas', 0) is int
+        && resource.data.establishment.get('visas', 0) > 0
+        && request.resource.data.establishment.visas == resource.data.establishment.visas - 1;
+      allow delete: if isAdmin();
+    }
+
     match /procurementSettings/{orgId} {
       allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(orgId));
       allow create, update: if isSignedIn() && isOrgMember(orgId)
@@ -1675,11 +1723,368 @@ service cloud.firestore {
     // Employee records — scoped to an organization
     // list uses isSignedIn() (no resource.data on collection queries); the app's
     // where(organizationId==) clause enforces isolation at query time.
+    // HR 1.0 workplaces (AS-01) — project sites, workshop, warehouse, fleet,
+    // showroom, department, head office. Read by every member (people, attendance
+    // and cost all point at them); kept by the HR manager; deactivated, never deleted.
+    // Attendance (AT-01…04): one document per workplace and month. Recorded by
+    // the HR manager, payroll or the site's supervisor; the missing-days
+    // declaration by the HR manager or the supervisor only; closed after the
+    // month by any of the three — and after that nothing changes, ever.
+    match /hrAttendance/{id} {
+      allow get: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management') || hrSupervises(resource.data.siteId))));
+      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrRole('employees.manage') || hrRole('hr.payroll') || hrRole('hr.management'))));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && id == request.resource.data.organizationId + '__' + request.resource.data.siteId + '__' + request.resource.data.month
+        && (hrManager() || hrRole('hr.payroll') || hrSupervises(request.resource.data.siteId))
+        && (request.resource.data.get('declarations', []).size() == 0 || hrManager() || hrSupervises(request.resource.data.siteId));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.get('closed', null) == null
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.siteId == resource.data.siteId
+        && request.resource.data.month == resource.data.month
+        && (hrManager() || hrRole('hr.payroll') || hrSupervises(resource.data.siteId))
+        && (request.resource.data.get('declarations', []) == resource.data.get('declarations', [])
+          || hrManager() || hrSupervises(resource.data.siteId));
+      allow delete: if false;
+    }
+
+    match /hrSites/{siteId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hrManager()
+        && request.resource.data.type in ['project', 'workshop', 'warehouse', 'fleet', 'showroom', 'department', 'hq']
+        && request.resource.data.get('name', '') is string && request.resource.data.get('name', '').size() > 0;
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hrManager()
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.type in ['project', 'workshop', 'warehouse', 'fleet', 'showroom', 'department', 'hq'];
+      allow delete: if isAdmin();
+    }
+
+    // HR 1.0 — the employee record (EM-01…06). HR staff read the org's people; an
+    // employee reads his own (ES-05). Pay is NEVER on this document (RL-03) — it
+    // lives in employeePay. The permanent number never changes (EM-02); a record
+    // is never deleted (an exit closes it).
     match /employees/{employeeId} {
-      allow get: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && (isAdmin() || isOrgMember(request.resource.data.organizationId));
-      allow update, delete: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow get, list: if isSignedIn() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId)
+            && (hrStaff() || resource.data.get('userId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && (hrManager() || hrRole('hr.gov'))
+        && !('salary' in request.resource.data);
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.get('no', null) == resource.data.get('no', null)
+        && !('salary' in request.resource.data && request.resource.data.salary != resource.data.get('salary', null));
+      // Management decides the HR manager's own leave (LV-05): only its effects.
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hrRole('hr.management')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['leaveTaken', 'sick', 'hajjTaken', 'contact', 'updatedAt']);
+      allow delete: if isAdmin();
+
+      // The undeletable log (EM-06): written by HR staff or the employee himself,
+      // in his own name; read by HR staff and the employee.
+      match /log/{entryId} {
+        allow read: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
+          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow create: if isSignedIn()
+          && isOrgMember(get(/databases/$(database)/documents/employees/$(employeeId)).data.organizationId)
+          && request.resource.data.by == request.auth.uid
+          && (hrStaff() || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid);
+        allow update, delete: if false;
+      }
+    }
+
+    // HR 1.0 — pay and bank (RL-03): the HR manager, payroll and management — and
+    // the employee himself, read through the link on his record. Government
+    // relations and supervisors never. Payroll only marks a returned IBAN fixed;
+    // the HR manager approves it (RL-02).
+    match /employeePay/{employeeId} {
+      allow get: if isSignedIn() && (isAdmin()
+        || (isOrgMember(resource.data.organizationId)
+            && (hrSeesPay() || hrFinance()
+                || get(/databases/$(database)/documents/employees/$(employeeId)).data.get('userId', '') == request.auth.uid)));
+      allow list: if isSignedIn() && isOrgMember(resource.data.organizationId) && hrSeesPay();
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId) && hrManager();
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && (hrManager()
+            || (hrRole('hr.payroll')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'ibanFixedBy', 'updatedAt'])
+                && request.resource.data.ibanState == 'fixed'
+                && request.resource.data.get('ibanFixedBy', '') == request.auth.uid)
+            // Finance records a returned transfer (fin:RETURNED) — the IBAN goes back to payroll.
+            || (hrFinance()
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ibanState', 'updatedAt'])
+                && request.resource.data.ibanState == 'returned')
+            // An approved advance: management (the HR manager's own) or Finance (above the limit).
+            || ((hrRole('hr.management') || hrFinance())
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['advance', 'updatedAt']))
+            // The HR manager's own data update, decided by management (ES-03, LV-05).
+            || (hrRole('hr.management')
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['iban', 'ibanState', 'updatedAt'])
+                && request.resource.data.ibanState == 'ok'));
+      allow delete: if isAdmin();
+    }
+
+    // Payroll (PY-02…05): prepared by payroll or the HR manager and recomputed
+    // until approved; approved by the HR manager who did not prepare it (the
+    // org owner excepted, flagged); then Finance marks it posted and paid.
+    // Carries every wage: pay roles and Finance only.
+    match /hrPayrolls/{payrollId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && payrollId == request.resource.data.organizationId + '__' + request.resource.data.key
+        && request.resource.data.state == 'prepared'
+        && request.resource.data.prepared.by == request.auth.uid
+        && (hrManager() || hrRole('hr.payroll'));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.key == resource.data.key
+        && (
+          (resource.data.state == 'prepared' && request.resource.data.state == 'prepared'
+            && request.resource.data.prepared.by == request.auth.uid
+            && (hrManager() || hrRole('hr.payroll')))
+          || (resource.data.state == 'prepared' && request.resource.data.state == 'approved'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'approved', 'ownFlagged', 'updatedAt'])
+            && hrManager() && (resource.data.prepared.by != request.auth.uid || isOrgOwner()))
+          || (resource.data.state in ['approved', 'posted', 'paid'] && request.resource.data.state in ['posted', 'paid']
+            && (resource.data.state != 'paid' || request.resource.data.state == 'paid')
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'returned', 'paidHeld', 'updatedAt'])
+            && hrFinance())
+        );
+      allow delete: if false;
+    }
+
+    // Payslips (ES-04): written by Finance once the payroll is paid, one per
+    // line; the employee reads his own; nothing changes them afterwards.
+    match /hrPayslips/{payslipId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && hrFinance()
+        && payslipId == request.resource.data.payrollId + '__' + request.resource.data.employeeId
+        && exists(/databases/$(database)/documents/hrPayrolls/$(request.resource.data.payrollId))
+        && get(/databases/$(database)/documents/hrPayrolls/$(request.resource.data.payrollId)).data.state == 'paid';
+      allow update, delete: if false;
+    }
+
+    // The outbox to Finance (§7.2): one document per event key, written once by
+    // the approving HR manager; Finance only marks it posted / paid.
+    match /hrEvents/{eventId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId) && (hrSeesPay() || hrFinance())));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && eventId == request.resource.data.organizationId + '__' + request.resource.data.key
+        && request.resource.data.state == 'sent'
+        && hrManager();
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && hrFinance()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'posted', 'paid', 'entryId', 'updatedAt'])
+        && request.resource.data.state in ['posted', 'paid'];
+      allow delete: if false;
+    }
+
+    // Violations and penalties (PN-01…04): recorded by the site's supervisor
+    // (his sheet) or the HR manager, at a fixed id; decided by the HR manager
+    // after a hearing — never his own; objected by the employee himself;
+    // the objection decided by the HR manager. A penalty carries money: pay
+    // roles and the employee read it; a supervisor reads his site's (his sheet
+    // must know a violation is already recorded), and anyone on HR staff may
+    // learn that an id does NOT exist.
+    match /hrViolations/{violationId} {
+      allow get: if isSignedIn() && (isAdmin()
+        || (resource == null && hrStaff())
+        || (resource != null && isOrgMember(resource.data.organizationId)
+            && (hrSeesPay() || resource.data.get('employeeUserId', '') == request.auth.uid
+                || (resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId)))));
+      allow list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && violationId == request.resource.data.organizationId + '__' + request.resource.data.employeeId + '__' + request.resource.data.on + '__' + request.resource.data.code
+        && request.resource.data.state == 'recorded'
+        && request.resource.data.recorded.by == request.auth.uid
+        && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
+        && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
+        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.employeeId == resource.data.employeeId
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.on == resource.data.on
+        && (
+          (resource.data.state == 'recorded' && request.resource.data.state in ['applied', 'dismissed']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'hearing', 'step', 'stepKind', 'amount', 'deductMonth', 'notifiedOn', 'decision', 'updatedAt'])
+            && (request.resource.data.state != 'applied' || request.resource.data.get('hearing', null) != null)
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          || (resource.data.state == 'applied' && request.resource.data.state == 'objected'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'objection', 'updatedAt'])
+            && resource.data.get('employeeUserId', '') == request.auth.uid)
+          || (resource.data.state == 'objected' && request.resource.data.state in ['upheld', 'cancelled']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'deductMonth', 'objectionDecision', 'updatedAt'])
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+        );
+      allow delete: if false;
+    }
+
+    // End of service (EX-01…06). The exit carries no money: HR staff, the
+    // employee, Inventory (it clears the custody) and Finance read it. Started by
+    // the HR manager — never his own; custody cleared by Inventory only; the
+    // platform tasks by government relations or the HR manager; paid by Finance.
+    match /hrExits/{exitId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrStaff() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid
+            || hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive'))));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && exitId == request.resource.data.organizationId + '__' + request.resource.data.employeeId
+        && request.resource.data.state == 'leaving'
+        && request.resource.data.custody.state == 'requested'
+        && request.resource.data.started.by == request.auth.uid
+        && hrManager()
+        && (request.resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner());
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.employeeId == resource.data.employeeId
+        && (
+          (resource.data.custody.state == 'requested' && request.resource.data.custody.state == 'cleared'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['custody', 'updatedAt'])
+            && (hasOrgPermission('warehouses.manage') || hasOrgPermission('warehouses.receive')))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tasks', 'updatedAt'])
+            && (hrManager() || hrRole('hr.gov')))
+          || (resource.data.state == 'leaving' && request.resource.data.state == 'settled'
+            && resource.data.custody.state == 'cleared'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'settled', 'updatedAt'])
+            && hrManager() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          || (resource.data.state == 'settled' && request.resource.data.state == 'paid'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'paid', 'updatedAt'])
+            && hrFinance())
+        );
+      allow delete: if false;
+    }
+
+    // The settlement (EX-02, EX-04) — money: pay roles, Finance and the employee.
+    match /hrSettlements/{settlementId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay() || hrFinance() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'approved'
+        && request.resource.data.approved.by == request.auth.uid
+        && hrManager()
+        && (request.resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner())
+        && exists(/databases/$(database)/documents/hrExits/$(settlementId))
+        && get(/databases/$(database)/documents/hrExits/$(settlementId)).data.custody.state == 'cleared';
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.state == 'approved' && request.resource.data.state == 'paid'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'paid', 'entryId', 'updatedAt'])
+        && hrFinance();
+      allow delete: if false;
+    }
+
+    // Work injuries (DC-07, WF-15): recorded by the site's supervisor or the HR
+    // manager; the GOSI report number by government relations or the HR manager.
+    match /hrInjuries/{injuryId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrStaff() || resource.data.get('employeeUserId', '') == request.auth.uid)));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.recorded.by == request.auth.uid
+        && request.resource.data.get('report', null) == null
+        && (hrManager() || (request.resource.data.get('siteId', null) is string && hrSupervises(request.resource.data.siteId)));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.get('report', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['report', 'updatedAt'])
+        && (hrManager() || hrRole('hr.gov'));
+      allow delete: if false;
+    }
+
+    // Manpower requests (HR AS-02, WF-12): Projects asks — the project's editor
+    // or its PM 1.0 manager; the HR manager answers with the coverage plan. No
+    // pay inside: the org's members read them.
+    match /manpowerRequests/{requestId} {
+      allow get, list: if isSignedIn() && (isAdmin() || isOrgMember(resource.data.organizationId));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.state == 'open'
+        && request.resource.data.requested.by == request.auth.uid
+        && request.resource.data.get('answer', null) == null
+        && (hasOrgPermission('projects.edit') || hasProjectPermission(request.resource.data.projectId, 'projects.edit')
+            || isPmProjectManager(request.resource.data.projectId));
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && resource.data.state == 'open'
+        && (
+          (request.resource.data.state == 'answered' && hrManager()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'answer', 'updatedAt']))
+          || (request.resource.data.state == 'withdrawn' && resource.data.requested.by == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'updatedAt']))
+        );
+      allow delete: if false;
+    }
+
+    // HR requests (LV, AD): filed by the employee — or the HR manager for him —
+    // endorsed by the site's supervisor or the line manager, decided by the HR
+    // manager, the HR manager's own by management; an advance above the limit
+    // by Finance. Nobody decides his own (RL-02) — the org owner excepted, flagged.
+    // An advance carries money: read by pay roles, the employee and Finance only.
+    match /hrRequests/{requestId} {
+      allow get, list: if isSignedIn() && (isAdmin() || (isOrgMember(resource.data.organizationId)
+        && (hrSeesPay()
+            || (resource.data.kind == 'leave' && hrStaff())
+            || resource.data.get('employeeUserId', '') == request.auth.uid
+            || (resource.data.kind == 'advance' && hrFinance()))));
+      allow create: if isSignedIn() && isOrgMember(request.resource.data.organizationId)
+        && request.resource.data.kind in ['leave', 'advance', 'data']
+        && request.resource.data.state == 'pending'
+        && request.resource.data.filedBy.by == request.auth.uid
+        && exists(/databases/$(database)/documents/employees/$(request.resource.data.employeeId))
+        && get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.organizationId == request.resource.data.organizationId
+        && request.resource.data.employeeUserId == get(/databases/$(database)/documents/employees/$(request.resource.data.employeeId)).data.get('userId', null)
+        && (hrManager() || request.resource.data.employeeUserId == request.auth.uid)
+        && (request.resource.data.employeeUserId != request.auth.uid || !hrManager() || isOrgOwner()
+            || request.resource.data.deciderLevel == 'management')
+        && request.resource.data.get('financeHold', false) == false;
+      allow update: if isSignedIn() && isOrgMember(resource.data.organizationId)
+        && request.resource.data.organizationId == resource.data.organizationId
+        && request.resource.data.employeeId == resource.data.employeeId
+        && (
+          // endorse — the site's supervisor or the line manager, never his own
+          (resource.data.kind == 'leave' && resource.data.state == 'pending' && request.resource.data.state == 'endorsed'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'endorsement', 'updatedAt'])
+            && resource.data.get('employeeUserId', '') != request.auth.uid
+            && ((resource.data.get('siteId', null) is string && hrSupervises(resource.data.siteId)) || resource.data.get('lineManagerUserId', '') == request.auth.uid))
+          // decide
+          || (resource.data.state in ['pending', 'endorsed'] && request.resource.data.state in ['approved', 'declined', 'finance']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'decision', 'financeHold', 'leave', 'advance', 'updatedAt'])
+            && (request.resource.data.state != 'finance' || resource.data.kind == 'advance')
+            && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner())
+            && ((resource.data.deciderLevel == 'manager' && hrManager())
+                || (resource.data.deciderLevel == 'management' && hrRole('hr.management'))
+                || isOrgOwner()))
+          // Finance decides what HR sent up
+          || (resource.data.state == 'finance' && request.resource.data.state in ['approved', 'declined']
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'finance', 'updatedAt'])
+            && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          // Finance pays out an approved advance (fin:PRPAID)
+          || (resource.data.kind == 'advance' && resource.data.state == 'approved' && request.resource.data.state == 'approved'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payout', 'updatedAt'])
+            && hrFinance() && (resource.data.get('employeeUserId', '') != request.auth.uid || isOrgOwner()))
+          // cancel before it starts
+          || (request.resource.data.state == 'cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'cancel', 'updatedAt'])
+            && ((resource.data.state in ['pending', 'endorsed'] && (resource.data.get('employeeUserId', '') == request.auth.uid || hrManager()))
+                || (resource.data.state == 'approved' && resource.data.kind == 'leave' && hrManager())))
+        );
+      allow delete: if false;
+    }
+
+    // The last permanent employee number (EM-02) — only ever moves forward.
+    match /hrCounters/{orgId} {
+      allow get: if isSignedIn() && isOrgMember(orgId);
+      allow create: if isSignedIn() && isOrgMember(orgId) && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.lastEmployeeNo is int && request.resource.data.lastEmployeeNo >= 1;
+      allow update: if isSignedIn() && isOrgMember(orgId) && (hrManager() || hrRole('hr.gov'))
+        && request.resource.data.lastEmployeeNo is int
+        && request.resource.data.lastEmployeeNo > resource.data.lastEmployeeNo
+        && request.resource.data.lastEmployeeNo <= resource.data.lastEmployeeNo + 500;
+      allow delete: if isAdmin();
     }
 
     // CRM contacts — scoped to an organization

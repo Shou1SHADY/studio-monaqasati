@@ -31,6 +31,7 @@ import {
   ShoppingBasket,
   Users,
   PackageCheck,
+  FileUser,
   ShieldCheck,
   Briefcase,
   Receipt,
@@ -71,6 +72,7 @@ import {
   FileSpreadsheet,
   ArrowLeftRight,
   Settings2,
+  MapPin,
   BarChart3,
   Sunrise,
   KeyRound,
@@ -86,6 +88,11 @@ const MFG_DESK_ROLES: PermissionId[] = ["manufacturing.manage", "manufacturing.c
 const PROC_ANY_ROLE: PermissionId[] = ["rfq.create", "rfq.manage", "offers.view", "offers.accept", "po.approve", "po.expedite", "suppliers.manage", "deliveries.confirm"]
 /** The orders list: whoever sees prices, plus the expediter (dates and quantities only). */
 const PROC_ORDER_ROLES: PermissionId[] = ["offers.view", "offers.accept", "po.approve", "po.expedite"]
+
+/** The five HR roles' permissions (HR 1.0, src/lib/hr/access.ts). */
+const HR_ROLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.supervisor", "hr.management"]
+/** People is every HR role's but the supervisor's (he works from his workplaces). */
+const HR_PEOPLE_PERMISSIONS: PermissionId[] = ["employees.manage", "hr.gov", "hr.payroll", "hr.management"]
 
 export interface NavItem {
   titleKey: string
@@ -233,6 +240,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           // it was received; signing for it is gated inside the page.
           { titleKey: "inventory_delivery_notes", href: "/contractor/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/contractor/warehouses/manufacturing", icon: Factory },
+          { titleKey: "inventory_custody", href: "/contractor/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
       },
     ],
@@ -266,6 +274,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_receipts", href: "/contractor/receipts", icon: ScrollText, requiredPermission: "invoices.manage", comingSoon: RECEIPTS_COMING_SOON },
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
+          { titleKey: "fin_nav_hr_desk", href: "/contractor/accounting/hr-desk", icon: Users, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
           { titleKey: "fin_nav_procurement_desk", href: "/contractor/accounting/procurement-desk", icon: ClipboardCheck, requiredPermission: "po.approve" },
           { titleKey: "fin_nav_projects_desk", href: "/contractor/accounting/projects-desk", icon: KeyRound, requiredPermission: "invoices.manage" },
         ],
@@ -312,7 +321,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     id: "hr",
     labelKey: "component_hr",
     descKey: "component_hr_desc",
-    homeHref: "/contractor/employees",
+    homeHref: "/contractor/hr",
     icon: Briefcase,
     accentToken: "violet",
     displayOrder: 6,
@@ -320,7 +329,14 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_hr",
         items: [
-          { titleKey: "contractor_employees", href: "/contractor/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
+          { titleKey: "hr_nav_today", href: "/contractor/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
+          { titleKey: "hr_nav_people", href: "/contractor/hr/people", icon: Users, requiredAnyPermission: HR_PEOPLE_PERMISSIONS },
+          { titleKey: "hr_nav_sites", href: "/contractor/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
+          { titleKey: "hr_nav_payroll", href: "/contractor/hr/payroll", icon: Receipt, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.management"] },
+          { titleKey: "hr_nav_settings", href: "/contractor/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
+          // ES-00 — My file is every member's on the record: ungated (the page says so when there is no record).
+          { titleKey: "hr_nav_me", href: "/contractor/hr/me", icon: FileUser },
         ],
       },
     ],
@@ -524,6 +540,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "inventory_waste", href: "/supplier/warehouses/waste", icon: Scissors, requiredPermission: "warehouses.manage" },
           { titleKey: "inventory_delivery_notes", href: "/supplier/warehouses/delivery-notes", icon: ClipboardCheck },
           { titleKey: "inventory_mfg_desk", href: "/supplier/warehouses/manufacturing", icon: Factory },
+          { titleKey: "inventory_custody", href: "/supplier/warehouses/custody", icon: PackageCheck, requiredAnyPermission: ["warehouses.manage", "warehouses.receive"] },
         ],
       },
     ],
@@ -556,6 +573,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "supplier_invoices", href: "/supplier/invoices", icon: Receipt, requiredPermission: "invoices.manage" },
           { titleKey: "supplier_guarantees", href: "/supplier/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/supplier/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
+          { titleKey: "fin_nav_hr_desk", href: "/supplier/accounting/hr-desk", icon: Users, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
         ],
       },
       {
@@ -600,7 +618,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     id: "hr",
     labelKey: "component_hr",
     descKey: "component_hr_desc",
-    homeHref: "/supplier/employees",
+    homeHref: "/supplier/hr",
     icon: Briefcase,
     accentToken: "violet",
     displayOrder: 6,
@@ -608,7 +626,14 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
       {
         labelKey: "component_hr",
         items: [
-          { titleKey: "supplier_employees", href: "/supplier/employees", icon: Briefcase, requiredPermission: "employees.manage" },
+          // HR 1.0: Today is every role's first page (TD-01); each tab follows the role (RL-01).
+          { titleKey: "hr_nav_today", href: "/supplier/hr", icon: LayoutDashboard, requiredAnyPermission: [...HR_ROLE_PERMISSIONS] },
+          { titleKey: "hr_nav_people", href: "/supplier/hr/people", icon: Users, requiredAnyPermission: HR_PEOPLE_PERMISSIONS },
+          { titleKey: "hr_nav_sites", href: "/supplier/hr/sites", icon: MapPin, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.supervisor", "hr.management"] },
+          { titleKey: "hr_nav_payroll", href: "/supplier/hr/payroll", icon: Receipt, requiredAnyPermission: ["employees.manage", "hr.payroll", "hr.management"] },
+          { titleKey: "hr_nav_settings", href: "/supplier/hr/settings", icon: Settings2, requiredPermission: "employees.manage" },
+          // ES-00 — My file is every member's on the record: ungated (the page says so when there is no record).
+          { titleKey: "hr_nav_me", href: "/supplier/hr/me", icon: FileUser },
         ],
       },
     ],

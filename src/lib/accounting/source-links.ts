@@ -71,6 +71,14 @@ export function sourceDocumentPath(entry: Pick<JournalEntry, "sourceType" | "sou
       return "accounting/zakat"
     case "wht_remittance":
       return "accounting/wht"
+    // HR 1.0 — the Finance desk that posted and paid it.
+    case "hr_pay":
+    case "hr_eos":
+    case "hr_pay_payment":
+    case "hr_pay_return":
+    case "hr_advance":
+    case "hr_settlement":
+      return "accounting/hr-desk"
     default:
       return null
   }

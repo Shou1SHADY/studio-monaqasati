@@ -230,8 +230,8 @@ describe("can() — unknown groupId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("PERMISSION_IDS", () => {
-  it("contains exactly 32 permissions", () => {
-    expect(PERMISSION_IDS).toHaveLength(32)
+  it("contains exactly 36 permissions", () => {
+    expect(PERMISSION_IDS).toHaveLength(36)
   })
 
   it("groups every permission into exactly one component section", () => {
@@ -464,6 +464,10 @@ describe("permissionLabelKey", () => {
       "suppliers.manage": "perm_suppliers_manage",
       "deliveries.confirm": "perm_deliveries_confirm",
       "employees.manage": "perm_employees_manage",
+      "hr.gov": "perm_hr_gov",
+      "hr.payroll": "perm_hr_payroll",
+      "hr.supervisor": "perm_hr_supervisor",
+      "hr.management": "perm_hr_management",
       "invoices.manage": "perm_invoices_manage",
       "warehouses.manage": "perm_warehouses_manage",
       "crm.manage": "perm_crm_manage",

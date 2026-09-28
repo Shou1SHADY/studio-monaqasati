@@ -676,6 +676,168 @@ export function postPayrollPayment(e: PayrollPaymentEvent): PostingResult {
 }
 
 // ---------------------------------------------------------------------------
+// 9b. HR 1.0 payroll (PRD HR §7.3) — posted from the events HR sends, as
+// received: one debit per workplace, the cost centre following the assignment
+// (project wages · workshop · distribution · administration). HR computes and
+// approves; nothing here recomputes a wage.
+// ---------------------------------------------------------------------------
+
+export type HrCostKind = "direct" | "workshop" | "distribution" | "admin"
+
+export interface HrCostRow {
+  costKind: HrCostKind
+  siteId: string | null
+  projectId: string | null
+  projectName?: string | null
+  amount: number
+}
+
+function hrCostLines(rows: HrCostRow[], note: string): Line[] {
+  return rows
+    .filter((r) => round2(r.amount) !== 0)
+    .map((r) => {
+      if (r.costKind === "direct")
+        return { account: ACC.costLabour, debit: r.amount, project: r.projectId ?? undefined, projectName: r.projectName ?? null, costCenter: COST_CENTERS.execution, note }
+      if (r.costKind === "workshop") return { account: ACC.costWorkshopLabour, debit: r.amount, costCenter: COST_CENTERS.execution, note }
+      if (r.costKind === "distribution") return { account: ACC.distributionSalaries, debit: r.amount, costCenter: COST_CENTERS.admin, note }
+      return { account: ACC.adminSalaries, debit: r.amount, costCenter: COST_CENTERS.admin, note }
+    })
+}
+
+export interface HrPayPosting {
+  /** `hr:PAY:2026-08` or `hr:PAY:2026-08-D`. */
+  key: string
+  month: string
+  date: string
+  debit: HrCostRow[]
+  credit: { salariesPayable: number; gosi: number; advances: number; fines: number }
+}
+
+/** hr:PAY — Dr wages by centre · Cr salaries payable (net, held lines included), GOSI (both shares), advance instalments, fines. */
+export function postHrPay(e: HrPayPosting): PostingResult {
+  const lines: Line[] = [
+    ...hrCostLines(e.debit, `رواتب ${e.month}`),
+    { account: ACC.employeeAccruals, credit: e.credit.salariesPayable, note: "صافي الرواتب المستحقة" },
+    { account: ACC.gosiPayable, credit: e.credit.gosi, note: "التأمينات الاجتماعية" },
+    { account: ACC.employeeAdvances, credit: e.credit.advances, note: "أقساط السلف" },
+    { account: ACC.finesFund, credit: e.credit.fines, note: "غرامات العمال (م 73)" },
+  ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)
+  const total = round2(e.debit.reduce((x, r) => x + r.amount, 0))
+  return { sourceType: "hr_pay", sourceId: e.key, date: e.date, description: `مسير رواتب ${e.key.replace(/^hr:PAY:/, "")}`, costCenter: COST_CENTERS.admin, lines, empty: total === 0 }
+}
+
+export interface HrEosPosting {
+  key: string
+  month: string
+  date: string
+  debit: HrCostRow[]
+  credit: { eosProvision: number; leaveProvision: number }
+}
+
+/** hr:EOS — the month's accruals: Dr cost by centre · Cr end-of-service provision and leave provision. */
+export function postHrEos(e: HrEosPosting): PostingResult {
+  const lines: Line[] = [
+    ...hrCostLines(e.debit, `مخصصات ${e.month}`),
+    { account: ACC.endOfServiceProvision, credit: e.credit.eosProvision, note: "مخصص نهاية الخدمة" },
+    { account: ACC.leaveProvision, credit: e.credit.leaveProvision, note: "مخصص الإجازات" },
+  ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)
+  const total = round2(e.credit.eosProvision + e.credit.leaveProvision)
+  return { sourceType: "hr_eos", sourceId: e.key, date: e.date, description: `مخصصات نهاية الخدمة والإجازات ${e.month}`, costCenter: COST_CENTERS.admin, lines, empty: total === 0 }
+}
+
+/** Salaries paid (fin:PAID), or one held line paid later: Dr salaries payable · Cr bank. */
+export function postHrPayPayment(e: { sourceId: string; date: string; amount: number; bankAccount?: string; description: string }): PostingResult {
+  return {
+    sourceType: "hr_pay_payment",
+    sourceId: e.sourceId,
+    date: e.date,
+    description: e.description,
+    costCenter: COST_CENTERS.admin,
+    lines: [
+      { account: ACC.employeeAccruals, debit: e.amount, note: "سداد رواتب" },
+      { account: e.bankAccount || ACC.bankMain, credit: e.amount },
+    ],
+    empty: round2(e.amount) === 0,
+  }
+}
+
+/** A transfer the bank returned (fin:RETURNED): the money is back — Dr bank · Cr salaries payable, owed again. */
+export function postHrPayReturn(e: { sourceId: string; date: string; amount: number; bankAccount?: string; description: string }): PostingResult {
+  return {
+    sourceType: "hr_pay_return",
+    sourceId: e.sourceId,
+    date: e.date,
+    description: e.description,
+    costCenter: COST_CENTERS.admin,
+    lines: [
+      { account: e.bankAccount || ACC.bankMain, debit: e.amount },
+      { account: ACC.employeeAccruals, credit: e.amount, note: "حوالة مرتجعة" },
+    ],
+    empty: round2(e.amount) === 0,
+  }
+}
+
+/** An advance paid out (hr:PR advance): Dr employee advances · Cr bank. Payroll takes it back in instalments.
+ * The journal is readable by every member: the entry names the request, never the person (HR RL-03). */
+export function postHrAdvance(e: { requestId: string; requestNo: string; date: string; amount: number; bankAccount?: string }): PostingResult {
+  return {
+    sourceType: "hr_advance",
+    // The number carries a "/" — the entry id is keyed by the request's id.
+    sourceId: e.requestId,
+    date: e.date,
+    description: `سلفة موظف ${e.requestNo}`,
+    costCenter: COST_CENTERS.admin,
+    lines: [
+      { account: ACC.employeeAdvances, debit: e.amount, note: "سلفة موظف" },
+      { account: e.bankAccount || ACC.bankMain, credit: e.amount },
+    ],
+    empty: round2(e.amount) === 0,
+  }
+}
+
+export interface HrSettlementPosting {
+  settlementId: string
+  /** The employee's number — never the name: every member reads the journal. */
+  no: number
+  date: string
+  costKind: HrCostKind
+  siteId: string | null
+  projectId: string | null
+  gratuity: number
+  leaveCash: number
+  /** Last partial month + notice pay + art. 77 compensation + ticket — this month's cost. */
+  wages: number
+  advance: number
+  custody: number
+  net: number
+  bankAccount?: string
+}
+
+/** hr:FS paid (fin:PRPAID) — Dr the EOS provision (gratuity) and the leave provision
+ * (leave in cash), the wages by centre · Cr the outstanding advance, the custody
+ * shortfall recovered, and the bank. A provision short of the gratuity shows as its
+ * balance going negative — the accountant tops it up; nothing here guesses. */
+export function postHrSettlement(e: HrSettlementPosting): PostingResult {
+  const lines: Line[] = [
+    { account: ACC.endOfServiceProvision, debit: e.gratuity, note: "مكافأة نهاية الخدمة" },
+    { account: ACC.leaveProvision, debit: e.leaveCash, note: "رصيد الإجازات نقداً" },
+    ...hrCostLines([{ costKind: e.costKind, siteId: e.siteId, projectId: e.projectId, amount: e.wages }], "أجر الشهر الأخير والإشعار"),
+    { account: ACC.employeeAdvances, credit: e.advance, note: "سلفة مستردة" },
+    { account: ACC.sundryIncome, credit: e.custody, note: "عهدة ناقصة مستردة" },
+    { account: e.bankAccount || ACC.bankMain, credit: e.net },
+  ].filter((l) => round2((l.debit ?? 0) + (l.credit ?? 0)) !== 0)
+  return {
+    sourceType: "hr_settlement",
+    sourceId: e.settlementId,
+    date: e.date,
+    description: `مخالصة نهاية خدمة — موظف ${String(e.no).padStart(4, "0")}`,
+    costCenter: COST_CENTERS.admin,
+    lines,
+    empty: round2(e.gratuity + e.leaveCash + e.wages) === 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 10. Operating expense
 // ---------------------------------------------------------------------------
 
