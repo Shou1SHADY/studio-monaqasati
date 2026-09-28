@@ -7,7 +7,7 @@ import type { ContractTerms, TermChange } from "./terms"
 
 export const PM_EVENTS = "pmEvents"
 
-export type PmEventKind = "ADV" | "ADVCHG" | "IPC" | "SC" | "BUD" | "HND" | "AMD"
+export type PmEventKind = "ADV" | "IPC" | "SC" | "BUD" | "HND" | "AMD"
 
 export interface PmEvent {
   key: string
@@ -53,33 +53,3 @@ export function advanceEvent(input: {
   }
 }
 
-/** The advance changed before start, after Finance received prj:ADV (the
- * prototype's advLog). Finance's contract holds ONE advance event per project;
- * a second prj:ADV would book a second advance, so the change travels under its
- * own kind and key — prj:ADVCHG:<project>:<n> — with from → to, for Finance to
- * apply to the advance it holds (it is not yet in Finance's contract: see the
- * boundary's conflicts). */
-export function advanceChangeEvent(input: {
-  organizationId: string
-  projectId: string
-  projectNo: string
-  n: number
-  contractValue: number
-  from: number
-  to: number
-  by: string
-  at: string
-}): PmEvent {
-  return {
-    key: `prj:ADVCHG:${input.projectNo}:${input.n}`,
-    kind: "ADVCHG",
-    organizationId: input.organizationId,
-    projectId: input.projectId,
-    projectNo: input.projectNo,
-    amount: Math.round(input.contractValue * input.to * 100) / 100,
-    params: { from: input.from, to: input.to, contractValue: input.contractValue },
-    changes: [{ key: "advance", from: input.from, to: input.to }],
-    by: input.by,
-    at: input.at,
-  }
-}

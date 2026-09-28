@@ -18,7 +18,7 @@ import { BOUNDARY_CONFLICTS, eventStats } from "@/lib/pm/boundary"
 import { certifyBlocks, collectionFigures, isCutReason, unreclaimedCuts } from "@/lib/pm/certificate"
 import { archiveSnapshot, materialLost, storeHoldings, storeItemOf } from "@/lib/pm/closeout"
 import { closeAndArchive } from "@/lib/pm/closeout-writes"
-import { advanceChangeEvent, PM_EVENTS } from "@/lib/pm/events"
+import { PM_EVENTS } from "@/lib/pm/events"
 import { advanceChangedAfterFinance, savePlanTerms } from "@/lib/pm/project-writes"
 import { readSectionFacts, SECTION_LOSS, sectionCensus, switchOffBlockers, switchSections } from "@/lib/pm/sections-governance"
 import { storeLineOf, type StoreMove } from "@/lib/pm/store"
@@ -157,7 +157,7 @@ describe("an advance changed before start after Finance received it (termsMain a
     expect(advanceChangedAfterFinance(terms, { advance: 0.15 }, false)).toBe(false)
   })
 
-  it("logs the change, tells Finance under its own key — never a second prj:ADV — and records who completed the terms", async () => {
+  it("logs the change and warns — Finance gets no second event (the prototype) — and records who completed the terms", async () => {
     seedPlan()
     seed(`${PM_EVENTS}/prj:ADV:PJ-2026_007`, { key: "prj:ADV:PJ-2026/007", kind: "ADV" })
     const r = await savePlanTerms(db, pm, "p1", { ...terms, advance: 0.15 }, { uid: "pm1", name: "Abdullah" })
@@ -165,8 +165,7 @@ describe("an advance changed before start after Finance received it (termsMain a
     const block = readDoc<{ pm: Record<string, unknown> }>("projects/p1")!.pm
     expect(block).toMatchObject({ termsBy: "pm1", termsByName: "Abdullah", advLog: [{ from: 0.1, to: 0.15, by: "pm1" }] })
     const events = listCollection<Record<string, unknown>>(PM_EVENTS)
-    expect(events.map((e) => e.key).sort()).toEqual(["prj:ADV:PJ-2026/007", "prj:ADVCHG:PJ-2026/007:1"])
-    expect(events.find((e) => e.kind === "ADVCHG")).toMatchObject({ amount: 150_000, params: { from: 0.1, to: 0.15 } })
+    expect(events.map((e) => e.key)).toEqual(["prj:ADV:PJ-2026/007"])
   })
 
   it("no ADV sent — no log and no event", async () => {
@@ -175,13 +174,6 @@ describe("an advance changed before start after Finance received it (termsMain a
     expect(r.advanceChanged).toBe(false)
     expect(listCollection(PM_EVENTS)).toHaveLength(0)
     expect(readDoc<{ pm: Record<string, unknown> }>("projects/p1")!.pm.advLog).toBeUndefined()
-  })
-
-  it("the change event and the boundary's row", () => {
-    const e = advanceChangeEvent({ organizationId: "o", projectId: "p", projectNo: "PJ-1", n: 2, contractValue: 100, from: 0.1, to: 0.2, by: "u", at: "x" })
-    expect(e).toMatchObject({ key: "prj:ADVCHG:PJ-1:2", kind: "ADVCHG", amount: 20, changes: [{ key: "advance", from: 0.1, to: 0.2 }] })
-    expect(eventStats([{ kind: "ADVCHG", at: "2026-09-01" }]).find((s) => s.kind === "ADVCHG")).toMatchObject({ sent: 1 })
-    expect(BOUNDARY_CONFLICTS.some((c) => c.key === "advchg")).toBe(true)
   })
 })
 

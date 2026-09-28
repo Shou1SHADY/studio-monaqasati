@@ -16348,8 +16348,7 @@
           "ADV": "Contract advance term",
           "BUD": "Approved cost budget",
           "HND": "Handover / end of defects period",
-          "AMD": "Signed contract addendum",
-          "ADVCHG": "Advance changed before start"
+          "AMD": "Signed contract addendum"
         },
         "ev_when": {
           "IPC": "When the consultant's certification is recorded — at the certified amount, not the submitted one",
@@ -16357,8 +16356,7 @@
           "ADV": "When the handover is accepted and the project created",
           "BUD": "On monthly reconciliation approval — replaces the last",
           "HND": "When a handover is recorded",
-          "AMD": "When an addendum changing a financial term is signed — never a second advance event",
-          "ADVCHG": "When the advance is changed before start after Finance received it — its own key, never a second advance event"
+          "AMD": "When an addendum changing a financial term is signed — never a second advance event"
         },
         "log_title": "Boundary log",
         "log_sub": "what we sent",
@@ -16377,7 +16375,6 @@
         },
         "conf": {
           "amd": "Finance has no contract-amendment event. A signed addendum reaches it as its own event prj:AMD:<project>:<n> with the changed financial terms — never a second advance event, to avoid booking it twice. Finance must define it and apply it going forward.",
-          "advchg": "Finance's contract holds one advance event per project (prj:ADV). An advance changed before start after it was sent travels as prj:ADVCHG:<project>:<n> — Finance still holds the original until it defines and applies that event.",
           "ipc_books": "Finance does not yet read the pmEvents outbox: certified certificates, handovers and approved budgets are sent here and wait for it.",
           "sub_commit": "Registering a subcontract commits its value here at once, but Finance only learns of it at the first approved certificate. A commitment entry on signing would be a new event needing a governance decision.",
           "loss_move": "Two events for Finance are not in its integration contract: approved losses (a cost on the item) and material moved between projects (its cost moves with it).",

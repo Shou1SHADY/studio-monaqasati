@@ -9,7 +9,7 @@
 
 import { doc, runTransaction, serverTimestamp, type Firestore } from "firebase/firestore"
 import { assertPm, type PmContext } from "./access"
-import { advanceChangeEvent, eventDocId, PM_EVENTS } from "./events"
+import { eventDocId, PM_EVENTS } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf, startBlocks } from "./lifecycle"
 import { termProblems, termsEditable, type ContractTerms } from "./terms"
@@ -71,18 +71,6 @@ export async function savePlanTerms(
       advanceChanged = true
       const log: AdvanceChange[] = [{ from: was.advance, to: terms.advance, on: today, by: actor.uid, byName: actor.name }, ...(data.pm.advLog ?? [])]
       pm = { ...pm, advLog: log }
-      const event = advanceChangeEvent({
-        organizationId: data.organizationId ?? "",
-        projectId,
-        projectNo: no as string,
-        n: log.length,
-        contractValue: data.budget ?? 0,
-        from: was.advance,
-        to: terms.advance,
-        by: actor.uid,
-        at: new Date().toISOString(),
-      })
-      tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
     }
     tx.update(ref, { pm, updatedAt: serverTimestamp() })
   })

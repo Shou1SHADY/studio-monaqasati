@@ -175,3 +175,23 @@ notice routing, the no-separate-receiver toggle, and the price-variance threshol
    `procurementReceivers` (23 Sep) — those screens write nothing until they are
    live. All three queries are a single `organizationId ==`, so none needs a
    composite index.
+
+## Seeded groups vs the prototype's roles (decided 29 Sep 2026: leave the seeds)
+
+The prototype has four Procurement roles — manager, buyer, expediter, owner. The
+app maps them onto permission ids (see `src/lib/procurement/rfq-access.ts`,
+`supplier-file.ts` and `tab-gates.ts`): the manager is `po.approve`, the buyer is
+`offers.accept` (acting on the RFQs and orders he raised), the expediter is
+`po.expedite`, and the owner reads once the company has procurement staff.
+
+The seeded team groups were NOT changed to match, by decision. Consequences:
+
+- `supply_chain` acts as the expediter but still holds `offers.view` (so it sees
+  prices on receipts, which the prototype's expediter never does) and
+  `rfq.manage`/`rfq.create` (so it runs RFQs as a buyer). It no longer invites or
+  adds suppliers — that is the manager's and the buyer's.
+- `finance` holds `offers.accept` + `po.approve`, so it is the prototype's
+  manager: the RFQ tab, the supplier file, verification and agreement renewal.
+- A company whose only procurement staff is in `supply_chain` has nobody holding
+  `offers.accept` to award, and its owner is read-only on RFQs. Give someone
+  `offers.accept`, or change the group, on the team page.
