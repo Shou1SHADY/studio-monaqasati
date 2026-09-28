@@ -14,7 +14,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { collection, doc, query, serverTimestamp, setDoc, where } from "firebase/firestore"
-import { Ban, BookOpen, Check, Eye, Loader2, Lock, PackageCheck, Save, Settings2, Shield, Users } from "lucide-react"
+import { Ban, BookOpen, Check, Eye, Loader2, Lock, PackageCheck, Save, Shield, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { ReceiverRegister } from "@/components/procurement/ReceiverRegister"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
 import { useProcReceivers } from "@/hooks/useProcReceivers"
 import { resolvePolicies } from "@/lib/procurement/policies"
 import { DEFAULT_POLICIES, PROCUREMENT_SETTINGS, type ProcurementPolicies } from "@/lib/procurement/types"
@@ -79,6 +80,20 @@ const BOUNDARY_LISTS: Array<{ id: "owns" | "reads" | "never"; icon: ElementType;
   { id: "never", icon: Ban, tone: "text-destructive", count: 6 },
 ]
 
+type Segment = "path" | "policies" | "roles" | "boundaries"
+const SEGMENTS: Segment[] = ["path", "policies", "roles", "boundaries"]
+
+type StepOwner = "projects" | "inventory" | "manufacturing" | "procurement" | "finance"
+/** The purchase path of the PRD (§1.2) — who owns each of the nine steps. */
+const PATH: StepOwner[] = ["projects", "inventory", "manufacturing", "procurement", "procurement", "procurement", "finance", "inventory", "finance"]
+const OWNER_TONE: Record<StepOwner, string> = {
+  projects: "bg-pm/10 text-pm",
+  inventory: "bg-cta/10 text-cta",
+  manufacturing: "bg-amber-100 text-amber-700",
+  procurement: "bg-module/10 text-module",
+  finance: "bg-success/10 text-success",
+}
+
 export function ProcurementSettings() {
   const t = useTranslations("Portal.ProcSettings")
   const tRcv = useTranslations("Portal.ProcReceivers")
@@ -95,6 +110,7 @@ export function ProcurementSettings() {
   const { data: warehouseDocs } = useCollection<{ name?: string }>(warehousesQuery)
   const mayEditReceivers = actor.isOwner || actor.canPrepare || actor.canApprove
   const [saving, setSaving] = useState(false)
+  const [segment, setSegment] = useState<Segment>("path")
 
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: policies })
   // The document arrives after the first render: seed the form once it does,
@@ -133,15 +149,43 @@ export function ProcurementSettings() {
 
   return (
     <div className="space-y-6">
-      <ProcurementHeader icon={Settings2} title={t("page.title")} description={t("page.subtitle")} />
+      <ProcurementHeader title={t("page.title")} description={t("page.subtitle")} />
 
       {loading ? (
         <div className="flex items-center justify-center p-16">
           <Loader2 className="animate-spin text-muted-foreground" size={28} aria-hidden="true" />
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-          {/* ── Policies ── */}
+        <>
+        <ProcChipGroup items={SEGMENTS.map((id) => ({ id, label: t(`seg.${id}`) }))} active={segment} onPick={setSegment} label={t("page.title")} />
+
+        {segment === "path" && (
+          <section className="overflow-hidden rounded-2xl border bg-card">
+            <header className="flex flex-wrap items-baseline gap-x-3 border-b px-4 py-3.5">
+              <h2 className="text-base font-black text-foreground">{t("path.title")}</h2>
+              <span className="text-xs text-muted-foreground">{t("path.owned")}</span>
+            </header>
+            <ol className="grid gap-3 p-4 sm:grid-cols-3 xl:grid-cols-9">
+              {PATH.map((owner, i) => {
+                const n = i + 1
+                const ours = owner === "procurement"
+                return (
+                  <li key={n} className={cn("flex flex-col gap-2 rounded-xl border p-3", ours ? "border-module/50 bg-module/5" : "bg-card")}>
+                    <h3 className="text-sm font-black text-foreground">
+                      <span className="tabular-nums text-muted-foreground">{n} · </span>
+                      {t(`path.step${n}.title`)}
+                    </h3>
+                    <p className="flex-1 text-[11px] leading-relaxed text-muted-foreground">{t(`path.step${n}.desc`)}</p>
+                    <span className={cn("self-start rounded-md px-2 py-0.5 text-[11px] font-semibold", OWNER_TONE[owner])}>{t(`path.owner.${owner}`)}</span>
+                    <p className="text-[11px] font-semibold text-destructive">{t(`path.step${n}.rule`)}</p>
+                  </li>
+                )
+              })}
+            </ol>
+          </section>
+        )}
+
+        {segment === "policies" && (
           <Section title={t("policies.title")} subtitle={t("policies.subtitle")} icon={Shield}>
             {!mayEdit && (
               <p className="flex items-center gap-1.5 border-b px-4 py-2 text-[11px] text-muted-foreground">
@@ -236,8 +280,10 @@ export function ProcurementSettings() {
               </form>
             </Form>
           </Section>
+        )}
 
-          <div className="space-y-4">
+        {segment === "roles" && (
+          <div className="grid gap-4 lg:grid-cols-2">
             {/* ── Roles — read-only; the team page grants them ── */}
             <Section
               title={t("roles.title")}
@@ -280,12 +326,14 @@ export function ProcurementSettings() {
                 mayEdit={mayEditReceivers}
               />
             </Section>
+          </div>
+        )}
 
-            {/* ── Boundaries — what we own, read, and never do ── */}
+        {segment === "boundaries" && (
             <Section title={t("boundaries.title")} subtitle={t("boundaries.subtitle")} icon={BookOpen}>
-              <div className="grid gap-px bg-border sm:grid-cols-3 lg:grid-cols-1">
+              <div className="grid gap-px bg-border sm:grid-cols-3">
                 {BOUNDARY_LISTS.map(({ id, icon: Icon, tone, count }) => (
-                  <div key={id} className="bg-white px-4 py-3">
+                  <div key={id} className="bg-card px-4 py-3">
                     <h3 className={cn("flex items-center gap-1.5 text-xs font-black", tone)}>
                       <Icon size={13} aria-hidden="true" />
                       {t(`boundaries.${id}.title`)}
@@ -302,8 +350,8 @@ export function ProcurementSettings() {
                 ))}
               </div>
             </Section>
-          </div>
-        </div>
+        )}
+        </>
       )}
     </div>
   )
@@ -311,8 +359,8 @@ export function ProcurementSettings() {
 
 function Section({ title, subtitle, icon: Icon, action, children }: { title: string; subtitle: string; icon: ElementType; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="min-w-0 overflow-hidden rounded-xl border bg-white">
-      <header className="flex items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
+    <section className="min-w-0 overflow-hidden rounded-2xl border bg-card">
+      <header className="flex items-start justify-between gap-3 border-b px-4 py-3.5">
         <div className="min-w-0">
           <h2 className="flex items-center gap-2 text-sm font-black text-foreground">
             <Icon size={15} className="shrink-0 text-module" aria-hidden="true" />

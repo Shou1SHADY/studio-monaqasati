@@ -84,6 +84,13 @@ export type ProcWriteErrorCode =
   | "no_lines"
   // The receiver register (receiver-writes.ts).
   | "bad_receiver"
+  // An order without an RFQ (direct-writes.ts).
+  | "order_no_lines"
+  | "order_supplier_missing"
+  | "price_missing"
+  | "over_direct_cap"
+  | "agreement_not_live"
+  | "agreement_line_missing"
 
 export class ProcWriteError extends Error {
   constructor(

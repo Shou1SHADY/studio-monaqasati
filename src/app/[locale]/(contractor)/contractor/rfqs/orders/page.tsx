@@ -9,17 +9,18 @@
 import { useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { useSearchParams } from "next/navigation"
-import { ClipboardList, Loader2, Search, X } from "lucide-react"
+import { ClipboardList, LayoutGrid, Loader2, Search, X } from "lucide-react"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { ProcurementHeader } from "@/components/contractor/ProcurementHeader"
 import { PoDrawer } from "@/components/procurement/PoDrawer"
-import { HonestDateText, Money, PoStatusPill } from "@/components/procurement/PoBits"
+import { HonestDateText, LineBar, Money, PoStatusPill } from "@/components/procurement/PoBits"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DEFAULT_SEGMENT, PO_SEGMENTS, isPoSegment, segmentCounts, visibleOrders, type PoSegment } from "@/components/procurement/PoModel"
 import { Input } from "@/components/ui/input"
 import { useProcurementWorld } from "@/hooks/useProcurementWorld"
 import { displayPoNumber } from "@/lib/procurement/format"
 import { poValue } from "@/lib/procurement/po"
-import { cn } from "@/lib/utils"
 
 /** Keeps `?filter=` and `?po=` in the address bar without a navigation. */
 function replaceParams(update: (params: URLSearchParams) => void) {
@@ -52,6 +53,13 @@ export default function PurchaseOrdersPage() {
 
   const counts = useMemo(() => segmentCounts(orders, now), [orders, now])
   const visible = useMemo(() => visibleOrders(orders, segment, search, now, (n) => displayPoNumber(n, locale)), [orders, segment, search, now, locale])
+  // The project filter (the prototype's "all projects"), over the projects the orders name.
+  const [project, setProject] = useState("all")
+  const projects = useMemo(
+    () => Array.from(new Map(orders.filter((o) => o.projectId).map((o) => [o.projectId as string, { id: o.projectId as string, name: o.projectName || (o.projectId as string) }])).values()).sort((a, b) => a.name.localeCompare(b.name)),
+    [orders]
+  )
+  const shown = project === "all" ? visible : visible.filter((o) => o.projectId === project)
 
   // `?po=<id>` opens the drawer; opening and closing keep the address in step,
   // so a refresh lands on the same order and a copied link opens it.
@@ -69,47 +77,53 @@ export default function PurchaseOrdersPage() {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        <ProcurementHeader icon={ClipboardList} title={t("title")} description={t("desc")} />
+        <ProcurementHeader title={t("title")} description={t("desc")} />
 
-        <div className="relative">
-          <Search size={16} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground start-3" aria-hidden="true" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search_ph")} aria-label={t("search_ph")} className="ps-9 pe-9" dir="auto" />
-          {searching && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              aria-label={t("search_clear")}
-              className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-
-        <div className={cn("flex flex-wrap items-center gap-2", searching && "opacity-60")} role="tablist" aria-label={t("segments_label")}>
-          {PO_SEGMENTS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              role="tab"
-              aria-selected={segment === s && !searching}
-              onClick={() => pick(s)}
-              className={cn(
-                "min-h-9 rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                segment === s && !searching ? "border-primary bg-primary text-white" : "border-border bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+        {/* The segments with their counts · a search that spans every segment · the project (the prototype's list head). */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ProcChipGroup
+            items={PO_SEGMENTS.map((s) => ({ id: s, label: t(`seg.${s}`), count: counts[s] }))}
+            active={segment}
+            onPick={pick}
+            label={t("segments_label")}
+            dimmed={searching}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground start-3" aria-hidden="true" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("search_ph")} aria-label={t("search_ph")} className="h-10 w-full rounded-xl bg-card ps-9 pe-9 sm:w-56" dir="auto" />
+              {searching && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label={t("search_clear")}
+                  className="absolute top-1/2 -translate-y-1/2 end-2 grid h-6 w-6 place-items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <X size={14} />
+                </button>
               )}
-            >
-              {t(`seg.${s}`)}
-              <span className="ms-1.5 tabular-nums opacity-70">{counts[s]}</span>
-            </button>
-          ))}
+            </div>
+            <Select value={project} onValueChange={setProject}>
+              <SelectTrigger className="h-10 w-48 rounded-xl bg-card text-sm" aria-label={t("project_filter")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("project_all")}</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {loading && orders.length === 0 ? (
           <div className="flex items-center justify-center p-16">
             <Loader2 className="animate-spin text-muted-foreground" size={28} aria-label={t("loading")} />
           </div>
-        ) : visible.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div className="rounded-xl border border-dashed p-10 text-center text-muted-foreground">
             <ClipboardList size={36} className="mx-auto mb-2 opacity-20" aria-hidden="true" />
             <p className="text-sm font-medium">{searching ? t("empty_search", { term: search.trim() }) : t(`empty.${segment}`)}</p>
@@ -118,19 +132,19 @@ export default function PurchaseOrdersPage() {
         ) : (
           <>
             {/* Desktop: the table */}
-            <div className="hidden overflow-hidden rounded-xl border md:block">
+            <div className="hidden overflow-hidden rounded-2xl border bg-card shadow-sm md:block">
               <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <thead className="border-b text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-3 py-2 text-start font-bold">{t("col.number")}</th>
-                    <th className="px-3 py-2 text-start font-bold">{t("col.supplier")}</th>
-                    <th className="px-3 py-2 text-start font-bold">{t("col.status")}</th>
-                    <th className="px-3 py-2 text-end font-bold">{t("col.value")}</th>
-                    <th className="px-3 py-2 text-start font-bold">{t("col.date")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.order_supplier")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.lines")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.supplier_date")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.value")}</th>
+                    <th className="px-4 py-3 text-start font-semibold">{t("col.status")}</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {visible.map((po) => (
+                <tbody className="divide-y">
+                  {shown.map((po) => (
                     <tr
                       key={po.id}
                       tabIndex={0}
@@ -142,31 +156,44 @@ export default function PurchaseOrdersPage() {
                           show(po.id)
                         }
                       }}
-                      className="cursor-pointer border-t transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+                      className="cursor-pointer transition-colors hover:bg-muted/30 focus-visible:bg-muted/40 focus-visible:outline-none"
                     >
-                      <td className="px-3 py-2.5 align-top">
-                        <span dir="ltr" className="font-bold tabular-nums">
+                      <td className="px-4 py-3 align-top">
+                        <span dir="ltr" className="font-black tabular-nums">
                           {displayPoNumber(po.docNumber, locale)}
                         </span>
-                        <p className="text-[11px] text-muted-foreground">{po.preparedByName}</p>
-                      </td>
-                      <td className="px-3 py-2.5 align-top">
-                        <p className="font-bold" dir="auto">
+                        <p className="text-xs text-muted-foreground" dir="auto">
                           {po.supplierName}
+                          {po.preparedByName ? ` · ${po.preparedByName}` : ""}
                         </p>
-                        <p className="max-w-[28ch] truncate text-xs text-muted-foreground" dir="auto" title={po.rfqTitle}>
-                          {po.rfqTitle}
-                          {po.projectName ? ` · ${po.projectName}` : ""}
-                        </p>
+                        {po.projectName && (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-cta/20 bg-cta/5 px-2 py-0.5 text-[11px] font-semibold text-cta">
+                            <LayoutGrid size={12} aria-hidden="true" />
+                            {po.projectName}
+                          </span>
+                        )}
                       </td>
-                      <td className="px-3 py-2.5 align-top">
-                        <PoStatusPill po={po} now={now} />
+                      <td className="px-4 py-3 align-top">
+                        <ul className="space-y-1.5">
+                          {po.lines.slice(0, 3).map((l) => (
+                            <li key={l.id} className="max-w-[34ch]">
+                              <p className="truncate" dir="auto">
+                                {l.name} <span className="tabular-nums" dir="ltr">{l.quantity.toLocaleString("en-US")}</span> {l.unit}
+                              </p>
+                              {l.accepted > 0 && <LineBar line={l} className="mt-1" />}
+                            </li>
+                          ))}
+                          {po.lines.length > 3 && <li className="text-[11px] text-muted-foreground">{t("more_lines", { count: po.lines.length - 3 })}</li>}
+                        </ul>
                       </td>
-                      <td className="px-3 py-2.5 text-end align-top">
+                      <td className="px-4 py-3 align-top text-xs">
+                        <HonestDateText po={po} now={now} />
+                      </td>
+                      <td className="px-4 py-3 align-top">
                         <Money value={poValue(po)} masked={!actor.seesPrices} className="font-bold" />
                       </td>
-                      <td className="px-3 py-2.5 align-top text-xs">
-                        <HonestDateText po={po} now={now} />
+                      <td className="px-4 py-3 align-top">
+                        <PoStatusPill po={po} now={now} />
                       </td>
                     </tr>
                   ))}
@@ -176,7 +203,7 @@ export default function PurchaseOrdersPage() {
 
             {/* Mobile: cards */}
             <ul className="space-y-2 md:hidden">
-              {visible.map((po) => (
+              {shown.map((po) => (
                 <li key={po.id}>
                   <button
                     type="button"

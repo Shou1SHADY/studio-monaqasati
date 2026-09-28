@@ -179,19 +179,20 @@ export function MfgPurchaseRequestsPanel({
   }
 
   return (
-    // An inbox, not a list: tinted and edged in amber so it never reads as part
-    // of the RFQ list below it (customer review, 27 Sep 2026 — it was white on white).
-    <Card className="overflow-hidden border border-warning/30 border-s-4 border-s-warning bg-warning/5 shadow-sm" dir={isRtl ? "rtl" : "ltr"}>
-      <CardHeader className="border-b border-warning/20 bg-warning/10 pb-4">
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base font-black">
-          <Factory size={18} className="text-warning" aria-hidden="true" />
+    // Its own panel above the RFQ cards, as the reference prototype draws it:
+    // the title and its count, one line on whose act arrival is, the inbox link.
+    <Card className="overflow-hidden rounded-2xl border bg-card shadow-sm" dir={isRtl ? "rtl" : "ltr"}>
+      <CardHeader className="flex flex-row flex-wrap items-center gap-x-3 gap-y-1 space-y-0 border-b px-5 py-3.5">
+        <CardTitle className="flex items-center gap-2 text-base font-black">
+          <Factory size={17} className="text-warning" aria-hidden="true" />
           {t("mfy_pr_title")}
-          {requests.length > 0 && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{requests.length}</Badge>}
+          {requests.length > 0 && <span className="min-w-6 rounded-full bg-warning/10 px-1.5 text-center text-xs font-bold leading-6 text-warning">{requests.length}</span>}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          {t("mfy_pr_desc")}{" "}
-          <Link href="/contractor/rfqs/requests" className="font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-            {t("pri_open_inbox")} →
+          {t("mfy_pr_desc")}
+          <span className="mx-1.5">·</span>
+          <Link href="/contractor/rfqs/requests" className="font-bold text-cta hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+            {t("pri_open_inbox")} {isRtl ? "←" : "→"}
           </Link>
         </p>
       </CardHeader>
@@ -233,8 +234,11 @@ export function MfgPurchaseRequestsPanel({
                     <p className="text-[11px] text-muted-foreground">{t("mfy_pr_requested", { name: r.by, date: formatCrmDate(r.at, locale) })}</p>
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button asChild size="sm" variant="outline" className="h-9 rounded-xl">
+                      <Link href="/contractor/rfqs/requests">{t("mfy_pr_details")}</Link>
+                    </Button>
                     {canStartRfq && (
-                      <Button asChild size="sm" variant="outline" className="h-9 gap-1.5">
+                      <Button asChild size="sm" className="h-9 gap-1.5 rounded-xl bg-module text-module-foreground hover:bg-module/90">
                         <Link href={rfqHref(r)}>
                           <Send size={13} aria-hidden="true" />
                           {t("mfy_pr_start_rfq")}
@@ -244,7 +248,8 @@ export function MfgPurchaseRequestsPanel({
                     {canMarkArrived && (
                       <Button
                         size="sm"
-                        className="h-9 gap-1.5"
+                        variant="ghost"
+                        className="h-9 gap-1.5 rounded-xl"
                         onClick={() => {
                           setError(null)
                           setPending({ kind: "arrived", order: o, request: r, lotted: isLotted(o, r.itemName) })

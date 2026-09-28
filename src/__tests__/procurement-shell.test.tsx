@@ -146,6 +146,10 @@ jest.mock("@/i18n/routing", () => {
 let mockCan: Can = () => true
 jest.mock("@/hooks/usePermissions", () => ({ usePermissions: () => ({ isLoading: false, can: (p: PermissionId) => mockCan(p), isOrgOwner: false, groups: [], profile: null }) }))
 
+// The header derives its numbers itself (useProcurementShell) over the same
+// mocked world; its one direct read (the workshop's purchase requests) is empty here.
+jest.mock("@/firebase", () => ({ useFirestore: () => null, useMemoFirebase: (f: () => unknown) => f(), useCollection: () => ({ data: null, isLoading: false }) }))
+
 let mockWorld: ProcurementWorld
 jest.mock("@/hooks/useProcurementWorld", () => ({ useProcurementWorld: () => mockWorld }))
 

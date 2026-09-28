@@ -22,6 +22,7 @@ import { PmAccessError } from "@/lib/pm/access"
 import { certificateAmounts, certificateNo, certifyBlocks } from "@/lib/pm/certificate"
 import { certifyCertificate, PmCertificateError, type CertificateActor, type PmCertificate } from "@/lib/pm/certificate-writes"
 import { pmMoney } from "@/lib/pm/format"
+import { onPmCertificateCertified } from "@/lib/accounting/pm-hooks"
 
 export function CertifyDialog({
   open,
@@ -68,7 +69,8 @@ export function CertifyDialog({
     if (!firestore || blocks.length) return
     setBusy(true)
     try {
-      await certifyCertificate(firestore, access.ctx, projectId, actor, cert.seq, { certified, reason, consultantRef: ref })
+      const res = await certifyCertificate(firestore, access.ctx, projectId, actor, cert.seq, { certified, reason, consultantRef: ref })
+      if (res.event) onPmCertificateCertified(firestore, { organizationId: res.event.organizationId, userId: actor.uid, userName: actor.name || "" }, res.event)
       toast({ title: t("ipc.certified_done", { no: certificateNo(cert.seq) }), description: cut > 0 ? t("ipc.cut_back", { amount: pmMoney(cut) }) : undefined })
       onOpenChange(false)
     } catch (err) {

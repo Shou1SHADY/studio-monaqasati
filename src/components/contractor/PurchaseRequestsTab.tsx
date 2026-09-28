@@ -37,6 +37,8 @@ import { useNowMs } from "@/components/inventory/MfgOutsideBits"
 import { PlusCircle, ClipboardList, Loader2, CheckCircle2, XCircle, Plus, Trash2, Factory } from "lucide-react"
 import { PrRouteToMfgDialog, type RoutablePurchaseRequest } from "./PrRouteToMfgDialog"
 import { PrMfgRequestStatus } from "./PrMfgRequestStatus"
+import { Link } from "@/i18n/routing"
+import { displayDocNumber } from "@/lib/procurement/format"
 
 type RequestItem = { name: string; quantity: string; unit: string }
 
@@ -51,6 +53,11 @@ type PurchaseRequest = {
   decidedByUserName?: string
   /** The manufacturing request Procurement routed this need to, if any. */
   mfgRequestId?: string | null
+  /** What Procurement answered it with: an RFQ, or an order placed without one. */
+  rfqId?: string | null
+  rfqNumber?: string | null
+  poId?: string | null
+  poNumber?: string | null
   createdAt?: unknown
 }
 
@@ -262,6 +269,14 @@ export function PurchaseRequestsTab({ projectId, canDecide }: PurchaseRequestsTa
                 ))}
               </div>
               {req.notes && <p className="text-xs text-slate-500 bg-slate-50 rounded-lg p-2">{req.notes}</p>}
+              {(req.poId || req.rfqId) && (
+                <Link
+                  href={req.poId ? `/contractor/rfqs/orders?po=${req.poId}` : `/contractor/rfqs/${req.rfqId}`}
+                  className="inline-flex items-center gap-1 rounded text-xs font-bold text-module hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {req.poId ? tShared("pri_in_order", { ref: displayDocNumber(req.poNumber || "", locale) }) : tShared("pri_in_rfq", { ref: req.rfqNumber || "" })}
+                </Link>
+              )}
               {(() => {
                 const linked = linkedRequest(req)
                 const mayRoute = canRoute && mfg.products.some((p) => !p.archived) && req.status !== "rejected" && (!linked || linked.status === "rejected" || linked.status === "moved")

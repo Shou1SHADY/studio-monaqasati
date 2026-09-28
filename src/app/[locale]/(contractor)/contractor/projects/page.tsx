@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { PortalLayout } from "@/components/layout/portal-layout"
 import { cn } from "@/lib/utils"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,9 +12,16 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@
 import { Link, useRouter } from "@/i18n/routing"
 import { useCollection, useFirestore, useUser, useMemoFirebase } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
-import { Loader2, FolderOpen, PlusCircle, MapPin, DollarSign, FileText, Search, User, Building2, ArrowDownUp, LayoutGrid, List, ChevronRight, ChevronUp, ChevronDown } from "lucide-react"
+import { Loader2, FolderOpen, PlusCircle, Search, Building2, ArrowDownUp, LayoutGrid, List, ChevronRight, ChevronUp, ChevronDown } from "lucide-react"
 import { usePermissions } from "@/hooks/usePermissions"
-import { PROJECT_STATUSES, PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus, type ProjectStatus } from "@/lib/project-status"
+import { usePmRail } from "@/hooks/usePmRail"
+import { ModuleHeader } from "@/components/module-ui/ModuleHeader"
+import { ProcChipGroup } from "@/components/procurement/ProcChipGroup"
+import { PmProjectCard, type PmListProject } from "@/components/pm/PmProjectCard"
+import { lifecycleOf, PM_LIFECYCLE, type PmLifecycle } from "@/lib/pm/lifecycle"
+import { pmMoney } from "@/lib/pm/format"
+import { Activity, Coins, FolderKanban } from "lucide-react"
+import { PROJECT_STATUS_BADGE_CLASSES, projectStatusLabelKey, resolveProjectStatus } from "@/lib/project-status"
 
 type ViewMode = "grid" | "table"
 const VIEW_MODE_STORAGE_KEY = "contractor_projects_view_mode"
@@ -33,7 +39,6 @@ function fmtDate(val: unknown, locale: string) {
   })
 }
 
-type StatusFilter = "all" | ProjectStatus
 type SortOption = "newest" | "oldest" | "budget_desc" | "budget_asc" | "name_asc"
 
 type ProjectListItem = {
@@ -55,14 +60,17 @@ function getTimeMs(v: unknown): number {
   return isNaN(parsed) ? 0 : parsed
 }
 
+const LIFECYCLE_CHIPS = ["all", "live", "hold", "plan", "done", "closed"] as const
+
 export default function ProjectsListPage() {
   const t = useTranslations("Portal.Contractor")
+  const tPm = useTranslations("Portal.PM")
   const locale = useLocale()
   const isRtl = locale === "ar"
   const firestore = useFirestore()
   const { user, isUserLoading } = useUser()
   const router = useRouter()
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [statusFilter, setStatusFilter] = useState<"all" | PmLifecycle>("all")
   const [searchQuery, setSearchQuery] = useState("")
   const [regionFilter, setRegionFilter] = useState<string>("all")
   const [monthFilter, setMonthFilter] = useState<string>("all")
@@ -110,9 +118,17 @@ export default function ProjectsListPage() {
     return new Date(year, month - 1, 1).toLocaleDateString(isRtl ? "ar-SA" : "en-US", { month: "long", year: "numeric" })
   }
 
+  // The portfolio by stage (PM 1.0 §7): a project made before PM 1.0 reads its kanban status as a stage.
+  const byLifecycle = PM_LIFECYCLE.reduce(
+    (acc, l) => ({ ...acc, [l]: typedProjects.filter((p) => lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) === l).length }),
+    {} as Record<PmLifecycle, number>
+  )
+  const census = tPm("list.census", { live: byLifecycle.live, hold: byLifecycle.hold, done: byLifecycle.done, closed: byLifecycle.closed })
+  const rail = usePmRail()
+
   const searchLower = searchQuery.trim().toLowerCase()
   const projects = typedProjects
-    .filter((p) => (statusFilter === "all" ? true : resolveProjectStatus(p.status) === statusFilter))
+    .filter((p) => (statusFilter === "all" ? true : lifecycleOf(p as { pm?: { lifecycle?: string }; status?: string }) === statusFilter))
     .filter((p) => (regionFilter === "all" ? true : p.region === regionFilter))
     .filter((p) => (monthFilter === "all" ? true : monthKey(p.createdAt) === monthFilter))
     .filter((p) => {
@@ -135,10 +151,6 @@ export default function ProjectsListPage() {
       }
     })
 
-  const statusTabs: { value: StatusFilter; label: string }[] = [
-    { value: "all", label: t("rfq_all") },
-    ...PROJECT_STATUSES.map((s) => ({ value: s as StatusFilter, label: t(projectStatusLabelKey(s)) })),
-  ]
 
   const sortOptions: { value: SortOption; label: string }[] = [
     { value: "newest", label: t("proj_sort_newest") },
@@ -174,48 +186,39 @@ export default function ProjectsListPage() {
   return (
     <PortalLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black text-foreground font-headline">{t("proj_title")}</h1>
-            <p className="text-muted-foreground mt-1">{t("proj_desc")}</p>
-          </div>
-          {can("projects.edit") && (
-            <Link href="/contractor/projects/new">
-              <Button className="gap-2 font-bold">
-                <PlusCircle size={18} />
-                {t("proj_new")}
+        <ModuleHeader
+          icon={FolderKanban}
+          title={t("proj_title")}
+          description={census}
+          actions={
+            can("projects.edit") && (
+              <Button asChild className="gap-2 rounded-xl bg-module text-module-foreground hover:bg-module/90">
+                <Link href="/contractor/projects/new">
+                  <PlusCircle size={16} />
+                  {t("proj_new")}
+                </Link>
               </Button>
-            </Link>
-          )}
-        </div>
-
-        {/* Status filter chips */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {statusTabs.map((tab) => {
-            const isActive = statusFilter === tab.value
-            const colorClasses = tab.value === "all" ? undefined : PROJECT_STATUS_BADGE_CLASSES[tab.value as ProjectStatus]
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setStatusFilter(tab.value)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                  isActive
-                    ? colorClasses
-                      ? cn(colorClasses, "ring-2 ring-offset-1 ring-current")
-                      : "bg-primary text-primary-foreground border-primary"
-                    : colorClasses
-                      ? cn(colorClasses, "opacity-60 hover:opacity-100")
-                      : "bg-transparent border-input text-foreground hover:bg-muted"
-                )}
-              >
-                {tab.label}
-              </button>
             )
-          })}
-        </div>
+          }
+          kpisLabel={t("proj_title")}
+          kpis={[
+            { id: "shown", label: tPm("list.kpi_shown"), value: String(projects.length), note: tPm("list.kpi_all"), tone: "neutral", icon: FolderKanban },
+            ...(can("projects.edit") || can("invoices.manage")
+              ? [{ id: "value", label: tPm("list.kpi_value"), value: pmMoney(projects.reduce((a, p) => a + (p.budget || 0), 0)), note: tPm("list.kpi_value_note"), tone: "neutral" as const, icon: Coins }]
+              : []),
+            { id: "live", label: tPm("list.kpi_live"), value: String(byLifecycle.live), note: tPm("list.kpi_hold", { count: byLifecycle.hold }), tone: byLifecycle.hold ? ("warn" as const) : ("good" as const), icon: Activity },
+          ]}
+          tabs={rail.tabs}
+          activeTab="projects"
+          tabsLabel={t("proj_title")}
+        />
+
+        <ProcChipGroup
+          items={LIFECYCLE_CHIPS.map((c) => ({ id: c, label: c === "all" ? tPm("list.chip_all") : tPm(`lifecycle.${c}`), count: c === "all" ? typedProjects.length : byLifecycle[c] }))}
+          active={statusFilter}
+          onPick={setStatusFilter}
+          label={t("proj_title")}
+        />
 
         {/* Search / region / sort filters */}
         <div className="flex flex-col sm:flex-row gap-3">
@@ -336,66 +339,9 @@ export default function ProjectsListPage() {
 
         {/* Project cards */}
         {!pageLoading && projects.length > 0 && viewMode === "grid" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {projects.map((p) => (
-              <Link key={p.id} href={`/contractor/projects/${p.id}`}>
-                <Card className="group relative overflow-hidden hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 transition-all duration-300 border-slate-200 bg-white h-full rounded-2xl">
-                  <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-primary via-accent to-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <CardContent className="p-5 flex flex-col gap-4">
-                    {/* Header: icon + name + status */}
-                    <div className="flex items-start gap-3">
-                      <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/15 transition-colors">
-                        <Building2 size={20} className="text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h3 className="font-bold text-base text-slate-800 group-hover:text-primary transition-colors leading-snug line-clamp-2">
-                          {p.name || "—"}
-                        </h3>
-                        {p.clientName && (
-                          <div className="flex items-center gap-1 mt-1 text-xs text-slate-500">
-                            <User size={11} className="shrink-0" />
-                            <span className="truncate">{p.clientName}</span>
-                          </div>
-                        )}
-                      </div>
-                      {p.status && <div className="shrink-0">{getStatusBadge(p.status)}</div>}
-                    </div>
-
-                    {/* Meta grid: RFQs / budget */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5 flex flex-col gap-0.5">
-                        <div className={cn("flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase", isRtl && "flex-row-reverse")}>
-                          <FileText size={11} className="text-primary" />
-                          {t("proj_linked_rfqs_label")}
-                        </div>
-                        <span className="text-sm font-black text-slate-700">{p.rfqIds?.length || 0}</span>
-                      </div>
-                      <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5 flex flex-col gap-0.5">
-                        <div className={cn("flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase", isRtl && "flex-row-reverse")}>
-                          <DollarSign size={11} className="text-success" />
-                          {t("proj_budget_label")}
-                        </div>
-                        <span className="text-sm font-black text-slate-700 truncate">
-                          {p.budget != null ? p.budget.toLocaleString(locale === "ar" ? "ar-SA" : "en-US") : "—"}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Location */}
-                    {p.location && (
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <MapPin size={13} className="text-accent shrink-0" />
-                        <span className="truncate">{p.location}</span>
-                      </div>
-                    )}
-
-                    {/* Footer: created date */}
-                    <p className="text-[11px] text-muted-foreground pt-3 border-t border-slate-100">
-                      {t("proj_created_at")}: {fmtDate(p.createdAt, locale)}
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
+              <PmProjectCard key={p.id} project={p as unknown as PmListProject} />
             ))}
           </div>
         )}

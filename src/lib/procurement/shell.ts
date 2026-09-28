@@ -260,3 +260,29 @@ export function csvText(head: Array<string | number | null>, rows: Array<Array<s
   const lines = [head, ...rows].map((r) => r.map(csvCell).join(","))
   return `﻿${lines.join("\r\n")}\r\n`
 }
+
+// ---------------------------------------------------------------------------
+// The rail's counts (the reference prototype's TABS()): what waits on each tab
+// ---------------------------------------------------------------------------
+
+export type ProcTabCounts = Partial<Record<ProcTabId, number>>
+
+/** Today = the decisions; requests = incoming lines still to act on; RFQs =
+ * the open ones; orders = the live ones; receipts = orders still being
+ * delivered. The other tabs carry no count. */
+export function procTabCounts(input: {
+  tasks: number
+  incomingRequests: number
+  rfqs: Array<{ status?: string | null; deadline?: string | null }>
+  orders: PurchaseOrder[]
+  now: Date
+}): ProcTabCounts {
+  const today = dayOf(input.now.toISOString()) ?? ""
+  const openRfqs = input.rfqs.filter((r) => r.status === "New" && (!r.deadline || (dayOf(r.deadline) ?? "") >= today)).length
+  const live = input.orders.filter((o) => o.status !== "closed" && o.status !== "cancelled")
+  const inbound = input.orders.filter((o) => {
+    const s = poStatus(o)
+    return s === "in_delivery" || s === "part_received"
+  })
+  return { today: input.tasks, requests: input.incomingRequests, rfqs: openRfqs, orders: live.length, receipts: inbound.length }
+}

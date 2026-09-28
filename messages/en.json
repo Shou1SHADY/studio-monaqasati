@@ -647,7 +647,8 @@
       "contractor_proc_reports": "Reports",
       "contractor_proc_settings": "Settings & boundaries",
       "contractor_pm_inbox": "New projects",
-      "contractor_pm_today": "Projects today"
+      "contractor_pm_today": "Projects today",
+      "fin_nav_projects_desk": "Project certificates"
     },
     "Layout": {
       "app_switcher_label": "Switch component",
@@ -8023,7 +8024,101 @@
       "crm_handover_kind": "Project type",
       "crm_handover_signed_on": "Contract signed on",
       "crm_handover_signed_hint": "Without it the manager cannot accept the file",
-      "crm_handover_start_on": "Contract starts on"
+      "crm_handover_start_on": "Contract starts on",
+      "proc_authority_any": "All categories · approves any order",
+      "proc_authority_limit": "All categories · approves others' orders up to {limit}",
+      "mfy_pr_details": "Details",
+      "pri_state_action": "Needs action",
+      "pri_state_rfq": "In RFQs",
+      "pri_col_material": "Material & source",
+      "pri_col_qty": "Quantity",
+      "pri_col_route": "Computed route",
+      "pri_from_mfg": "From Manufacturing",
+      "pri_on_hand": "On hand {qty}",
+      "pri_need_today": "Needed today",
+      "pri_need_in": "{count, plural, one {In # day} other {In # days}}",
+      "pri_need_late": "{count, plural, one {# day late} other {# days late}}",
+      "pri_route_stock": "Reserve from stock",
+      "pri_route_agreement": "Order on the agreement",
+      "pri_route_direct": "Direct order — under the ceiling",
+      "pri_route_rfq": "Request for quotations",
+      "pri_desc_all": "Every need that reaches Purchasing — a work order's shortfall, a project's request, a stock gap — with its computed route",
+      "pri_empty_hint_all": "Needs arrive from Manufacturing, from a project's purchase requests once the warehouse approves them, and from stock at or below its minimum.",
+      "pri_state_waiting": "Waiting on others",
+      "pri_state_order": "In orders",
+      "pri_state_done": "Ended",
+      "pri_from_project": "From Project Management",
+      "pri_from_stock": "From Inventory",
+      "pri_more_lines": "{count, plural, one {+ # more material} other {+ # more materials}}",
+      "pri_stock_min": "On hand {qty} · minimum {min}",
+      "pri_in_rfq": "In RFQ {ref}",
+      "pri_in_order": "In order {ref}",
+      "pri_waiting_warehouse": "Awaiting the warehouse's approval",
+      "pri_waiting_workshop": "Routed to the workshop",
+      "pri_done_mfg": "Arrived or sent back",
+      "pri_done_project": "Refused by the warehouse",
+      "pri_done_stock": "Back above its minimum",
+      "dor_open_agreement": "Order on the agreement",
+      "dor_open_direct": "Direct order",
+      "dor_title_agreement": "Order on agreement {number}",
+      "dor_title_direct": "Direct purchase order",
+      "dor_desc_agreement": "The agreement sets the supplier and the prices. The order goes for approval like any other.",
+      "dor_desc_direct": "No competition: allowed only while the order stays under the direct-purchase cap of {cap}. It goes for approval like any other and appears in the exceptions report.",
+      "dor_supplier": "Supplier",
+      "dor_other_supplier": "Another supplier (not on the platform)",
+      "dor_other_name": "Supplier name",
+      "dor_unit_price": "Unit price (excl. VAT)",
+      "dor_line_total": "Line total",
+      "dor_total": "Total excl. VAT",
+      "dor_reason": "Why without competition?",
+      "dor_reason_ph": "e.g. urgent for tomorrow's pour, small value",
+      "dor_next": "The order is created awaiting approval; the supplier hears of it only once it is approved and sent.",
+      "dor_place": "Create the order",
+      "dor_placed": "Order {number} created — awaiting approval",
+      "dor_failed": "The order could not be created",
+      "fin_nav_projects_desk": "Project certificates",
+      "fpj_title": "Project certificates",
+      "fpj_desc": "What Project Management certified, handed over and asks for — posted, collected and released here.",
+      "fpj_read_only": "Read only — recording collections and releases needs the invoices permission.",
+      "fpj_books_off": "Accounting is off: collections and releases are recorded on the project, but nothing reaches the ledger until Accounting is switched on in its settings.",
+      "fpj_books_off_short": "Accounting is off — the collection is recorded on the certificate only.",
+      "fpj_certs_title": "Certified certificates",
+      "fpj_certs_sub": "Revenue at certification; the client's payments are recorded here.",
+      "fpj_certs_empty": "No certified certificate yet.",
+      "fpj_cert_sub": "Certificate {no} · certified {date}",
+      "fpj_due": "Due {date} · {left} left",
+      "fpj_left": "{left} left",
+      "fpj_collected_all": "Collected in full",
+      "fpj_in_books": "In the books",
+      "fpj_post": "Post to the books",
+      "fpj_posted": "Posted to the books",
+      "fpj_post_failed": "It could not be saved — check the period is open",
+      "fpj_collect": "Record a collection",
+      "fpj_collect_title": "Collection on certificate {no} — {project}",
+      "fpj_collect_desc": "What the client paid. {left} is still outstanding on this certificate.",
+      "fpj_collect_amount": "Amount received",
+      "fpj_collect_date": "Received on",
+      "fpj_collect_save": "Record",
+      "fpj_collect_done": "Collection recorded",
+      "fpj_collect_done_all": "Collected in full — the certificate is paid",
+      "fpj_err_certificate_missing": "The certificate was not found",
+      "fpj_err_not_certified": "The certificate is not certified, or already paid",
+      "fpj_err_amount_invalid": "Enter an amount above zero",
+      "fpj_err_over_outstanding": "More than what is outstanding on the certificate",
+      "fpj_ret_title": "Retention made claimable",
+      "fpj_ret_sub": "A handover makes retention claimable; releasing it moves it to the client's receivable, and the final release clears the project's close-out.",
+      "fpj_ret_empty": "No retention is claimable yet.",
+      "fpj_ret_stage_prov": "Provisional handover · {date}",
+      "fpj_ret_stage_final": "Final acceptance · {date}",
+      "fpj_ret_release": "Release retention",
+      "fpj_ret_released": "Released",
+      "fpj_ret_done": "Retention released",
+      "fpj_adv_title": "Advance payments due",
+      "fpj_adv_sub": "The advance each contract asks the client for, from the accepted handover.",
+      "fpj_adv_empty": "No contract asks for an advance.",
+      "fpj_adv_rate": "{rate}% of the contract",
+      "fpj_adv_note": "The advance is booked when the cash arrives:",
+      "fpj_adv_link": "Settlements"
     },
     "Contractor": {
       "rfq_share_title": "Share as guest link",
@@ -9870,7 +9965,61 @@
       "rfq_glance_open": "Offers on {title}",
       "rfq_glance_status_accepted": "Accepted",
       "rfq_glance_status_rejected": "Rejected",
-      "rfq_glance_status_review": "Under review"
+      "rfq_glance_status_review": "Under review",
+      "rfqv_title": "Requests for quotation",
+      "rfqv_desc": "Sent to suppliers — prices sealed until closing, awarded item by item",
+      "rfqv_new": "Issue a new RFQ",
+      "rfqv_stage_draft": "Draft",
+      "rfqv_stage_open": "Open for offers",
+      "rfqv_stage_open_sealed": "Open — prices sealed",
+      "rfqv_stage_compare": "Ready to compare",
+      "rfqv_stage_closed_empty": "Closed without offers",
+      "rfqv_stage_awarded": "Awarded",
+      "rfqv_chip_all": "All",
+      "rfqv_chip_Draft": "Drafts",
+      "rfqv_chip_New": "Active",
+      "rfqv_chip_Awarded": "Completed",
+      "rfqv_view_cards": "Cards",
+      "rfqv_view_list": "List",
+      "rfqv_shown": "{shown} of {total}",
+      "rfqv_products": "{count, plural, one {One product} other {# products}}",
+      "rfqv_offers": "{count, plural, =0 {No offers} one {One offer} other {# offers}}",
+      "rfqv_sealed": "Prices sealed until the deadline",
+      "rfqv_warranty": "Warranty required",
+      "rfqv_deadline": "Deadline: {date}",
+      "rfqv_passed": "Deadline passed",
+      "rfqv_soon": "{days, plural, =0 {Closes today} one {# day left} other {# days left}}",
+      "rfqv_by": "By:",
+      "rfqv_view_offers": "View offers",
+      "rfqv_inquiries": "Inquiries",
+      "rfqv_share": "Share as a guest link",
+      "rfqv_edit_open": "Change the deadline or the invited suppliers",
+      "rfqv_complete": "Complete & publish",
+      "rfqv_delete": "Delete",
+      "rfqv_republish": "Re-issue with a new deadline",
+      "rfqv_col_rfq": "Request for quotation",
+      "rfqv_col_project": "Project",
+      "rfqv_col_offers": "Offers",
+      "rfqv_col_deadline": "Deadline",
+      "rfqv_col_estimate": "Estimate at last price",
+      "rfqv_col_status": "Status",
+      "suppliers_col_supplier": "Supplier",
+      "suppliers_col_supplies": "Supplies",
+      "suppliers_col_on_time": "On time",
+      "suppliers_col_rejected": "Rejected at receipt",
+      "suppliers_of_orders": "{count, plural, one {of # order} other {of # orders}}",
+      "suppliers_no_record": "No record",
+      "suppliers_docs_ok": "Documents valid",
+      "suppliers_docs_cr_expired": "CR expired",
+      "suppliers_docs_no_vat": "No VAT number",
+      "suppliers_docs_unknown": "Documents not on file",
+      "suppliers_open_orders": "{count, plural, one {# open order} other {# open orders}}",
+      "suppliers_inv_title": "Invitations to join the Mdmak platform",
+      "suppliers_inv_desc": "A supplier not on the platform: we invite them by e-mail — once they join they become one of our suppliers with a verified file, and see our public RFQs too.",
+      "suppliers_inv_sent": "Invited {date}",
+      "suppliers_inv_joined": "Joined — one of our suppliers",
+      "suppliers_inv_not_yet": "Not joined yet",
+      "suppliers_invite_platform": "Invite a supplier to the platform"
     },
     "Admin": {
       "Dashboard": {
@@ -10529,7 +10678,13 @@
         "morning": "Morning",
         "afternoon": "Afternoon",
         "evening": "Evening"
-      }
+      },
+      "err_order_no_lines": "The need has no material with a quantity",
+      "err_order_supplier_missing": "Pick the supplier",
+      "err_price_missing": "Enter a unit price for {item}",
+      "err_over_direct_cap": "Worth {total}, above the direct-purchase cap of {cap} — start an RFQ instead",
+      "err_agreement_not_live": "The agreement is not in force today",
+      "err_agreement_line_missing": "The agreement does not cover {item}"
     },
     "ProcToday": {
       "title": "Needs your decision",
@@ -10758,7 +10913,10 @@
         "supplier": "Supplier & request",
         "status": "Status",
         "value": "Value excl. VAT",
-        "date": "Supplier date"
+        "date": "Supplier date",
+        "order_supplier": "Order & supplier",
+        "lines": "Lines",
+        "supplier_date": "Supplier date"
       },
       "pill_returned": "Returned to preparer",
       "date": {
@@ -10821,7 +10979,9 @@
         "cancelled_body": "The order was cancelled — {reason}",
         "rated_title": "Rated: conformity {conformity}/5, cooperation {cooperation}/5",
         "rated_published": "Published on the platform without our name",
-        "rated_internal": "Internal only"
+        "rated_internal": "Internal only",
+        "flag_agreement": "Placed on price agreement {number} — its prices were already competed",
+        "flag_direct": "Direct purchase without competition — {reason}"
       },
       "money": {
         "ex_vat": "Order value excl. VAT",
@@ -10854,7 +11014,8 @@
         "offers": "Offers",
         "lowest": "Lowest offer",
         "reason": "Award reason",
-        "open_rfq": "Open the RFQ and its comparison"
+        "open_rfq": "Open the RFQ and its comparison",
+        "agreement": "Price agreement"
       },
       "docs": {
         "print_po": "Print the PO",
@@ -11059,7 +11220,10 @@
         "proc_manager": "Procurement manager",
         "st_footer_final": "Final statement: delivery on this order is complete.",
         "st_footer_interim": "Interim statement: reissued after each shipment until delivery is complete."
-      }
+      },
+      "project_filter": "Project",
+      "project_all": "All projects",
+      "more_lines": "+{count} more lines"
     },
     "ProcReceipts": {
       "forward": {
@@ -11494,7 +11658,9 @@
         "self_received": "Self-received",
         "no_notice": "Arrived with no notice",
         "cash_expense": "Cash expense"
-      }
+      },
+      "print": "Print",
+      "commitNotCost": "The value here is a commitment, not a cost: the actual cost of a line is read from Finance's books after the invoice."
     },
     "ProcPrices": {
       "state": {
@@ -11740,6 +11906,68 @@
           "item4": "Approve an order we prepared",
           "item5": "Show a price to someone who may not see it",
           "item6": "Message the supplier beyond dispatch and reminders"
+        }
+      },
+      "seg": {
+        "path": "Purchase path",
+        "policies": "Policies",
+        "roles": "Roles & receivers",
+        "boundaries": "Links with modules"
+      },
+      "path": {
+        "title": "From need to payment — nine steps, one owner each",
+        "owned": "Highlighted: ours",
+        "owner": {
+          "projects": "Projects",
+          "inventory": "Inventory",
+          "manufacturing": "Manufacturing",
+          "procurement": "Procurement",
+          "finance": "Finance"
+        },
+        "step1": {
+          "title": "Need",
+          "desc": "A material request from a project, a workshop shortfall or a stock gap",
+          "rule": "No need is lost"
+        },
+        "step2": {
+          "title": "Stock check",
+          "desc": "Inventory reserves what it holds before anything is bought",
+          "rule": "Nothing bought that we hold"
+        },
+        "step3": {
+          "title": "Make or buy",
+          "desc": "The workshop answers first whether it makes the item",
+          "rule": "One day to answer"
+        },
+        "step4": {
+          "title": "Route",
+          "desc": "Stock, then a live agreement, then direct under the ceiling, else an RFQ",
+          "rule": "Computed, not chosen"
+        },
+        "step5": {
+          "title": "Offers & award",
+          "desc": "Invited suppliers price it; offers stay sealed until the deadline",
+          "rule": "A non-lowest award carries its reason"
+        },
+        "step6": {
+          "title": "Purchase order",
+          "desc": "Prepared by one hand, approved by another, then sent",
+          "rule": "Nobody approves their own order"
+        },
+        "step7": {
+          "title": "Finance",
+          "desc": "The approved order is a commitment; an advance goes through Finance",
+          "rule": "No payment without an order"
+        },
+        "step8": {
+          "title": "Delivery & receipt",
+          "desc": "The store counts blind and records what arrived, rejected or held",
+          "rule": "No receipt unrecorded"
+        },
+        "step9": {
+          "title": "Invoice & payment",
+          "desc": "Finance matches the invoice to the order and the receipt, then pays",
+          "rule": "A price gap needs a decision"
         }
       }
     },
@@ -12702,6 +12930,21 @@
         "final_ready": {
           "title": "No punch item left before final acceptance",
           "detail": "Record it once the defects period ends."
+        },
+        "kpi_value": "Live contract value",
+        "kpi_value_note": "{count, plural, one {# project} other {# projects}}",
+        "kpi_all": "Decisions waiting",
+        "kpi_oldest": "{count, plural, one {Oldest # day} other {Oldest # days}}",
+        "my_projects": "My projects",
+        "show_more": "{count, plural, one {Show # more decision} other {Show # more decisions}}",
+        "show_less": "Show less",
+        "grp": {
+          "all": "All",
+          "team": "Team",
+          "exec": "Execution",
+          "contract": "Contract risks",
+          "money": "Money",
+          "close": "Close-out"
         }
       },
       "sec": {
@@ -12745,6 +12988,80 @@
           "owner_only": "Only the company owner brings a project in",
           "invalid": "Choose a project manager and a duration in whole days"
         }
+      },
+      "grp": {
+        "pulse": "Pulse",
+        "contract": "Contract",
+        "exec": "Execution",
+        "supply": "Supply",
+        "money": "Money",
+        "file": "File",
+        "settings": "Settings",
+        "terms": "Terms & amendments"
+      },
+      "pulse": {
+        "kpis": "The project in three numbers",
+        "kpi_progress": "Progress",
+        "kpi_planned": "{behind, plural, =0 {Planned {planned}% · on plan} one {Planned {planned}% · # point behind} other {Planned {planned}% · # points behind}}",
+        "kpi_not_started": "Not started",
+        "kpi_unbilled": "Unbilled",
+        "kpi_unbilled_note": "Executed and not yet billed",
+        "kpi_cash": "Cash position",
+        "kpi_cash_note": "In {in} · out {out}",
+        "path_title": "Money path",
+        "path_desc": "What the contract is worth, what we executed, billed and collected — against what we committed, were invoiced and paid.",
+        "path_contract": "Contract value",
+        "path_executed": "Executed (approved)",
+        "path_billed": "Billed (certificates)",
+        "path_collected": "Collected from the client",
+        "path_committed": "Committed (orders)",
+        "path_invoiced": "Invoiced by suppliers",
+        "path_paid": "Paid",
+        "waiting_title": "Waiting on others",
+        "waiting_desc": "The action is theirs — the status reaches us here, with no button.",
+        "waiting_none": "Nothing is waiting on another module.",
+        "from_procurement": "Procurement",
+        "act_measure": "Measure",
+        "act_certificate": "Prepare a certificate",
+        "waiting_more": "{count, plural, one {# more waiting} other {# more waiting}}",
+        "behind_title": "Sections most behind",
+        "behind_desc": "BOQ divisions by progress, against the project's planned progress today (points behind).",
+        "log_title": "Project log",
+        "log": {
+          "started": "Work started — the original contract frozen",
+          "sheet": "Measurement sheet {no} approved",
+          "vo_approved": "Variation {no} approved: {title} {value}",
+          "vo_rejected": "Variation {no} rejected: {title}",
+          "vo_submitted": "Variation {no} submitted to the client: {title}",
+          "claim_notice": "Notice sent for claim {no}",
+          "claim_submitted": "Claim {no} submitted",
+          "claim_answered": "Client answered claim {no} — {days} days granted",
+          "addendum_signed": "Addendum {no} signed",
+          "cert_prepared": "Certificate {no} prepared {value}",
+          "cert_certified": "Certificate {no} certified {value}",
+          "cert_collected": "Collection recorded on certificate {no}",
+          "ncr": "Non-conformance {no} raised",
+          "prov": "Provisional handover recorded",
+          "final": "Final acceptance recorded"
+        }
+      },
+      "rail": {
+        "today": "Today",
+        "projects": "Projects",
+        "inbox": "New projects"
+      },
+      "list": {
+        "census": "{live} live · {hold} on hold · {done} handed over · {closed} archived",
+        "chip_all": "All",
+        "kpi_shown": "Projects shown",
+        "kpi_all": "By the filters above",
+        "kpi_value": "Total contract value",
+        "kpi_value_note": "Handover values",
+        "kpi_live": "Live projects",
+        "kpi_hold": "{count, plural, =0 {none on hold} one {# on hold} other {# on hold}}",
+        "contract_value": "Contract value",
+        "unbilled": "Unbilled",
+        "urgent": "{count, plural, one {# urgent decision} other {# urgent decisions}}"
       }
     },
     "HR": {

@@ -72,6 +72,11 @@ export default {
           DEFAULT: '#1F5AA8',
           foreground: '#FFFFFF',
         },
+        // Procurement's identity (Procurement PRD 3.0 prototype, --mod #0D9488).
+        teal: {
+          DEFAULT: '#0D9488',
+          foreground: '#FFFFFF',
+        },
         // The ACTIVE module's own colour. `--module` is set by data-accent on the
         // portal frame (globals.css), so `bg-module/10 text-module` inside any
         // screen is that module's colour without per-screen wiring. `on-dark`

@@ -108,7 +108,7 @@ describe("the small pieces", () => {
     render(<SourceBadge module="project-management" label="Projects" />)
     expect(screen.getByText("Projects").className).toContain("text-pm")
     render(<SourceBadge module="procurement" label="Procurement" />)
-    expect(screen.getByText("Procurement").className).toContain("text-cta")
+    expect(screen.getByText("Procurement").className).toContain("text-teal")
   })
   it("EmptyState shows what would be here", () => {
     render(<EmptyState icon={FolderKanban} title="No projects yet" description="Accept a handover to start" />)

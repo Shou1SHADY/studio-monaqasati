@@ -62,6 +62,8 @@ const TAB_GROUPS: Array<{ labelKey: string; tabs: ShellTab[] }> = [
       { segment: "sales-desk", labelKey: "fin_nav_sales_desk", permission: "invoices.manage" },
       // Finance approves the purchase orders Procurement prepares (22 Sep review).
       { segment: "procurement-desk", labelKey: "fin_nav_procurement_desk", permission: "po.approve", contractorOnly: true },
+      // Finance posts and collects what Project Management certifies (PM 1.0 S-02).
+      { segment: "projects-desk", labelKey: "fin_nav_projects_desk", permission: "invoices.manage", contractorOnly: true },
       // HR 1.0 — HR approves payroll and advances; Finance posts and pays them here.
       { segment: "hr-desk", labelKey: "fin_nav_hr_desk", permission: "invoices.manage" },
     ],

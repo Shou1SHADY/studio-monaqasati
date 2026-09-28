@@ -139,8 +139,15 @@ export interface PurchaseOrder {
   projectId: string | null
   projectName?: string | null
   category?: string | null
-  /** Carried through so a receipt can still close Manufacturing's request. */
-  purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string } | null
+  /** Carried through so a receipt can still close Manufacturing's request.
+   * `kind`: mfg_purchase (a work order's shortfall) · project_request (a
+   * project's internal request) · stock_gap (an item at or below its minimum). */
+  purchaseSource?: { kind: string; workOrderId?: string; purchaseRequestId?: string; projectId?: string; warehouseId?: string; itemId?: string } | null
+  /** An order placed ON a live price agreement (basis `direct`): its prices are
+   * the agreement's, already competed, so the direct-purchase cap and the split
+   * check do not apply to it. */
+  agreementId?: string | null
+  agreementNo?: string | null
 
   // The supplier, as the award knew it.
   supplierOrgId: string // "guest" for an off-platform supplier

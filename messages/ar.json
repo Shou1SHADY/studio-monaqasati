@@ -647,7 +647,8 @@
       "contractor_proc_reports": "التقارير",
       "contractor_proc_settings": "الإعدادات والحدود",
       "contractor_pm_inbox": "مشاريع جديدة",
-      "contractor_pm_today": "المشاريع اليوم"
+      "contractor_pm_today": "المشاريع اليوم",
+      "fin_nav_projects_desk": "مستخلصات المشاريع"
     },
     "Layout": {
       "app_switcher_label": "تبديل المكون",
@@ -8023,7 +8024,101 @@
       "crm_handover_kind": "نوع المشروع",
       "crm_handover_signed_on": "تاريخ توقيع العقد",
       "crm_handover_signed_hint": "بدونه لا يستطيع المدير قبول الملف",
-      "crm_handover_start_on": "يبدأ العقد في"
+      "crm_handover_start_on": "يبدأ العقد في",
+      "proc_authority_any": "كل التصنيفات · يعتمد أي أمر شراء",
+      "proc_authority_limit": "كل التصنيفات · يعتمد أوامر غيره حتى {limit}",
+      "mfy_pr_details": "التفاصيل",
+      "pri_state_action": "يحتاج تصرفاً",
+      "pri_state_rfq": "في طلبات العروض",
+      "pri_col_material": "المادة ومصدر الاحتياج",
+      "pri_col_qty": "الكمية",
+      "pri_col_route": "المسار المحسوب",
+      "pri_from_mfg": "من التصنيع",
+      "pri_on_hand": "المتوفر {qty}",
+      "pri_need_today": "مطلوب اليوم",
+      "pri_need_in": "{count, plural, one {بعد يوم} two {بعد يومين} few {بعد # أيام} many {بعد # يوماً} other {بعد # يوم}}",
+      "pri_need_late": "{count, plural, one {متأخر يوماً} two {متأخر يومين} few {متأخر # أيام} many {متأخر # يوماً} other {متأخر # يوم}}",
+      "pri_route_stock": "حجز من المخزون",
+      "pri_route_agreement": "أمر على الاتفاقية",
+      "pri_route_direct": "أمر مباشر — تحت السقف",
+      "pri_route_rfq": "طلب عروض أسعار",
+      "pri_desc_all": "كل احتياج يصل المشتريات — نقص أمر عمل، طلب مشروع، فجوة مخزون — مع مساره المحسوب",
+      "pri_empty_hint_all": "تصل الاحتياجات من التصنيع، ومن طلبات شراء المشاريع بعد اعتماد المستودع، ومن المخزون عند حدّه الأدنى أو دونه.",
+      "pri_state_waiting": "عند غيرنا",
+      "pri_state_order": "في أوامر",
+      "pri_state_done": "انتهت",
+      "pri_from_project": "من إدارة المشاريع",
+      "pri_from_stock": "من المخزون",
+      "pri_more_lines": "{count, plural, one {+ مادة أخرى} two {+ مادتان أخريان} few {+ # مواد أخرى} many {+ # مادة أخرى} other {+ # مادة أخرى}}",
+      "pri_stock_min": "المتوفر {qty} · الحد الأدنى {min}",
+      "pri_in_rfq": "في طلب العروض {ref}",
+      "pri_in_order": "في أمر الشراء {ref}",
+      "pri_waiting_warehouse": "بانتظار اعتماد المستودع",
+      "pri_waiting_workshop": "محوَّل إلى الورشة",
+      "pri_done_mfg": "وصل أو أُعيد",
+      "pri_done_project": "رفضه المستودع",
+      "pri_done_stock": "عاد فوق حدّه الأدنى",
+      "dor_open_agreement": "أمر على الاتفاقية",
+      "dor_open_direct": "أمر مباشر",
+      "dor_title_agreement": "أمر على الاتفاقية {number}",
+      "dor_title_direct": "أمر شراء مباشر",
+      "dor_desc_agreement": "الاتفاقية تحدّد المورد والأسعار. يذهب الأمر للاعتماد كأي أمر آخر.",
+      "dor_desc_direct": "بلا منافسة: مسموح فقط ما دام الأمر تحت سقف الشراء المباشر {cap}. يذهب للاعتماد كأي أمر آخر ويظهر في تقرير الاستثناءات.",
+      "dor_supplier": "المورد",
+      "dor_other_supplier": "مورد آخر (ليس على المنصة)",
+      "dor_other_name": "اسم المورد",
+      "dor_unit_price": "سعر الوحدة (دون الضريبة)",
+      "dor_line_total": "إجمالي البند",
+      "dor_total": "الإجمالي دون الضريبة",
+      "dor_reason": "لماذا دون منافسة؟",
+      "dor_reason_ph": "مثلاً: عاجل لصبّة الغد، قيمة صغيرة",
+      "dor_next": "يُنشأ الأمر بانتظار الاعتماد، ولا يعلم به المورد إلا بعد اعتماده وإرساله.",
+      "dor_place": "أنشئ أمر الشراء",
+      "dor_placed": "أُنشئ الأمر {number} — بانتظار الاعتماد",
+      "dor_failed": "تعذّر إنشاء الأمر",
+      "fin_nav_projects_desk": "مستخلصات المشاريع",
+      "fpj_title": "مستخلصات المشاريع",
+      "fpj_desc": "ما اعتمدته إدارة المشاريع وسلّمته وتطلبه — يُرحَّل ويُحصَّل ويُفرج عنه هنا.",
+      "fpj_read_only": "للاطلاع فقط — تسجيل التحصيل والإفراج يحتاج صلاحية الفواتير.",
+      "fpj_books_off": "المحاسبة متوقفة: يُسجَّل التحصيل والإفراج على المشروع، ولا يصل شيء إلى الدفتر حتى تُفعَّل المحاسبة من إعداداتها.",
+      "fpj_books_off_short": "المحاسبة متوقفة — يُسجَّل التحصيل على المستخلص فقط.",
+      "fpj_certs_title": "المستخلصات المعتمدة",
+      "fpj_certs_sub": "الإيراد عند الاعتماد، ودفعات العميل تُسجَّل هنا.",
+      "fpj_certs_empty": "لا مستخلص معتمد بعد.",
+      "fpj_cert_sub": "المستخلص {no} · اعتُمد {date}",
+      "fpj_due": "يستحق {date} · متبقٍ {left}",
+      "fpj_left": "متبقٍ {left}",
+      "fpj_collected_all": "حُصِّل بالكامل",
+      "fpj_in_books": "في الدفتر",
+      "fpj_post": "رحّل إلى الدفتر",
+      "fpj_posted": "رُحِّل إلى الدفتر",
+      "fpj_post_failed": "تعذّر الحفظ — تأكد أن الفترة مفتوحة",
+      "fpj_collect": "سجّل التحصيل",
+      "fpj_collect_title": "تحصيل المستخلص {no} — {project}",
+      "fpj_collect_desc": "ما دفعه العميل. المتبقي على هذا المستخلص {left}.",
+      "fpj_collect_amount": "المبلغ المستلم",
+      "fpj_collect_date": "تاريخ الاستلام",
+      "fpj_collect_save": "سجّل",
+      "fpj_collect_done": "سُجِّل التحصيل",
+      "fpj_collect_done_all": "حُصِّل بالكامل — المستخلص مسدَّد",
+      "fpj_err_certificate_missing": "لم يُعثر على المستخلص",
+      "fpj_err_not_certified": "المستخلص غير معتمد أو مسدَّد",
+      "fpj_err_amount_invalid": "اكتب مبلغاً أكبر من صفر",
+      "fpj_err_over_outstanding": "أكثر من المتبقي على المستخلص",
+      "fpj_ret_title": "محتجز أصبح مستحقاً",
+      "fpj_ret_sub": "التسليم يجعل المحتجز مستحقاً؛ الإفراج ينقله إلى ذمة العميل، والإفراج النهائي يفتح إغلاق المشروع.",
+      "fpj_ret_empty": "لا محتجز مستحق بعد.",
+      "fpj_ret_stage_prov": "الاستلام الابتدائي · {date}",
+      "fpj_ret_stage_final": "الاستلام النهائي · {date}",
+      "fpj_ret_release": "أفرج عن المحتجز",
+      "fpj_ret_released": "أُفرج عنه",
+      "fpj_ret_done": "أُفرج عن المحتجز",
+      "fpj_adv_title": "الدفعات المقدمة المستحقة",
+      "fpj_adv_sub": "الدفعة المقدمة التي يطلبها كل عقد من العميل، من ملف التسليم المقبول.",
+      "fpj_adv_empty": "لا عقد يطلب دفعة مقدمة.",
+      "fpj_adv_rate": "{rate}% من العقد",
+      "fpj_adv_note": "تُسجَّل الدفعة المقدمة عند وصول النقد:",
+      "fpj_adv_link": "التسويات"
     },
     "Contractor": {
       "rfq_share_title": "مشاركة كرابط للزوار",
@@ -9870,7 +9965,61 @@
       "rfq_glance_open": "العروض على {title}",
       "rfq_glance_status_accepted": "مقبول",
       "rfq_glance_status_rejected": "مرفوض",
-      "rfq_glance_status_review": "قيد المراجعة"
+      "rfq_glance_status_review": "قيد المراجعة",
+      "rfqv_title": "طلبات عروض الأسعار",
+      "rfqv_desc": "صادرة إلى موردين — الأسعار مغلقة حتى الإغلاق، والترسية بنداً بنداً",
+      "rfqv_new": "طرح طلب عروض أسعار جديد",
+      "rfqv_stage_draft": "مسودة",
+      "rfqv_stage_open": "مفتوحة للتقديم",
+      "rfqv_stage_open_sealed": "مفتوحة للتقديم — الأسعار مغلقة",
+      "rfqv_stage_compare": "جاهز للمقارنة",
+      "rfqv_stage_closed_empty": "انتهى بلا عروض",
+      "rfqv_stage_awarded": "تمت الترسية",
+      "rfqv_chip_all": "الكل",
+      "rfqv_chip_Draft": "مسودة",
+      "rfqv_chip_New": "نشطة",
+      "rfqv_chip_Awarded": "مكتملة",
+      "rfqv_view_cards": "بطاقات",
+      "rfqv_view_list": "قائمة",
+      "rfqv_shown": "{shown} من {total} طلباً",
+      "rfqv_products": "{count, plural, one {منتج واحد} two {منتجان} few {# منتجات} many {# منتجاً} other {# منتج}}",
+      "rfqv_offers": "{count, plural, =0 {لا عروض} one {عرض واحد} two {عرضان} few {# عروض} many {# عرضاً} other {# عرض}}",
+      "rfqv_sealed": "الأسعار مغلقة حتى الموعد",
+      "rfqv_warranty": "يتطلب ضماناً",
+      "rfqv_deadline": "الموعد: {date}",
+      "rfqv_passed": "انتهى الموعد",
+      "rfqv_soon": "{days, plural, =0 {ينتهي اليوم} one {متبقٍ يوم} two {متبقٍ يومين} few {متبقٍ # أيام} many {متبقٍ # يوماً} other {متبقٍ # يوم}}",
+      "rfqv_by": "بواسطة:",
+      "rfqv_view_offers": "عرض العروض",
+      "rfqv_inquiries": "الاستفسارات",
+      "rfqv_share": "مشاركة كرابط للزوار",
+      "rfqv_edit_open": "تعديل الموعد أو المدعوين",
+      "rfqv_complete": "أكمل وانشر",
+      "rfqv_delete": "حذف",
+      "rfqv_republish": "أعد الطرح بموعد جديد",
+      "rfqv_col_rfq": "طلب عروض أسعار",
+      "rfqv_col_project": "المشروع",
+      "rfqv_col_offers": "العروض",
+      "rfqv_col_deadline": "الموعد النهائي",
+      "rfqv_col_estimate": "تقدير بآخر سعر",
+      "rfqv_col_status": "الحالة",
+      "suppliers_col_supplier": "المورد",
+      "suppliers_col_supplies": "يورّد",
+      "suppliers_col_on_time": "التزامه بالموعد",
+      "suppliers_col_rejected": "مرفوض عند الاستلام",
+      "suppliers_of_orders": "{count, plural, one {من أمر واحد} two {من أمرين} few {من # أوامر} many {من # أمراً} other {من # أمر}}",
+      "suppliers_no_record": "بلا سجل",
+      "suppliers_docs_ok": "وثائقه سارية",
+      "suppliers_docs_cr_expired": "سجل تجاري منتهٍ",
+      "suppliers_docs_no_vat": "بلا رقم ضريبي",
+      "suppliers_docs_unknown": "الوثائق غير مسجلة",
+      "suppliers_open_orders": "{count, plural, one {أمر واحد مفتوح} two {أمران مفتوحان} few {# أوامر مفتوحة} many {# أمراً مفتوحاً} other {# أمر مفتوح}}",
+      "suppliers_inv_title": "دعوات الانضمام إلى منصة مدماك",
+      "suppliers_inv_desc": "مورد ليس على المنصة: ندعوه بالبريد — فإن انضم صار في مورّدينا بملف موثّق، ويرى عروضنا العامة أيضاً.",
+      "suppliers_inv_sent": "دُعي في {date}",
+      "suppliers_inv_joined": "انضم — في مورّدينا",
+      "suppliers_inv_not_yet": "لم ينضم بعد",
+      "suppliers_invite_platform": "ادعُ مورداً إلى المنصة"
     },
     "Admin": {
       "Dashboard": {
@@ -10529,7 +10678,13 @@
         "morning": "صباحاً",
         "afternoon": "بعد الظهر",
         "evening": "مساءً"
-      }
+      },
+      "err_order_no_lines": "لا مادة بكمية في هذا الاحتياج",
+      "err_order_supplier_missing": "اختر المورد",
+      "err_price_missing": "اكتب سعر الوحدة لـ {item}",
+      "err_over_direct_cap": "قيمته {total}، فوق سقف الشراء المباشر {cap} — اطرح طلب عروض أسعار بدلاً منه",
+      "err_agreement_not_live": "الاتفاقية غير سارية اليوم",
+      "err_agreement_line_missing": "الاتفاقية لا تشمل {item}"
     },
     "ProcToday": {
       "title": "يحتاج قرارك",
@@ -10758,7 +10913,10 @@
         "supplier": "المورد والطلب",
         "status": "الحالة",
         "value": "القيمة قبل الضريبة",
-        "date": "موعد المورد"
+        "date": "موعد المورد",
+        "order_supplier": "الأمر والمورد",
+        "lines": "البنود",
+        "supplier_date": "موعد المورد"
       },
       "pill_returned": "أُعيد لمُعِدّه",
       "date": {
@@ -10821,7 +10979,9 @@
         "cancelled_body": "أُلغي الأمر — {reason}",
         "rated_title": "قُيّم: المطابقة {conformity}/5 والتعاون {cooperation}/5",
         "rated_published": "نُشر بلا اسمنا على المنصة",
-        "rated_internal": "لنا فقط"
+        "rated_internal": "لنا فقط",
+        "flag_agreement": "على اتفاقية الأسعار {number} — أسعارها منافَسة مسبقاً",
+        "flag_direct": "شراء مباشر دون منافسة — {reason}"
       },
       "money": {
         "ex_vat": "قيمة الأمر قبل الضريبة",
@@ -10854,7 +11014,8 @@
         "offers": "عدد العروض",
         "lowest": "أقل عرض",
         "reason": "سبب الترسية",
-        "open_rfq": "افتح طلب العروض والمقارنة"
+        "open_rfq": "افتح طلب العروض والمقارنة",
+        "agreement": "اتفاقية الأسعار"
       },
       "docs": {
         "print_po": "اطبع أمر الشراء",
@@ -11059,7 +11220,10 @@
         "proc_manager": "مدير المشتريات",
         "st_footer_final": "كشف نهائي: اكتمل التوريد على هذا الأمر.",
         "st_footer_interim": "كشف مرحلي: يُعاد إصداره بعد كل شحنة حتى يكتمل التوريد."
-      }
+      },
+      "project_filter": "المشروع",
+      "project_all": "كل المشاريع",
+      "more_lines": "+{count} بنود أخرى"
     },
     "ProcReceipts": {
       "forward": {
@@ -11494,7 +11658,9 @@
         "self_received": "استلمه المُعِدّ",
         "no_notice": "وصل بلا إشعار",
         "cash_expense": "مصروف نقدي"
-      }
+      },
+      "print": "طباعة",
+      "commitNotCost": "القيمة هنا التزام لا تكلفة: التكلفة الفعلية على البند تُقرأ من دفتر المالية بعد الفاتورة."
     },
     "ProcPrices": {
       "state": {
@@ -11740,6 +11906,68 @@
           "item4": "لا نعتمد أمراً أعددناه",
           "item5": "لا نُظهر سعراً لمَن لا يملك رؤيته",
           "item6": "لا نراسل المورد إلا بإرسال الأمر والتذكير"
+        }
+      },
+      "seg": {
+        "path": "مسار الشراء",
+        "policies": "السياسات",
+        "roles": "الأدوار والمستلمون",
+        "boundaries": "الربط مع الوحدات"
+      },
+      "path": {
+        "title": "من الحاجة إلى السداد — تسع خطوات، لكل خطوة مالك واحد",
+        "owned": "الملوّن خطواتنا",
+        "owner": {
+          "projects": "إدارة المشاريع",
+          "inventory": "المخزون",
+          "manufacturing": "التصنيع",
+          "procurement": "المشتريات",
+          "finance": "المالية"
+        },
+        "step1": {
+          "title": "الاحتياج",
+          "desc": "طلب مواد من مشروع أو نقص في الورشة أو فجوة في الرصيد",
+          "rule": "لا يضيع احتياج"
+        },
+        "step2": {
+          "title": "فحص المخزون",
+          "desc": "يحجز المخزون ما لديه قبل أن يُشترى شيء",
+          "rule": "لا نشتري ما نملكه"
+        },
+        "step3": {
+          "title": "نصنع أم نشتري",
+          "desc": "تجيب الورشة أولاً إن كانت تصنعه",
+          "rule": "مهلة يوم للرد"
+        },
+        "step4": {
+          "title": "المسار",
+          "desc": "المخزون ثم اتفاقية سارية ثم أمر مباشر تحت السقف وإلا طلب عروض",
+          "rule": "محسوب لا مختار"
+        },
+        "step5": {
+          "title": "العروض والترسية",
+          "desc": "يسعّر الموردون المدعوون؛ وتبقى العروض مغلقة حتى الموعد",
+          "rule": "الترسية على غير الأقل تحمل سببها"
+        },
+        "step6": {
+          "title": "أمر الشراء",
+          "desc": "يعدّه شخص ويعتمده آخر ثم يُرسل",
+          "rule": "لا أحد يعتمد أمره"
+        },
+        "step7": {
+          "title": "المالية",
+          "desc": "الأمر المعتمد التزام؛ والدفعة المقدمة تمر بالمالية",
+          "rule": "لا دفع بلا أمر"
+        },
+        "step8": {
+          "title": "التوريد والاستلام",
+          "desc": "يعدّ المخزن دون أن يرى الكمية ويسجّل المقبول والمرفوض والمحجوز",
+          "rule": "لا استلام بلا سند"
+        },
+        "step9": {
+          "title": "الفاتورة والسداد",
+          "desc": "تطابق المالية الفاتورة بالأمر والاستلام ثم تسدّد",
+          "rule": "فرق السعر يحتاج قراراً"
         }
       }
     },
@@ -12702,6 +12930,21 @@
         "final_ready": {
           "title": "لا ملاحظات متبقية قبل الاستلام النهائي",
           "detail": "سجّله بعد انتهاء فترة الضمان."
+        },
+        "kpi_value": "قيمة العقود الجارية",
+        "kpi_value_note": "{count, plural, one {مشروع واحد} two {مشروعان} few {# مشاريع} many {# مشروعاً} other {# مشروع}}",
+        "kpi_all": "قرارات بانتظارك",
+        "kpi_oldest": "{count, plural, one {أقدمها منذ يوم} two {أقدمها منذ يومين} few {أقدمها منذ # أيام} many {أقدمها منذ # يوماً} other {أقدمها منذ # يوم}}",
+        "my_projects": "مشاريعي",
+        "show_more": "{count, plural, one {عرض قرار آخر} two {عرض قرارين آخرين} few {عرض # قرارات أخرى} many {عرض # قراراً آخر} other {عرض # قرار آخر}}",
+        "show_less": "عرض أقل",
+        "grp": {
+          "all": "الكل",
+          "team": "الفريق",
+          "exec": "التنفيذ",
+          "contract": "مخاطر تعاقدية",
+          "money": "المال",
+          "close": "الإغلاق"
         }
       },
       "sec": {
@@ -12745,6 +12988,80 @@
           "owner_only": "المالك وحده يضم المشروع",
           "invalid": "اختر مدير المشروع ومدة بالأيام الكاملة"
         }
+      },
+      "grp": {
+        "pulse": "النبض",
+        "contract": "العقد",
+        "exec": "التنفيذ",
+        "supply": "التوريد",
+        "money": "المال",
+        "file": "الملف",
+        "settings": "الإعدادات",
+        "terms": "الشروط والملاحق"
+      },
+      "pulse": {
+        "kpis": "المشروع في ثلاثة أرقام",
+        "kpi_progress": "الإنجاز",
+        "kpi_planned": "{behind, plural, =0 {المخطط {planned}% · في موعده} one {المخطط {planned}% · متأخر نقطة} two {المخطط {planned}% · متأخر نقطتين} few {المخطط {planned}% · متأخر # نقاط} many {المخطط {planned}% · متأخر # نقطة} other {المخطط {planned}% · متأخر # نقطة}}",
+        "kpi_not_started": "لم يبدأ",
+        "kpi_unbilled": "غير المفوتر",
+        "kpi_unbilled_note": "منفّذ ناقص مفوتر",
+        "kpi_cash": "الموقف النقدي",
+        "kpi_cash_note": "داخل {in} · خارج {out}",
+        "path_title": "مسار المال",
+        "path_desc": "ما قيمة العقد وما نفّذناه وفوترناه وحصّلناه — مقابل ما التزمنا به وما فُوتر علينا وما دفعناه.",
+        "path_contract": "قيمة العقد",
+        "path_executed": "منفّذ (قياس معتمد)",
+        "path_billed": "مفوتر (مستخلصات)",
+        "path_collected": "محصّل من مالك المشروع",
+        "path_committed": "ملتزم به (أوامر شراء)",
+        "path_invoiced": "مفوتر من الموردين",
+        "path_paid": "مدفوع",
+        "waiting_title": "معلّق عند غيرنا",
+        "waiting_desc": "الفعل عندهم والحالة تصل إلينا — بلا زر هنا.",
+        "waiting_none": "لا شيء معلّق عند وحدة أخرى.",
+        "from_procurement": "المشتريات",
+        "act_measure": "قياس",
+        "act_certificate": "أعدّ مستخلصاً",
+        "waiting_more": "{count, plural, one {وواحد آخر معلّق} two {واثنان آخران معلّقان} few {و# أخرى معلّقة} many {و# أخرى معلّقة} other {و# أخرى معلّقة}}",
+        "behind_title": "أكثر الأقسام تأخراً",
+        "behind_desc": "أقسام جدول الكميات بإنجازها، مقابل الإنجاز المخطط للمشروع اليوم (نقاط التأخر).",
+        "log_title": "سجل المشروع",
+        "log": {
+          "started": "بدأ العمل — جُمِّد العقد الأصلي",
+          "sheet": "اعتُمد محضر الحصر {no}",
+          "vo_approved": "اعتُمد أمر التغيير {no}: {title} {value}",
+          "vo_rejected": "رُفض أمر التغيير {no}: {title}",
+          "vo_submitted": "قُدّم أمر التغيير {no} للعميل: {title}",
+          "claim_notice": "أُرسل إشعار المطالبة {no}",
+          "claim_submitted": "قُدّمت المطالبة {no}",
+          "claim_answered": "ردّ العميل على المطالبة {no} — مُنحت {days} يوماً",
+          "addendum_signed": "وُقّع الملحق {no}",
+          "cert_prepared": "أُعدّ المستخلص {no} {value}",
+          "cert_certified": "اعتُمد المستخلص {no} {value}",
+          "cert_collected": "سُجّل تحصيل على المستخلص {no}",
+          "ncr": "سُجّل عدم مطابقة {no}",
+          "prov": "سُجّل الاستلام الابتدائي",
+          "final": "سُجّل الاستلام النهائي"
+        }
+      },
+      "rail": {
+        "today": "اليوم",
+        "projects": "المشاريع",
+        "inbox": "مشاريع جديدة"
+      },
+      "list": {
+        "census": "{live} جارية · {hold} مؤجّلة · {done} مكتملة · {closed} في الأرشيف",
+        "chip_all": "الكل",
+        "kpi_shown": "المشاريع المعروضة",
+        "kpi_all": "بحسب التصفية",
+        "kpi_value": "إجمالي قيمة عقودها",
+        "kpi_value_note": "بقيم التسليم",
+        "kpi_live": "المشاريع الجارية",
+        "kpi_hold": "{count, plural, =0 {لا مؤجّل} one {مؤجّل واحد} two {مؤجّلان} few {# مؤجّلة} many {# مؤجّلاً} other {# مؤجّل}}",
+        "contract_value": "قيمة العقد",
+        "unbilled": "غير المفوتر",
+        "urgent": "{count, plural, one {قرار عاجل} two {قراران عاجلان} few {# قرارات عاجلة} many {# قراراً عاجلاً} other {# قرار عاجل}}"
       }
     },
     "HR": {

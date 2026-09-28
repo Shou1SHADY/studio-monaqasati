@@ -1810,6 +1810,19 @@ export async function linkPurchaseRequestRfq(firestore: Firestore, input: { orde
   })
 }
 
+/** Purchasing ordered the line without an RFQ — on a price agreement or as a direct purchase. */
+export async function linkPurchaseRequestOrder(firestore: Firestore, input: { orderId: string; purchaseRequestId: string; poId: string; poNumber: string }): Promise<void> {
+  await runTransaction(firestore, async (tx) => {
+    const ref = doc(firestore, WORK_ORDERS, input.orderId)
+    const snap = await tx.get(ref)
+    if (!snap.exists()) throw new Error("order_missing")
+    const rows = ((snap.data() as WorkOrderV2).purchaseRequests || []).map((p) =>
+      p.id === input.purchaseRequestId && p.state === "sent" ? { ...p, state: "ordered" as const, poId: input.poId, poNumber: input.poNumber, orderedAt: nowIso() } : p
+    )
+    tx.update(ref, { purchaseRequests: rows, updatedAt: serverTimestamp() })
+  })
+}
+
 /** Purchasing sends the shortfall back — the workshop manager sees why and decides again. */
 export async function declinePurchaseRequest(firestore: Firestore, input: { orderId: string; purchaseRequestId: string; reason: string; actor: Actor }): Promise<void> {
   if (!input.reason.trim()) throw new Error("reason_required")

@@ -75,6 +75,7 @@ import {
   MapPin,
   BarChart3,
   Sunrise,
+  KeyRound,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -127,7 +128,7 @@ export type PortalComponentId =
 
 // One colour per module, carried through its tile, its sidebar, its shell and
 // its inner screens (the `module` colour token). No two modules share one.
-export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive" | "indigo" | "violet" | "pm"
+export type AccentToken = "primary" | "secondary" | "accent" | "success" | "cta" | "warning" | "destructive" | "indigo" | "violet" | "pm" | "teal"
 
 // Tailwind can't resolve dynamically-built class strings, so every
 // accent-token combination used by a tile must appear as a literal here.
@@ -143,6 +144,7 @@ export const COMPONENT_ACCENT_CLASSES: Record<AccentToken, { tile: string; ring:
   indigo: { tile: "bg-indigo/10 text-indigo", ring: "ring-indigo" },
   violet: { tile: "bg-violet/10 text-violet", ring: "ring-violet" },
   pm: { tile: "bg-pm/10 text-pm", ring: "ring-pm" },
+  teal: { tile: "bg-teal/10 text-teal", ring: "ring-teal" },
 }
 
 export interface PortalComponentDef {
@@ -184,7 +186,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
     // decision, for every Procurement role.
     homeHref: "/contractor/rfqs/today",
     icon: Handshake,
-    accentToken: "cta",
+    accentToken: "teal",
     displayOrder: 3,
     sections: [
       {
@@ -274,6 +276,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
           { titleKey: "fin_nav_hr_desk", href: "/contractor/accounting/hr-desk", icon: Users, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
           { titleKey: "fin_nav_procurement_desk", href: "/contractor/accounting/procurement-desk", icon: ClipboardCheck, requiredPermission: "po.approve" },
+          { titleKey: "fin_nav_projects_desk", href: "/contractor/accounting/projects-desk", icon: KeyRound, requiredPermission: "invoices.manage" },
         ],
       },
       {
@@ -499,7 +502,7 @@ export const SUPPLIER_COMPONENTS: PortalComponentDef[] = [
     descKey: "supplier_component_sales_desc",
     homeHref: "/supplier/rfqs",
     icon: Handshake,
-    accentToken: "cta",
+    accentToken: "teal",
     displayOrder: 3,
     sections: [
       {

@@ -8,7 +8,7 @@ import { useMemo } from "react"
 import { collection } from "firebase/firestore"
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase"
 import type { PmAccess } from "@/hooks/usePmAccess"
-import type { Acceptances } from "@/lib/pm/acceptance"
+import { progressOf, type Acceptances } from "@/lib/pm/acceptance"
 import { inForce, PM_ADDENDA, type PmAddendum } from "@/lib/pm/addenda"
 import { PM_CERTIFICATES } from "@/lib/pm/certificate"
 import type { PmCertificate } from "@/lib/pm/certificate-writes"
@@ -48,7 +48,7 @@ function useSub<T>(projectId: string, name: string, enabled = true) {
   return { rows: (data ?? []) as unknown as T[], isLoading }
 }
 
-export function usePmDecisions(projectId: string, project: PmDecisionProject | null | undefined, access: PmAccess): { decisions: PmDecision[]; ready: boolean } {
+export function usePmDecisions(projectId: string, project: PmDecisionProject | null | undefined, access: PmAccess): { decisions: PmDecision[]; progress: number | null; ready: boolean } {
   const seesTerms = access.has("money") || access.has("approve")
   const money = access.has("money")
   const items = useSub<Record<string, unknown>>(projectId, "boqItems")
@@ -90,5 +90,7 @@ export function usePmDecisions(projectId: string, project: PmDecisionProject | n
     })
   }, [project, items.rows, sheets.rows, addenda.rows, certs.rows, punch.rows, vos.rows, claims.rows])
 
-  return { decisions, ready: !items.isLoading && !sheets.isLoading }
+  const progress = useMemo(() => progressOf(items.rows.map((d) => ({ quantity: num(d.quantity), rate: num(d.unitPrice), executed: num(d.executedQuantity) }))), [items.rows])
+
+  return { decisions, progress, ready: !items.isLoading && !sheets.isLoading }
 }

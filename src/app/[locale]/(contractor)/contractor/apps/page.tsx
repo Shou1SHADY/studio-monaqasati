@@ -19,6 +19,7 @@ const ACCENT_CLASSES: Record<AccentToken, { tile: string }> = {
   indigo: { tile: "bg-indigo/10 text-indigo" },
   violet: { tile: "bg-violet/10 text-violet" },
   pm: { tile: "bg-pm/10 text-pm" },
+  teal: { tile: "bg-teal/10 text-teal" },
 }
 
 // Full-page "app launcher" — the ERP-style browsable alternative to the
