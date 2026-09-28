@@ -33,7 +33,8 @@ import {
 } from "lucide-react"
 import { draftRfqDescription } from "@/ai/flows/draft-rfq-description-flow"
 import { useToast } from "@/hooks/use-toast"
-import { linkPurchaseRequestRfq } from "@/lib/manufacturing-writes"
+import { linkNeed } from "@/lib/procurement/needs-writes"
+import { parseNeedSource } from "@/lib/procurement/needs"
 import { useFirestore, useUser, useStorage, useMemoFirebase, useCollection, useDoc } from "@/firebase"
 import { useResolvedProfile } from "@/hooks/useResolvedProfile"
 import { useProcActor } from "@/hooks/useProcActor"
@@ -86,13 +87,10 @@ export function RfqForm({ projectId }: { projectId?: string }) {
   // screen (Manufacturing's purchase requests, from the RFQs list).
   const itemsParam = searchParams.get("items")
   const itemsApplied = useRef<string | null>(null)
-  // ?source=<workOrderId>:<purchaseRequestId> — the purchase request this RFQ
-  // answers. The RFQ carries it, and the request is told which RFQ it became.
+  // ?source= — the need this RFQ answers (a work order's shortfall, a project's
+  // request, a stock gap). The RFQ carries it, and the need is told which RFQ it became.
   const sourceParam = searchParams.get("source")
-  const purchaseSource = useMemo(() => {
-    const [workOrderId, purchaseRequestId] = (sourceParam || "").split(":")
-    return workOrderId && purchaseRequestId ? { workOrderId, purchaseRequestId } : null
-  }, [sourceParam])
+  const purchaseSource = useMemo(() => parseNeedSource(sourceParam), [sourceParam])
   const tShared = useTranslations("Portal.Shared")
   const [editRfqData, setEditRfqData] = useState<any>(null)
   const [isLoadingEdit, setIsLoadingEdit] = useState(isEditing)
@@ -715,11 +713,11 @@ export function RfqForm({ projectId }: { projectId?: string }) {
       // Awaited (not fire-and-forget) so a failed write is caught before we tell the user it worked.
       // Skipped entirely for standalone RFQs (no project to sync into).
       try {
-        const ref = await addDoc(rfqsRef, purchaseSource ? { ...rfqData, purchaseSource: { kind: "mfg_purchase", ...purchaseSource } } : rfqData)
+        const ref = await addDoc(rfqsRef, purchaseSource ? { ...rfqData, purchaseSource } : rfqData)
         createdRfqIds.push(ref.id)
         if (purchaseSource && createdRfqIds.length === 1) {
           try {
-            await linkPurchaseRequestRfq(firestore, { orderId: purchaseSource.workOrderId, purchaseRequestId: purchaseSource.purchaseRequestId, rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null })
+            await linkNeed(firestore, purchaseSource, { rfqId: ref.id, rfqNumber: (rfqData as { rfqNumber?: string }).rfqNumber ?? null }, (profile as { name?: string } | null)?.name || user?.email || "")
           } catch (linkErr) {
             // The RFQ exists; only the back-reference failed — Purchasing can still see both.
             console.error("purchase request ↔ RFQ link failed:", linkErr)
@@ -842,7 +840,7 @@ export function RfqForm({ projectId }: { projectId?: string }) {
                 city: formData.city,
                 directAward: true,
                 products: groupedProducts[categories[0]]?.map((p) => ({ name: (p.subCategory === "أخرى" ? p.otherSubCategory : p.subCategory) || p.category, quantity: Number(p.quantity), unitOfMeasure: p.unit })) || null,
-                purchaseSource: purchaseSource ? { kind: "mfg_purchase", ...purchaseSource } : null,
+                purchaseSource: purchaseSource ?? null,
               },
               offer: { ...directOffer, directAward: true, companyName: directOffer.supplierName, deliveryLocation: formData.city, status: "مقبول" },
               offers: [{ ...directOffer, status: "مقبول" }],

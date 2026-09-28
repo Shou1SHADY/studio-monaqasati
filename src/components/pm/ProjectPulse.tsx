@@ -10,6 +10,7 @@ import { Wallet } from "lucide-react"
 import { Panel } from "@/components/module-ui/Panel"
 import { PmTodayPanel } from "@/components/pm/PmTodayPanel"
 import { WaitingOnOthers } from "@/components/pm/WaitingOnOthers"
+import { ProjectLogPanel, SectionsBehindPanel } from "@/components/pm/PulseExtras"
 import type { PmAccess } from "@/hooks/usePmAccess"
 import type { PmDecisionProject } from "@/hooks/usePmDecisions"
 import { useProjectMoneyFlow } from "@/hooks/useProjectMoneyFlow"
@@ -29,7 +30,7 @@ export function ProjectPulse({
   projectId: string
   organizationId: string
   project: PmDecisionProject
-  items: Array<{ rate: number; executed: number }>
+  items: Array<{ division?: string; quantity: number; rate: number; executed: number }>
   access: PmAccess
   onOpen: (tab: DecisionTab) => void
 }) {
@@ -77,7 +78,11 @@ export function ProjectPulse({
         )}
       </div>
 
-      <WaitingOnOthers organizationId={organizationId} projects={[{ id: projectId }]} />
+      <div className="space-y-4">
+        <SectionsBehindPanel project={project} items={items} />
+        <WaitingOnOthers organizationId={organizationId} projects={[{ id: projectId }]} />
+        <ProjectLogPanel projectId={projectId} project={project} money={money} seesTerms={money || access.has("approve")} />
+      </div>
     </div>
   )
 }

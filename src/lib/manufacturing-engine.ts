@@ -417,6 +417,9 @@ export interface PurchaseRequestRecord {
   /** Set by Purchasing when it starts an RFQ for this line. */
   rfqId?: string | null
   rfqNumber?: string | null
+  /** Set instead when Purchasing orders it without an RFQ (an agreement or a direct purchase). */
+  poId?: string | null
+  poNumber?: string | null
   orderedAt?: string | null
   declinedAt?: string | null
   declinedBy?: string | null

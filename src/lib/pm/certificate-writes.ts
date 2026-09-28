@@ -24,7 +24,7 @@ import {
   type CertificateStatus,
   type CertificateTerms,
 } from "./certificate"
-import { eventDocId, PM_EVENTS } from "./events"
+import { eventDocId, PM_EVENTS, type PmEvent } from "./events"
 import { todayDay } from "./format"
 import { lifecycleOf } from "./lifecycle"
 import { withFreshState } from "./project-writes"
@@ -192,8 +192,8 @@ export async function certifyCertificate(
   actor: CertificateActor,
   seq: number,
   input: { certified: number; reason?: string | null; consultantRef?: string | null }
-): Promise<Amounts> {
-  let result: Amounts = { gross: 0, recovery: 0, retention: 0, vat: 0, net: 0 }
+): Promise<Amounts & { event: PmEvent | null }> {
+  let result: Amounts & { event: PmEvent | null } = { gross: 0, recovery: 0, retention: 0, vat: 0, net: 0, event: null }
   await runTransaction(firestore, async (tx) => {
     const { pRef, project, pm } = await readContract(tx, firestore, projectId)
     assertPm(withFreshState(ctx, project), "certificate.certify")
@@ -247,7 +247,7 @@ export async function certifyCertificate(
       at: new Date().toISOString(),
     })
     tx.set(doc(firestore, PM_EVENTS, eventDocId(event.key)), event)
-    result = amounts
+    result = { ...amounts, event }
   })
   return result
 }

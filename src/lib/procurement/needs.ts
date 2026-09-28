@@ -1,0 +1,242 @@
+// Every need that reaches Purchasing, in one shape (PRD 3.0 §7.2, the requests
+// tab): a work order's material shortfall, a project's internal purchase
+// request, and a stock item at or below its minimum. Each keeps its own home
+// and its own writes; this file only reads them and says, the same way for
+// all three, what state the need is in. Pure.
+
+import { foldSearchText } from "../search-text"
+import type { PurchaseRequestRecord } from "../manufacturing-engine"
+import { poStatus } from "./po"
+import type { PurchaseOrder } from "./types"
+
+export type NeedKind = "mfg" | "project" | "stock"
+
+/** action = Purchasing's move · waiting = another module's · rfq / order = in
+ * hand · done = arrived, sent back or refused. */
+export type NeedState = "action" | "waiting" | "rfq" | "order" | "done"
+export const NEED_STATES: NeedState[] = ["action", "waiting", "rfq", "order", "done"]
+
+export interface NeedLine {
+  name: string
+  unit: string
+  quantity: number
+}
+
+export interface Need {
+  key: string
+  kind: NeedKind
+  state: NeedState
+  lines: NeedLine[]
+  needBy: string | null
+  requestedBy: string
+  at: string
+  /** The document it came from: WO-2026/012, PR-3F9A2C, or the warehouse. */
+  refLabel: string
+  /** What it is for: the product, the project, or the item's minimum. */
+  context: string
+  note: string | null
+  rfqId: string | null
+  rfqNumber: string | null
+  poId: string | null
+  poNumber: string | null
+  /** Why it ended: the reason it was sent back, or who received it. */
+  endNote: string | null
+  waitingOn: "warehouse" | "workshop" | null
+  projectId: string | null
+  projectName: string | null
+  /** Carried onto the RFQ and the order, so the need can be closed from them. */
+  source: NonNullable<PurchaseOrder["purchaseSource"]>
+  stock: { onHand: number; min: number } | null
+  /** The work order (mfg) or the project (project) it belongs to, for its link. */
+  ownerId: string
+}
+
+const blank = { needBy: null, note: null, rfqId: null, rfqNumber: null, poId: null, poNumber: null, endNote: null, waitingOn: null, projectId: null, projectName: null, stock: null }
+
+export const nameKey = (name: string) => foldSearchText(name)
+
+// ── A work order's shortfall ───────────────────────────────────────────────
+
+export function mfgNeed(order: { id: string; ref: string; context: string; projectId?: string | null; projectName?: string | null }, r: PurchaseRequestRecord): Need {
+  const state: NeedState = r.state === "sent" ? "action" : r.state === "ordered" ? (r.poId ? "order" : "rfq") : "done"
+  return {
+    ...blank,
+    key: `mfg:${order.id}:${r.id}`,
+    kind: "mfg",
+    state,
+    lines: [{ name: r.itemName, unit: r.unit, quantity: r.quantity }],
+    needBy: r.needBy ? r.needBy.slice(0, 10) : null,
+    requestedBy: r.by,
+    at: r.at,
+    refLabel: order.ref,
+    context: order.context,
+    note: r.note,
+    rfqId: r.rfqId ?? null,
+    rfqNumber: r.rfqNumber ?? null,
+    poId: r.poId ?? null,
+    poNumber: r.poNumber ?? null,
+    endNote: r.state === "declined" ? r.declinedReason ?? null : r.state === "arrived" ? r.arrivedBy ?? null : null,
+    projectId: order.projectId ?? null,
+    projectName: order.projectName ?? null,
+    source: { kind: "mfg_purchase", workOrderId: order.id, purchaseRequestId: r.id },
+    ownerId: order.id,
+  }
+}
+
+// ── A project's internal purchase request ───────────────────────────────────
+
+export interface ProjectRequestDoc {
+  id: string
+  title?: string
+  items?: Array<{ name?: string; quantity?: string | number; unit?: string }>
+  notes?: string | null
+  status?: "pending" | "approved" | "rejected"
+  requestedByUserName?: string
+  createdAt?: unknown
+  mfgRequestId?: string | null
+  rfqId?: string | null
+  rfqNumber?: string | null
+  poId?: string | null
+  poNumber?: string | null
+  decidedByUserName?: string | null
+}
+
+const iso = (v: unknown): string => {
+  if (typeof v === "string") return v
+  const t = v as { toDate?: () => Date } | null
+  return t && typeof t.toDate === "function" ? t.toDate().toISOString() : ""
+}
+
+export function projectNeed(project: { id: string; name: string }, pr: ProjectRequestDoc, ref: string): Need {
+  const lines = (pr.items || [])
+    .map((i) => ({ name: (i.name || "").trim(), unit: (i.unit || "").trim(), quantity: Number(i.quantity) || 0 }))
+    .filter((l) => l.name && l.quantity > 0)
+  let state: NeedState = "action"
+  let waitingOn: Need["waitingOn"] = null
+  if (pr.status === "rejected") state = "done"
+  else if (pr.status !== "approved") {
+    state = "waiting"
+    waitingOn = "warehouse"
+  } else if (pr.poId) state = "order"
+  else if (pr.rfqId) state = "rfq"
+  else if (pr.mfgRequestId) {
+    state = "waiting"
+    waitingOn = "workshop"
+  }
+  return {
+    ...blank,
+    key: `project:${project.id}:${pr.id}`,
+    kind: "project",
+    state,
+    lines,
+    requestedBy: pr.requestedByUserName || "",
+    at: iso(pr.createdAt),
+    refLabel: ref,
+    context: pr.title ? `${project.name} · ${pr.title}` : project.name,
+    note: pr.notes || null,
+    rfqId: pr.rfqId ?? null,
+    rfqNumber: pr.rfqNumber ?? null,
+    poId: pr.poId ?? null,
+    poNumber: pr.poNumber ?? null,
+    endNote: pr.status === "rejected" ? pr.decidedByUserName ?? null : null,
+    waitingOn,
+    projectId: project.id,
+    projectName: project.name,
+    source: { kind: "project_request", projectId: project.id, purchaseRequestId: pr.id },
+    ownerId: project.id,
+  }
+}
+
+// ── A stock gap ────────────────────────────────────────────────────────────
+
+export interface StockGapRow {
+  id: string
+  warehouseId: string
+  warehouseName: string
+  name: string
+  unit: string
+  quantity: number
+  minStockLevel?: number | null
+}
+
+export interface OpenBuying {
+  rfqs: Array<{ id: string; title?: string; status?: string; products?: Array<{ name?: string }> | null }>
+  orders: PurchaseOrder[]
+}
+
+/** The quantity that brings the item back to twice its minimum — the gap
+ * itself, plus a minimum's worth so it does not fall straight back. */
+export const gapQuantity = (onHand: number, min: number) => Math.max(0, Math.ceil(2 * min - onHand))
+
+const OPEN_RFQ = new Set(["New", "Draft"])
+
+/** An item at or below its minimum. Nothing is stored on it: it is `rfq` while
+ * an open RFQ names the material, `order` while a live order does. */
+export function stockNeeds(rows: StockGapRow[], open: OpenBuying): Need[] {
+  const rfqByName = new Map<string, { id: string; title: string }>()
+  for (const r of open.rfqs) {
+    if (!OPEN_RFQ.has(r.status || "")) continue
+    for (const p of r.products || []) if (p.name) rfqByName.set(nameKey(p.name), { id: r.id, title: r.title || "" })
+  }
+  const poByName = new Map<string, PurchaseOrder>()
+  for (const po of open.orders) {
+    const st = poStatus(po)
+    if (st === "received" || st === "closed" || st === "cancelled") continue
+    for (const l of po.lines) poByName.set(nameKey(l.name), po)
+  }
+  return rows
+    .filter((r) => typeof r.minStockLevel === "number" && r.name.trim() && r.quantity <= (r.minStockLevel as number))
+    .map((r) => {
+      const min = r.minStockLevel as number
+      const k = nameKey(r.name)
+      const po = poByName.get(k)
+      const rfq = po ? undefined : rfqByName.get(k)
+      return {
+        ...blank,
+        key: `stock:${r.warehouseId}:${r.id}`,
+        kind: "stock" as const,
+        state: po ? ("order" as const) : rfq ? ("rfq" as const) : ("action" as const),
+        lines: [{ name: r.name.trim(), unit: r.unit, quantity: gapQuantity(r.quantity, min) }],
+        requestedBy: "",
+        at: "",
+        refLabel: r.warehouseName,
+        context: "",
+        rfqId: rfq?.id ?? null,
+        rfqNumber: rfq?.title ?? null,
+        poId: po?.id ?? null,
+        poNumber: po?.docNumber ?? null,
+        source: { kind: "stock_gap", warehouseId: r.warehouseId, itemId: r.id },
+        stock: { onHand: r.quantity, min },
+        ownerId: r.warehouseId,
+      }
+    })
+}
+
+/** Soonest need-by first (none last), then oldest request. */
+export function sortNeeds(needs: Need[]): Need[] {
+  return [...needs].sort((a, b) => (a.needBy || "9999").localeCompare(b.needBy || "9999") || (a.at || "").localeCompare(b.at || ""))
+}
+
+export function needCounts(needs: Need[]): Record<NeedState | "all", number> {
+  const out = { action: 0, waiting: 0, rfq: 0, order: 0, done: 0, all: needs.length }
+  for (const n of needs) out[n.state]++
+  return out
+}
+
+// ── The `?source=` an RFQ or an order is started with ─────────────────────
+
+/** `prj:<project>:<request>` · `stock:<warehouse>:<item>` · `<workOrder>:<request>`
+ * (the older form, a work order's shortfall). */
+export function needSourceParam(s: Need["source"]): string {
+  if (s.kind === "project_request") return `prj:${s.projectId}:${s.purchaseRequestId}`
+  if (s.kind === "stock_gap") return `stock:${s.warehouseId}:${s.itemId}`
+  return `${s.workOrderId}:${s.purchaseRequestId}`
+}
+
+export function parseNeedSource(raw: string | null | undefined): Need["source"] | null {
+  const parts = (raw || "").split(":")
+  if (parts[0] === "prj" && parts.length === 3 && parts[1] && parts[2]) return { kind: "project_request", projectId: parts[1], purchaseRequestId: parts[2] }
+  if (parts[0] === "stock" && parts.length === 3 && parts[1] && parts[2]) return { kind: "stock_gap", warehouseId: parts[1], itemId: parts[2] }
+  if (parts.length === 2 && parts[0] && parts[1]) return { kind: "mfg_purchase", workOrderId: parts[0], purchaseRequestId: parts[1] }
+  return null
+}

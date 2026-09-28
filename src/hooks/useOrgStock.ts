@@ -20,6 +20,8 @@ export interface StockRow {
   /** A usable remnant returned by manufacturing. */
   remnant?: boolean
   isManufactured?: boolean
+  /** The level at or below which the item is a stock gap Procurement answers. */
+  minStockLevel?: number | null
 }
 
 export interface OrgStock {
@@ -52,7 +54,7 @@ export function useOrgStock(
       ids.split(",").map(async (id) => {
         const snap = await getDocs(collection(firestore, "warehouses", id, "inventoryItems"))
         const rows: StockRow[] = snap.docs.map((d) => {
-          const v = d.data() as { name?: string; quantity?: number; unit?: string; unitCost?: number | null; lot?: string | null; remnant?: boolean; isManufactured?: boolean }
+          const v = d.data() as { name?: string; quantity?: number; unit?: string; unitCost?: number | null; lot?: string | null; remnant?: boolean; isManufactured?: boolean; minStockLevel?: number | null }
           return {
             id: d.id,
             name: v.name || "",
@@ -62,6 +64,7 @@ export function useOrgStock(
             lot: v.lot ?? null,
             remnant: !!v.remnant,
             isManufactured: !!v.isManufactured,
+            minStockLevel: typeof v.minStockLevel === "number" ? v.minStockLevel : null,
           }
         })
         return [id, rows] as const

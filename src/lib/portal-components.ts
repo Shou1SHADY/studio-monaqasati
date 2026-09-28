@@ -73,6 +73,7 @@ import {
   Settings2,
   BarChart3,
   Sunrise,
+  KeyRound,
 } from "lucide-react"
 import type { PermissionId } from "@/lib/permissions"
 import { CATALOG_COMING_SOON, RECEIPTS_COMING_SOON } from "@/lib/feature-flags"
@@ -266,6 +267,7 @@ export const CONTRACTOR_COMPONENTS: PortalComponentDef[] = [
           { titleKey: "contractor_guarantees", href: "/contractor/guarantees", icon: ShieldCheck, requiredPermission: "invoices.manage" },
           { titleKey: "fin_nav_sales_desk", href: "/contractor/accounting/sales-desk", icon: HandCoins, requiredAnyPermission: ["invoices.manage", "accounting.post"] },
           { titleKey: "fin_nav_procurement_desk", href: "/contractor/accounting/procurement-desk", icon: ClipboardCheck, requiredPermission: "po.approve" },
+          { titleKey: "fin_nav_projects_desk", href: "/contractor/accounting/projects-desk", icon: KeyRound, requiredPermission: "invoices.manage" },
         ],
       },
       {

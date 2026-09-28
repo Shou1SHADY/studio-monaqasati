@@ -214,13 +214,14 @@ export function supplierKey(po: Pick<PurchaseOrder, "supplierOrgId" | "supplierN
 }
 
 /** Direct orders to the same supplier inside the split window, before AND
- * after this one; cancelled ones do not count, a retroactive order is exempt. */
+ * after this one; cancelled ones do not count, a retroactive order is exempt,
+ * and so is an order on a price agreement (its prices were already competed). */
 export function splitSiblings(po: PurchaseOrder, others: PurchaseOrder[], policies: ProcurementPolicies): PurchaseOrder[] {
-  if (po.basis !== "direct") return []
+  if (po.basis !== "direct" || po.agreementId) return []
   const key = supplierKey(po)
   const day = dayOf(po.createdAt)
   return others.filter(
-    (x) => x.id !== po.id && x.basis === "direct" && x.status !== "cancelled" && supplierKey(x) === key && Math.abs(daysBetween(day, dayOf(x.createdAt))) <= policies.splitWindowDays
+    (x) => x.id !== po.id && x.basis === "direct" && !x.agreementId && x.status !== "cancelled" && supplierKey(x) === key && Math.abs(daysBetween(day, dayOf(x.createdAt))) <= policies.splitWindowDays
   )
 }
 

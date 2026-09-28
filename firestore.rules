@@ -682,6 +682,13 @@ service cloud.firestore {
                 || (('pm' in resource.data)
                     && (pmDuty(projectId, 'approve') || (pmCeilingHas('money') && pmCeilingHas('all')))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'status', 'updatedAt']))
+                // …Finance releases the retention a handover made claimable — the flag
+                // the close-out gate reads (`pm.retentionReleased`), nothing else.
+                || (('pm' in resource.data)
+                    && hasOrgPermission('invoices.manage')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pm', 'updatedAt'])
+                    && request.resource.data.pm.diff(resource.data.pm).affectedKeys().hasOnly(['retentionReleased'])
+                    && request.resource.data.pm.retentionReleased == true)
                 // …and the sections, switched by approve and logged in pm.secLog (SEC-04).
                 || (('pm' in resource.data)
                     && pmDuty(projectId, 'approve')
@@ -940,9 +947,10 @@ service cloud.firestore {
       // by ipcOk and NEVER by its preparer ("sub"); certified by ipcOk
       // ("appr"); withdrawn before submission by its preparer or approve ("void").
       match /pmCertificates/{certId} {
+        // Finance reads them too: it posts and collects what PM certified.
         allow read: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
-          && pmCeilingHas('money');
+          && (pmCeilingHas('money') || hasOrgPermission('invoices.manage') || hasOrgPermission('accounting.view'));
 
         allow create: if isSignedIn()
           && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
@@ -974,7 +982,18 @@ service cloud.firestore {
               || (resource.data.status == 'int' && request.resource.data.status == 'void'
                 && (pmDuty(projectId, 'approve') || (resource.data.prep == request.auth.uid && pmDuty(projectId, 'prep')))
                 && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt'])));
+                     .hasOnly(['status', 'voidBy', 'voidByName', 'voidOn', 'updatedAt']))
+              // Finance records what the client paid on a certified certificate: the
+              // collected share only grows, and "paid" is reached only at the whole net.
+              || ((resource.data.status == 'appr' || resource.data.status == 'part')
+                && (request.resource.data.status == 'part' || request.resource.data.status == 'paid')
+                && hasOrgPermission('invoices.manage')
+                && request.resource.data.collected is number
+                && request.resource.data.collected > resource.data.get('collected', 0)
+                && request.resource.data.collected <= 1
+                && (request.resource.data.status == 'part' || request.resource.data.collected == 1)
+                && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'collected', 'collections', 'collectedOn', 'updatedAt'])));
 
         allow delete: if isAdmin();
       }
@@ -1253,6 +1272,16 @@ service cloud.firestore {
           && projectOpen(projectId)
           && (hasOrgPermission('rfq.manage') || hasOrgPermission('warehouses.manage'))
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mfgRequestId', 'mfgRoutedAt', 'mfgRoutedByName', 'updatedAt']);
+        // Procurement answers an approved request with an RFQ or an order placed
+        // without one (PRD 3.0 §7.2) — once: the link is never rewritten.
+        allow update: if isSignedIn()
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.organizationId == getOrganizationId()
+          && projectOpen(projectId)
+          && (isOrgOwner() || hasOrgPermission('rfq.manage') || hasOrgPermission('rfq.create') || hasOrgPermission('offers.accept'))
+          && resource.data.status == 'approved'
+          && resource.data.get('rfqId', null) == null
+          && resource.data.get('poId', null) == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rfqId', 'rfqNumber', 'poId', 'poNumber', 'orderedAt', 'orderedByName', 'updatedAt']);
 
         allow delete: if isAdmin();
       }
@@ -1384,7 +1413,7 @@ service cloud.firestore {
     function poIdentityUntouched() {
       return !poChanged().hasAny(['organizationId', 'docNumber', 'preparedById', 'preparedByName', 'offerId', 'rfqId',
                                   'basis', 'totalExVat', 'vatRate', 'supplierOrgId', 'supplierUserId', 'isGuestSupplier',
-                                  'createdAt', 'approverKind', 'purchaseSource']);
+                                  'createdAt', 'approverKind', 'purchaseSource', 'agreementId', 'agreementNo']);
     }
     // Chasing the supplier: expediters, and anyone who may prepare or approve.
     function poExpediter() {

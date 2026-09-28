@@ -324,11 +324,11 @@ export function exceptions(w: ProcWorld, period?: Period | null): ExceptionRow[]
   for (const po of committedOrders(w, period)) {
     const base = { docNumber: po.docNumber, orderId: po.id, receiptId: null, supplierName: po.supplierName, byName: po.preparedByName, approvedByName: po.approvedByName || "", day: dayOf(po.createdAt), href: orderHref(po.id) }
     if (po.basis === "retroactive") out.push({ ...base, kind: "retroactive", params: {} })
-    else if (po.basis === "direct") out.push({ ...base, kind: "direct", params: { reason: po.awardReasonText || po.awardReasonCode || "" } })
+    else if (po.basis === "direct" && !po.agreementId) out.push({ ...base, kind: "direct", params: { reason: po.awardReasonText || po.awardReasonCode || "" } })
     if (po.basis !== "direct" && po.basis !== "retroactive" && (po.awardReasonCode || po.awardReasonText)) out.push({ ...base, kind: "non_lowest", params: { reasonCode: po.awardReasonCode || "other", reason: po.awardReasonText || "" } })
     if (po.shortCompetition && po.basis === "rfq") out.push({ ...base, kind: "short_competition", params: { count: po.offersCount } })
     if (po.approvedById && po.approvedById === po.preparedById) out.push({ ...base, kind: "self_approval", params: {}, day: dayOf(po.approvedAt) || base.day })
-    if (po.noOfficialQuote) out.push({ ...base, kind: "no_official_quote", params: {} })
+    if (po.noOfficialQuote && !po.agreementId) out.push({ ...base, kind: "no_official_quote", params: {} })
     if (po.status === "closed" && po.closedShort) out.push({ ...base, kind: "closed_short", params: { reason: po.closeReason || "" }, day: dayOf(po.closedAt) || base.day })
   }
 

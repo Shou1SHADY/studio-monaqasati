@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import { displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
+import { displayDocNumber, displayPoNumber, displayReceiptNumber } from "@/lib/procurement/format"
 import { approvalRefusal, canRecordAcceptance, canSend, canUpdateDate, daysLate, isSelfApproval, lineToArrive, poBlocks, poStatus, receiptDay, receiptsOf, reminderCooldownUntil } from "@/lib/procurement/po"
 import { receiptState, type ReceiptState } from "@/lib/procurement/receipts"
 import type { PoLine, PoLogEntry, PoSendChannel, PurchaseOrder, RejectDecision } from "@/lib/procurement/types"
@@ -242,7 +242,9 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               {po.awardReasonText ? ` — ${po.awardReasonText}` : ""}
             </Callout>
           )
-        if (po.noOfficialQuote && po.basis !== "retroactive") flags.push(<Callout key="quote" tone="amber">{t("next.flag_no_official_quote")}</Callout>)
+        if (po.noOfficialQuote && po.basis !== "retroactive" && !po.agreementId) flags.push(<Callout key="quote" tone="amber">{t("next.flag_no_official_quote")}</Callout>)
+        if (po.agreementId) flags.push(<Callout key="agreement" tone="blue">{t("next.flag_agreement", { number: displayDocNumber(po.agreementNo || "", locale) })}</Callout>)
+        else if (po.basis === "direct" && !po.rfqId) flags.push(<Callout key="direct" tone="amber">{t("next.flag_direct", { reason: po.awardReasonText || "—" })}</Callout>)
         return (
           <>
             {blocks.map((b) => (
@@ -585,6 +587,12 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
                   )}
                 </>
               )}
+              {po.agreementId && <Row label={t("award.agreement")}>{displayDocNumber(po.agreementNo || "", locale)}</Row>}
+              {po.basis === "direct" && !po.rfqId && !po.agreementId && po.awardReasonText && (
+                <Row label={t("award.reason")}>
+                  <span className="font-normal">{po.awardReasonText}</span>
+                </Row>
+              )}
               {po.basis === "retroactive" && po.awardReasonText && (
                 <Row label={t("award.reason")}>
                   <span className="font-normal">{po.awardReasonText}</span>
@@ -592,7 +600,7 @@ export function PoDrawer({ po, world, open, onOpenChange, now }: { po: PurchaseO
               )}
               <div className="flex flex-wrap gap-1.5">
                 {po.shortCompetition && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.short_competition", { count: po.offersCount })}</Badge>}
-                {po.noOfficialQuote && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.no_official_quote")}</Badge>}
+                {po.noOfficialQuote && !po.agreementId && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.no_official_quote")}</Badge>}
                 {po.approvedById && po.approvedById === po.preparedById && <Badge className="border-none bg-warning/10 text-[11px] text-warning">{tProc("exception.self_approval")}</Badge>}
               </div>
               {po.rfqId && (

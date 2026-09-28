@@ -1994,6 +1994,7 @@ export default function ProjectDetailPage() {
     rate: parseFloat(String(i.unitPrice).replace(/,/g, "")) || 0,
     executed: i.executedQuantity || 0,
     billed: i.billedQuantity || 0,
+    division: (isRtl ? i.divisionNameAr || i.divisionNameEn : i.divisionNameEn || i.divisionNameAr) || i.divisionNo || "",
     gate: { pmInspect: i.pmInspect, pmWir: i.pmWir },
     pmSample: i.pmSample,
     pmSub: i.pmSub,
