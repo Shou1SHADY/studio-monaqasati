@@ -12825,6 +12825,21 @@
         "final_ready": {
           "title": "لا ملاحظات متبقية قبل الاستلام النهائي",
           "detail": "سجّله بعد انتهاء فترة الضمان."
+        },
+        "kpi_value": "قيمة العقود الجارية",
+        "kpi_value_note": "{count, plural, one {مشروع واحد} two {مشروعان} few {# مشاريع} many {# مشروعاً} other {# مشروع}}",
+        "kpi_all": "قرارات بانتظارك",
+        "kpi_oldest": "{count, plural, one {أقدمها منذ يوم} two {أقدمها منذ يومين} few {أقدمها منذ # أيام} many {أقدمها منذ # يوماً} other {أقدمها منذ # يوم}}",
+        "my_projects": "مشاريعي",
+        "show_more": "{count, plural, one {عرض قرار آخر} two {عرض قرارين آخرين} few {عرض # قرارات أخرى} many {عرض # قراراً آخر} other {عرض # قرار آخر}}",
+        "show_less": "عرض أقل",
+        "grp": {
+          "all": "الكل",
+          "team": "الفريق",
+          "exec": "التنفيذ",
+          "contract": "مخاطر تعاقدية",
+          "money": "المال",
+          "close": "الإغلاق"
         }
       },
       "sec": {
@@ -12902,7 +12917,8 @@
         "waiting_none": "لا شيء معلّق عند وحدة أخرى.",
         "from_procurement": "المشتريات",
         "act_measure": "قياس",
-        "act_certificate": "أعدّ مستخلصاً"
+        "act_certificate": "أعدّ مستخلصاً",
+        "waiting_more": "{count, plural, one {وواحد آخر معلّق} two {واثنان آخران معلّقان} few {و# أخرى معلّقة} many {و# أخرى معلّقة} other {و# أخرى معلّقة}}"
       },
       "rail": {
         "today": "اليوم",

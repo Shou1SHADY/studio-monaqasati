@@ -12825,6 +12825,21 @@
         "final_ready": {
           "title": "No punch item left before final acceptance",
           "detail": "Record it once the defects period ends."
+        },
+        "kpi_value": "Live contract value",
+        "kpi_value_note": "{count, plural, one {# project} other {# projects}}",
+        "kpi_all": "Decisions waiting",
+        "kpi_oldest": "{count, plural, one {Oldest # day} other {Oldest # days}}",
+        "my_projects": "My projects",
+        "show_more": "{count, plural, one {Show # more decision} other {Show # more decisions}}",
+        "show_less": "Show less",
+        "grp": {
+          "all": "All",
+          "team": "Team",
+          "exec": "Execution",
+          "contract": "Contract risks",
+          "money": "Money",
+          "close": "Close-out"
         }
       },
       "sec": {
@@ -12902,7 +12917,8 @@
         "waiting_none": "Nothing is waiting on another module.",
         "from_procurement": "Procurement",
         "act_measure": "Measure",
-        "act_certificate": "Prepare a certificate"
+        "act_certificate": "Prepare a certificate",
+        "waiting_more": "{count, plural, one {# more waiting} other {# more waiting}}"
       },
       "rail": {
         "today": "Today",
