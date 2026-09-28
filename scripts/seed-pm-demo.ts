@@ -9,36 +9,67 @@
  * waiting in "New projects".
  *
  * Usage (DRY RUN by default — prints what it would write, writes nothing):
- *   npx tsx scripts/seed-pm-demo.ts --env .env.uat --owner uat.owner@mdmaktech.sa
- *   npx tsx scripts/seed-pm-demo.ts --env .env.uat --owner uat.owner@mdmaktech.sa --apply
+ *   npx tsx scripts/seed-pm-demo.ts --owner uat.owner@mdmaktech.sa
+ *   npx tsx scripts/seed-pm-demo.ts --owner uat.owner@mdmaktech.sa --apply
  *
- * Refuses to run against production unless --env points at a UAT file. Re-running
+ * UAT only (project mdmaktech-uat, fixed): it writes through Firestore's REST API
+ * with your `gcloud auth print-access-token`, as scripts/deploy-rules.js does for
+ * UAT. Each set of records is ONE atomic commit, created only if absent — re-running
  * is safe: the project and handover have fixed ids and are skipped if they exist.
  */
 
-import { config } from "dotenv"
-import { resolve } from "path"
+import { execSync } from "child_process"
 
 const arg = (name: string) => {
   const i = process.argv.indexOf(name)
   return i !== -1 ? process.argv[i + 1] : undefined
 }
-const ENV_FILE = arg("--env") || ".env.uat"
 const OWNER_EMAIL = arg("--owner") || "uat.owner@mdmaktech.sa"
 const APPLY = process.argv.includes("--apply")
-config({ path: resolve(process.cwd(), ENV_FILE) })
+const GCP_PROJECT = "mdmaktech-uat"
+const token = execSync("gcloud auth print-access-token", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim()
+const BASE = `https://firestore.googleapis.com/v1/projects/${GCP_PROJECT}/databases/(default)/documents`
+const HEADERS = { Authorization: `Bearer ${token}`, "x-goog-user-project": GCP_PROJECT, "Content-Type": "application/json" }
 
-import { initializeApp, cert, getApps, applicationDefault } from "firebase-admin/app"
-import { getAuth } from "firebase-admin/auth"
-import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore"
-
-function initAdmin() {
-  if (getApps().length > 0) return getApps()[0]!
-  const projectId = process.env.FIREBASE_PROJECT_ID
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")
-  if (projectId && clientEmail && privateKey) return initializeApp({ credential: cert({ projectId, clientEmail, privateKey }) })
-  return initializeApp({ credential: applicationDefault(), projectId })
+// ── Firestore REST: values, reads, and one atomic commit ─────────────────────
+class Ts {
+  constructor(readonly iso: string) {}
+}
+const NOW = () => new Ts(new Date().toISOString())
+type Json = null | boolean | number | string | Ts | Json[] | { [k: string]: Json }
+function enc(v: Json): Record<string, unknown> {
+  if (v === null) return { nullValue: null }
+  if (v instanceof Ts) return { timestampValue: v.iso }
+  if (typeof v === "boolean") return { booleanValue: v }
+  if (typeof v === "number") return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v }
+  if (typeof v === "string") return { stringValue: v }
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(enc) } }
+  return { mapValue: { fields: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, enc(x)])) } }
+}
+const docName = (path: string) => `projects/${GCP_PROJECT}/databases/(default)/documents/${path}`
+async function getDoc(path: string): Promise<{ fields?: Record<string, { stringValue?: string; integerValue?: string }>; updateTime?: string } | null> {
+  const r = await fetch(`${BASE}/${path}`, { headers: HEADERS })
+  if (r.status === 404) return null
+  if (!r.ok) throw new Error(`read ${path}: ${r.status} ${await r.text()}`)
+  return r.json()
+}
+type Write = { path: string; data: { [k: string]: Json }; precondition?: { exists?: boolean; updateTime?: string } }
+async function commit(writes: Write[]) {
+  const body = { writes: writes.map((w) => ({ update: { name: docName(w.path), fields: (enc(w.data) as { mapValue: { fields: unknown } }).mapValue.fields }, currentDocument: w.precondition ?? { exists: false } })) }
+  const r = await fetch(`${BASE}:commit`, { method: "POST", headers: HEADERS, body: JSON.stringify(body) })
+  if (!r.ok) throw new Error(`commit: ${r.status} ${await r.text()}`)
+}
+async function ownerOf(email: string): Promise<{ uid: string; orgId: string; name: string }> {
+  const r = await fetch(`${BASE}:runQuery`, {
+    method: "POST",
+    headers: HEADERS,
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "users" }], where: { fieldFilter: { field: { fieldPath: "email" }, op: "EQUAL", value: { stringValue: email } } }, limit: 1 } }),
+  })
+  const rows = (await r.json()) as Array<{ document?: { name: string; fields: Record<string, { stringValue?: string }> } }>
+  const docu = rows.find((x) => x.document)?.document
+  if (!docu) throw new Error(`no user ${email} on UAT`)
+  const uid = docu.name.split("/").pop() as string
+  return { uid, orgId: docu.fields.organizationId?.stringValue || uid, name: docu.fields.name?.stringValue || email }
 }
 
 const PROJECT_ID = "pm-demo-yasmin"
@@ -108,45 +139,32 @@ const a2 = amounts(gross2, a1.retention, a1.recovery)
 const billed = new Map<string, number>([...cert1Lines, ...cert2Lines].map((l) => [l.itemId, l.qty]))
 
 async function main() {
-  initAdmin()
-  const db = getFirestore()
-  const projectIdEnv = process.env.FIREBASE_PROJECT_ID || "(from credentials)"
-  if (!/uat/i.test(ENV_FILE) && !/uat/i.test(projectIdEnv)) throw new Error(`Refusing: ${ENV_FILE} / ${projectIdEnv} does not look like UAT`)
-  const owner = await getAuth().getUserByEmail(OWNER_EMAIL)
-  const uid = owner.uid
-  const profile = (await db.doc(`users/${uid}`).get()).data() || {}
-  const orgId: string = profile.organizationId || uid
-  const name: string = profile.name || owner.displayName || OWNER_EMAIL
-  console.log(`Target: project ${projectIdEnv} · owner ${OWNER_EMAIL} (${uid}) · company ${orgId} · ${APPLY ? "APPLY" : "DRY RUN"}`)
+  const { uid, orgId, name } = await ownerOf(OWNER_EMAIL)
+  console.log(`Target: ${GCP_PROJECT} · owner ${OWNER_EMAIL} (${uid}) · company ${orgId} · ${APPLY ? "APPLY" : "DRY RUN"}`)
   console.log(`Project ${PROJECT_ID}: budget ${BUDGET.toLocaleString("en-US")} · certificate 01 net ${a1.net} · certificate 02 net ${a2.net}`)
 
-  const exists = (await db.doc(`projects/${PROJECT_ID}`).get()).exists
-  if (exists) console.log(`projects/${PROJECT_ID} exists — skipping the project`)
-  else if (APPLY) await seedProject(db, orgId, uid, name)
+  if (await getDoc(`projects/${PROJECT_ID}`)) console.log(`projects/${PROJECT_ID} exists — skipping the project`)
+  else if (APPLY) await seedProject(orgId, uid, name)
   else console.log(`would write projects/${PROJECT_ID} with ${ITEMS.length} BOQ items, 4 sheets, 2 inspections, 1 sample, 2 variations, 2 claims, 1 addendum, 2 certificates, 2 punch items, 1 NCR, 5 activities, 2 events`)
 
-  const hExists = (await db.doc(`pmHandovers/${HANDOVER_ID}`).get()).exists
-  if (hExists) console.log(`pmHandovers/${HANDOVER_ID} exists — skipping the handover`)
-  else if (APPLY) await seedHandover(db, orgId, uid, name)
+  if (await getDoc(`pmHandovers/${HANDOVER_ID}`)) console.log(`pmHandovers/${HANDOVER_ID} exists — skipping the handover`)
+  else if (APPLY) await seedHandover(orgId, uid, name)
   else console.log(`would write pmHandovers/${HANDOVER_ID} (waiting for ${OWNER_EMAIL})`)
   console.log(APPLY ? "Done." : "Dry run only — add --apply to write.")
 }
 
-async function seedProject(db: Firestore, orgId: string, uid: string, name: string) {
+async function seedProject(orgId: string, uid: string, name: string) {
   const year = today.getUTCFullYear()
-  const counter = db.doc(`mfgCounters/${orgId}__PJ__${year}`)
-  const no = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(counter)
-    const seq = (snap.exists ? Number(snap.data()?.last) || 0 : 0) + 1
-    tx.set(counter, { organizationId: orgId, type: "PJ", year, last: seq, updatedAt: FieldValue.serverTimestamp() })
-    return `PJ-${year}/${String(seq).padStart(3, "0")}`
-  })
-  const P = db.doc(`projects/${PROJECT_ID}`)
-  const stamp = { organizationId: orgId, createdAt: FieldValue.serverTimestamp() }
+  const counterPath = `mfgCounters/${orgId}__PJ__${year}`
+  const counter = await getDoc(counterPath)
+  const seq = (Number(counter?.fields?.last?.integerValue) || 0) + 1
+  const no = `PJ-${year}/${String(seq).padStart(3, "0")}`
+  const W: Write[] = [{ path: counterPath, data: { organizationId: orgId, type: "PJ", year, last: seq, updatedAt: NOW() }, precondition: counter?.updateTime ? { updateTime: counter.updateTime } : { exists: false } }]
+  const put = (path: string, data: { [k: string]: Json }) => W.push({ path, data })
+  const stamp = { organizationId: orgId, createdAt: NOW() }
   const by = { by: uid, byName: name }
-  const batch = db.batch()
 
-  batch.set(P, {
+  put(`projects/${PROJECT_ID}`, {
     organizationId: orgId,
     contractorId: uid,
     name: "مجمع الياسمين السكني — 5 فلل",
@@ -189,13 +207,13 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
       advanceRecovered: r2(a1.recovery + a2.recovery),
       cutPool: 0,
     },
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+    createdAt: NOW(),
+    updatedAt: NOW(),
   })
-  batch.set(db.doc(`projects/${PROJECT_ID}/members/${uid}`), { userId: uid, groupId: null, organizationId: orgId, addedBy: uid, pmRole: "pm", off: [], from: d(-150), to: null, createdAt: FieldValue.serverTimestamp() })
+  put((`projects/${PROJECT_ID}/members/${uid}`), { userId: uid, groupId: null, organizationId: orgId, addedBy: uid, pmRole: "pm", off: [], from: d(-150), to: null, createdAt: NOW() })
 
   for (const i of ITEMS) {
-    batch.set(db.doc(`projects/${PROJECT_ID}/boqItems/${i.id}`), {
+    put((`projects/${PROJECT_ID}/boqItems/${i.id}`), {
       itemNo: i.code,
       sheet: "BOQ",
       divisionNo: i.div,
@@ -213,12 +231,12 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
       isEditable: true,
       ...(i.inspect ? { pmInspect: true, pmWir: i.wir ?? null } : {}),
       ...(i.sample ? { pmSample: true, pmSub: null } : {}),
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: NOW(),
     })
   }
 
   const sheet = (seq: number, day: number, status: string, lines: Array<[string, number]>) =>
-    batch.set(db.doc(`projects/${PROJECT_ID}/pmSheets/${two(seq)}`), {
+    put((`projects/${PROJECT_ID}/pmSheets/${two(seq)}`), {
       seq,
       status,
       day: d(day),
@@ -236,8 +254,8 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
   sheet(3, -30, "ok", [["i04", 1400], ["i06", 900]])
   sheet(4, -3, "wait", [["i04", 300]])
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmInspections/01`), { seq: 1, itemId: "i03", code: "03-03-01", location: "الفيلا 2 — السقف الأول", party: "consultant", status: "pass", attempts: [{ n: 1, on: d(-80), result: "pass", note: null, ...by, rBy: uid, rByName: name, rAt: iso(-80) }], ...stamp })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmInspections/02`), {
+  put((`projects/${PROJECT_ID}/pmInspections/01`), { seq: 1, itemId: "i03", code: "03-03-01", location: "الفيلا 2 — السقف الأول", party: "consultant", status: "pass", attempts: [{ n: 1, on: d(-80), result: "pass", note: null, ...by, rBy: uid, rByName: name, rAt: iso(-80) }], ...stamp })
+  put((`projects/${PROJECT_ID}/pmInspections/02`), {
     seq: 2,
     itemId: "i06",
     code: "09-01-01",
@@ -247,12 +265,12 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
     attempts: [{ n: 1, on: d(-10), result: "fail", note: "سماكة اللياسة أقل من المواصفة", ...by, rBy: uid, rByName: name, rAt: iso(-10) }],
     ...stamp,
   })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmSubmittals/01`), { seq: 1, itemId: "i05", code: "07-01-01", supplier: "مصنع الجزيرة للعوازل", rev: 1, status: "rej", day: d(-25), ...by, reply: { on: d(-18), by: uid, byName: name, note: "السماكة 3 مم بدل 4 مم المطلوبة" }, ...stamp })
+  put((`projects/${PROJECT_ID}/pmSubmittals/01`), { seq: 1, itemId: "i05", code: "07-01-01", supplier: "مصنع الجزيرة للعوازل", rev: 1, status: "rej", day: d(-25), ...by, reply: { on: d(-18), by: uid, byName: name, note: "السماكة 3 مم بدل 4 مم المطلوبة" }, ...stamp })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmVariations/01`), { seq: 1, title: "إضافة غرفة خادمة للفيلا 5", source: "client", instructionNo: "CI-07", day: d(-60), value: 85000, cost: 62000, executedPct: 40, status: "appr", ...by, decision: { on: d(-50), by: uid, byName: name, ref: "APP-VO-01", reason: null }, ...stamp })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmVariations/02`), { seq: 2, title: "تغيير نوع البلاط الخارجي", source: "cons", instructionNo: "SI-12", day: d(-12), value: 46000, cost: 35000, executedPct: 0, status: "wait", ...by, decision: null, ...stamp })
+  put((`projects/${PROJECT_ID}/pmVariations/01`), { seq: 1, title: "إضافة غرفة خادمة للفيلا 5", source: "client", instructionNo: "CI-07", day: d(-60), value: 85000, cost: 62000, executedPct: 40, status: "appr", ...by, decision: { on: d(-50), by: uid, byName: name, ref: "APP-VO-01", reason: null }, ...stamp })
+  put((`projects/${PROJECT_ID}/pmVariations/02`), { seq: 2, title: "تغيير نوع البلاط الخارجي", source: "cons", instructionNo: "SI-12", day: d(-12), value: 46000, cost: 35000, executedPct: 0, status: "wait", ...by, decision: null, ...stamp })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmClaims/01`), {
+  put((`projects/${PROJECT_ID}/pmClaims/01`), {
     seq: 1,
     kind: "time",
     cause: "تأخر الاستشاري في اعتماد المخططات الإنشائية",
@@ -267,11 +285,11 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
     revision: 1,
     ...stamp,
   })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmClaims/02`), { seq: 2, kind: "time", cause: "توقف العمل بسبب إغلاق الطريق من البلدية", eventOn: d(-35), daysAsked: 10, amountAsked: 0, status: "draft", ...by, noticeOn: null, submittedOn: null, response: null, revision: null, ...stamp })
+  put((`projects/${PROJECT_ID}/pmClaims/02`), { seq: 2, kind: "time", cause: "توقف العمل بسبب إغلاق الطريق من البلدية", eventOn: d(-35), daysAsked: 10, amountAsked: 0, status: "draft", ...by, noticeOn: null, submittedOn: null, response: null, revision: null, ...stamp })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmAddenda/01`), { seq: 1, status: "draft", day: d(-5), ...by, reason: "client", reasonText: null, changes: [{ key: "paymentDays", from: 30, to: 45 }], note: "طلب المالك تمديد مهلة الدفع", ...stamp })
+  put((`projects/${PROJECT_ID}/pmAddenda/01`), { seq: 1, status: "draft", day: d(-5), ...by, reason: "client", reasonText: null, changes: [{ key: "paymentDays", from: 30, to: 45 }], note: "طلب المالك تمديد مهلة الدفع", ...stamp })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmCertificates/01`), {
+  put((`projects/${PROJECT_ID}/pmCertificates/01`), {
     seq: 1,
     status: "appr",
     lines: linesOf(cert1Lines),
@@ -297,7 +315,7 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
     submitted: a1,
     ...stamp,
   })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmCertificates/02`), {
+  put((`projects/${PROJECT_ID}/pmCertificates/02`), {
     seq: 2,
     status: "int",
     lines: linesOf(cert2Lines),
@@ -324,13 +342,13 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
     ...stamp,
   })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmPunch/01`), { seq: 1, what: "تشققات شعرية في لياسة الممر", location: "الفيلا 1 — الممر الرئيسي", severity: "b", source: "cons", status: "open", day: d(-8), ...by, itemId: "i06", fix: null, conf: null, ...stamp })
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmPunch/02`), { seq: 2, what: "ميول تصريف السطح غير كافية", location: "الفيلا 2 — السطح", severity: "a", source: "int", status: "fix", day: d(-20), ...by, itemId: "i05", fix: { on: d(-4), by: uid, byName: name, note: "أُعيدت الميول" }, conf: null, ...stamp })
+  put((`projects/${PROJECT_ID}/pmPunch/01`), { seq: 1, what: "تشققات شعرية في لياسة الممر", location: "الفيلا 1 — الممر الرئيسي", severity: "b", source: "cons", status: "open", day: d(-8), ...by, itemId: "i06", fix: null, conf: null, ...stamp })
+  put((`projects/${PROJECT_ID}/pmPunch/02`), { seq: 2, what: "ميول تصريف السطح غير كافية", location: "الفيلا 2 — السطح", severity: "a", source: "int", status: "fix", day: d(-20), ...by, itemId: "i05", fix: { on: d(-4), by: uid, byName: name, note: "أُعيدت الميول" }, conf: null, ...stamp })
 
-  batch.set(db.doc(`projects/${PROJECT_ID}/pmNcrs/01`), { seq: 1, itemId: "i06", code: "09-01-01", severity: "a", root: "لم تُستخدم أدلة السماكة قبل اللياسة", cost: 12500, status: "open", day: d(-9), ...by, plan: null, accepted: null, ...stamp })
+  put((`projects/${PROJECT_ID}/pmNcrs/01`), { seq: 1, itemId: "i06", code: "09-01-01", severity: "a", root: "لم تُستخدم أدلة السماكة قبل اللياسة", cost: 12500, status: "open", day: d(-9), ...by, plan: null, accepted: null, ...stamp })
 
   const act = (seq: number, nameAr: string, from: number, to: number, itemIds: string[], pred: number | null) =>
-    batch.set(db.doc(`projects/${PROJECT_ID}/pmActivities/${two(seq)}`), { seq, name: nameAr, from: d(from), to: d(to), itemIds, pred: pred ? two(pred) : null, by: uid, byName: name, at: iso(-140), ...stamp })
+    put((`projects/${PROJECT_ID}/pmActivities/${two(seq)}`), { seq, name: nameAr, from: d(from), to: d(to), itemIds, pred: pred ? two(pred) : null, by: uid, byName: name, at: iso(-140), ...stamp })
   act(1, "أعمال الحفر والقواعد", -150, -100, ["i01", "i02"], null)
   act(2, "هيكل الفلل الخرساني", -100, -20, ["i03"], 1)
   act(3, "بناء البلوك", -40, 40, ["i04"], 2)
@@ -338,16 +356,16 @@ async function seedProject(db: Firestore, orgId: string, uid: string, name: stri
   act(5, "الكهرباء والسباكة", -60, 150, ["i07", "i08"], 2)
 
   const ev = (key: string, kind: string, amount: number, params: Record<string, string | number>, at: string) =>
-    batch.set(db.doc(`pmEvents/${key.replace(/\//g, "_")}`), { key, kind, organizationId: orgId, projectId: PROJECT_ID, projectNo: no, amount, params, by: uid, at })
+    put((`pmEvents/${key.replace(/\//g, "_")}`), { key, kind, organizationId: orgId, projectId: PROJECT_ID, projectNo: no, amount, params, by: uid, at })
   ev(`prj:ADV:${no}`, "ADV", r2(BUDGET * TERMS.advance), { rate: TERMS.advance, recovery: TERMS.advanceRecovery, contractValue: BUDGET }, iso(-150))
   ev(`prj:IPC:${no}:01`, "IPC", a1.gross, { certificate: "01", gross: a1.gross, recovery: a1.recovery, retention: a1.retention, vat: a1.vat, net: a1.net, due: d(-15) }, iso(-45))
 
-  await batch.commit()
-  console.log(`wrote projects/${PROJECT_ID} as ${no}`)
+  await commit(W)
+  console.log(`wrote projects/${PROJECT_ID} as ${no} (${W.length} documents, one commit)`)
 }
 
-async function seedHandover(db: Firestore, orgId: string, uid: string, name: string) {
-  await db.doc(`pmHandovers/${HANDOVER_ID}`).set({
+async function seedHandover(orgId: string, uid: string, name: string) {
+  await commit([{ path: `pmHandovers/${HANDOVER_ID}`, data: {
     organizationId: orgId,
     status: "wait",
     to: uid,
@@ -370,7 +388,7 @@ async function seedHandover(db: Firestore, orgId: string, uid: string, name: str
     requestedBy: uid,
     requestedByName: name,
     createdAt: iso(-2),
-  })
+  } }])
   console.log(`wrote pmHandovers/${HANDOVER_ID}`)
 }
 
